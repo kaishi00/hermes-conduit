@@ -291,7 +291,7 @@ Text: the section's captions and README.md's Capabilities line (done)
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-08, #2006 (a retry waits for a given-up try's settle; Rulings); 2026-11-08, #2001 (a sign-in over a reconnect, issue 1997; rules not read said so, issue 1998; Code, Rulings); 2026-11-08, #1993 (Safari's close fallback fenced per close); 2026-11-08, #1988 (the chat card's gap closed; Browse Apps lists a chat's suggestions first; #1982's review: logo renders, give-up, Safari's dismissal, logo retries); 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
+**Checked:** 2026-11-08, #2011 (README's shared Capabilities line also names each plugin's own settings; this entry's part unchanged); 2026-11-08, #2006 (a retry waits for a given-up try's settle; Rulings); 2026-11-08, #2001 (a sign-in over a reconnect, issue 1997; rules not read said so, issue 1998; Code, Rulings); 2026-11-08, #1993 (Safari's close fallback fenced per close); 2026-11-08, #1988 (the chat card's gap closed; Browse Apps lists a chat's suggestions first; #1982's review: logo renders, give-up, Safari's dismissal, logo retries); 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
 
 ## Things Hermes connects from a chat
 
@@ -3538,7 +3538,7 @@ README.md's Capabilities line
 - Whether a list read can overwrite a flip in the bot editor's lists hasn't been checked.
 - The Kanban skill picker says "No skills match." when it withholds another dashboard's skills, the same as a search miss.
 
-**Checked:** 2026-11-08, #1999 (the Skills tab opens Browse Skill Hub, a hub skill's page removes it, the options menu updates hub skills; the switches unchanged); 2026-11-08, #1982 (the Connectors tab shows the Apps section above the servers and its pull to refresh reads both; the servers unchanged); 2026-11-05, #1793 (the Skills, Tools and MCP page and Kanban's skills sheet built from Settings' cards, see Sheets in Settings' look); 2026-11-02, #1655 (Eric decided the key save follows Edit Server's test rules); 2026-11-02, #1647 (a key save reads the list again and tests the server only if the host says it's on, and a test running on the old key runs again, as after Edit Server's save; a save that fails part way does both for the keys Hermes took); 2026-11-02, #1640 (connectors sign in through the phone's callback with Edit Bot's flow; a catalog connector's key set from its page); 2026-10-31, #1578 (edited number arguments stay numbers; a renamed server shows after a failed reload); 2026-10-31, #1569 (the lists open on their kept copy and a switch Hermes took is kept in it, never one it refused; offline the switches wait for a dashboard; AppState's list reads are tested through held dashboard requests, its generation guard included, closing a gap; with #1574 merged in, a server's page waits for Hermes' list before its first test and a connector edit counts as a change, see Screens that open on their last answer); 2026-10-31, #1574 (connector tests outlive the page that started them; Edit Server); 2026-10-24, at #1219 and #1222.
+**Checked:** 2026-11-08, #2011 (README's shared Capabilities line also names each plugin's own settings; this entry's part unchanged); 2026-11-08, #1999 (the Skills tab opens Browse Skill Hub, a hub skill's page removes it, the options menu updates hub skills; the switches unchanged); 2026-11-08, #1982 (the Connectors tab shows the Apps section above the servers and its pull to refresh reads both; the servers unchanged); 2026-11-05, #1793 (the Skills, Tools and MCP page and Kanban's skills sheet built from Settings' cards, see Sheets in Settings' look); 2026-11-02, #1655 (Eric decided the key save follows Edit Server's test rules); 2026-11-02, #1647 (a key save reads the list again and tests the server only if the host says it's on, and a test running on the old key runs again, as after Edit Server's save; a save that fails part way does both for the keys Hermes took); 2026-11-02, #1640 (connectors sign in through the phone's callback with Edit Bot's flow; a catalog connector's key set from its page); 2026-10-31, #1578 (edited number arguments stay numbers; a renamed server shows after a failed reload); 2026-10-31, #1569 (the lists open on their kept copy and a switch Hermes took is kept in it, never one it refused; offline the switches wait for a dashboard; AppState's list reads are tested through held dashboard requests, its generation guard included, closing a gap; with #1574 merged in, a server's page waits for Hermes' list before its first test and a connector edit counts as a change, see Screens that open on their last answer); 2026-10-31, #1574 (connector tests outlive the page that started them; Edit Server); 2026-10-24, at #1219 and #1222.
 
 ## Skill Hub: browse and install
 
@@ -3651,14 +3651,14 @@ Capabilities line (done)
 
 **Code**
 - Model: `Conduit/Models/PluginSettings.swift` (PluginSettingField, PluginSettings.save: only changed values, secrets apart, text that doesn't fit refused)
-- Client: `Conduit/Services/HermesClient.swift` (pluginSettingFields, savePluginSettings), `Conduit/Services/CapabilitiesStore.swift` (savePluginSettings: secrets to `.env`, then the values)
+- Client: `Conduit/Services/HermesClient.swift` (pluginSettingFields, savePluginSettings), `Conduit/Services/CapabilitiesStore.swift` (savePluginSettings: default profile only, secrets to `.env`, then the values through the write it's given, fenced by the store's generation)
 - Views: `Conduit/Views/Capabilities/PluginSettingsViews.swift` (PluginSettingsSection, PluginSettingFieldRow), `Conduit/Views/Capabilities/CapabilityPluginsTab.swift` (the section on AgentPluginDetailPage)
-- Tests: `ConduitTests/PluginSettingsTests.swift` (an extension of PluginCatalogBrowseTests: the unit suite is at its 224-class cap)
+- Tests: `ConduitTests/PluginSettingsTests.swift` (an extension of PluginCatalogBrowseTests: the unit suite is at its 224-class cap), `ConduitTests/KanbanTests+Capabilities.swift` (the store's save: order, the default profile, a switch mid-save)
 
 **Rulings**
 - A secret is write-only: the form never shows its value, even if Hermes sent one, and a secret left blank stays as it is (#2011).
 - A save sends only what changed; a Hermes without `plugins.manage` shows no section (#2011).
-- The form is read fresh each time, never kept: a reload that fails shows why and Try Again, never the fields from before; a dashboard or profile switch mid-save stops its later writes (#2011).
+- The form is read fresh each time, never kept, and only once the store serves the page's dashboard and profile: offline, or after a reload that fails, the fields from before are gone (a failed reload shows why and Try Again). Edits follow the store's profile, not the one the page was opened on; a switch mid-save stops its later writes, and a save that wrote some keys first says so (#2011).
 
 **Open gaps**
 - None.

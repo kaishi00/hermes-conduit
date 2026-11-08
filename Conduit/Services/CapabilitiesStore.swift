@@ -250,26 +250,35 @@ final class CapabilitiesStore {
 
     /// Saves a plugin's settings form: each new secret to the profile's
     /// `.env` (never read back), then the values through Hermes' plugin
-    /// settings call, which also tells the plugin they changed. Answers the
-    /// fields as Hermes now has them.
-    /// A dashboard or profile switch while a write waits stops the rest, so
-    /// no key or value lands on the new host or profile.
-    func savePluginSettings(key: String, save: PluginSettings.Save, client: HermesClient) async throws -> [PluginSettingField]? {
+    /// settings call (`write`, given the values and the profile), which
+    /// also tells the plugin they changed. Answers the fields as Hermes now
+    /// has them. Only on the default profile, where Hermes keeps plugin
+    /// settings. A dashboard or profile switch while a write waits stops the
+    /// rest, so no key or value lands on the new host or profile; when some
+    /// keys were already saved, the error says so.
+    func savePluginSettings(
+        save: PluginSettings.Save,
+        write: @escaping @MainActor ([String: Any], String) async throws -> [PluginSettingField]?
+    ) async throws -> [PluginSettingField]? {
+        try requirePluginProfile()
         let token = generation
         let profile = profile
         let envPath = scoped("/api/env")
-        for (env, value) in save.secrets.sorted(by: { $0.key < $1.key }) {
-            guard token == generation else { throw CapabilitiesStoreError.profileChanged }
-            _ = try await request(envPath, method: "PUT", body: DashboardPath.bodyWithProfile(["key": env, "value": value], profile: profile))
-        }
-        guard token == generation else { throw CapabilitiesStoreError.profileChanged }
-        let values = PluginSettings.body(save.values)
+        var written = false
         do {
-            return try await ProfileConfigWriteQueue.runThrowing {
-                try await client.savePluginSettings(key: key, values: values, profile: profile)
+            for (env, value) in save.secrets.sorted(by: { $0.key < $1.key }) {
+                guard token == generation else { throw CapabilitiesStoreError.profileChanged }
+                _ = try await request(envPath, method: "PUT", body: DashboardPath.bodyWithProfile(["key": env, "value": value], profile: profile))
+                written = true
             }
-        } catch where !save.secrets.isEmpty && !(error is CancellationError) {
-            // The keys are already in `.env`: say so, rather than suggest
+            guard token == generation else { throw CapabilitiesStoreError.profileChanged }
+            let values = PluginSettings.body(save.values)
+            return try await ProfileConfigWriteQueue.runThrowing {
+                guard token == self.generation else { throw CapabilitiesStoreError.profileChanged }
+                return try await write(values, profile)
+            }
+        } catch where written && !(error is CancellationError) {
+            // Keys already in `.env` stay there: say so, rather than suggest
             // the whole save was undone.
             throw PluginSettings.FieldError(message: AppLocalization.string("The keys were saved, but the other settings weren't: \(UserFacingError.message(for: error))"))
         }

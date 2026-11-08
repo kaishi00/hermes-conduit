@@ -676,6 +676,76 @@ extension KanbanTests {
         XCTAssertFalse(writes.contains { $0.body?["profile"] as? String == "home" })
     }
 
+    // MARK: Plugin settings
+
+    /// A plugin settings save writes its keys to the profile's `.env` first,
+    /// one by one, then hands the values and the profile to the settings call.
+    func testAPluginSettingsSaveWritesKeysThenTheValues() async throws {
+        let requester = CapabilityMockRequester(responses: ["/api/env": ["ok": true]])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        var order: [String] = []
+        requester.beforeAnswering = { path in order.append(path) }
+        var sent: ([String: Any], String)?
+        let save = PluginSettings.Save(values: ["days": 7], secrets: ["B_KEY": "b", "A_KEY": "a"])
+        _ = try await store.savePluginSettings(save: save) { values, profile in
+            order.append("settings")
+            sent = (values, profile)
+            return nil
+        }
+        XCTAssertEqual(order, ["/api/env", "/api/env", "settings"])
+        let writes = requester.calls.filter { $0.method == "PUT" }
+        XCTAssertEqual(writes.map { $0.body?["key"] as? String }, ["A_KEY", "B_KEY"])
+        XCTAssertEqual(writes.map { $0.body?["profile"] as? String }, [nil, nil], "the default profile is the dashboard's own")
+        XCTAssertEqual(sent?.0["days"] as? Int, 7)
+        XCTAssertEqual(sent?.1, "default")
+    }
+
+    /// Hermes keeps plugin settings for the default profile only: another
+    /// profile's save writes nothing.
+    func testAPluginSettingsSaveOnAnotherProfileWritesNothing() async throws {
+        let requester = CapabilityMockRequester(responses: ["/api/env": ["ok": true]])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        var called = false
+        do {
+            _ = try await store.savePluginSettings(save: PluginSettings.Save(values: ["days": 7], secrets: ["A_KEY": "a"])) { _, _ in
+                called = true
+                return nil
+            }
+            XCTFail("another profile's save is turned down")
+        } catch {
+            guard case .declined = error as? CapabilitiesStoreError else { return XCTFail("\(error)") }
+        }
+        XCTAssertFalse(called)
+        XCTAssertTrue(requester.calls.isEmpty)
+    }
+
+    /// A switch after the first key stops the rest, and the error says some
+    /// keys were saved rather than that nothing was.
+    func testAPluginSettingsSaveStopsAtASwitchAndSaysWhatLanded() async throws {
+        let requester = CapabilityMockRequester(responses: ["/api/env": ["ok": true]])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        requester.beforeAnswering = { path in
+            if path == "/api/env" { store.configure(requester: requester, profile: "home") }
+        }
+        var called = false
+        do {
+            _ = try await store.savePluginSettings(save: PluginSettings.Save(values: ["days": 7], secrets: ["A_KEY": "a", "B_KEY": "b"])) { _, _ in
+                called = true
+                return nil
+            }
+            XCTFail("the save stops at the switch")
+        } catch {
+            XCTAssertTrue(error is PluginSettings.FieldError, "a partial save says so")
+        }
+        XCTAssertFalse(called)
+        let writes = requester.calls.filter { $0.method == "PUT" }
+        XCTAssertEqual(writes.map { $0.body?["key"] as? String }, ["A_KEY"])
+        XCTAssertFalse(writes.contains { $0.body?["profile"] as? String == "home" })
+    }
+
     /// A save pressed before a switch writes nothing on the profile switched to.
     func testAConnectorKeySavePressedBeforeASwitchWritesNothing() async throws {
         let requester = CapabilityMockRequester(responses: [

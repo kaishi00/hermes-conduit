@@ -79,6 +79,8 @@ extension PluginCatalogBrowseTests {
         XCTAssertThrowsError(try PluginSettings.save(fields: fields, draft: ["units": "kelvin"]))
         XCTAssertThrowsError(try PluginSettings.save(fields: fields, draft: ["extra": "42"]), "JSON must be a list or an object")
         XCTAssertThrowsError(try PluginSettings.save(fields: fields, draft: ["units": ""]), "A required field can't be emptied")
+        let cleared = try PluginSettings.save(fields: fields, draft: ["extra": "  "])
+        XCTAssertTrue(PluginSettings.body(cleared.values)["extra"] is NSNull, "An optional JSON field emptied is cleared")
         let json = try PluginSettings.save(fields: fields, draft: ["extra": "[1, 2]"])
         XCTAssertEqual(PluginSettings.body(json.values)["extra"] as? [Int], [1, 2])
         let numbers = try PluginSettings.save(fields: fields, draft: ["extra": "{\"count\": 1, \"offset\": 0, \"on\": true, \"ratio\": 0.5}"])

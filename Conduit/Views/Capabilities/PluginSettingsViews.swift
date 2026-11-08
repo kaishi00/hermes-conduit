@@ -23,6 +23,14 @@ struct PluginSettingsSection: View {
     @State private var saving = false
     @State private var message: String?
     @State private var saved = false
+    /// The newest load: an older one's answer (a second Try Again) is dropped.
+    @State private var loadID = 0
+
+    /// Edits only while connected, on the default profile the store now
+    /// serves: a page pushed on it keeps `canManage` across a switch.
+    private var canEdit: Bool {
+        canManage && appState.isConnected && store.canManagePlugins && store.serves(appState.currentCapabilitiesOwner)
+    }
 
     private var dirty: Bool {
         fields.contains { field in
@@ -38,14 +46,14 @@ struct PluginSettingsSection: View {
                     Text("Settings")
                         .scaledFont(.headline)
                     ForEach(fields) { field in
-                        PluginSettingFieldRow(field: field, raw: binding(field), disabled: !canManage || saving)
+                        PluginSettingFieldRow(field: field, raw: binding(field), disabled: !canEdit || saving)
                     }
                     if let message {
                         Text(verbatim: message)
                             .scaledFont(.footnote)
                             .foregroundStyle(saved ? Color.secondary : Color.orange)
                     }
-                    if canManage {
+                    if canEdit {
                         Button {
                             save()
                         } label: {
@@ -79,15 +87,27 @@ struct PluginSettingsSection: View {
                 .padding(.horizontal, 16)
             }
         }
-        .task(id: LoadKey(name: pluginName, owner: appState.currentCapabilitiesOwner, connected: appState.isConnected)) {
+        .task(id: LoadKey(name: pluginName, scope: scope, connected: appState.isConnected)) {
             await load()
         }
     }
 
+    /// Reads again for another dashboard or profile, once the store has
+    /// been pointed at it.
+    private var scope: CapabilityDetailScope {
+        let owner = appState.currentCapabilitiesOwner
+        return CapabilityDetailScope(owner: owner, ready: store.serves(owner))
+    }
+
     private struct LoadKey: Equatable {
         let name: String
-        let owner: CapabilitySnapshotOwner
+        let scope: CapabilityDetailScope
         let connected: Bool
+    }
+
+    /// Whether a load's answer is still this page's to show.
+    private func isCurrent(_ id: Int, _ owner: CapabilitySnapshotOwner) -> Bool {
+        id == loadID && !Task.isCancelled && appState.currentCapabilitiesOwner == owner && store.serves(owner)
     }
 
     private func binding(_ field: PluginSettingField) -> Binding<String> {
@@ -102,28 +122,41 @@ struct PluginSettingsSection: View {
     }
 
     private func load() async {
-        guard appState.isConnected, let client = appState.client else { return }
+        loadID += 1
+        let id = loadID
         let owner = appState.currentCapabilitiesOwner
+        // Offline, or before the store serves this dashboard and profile,
+        // the form isn't shown: nothing kept, nothing stale to save.
+        guard appState.isConnected, let client = appState.client, store.serves(owner) else {
+            clear()
+            return
+        }
         do {
-            let answer = try await client.pluginSettingFields(plugin: pluginName, profile: store.profile)
-            guard !Task.isCancelled, appState.currentCapabilitiesOwner == owner else { return }
+            let answer = try await client.pluginSettingFields(plugin: pluginName, profile: owner.profile)
+            guard isCurrent(id, owner) else { return }
             key = answer?.key
             apply(answer?.fields ?? [])
             loadError = nil
         } catch {
-            guard !Task.isCancelled, !(error is CancellationError) else { return }
+            guard isCurrent(id, owner), !(error is CancellationError) else { return }
             // A Hermes without plugin settings offers none.
             if let rpc = error as? RpcError, rpc.code == HermesClient.methodNotFoundCode {
-                apply([])
+                clear()
                 return
             }
             // Fields from before a failed reload may be stale: show the
             // error and Try Again instead, so nothing old is saved.
-            key = nil
-            fields = []
-            draft = [:]
+            clear()
             loadError = UserFacingError.message(for: error)
         }
+    }
+
+    private func clear() {
+        key = nil
+        fields = []
+        draft = [:]
+        loadError = nil
+        message = nil
     }
 
     /// Takes Hermes' fields and starts the form on them, keeping what the
@@ -138,7 +171,8 @@ struct PluginSettingsSection: View {
     }
 
     private func save() {
-        guard canManage, !saving, let key, let client = appState.client else { return }
+        let owner = appState.currentCapabilitiesOwner
+        guard canEdit, !saving, let key, let client = appState.client else { return }
         let plan: PluginSettings.Save
         do {
             plan = try PluginSettings.save(fields: fields, draft: draft)
@@ -151,12 +185,13 @@ struct PluginSettingsSection: View {
         Haptics.selection()
         saving = true
         message = nil
-        let owner = appState.currentCapabilitiesOwner
         Task {
             defer { saving = false }
             do {
-                let next = try await store.savePluginSettings(key: key, save: plan, client: client)
-                guard appState.currentCapabilitiesOwner == owner else { return }
+                let next = try await store.savePluginSettings(save: plan) { values, profile in
+                    try await client.savePluginSettings(key: key, values: values, profile: profile)
+                }
+                guard appState.currentCapabilitiesOwner == owner, store.serves(owner) else { return }
                 draft = [:]
                 if let next { fields = next } else { await load() }
                 Haptics.success()

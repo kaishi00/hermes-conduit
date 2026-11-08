@@ -71,8 +71,10 @@ struct PluginSettingField: Equatable, Identifiable {
             }
             return number
         case .json:
-            let text = trimmed.isEmpty ? "null" : trimmed
-            guard let data = text.data(using: .utf8),
+            // Emptied, an optional field is cleared; a required one was
+            // refused before this.
+            if trimmed.isEmpty { return NSNull() }
+            guard let data = trimmed.data(using: .utf8),
                   let parsed = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]),
                   parsed is [Any] || parsed is [String: Any] else {
                 throw PluginSettings.FieldError(message: AppLocalization.string("\(label): enter a JSON list or object."))
