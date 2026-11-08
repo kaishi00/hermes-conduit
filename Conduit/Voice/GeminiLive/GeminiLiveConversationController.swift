@@ -14,6 +14,7 @@
 //
 
 import AVFAudio
+import Combine
 import Foundation
 import OSLog
 import UIKit
@@ -281,7 +282,17 @@ final class GeminiLiveConversationController: ObservableObject {
     /// The mode still needing the user's OK before this call may reach its
     /// provider, or nil (`LiveVoiceProviderConsent.missing`).
     private let missingConsent: @MainActor () -> LiveVoiceModeName?
-    @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
+    ///
+    /// Published through `transcriptPacer`: a new or removed line at once,
+    /// a line growing word by word at most ten times a second (issue 1960).
+    private(set) var transcript: [VoiceConversationTranscriptEntry] = [] {
+        didSet { transcriptPacer.changed(count: transcript.count) }
+    }
+    /// Fires after `transcript` changes, at the pace it publishes.
+    var transcriptChanges: AnyPublisher<Void, Never> { transcriptPacer.changes.eraseToAnyPublisher() }
+    private lazy var transcriptPacer = LiveTranscriptPublishPacer { [weak self] in
+        self?.objectWillChange.send()
+    }
     @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
     /// Whether a call starting now starts with the microphone off: a call
     /// from Hermes the user muted in CallKit before this call was running.

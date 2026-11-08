@@ -4215,6 +4215,63 @@ final class HermesClient: ObservableObject {
         return state
     }
 
+    // MARK: Credential vault
+
+    /// The profile's saved logins, cards and addresses (`vault.list`):
+    /// Hermes' own vault and every unlocked password manager. Metadata
+    /// only; Hermes never sends a password, card number or address back.
+    func vaultItems() async throws -> [VaultItem] {
+        let result = try await rpc("vault.list", timeout: 45)
+        guard let rows = result.objectValue?["items"]?.arrayValue else { throw HermesError.invalidResponse }
+        return rows.compactMap { $0.objectValue.flatMap(VaultItem.init(object:)) }
+    }
+
+    /// Where Hermes may take logins from (`vault.sources`): its own vault,
+    /// then each password manager it supports.
+    func vaultSources() async throws -> [VaultSource] {
+        let result = try await rpc("vault.sources")
+        guard let rows = result.objectValue?["sources"]?.arrayValue else { throw HermesError.invalidResponse }
+        return rows.compactMap { $0.objectValue.flatMap(VaultSource.init(object:)) }
+    }
+
+    /// Turns a password manager on or off as a login source
+    /// (`vault.source.set`); turning it off also locks it.
+    func setVaultSource(_ name: String, enabled: Bool) async throws {
+        _ = try await rpc("vault.source.set", params: ["name": name, "enabled": enabled])
+    }
+
+    /// Unlocks a password manager for Hermes with its master password
+    /// (`vault.unlock`). The password goes once onto the socket: Hermes
+    /// hands it to the manager's own tool and keeps only its session.
+    func unlockVaultSource(_ name: String, password: String) async throws {
+        _ = try await rpc("vault.unlock", params: ["name": name, "password": password], timeout: 60)
+    }
+
+    /// Makes Hermes forget a password manager's unlocked session
+    /// (`vault.lock`).
+    func lockVaultSource(_ name: String) async throws {
+        _ = try await rpc("vault.lock", params: ["name": name])
+    }
+
+    /// Saves a login, card or address in Hermes' own vault (`vault.add`).
+    /// `secret` goes once onto the socket into Hermes' encrypted store;
+    /// the answer is the new item's id.
+    func addVaultItem(kind: String, label: String, origin: String?, secret: [String: String]) async throws -> String {
+        var params: [String: Any] = ["kind": kind, "label": label, "secret": secret]
+        if let origin { params["origin"] = origin }
+        let result = try await rpc("vault.add", params: params)
+        guard let id = result.objectValue?["id"]?.stringValue else { throw HermesError.invalidResponse }
+        return id
+    }
+
+    /// Deletes an item from Hermes' own vault (`vault.remove`); false when
+    /// it was already gone.
+    func removeVaultItem(id: String) async throws -> Bool {
+        let result = try await rpc("vault.remove", params: ["id": id])
+        guard let removed = result.objectValue?["removed"]?.boolValue else { throw HermesError.invalidResponse }
+        return removed
+    }
+
     /// Hermes' models (`model.options`), for the model pickers, as the
     /// answer came, which they keep (AppState.modelProviders(in:) reads it).
     /// Its rows also carry each signed-in provider's subscription windows
