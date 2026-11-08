@@ -5076,6 +5076,7 @@ each connect and each native sign-in refresh)
 - A voice lookup still running when its call ends has no way to be cancelled. Its answer goes to a call that's gone (issue 1881).
 - A request the push extension doesn't answer still reaches the agent as `timeout`; why is only in the device log (`location-push`), not on the host or in Settings (#2031).
 - The HTTPS timeout in issue 2028 isn't confirmed as the stale host pass; the device log tells on the next report.
+- The host pass's save after a token rotation (AppState's observer, the rebuild and the bearer swap) has no test: no location test binds the shared LocationSharingController yet. Only the rotation notice is tested (#2031).
 
 **Checked:** 2026-11-08, #2031 (the push extension's ATS block and the host pass after a token refresh, issue 2028; the voice tool, navigate and the notifier needed no change); 2026-11-06, #1901 with notifier #587 (the entry added: saved places' distances and steps, consent read after each wait, CarPlay's open under a deadline).
 
