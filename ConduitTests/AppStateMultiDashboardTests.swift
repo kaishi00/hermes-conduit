@@ -1674,6 +1674,9 @@ extension AppStateMultiDashboardTests {
         XCTAssertFalse(GroupRoomFilesClient.isStoredFile(Attachment(
             id: "e", name: "report.pdf", uri: "/h/projects/report.pdf", mimeType: "application/pdf", kind: .document
         )), "a file the room didn't store keeps its name")
+        XCTAssertFalse(GroupRoomFilesClient.isStoredFile(Attachment(
+            id: "f", name: "photo.jpg", uri: "/w/conduit/room-files/photo.jpg", mimeType: "image/jpeg", kind: .image
+        )), "a path outside an upload's folder keeps its name")
         let inline = await resolver.inlineImageDataURL(InlineImageRef(sessionId: "s", profile: "default", rowId: 1, index: 0))
         XCTAssertNil(inline, "room files hold no pictures inside messages")
 

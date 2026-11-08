@@ -23,9 +23,13 @@ final class GroupRoomFilesClient {
         file.kind == .image && isStoredFile(file)
     }
 
-    /// Any file `/room-files` stored: only these are read back.
+    /// Any file `/room-files` stored: only these are read back. The route
+    /// reads only `room-files/<upload>/<name>`, so nothing else qualifies.
     static func isStoredFile(_ file: Attachment) -> Bool {
-        file.uri.hasPrefix("/") && file.uri.contains("/conduit/room-files/")
+        guard file.uri.hasPrefix("/"),
+              let marker = file.uri.range(of: "/conduit/room-files/", options: .backwards) else { return false }
+        let parts = file.uri[marker.upperBound...].split(separator: "/", omittingEmptySubsequences: false)
+        return parts.count == 2 && !parts[0].isEmpty && !parts[1].isEmpty
     }
     /// Base64 of a file near the host's 50 MB cap takes a while to send.
     static let minimumTimeoutMilliseconds = 180_000
