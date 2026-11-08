@@ -15,6 +15,10 @@ struct ProfilePickerSheet: View {
     /// (Keychain reads stay off the render path).
     @State private var dashboardRows: [SavedDashboardRowModel] = []
     @State private var switchingToDashboard: UUID?
+    /// The bar's Profiles preference: Current only leaves one chip, so the All
+    /// chip is out of the bar whenever All chats is off, and this sheet is
+    /// where the bar sends a tap.
+    @AppStorage(V2SessionsBarPreferences.Profiles.key) private var profilesPreference = V2SessionsBarPreferences.Profiles.defaultValue
 
     private var visibleProfiles: [String] {
         appState.profiles.isEmpty ? [appState.activeProfile] : appState.profiles
@@ -60,6 +64,10 @@ struct ProfilePickerSheet: View {
                         }
                         .padding(.horizontal, 4)
 
+                        if showsAllChatsRow {
+                            allChatsRow
+                        }
+
                         ForEach(Array(visibleProfiles.enumerated()), id: \.element) { index, profile in
                             ProfilePickerRow(
                                 profile: profile,
@@ -94,6 +102,42 @@ struct ProfilePickerSheet: View {
                 ConduitSheetHeader(title: AppLocalization.string("Profiles"), close: { dismiss() })
             }
         }
+    }
+
+    /// Current only and All chats off: the bar draws no All chip, and the one
+    /// chip it does draw opens this sheet, so All is reachable from here or
+    /// from Settings alone. The All-profiles sheet carries the way out in the
+    /// other direction.
+    private var showsAllChatsRow: Bool {
+        profilesPreference == .currentOnly
+            && !appState.isAllProfilesChatsOn
+            && AllProfilesChats.isAvailable(profiles: appState.profiles)
+    }
+
+    private var allChatsRow: some View {
+        Button {
+            Haptics.selection()
+            appState.setAllProfilesChatsOn(true)
+            dismiss()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.2")
+                    .font(.system(size: 22))
+                    .conduitFixedGlyph()
+                    .foregroundStyle(Color.conduitAccent)
+                    .frame(width: 30, height: 30)
+                Text(AppLocalization.string("All profiles"))
+                    .scaledFont(.body)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .frame(minHeight: 52)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        .accessibilityHint(AppLocalization.string("Shows the chats of several profiles in one list"))
+        .settingsCard()
     }
 }
 
