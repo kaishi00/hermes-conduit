@@ -864,6 +864,10 @@ struct ModelPickerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
+            // A model missing from the list may need Hermes' live lists.
+            ToolbarItem(placement: .topBarTrailing) {
+                refreshModelsButton
+            }
             // Hiding providers is the sheet's Edit; this page's goes back
             // to it, so "Tap Edit to restore one" holds here too.
             ToolbarItem(placement: .topBarTrailing) {

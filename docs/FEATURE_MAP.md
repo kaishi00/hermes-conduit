@@ -3614,7 +3614,7 @@ or the profile, not live session settings)
 - A switch made mid-turn is held by Hermes for the next turn, and the sheet says it switches when the reply finishes.
 - Switching to a model without Ultrafast drops Ultrafast to Fast.
 - Errors show in the sheet, since the composer's banner is behind it: a switch's in the current model card at the top, whichever list the tap came from.
-- The sheet opens on the model the chat runs and its reasoning. Reasoning is one bar per level, rising from Off to Ultra; a finger slides across them, the level follows the column it's in (the strip's full height), a selection haptic plays on each bar crossed, and the level is sent once, on lift. A level picked while one is being sent goes next. VoiceOver adjusts it as one control (Eric, 2026-11-08, #1984).
+- The sheet opens on the model the chat runs and its reasoning. Reasoning is one bar per level, rising from Off to Ultra; a finger slides across them, the level follows the column it's in (the strip's full height), a selection haptic plays on each bar crossed, and the level is sent once, on lift; a tap picks a bar, and a drag that starts up or down scrolls the sheet instead. A level picked while one is being sent goes next. VoiceOver adjusts it as one control (Eric, 2026-11-08, #1984).
 
 **Open gaps**
 - The checked row doesn't follow a model changed elsewhere while the sheet is open.

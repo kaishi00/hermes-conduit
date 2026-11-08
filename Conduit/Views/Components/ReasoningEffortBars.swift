@@ -6,6 +6,7 @@
 //  to Ultra (Eric, 2026-11-08). A finger slides across the strip and the
 //  level follows the column it's in, with a selection tick each time it
 //  crosses into another bar; the level is sent once, when the finger lifts.
+//  A tap picks a bar too. A drag that starts up or down scrolls the sheet.
 //
 
 import SwiftUI
@@ -18,8 +19,10 @@ struct ReasoningEffortBars: View {
     let onCommit: (ReasoningEffortLevel) -> Void
 
     @Environment(\.colorScheme) private var colorScheme
-    /// The level under the finger while it's down.
+    /// The level under the finger while it slides.
     @State private var dragLevel: ReasoningEffortLevel?
+    /// This drag started up or down: it's the sheet's scroll, not a slide.
+    @State private var dragIsScroll = false
 
     private static let levels = ReasoningEffortLevel.allCases
     static let stripHeight: CGFloat = 50
@@ -74,23 +77,34 @@ struct ReasoningEffortBars: View {
                 // Every column is the strip's full height, gaps included,
                 // so a finger anywhere in it counts.
                 .contentShape(Rectangle())
-                .gesture(
-                    DragGesture(minimumDistance: 0, coordinateSpace: .local)
+                // A tap picks the bar's column at once.
+                .onTapGesture(coordinateSpace: .local) { location in
+                    guard !disabled else { return }
+                    Haptics.selection()
+                    onCommit(Self.level(atX: location.x, width: proxy.size.width))
+                }
+                // A slide, alongside the sheet's scroll: a drag that starts
+                // up or down is left to the scroll and picks nothing.
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 10, coordinateSpace: .local)
                         .onChanged { value in
                             guard !disabled else { return }
+                            if dragLevel == nil, !dragIsScroll,
+                               abs(value.translation.height) > abs(value.translation.width) {
+                                dragIsScroll = true
+                            }
+                            guard !dragIsScroll else { return }
                             let level = Self.level(atX: value.location.x, width: proxy.size.width)
                             guard level != dragLevel else { return }
                             dragLevel = level
                             Haptics.selection()
                         }
                         .onEnded { value in
-                            guard !disabled, dragLevel != nil else {
-                                dragLevel = nil
-                                return
-                            }
-                            let level = Self.level(atX: value.location.x, width: proxy.size.width)
+                            let slid = !dragIsScroll && dragLevel != nil
+                            dragIsScroll = false
                             dragLevel = nil
-                            onCommit(level)
+                            guard slid, !disabled else { return }
+                            onCommit(Self.level(atX: value.location.x, width: proxy.size.width))
                         }
                 )
             }
