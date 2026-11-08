@@ -768,6 +768,8 @@ final class AppState: ObservableObject {
     }
 
     private var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
+    /// See `roomFilePicturesResolver` (GroupRoomFiles.swift).
+    var cachedRoomFilePicturesResolver: GatewayMediaDataURLResolver?
 
     /// The open chat's pictures, which a tapped one pages through in the
     /// viewer: the saved copy's while it stands in for the chat. One
@@ -40448,10 +40450,17 @@ final class AppState: ObservableObject {
     /// (`failed`: no connection, a cancelled or timed-out ask, a gateway in
     /// trouble), which a later ask may get past (issue 2015).
     func gatewayMediaRead(for path: String, profile: String) async -> GatewayMediaRead {
-        guard let dashboardTicketBridge else { return .failed }
+        guard dashboardTicketBridge != nil else { return .failed }
         guard let encodedPath = DashboardPath.encodedQueryComponent(path) else { return .gone }
-        let endpoint = DashboardPath.withProfile("/api/fs/read-data-url?path=\(encodedPath)", profile: profile)
+        return await dataURLRead(
+            endpoint: DashboardPath.withProfile("/api/fs/read-data-url?path=\(encodedPath)", profile: profile)
+        )
+    }
 
+    /// A route answering `{"dataUrl": …}` as Hermes' read-data-url does: the
+    /// gateway's own, or the plugin's for room pictures.
+    func dataURLRead(endpoint: String) async -> GatewayMediaRead {
+        guard let dashboardTicketBridge else { return .failed }
         do {
             let result = try await dashboardTicketBridge.requestJSON(
                 path: endpoint,
@@ -43763,7 +43772,7 @@ enum AttachmentHelper {
         }.value
     }
 
-    private static func data(for attachment: Attachment) -> Data? {
+    static func data(for attachment: Attachment) -> Data? {
         guard let url = URL(string: attachment.uri), url.isFileURL else { return nil }
         return try? Data(contentsOf: url)
     }
