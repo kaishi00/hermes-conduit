@@ -11,7 +11,7 @@ final class SelectionObserverUITests: XCTestCase {
     }
 
     func testLongPressAndDragExtendsSelectionAcrossTableAndCodeBlocks() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
@@ -36,7 +36,7 @@ final class SelectionObserverUITests: XCTestCase {
     /// 1585). The chat draws cells as plain text inside a row whose own tap
     /// puts the keyboard away; a plain cell's link lost the tap to it.
     func testTapOnLinkInChatTableCellOpensIt() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture", "-conduitChatTableFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
@@ -71,7 +71,7 @@ final class SelectionObserverUITests: XCTestCase {
     /// drew like one and opened the Folder on a file the host never had
     /// (issue 1585).
     func testInlineCodeInChatTableCellIsNotALink() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture", "-conduitChatTableFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
@@ -90,7 +90,7 @@ final class SelectionObserverUITests: XCTestCase {
     /// Anchoring inside a table cell and dragging out through the rest of the
     /// response must extend the same way a paragraph-anchored drag does.
     func testCellAnchoredLongPressAndDragExtendsAcrossBlocks() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
@@ -117,7 +117,7 @@ final class SelectionObserverUITests: XCTestCase {
     /// observer must be invisible outside selection gestures. (The fixture's
     /// content is shorter than the viewport, so no scroll can occur here.)
     func testPlainDragDoesNotSelectOrCopy() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launch()
 
@@ -196,7 +196,7 @@ final class SelectionObserverUITests: XCTestCase {
     /// A fast, human-like drag produces sparse touch samples; verify the
     /// selection still extends across the blocks at flick velocity.
     func testFastLongPressAndDragStillExtendsAcrossBlocks() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
@@ -222,7 +222,7 @@ final class SelectionObserverUITests: XCTestCase {
     /// selection state survives the drag and copies cross-block text; the
     /// system-menu path itself is verified manually.
     func testCopyAfterDragCapturesCrossBlockText() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()
@@ -259,7 +259,7 @@ final class SelectionObserverUITests: XCTestCase {
     /// pill copies the coordinated text (the system menu no longer shows for
     /// cross-segment selections).
     func testCustomHandlesAndCopyPillAppearAfterCrossBlockDrag() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments = ["-conduitSelectionFixture"]
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launch()

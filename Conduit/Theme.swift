@@ -411,6 +411,11 @@ enum ConduitBackdropMotionPolicy {
         return drifts && sceneIsActive && !reduceMotion && !lowPowerMode && !idle && thermalStateAllowsMotion
     }
 
+    /// UI tests launch Conduit with `CONDUIT_STILL_BACKDROP=1`: XCUITest
+    /// waits for the app to settle before each step, and a drifting backdrop
+    /// never does, so every tap waited about two minutes (#1994).
+    static let isHeldStillForUITests = ProcessInfo.processInfo.environment["CONDUIT_STILL_BACKDROP"] == "1"
+
     /// One smooth out-and-back drift over 26 seconds, matching the previous
     /// 13-second ease-in/ease-out animation with autoreverse.
     static func progress(at activeTime: TimeInterval) -> CGFloat {
@@ -486,7 +491,7 @@ struct ConduitBackdrop: View {
 
     private var shouldAnimate: Bool {
         ConduitBackdropMotionPolicy.shouldAnimate(
-            drifts: drifts,
+            drifts: drifts && !ConduitBackdropMotionPolicy.isHeldStillForUITests,
             sceneIsActive: scenePhase == .active,
             reduceMotion: reduceMotion,
             lowPowerMode: devicePower.isLowPowerModeEnabled,
