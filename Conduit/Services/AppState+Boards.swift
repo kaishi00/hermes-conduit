@@ -72,7 +72,8 @@ extension AppState {
                     tappedIn: chat,
                     openChat: self.richCardChat,
                     composerIsEnabled: self.composerIsEnabled, draft: self.predictive.draft,
-                    stagedAttachments: self.predictive.hasStagedAttachments) else {
+                    stagedAttachments: self.predictive.hasStagedAttachments,
+                    sameChat: self.richCardChatsAreSame) else {
                     if let id = answer["id"] as? String, self.notifierPlugin.reports(RichCardActionContext.dropCapability) {
                         let _: [String: Any]? = try? await bridge.requestJSON(
                             path: RichCardActionContext.dropPath(profile: profile, id: id), method: "DELETE")
@@ -84,9 +85,22 @@ extension AppState {
         } else {
             tap = nil
         }
-        return RichCardActionContext(sessionIDs: sessionIDs, chat: chat, canSend: canSend, composer: predictive,
-                                     send: { [weak self] text in self?.requestBoardFollowUp(.send, text: text) },
-                                     tap: tap)
+        var context = RichCardActionContext(sessionIDs: sessionIDs, chat: chat, canSend: canSend, composer: predictive,
+                                            send: { [weak self] text in self?.requestBoardFollowUp(.send, text: text) },
+                                            tap: tap)
+        context.sameChat = { [weak self] old, new in self?.richCardChatsAreSame(old, new) ?? (old == new) }
+        return context
+    }
+
+    /// Whether two of richCardChat's values are one chat: the same dashboard
+    /// and profile, and the chat under another of its ids (a new chat's
+    /// runtime id giving way to its durable one), as for a draft.
+    func richCardChatsAreSame(_ old: String, _ new: String) -> Bool {
+        if old == new { return true }
+        guard let lhs = RichCardActionContext.parts(old), let rhs = RichCardActionContext.parts(new),
+              lhs.dashboard == rhs.dashboard, lhs.profile == rhs.profile else { return false }
+        return composerDraftKeysAreSameChat(ComposerDraftKey(profile: lhs.profile, sessionID: lhs.sessionID),
+                                            ComposerDraftKey(profile: rhs.profile, sessionID: rhs.sessionID))
     }
 
     /// The bridge a chat's checklists go through, taken when each read or
