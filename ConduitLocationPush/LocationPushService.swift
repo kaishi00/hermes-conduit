@@ -127,8 +127,10 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         // host; a claim left by a killed extension ages out after
         // `claimLifetime`. Either way a redelivery can try again.
         // Stopped already (iOS's time ran out): leave it to a redelivery.
-        guard !Task.isCancelled else { return }
-        guard E2ESeenStore.shared.claim(request.replayKey, namespace: "locate", ttl: Self.claimLifetime) else { return }
+        guard !Task.isCancelled else { return Self.unanswered(id, "stopped by iOS", kind: "locate") }
+        guard E2ESeenStore.shared.claim(request.replayKey, namespace: "locate", ttl: Self.claimLifetime) else {
+            return Self.unanswered(id, "already being answered", kind: "locate")
+        }
         lock.withLock {
             pendingReplayKey = request.replayKey
             pendingNamespace = "locate"
@@ -136,7 +138,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
 
         let precision = config.settings.backgroundPrecision
         // Stopped between the claim and here: don't arm location hardware.
-        guard !Task.isCancelled else { return }
+        guard !Task.isCancelled else { return Self.unanswered(id, "stopped by iOS", kind: "locate") }
         let (location, approximate) = await fix(precision: precision)
         guard !Task.isCancelled else { return Self.unanswered(id, "stopped by iOS", kind: "locate") }
         guard let location else { return Self.unanswered(id, "no fix within \(Int(Self.fixTimeout)) s", kind: "locate") }
@@ -280,7 +282,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         switch error {
         case let error as URLError: return "URLError \(error.code.rawValue)"
         case LocationHostError.noPass: return "address outside the pass"
-        case LocationHostError.signInRequired: return "sign-in required (redirect, 401 or 403)"
+        case LocationHostError.signInRequired: return "sign-in required (the pass expired, or a redirect, 401 or 403)"
         case LocationHostError.http(let status, _): return "HTTP \(status)"
         default: return String(describing: type(of: error))
         }

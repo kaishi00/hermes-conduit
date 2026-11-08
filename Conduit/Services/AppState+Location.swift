@@ -127,7 +127,10 @@ extension AppState {
             return
         }
         guard var pass = LocationKeychain.loadHostPass(), pass.dashboardID == dashboardID,
-              pass.headers["Authorization"] != nil,
+              // A native sign-in's pass: its bearer token and no cookies. A
+              // cookie pass may carry a proxy's own Authorization header,
+              // which is left alone.
+              pass.headers["Cookie"] == nil, pass.headers["Authorization"]?.hasPrefix("Bearer ") == true,
               let tokens = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), !tokens.accessToken.isEmpty
         else { return }
         pass.headers["Authorization"] = "Bearer \(tokens.accessToken)"
