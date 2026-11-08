@@ -489,14 +489,18 @@ struct KanbanTaskDetailView: View {
                 .frame(minHeight: 120)
                 .padding(4)
                 .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
-            Picker("Status", selection: $status) {
-                ForEach(statusOptions) { value in
-                    Label(value.displayName, systemImage: value.systemImage)
-                        .tag(value.rawValue)
-                        .disabled(!value.isManuallySelectable)
+            // Settings' dropdown field. A status Hermes sets itself (Running,
+            // Review) is listed while the task is in it, but can't be picked.
+            ConduitMenuPicker(
+                value: status,
+                choices: statusOptions.map { (id: $0.rawValue, title: $0.displayName) },
+                onSelect: { picked in
+                    guard KanbanStatusPresentation.forStatus(picked).isManuallySelectable else { return }
+                    status = picked
                 }
+            ) {
+                Text("Status").foregroundStyle(.secondary)
             }
-            .pickerStyle(.menu)
             Button {
                 Task { await saveChanges() }
             } label: {
