@@ -3915,17 +3915,22 @@ enum VoiceThreadRouting {
         let words = fold(answer)
             .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
             .map(String.init)
-        guard !negates(words), !words.contains(where: { refusalVerbAskers.contains($0) }) else { return false }
+        guard !negates(words), !words.contains(where: { refusalVerbAskers.contains($0) }),
+              !cjkVerbNegations.contains(where: { answer.contains($0) }) else { return false }
         return words.contains { answerRefusalVerbs.contains($0) || $0.hasPrefix("거절") || $0.hasPrefix("거부") }
             || cjkRefusalVerbs.contains { answer.contains($0) }
     }
+
+    /// Chinese, Japanese and Korean nots around a refusal verb ("我不拒绝",
+    /// "断らない", "거절하지 마").
+    private static let cjkVerbNegations = ["不", "没", "沒", "别", "別", "ない", "ません", "지 마", "지마", "않", "못"]
 
     /// Chinese and Japanese refusal verbs, matched inside the words.
     private static let cjkRefusalVerbs = ["拒绝", "拒絕", "拒否", "却下", "断る", "断って", "お断り"]
 
     /// Words that make a refusal verb a question or a maybe, not an answer.
     private static let refusalVerbAskers: Set<String> = [
-        "should", "shall", "can", "could", "would", "will", "if", "whether", "why", "how", "what", "maybe", "might",
+        "should", "shall", "can", "could", "would", "will", "if", "whether", "why", "how", "what", "do", "does", "did", "is", "are", "maybe", "might",
     ]
 
     /// Verbs that refuse, in the shipped languages with word breaks

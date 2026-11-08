@@ -186,6 +186,9 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(prompt.isDeclined(by: "should we decline it"))
         XCTAssertFalse(prompt.isDeclined(by: "how about we decline it"))
         XCTAssertFalse(prompt.isDeclined(by: "what about we decline it"))
+        XCTAssertFalse(prompt.isDeclined(by: "do we decline it"))
+        XCTAssertFalse(prompt.isDeclined(by: "我不拒绝"))
+        XCTAssertFalse(prompt.isDeclined(by: "断らない"))
         XCTAssertFalse(prompt.isDeclined(by: "I don't want to decline it"))
         XCTAssertFalse(prompt.isDeclined(by: "I haven't declined it yet"))
         // A wait holds, and a wait with a change asks for the change.
