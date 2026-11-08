@@ -1460,9 +1460,39 @@ extension HermesVoiceGatewayTimeoutTests {
 
         // While Hermes is still answering, the question goes with the
         // progress note after it.
-        let running = messages.dropLast() + [row("6", .user, "Book the hotel"), row("7", .assistant, "Checking availability…")]
+        let running = messages.dropLast() + [row("6", .user, "Book the hotel"), row("interim-7", .assistant, "Checking availability…")]
         XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(Array(running), replyRunning: true)).recent.count, 2)
         XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(Array(running))).recent.count, 4)
+        // A steer is part of the running turn: the question it steers goes too.
+        var steer = row("8", .user, "Make it near the station")
+        steer.displayKind = ChatMessage.steerDisplayKind
+        let steered = try XCTUnwrap(VoiceResumeContext.chat(Array(running) + [steer], replyRunning: true)).recent
+        XCTAssertEqual(steered.map(\.text).last, context.recent.last?.text)
+        XCTAssertFalse(steered.contains { $0.text.contains("hotel") || $0.text.contains("station") })
+        // A turn typed on another device has no row here: the answered
+        // exchange before it stays, and only its progress notes go.
+        let answered = Array(messages.dropLast()) + [row("6", .user, "Book the hotel"), row("9", .assistant, "Booked the Kyoto Inn.")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(answered, replyRunning: true)).recent.last?.text, "Booked the Kyoto Inn.")
+        let remote = answered + [row("interim-10", .assistant, "Looking up trains…")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(remote, replyRunning: true)).recent.last?.text, "Booked the Kyoto Inn.")
+        // A stored reply's progress notes come before it, so a finished
+        // exchange keeps its reply.
+        let stored = Array(messages.dropLast()) + [row("11", .user, "Trains?"), row("12-commentary-0", .assistant, "Checking."), row("12", .assistant, "The 9:10.")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(stored, replyRunning: true)).recent.last?.text, "The 9:10.")
+
+        // Tool steps, approvals, questions and prompts never reach the seed,
+        // whatever text they carry.
+        var tool = row("t", .assistant, "TOOL-TEXT")
+        tool.tool = ToolActivity(id: "t", name: "terminal", input: "{}", output: "TOOL-TEXT", status: .complete)
+        var approval = row("a", .assistant, "APPROVAL-TEXT")
+        approval.approval = ApprovalActivity(sessionId: "s", requestId: "r", command: "deploy", description: "APPROVAL-TEXT",
+                                             choices: nil, allowPermanent: false, smartDenied: false, status: .pending, choice: nil, error: nil)
+        var clarify = row("c", .assistant, "CLARIFY-TEXT")
+        clarify.clarify = ClarifyActivity(requestId: "q", question: "CLARIFY-TEXT", choices: [])
+        var prompt = row("p", .assistant, "PROMPT-TEXT")
+        prompt.inputPrompt = InputPromptActivity(requestId: "srq", sessionId: "s", kind: .secret)
+        let mixed = try XCTUnwrap(VoiceResumeContext.chat([row("1", .user, "Deploy it"), tool, approval, clarify, prompt, row("2", .assistant, "Deployed.")]))
+        XCTAssertEqual(mixed.recent.map(\.text), ["Deploy it", "Deployed."])
 
         // A user turn names its attachments, never their paths.
         var shared = row("8", .user, "What's on this?")
@@ -1473,11 +1503,19 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat([shared, row("9", .assistant, "A to-do list.")])).recent[0].text,
                        "What's on this? [Attached: board.jpg (image)]", "a Windows path too")
 
+        // A clipped turn still names its files.
+        var long = row("10", .user, String(repeating: "word ", count: 400))
+        long.attachments = shared.attachments
+        let clipped = try XCTUnwrap(VoiceResumeContext.chat([long, row("11", .assistant, String(repeating: "line ", count: 400) + "\nMEDIA:/opt/data/cache/report.pdf")])).recent
+        XCTAssertTrue(clipped[0].text.hasSuffix("[Attached: board.jpg (image)]"))
+        XCTAssertTrue(clipped[1].text.contains("report.pdf"))
+        XCTAssertTrue(clipped.allSatisfy { $0.text.count <= VoiceResumePlan.turnCharacterLimit })
+
         XCTAssertNil(VoiceResumeContext.chat([]))
         XCTAssertNil(VoiceResumeContext.chat([row("1", .user, "Hello?")]), "nothing answered yet: no seed")
         // A long chat keeps its newest turns within the word-for-word budget.
-        let long = (0..<60).map { row("\($0)", $0 % 2 == 0 ? .user : .assistant, "Turn \($0)") }
-        let recent = try XCTUnwrap(VoiceResumeContext.chat(long)).recent
+        let many = (0..<60).map { row("\($0)", $0 % 2 == 0 ? .user : .assistant, "Turn \($0)") }
+        let recent = try XCTUnwrap(VoiceResumeContext.chat(many)).recent
         XCTAssertEqual(recent.count, VoiceResumePlan.recentTurnCount)
         XCTAssertEqual(recent.last?.text, "Turn 59")
     }
