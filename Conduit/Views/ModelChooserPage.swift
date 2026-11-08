@@ -200,7 +200,7 @@ struct ModelChooserPage: View {
             // A provider pinned without a model runs on its default one.
             return (VoiceJobModelSettingsSection.providerDefaultTitle(pick.provider), nil)
         }
-        let provider = pick.provider.isEmpty ? nil : pick.provider
+        let provider = pick.provider.isEmpty ? nil : (pickedProvider?.title ?? pick.provider)
         return (pick.model, catalog.answered ? [provider, AppLocalization.string("Not listed by Hermes")].compactMap { $0 }.joined(separator: " · ") : provider)
     }
 
@@ -319,6 +319,9 @@ struct ModelChooserPage: View {
         } else if catalog.answered, !catalog.providers.isEmpty, visibleProviders.isEmpty {
             Text("All providers are hidden. Tap Edit to restore one.")
                 .scaledFont(.caption).foregroundStyle(.secondary)
+        } else if catalog.answered, !visibleProviders.isEmpty {
+            Text("No models are available from this gateway.")
+                .scaledFont(.caption).foregroundStyle(.secondary)
         }
     }
 
@@ -356,7 +359,9 @@ struct ModelChooserPage: View {
     /// models.
     private func providerRow(_ option: ProviderInfo) -> some View {
         let isExpanded = expandedProviders.contains(option.name)
+        // A held model's provider holds it too.
         let holdsPick = option.models.contains { picked(option, $0) }
+            || (pickedRow == nil && pickedProvider?.name == option.name)
         return Button {
             Haptics.selection()
             withAnimation(ConduitMotion.response) {
@@ -399,9 +404,9 @@ struct ModelChooserPage: View {
 
     /// Opens the provider holding the pick, once, when it is first listed.
     private func openPickedProvider() {
-        guard !openedPicked, let row = pickedRow else { return }
+        guard !openedPicked, let provider = pickedProvider else { return }
         openedPicked = true
-        expandedProviders.insert(row.provider.name)
+        expandedProviders.insert(provider.name)
     }
 
     /// A read that failed, under the models shown or alone.

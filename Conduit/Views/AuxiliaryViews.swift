@@ -3140,7 +3140,6 @@ private struct FallbackModelsSettings: View {
             catalog: chooserCatalog,
             retry: { Task { await reload() } },
             pick: entry.map { ModelChooserPick(provider: $0.provider, model: $0.model) },
-            isPicked: { option, item in option.name == entry?.provider && item.id == entry?.model },
             disabled: !answered || saving,
             onDefault: {},
             onPick: { option, item in choose(option, item, for: id) }
