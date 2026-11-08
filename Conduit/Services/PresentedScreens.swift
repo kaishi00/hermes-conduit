@@ -318,11 +318,19 @@ struct PresentedConfirm: Identifiable, Equatable {
     private static func isOneClause(_ text: String) -> Bool {
         let breaks = CharacterSet(charactersIn: ",;:—–，；：、")
         // A polite ending ("…, please", "…, thanks") isn't a second clause.
+        // A joiner said without the comma ("… and send it to Bob") starts
+        // one too.
         let clauses = text.unicodeScalars.split(whereSeparator: { breaks.contains($0) })
             .map { words(in: String(String.UnicodeScalarView($0))) }
+            .flatMap { $0.split(whereSeparator: { clauseJoiners.contains($0) }).map(Array.init) }
             .filter { clause in !clause.isEmpty && !clause.allSatisfy { VoiceThreadRouting.answerFillerWords.contains($0) } }
         return clauses.count <= 1
     }
+
+    private static let clauseJoiners: Set<String> = [
+        "and", "then", "but", "instead", "und", "dann", "aber", "stattdessen", "y", "pero", "luego", "et", "mais", "puis",
+        "e", "ma", "poi", "и", "а", "но", "потом", "i", "ale", "potem", "ve", "ama", "sonra", "dan", "tapi", "lalu",
+    ]
 
     /// A no that names its action: what follows it is what's turned down.
     private static let actionNos: [[String]] = [
