@@ -896,6 +896,10 @@ final class SVGLogoRenderer: NSObject, WKNavigationDelegate {
         view.isOpaque = false
         view.backgroundColor = .clear
         view.scrollView.backgroundColor = .clear
+        // Added to the key window at its top, the page would be pushed
+        // down by the status bar's safe area, leaving a 64 pt snapshot
+        // only the logo's bottom few points.
+        view.scrollView.contentInsetAdjustmentBehavior = .never
         view.isUserInteractionEnabled = false
         view.accessibilityElementsHidden = true
         view.navigationDelegate = self
