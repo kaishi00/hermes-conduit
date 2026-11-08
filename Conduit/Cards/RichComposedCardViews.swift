@@ -45,8 +45,16 @@ struct RichComposedCard: View {
         .onChange(of: card.normalizedJSON) { _, _ in restart() }
         // A row kept for another chat (a branch keeps the same rows) starts
         // on that chat's own values: one chat's typing never goes with
-        // another's tap.
-        .onChange(of: context?.chat) { _, _ in restart() }
+        // another's tap. The same chat under its durable id keeps them.
+        .onChange(of: context?.chat) { old, new in
+            if let old, let new, context?.sameChat(old, new) == true {
+                if !values.isEmpty {
+                    RichCardFieldMemory.shared.keep(card: card, chat: new, values: values, open: open)
+                }
+                return
+            }
+            restart()
+        }
         // A board's tabs draw one card at a time, so a tab switch remounts
         // this view: what was typed and folded is kept for when it's back.
         .onChange(of: values) { old, new in

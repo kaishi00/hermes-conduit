@@ -217,6 +217,27 @@ extension AppStateVoiceCapabilityTests {
         memory.set(key, .sending)
         XCTAssertEqual(memory.state(key, now: Date().addingTimeInterval(RichCardTapMemory.holdSeconds + 1)), .sending,
                        "a slow tap keeps its spinner until it's answered")
+        XCTAssertNil(memory.state(key, now: Date().addingTimeInterval(RichCardTapMemory.sendingCeiling + 1)),
+                     "a tap whose answer never came loses its spinner")
+    }
+
+    func testAChatValueReadsBackItsParts() throws {
+        let chat = try XCTUnwrap(RichCardActionContext.chat(dashboard: "d", profile: "p", sessionID: "s\u{1F}x"))
+        let parts = try XCTUnwrap(RichCardActionContext.parts(chat))
+        XCTAssertEqual(parts.dashboard, "d")
+        XCTAssertEqual(parts.profile, "p")
+        XCTAssertEqual(parts.sessionID, "s\u{1F}x")
+        XCTAssertNil(RichCardActionContext.parts("d\u{1F}p"))
+    }
+
+    @MainActor
+    func testRepliesBackFromAStagedPhotoStartTheirTapGuardAgain() {
+        let store = PredictiveStore()
+        store.stagedAttachmentsChanged(true)
+        let removed = Date()
+        store.stagedAttachmentsChanged(false)
+        XCTAssertTrue(store.tapIsGuarded(now: removed), "a tap meant for the photo's row doesn't send a reply")
+        XCTAssertFalse(store.tapIsGuarded(now: removed.addingTimeInterval(Predictive.tapGuard + 0.1)))
     }
 
     func testAnUnsetDateFieldStartsWithNoDay() throws {
