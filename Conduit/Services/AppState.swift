@@ -38723,13 +38723,14 @@ final class AppState: ObservableObject {
         if commitsStreamedText { flushStreamingPartial() }
         var appended = activity
         appended.profile = activeProfile
-        messages.append(ChatMessage(
+        var row = ChatMessage(
             id: "connection-\(activity.opID)",
             role: .connection,
             content: ConnectionActivity.transcriptLine(appended),
-            timestamp: Self.localTimestamp(),
-            connection: appended
-        ))
+            timestamp: Self.localTimestamp()
+        )
+        row.connection = appended
+        messages.append(row)
     }
 
     /// One connect card's answer: rows approved (with the keys typed for
