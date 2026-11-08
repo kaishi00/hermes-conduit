@@ -169,6 +169,7 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(prompt.isDeclined(by: "No problem at all"))
         XCTAssertFalse(prompt.isDeclined(by: "not a problem"))
         XCTAssertFalse(prompt.isDeclined(by: "I don't know"))
+        XCTAssertFalse(prompt.isDeclined(by: "I do not know"))
         XCTAssertFalse(prompt.isDeclined(by: "no idea"))
         XCTAssertFalse(prompt.isDeclined(by: "Yeah, send it, no problem"))
         XCTAssertFalse(prompt.isDeclined(by: "send it, no rush"))
@@ -197,6 +198,22 @@ extension AppStateVoiceCapabilityTests {
         let said = await PresentVoiceTool.run(["action": "decline", "id": prompt.id], sync: sync,
                                               lastUserTurn: { (UUID(), "No, not now") }) { _, answer in outcome = answer }
         XCTAssertEqual(said["result"], "Declined. Hermes won't do it.")
+        XCTAssertEqual(outcome, .declined)
+
+        // A no still on its way when the model called is waited for.
+        await sync.sync(scope: "host|default", profile: "default", installationID: "install-1") { _, _ in
+            ["ok": true, "prompts": [["id": "p2", "title": "Send?", "preview": "Hi", "action_label": "Send"]]]
+        }
+        let next = try XCTUnwrap(sync.prompts.first { $0.id == "p2" })
+        sync.noteShown(next.id, userTurn: UUID())
+        var calls = 0
+        outcome = nil
+        let late = await PresentVoiceTool.run(["action": "decline", "id": next.id], sync: sync, lastUserTurn: {
+            calls += 1
+            return calls == 1 ? (UUID(), "what's the weather like") : (UUID(), "No, not now")
+        }) { _, answer in outcome = answer }
+        XCTAssertGreaterThan(calls, 1)
+        XCTAssertEqual(late["result"], "Declined. Hermes won't do it.")
         XCTAssertEqual(outcome, .declined)
     }
 

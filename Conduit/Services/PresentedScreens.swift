@@ -263,7 +263,7 @@ struct PresentedConfirm: Identifiable, Equatable {
 
     /// Words with a no in them that agree or don't know: a hit only keeps
     /// the panel up for the tap.
-    private static let unsure = ["don't know", "dont know", "not sure", "no idea", "unsure", "no problem", "not a problem",
+    private static let unsure = ["don't know", "dont know", "do not know", "not sure", "no idea", "unsure", "no problem", "not a problem",
                                  "no worries", "no rush"]
 
     private static func words(in text: String) -> [String] {

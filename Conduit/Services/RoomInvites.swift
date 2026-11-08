@@ -521,11 +521,12 @@ extension AppState {
         } catch {
             let message = RoomInvitesClient.answerRefusal(for: error, joining: !agents.isEmpty)
             guard case DashboardTicketBridgeError.http(504, _) = error else { return .refused(message) }
+            // Cleared while the answer was out (a sign-out or disconnect):
+            // a read that lists them again after a reconnect doesn't undo that.
+            let cleared = linkedRoomInvites?.dashboardID != client.dashboardID
             await refreshLinkedRoomInvites()
             // The answer may still reach the host, and the room start then.
-            // Not followed when the invites were cleared meanwhile.
-            if !agents.isEmpty, linkedRoomInvites?.dashboardID == client.dashboardID,
-               activeDashboardID == client.dashboardID {
+            if !agents.isEmpty, !cleared, activeDashboardID == client.dashboardID {
                 followLinkedRoomInvites()
             }
             return .sending(message)
