@@ -289,7 +289,15 @@ final class HostedAppsModel {
                 // for a switch back.
                 guard let appState else { return }
                 if appState.isConnected, appState.hostedAppsHermes == hermes {
-                    try? await appState.stopHostedAppSignIn(operation)
+                    do {
+                        try await appState.stopHostedAppSignIn(operation)
+                    } catch where Self.isConnectionBlip(error, appState: appState) {
+                        // Dropped again on the way: asked again next tick.
+                        try? await Task.sleep(for: Self.pollInterval)
+                        continue
+                    } catch {
+                        // Hermes answered: the operation is gone or ended.
+                    }
                     // An account that finished during the outage shows.
                     if let self, self.hermes == hermes { await self.reload(appState) }
                     return
