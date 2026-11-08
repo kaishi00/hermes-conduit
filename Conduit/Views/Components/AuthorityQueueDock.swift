@@ -149,6 +149,11 @@ struct AuthorityQueueDock: View {
 
     // MARK: - A turn a restart cut off
 
+    /// Whether the cut-off turn had words of its own, past its files.
+    private func hasWordsToResend(_ row: QueuedPrompt) -> Bool {
+        !MessageNormalizer.visibleUserText(row.text).trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private func lostCard(_ row: QueuedPrompt) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             Label("Hermes restarted before it finished this.", systemImage: "exclamationmark.arrow.circlepath")
@@ -163,7 +168,7 @@ struct AuthorityQueueDock: View {
             Text("Messages after it wait until you choose.")
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
-            if !row.text.isEmpty {
+            if hasWordsToResend(row) {
                 Text("Resend sends the words only, without any files.")
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
@@ -174,7 +179,7 @@ struct AuthorityQueueDock: View {
                         .controlSize(.small)
                         .frame(minHeight: 44)
                 } else {
-                    if !row.text.isEmpty {
+                    if hasWordsToResend(row) {
                         Button {
                             Task { await appState.resendLostPrompt(row) }
                         } label: {

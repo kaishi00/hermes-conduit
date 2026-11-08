@@ -105,6 +105,11 @@ extension AppState {
         // and the files it had (its leading `@file:` lines, its pictures)
         // aren't sent again, as the card says.
         let words = BotMentions.strippingAnnotation(MessageNormalizer.visibleUserText(row.text))
+        // Files only: there are no words to send again, so it's a discard.
+        guard !words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            await discardLostPrompt(row)
+            return
+        }
         func putWordsBack() {
             if let dashboardID {
                 returnFailedComposerSubmission(
