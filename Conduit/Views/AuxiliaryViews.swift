@@ -4502,7 +4502,9 @@ private struct NotificationsSettingsDetail: View {
                         // pairings are behind. The host row above already
                         // offers them when the plugin itself reports it is
                         // behind.
-                        if !appState.notifierPlugin.needsAttention,
+                        // Not on a host that manages the plugin: it isn't
+                        // Conduit's to update there.
+                        if !appState.notifierPlugin.needsAttention, !appState.notifierPlugin.isManaged,
                            pairings.thisDashboard.contains(where: Self.isOutdated) {
                             pluginPageLink(AppLocalization.string("Update the Conduit plugin"))
                         }
@@ -4776,12 +4778,17 @@ private struct NotificationsSettingsDetail: View {
     private func gatewayRow(_ gateway: RelayMetaInfo.Gateway) -> some View {
         let isSupported = gateway.supportsApprovalCards && gateway.supportsClarifyCards
         let isOutdated = Self.isOutdated(gateway)
+        // A host that manages the plugin updates it itself: say what's
+        // missing without asking for an update.
+        let managed = isOutdated && appState.notifierPlugin.isManaged
         compatibilityRow(
             title: gateway.name,
             version: gateway.pluginVersion,
-            mark: isSupported ? .supported : (isOutdated ? .updateNeeded : .unknown),
+            mark: isSupported ? .supported : (managed ? .notOnHost : isOutdated ? .updateNeeded : .unknown),
             detail: isSupported
                 ? AppLocalization.string("Notifier supports approval and clarify cards")
+                : managed
+                ? AppLocalization.string("Approval and clarify cards need a newer plugin. This dashboard's host keeps the plugin up to date.")
                 : gateway.hasSentEventsButNeverReported
                     ? AppLocalization.string("This profile's notifier predates decision cards — update it to receive them")
                     : gateway.pluginVersion == nil
@@ -4854,6 +4861,8 @@ private struct NotificationsSettingsDetail: View {
     private enum CompatibilityMark {
         case supported
         case updateNeeded
+        /// Missing on a host that manages the plugin: nothing to do here.
+        case notOnHost
         case actionNeeded
         case unknown
     }
@@ -4876,6 +4885,10 @@ private struct NotificationsSettingsDetail: View {
                     Image(systemName: "exclamationmark.circle")
                         .foregroundStyle(.orange)
                         .accessibilityLabel(AppLocalization.string("Update needed"))
+                case .notOnHost:
+                    Image(systemName: "minus.circle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(AppLocalization.string("Not on this host"))
                 case .actionNeeded:
                     Image(systemName: "exclamationmark.triangle")
                         .foregroundStyle(.orange)

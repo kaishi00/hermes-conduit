@@ -368,6 +368,26 @@ extension GatewayRestartTests {
         XCTAssertTrue(appState.showsNotifierPluginUpdateNotice)
     }
 
+    func testEachReportSaysWhetherTheHostManagesThePlugin() {
+        let defaults = UserDefaults(suiteName: "GatewayRestartTests.managed.\(UUID().uuidString)")!
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        var managed = Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a")
+        managed["managed"] = true
+        managed["managed_by"] = "Family farm"
+        appState.applyNotifierPluginReport(managed)
+        XCTAssertEqual(appState.notifierPlugin.managedBy, "Family farm")
+        XCTAssertFalse(appState.notifierPlugin.updateAvailable)
+        XCTAssertFalse(appState.showsNotifierPluginUpdateNotice)
+        // A report without it: the host no longer manages the plugin.
+        appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a"))
+        XCTAssertNil(appState.notifierPlugin.managedBy)
+    }
+
     func testTheSavedNoticeChoiceHoldsFromLaunch() throws {
         let suite = "GatewayRestartTests.noticeChannel.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -912,6 +932,37 @@ extension GatewayRestartTests {
         let outcome = await updater.run { _ in }
         XCTAssertEqual(outcome, .updated(version: "0.63.0"))
         XCTAssertTrue(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+    }
+
+    func testAManagedHostsRefusalNeverFallsBackToHermesPull() async {
+        let refusal = "The host manages the Conduit plugin, so it updates with the host, not from Conduit"
+        let host = PluginHost()
+        host.selfUpdateStartError = DashboardTicketBridgeError.http(status: 409, detail: refusal)
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .failed(detail: refusal))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
+    }
+
+    func testAManagedHostsWaitingRestartRunsOnlyTheRestarts() async {
+        let host = PluginHost()
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        var updater = host.updater()
+        updater.onHost = true
+        updater.restartOnly = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        // No pull of any kind: the host put the plugin there.
+        XCTAssertTrue(host.selfUpdatePaths.isEmpty)
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
+        XCTAssertTrue(host.calls.contains("POST \(GatewayRestarter.restartPath)"))
+        XCTAssertTrue(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
     }
 
     func testAHostThatCantPullThisPluginLeavesTheReinstallToConduit() async {

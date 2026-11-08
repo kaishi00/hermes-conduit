@@ -158,6 +158,9 @@ struct NotifierPluginUpdater {
     /// Hand the update to the host (`selfUpdateCapability`): Conduit only
     /// follows it. The profile that asked gets the notification.
     var onHost = false
+    /// Only the restarts: a host that manages the plugin (`managedBy`) has
+    /// put the new plugin on disk itself, and refuses a pull from Conduit.
+    var restartOnly = false
     var profile: String?
     /// Each capabilities answer read after the update: the new plugin's
     /// report, so the screen doesn't wait for another status refresh.
@@ -176,45 +179,47 @@ struct NotifierPluginUpdater {
     /// updated under it, so a pull that meets mixed Hermes again isn't retried.
     private func run(request: @escaping Request, progress: (NotifierPluginUpdateState) -> Void,
                      restartedForHermes: Bool) async -> NotifierPluginUpdateState {
-        if onHost, !install,
+        if onHost, !install, !restartOnly,
            let outcome = await runOnHost(request: request, progress: progress, restartedForHermes: restartedForHermes) {
             return outcome
         }
-        // 1. The new plugin onto the host.
-        progress(.updating(install ? .installing : .downloading))
-        do {
-            var installs = install
-            var replaces = false
-            if !installs {
-                do {
-                    // Installing writes the profile config's plugin list,
-                    // so it waits its turn with Settings' saves.
-                    try Self.check(try await ProfileConfigWriteQueue.runThrowing { try await request(Self.updatePath, "POST", nil) })
-                } catch let error where Self.isNotInstalled(error) {
-                    installs = true
-                } catch let error where Self.needsReinstall(error) {
-                    installs = true
-                    replaces = true
+        // 1. The new plugin onto the host, unless the host put it there.
+        if !restartOnly {
+            progress(.updating(install ? .installing : .downloading))
+            do {
+                var installs = install
+                var replaces = false
+                if !installs {
+                    do {
+                        // Installing writes the profile config's plugin list,
+                        // so it waits its turn with Settings' saves.
+                        try Self.check(try await ProfileConfigWriteQueue.runThrowing { try await request(Self.updatePath, "POST", nil) })
+                    } catch let error where Self.isNotInstalled(error) {
+                        installs = true
+                    } catch let error where Self.needsReinstall(error) {
+                        installs = true
+                        replaces = true
+                    }
                 }
+                if installs {
+                    progress(.updating(.installing))
+                    var body: [String: Any] = ["identifier": NotifierPluginStatus.repository, "enable": true]
+                    // Replacing the copy on disk takes force. The plugin keeps its
+                    // state in the Hermes home, not in its own folder.
+                    if replaces { body["force"] = true }
+                    try Self.check(try await ProfileConfigWriteQueue.runThrowing { try await request(Self.installPath, "POST", body) })
+                }
+            } catch {
+                if Task.isCancelled { return .idle }
+                if !restartedForHermes, Self.httpStatus(of: error) == 400, Self.ranMixedHermes(Self.detail(of: error)) {
+                    // Hermes' own pull, in a dashboard Hermes was updated under (issue 1889).
+                    let detail = Self.detail(of: error)
+                    return await restartForUpdatedHermes(request: request, progress: progress, detail: detail) {
+                        await run(request: request, progress: progress, restartedForHermes: true)
+                    } ?? .failed(detail: Self.explainingMixedHermes(detail))
+                }
+                return Self.outcome(forRequestError: error)
             }
-            if installs {
-                progress(.updating(.installing))
-                var body: [String: Any] = ["identifier": NotifierPluginStatus.repository, "enable": true]
-                // Replacing the copy on disk takes force. The plugin keeps its
-                // state in the Hermes home, not in its own folder.
-                if replaces { body["force"] = true }
-                try Self.check(try await ProfileConfigWriteQueue.runThrowing { try await request(Self.installPath, "POST", body) })
-            }
-        } catch {
-            if Task.isCancelled { return .idle }
-            if !restartedForHermes, Self.httpStatus(of: error) == 400, Self.ranMixedHermes(Self.detail(of: error)) {
-                // Hermes' own pull, in a dashboard Hermes was updated under (issue 1889).
-                let detail = Self.detail(of: error)
-                return await restartForUpdatedHermes(request: request, progress: progress, detail: detail) {
-                    await run(request: request, progress: progress, restartedForHermes: true)
-                } ?? .failed(detail: Self.explainingMixedHermes(detail))
-            }
-            return Self.outcome(forRequestError: error)
         }
         if Task.isCancelled { return .idle }
 
@@ -349,6 +354,10 @@ struct NotifierPluginUpdater {
             return Self.outcome(forRequestError: DashboardTicketBridgeError.signInRequired)
         } catch {
             if Task.isCancelled { return .idle }
+            // 409: the host manages the plugin (plugin 0.146.0+) and refuses
+            // the update. Never fall back to Hermes' own pull, which would
+            // replace the copy the host pinned.
+            if Self.httpStatus(of: error) == 409 { return .failed(detail: Self.detail(of: error)) }
             // No answer at all (a timeout, a dropped connection) may still
             // have started the job: follow one that runs rather than start
             // a second update from here.
