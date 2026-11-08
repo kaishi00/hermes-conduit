@@ -215,7 +215,8 @@ extension AppStateVoiceCapabilityTests {
         }
         XCTAssertTrue(PresentVoiceTool.note(for: prompt).contains("with confirm or decline and its id"))
         for no in ["no", "Not now.", "don't send it", "cancel", "decline", "decline it", "I refuse", "not yet", "nein", "不要", "拒绝", "先不",
-                   "Don't share", "Don't answer", "Don't start", "Don't send the email", "Cancel the email", "No, forget it"] {
+                   "Don't share", "Don't answer", "Don't start", "Don't send the email", "Cancel the email", "No, forget it",
+                   "Cancel the email, please"] {
             XCTAssertTrue(prompt.isDeclined(by: no), no)
         }
     }

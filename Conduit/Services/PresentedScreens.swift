@@ -317,8 +317,11 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// change, not a no.
     private static func isOneClause(_ text: String) -> Bool {
         let breaks = CharacterSet(charactersIn: ",;:—–，；：、")
-        return text.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-            .unicodeScalars.allSatisfy { !breaks.contains($0) }
+        // A polite ending ("…, please", "…, thanks") isn't a second clause.
+        let clauses = text.unicodeScalars.split(whereSeparator: { breaks.contains($0) })
+            .map { words(in: String(String.UnicodeScalarView($0))) }
+            .filter { clause in !clause.isEmpty && !clause.allSatisfy { VoiceThreadRouting.answerFillerWords.contains($0) } }
+        return clauses.count <= 1
     }
 
     /// A no that names its action: what follows it is what's turned down.
