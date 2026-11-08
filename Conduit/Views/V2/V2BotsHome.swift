@@ -216,6 +216,9 @@ struct GroupRoomPortrait: View {
             BotRoomPortraitLabel(title: room.name, talking: talking, highlighted: selection == .open,
                                  animates: animates, zoomSource: zoomKey) { size in
                 GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: size)
+                    // Other people's agents as their own Conduits draw them.
+                    .environment(\.groupRoomLooks, appState.homeRoomLooks(roomID: room.roomID))
+                    .modifier(RoomTileBadge(systemImage: RoomTileBadge.linked, shown: room.isLinked))
             }
         }
         .buttonStyle(PressableButtonStyle())
@@ -225,6 +228,7 @@ struct GroupRoomPortrait: View {
         .modifier(RoomTileDrag(roomID: room.roomID, enabled: actions != nil) {
             // Drawn outside the view's environment, as a bot's preview.
             GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: 56)
+                .environment(\.groupRoomLooks, appState.homeRoomLooks(roomID: room.roomID))
                 .environmentObject(appState)
         })
         // A move, not a copy, so the tile in hand shows no + over it. Held
@@ -320,8 +324,10 @@ struct GroupRoomPortrait: View {
     }
 
     private var accessibilityValue: String {
-        let members = AppLocalization.string("\(room.members.count) members")
-        return talking ? "\(AppLocalization.string("Talking now")), \(members)" : members
+        var parts = [AppLocalization.string("\(room.members.count) members")]
+        if room.isLinked { parts.insert(AppLocalization.string("With linked people"), at: 0) }
+        if talking { parts.insert(AppLocalization.string("Talking now"), at: 0) }
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -477,21 +483,39 @@ struct DesktopGroupPortrait: View {
                     members: group.groupMembers,
                     size: size
                 )
-                .overlay(alignment: .bottomTrailing) {
-                    Image(systemName: "desktopcomputer")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 22, height: 22)
-                        .background(Circle().fill(Color(.secondarySystemBackground)))
-                        .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
-                        .offset(x: 4, y: 4)
-                }
+                .modifier(RoomTileBadge(systemImage: "desktopcomputer"))
             }
         }
         .buttonStyle(PressableButtonStyle())
         .accessibilityLabel(Text(group.name))
         .accessibilityValue(Text(AppLocalization.string("\(group.members.count) members")))
         .accessibilityHint(Text(AppLocalization.string("Shows this Hermes Desktop group chat.")))
+    }
+}
+
+/// A small mark on a room's picture saying what kind of room it is: a
+/// Hermes Desktop group chat's computer, or a room over Links' people
+/// (`RoomTileBadge.linked`).
+struct RoomTileBadge: ViewModifier {
+    let systemImage: String
+    var shown = true
+
+    /// A room with other people's agents in it, yours or theirs.
+    static let linked = "person.2.fill"
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .bottomTrailing) {
+            if shown {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color(.secondarySystemBackground)))
+                    .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
+                    .offset(x: 4, y: 4)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 }
 

@@ -205,6 +205,8 @@ struct GroupRoom: Equatable, Identifiable, Codable {
 
     var id: String { roomID }
     var isDisbanded: Bool { disbandedAt != nil }
+    /// A room over Links: another person's agent is in it (Linked Rooms).
+    var isLinked: Bool { members.contains(where: \.isPeer) }
 }
 
 /// What the Bots list keeps of its hosted rooms to open on (#1533): the

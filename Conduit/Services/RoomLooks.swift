@@ -280,6 +280,49 @@ extension AppState {
         }
         let looks = RoomLooks(response)
         if looks != activeRoomLooks { activeRoomLooks = looks }
+        if let dashboard { keepHomeRoomLooks(looks, roomID: surface.room.roomID, dashboard: dashboard) }
+    }
+
+    /// The rooms over Links on Bots Home: your rooms with another person's
+    /// agents in them, and the rooms others host yours in.
+    var homeLinkedRoomIDs: [String] {
+        shownGroupRooms.filter(\.isLinked).map(\.roomID) + linkedRoomCopyRows.map(\.roomID)
+    }
+
+    /// How a room over Links looks on Bots Home, as its tile draws it.
+    func homeRoomLooks(roomID: String) -> RoomLooks {
+        guard let dashboard = activeDashboardID else { return .empty }
+        return homeRoomLooksByKey[Self.homeRoomLooksKey(dashboard, roomID)] ?? .empty
+    }
+
+    /// Reads how Bots Home's rooms over Links look, each at most every
+    /// 30 s, one after another. One that fails keeps what was read.
+    func readHomeRoomLooks() async {
+        guard canShareRoomLooks, isConnected, let dashboard = activeDashboardID else { return }
+        for roomID in homeLinkedRoomIDs {
+            let key = Self.homeRoomLooksKey(dashboard, roomID)
+            if let at = homeRoomLooksReadAt[key], Date().timeIntervalSince(at) < Self.roomLooksReadInterval { continue }
+            guard let room = DashboardPath.encodedQueryComponent(roomID), !Task.isCancelled else { return }
+            homeRoomLooksReadAt[key] = Date()
+            let response = try? await roomRouteJSON(
+                path: "\(RoomLooksUpload.path)?room_id=\(room)", method: "GET", body: nil, timeoutMilliseconds: nil)
+            guard activeDashboardID == dashboard else { return }
+            guard let response, response["ok"] as? Bool == true else {
+                homeRoomLooksReadAt[key] = nil
+                continue
+            }
+            keepHomeRoomLooks(RoomLooks(response), roomID: roomID, dashboard: dashboard)
+        }
+    }
+
+    private func keepHomeRoomLooks(_ looks: RoomLooks, roomID: String, dashboard: UUID) {
+        let key = Self.homeRoomLooksKey(dashboard, roomID)
+        homeRoomLooksReadAt[key] = Date()
+        if homeRoomLooksByKey[key] != looks { homeRoomLooksByKey[key] = looks }
+    }
+
+    nonisolated static func homeRoomLooksKey(_ dashboard: UUID, _ roomID: String) -> String {
+        "\(dashboard.uuidString)|\(roomID)"
     }
 
     /// The poll reads them again now and then, so looks that came after

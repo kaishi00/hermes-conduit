@@ -317,8 +317,14 @@ struct BotRosterView: View {
     /// invites to theirs, the approvals your agents wait for in them and
     /// the rooms they host your agents in (Linked Rooms).
     private var hasLinkedRoomRows: Bool {
+        hasLinkedPendingRows || (hostedGroupsAvailable && !appState.linkedRoomCopyRows.isEmpty)
+    }
+
+    /// Linked Rooms' rows that wait on someone: approvals, drafts and
+    /// invites. Bots Home shows them as rows over the tiles.
+    private var hasLinkedPendingRows: Bool {
         hostedGroupsAvailable && (!appState.linkedRoomDraftRows.isEmpty || !appState.linkedRoomInviteRows.isEmpty
-            || !appState.linkedRoomApprovalRows.isEmpty || !appState.linkedRoomCopyRows.isEmpty)
+            || !appState.linkedRoomApprovalRows.isEmpty)
     }
 
     private var groupProbeFailure: String? {
@@ -1011,6 +1017,15 @@ struct BotRosterView: View {
             ForEach(appState.linkedRoomCopyRows) { copy in
                 RoomCopyRosterRow(copy: copy)
             }
+            linkedPendingRows
+        }
+    }
+
+    /// Yours with people you've linked that haven't started, and the
+    /// invites to theirs.
+    @ViewBuilder
+    private var linkedPendingRows: some View {
+        if hostedGroupsAvailable {
             ForEach(appState.linkedRoomDraftRows) { draft in
                 RoomDraftRosterRow(draft: draft) {
                     presentedDraft = draft
@@ -1036,6 +1051,7 @@ struct BotRosterView: View {
         if showsGroupSection {
             Section(AppLocalization.string("Group Chats")) {
                 groupRows
+                    .modifier(HomeRoomLooksReader())
                 if canStartGroups {
                     Button(action: startNewGroup) {
                         newGroupCard
@@ -1076,12 +1092,12 @@ struct BotRosterView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 3)
             }
-            // Linked Rooms' approvals, copies, drafts and invites, as rows
-            // above the tiles.
-            if hasLinkedRoomRows {
+            // Linked Rooms' approvals, drafts and invites, as rows above
+            // the tiles; rooms others host are tiles among yours.
+            if hasLinkedPendingRows {
                 VStack(spacing: 0) {
                     linkedApprovalRows
-                    linkedRoomRows
+                    linkedPendingRows
                 }
                 .padding(.bottom, 4)
             }
@@ -1099,6 +1115,7 @@ struct BotRosterView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
                     .padding(.bottom, 16)
+                    .modifier(HomeRoomLooksReader())
                     // Whether a room's menu offers Generate Group Picture,
                     // asked as the open room's menu asks it.
                     .task(id: "\(appState.isConnected)|\(appState.canSetGroupRoomPictures)|\(homeRooms.isEmpty)") {
@@ -1125,6 +1142,12 @@ struct BotRosterView: View {
             GroupRoomPortrait(room: room, actions: roomActions(room))
                 .matchedGeometryEffect(id: room.roomID == landingRoomID ? BotsHomeAnchorKey.newRoom : room.roomID,
                                        in: roomTiles)
+        }
+        // Rooms others host your agents in, among yours (Eric, 2026-11-08).
+        if hostedGroupsAvailable {
+            ForEach(appState.linkedRoomCopyRows) { copy in
+                RoomCopyPortrait(copy: copy)
+            }
         }
         ForEach(appState.shownDesktopGroupChats) { group in
             DesktopGroupPortrait(group: group) {
@@ -1308,6 +1331,8 @@ struct GroupRosterRow: View {
         } label: {
             RosterIconRow(title: room.name, subtitle: subtitleText) { size in
                 GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: size)
+                    .environment(\.groupRoomLooks, appState.homeRoomLooks(roomID: room.roomID))
+                    .modifier(RoomTileBadge(systemImage: RoomTileBadge.linked, shown: room.isLinked))
             }
         }
         .buttonStyle(.plain)

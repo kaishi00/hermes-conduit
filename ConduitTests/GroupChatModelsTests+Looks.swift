@@ -173,6 +173,30 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.activeRoomLooks, .empty, "a read answering after the room closed is dropped")
     }
 
+    // MARK: - On Bots Home
+
+    @MainActor
+    func testBotsHomeKeepsEachLinkedRoomsLooksForItsPicture() async throws {
+        let routes = CopiesRoutes(copies: [])
+        let appState = try await looksRoomAppState(routes)
+        await copiesWait("Laifu's look", until: { appState.activeRoomLooks.members["m-laifu"] != nil })
+        XCTAssertTrue(appState.shownGroupRooms.first { $0.roomID == "conduit-5" }?.isLinked == true)
+        XCTAssertEqual(appState.homeLinkedRoomIDs, ["conduit-5"])
+        XCTAssertEqual(appState.homeRoomLooks(roomID: "conduit-5").members["m-laifu"]?.color, "#AA3300",
+                       "the open room's read is kept for its tile")
+        XCTAssertEqual(appState.homeRoomLooks(roomID: "conduit-other"), .empty)
+
+        appState.closeGroupRoom()
+        routes.looks["members"] = ["m-laifu": ["picture": NSNull(), "color": "#0033AA"]]
+        let before = routes.looksReads
+        await appState.readHomeRoomLooks()
+        XCTAssertEqual(routes.looksReads, before, "read again only 30 s on")
+        appState.homeRoomLooksReadAt = [:]
+        await appState.readHomeRoomLooks()
+        XCTAssertEqual(routes.looksReads, before + 1)
+        XCTAssertEqual(appState.homeRoomLooks(roomID: "conduit-5").members["m-laifu"]?.color, "#0033AA")
+    }
+
     // MARK: - Giving yours
 
     @MainActor

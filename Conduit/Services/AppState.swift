@@ -12904,6 +12904,10 @@ final class AppState: ObservableObject {
     /// How the open room's other people and their agents look, as their
     /// own Conduits gave it (RoomLooks.swift).
     @Published var activeRoomLooks = RoomLooks.empty
+    /// How each room over Links on Bots Home looks, by dashboard and room
+    /// (RoomLooks.swift), for its tile's faces.
+    @Published var homeRoomLooksByKey: [String: RoomLooks] = [:]
+    var homeRoomLooksReadAt: [String: Date] = [:]
     /// The open room's host, as your Link names them, in a room someone
     /// else hosts (`GET /rooms/people`'s `home`).
     @Published var activeRoomHomeName: String?
