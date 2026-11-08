@@ -265,6 +265,7 @@ struct ConduitPluginSettingsDetail: View {
         case .reported:
             if status.updateAvailable { return AppLocalization.string("Version \(status.offeredVersion) is available.") }
             if status.restartPending { return AppLocalization.string("The new plugin is on the host. Hermes needs a restart to use it.") }
+            if let managedBy = status.managedBy { return NotifierPluginStatus.managedText(managedBy) }
             return AppLocalization.string("Up to date on this dashboard's host")
         }
     }

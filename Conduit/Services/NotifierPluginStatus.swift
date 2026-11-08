@@ -100,6 +100,14 @@ struct NotifierPluginStatus: Equatable {
     /// False: nothing asks for an update unprompted, only for the restart
     /// of one already on the host (NotifierPluginNoticeChannel.never).
     var asksToUpdate = true
+    /// The host installs and upgrades the plugin itself (plugin 0.141.5+,
+    /// `CONDUIT_PUSH_MANAGED`): nil when it doesn't say so, "" when it says
+    /// nothing more, or who keeps it up to date. Then nothing offers an
+    /// update, here or unprompted, and the host refuses one; a restart
+    /// already waiting on it is still offered.
+    var managedBy: String?
+
+    var isManaged: Bool { managedBy != nil }
 
     /// The version installed on disk, as the plugin reports it.
     var version: String? {
@@ -161,7 +169,7 @@ struct NotifierPluginStatus: Equatable {
     /// is already new enough on disk only needs its restart. Settings >
     /// Conduit plugin offers it; the notice waits for `updateRecommended`.
     var updateAvailable: Bool {
-        isUpdate(below: offeredVersion)
+        !isManaged && isUpdate(below: offeredVersion)
     }
 
     /// Worth asking for an update unprompted: the update notice, the
@@ -169,7 +177,7 @@ struct NotifierPluginStatus: Equatable {
     /// plugin on main alone doesn't count; on Never nothing does but an
     /// install, since installing isn't updating.
     var updateRecommended: Bool {
-        (asksToUpdate || offersInstall) && isUpdate(below: noticeVersion)
+        ((asksToUpdate && !isManaged) || offersInstall) && isUpdate(below: noticeVersion)
     }
 
     private func isUpdate(below target: String) -> Bool {
@@ -319,6 +327,15 @@ struct NotifierPluginStatus: Equatable {
         )
     }
 
+    /// Who manages the plugin, from the capabilities answer (`managedBy`).
+    static func managedBy(from response: [String: Any]) -> String? {
+        guard response["ok"] as? Bool == true, response["managed"] as? Bool == true else { return nil }
+        let name = (response["managed_by"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        var kept = String.UnicodeScalarView()
+        kept.append(contentsOf: name.unicodeScalars.filter { !CharacterSet.controlCharacters.contains($0) }.prefix(80))
+        return String(kept)
+    }
+
     /// Hermes' list of installed plugins, which `hostCopy` is read from.
     static let pluginsHubPath = "/api/dashboard/plugins/hub"
 
@@ -375,5 +392,15 @@ extension NotifierPluginStatus {
             if restartPending { return .restart }
             return .none
         }
+    }
+}
+
+extension NotifierPluginStatus {
+    /// What Settings and Finish setting up say for a managed plugin.
+    static func managedText(_ managedBy: String?) -> String {
+        guard let managedBy, !managedBy.isEmpty else {
+            return AppLocalization.string("This dashboard's host keeps the plugin up to date.")
+        }
+        return AppLocalization.string("\(managedBy) keeps the plugin up to date.")
     }
 }

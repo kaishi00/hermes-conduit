@@ -293,6 +293,42 @@ extension GatewayRestartTests {
         XCTAssertTrue(status.needsAttention)
     }
 
+    func testAManagedHostIsAskedForNoUpdate() {
+        var status = NotifierPluginStatus()
+        status.state = .reported(version: "9.0.0", capabilities: [])
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.0.0", restartNeeded: false, bootID: nil)
+        status.latestVersion = "9.2.0"
+        XCTAssertTrue(status.updateRecommended)
+        status.managedBy = NotifierPluginStatus.managedBy(from: ["ok": true, "managed": true, "managed_by": " Family farm\u{7}\n"])
+        XCTAssertEqual(status.managedBy, "Family farm")
+        // Nothing asks, Settings offers no update, whatever the channel,
+        // even with features missing and a plugin below this build's floor.
+        XCTAssertFalse(status.updateRecommended)
+        XCTAssertFalse(status.updateAvailable)
+        XCTAssertFalse(status.needsAttention)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .done)
+        XCTAssertEqual(FinishSetupStatus.pluginDoneNote(status), .managed)
+        XCTAssertEqual(NotifierPluginStatus.managedText(status.managedBy), "Family farm keeps the plugin up to date.")
+        status.state = .reported(version: "0.1.0", capabilities: [])
+        XCTAssertFalse(status.updateRecommended)
+        XCTAssertFalse(status.updateAvailable)
+        // A restart already waiting on the host is still offered.
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.0.9", restartNeeded: true, bootID: nil)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .restart)
+        XCTAssertTrue(status.needsAttention)
+    }
+
+    func testOnlyAHostThatSaysSoIsManaged() {
+        XCTAssertNil(NotifierPluginStatus.managedBy(from: ["ok": true, "version": "0.140.3"]))
+        XCTAssertNil(NotifierPluginStatus.managedBy(from: ["ok": true, "managed": false]))
+        XCTAssertNil(NotifierPluginStatus.managedBy(from: ["ok": false, "managed": true]))
+        XCTAssertEqual(NotifierPluginStatus.managedBy(from: ["ok": true, "managed": true]), "")
+        XCTAssertEqual(NotifierPluginStatus.managedText(""), "This dashboard's host keeps the plugin up to date.")
+        XCTAssertEqual(NotifierPluginStatus.managedBy(from: ["ok": true, "managed": true,
+                                                             "managed_by": String(repeating: "x", count: 200)])?.count, 80)
+    }
+
     func testNotNowKeepsOtherDashboardsDismissals() throws {
         let suite = "GatewayRestartTests.dismissals.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

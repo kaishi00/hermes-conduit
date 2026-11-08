@@ -29639,10 +29639,12 @@ final class AppState: ObservableObject {
         let generation = notifierPluginStatusGeneration
         let state: NotifierPluginStatus.State
         var runtime: NotifierPluginStatus.Runtime?
+        var managedBy: String?
         do {
             let response = try await bridge.requestJSON(path: NotifierPluginStatus.path)
             state = NotifierPluginStatus.state(from: response)
             runtime = NotifierPluginStatus.runtime(from: response)
+            managedBy = NotifierPluginStatus.managedBy(from: response)
         } catch {
             state = NotifierPluginStatus.state(from: error)
         }
@@ -29666,6 +29668,7 @@ final class AppState: ObservableObject {
             : nil
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
+        notifierPlugin.managedBy = managedBy
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         Task { await refreshLatestNotifierPluginVersion() }
         clearSettledNotifierPluginUpdateOutcome()
@@ -29706,6 +29709,7 @@ final class AppState: ObservableObject {
         notifierPlugin.hostCopy = nil
         notifierPlugin.state = state
         notifierPlugin.runtime = NotifierPluginStatus.runtime(from: json)
+        notifierPlugin.managedBy = NotifierPluginStatus.managedBy(from: json)
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         clearSettledNotifierPluginUpdateOutcome()
     }
