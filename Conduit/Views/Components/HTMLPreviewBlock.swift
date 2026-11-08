@@ -118,7 +118,10 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     }
 
     private var card: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        let room = cardHeight.frameHeight(
+            reserving: TranscriptPictureMemory.height(for: heightKey) ?? HTMLPreviewPage.placeholderHeight
+        )
+        return VStack(alignment: .leading, spacing: 10) {
             header
             // The page's room, held from the card's first frame: the file
             // loading, the page drawing and a reload all happen inside it,
@@ -126,7 +129,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             // (ChatCardHeight).
             ZStack {
                 if case .loaded(let html) = state {
-                    page(html)
+                    page(html, room: room)
                 } else {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
@@ -137,9 +140,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
                 }
             }
             .frame(maxWidth: .infinity)
-            .frame(height: cardHeight.frameHeight(
-                reserving: TranscriptPictureMemory.height(for: heightKey) ?? HTMLPreviewPage.placeholderHeight
-            ))
+            .frame(height: room)
         }
         .padding(12)
         .background(Color.primary.opacity(0.055), in: RoundedRectangle(cornerRadius: 13, style: .continuous))
@@ -176,7 +177,7 @@ struct HTMLPreviewBlock<Fallback: View>: View {
     }
 
     @ViewBuilder
-    private func page(_ html: String) -> some View {
+    private func page(_ html: String, room: CGFloat) -> some View {
         let light = colorScheme == .light
         let drawn = isDrawn
         let load = self.load
@@ -194,6 +195,13 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             // of a blank frame.
             onFailed: { fallBack() }
         )
+        // The page lays out in a phone-sized frame, never the card's room:
+        // one sized by the screen (100vh, a chat mockup's full-height
+        // column) measured the room it was given and shrank with it, drawn
+        // squashed (Eric 2026-11-08). The card shows its top `room` points.
+        .frame(height: HTMLPreviewPage.inlineLayoutHeight(room: room), alignment: .top)
+        .frame(height: room, alignment: .top)
+        .clipped()
         .opacity(drawn ? 1 : 0)
         .modifier(CutFootFade(isCut: isCut))
         .overlay {
@@ -502,6 +510,10 @@ enum HTMLPreviewPage {
         reportsHeight ? [messageHandlerName] : []
     }
     static let placeholderHeight: CGFloat = 280
+    /// The height an inline page lays out in (its `100vh`) until it
+    /// measures taller: a page sized by the screen draws at a phone's
+    /// height, as full screen draws it, rather than the card's room.
+    static let inlineViewportHeight: CGFloat = 640
     static let minimumInlineHeight: CGFloat = 60
     /// The tallest a page draws in a message; full screen shows the rest.
     static let maximumInlineHeight: CGFloat = 900
@@ -510,6 +522,10 @@ enum HTMLPreviewPage {
 
     static func clampedInlineHeight(_ height: CGFloat) -> CGFloat {
         min(maximumInlineHeight, max(minimumInlineHeight, height.rounded(.up)))
+    }
+
+    static func inlineLayoutHeight(room: CGFloat) -> CGFloat {
+        max(inlineViewportHeight, room)
     }
 
     /// A page taller than a message shows, whose foot fades in the message.
