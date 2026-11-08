@@ -498,17 +498,12 @@ struct PulseSettingsPage: View {
                 PulseMemoryList()
                     .v2TabBarClearance()
             } label: {
-                HStack {
-                    Label(AppLocalization.string("What Pulse remembers"), systemImage: "list.bullet.rectangle")
-                    Spacer(minLength: 8)
-                    if state.memory {
-                        Text(verbatim: state.memoryCounts.values.reduce(0, +).formatted())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(minHeight: 44)
+                SettingsLinkRow(
+                    title: AppLocalization.string("What Pulse remembers"),
+                    value: state.memory ? state.memoryCounts.values.reduce(0, +).formatted() : nil
+                )
             }
+            .buttonStyle(.plain)
             .accessibilityIdentifier("settings.pulse.remembers")
             Text("Pulse keeps short notes on promises, plans and dates, so it can bring them up later. You can remove any of them.")
                 .scaledFont(.caption)

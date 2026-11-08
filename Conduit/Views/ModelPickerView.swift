@@ -293,6 +293,12 @@ struct ModelPickerView: View {
     /// The runtime's effort word ("none" when off); set on tap.
     @State private var reasoningEffort = "none"
     @State private var isApplyingReasoning = false
+    /// A level picked while another was being sent: it's sent next.
+    @State private var queuedReasoning: ReasoningEffortLevel?
+    /// All providers is pushed.
+    @State private var showingProviders = false
+    /// All providers opened the provider holding the pick; a collapse sticks.
+    @State private var heldProviderOpened = false
     @State private var reasoningError: String?
     /// The speed or YOLO value being written, shown until Hermes answers.
     @State private var writingSpeed: ModelSpeed?
@@ -355,19 +361,19 @@ struct ModelPickerView: View {
                             if editingVisibility {
                                 visibilityEditor
                             } else {
+                                // The model in use and its reasoning lead,
+                                // since reasoning changes most often.
+                                currentModelSection
                                 searchField
                                 if searching {
-                                    // The matches lead; reasoning stays
-                                    // below them, still at hand.
                                     searchResultsSection
                                     addProviderRow
-                                    reasoningSection
                                 } else {
-                                    // Reasoning changes most often and the model
-                                    // list can be long, so reasoning comes first.
-                                    reasoningSection
-                                    modelSection
-                                    addProviderRow
+                                    // Pinned and recent models, then every
+                                    // provider on a page of its own, so a
+                                    // long catalog stays out of the way.
+                                    quickPicksSection
+                                    allProvidersRow
                                 }
                                 runSettingsSection
                             }
@@ -391,6 +397,9 @@ struct ModelPickerView: View {
             .navigationTitle("Model")
             .navigationBarTitleDisplayMode(.inline)
             .toolbarBackground(.hidden, for: .navigationBar)
+            .navigationDestination(isPresented: $showingProviders) {
+                allProvidersPage
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     refreshModelsButton
@@ -401,10 +410,7 @@ struct ModelPickerView: View {
                             appState.saveModelVisibility(visibility)
                             editingVisibility = false
                         } else {
-                            searchFocused = false
-                            visibilityQuery = ""
-                            expandedVisibilityProvider = selectedProvider
-                            editingVisibility = true
+                            startEditingVisibility()
                         }
                     }
                     .scaledFont(.subheadline.weight(.semibold))
@@ -602,24 +608,14 @@ struct ModelPickerView: View {
             if catalog.keptRowsFailed {
                 catalogFailedRow
             }
-            modelStatusRows
         }
     }
 
     private var modelSection: some View {
-        ModelPickerSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent, flush: true) {
+        ModelPickerSection(title: AppLocalization.string("Providers"), symbol: "server.rack", tint: .conduitAccent, flush: true) {
             switch catalog.state {
-            case .loading:
-                ProgressView("Loading models…")
-                    .frame(maxWidth: .infinity)
-                    .padding(16)
-            case .failed:
-                catalogFailedRow
-            case .empty:
-                Text("No models are available from this gateway.")
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.secondary)
-                    .padding(16)
+            case .loading, .failed, .empty:
+                catalogStateRows
             case .ready:
                 let shown = visibleProviders
                 ForEach(shown, id: \.name) { provider in
@@ -642,6 +638,265 @@ struct ModelPickerView: View {
 
             modelStatusRows
         }
+    }
+
+    /// What a list shows before it has rows: loading, a failed read with
+    /// Try Again, or a gateway with no models.
+    @ViewBuilder
+    private var catalogStateRows: some View {
+        switch catalog.state {
+        case .loading:
+            ProgressView("Loading models…")
+                .frame(maxWidth: .infinity)
+                .padding(16)
+        case .failed:
+            catalogFailedRow
+        case .empty:
+            Text("No models are available from this gateway.")
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(16)
+        case .ready:
+            EmptyView()
+        }
+    }
+
+    /// The model the chat runs (the checked row) and its reasoning. A
+    /// failed switch says why here, whichever list the tap came from.
+    private var currentModelSection: some View {
+        let provider = catalog.providers.first { $0.matches(selectedProvider) }
+        let model = selectedModel.trimmingCharacters(in: .whitespacesAndNewlines)
+        return ModelPickerSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent, flush: true) {
+            HStack(spacing: 12) {
+                Image(systemName: "cube.transparent")
+                    .scaledFont(.body.weight(.semibold))
+                    .foregroundStyle(.conduitAccent)
+                    .frame(width: 36, height: 36)
+                    .background(Color.conduitAccent.opacity(0.16), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: model.isEmpty ? AppLocalization.string("Default") : model)
+                        .scaledFont(.headline)
+                        .lineLimit(2)
+                    if !selectedProvider.isEmpty {
+                        Text(verbatim: provider?.title ?? selectedProvider)
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(1)
+                    }
+                }
+                Spacer(minLength: 8)
+                if switchingRow != nil {
+                    ProgressView()
+                        .accessibilityLabel(AppLocalization.string("Switching model"))
+                }
+            }
+            .padding(16)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
+
+            modelStatusRows
+                .padding(.top, -8)
+
+            Divider().overlay(rowStroke).padding(.leading, 16)
+
+            ReasoningEffortBars(
+                effort: reasoningEffort,
+                // One write at a time: a model switch may change the
+                // level under it.
+                disabled: switchingRow != nil || (appState.isWritingReasoningEffort && !isApplyingReasoning),
+                onCommit: { level in Task { @MainActor in await applyReasoning(level) } }
+            )
+            .padding(16)
+
+            if let reasoningError {
+                Label(reasoningError, systemImage: "exclamationmark.triangle.fill")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .padding([.horizontal, .bottom], 16)
+            }
+        }
+    }
+
+    /// Pinned models, then the ones switched between lately, each naming
+    /// its provider. Hidden until there's one to show.
+    @ViewBuilder
+    private var quickPicksSection: some View {
+        let providers = visibleProviders
+        let current = ModelPickerSelection(model: selectedModel, provider: selectedProvider)
+        let pinned = appState.modelQuickPicks.pinnedRows(in: providers)
+        let recent = appState.modelQuickPicks.recentRows(in: providers, excluding: current)
+        if catalog.state != .ready {
+            ModelPickerSection(title: AppLocalization.string("Providers"), symbol: "server.rack", tint: .conduitAccent, flush: true) {
+                catalogStateRows
+            }
+        } else if !pinned.isEmpty || !recent.isEmpty {
+            ModelPickerSection(title: AppLocalization.string("Quick picks"), symbol: "pin", tint: .conduitAccent, flush: true) {
+                if !pinned.isEmpty {
+                    quickPicksHeader(AppLocalization.string("Pinned"))
+                    quickPickRows(pinned)
+                }
+                if !recent.isEmpty {
+                    if !pinned.isEmpty {
+                        Divider().overlay(rowStroke).padding(.leading, 16).padding(.top, 4)
+                    }
+                    quickPicksHeader(AppLocalization.string("Recent"))
+                    quickPickRows(recent)
+                }
+                if catalog.keptRowsFailed {
+                    catalogFailedRow
+                }
+            }
+        } else if catalog.keptRowsFailed {
+            // No Quick picks to sit under, but a failed read still says so
+            // on the sheet, with Try Again.
+            ModelPickerSection(title: AppLocalization.string("Providers"), symbol: "server.rack", tint: .conduitAccent, flush: true) {
+                catalogFailedRow
+            }
+        }
+    }
+
+    private func quickPicksHeader(_ title: String) -> some View {
+        Text(verbatim: title)
+            .scaledFont(.caption.weight(.semibold))
+            .foregroundStyle(.secondary)
+            .padding(.horizontal, 16)
+            .padding(.top, 10)
+            .padding(.bottom, 2)
+            .accessibilityAddTraits(.isHeader)
+    }
+
+    @ViewBuilder
+    private func quickPickRows(_ rows: [ModelSearchMatch]) -> some View {
+        ForEach(rows) { row in
+            HStack(spacing: 0) {
+                modelRow(row.model, provider: row.provider, showsProvider: true)
+                pinButton(row.model, provider: row.provider)
+            }
+        }
+    }
+
+    /// Pins a model to Quick picks, or unpins it.
+    private func pinButton(_ model: ModelInfo, provider: ProviderInfo) -> some View {
+        let pinned = appState.modelQuickPicks.isPinned(model: model.id, provider: provider)
+        // Several providers serve one model, so VoiceOver names both.
+        let name = "\(model.id), \(provider.title)"
+        return Button {
+            togglePin(model, provider: provider)
+        } label: {
+            Image(systemName: pinned ? "pin.fill" : "pin")
+                .scaledFont(.subheadline)
+                .foregroundStyle(pinned ? Color.conduitAccent : Color.secondary)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .padding(.trailing, 4)
+        .accessibilityLabel(Text(verbatim: pinned
+            ? AppLocalization.string("Unpin \(name)")
+            : AppLocalization.string("Pin \(name)")))
+    }
+
+    private func togglePin(_ model: ModelInfo, provider: ProviderInfo) {
+        Haptics.selection()
+        withAnimation(ConduitMotion.response) {
+            appState.updateModelQuickPicks { $0.togglePin(model: model.id, provider: provider) }
+        }
+    }
+
+    private func startEditingVisibility() {
+        searchFocused = false
+        visibilityQuery = ""
+        expandedVisibilityProvider = selectedProvider
+        editingVisibility = true
+    }
+
+    /// Every provider, on a page of its own.
+    private var allProvidersRow: some View {
+        Button {
+            searchFocused = false
+            heldProviderOpened = false
+            showingProviders = true
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: "server.rack")
+                    .scaledFont(.subheadline.weight(.semibold))
+                    .foregroundStyle(.conduitAccent)
+                    .frame(width: 20)
+                    .accessibilityHidden(true)
+                Text(AppLocalization.string("All providers"))
+                    .scaledFont(.subheadline.weight(.semibold))
+                Spacer(minLength: 12)
+                if catalog.state == .ready {
+                    Text(verbatim: "\(visibleProviders.count)")
+                        .scaledFont(.caption.monospacedDigit())
+                        .foregroundStyle(.secondary)
+                }
+                Image(systemName: "chevron.right")
+                    .scaledFont(.caption.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 16)
+            .frame(minHeight: 50)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .settingsCard()
+        .accessibilityIdentifier("modelPicker.allProviders")
+    }
+
+    /// The providers, each opening to its models; the one holding the
+    /// checked row opens first.
+    private var allProvidersPage: some View {
+        ZStack {
+            ConduitBackdrop(glowTint: appState.profileGlowTint(appState.conversationIdentityProfile))
+            ScrollView {
+                VStack(alignment: .leading, spacing: 24) {
+                    modelSection
+                    addProviderRow
+                }
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+                .padding(.bottom, 24)
+            }
+            .scrollIndicators(.hidden)
+            .modifier(V2SoftTopScrollEdge(isOn: true))
+        }
+        .navigationTitle(AppLocalization.string("All providers"))
+        .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            // A model missing from the list may need Hermes' live lists.
+            ToolbarItem(placement: .topBarTrailing) {
+                refreshModelsButton
+            }
+            // Hiding providers is the sheet's Edit; this page's goes back
+            // to it, so "Tap Edit to restore one" holds here too.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(AppLocalization.string("Edit")) {
+                    showingProviders = false
+                    startEditingVisibility()
+                }
+                .scaledFont(.subheadline.weight(.semibold))
+                .tint(.conduitAccent)
+            }
+        }
+        // Opens the provider holding the pick, once: also when the list
+        // arrives after the page did.
+        .onAppear(perform: openHeldProvider)
+        .onChange(of: visibleProviders.map(\.name)) { _, _ in
+            if !heldProviderOpened { openHeldProvider() }
+        }
+    }
+
+    private func openHeldProvider() {
+        guard !heldProviderOpened,
+              let held = visibleProviders.first(where: { $0.matches(selectedProvider) }) else { return }
+        heldProviderOpened = true
+        expandedProvider = held.name
     }
 
     /// A model missing from the list may need its provider connected first.
@@ -836,6 +1091,17 @@ struct ModelPickerView: View {
         .buttonStyle(.plain)
         .disabled(modelRowsLocked)
         .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .contextMenu {
+            let pinned = appState.modelQuickPicks.isPinned(model: model.id, provider: provider)
+            Button {
+                togglePin(model, provider: provider)
+            } label: {
+                Label(
+                    pinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
+                    systemImage: pinned ? "pin.slash" : "pin"
+                )
+            }
+        }
     }
 
     /// Rows switch once Hermes answered, one at a time, and not under
@@ -851,71 +1117,6 @@ struct ModelPickerView: View {
         let previous = ModelPickerSelection(model: selectedModel, provider: selectedProvider)
         let selection = ModelPickerSelection(model: model.id, provider: provider.name)
         Task { @MainActor in await switchModel(to: selection, from: previous) }
-    }
-
-    private var reasoningSection: some View {
-        // Flush, so the pills scroll to the card's edge rather than being
-        // cut off inside its padding.
-        ModelPickerSection(title: AppLocalization.string("Reasoning"), symbol: "brain.head.profile", tint: .conduitAura, flush: true) {
-            ScrollView(.horizontal) {
-                HStack(spacing: 8) {
-                    // A level Hermes reports that Conduit doesn't offer still
-                    // shows, selected, so the row never looks unset.
-                    if ReasoningEffortLevel(runtimeEffort: reasoningEffort) == nil {
-                        reasoningPillLabel(ReasoningEffortLevel.displayTitle(for: reasoningEffort), isSelected: true)
-                            .accessibilityAddTraits(.isSelected)
-                    }
-                    ForEach(ReasoningEffortLevel.allCases) { level in
-                        reasoningPill(level)
-                    }
-                }
-                .padding(16)
-            }
-            .scrollIndicators(.hidden)
-
-            if let reasoningError {
-                Label(reasoningError, systemImage: "exclamationmark.triangle.fill")
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.red)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .padding([.horizontal, .bottom], 16)
-            }
-        }
-    }
-
-    private func reasoningPill(_ level: ReasoningEffortLevel) -> some View {
-        let isSelected = ReasoningEffortLevel(runtimeEffort: reasoningEffort) == level
-        return Button {
-            Task { @MainActor in await applyReasoning(level) }
-        } label: {
-            reasoningPillLabel(level.title, isSelected: isSelected)
-        }
-        .buttonStyle(.plain)
-        // One write at a time: a model switch may change the level under it.
-        .disabled(isApplyingReasoning || switchingRow != nil || appState.isWritingReasoningEffort)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
-    }
-
-    /// V2: the picked level is Settings' gold capsule (dark text on the
-    /// dark-mode gold, white on the light-mode brown), the rest quiet.
-    private func reasoningPillLabel(_ title: String, isSelected: Bool) -> some View {
-        Text(title)
-            .scaledFont(.subheadline.weight(isSelected ? .semibold : .regular))
-            .foregroundStyle(isSelected ? selectedPillText : Color.primary)
-            .padding(.horizontal, 14)
-            .frame(minHeight: 36)
-            .background(
-                isSelected ? Color.conduitAccent : rowFoundation,
-                in: Capsule()
-            )
-            .overlay {
-                Capsule().strokeBorder(isSelected ? Color.clear : rowStroke, lineWidth: 0.5)
-            }
-            .contentShape(Capsule())
-    }
-
-    private var selectedPillText: Color {
-        colorScheme == .dark ? Color.black.opacity(0.85) : .white
     }
 
     private var runSettingsSection: some View {
@@ -1237,12 +1438,19 @@ struct ModelPickerView: View {
     /// Reasoning applies to the live agent at once, so a tap sends it without
     /// waiting for Apply.
     private func applyReasoning(_ level: ReasoningEffortLevel) async {
-        guard !isApplyingReasoning, switchingRow == nil else { return }
-        // Re-tapping the live level sends nothing.
-        guard ReasoningEffortLevel(runtimeEffort: reasoningEffort) != level else { return }
-        Haptics.selection()
+        guard switchingRow == nil else { return }
+        // A level picked while one is being sent goes next; the last pick wins.
+        guard !isApplyingReasoning else {
+            queuedReasoning = level
+            reasoningEffort = level.rawValue
+            return
+        }
+        // Re-picking the live level sends nothing.
+        guard ReasoningEffortLevel(runtimeEffort: appState.runtime.reasoningEffort) != level
+            || ReasoningEffortLevel(runtimeEffort: reasoningEffort) != level else { return }
         reasoningEffort = level.rawValue
         reasoningError = nil
+        let sessionId = appState.activeSessionId
         isApplyingReasoning = true
         defer { isApplyingReasoning = false }
         let result = await appState.setReasoningEffort(level.rawValue)
@@ -1253,6 +1461,16 @@ struct ModelPickerView: View {
         if case .failed(let message) = result {
             reasoningError = message
             UIAccessibility.post(notification: .announcement, argument: message)
+        }
+        if let next = queuedReasoning {
+            queuedReasoning = nil
+            isApplyingReasoning = false
+            // A level picked for another chat never reaches this one.
+            guard appState.activeSessionId == sessionId else {
+                reasoningEffort = appState.runtime.reasoningEffort.isEmpty ? "none" : appState.runtime.reasoningEffort
+                return
+            }
+            await applyReasoning(next)
         }
     }
 
@@ -1302,6 +1520,15 @@ struct ModelPickerView: View {
             appState.runtime.model = model
             appState.runtime.provider = selection.provider
             switchedRow = ModelPickerSwitchedRow(selection: selection, resolvedModel: model)
+            // Under the catalog's own provider names, so a model reached by
+            // an alias is one recent row.
+            let left = previous.model.isEmpty ? nil : ModelQuickPick(
+                provider: catalog.providers.first { $0.matches(previous.provider) }?.name ?? previous.provider,
+                model: previous.model
+            )
+            appState.updateModelQuickPicks {
+                $0.recordSwitch(to: ModelQuickPick(provider: selection.provider, model: selection.model), from: left)
+            }
             if deferred {
                 modelNote = AppLocalization.string("Switches to \(model) when this reply finishes.")
             }

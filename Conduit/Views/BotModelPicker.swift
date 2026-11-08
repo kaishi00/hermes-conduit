@@ -61,6 +61,16 @@ struct BotModelPicker: View {
                         searchResults(providers)
                     }
                 }
+                let pinned = appState.modelQuickPicks.pinnedRows(in: providers)
+                if ModelSearchQuery(query).isEmpty, !pinned.isEmpty {
+                    // The models pinned in the chat's Model sheet, a tap
+                    // away here too.
+                    ConduitSettingsSection(title: AppLocalization.string("Pinned"), symbol: "pin", tint: .conduitAccent) {
+                        ForEach(pinned) { match in
+                            matchRow(match)
+                        }
+                    }
+                }
                 if ModelSearchQuery(query).isEmpty, !providers.isEmpty {
                     // One card of providers, each opening its models under it.
                     ConduitSettingsSection(title: AppLocalization.string("Providers"), symbol: "server.rack", tint: .purple) {
@@ -77,6 +87,7 @@ struct BotModelPicker: View {
                                     }
                                     .padding(.leading, 16)
                                     .disabled(!catalog.answered)
+                                    .contextMenu { pinMenu(item, provider: option) }
                                 }
                             }
                         }
@@ -241,16 +252,36 @@ struct BotModelPicker: View {
                 .foregroundStyle(.secondary)
         }
         ForEach(matches) { match in
-            row(
-                title: match.model.label ?? match.model.id,
-                detail: match.model.label == nil ? nil : match.model.id,
-                providerTitle: match.provider.title,
-                isSelected: match.provider.matches(provider) && match.model.id == model
-            ) {
-                provider = match.provider.name
-                model = match.model.id
-            }
-            .disabled(!catalog.answered)
+            matchRow(match)
+        }
+    }
+
+    /// A model under any provider, naming it: a search match or a pinned one.
+    private func matchRow(_ match: ModelSearchMatch) -> some View {
+        row(
+            title: match.model.label ?? match.model.id,
+            detail: match.model.label == nil ? nil : match.model.id,
+            providerTitle: match.provider.title,
+            isSelected: match.provider.matches(provider) && match.model.id == model
+        ) {
+            provider = match.provider.name
+            model = match.model.id
+        }
+        .disabled(!catalog.answered)
+        .contextMenu { pinMenu(match.model, provider: match.provider) }
+    }
+
+    /// Pin or Unpin, shared with the chat's Model sheet's Quick picks.
+    private func pinMenu(_ item: ModelInfo, provider option: ProviderInfo) -> some View {
+        let pinned = appState.modelQuickPicks.isPinned(model: item.id, provider: option)
+        return Button {
+            Haptics.selection()
+            appState.updateModelQuickPicks { $0.togglePin(model: item.id, provider: option) }
+        } label: {
+            Label(
+                pinned ? AppLocalization.string("Unpin") : AppLocalization.string("Pin"),
+                systemImage: pinned ? "pin.slash" : "pin"
+            )
         }
     }
 
