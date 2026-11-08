@@ -138,7 +138,8 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         // Stopped between the claim and here: don't arm location hardware.
         guard !Task.isCancelled else { return }
         let (location, approximate) = await fix(precision: precision)
-        guard let location, !Task.isCancelled else { return }
+        guard !Task.isCancelled else { return Self.unanswered(id, "stopped by iOS", kind: "locate") }
+        guard let location else { return Self.unanswered(id, "no fix within \(Int(Self.fixTimeout)) s", kind: "locate") }
         // The area is a nicety: sent only if the geocoder answers quickly.
         var area: LocationArea?
         if precision != .places, !Task.isCancelled { area = await Self.area(for: location, timeout: Self.geocodeTimeout) }
@@ -153,8 +154,13 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         batch.locateID = request.id
         // Paused, turned off or its detail lowered while the fix was on its
         // way: nothing goes.
-        guard Self.stillAnswers(request, detail: precision) else { return }
-        guard let body = try? LocationIngest.body(batch, key: key), !Task.isCancelled else { return }
+        guard Self.stillAnswers(request, detail: precision) else {
+            return Self.unanswered(id, "sharing paused, turned off or lowered while the fix was on its way", kind: "locate")
+        }
+        guard let body = try? LocationIngest.body(batch, key: key) else {
+            return Self.unanswered(id, "the batch couldn't be sealed", kind: "locate")
+        }
+        guard !Task.isCancelled else { return Self.unanswered(id, "stopped by iOS", kind: "locate") }
         do {
             _ = try await LocationHostClient.requestJSON(
                 pass: pass,

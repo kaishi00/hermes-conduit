@@ -49,8 +49,8 @@ extension AppState {
         // A native sign-in's refresh rotates its access token, and the host
         // pass carries a copy: saved again at once, or the push extension
         // goes on sending the old token until the next connect (issue 2028).
-        // One observer for the app's one AppState: a newer one (tests make
-        // several) replaces it.
+        // Registered once, like the request provider above; a stale one
+        // left from an earlier registration is removed first.
         if let previous = Self.tokenRotationObserver { NotificationCenter.default.removeObserver(previous) }
         Self.tokenRotationObserver = NotificationCenter.default.addObserver(
             forName: .nativeOAuthTokensRotated, object: nil, queue: .main
