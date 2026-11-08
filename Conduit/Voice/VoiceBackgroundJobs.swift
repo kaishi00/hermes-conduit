@@ -3931,6 +3931,18 @@ enum VoiceThreadRouting {
     /// Chinese and Japanese refusal verbs, matched inside the words.
     private static let cjkRefusalVerbs = ["拒绝", "拒絕", "拒否", "却下", "断る", "断って", "お断り"]
 
+    /// Whether the words negate a refusal verb ("don't decline it", "do
+    /// not reject it", "我不拒绝"): asked not to refuse, never a no.
+    static func negatesRefusalVerb(_ answer: String) -> Bool {
+        let words = fold(answer)
+            .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
+            .map(String.init)
+        let latin = negates(words)
+            && words.contains { answerRefusalVerbs.contains($0) || $0.hasPrefix("거절") || $0.hasPrefix("거부") }
+        let cjk = cjkVerbNegations.contains { answer.contains($0) } && cjkRefusalVerbs.contains { answer.contains($0) }
+        return latin || cjk
+    }
+
     /// Words that make a refusal verb a question or a maybe, not an answer.
     private static let refusalVerbAskers: Set<String> = [
         "should", "shall", "can", "could", "would", "will", "if", "whether", "why", "how", "what", "do", "does", "did", "is", "are", "am", "was", "were", "have", "has", "had", "who", "where", "when", "which", "maybe", "might",

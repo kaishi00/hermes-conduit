@@ -258,6 +258,8 @@ struct PresentedConfirm: Identifiable, Equatable {
         let said = Self.words(in: words)
         guard !Self.unsureWords.contains(where: { Self.range(of: $0, in: said) != nil }),
               !Self.cjkUnsure.contains(where: { words.contains($0) }) else { return false }
+        // Asked not to refuse ("don't decline it") isn't a no.
+        guard !VoiceThreadRouting.negatesRefusalVerb(words) else { return false }
         switch VoiceThreadRouting.heldRequestAnswer(words) {
         // A bare no with a change after it ("no, make it for Alex") asks for
         // the change, which the panel's edit takes. A no on its own, or one

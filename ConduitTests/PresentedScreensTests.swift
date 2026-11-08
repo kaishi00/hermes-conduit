@@ -189,6 +189,8 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(prompt.isDeclined(by: "do we decline it"))
         XCTAssertFalse(prompt.isDeclined(by: "have we declined it"))
         XCTAssertFalse(prompt.isDeclined(by: "who declined it"))
+        XCTAssertFalse(prompt.isDeclined(by: "don't decline it"))
+        XCTAssertFalse(prompt.isDeclined(by: "do not reject it"))
         XCTAssertFalse(prompt.isDeclined(by: "可以拒绝吗"))
         XCTAssertFalse(prompt.isDeclined(by: "断ってもいいか"))
         XCTAssertFalse(prompt.isDeclined(by: "我不拒绝"))
