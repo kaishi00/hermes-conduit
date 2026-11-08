@@ -205,6 +205,7 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(prompt.isDeclined(by: "Oh, no, make it Wednesday"))
         XCTAssertFalse(prompt.isDeclined(by: "Не надо, сделай для Алекса"))
         XCTAssertFalse(prompt.isDeclined(by: "Never mind, make it for Alex"))
+        XCTAssertFalse(prompt.isDeclined(by: "Don't send it to Alex; send it to Bob"))
         XCTAssertFalse(prompt.isDeclined(by: "不要，改到周三"))
         XCTAssertFalse(prompt.isDeclined(by: "hold on, I'm not ready"))
         XCTAssertFalse(prompt.isDeclined(by: "wait, the address isn't right"))

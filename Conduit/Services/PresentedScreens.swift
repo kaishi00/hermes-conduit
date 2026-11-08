@@ -266,7 +266,7 @@ struct PresentedConfirm: Identifiable, Equatable {
         // takes. A no on its own, or one said with its action ("don't
         // share", "cancel the email"), declines.
         case .no(let change):
-            return change == nil || Self.opens(said, with: Self.actionNos)
+            return change == nil || (Self.opens(said, with: Self.actionNos) && Self.isOneClause(words))
         // A wait holds; it doesn't refuse ("hold on", "wait, I'm not
         // ready"). "Not now" does, and a not yet with a change in it ("wait,
         // make it Wednesday") asks for that change, not a no.
@@ -310,6 +310,15 @@ struct PresentedConfirm: Identifiable, Equatable {
             }
             return rest.starts(with: phrase)
         }
+    }
+
+    /// Whether the words say one thing: a second clause after a no that
+    /// names its action ("don't send it to Alex; send it to Bob") is a
+    /// change, not a no.
+    private static func isOneClause(_ text: String) -> Bool {
+        let breaks = CharacterSet(charactersIn: ",;:—–，；：、")
+        return text.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            .unicodeScalars.allSatisfy { !breaks.contains($0) }
     }
 
     /// A no that names its action: what follows it is what's turned down.
