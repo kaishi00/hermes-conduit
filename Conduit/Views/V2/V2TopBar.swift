@@ -496,6 +496,12 @@ struct V2ProfileStrip: View {
     private var allChip: some View {
         let isSelected = allSelected
         let shown = Array(appState.allProfilesIncluded.prefix(3))
+        // Alone on the bar, All is the only chip left to carry what waits in
+        // the profiles it lists (issue 1705). Beside the profile chips each
+        // of those carries its own count, so summing here would count twice.
+        let waiting = stripStyle == .allChip
+            ? Self.waiting(in: appState.allProfilesIncluded, needsYou: needsYou, matches: appState.profilesMatch)
+            : 0
         return Button {
             Haptics.selection()
             // The last tap wins: a profile kept for after a running switch
@@ -528,7 +534,20 @@ struct V2ProfileStrip: View {
                             .fill(Color.conduitAccent)
                             .frame(width: 9, height: 9)
                             .overlay { Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 1) }
-                            .offset(x: 1, y: -1)
+                            // The waiting badge takes the picture's top
+                            // corner, so the dot sits at the bottom as the
+                            // single profile chip's does.
+                            .offset(x: 1, y: 1)
+                            .accessibilityHidden(true)
+                    }
+                }
+                // Chats waiting on the user in every profile All lists, the
+                // same badge a drawn chip carries.
+                .overlay(alignment: .topTrailing) {
+                    if waiting > 0 {
+                        NeedsYouCountBadge(count: waiting)
+                            .offset(x: 5, y: -4)
+                            .transition(.opacity)
                             .accessibilityHidden(true)
                     }
                 }
@@ -555,10 +574,13 @@ struct V2ProfileStrip: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
+        // The lone chip is the bar's selected chip once All is on, so the
+        // saved dashboards hang off it as they do the active profile's chip.
+        .modifier(DashboardSwitchMenu(enabled: isSelected))
         .accessibilityIdentifier("v2.profile.all")
         .accessibilityLabel(AppLocalization.string("All profiles"))
         .accessibilityValue(Self.spokenValue(
-            waiting: 0,
+            waiting: waiting,
             unread: currentOnly && !unread.isEmpty ? AppLocalization.string("Unread in another profile") : nil
         ))
         .accessibilityHint(isSelected
@@ -745,5 +767,11 @@ extension V2ProfileStrip {
     static func spokenValue(waiting: Int, unread: String?) -> String {
         [waiting > 0 ? AppLocalization.string("\(Int(waiting)) waiting on you") : nil, unread]
             .compactMap { $0 }.joined(separator: ", ")
+    }
+
+    /// What waits across the profiles All lists: the lone All chip's count.
+    static func waiting(in profiles: [String], needsYou: NeedsYouStore,
+                        matches: (String, String) -> Bool) -> Int {
+        profiles.reduce(0) { $0 + needsYou.count(for: $1, matches: matches) }
     }
 }
