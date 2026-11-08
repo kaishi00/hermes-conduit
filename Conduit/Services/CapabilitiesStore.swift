@@ -264,8 +264,14 @@ final class CapabilitiesStore {
         }
         guard token == generation else { throw CancellationError() }
         let values = PluginSettings.body(save.values)
-        return try await ProfileConfigWriteQueue.runThrowing {
-            try await client.savePluginSettings(key: key, values: values, profile: profile)
+        do {
+            return try await ProfileConfigWriteQueue.runThrowing {
+                try await client.savePluginSettings(key: key, values: values, profile: profile)
+            }
+        } catch where !save.secrets.isEmpty && !(error is CancellationError) {
+            // The keys are already in `.env`: say so, rather than suggest
+            // the whole save was undone.
+            throw PluginSettings.FieldError(message: AppLocalization.string("The keys were saved, but the other settings weren't: \(UserFacingError.message(for: error))"))
         }
     }
 

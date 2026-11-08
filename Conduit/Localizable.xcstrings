@@ -494397,6 +494397,88 @@
           }
         }
       }
+    },
+    "The keys were saved, but the other settings weren't: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Schlüssel wurden gespeichert, die anderen Einstellungen aber nicht: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las claves se guardaron, pero los demás ajustes no: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les clés ont été enregistrées, mais pas les autres réglages : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kunci sudah disimpan, tetapi pengaturan lainnya tidak: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le chiavi sono state salvate, ma le altre impostazioni no: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "キーは保存されましたが、ほかの設定は保存されませんでした: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "키는 저장되었지만 다른 설정은 저장되지 않았습니다: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Klucze zostały zapisane, ale pozostałe ustawienia nie: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As chaves foram salvas, mas as outras configurações não: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ключи сохранены, но остальные настройки — нет: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anahtarlar kaydedildi ancak diğer ayarlar kaydedilmedi: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "密钥已保存，但其他设置未保存：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "金鑰已儲存，但其他設定未儲存：%@"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

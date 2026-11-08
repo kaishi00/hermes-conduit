@@ -117,6 +117,11 @@ struct PluginSettingsSection: View {
                 apply([])
                 return
             }
+            // Fields from before a failed reload may be stale: show the
+            // error and Try Again instead, so nothing old is saved.
+            key = nil
+            fields = []
+            draft = [:]
             loadError = UserFacingError.message(for: error)
         }
     }
