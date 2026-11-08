@@ -19784,6 +19784,11 @@ final class AppState: ObservableObject {
                         ? (priorWindowForGraft?.pageStartsCarried(into: page.rawReturned) ?? [])
                         : []
                 )
+            } else if keepsRowsOnScreen {
+                // The rows kept from the screen keep their paging window:
+                // what Load earlier brought in stays, and grafts again on
+                // the next refresh.
+                persistedTranscriptWindow = priorWindowForGraft
             } else {
                 persistedTranscriptWindow = nil
             }
@@ -27050,23 +27055,19 @@ final class AppState: ObservableObject {
             ?? profileDisplayName(profile)
     }
 
-    /// The label the saved last-chat reference keeps for the open Bot Chat,
-    /// which the title shows after a relaunch before the resume captures it
-    /// again (issue 2025: the composer named another label meanwhile). The
-    /// main bot's follows its Conduit name, and a label that is only the
-    /// profile id names nothing, as `noteBotChatSession` keeps them.
+    /// The name the saved last-chat reference gives the open Bot Chat: the
+    /// title's own (`botConversationTitle`, so a label that is only the
+    /// profile id, or none, is the id capitalized), which the title shows
+    /// after a relaunch before the resume captures a label again (issue
+    /// 2025: the composer named another bot meanwhile). The main bot's
+    /// follows its Conduit name, as `noteBotChatSession` keeps.
     private func savedBotChatLabel(profile: String) -> String? {
         guard !BotManagement.isDefaultProfile(profile),
               let saved = chatResumeCoordinator.lastSession(for: activeProfile),
               saved.kind == .bot,
               let open = ChatScrollIdentityNormalization.sessionID(activeSessionId),
-              ChatScrollIdentityNormalization.sessionID(saved.sessionID) == open,
-              let label = saved.botLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !label.isEmpty,
-              // A label that is only the profile id is no label (#1448).
-              label.caseInsensitiveCompare(profile.trimmingCharacters(in: .whitespacesAndNewlines)) != .orderedSame
-        else { return nil }
-        return label
+              ChatScrollIdentityNormalization.sessionID(saved.sessionID) == open else { return nil }
+        return Self.botConversationTitle(for: saved)
     }
 
     #if DEBUG

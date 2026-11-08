@@ -628,6 +628,60 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertTrue(harness.appState.transcriptFreshnessIsStale)
     }
 
+    /// Kept rows keep their paging window, so what Load earlier brought in
+    /// survives; a page naming another chat leaves them unresolved.
+    func testAResumeTooLongKeepsThePagingWindowAndAForeignPageLeavesTheRowsUnresolved() async throws {
+        enum History { case page, none, foreign }
+        var refusesWholeTranscript = false
+        var history = History.page
+        let rows: [[String: Any]] = [
+            ["id": 1, "role": "user", "content": "Long chat", "timestamp": "2026-11-08T10:00:00Z"],
+            ["id": 2, "role": "assistant", "content": "Kept", "timestamp": "2026-11-08T10:00:02Z"]
+        ]
+        let harness = try makeHarness(
+            openSession: { _, sessionID, compact in
+                if !compact, refusesWholeTranscript { throw Self.resumeTooLong }
+                return SessionResumeResult(
+                    sessionId: sessionID,
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in
+                switch history {
+                case .page: return self.tailPagePayload(sessionId: "stored-long", rows: rows, offset: 0, limit: 2)
+                case .none: return .unavailable
+                case .foreign: return self.tailPagePayload(sessionId: "another-chat", rows: rows, offset: 0, limit: 2)
+                }
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [self.session("stored-long")] }
+                ops.refreshContext = { _, _ in }
+            }
+        )
+        harness.appState.sessions = [session("stored-long")]
+        let opened = await harness.appState.openSession("stored-long")
+        XCTAssertTrue(opened)
+        let window = harness.appState.persistedTranscriptWindow
+        XCTAssertEqual(window?.nextOffset, 2)
+        XCTAssertEqual(window?.canLoadEarlier, true)
+
+        refusesWholeTranscript = true
+        history = .none
+        await harness.appState.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.nextOffset, 2)
+        XCTAssertEqual(harness.appState.persistedTranscriptWindow?.canLoadEarlier, true)
+        XCTAssertFalse(harness.appState.transcriptFreshnessIsStale)
+
+        history = .foreign
+        await harness.appState.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+        XCTAssertNil(harness.appState.errorMessage)
+        XCTAssertTrue(harness.appState.transcriptFreshnessIsStale)
+    }
+
     /// Drives one reconciliation against a history source that fails with
     /// `failure` and asserts the bounded-failure contract: a failing or slow
     /// BOUNDED history request must never escalate into the legacy
