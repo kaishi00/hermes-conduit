@@ -4306,6 +4306,32 @@ final class HermesClient: ObservableObject {
         return removed
     }
 
+    // MARK: Plugin settings
+
+    /// A plugin's own settings fields with their current values
+    /// (`plugins.manage` `list`, the plugin's `settings_schema`). Nil when
+    /// Hermes doesn't list the plugin.
+    /// The key is the one Hermes writes the plugin's settings under.
+    func pluginSettingFields(plugin name: String, profile: String) async throws -> (key: String, fields: [PluginSettingField])? {
+        let result = try await rpc("plugins.manage", params: ["action": "list", "profile": profile])
+        guard let object = result.anyValue as? [String: Any] else { throw HermesError.invalidResponse }
+        guard let row = PluginSettings.row(named: name, in: object) else { return nil }
+        return (PluginSettings.text(row["key"]) ?? name, PluginSettings.fields(from: row))
+    }
+
+    /// Writes a plugin's settings values (`plugins.manage` `settings`) and
+    /// answers its fields as Hermes now has them.
+    func savePluginSettings(key name: String, values: [String: Any], profile: String) async throws -> [PluginSettingField]? {
+        let result = try await rpc("plugins.manage", params: ["action": "settings", "key": name, "values": values, "profile": profile])
+        guard let object = result.anyValue as? [String: Any] else { throw HermesError.invalidResponse }
+        guard object["ok"] as? Bool == true else {
+            // Hermes' own reason for refusing a value, when it gives one.
+            if let reason = PluginSettings.text(object["error"]) { throw PluginSettings.FieldError(message: reason) }
+            throw HermesError.invalidResponse
+        }
+        return (object["plugin"] as? [String: Any]).map(PluginSettings.fields(from:))
+    }
+
     // MARK: Hosted apps
 
     /// The account owner the Connectors page's calls name: the profile's

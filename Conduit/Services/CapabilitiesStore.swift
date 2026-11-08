@@ -246,6 +246,52 @@ final class CapabilitiesStore {
         requester.map { ObjectIdentifier($0) } == owner.bridge && profile == owner.profile
     }
 
+    // MARK: Plugin settings
+
+    /// Saves a plugin's settings form: each new secret to the profile's
+    /// `.env` (never read back), then the values through Hermes' plugin
+    /// settings call (`write`, given the values and the profile), which
+    /// also tells the plugin they changed. Answers the fields as Hermes now
+    /// has them. Only on the default profile, where Hermes keeps plugin
+    /// settings. A dashboard or profile switch while a write waits stops the
+    /// rest, so no key or value lands on the new host or profile; when some
+    /// keys were already saved, the error says so.
+    /// `generation` is the store's when Save was pressed: a switch before
+    /// the save starts writes nothing.
+    func savePluginSettings(
+        save: PluginSettings.Save,
+        generation pressed: Int? = nil,
+        write: @escaping @MainActor ([String: Any], String) async throws -> [PluginSettingField]?
+    ) async throws -> [PluginSettingField]? {
+        let token = pressed ?? generation
+        guard token == generation else { throw CapabilitiesStoreError.profileChanged }
+        try requirePluginProfile()
+        let profile = profile
+        let envPath = scoped("/api/env")
+        var written: [String] = []
+        do {
+            for (env, value) in save.secrets.sorted(by: { $0.key < $1.key }) {
+                guard token == generation else { throw CapabilitiesStoreError.profileChanged }
+                _ = try await request(envPath, method: "PUT", body: DashboardPath.bodyWithProfile(["key": env, "value": value], profile: profile))
+                written.append(env)
+            }
+            guard token == generation else { throw CapabilitiesStoreError.profileChanged }
+            let values = PluginSettings.body(save.values)
+            return try await ProfileConfigWriteQueue.runThrowing {
+                guard token == self.generation else { throw CapabilitiesStoreError.profileChanged }
+                return try await write(values, profile)
+            }
+        } catch where !written.isEmpty && !(error is CancellationError) {
+            // Keys already in `.env` stay there: say which, rather than
+            // suggest the whole save was undone.
+            throw PluginSettings.PartialSave(
+                saved: written,
+                switched: error as? CapabilitiesStoreError == .profileChanged,
+                reason: UserFacingError.message(for: error)
+            )
+        }
+    }
+
     // MARK: Requests
 
     private func request(

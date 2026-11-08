@@ -291,7 +291,7 @@ Text: the section's captions and README.md's Capabilities line (done)
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-08, #2006 (a retry waits for a given-up try's settle; Rulings); 2026-11-08, #2001 (a sign-in over a reconnect, issue 1997; rules not read said so, issue 1998; Code, Rulings); 2026-11-08, #1993 (Safari's close fallback fenced per close); 2026-11-08, #1988 (the chat card's gap closed; Browse Apps lists a chat's suggestions first; #1982's review: logo renders, give-up, Safari's dismissal, logo retries); 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
+**Checked:** 2026-11-08, #2011 (README's shared Capabilities line also names each plugin's own settings; this entry's part unchanged); 2026-11-08, #2006 (a retry waits for a given-up try's settle; Rulings); 2026-11-08, #2001 (a sign-in over a reconnect, issue 1997; rules not read said so, issue 1998; Code, Rulings); 2026-11-08, #1993 (Safari's close fallback fenced per close); 2026-11-08, #1988 (the chat card's gap closed; Browse Apps lists a chat's suggestions first; #1982's review: logo renders, give-up, Safari's dismissal, logo retries); 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
 
 ## Things Hermes connects from a chat
 
@@ -3538,7 +3538,7 @@ README.md's Capabilities line
 - Whether a list read can overwrite a flip in the bot editor's lists hasn't been checked.
 - The Kanban skill picker says "No skills match." when it withholds another dashboard's skills, the same as a search miss.
 
-**Checked:** 2026-11-08, #1999 (the Skills tab opens Browse Skill Hub, a hub skill's page removes it, the options menu updates hub skills; the switches unchanged); 2026-11-08, #1982 (the Connectors tab shows the Apps section above the servers and its pull to refresh reads both; the servers unchanged); 2026-11-05, #1793 (the Skills, Tools and MCP page and Kanban's skills sheet built from Settings' cards, see Sheets in Settings' look); 2026-11-02, #1655 (Eric decided the key save follows Edit Server's test rules); 2026-11-02, #1647 (a key save reads the list again and tests the server only if the host says it's on, and a test running on the old key runs again, as after Edit Server's save; a save that fails part way does both for the keys Hermes took); 2026-11-02, #1640 (connectors sign in through the phone's callback with Edit Bot's flow; a catalog connector's key set from its page); 2026-10-31, #1578 (edited number arguments stay numbers; a renamed server shows after a failed reload); 2026-10-31, #1569 (the lists open on their kept copy and a switch Hermes took is kept in it, never one it refused; offline the switches wait for a dashboard; AppState's list reads are tested through held dashboard requests, its generation guard included, closing a gap; with #1574 merged in, a server's page waits for Hermes' list before its first test and a connector edit counts as a change, see Screens that open on their last answer); 2026-10-31, #1574 (connector tests outlive the page that started them; Edit Server); 2026-10-24, at #1219 and #1222.
+**Checked:** 2026-11-08, #2011 (README's shared Capabilities line also names each plugin's own settings; this entry's part unchanged); 2026-11-08, #1999 (the Skills tab opens Browse Skill Hub, a hub skill's page removes it, the options menu updates hub skills; the switches unchanged); 2026-11-08, #1982 (the Connectors tab shows the Apps section above the servers and its pull to refresh reads both; the servers unchanged); 2026-11-05, #1793 (the Skills, Tools and MCP page and Kanban's skills sheet built from Settings' cards, see Sheets in Settings' look); 2026-11-02, #1655 (Eric decided the key save follows Edit Server's test rules); 2026-11-02, #1647 (a key save reads the list again and tests the server only if the host says it's on, and a test running on the old key runs again, as after Edit Server's save; a save that fails part way does both for the keys Hermes took); 2026-11-02, #1640 (connectors sign in through the phone's callback with Edit Bot's flow; a catalog connector's key set from its page); 2026-10-31, #1578 (edited number arguments stay numbers; a renamed server shows after a failed reload); 2026-10-31, #1569 (the lists open on their kept copy and a switch Hermes took is kept in it, never one it refused; offline the switches wait for a dashboard; AppState's list reads are tested through held dashboard requests, its generation guard included, closing a gap; with #1574 merged in, a server's page waits for Hermes' list before its first test and a connector edit counts as a change, see Screens that open on their last answer); 2026-10-31, #1574 (connector tests outlive the page that started them; Edit Server); 2026-10-24, at #1219 and #1222.
 
 ## Skill Hub: browse and install
 
@@ -3585,7 +3585,7 @@ marketplace) · Text: the page's captions and README.md's Capabilities line
 - The hub's taps (adding a GitHub repository as a source, Desktop's Sources) aren't on the page.
 - A skill the scan would have Hermes ask about installs with Hermes' `--yes`, as Desktop's Install does; the page shows the findings first.
 
-**Checked:** 2026-11-08, #2009 (the plugin catalog named as a sibling; wording); 2026-11-08, #1999 (the page, the scan, install, remove and update)
+**Checked:** 2026-11-08, #2011 (README's Capabilities line, shared, also names each plugin's own settings); 2026-11-08, #2009 (the plugin catalog named as a sibling; wording); 2026-11-08, #1999 (the page, the scan, install, remove and update)
 
 ## Plugin catalog: browse and install
 
@@ -3625,7 +3625,48 @@ the pages' captions and README.md's Capabilities line (done)
 - The curated picks are Desktop's list as of 2026-11-08, written into Conduit: Hermes' catalog route doesn't carry them.
 - A plugin's README (Desktop's docs page) isn't shown.
 
-**Checked:** 2026-11-08, #2010 (kept filters keep their place, the rule in CapabilityPluginFilter; the Category menu reads its selection to VoiceOver); 2026-11-08, #2009 (the shelf, Browse All, the plugin page)
+**Checked:** 2026-11-08, #2011 (README's Capabilities line also names each plugin's own settings, see Plugin settings); 2026-11-08, #2010 (kept filters keep their place, the rule in CapabilityPluginFilter; the Category menu reads its selection to VoiceOver); 2026-11-08, #2009 (the shelf, Browse All, the plugin page)
+
+## Plugin settings
+
+An installed plugin's own settings on its page in Settings > Capabilities >
+Plugins, as Hermes Desktop's plugin settings form edits them: the fields its
+manifest's `config_schema` declares (text, number, switch, choice, JSON and
+secret), read from the gateway's `plugins.manage` `list` (each row's
+`settings_schema`) and saved with `plugins.manage` `settings`. A secret is
+written to the profile's `.env` (`PUT /api/env`), as Desktop does, and never
+read back.
+
+**Siblings:** Plugin catalog: browse and install (not needed: a plugin's
+settings appear once it's installed, on the installed plugin's page) ·
+Providers and keys (not needed: the same write-only `.env` rule, its keys
+listed there) · Hermes Desktop's plugin settings form (upstream, the
+reference) · profiles (done: Hermes keeps plugin settings for the default
+profile, so another profile's page shows them read-only with a caption) ·
+Screens that open on their last answer (not needed: the form is read from
+`plugins.manage` each time the page opens and keeps nothing, so offline it
+shows no section; drafts live only while the page is open) · Profile config saves (done: the values wait their turn in the one queue, the
+secrets go to `.env` outside it) · Watch, CarPlay and group rooms (not
+needed: no settings) · the notifier (not needed: Hermes' own gateway call) · Text: the form's captions and README.md's
+Capabilities line (done)
+
+**Code**
+- Model: `Conduit/Models/PluginSettings.swift` (PluginSettingField, PluginSettings.save: only changed values, secrets apart, text that doesn't fit refused)
+- Client: `Conduit/Services/HermesClient.swift` (pluginSettingFields, savePluginSettings), `Conduit/Services/CapabilitiesStore.swift` (savePluginSettings: default profile only, secrets to `.env`, then the values through the write it's given in ProfileConfigWriteQueue, fenced by the store's generation; PluginSettings.PartialSave names the keys that landed)
+- Views: `Conduit/Views/Capabilities/PluginSettingsViews.swift` (PluginSettingsSection, PluginSettingFieldRow), `Conduit/Views/Capabilities/CapabilityPluginsTab.swift` (the section on AgentPluginDetailPage)
+- Tests: `ConduitTests/PluginSettingsTests.swift` (an extension of PluginCatalogBrowseTests: the unit suite is at its 224-class cap), `ConduitTests/KanbanTests+Capabilities.swift` (the store's save: order, the default profile, a switch before or during a save)
+
+**Rulings**
+- A secret is write-only: the form never shows its value, even if Hermes sent one, and a secret left blank stays as it is (#2011).
+- A save sends only what changed; a Hermes without `plugins.manage` shows no section (#2011).
+- An emptied number or JSON field is refused, not cleared: Hermes takes no null for either (#2011).
+- A number takes either decimal mark (the app language's, or a lone comma from a keyboard set to another region), and a secret field that names no `.env` variable isn't shown, since it couldn't be saved (#2011).
+- The form is read fresh each time, never kept, and only once the store serves the page's dashboard and profile: offline, or after a reload that fails, the fields from before are gone (a failed reload shows why and Try Again). Edits follow the store's profile, not the one the page was opened on, and a save that ends after a switch leaves the new form alone; a switch mid-save stops its later writes, and a save that wrote some keys first says so, and those keys' fields empty while the rest stay filled (#2011).
+
+**Open gaps**
+- None.
+
+**Checked:** 2026-11-08, #2011 (the form, saving, secrets to `.env`)
 
 ## Reply progress signals
 
@@ -4472,7 +4513,9 @@ through `setProfileSetting`) · the helper models (`/api/model/set`, scope
 auxiliary, Hermes writes the config) · Memory & delegation's Delegate
 fallback models (done: the whole config, as the Model page's fallbacks,
 #1979) and Subagent routing (done: `/api/delegation/*`, Hermes writes the
-config, in the queue, #1979)
+config, in the queue, #1979) · a plugin's own settings (done: `plugins.manage`
+`settings`, Hermes writes the config, in the queue; its secrets go to `.env`
+outside it, see Plugin settings, #2011)
 
 **Code**
 - Queue: `Conduit/Services/ProfileConfigWriteQueue.swift`
@@ -4498,7 +4541,7 @@ not the config.
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
 
-**Checked:** 2026-11-07, #1979 (Memory & delegation's Delegate fallback models and Subagent routing's writes wait their turn in the queue); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-11-01, #1625 (helper model writes run in the queue as the voice reply model's do; key order is a profile setting); 2026-11-01, #1616 (custom endpoint saves and removals run in the queue; provider keys go to the credential pool and `/api/env`, outside it); 2026-10-31, #1574 (Edit Server reads in turn, and reads and writes the whole MCP map in one turn); 2026-10-31, #1558 (voice settings' saves are what the page opens on next, kept on the phone; what's written is unchanged); 2026-10-31, #1552 (a config save, a single setting's included, is what the settings pages open on next, kept on the phone; what's written is unchanged); 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
+**Checked:** 2026-11-08, #2011 (a plugin's own settings wait their turn in the queue, its keys don't); 2026-11-07, #1979 (Memory & delegation's Delegate fallback models and Subagent routing's writes wait their turn in the queue); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-11-01, #1625 (helper model writes run in the queue as the voice reply model's do; key order is a profile setting); 2026-11-01, #1616 (custom endpoint saves and removals run in the queue; provider keys go to the credential pool and `/api/env`, outside it); 2026-10-31, #1574 (Edit Server reads in turn, and reads and writes the whole MCP map in one turn); 2026-10-31, #1558 (voice settings' saves are what the page opens on next, kept on the phone; what's written is unchanged); 2026-10-31, #1552 (a config save, a single setting's included, is what the settings pages open on next, kept on the phone; what's written is unchanged); 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
 
 ## Wake phrase
 
