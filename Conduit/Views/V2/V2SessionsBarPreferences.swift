@@ -70,6 +70,15 @@ struct V2SessionsBarControls: Equatable {
         !showsProjects && storedPage == Presentation.projects.rawValue
     }
 
+    /// The Projects switch going off takes a stored Projects page with it,
+    /// wherever the write came from: the Settings tap, another device's sync,
+    /// or an old value. The list clears one it sees too, but it can't see a
+    /// switch turned off and on again while it isn't drawing.
+    static func clearStoredProjectsPage(defaults: UserDefaults = .standard) {
+        guard defaults.string(forKey: V2ChatsView.presentationKey) == Presentation.projects.rawValue else { return }
+        defaults.set(Presentation.sessions.rawValue, forKey: V2ChatsView.presentationKey)
+    }
+
     /// Pulse remains inside the profile's own capability gate. Hidden
     /// Projects, or All profiles' chats-only list, resolves even an old value
     /// or another window's write to Sessions without writing during a render.

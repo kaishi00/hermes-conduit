@@ -4040,7 +4040,16 @@ private struct AppearanceSettingsDetail: View {
                         Text("Current only").tag(V2SessionsBarPreferences.Profiles.currentOnly)
                     }
                     .pickerStyle(.segmented)
-                    Toggle("Projects", isOn: $sessionsBarProjects)
+                    Toggle("Projects", isOn: Binding(
+                        get: { sessionsBarProjects },
+                        set: { on in
+                            sessionsBarProjects = on
+                            // Turning it off takes a stored Projects page with
+                            // it here too, so turning it back on while the
+                            // list isn't drawing still starts on Sessions.
+                            if !on { V2SessionsBarControls.clearStoredProjectsPage() }
+                        }
+                    ))
                         .tint(.conduitAccent)
                     Toggle("Pulse", isOn: $sessionsBarPulse)
                         .tint(.conduitAccent)

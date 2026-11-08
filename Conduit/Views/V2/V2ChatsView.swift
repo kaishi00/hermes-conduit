@@ -560,6 +560,9 @@ struct V2ChatsView: View, Equatable {
             MinimisedLiveVoiceBar()
         }
         .environmentObject(updates)
+        // The feed's every-minute read, drawn by the tab so hiding the bar's
+        // Pulse button doesn't stop it (Sessions bar, #2020).
+        .background(PulseFeedReader())
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.chats.title)
         .onChange(of: shell.hasChatBeside, initial: true) { _, beside in

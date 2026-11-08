@@ -138,6 +138,38 @@ extension SidebarLayoutTests {
         XCTAssertFalse(V2SessionsBarControls.hidesStoredProjectsPage(nil, showsProjects: false))
     }
 
+    /// The switch's own write, so a sequence the list can't see (off and on
+    /// again while another tab or a chat covers it) still starts on Sessions
+    /// when Projects comes back. Sync applies the same clear (DeepSeek, #2020).
+    func testSessionsBarHidingProjectsClearsTheStoredPageAtTheWrite() {
+        withSessionsBarDefaults { defaults in
+            defaults.set("projects", forKey: V2ChatsView.presentationKey)
+            V2SessionsBarControls.clearStoredProjectsPage(defaults: defaults)
+            XCTAssertEqual(defaults.string(forKey: V2ChatsView.presentationKey), "sessions")
+
+            defaults.set(false, forKey: V2SessionsBarPreferences.showsProjectsKey)
+            V2SessionsBarControls.clearStoredProjectsPage(defaults: defaults)
+            defaults.set(true, forKey: V2SessionsBarPreferences.showsProjectsKey)
+            let controls = resolveSessionsBar(defaults)
+            XCTAssertTrue(controls.showsProjects)
+            XCTAssertEqual(controls.presentation, .sessions)
+        }
+    }
+
+    /// Clearing is only ever the Projects page: a Sessions page, or none, stays
+    /// as it is.
+    func testSessionsBarClearingTheStoredPageLeavesOtherPagesAlone() {
+        withSessionsBarDefaults { defaults in
+            defaults.set("sessions", forKey: V2ChatsView.presentationKey)
+            V2SessionsBarControls.clearStoredProjectsPage(defaults: defaults)
+            XCTAssertEqual(defaults.string(forKey: V2ChatsView.presentationKey), "sessions")
+
+            defaults.removeObject(forKey: V2ChatsView.presentationKey)
+            V2SessionsBarControls.clearStoredProjectsPage(defaults: defaults)
+            XCTAssertNil(defaults.string(forKey: V2ChatsView.presentationKey))
+        }
+    }
+
     /// The strip's own decision, so a regression that draws every chip under
     /// Current only fails a test rather than a device check.
     func testSessionsBarCurrentOnlyDrawsOneChip() {

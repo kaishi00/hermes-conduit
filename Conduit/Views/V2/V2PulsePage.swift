@@ -33,8 +33,6 @@ import UIKit
 /// The Chats bar's Pulse button: a dot while cards are unseen.
 struct V2PulseButton: View {
     @EnvironmentObject private var appState: AppState
-    @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.v2Shell) private var shell
     /// Bots Home's shortcut: a named pill beside Artifacts' rather than
     /// the Sessions bar's icon (`V2ShortcutPill`).
     var named = false
@@ -54,28 +52,46 @@ struct V2PulseButton: View {
             ? AppLocalization.string("Pulse, new cards")
             : AppLocalization.string("Pulse"))
         .accessibilityIdentifier(named ? "bots.pulse" : "chats.pulse")
-        // While the Chats tab shows, every minute: new cards light the dot and
-        // mark their messages in the chats. At once when the plugin answers
-        // after a launch or a reconnect, so the feed names Pulse's chat.
-        .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID,
-                                  active: scenePhase == .active && shell.isTabActive,
-                                  served: appState.notifierPlugin.reports(PulseClient.feedCapability))) {
-            guard scenePhase == .active, shell.isTabActive else { return }
-            while !Task.isCancelled {
-                // The Pulse page, open over or beside the list, reads the
-                // feed every minute itself; a read of its that just landed
-                // stands for this one (issue 1728).
-                if appState.pulseFeedIsFresh(within: 50), let applied = appState.pulseFeedAppliedAt?.at {
-                    // Wake a minute after that read, so the page closing
-                    // meanwhile doesn't leave the feed two minutes old.
-                    let wait = max(1, 60 - Date().timeIntervalSince(applied))
-                    try? await Task.sleep(for: .seconds(wait))
-                } else {
-                    await appState.refreshPulseFeed()
-                    try? await Task.sleep(for: .seconds(60))
+    }
+}
+
+/// The Chats tab's feed read, mounted by the tab rather than carried by the
+/// Pulse button: hiding the button (Sessions bar) must not stop the dot and
+/// the chats' marks updating. Only the tab that shows runs it, as the
+/// button's own task did.
+struct PulseFeedReader: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.v2Shell) private var shell
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            // While the Chats tab shows, every minute: new cards light the dot
+            // and mark their messages in the chats. At once when the plugin
+            // answers after a launch or a reconnect, so the feed names Pulse's
+            // chat.
+            .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID,
+                                      active: scenePhase == .active && shell.isTabActive,
+                                      served: appState.notifierPlugin.reports(PulseClient.feedCapability),
+                                      available: appState.showsPulseScreen)) {
+                guard scenePhase == .active, shell.isTabActive, appState.showsPulseScreen else { return }
+                while !Task.isCancelled {
+                    // The Pulse page, open over or beside the list, reads the
+                    // feed every minute itself; a read of its that just landed
+                    // stands for this one (issue 1728).
+                    if appState.pulseFeedIsFresh(within: 50), let applied = appState.pulseFeedAppliedAt?.at {
+                        // Wake a minute after that read, so the page closing
+                        // meanwhile doesn't leave the feed two minutes old.
+                        let wait = max(1, 60 - Date().timeIntervalSince(applied))
+                        try? await Task.sleep(for: .seconds(wait))
+                    } else {
+                        await appState.refreshPulseFeed()
+                        try? await Task.sleep(for: .seconds(60))
+                    }
                 }
             }
-        }
     }
 }
 
@@ -83,6 +99,7 @@ private struct PulseRefreshKey: Hashable {
     let dashboard: UUID?
     let active: Bool
     let served: Bool
+    let available: Bool
 }
 
 /// The mark under a message whose promise Pulse follows up: opens its card.
