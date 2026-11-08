@@ -265,6 +265,53 @@ final class ConnectionCardTests: XCTestCase {
         XCTAssertEqual(appState.messages.last?.connection?.isOpen, false, "It stops offering anything")
     }
 
+    func testNoFrameReopensASettledCard() async throws {
+        let (appState, _) = try await connectedAppState()
+        appState.handleStreamEvent(.connection(sessionId: "stored-a", activity: try card(1, state: "pending")))
+        appState.handleStreamEvent(.connection(sessionId: "stored-a", activity: try card(2, state: "connected", settled: true)))
+        appState.handleStreamEvent(.connection(sessionId: "stored-a", activity: try card(2, state: "pending")))
+        appState.handleStreamEvent(.connection(sessionId: "stored-a", activity: try card(3, state: "pending")))
+        XCTAssertEqual(appState.messages.last?.connection?.isOpen, false)
+        XCTAssertEqual(appState.messages.last?.connection?.targets.first?.state, .connected)
+    }
+
+    func testAResumeMidAnswerKeepsTheButtonsWaitingAndItsFailureReopensThem() async throws {
+        let (appState, socket) = try await connectedAppState()
+        appState.handleStreamEvent(.connection(sessionId: "stored-a", activity: try card(1, state: "pending")))
+        let rowID = try XCTUnwrap(appState.messages.last?.id)
+        let sent = ClarifyGate()
+        socket.onSend = { sent.signal() }
+        let answer = Task { await appState.respondToConnection(messageId: rowID, continues: true) }
+        try await sent.wait("the connection.respond request to be sent")
+        let frame = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any])
+        XCTAssertEqual((frame["params"] as? [String: Any]).flatMap { ($0["result"] as? [String: Any])?["settled_by"] as? String }, "continue")
+
+        // A resume rebuilds the transcript (cards are live-only) and brings the card back.
+        appState.messages.removeAll { $0.role == .connection }
+        appState.handleStreamEvent(.connection(sessionId: "stored-a", activity: try card(1, state: "pending")))
+        XCTAssertEqual(appState.messages.last?.connection?.status, .sending, "The answer is still on its way")
+
+        let id = try XCTUnwrap(frame["id"] as? Int)
+        socket.deliver(String(decoding: try JSONSerialization.data(withJSONObject: [
+            "jsonrpc": "2.0", "id": id, "error": ["code": -32000, "message": "boom"]
+        ]), as: UTF8.self))
+        await answer.value
+        XCTAssertEqual(appState.messages.last?.connection?.status, .error)
+        XCTAssertEqual(appState.messages.last?.connection?.isOpen, true)
+    }
+
+    func testSendingIntoTheChatContinuesItsOpenCard() async throws {
+        let (appState, socket) = try await connectedAppState()
+        appState.handleStreamEvent(.connection(sessionId: "stored-a", activity: try card(1, state: "pending")))
+        let sent = ClarifyGate()
+        socket.onSend = { sent.signal() }
+        appState.continueOpenConnections(beforeSendingIn: "stored-a")
+        try await sent.wait("Continue to be sent")
+        let frame = try XCTUnwrap(JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any])
+        XCTAssertEqual(frame["method"] as? String, "connection.respond")
+        XCTAssertEqual((frame["params"] as? [String: Any]).flatMap { ($0["result"] as? [String: Any])?["settled_by"] as? String }, "continue")
+    }
+
     func testASettledOperationNeverShownOpensNoCard() throws {
         let defaults = makeScratchDefaults("ConnectionCardTests.settled")
         let appState = AppState(defaults: defaults, loadSavedConnection: false, clearSessionPresentationCache: {},

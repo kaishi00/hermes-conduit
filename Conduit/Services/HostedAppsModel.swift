@@ -38,6 +38,9 @@ final class HostedAppsModel {
     @ObservationIgnored private var reads = 0
     @ObservationIgnored private var signInTask: Task<Void, Never>?
     @ObservationIgnored private var browserClosedAt: Date?
+    /// Which close the fallback below belongs to: an earlier one's timer
+    /// never ends a later close.
+    @ObservationIgnored private var browserCloseGeneration = 0
 
     static let pollInterval: Duration = .seconds(2)
     /// How long a closed Safari is given for Hermes to see the account.
@@ -132,10 +135,13 @@ final class HostedAppsModel {
     private func closeBrowser() {
         if browser != nil {
             browserClosing = true
+            browserCloseGeneration += 1
+            let generation = browserCloseGeneration
             // Also when no cover was up to say it went (its page was left).
             Task { [weak self] in
                 try? await Task.sleep(for: .seconds(1.5))
-                self?.browserClosing = false
+                guard let self, self.browserCloseGeneration == generation else { return }
+                self.browserClosing = false
             }
         }
         browser = nil

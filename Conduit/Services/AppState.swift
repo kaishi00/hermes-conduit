@@ -38271,6 +38271,10 @@ final class AppState: ObservableObject {
     /// lost its send to an ownership fence, and only an authoritative replay
     /// of the still-open request can make it answerable again.
     private var liveInputPromptSubmissions = Set<String>()
+    /// Connect-card answers on their way, by operation: which submission
+    /// and the seq it went out at. A resume that rebuilds the card keeps
+    /// its buttons waiting, and only that submission's failure reopens them.
+    private var liveConnectionSubmissions: [String: (token: UUID, seq: Int)] = [:]
 
     private func hasLiveApprovalSubmission(
         for activity: ApprovalActivity,
@@ -38754,8 +38758,12 @@ final class AppState: ObservableObject {
     /// outcomes on the card.
     @discardableResult
     private func applyConnectionActivity(_ activity: ConnectionActivity, commitsStreamedText: Bool = false) -> Bool {
+        if let pending = liveConnectionSubmissions[activity.opID], activity.settled || activity.seq > pending.seq {
+            liveConnectionSubmissions[activity.opID] = nil
+        }
         if let index = messages.firstIndex(where: { $0.connection?.opID == activity.opID }) {
-            guard let existing = messages[index].connection,
+            // A settled operation leaves nothing to press: no frame reopens it.
+            guard let existing = messages[index].connection, !(existing.settled && activity.isOpen),
                   let next = activity.applied(over: existing) else { return false }
             messages[index].content = ConnectionActivity.transcriptLine(next)
             messages[index].connection = next
@@ -38767,6 +38775,11 @@ final class AppState: ObservableObject {
         if commitsStreamedText { flushStreamingPartial() }
         var appended = activity
         appended.profile = activeProfile
+        // A resume rebuilt the transcript while an answer was on its way.
+        if let pending = liveConnectionSubmissions[activity.opID] {
+            appended.status = .sending
+            appended.sentAtSeq = pending.seq
+        }
         var row = ChatMessage(
             id: "connection-\(activity.opID)",
             role: .connection,
@@ -38790,11 +38803,13 @@ final class AppState: ObservableObject {
         messages[index].connection?.status = .sending
         messages[index].connection?.sentAtSeq = current.seq
         messages[index].connection?.error = nil
+        let token = UUID()
+        liveConnectionSubmissions[current.opID] = (token, current.seq)
         setRunning(true)
         do {
             try await client.respondToConnection(opID: current.opID, sessionId: current.sessionId, targets: targets, continues: continues)
         } catch {
-            failConnectionAnswer(messageId: messageId, opID: current.opID, profile: profile, client: client, error: error)
+            failConnectionAnswer(messageId: messageId, opID: current.opID, token: token, profile: profile, client: client, error: error)
         }
     }
 
@@ -38807,10 +38822,12 @@ final class AppState: ObservableObject {
         messages[index].connection?.status = .sending
         messages[index].connection?.sentAtSeq = current.seq
         messages[index].connection?.error = nil
+        let token = UUID()
+        liveConnectionSubmissions[current.opID] = (token, current.seq)
         do {
             try await client.reissueConnection(sessionId: current.sessionId, name: name)
         } catch {
-            failConnectionAnswer(messageId: messageId, opID: current.opID, profile: profile, client: client, error: error)
+            failConnectionAnswer(messageId: messageId, opID: current.opID, token: token, profile: profile, client: client, error: error)
         }
     }
 
@@ -38854,7 +38871,10 @@ final class AppState: ObservableObject {
         return client
     }
 
-    private func failConnectionAnswer(messageId: String, opID: String, profile: String, client: HermesClient, error: Error) {
+    private func failConnectionAnswer(messageId: String, opID: String, token: UUID, profile: String, client: HermesClient, error: Error) {
+        // Only this submission's failure: a later answer owns the card now.
+        guard liveConnectionSubmissions[opID]?.token == token else { return }
+        liveConnectionSubmissions[opID] = nil
         guard profile == activeProfile, self.client === client,
               let index = messages.firstIndex(where: { $0.id == messageId }),
               messages[index].connection?.opID == opID,
