@@ -321,7 +321,7 @@ final class HostedAppsModel {
     }
 
     /// No answer in time: whether Hermes did it is unknown.
-    static func isTimeout(_ error: Error) -> Bool {
+    nonisolated static func isTimeout(_ error: Error) -> Bool {
         if case HermesError.timeout = error { return true }
         return (error as? URLError)?.code == .timedOut
     }
