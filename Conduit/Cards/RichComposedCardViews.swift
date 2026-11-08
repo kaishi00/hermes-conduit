@@ -57,9 +57,9 @@ struct RichComposedCard: View {
         }
     }
 
-    /// Outside a chat (the saved copy, a room, the call screen) the card's
-    /// fields keep to themselves.
-    private var chat: [String] { context?.sessionIDs ?? [] }
+    /// Outside a chat (the saved copy, a room, the call screen) nothing
+    /// typed is kept.
+    private var chat: String? { context?.chat }
 
     private var shownSections: [RichSection] {
         open ? card.sections : card.sections.filter { !$0.more }
@@ -247,7 +247,8 @@ private struct RichFieldView: View {
                 TextField(text: $value, prompt: field.placeholder.map { Text(verbatim: $0) }) {
                     Text(verbatim: field.label ?? field.id)
                 }
-                .keyboardType(.decimalPad)
+                // The decimal pad has no minus sign, so a field that takes one gets the keys that do.
+                .keyboardType((field.min ?? -1) < 0 ? .numbersAndPunctuation : .decimalPad)
                 .scaledFont(.subheadline)
                 .textFieldStyle(.roundedBorder)
                 // The host takes only a number in range, so a tap waits for one (RichCardButtonRow).
@@ -381,8 +382,8 @@ struct RichCardButtonRow: View {
     @ViewBuilder
     private func row(_ shown: [RichButton], draftEmpty: Bool) -> some View {
         ForEach(Array(shown.enumerated()), id: \.offset) { _, button in
-            let state = button.id.flatMap {
-                taps.state(RichCardTapMemory.key(card: card, button: $0), chat: context?.sessionIDs ?? [])
+            let state = button.id.flatMap { id in
+                context.flatMap { taps.state(RichCardTapMemory.key(card: card, button: id, chat: $0.chat)) }
             }
             Button {
                 Haptics.light()
@@ -468,18 +469,17 @@ struct RichCardButtonRow: View {
             context.send(target)
         case .tap:
             guard let context, context.canSend, let tap = context.tap, let id = button.id else { return }
-            let key = RichCardTapMemory.key(card: card, button: id)
+            let key = RichCardTapMemory.key(card: card, button: id, chat: context.chat)
             let body: [String: Any] = ["card": jsonObject(card.normalizedJSON) ?? [:], "action": id,
                                        "values": fieldValues]
             let message = RichCardActionContext.message(label: button.label, title: card.title)
-            let chat = context.sessionIDs
-            taps.set(key, .sending, chat: chat)
+            taps.set(key, .sending)
             Task { @MainActor in
                 do {
                     try await tap(body, message)
-                    RichCardTapMemory.shared.set(key, .sent, chat: chat)
+                    RichCardTapMemory.shared.set(key, .sent)
                 } catch {
-                    RichCardTapMemory.shared.set(key, nil, chat: chat)
+                    RichCardTapMemory.shared.set(key, nil)
                     Haptics.error()
                     UIAccessibility.post(notification: .announcement,
                                          argument: AppLocalization.string("Failed to send: \(error.localizedDescription)"))

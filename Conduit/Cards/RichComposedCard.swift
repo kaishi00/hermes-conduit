@@ -113,7 +113,7 @@ struct RichField: Equatable, Hashable {
         case let (low?, high?): return "\(written(low)) – \(written(high))"
         case let (low?, nil): return "≥ \(written(low))"
         case let (nil, high?): return "≤ \(written(high))"
-        case (nil, nil): return "0–9"
+        case (nil, nil): return "123"
         }
     }
 
@@ -193,10 +193,14 @@ struct RichSection: Equatable, Hashable {
 /// message can go. Nil where they can't (a group room, the call screen,
 /// the saved copy, a chat on its way), where only open and copy work.
 struct RichCardActionContext {
-    /// The ids the chat is known by (more come as they're confirmed), so
-    /// what's typed in or tapped on one chat's card never shows on the same
-    /// card in another (RichCardFieldMemory, RichCardTapMemory).
+    /// The ids the chat is known by, which the tap names to the host.
     let sessionIDs: [String]
+    /// The open chat itself, its profile and its own id: what's typed in or
+    /// tapped on one chat's card never shows on the same card in another
+    /// (RichCardFieldMemory, RichCardTapMemory), and a tap's message goes
+    /// only to it. A runtime id another chat can come to share doesn't
+    /// count, as for a waiting send.
+    let chat: String
     /// A send or tap can go now: Hermes is free and connected and the
     /// composer is on, as for a board's follow-ups.
     let canSend: Bool
@@ -230,16 +234,15 @@ struct RichCardActionContext {
     /// the chat and profile it was tapped in, while the composer is on and
     /// holds no draft (the message goes in the draft's place, so words typed
     /// while the tap was on its way keep the button tappable instead).
-    static func mayFollowUp(tappedIn sessionIDs: [String], profile: String, openSessionIDs: [String],
-                            openProfile: String, composerIsEnabled: Bool, draft: String) -> Bool {
-        composerIsEnabled && !Set(openSessionIDs).isDisjoint(with: sessionIDs) && openProfile == profile
-            && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    static func mayFollowUp(tappedIn chat: String, openChat: String?, composerIsEnabled: Bool,
+                            draft: String) -> Bool {
+        composerIsEnabled && openChat == chat && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// Whether two sets of a chat's ids are the same chat: they share an id
-    /// (a chat gains ids as they're confirmed), or neither is a chat.
-    static func sameChat(_ one: Set<String>, _ other: Set<String>) -> Bool {
-        one.isEmpty && other.isEmpty || !one.isDisjoint(with: other)
+    /// The `chat` of the chat open on a profile, or nil without one.
+    static func chat(profile: String, sessionID: String?) -> String? {
+        guard let sessionID, !sessionID.isEmpty else { return nil }
+        return "\(profile)\u{1F}\(sessionID)"
     }
 }
 
@@ -258,9 +261,9 @@ extension EnvironmentValues {
 
 /// What the user typed in a card's fields and whether it was opened, kept
 /// for the session while the card is drawn again (a board's tab switched
-/// back to), by the card's normalized JSON and the chat: a changed card
-/// starts over, and the same card in another chat starts on its own. A
-/// chat is matched by any of its ids, as it gains them while it's open.
+/// back to), by the card's normalized JSON and the chat
+/// (RichCardActionContext.chat): a changed card starts over, and the same
+/// card in another chat starts on its own. Outside a chat nothing is kept.
 @MainActor
 final class RichCardFieldMemory {
     static let shared = RichCardFieldMemory()
@@ -268,7 +271,7 @@ final class RichCardFieldMemory {
 
     private struct Entry {
         let card: String
-        var chat: Set<String>
+        let chat: String
         var values: [String: String]
         var open: Bool
     }
@@ -276,22 +279,18 @@ final class RichCardFieldMemory {
     /// Least recently kept first, so the card being typed in stays.
     private var entries: [Entry] = []
 
-    func kept(card: RichCard, chat: [String]) -> (values: [String: String], open: Bool)? {
-        entries.last(where: { matches($0, card: card, chat: Set(chat)) }).map { ($0.values, $0.open) }
+    func kept(card: RichCard, chat: String?) -> (values: [String: String], open: Bool)? {
+        guard let chat else { return nil }
+        let json = card.normalizedJSON
+        return entries.last(where: { $0.card == json && $0.chat == chat }).map { ($0.values, $0.open) }
     }
 
-    func keep(card: RichCard, chat: [String], values: [String: String], open: Bool) {
-        let ids = Set(chat)
-        var entry = Entry(card: card.normalizedJSON, chat: ids, values: values, open: open)
-        if let index = entries.lastIndex(where: { matches($0, card: card, chat: ids) }) {
-            entry.chat.formUnion(entries.remove(at: index).chat)
-        }
-        entries.append(entry)
+    func keep(card: RichCard, chat: String?, values: [String: String], open: Bool) {
+        guard let chat else { return }
+        let json = card.normalizedJSON
+        entries.removeAll { $0.card == json && $0.chat == chat }
+        entries.append(Entry(card: json, chat: chat, values: values, open: open))
         if entries.count > Self.maxCards { entries.removeFirst(entries.count - Self.maxCards) }
-    }
-
-    private func matches(_ entry: Entry, card: RichCard, chat: Set<String>) -> Bool {
-        entry.card == card.normalizedJSON && RichCardActionContext.sameChat(entry.chat, chat)
     }
 }
 
@@ -304,23 +303,23 @@ final class RichCardTapMemory: ObservableObject {
 
     enum State: Equatable { case sending, sent }
 
-    @Published private(set) var taps: [String: (state: State, at: Date, chat: Set<String>)] = [:]
+    @Published private(set) var taps: [String: (state: State, at: Date)] = [:]
 
-    static func key(card: RichCard, button: String) -> String {
-        "\(card.normalizedJSON)\u{1F}\(button)"
+    /// A button on a card in a chat: the same card in another chat wasn't
+    /// tapped, and its taps are its own.
+    static func key(card: RichCard, button: String, chat: String) -> String {
+        "\(chat)\u{1F}\(card.normalizedJSON)\u{1F}\(button)"
     }
 
-    /// The tap's state in this chat: the same card in another chat wasn't tapped.
-    func state(_ key: String, chat: [String], now: Date = .now) -> State? {
-        guard let tap = taps[key], now.timeIntervalSince(tap.at) < Self.holdSeconds,
-              RichCardActionContext.sameChat(tap.chat, Set(chat)) else { return nil }
+    func state(_ key: String, now: Date = .now) -> State? {
+        guard let tap = taps[key], now.timeIntervalSince(tap.at) < Self.holdSeconds else { return nil }
         return tap.state
     }
 
-    func set(_ key: String, _ state: State?, chat: [String]) {
+    func set(_ key: String, _ state: State?) {
         taps = taps.filter { Date.now.timeIntervalSince($0.value.at) < Self.holdSeconds }
         if let state {
-            taps[key] = (state: state, at: .now, chat: Set(chat))
+            taps[key] = (state: state, at: .now)
             // Nothing else may redraw the button when the hold passes.
             Task { @MainActor [weak self] in
                 try? await Task.sleep(for: .seconds(Self.holdSeconds + 0.5))

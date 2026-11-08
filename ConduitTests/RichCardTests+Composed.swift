@@ -69,32 +69,41 @@ extension AppStateVoiceCapabilityTests {
                 ["kind": "field", "id": "note", "input": "text"]]]],
         ]], schema: schema).first)
         let memory = RichCardFieldMemory()
-        XCTAssertNil(memory.kept(card: card, chat: ["a"]))
-        memory.keep(card: card, chat: ["a"], values: ["note": "typed"], open: true)
-        XCTAssertEqual(memory.kept(card: card, chat: ["a"])?.values, ["note": "typed"])
-        XCTAssertEqual(memory.kept(card: card, chat: ["a"])?.open, true)
-        XCTAssertEqual(memory.kept(card: card, chat: ["a", "a2"])?.values, ["note": "typed"],
-                       "a chat that gained an id is the same chat")
-        XCTAssertNil(memory.kept(card: card, chat: ["b"]), "the same card in another chat starts on its own")
-        XCTAssertNil(memory.kept(card: card, chat: []), "outside a chat too")
+        let chat = RichCardActionContext.chat(profile: "p", sessionID: "a")
+        XCTAssertNil(memory.kept(card: card, chat: chat))
+        memory.keep(card: card, chat: chat, values: ["note": "typed"], open: true)
+        XCTAssertEqual(memory.kept(card: card, chat: chat)?.values, ["note": "typed"])
+        XCTAssertEqual(memory.kept(card: card, chat: chat)?.open, true)
+        XCTAssertNil(memory.kept(card: card, chat: RichCardActionContext.chat(profile: "p", sessionID: "b")),
+                     "the same card in another chat starts on its own")
+        XCTAssertNil(memory.kept(card: card, chat: RichCardActionContext.chat(profile: "q", sessionID: "a")),
+                     "or on another profile")
+        memory.keep(card: card, chat: nil, values: ["note": "saved copy"], open: true)
+        XCTAssertNil(memory.kept(card: card, chat: nil), "outside a chat nothing is kept")
         // The least recently kept card goes past the cap; the one typed in stays.
         for index in 0..<RichCardFieldMemory.maxCards {
-            memory.keep(card: card, chat: ["other-\(index)"], values: [:], open: false)
+            memory.keep(card: card, chat: "other-\(index)", values: [:], open: false)
             if index == RichCardFieldMemory.maxCards / 2 {
-                memory.keep(card: card, chat: ["a", "a2"], values: ["note": "again"], open: true)
+                memory.keep(card: card, chat: chat, values: ["note": "again"], open: true)
             }
         }
-        XCTAssertEqual(memory.kept(card: card, chat: ["a2"])?.values, ["note": "again"])
-        XCTAssertNil(memory.kept(card: card, chat: ["other-0"]))
+        XCTAssertEqual(memory.kept(card: card, chat: chat)?.values, ["note": "again"])
+        XCTAssertNil(memory.kept(card: card, chat: "other-0"))
     }
 
     @MainActor
-    func testATapShowsSentOnlyInItsOwnChat() {
+    func testATapShowsSentOnlyInItsOwnChat() throws {
+        let schema = try XCTUnwrap(RichCardSchema.bundled)
+        let card = try XCTUnwrap(RichCard.cards(raw: [emailCard], schema: schema).first)
         let memory = RichCardTapMemory()
-        memory.set("k", .sent, chat: ["a"])
-        XCTAssertEqual(memory.state("k", chat: ["a", "a2"]), .sent)
-        XCTAssertNil(memory.state("k", chat: ["b"]))
-        XCTAssertNil(memory.state("k", chat: ["a"], now: .now.addingTimeInterval(RichCardTapMemory.holdSeconds + 1)))
+        let mine = RichCardTapMemory.key(card: card, button: "send", chat: "p\u{1F}a")
+        let other = RichCardTapMemory.key(card: card, button: "send", chat: "p\u{1F}b")
+        memory.set(mine, .sent)
+        XCTAssertEqual(memory.state(mine), .sent)
+        XCTAssertNil(memory.state(other))
+        memory.set(other, .sending)
+        memory.set(other, nil)
+        XCTAssertEqual(memory.state(mine), .sent, "another chat's failed tap leaves this one's alone")
     }
 
     func testANumberFieldTakesOnlyANumberInRange() throws {
@@ -106,19 +115,23 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(field.numberText("0"))
         XCTAssertNil(field.numberText("two"))
         XCTAssertEqual(field.numberRange, "1 – 8")
+        XCTAssertEqual(try XCTUnwrap(RichField(json: ["id": "n", "input": "number"])).numberRange, "123")
     }
 
     func testATapsMessageGoesOnlyToItsChatWithNoDraft() {
-        func may(open: [String] = ["s1"], profile: String = "p", enabled: Bool = true, draft: String = "") -> Bool {
-            RichCardActionContext.mayFollowUp(tappedIn: ["s1", "s2"], profile: "p", openSessionIDs: open,
-                                              openProfile: profile, composerIsEnabled: enabled, draft: draft)
+        let tapped = RichCardActionContext.chat(profile: "p", sessionID: "s1")!
+        func may(open: String? = "p\u{1F}s1", enabled: Bool = true, draft: String = "") -> Bool {
+            RichCardActionContext.mayFollowUp(tappedIn: tapped, openChat: open, composerIsEnabled: enabled, draft: draft)
         }
         XCTAssertTrue(may())
         XCTAssertTrue(may(draft: "  \n"))
-        XCTAssertFalse(may(open: ["other"]), "the user switched chats while the tap was on its way")
-        XCTAssertFalse(may(profile: "q"))
+        XCTAssertFalse(may(open: RichCardActionContext.chat(profile: "p", sessionID: "other")),
+                       "the user switched chats while the tap was on its way, even to one sharing a runtime id")
+        XCTAssertFalse(may(open: RichCardActionContext.chat(profile: "q", sessionID: "s1")))
+        XCTAssertFalse(may(open: nil))
         XCTAssertFalse(may(enabled: false))
         XCTAssertFalse(may(draft: "typed meanwhile"))
+        XCTAssertNil(RichCardActionContext.chat(profile: "p", sessionID: ""))
     }
 
     func testAFieldWhosePlaceholderAsksForASecretIsDropped() throws {
@@ -188,12 +201,12 @@ extension AppStateVoiceCapabilityTests {
         let schema = try XCTUnwrap(RichCardSchema.bundled)
         let card = try XCTUnwrap(RichCard.cards(raw: [emailCard], schema: schema).first)
         let memory = RichCardTapMemory()
-        let key = RichCardTapMemory.key(card: card, button: "send")
-        memory.set(key, .sent, chat: [])
-        XCTAssertEqual(memory.state(key, chat: []), .sent)
-        XCTAssertNil(memory.state(key, chat: [], now: Date().addingTimeInterval(RichCardTapMemory.holdSeconds + 1)))
-        memory.set(key, nil, chat: [])
-        XCTAssertNil(memory.state(key, chat: []))
+        let key = RichCardTapMemory.key(card: card, button: "send", chat: "p\u{1F}a")
+        memory.set(key, .sent)
+        XCTAssertEqual(memory.state(key), .sent)
+        XCTAssertNil(memory.state(key, now: Date().addingTimeInterval(RichCardTapMemory.holdSeconds + 1)))
+        memory.set(key, nil)
+        XCTAssertNil(memory.state(key))
     }
 
     func testAFieldsDateReadsAndWritesAsTheSchemaDoes() throws {

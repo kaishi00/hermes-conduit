@@ -16,7 +16,8 @@ extension AppState {
     var richChecklistContext: RichChecklistContext? {
         guard notifierPlugin.reports(RichChecklistContext.capability), offlineChatPresentation == nil else { return nil }
         let sessionIDs = activeChatArtifactSessionIDs
-        guard !sessionIDs.isEmpty else { return nil }
+        guard !sessionIDs.isEmpty,
+              let chat = RichCardActionContext.chat(profile: activeProfile, sessionID: activeSessionId) else { return nil }
         let profile = activeProfile
         let dashboardID = activeDashboardID
         let scope = RichChecklistContext.scope(profile: profile, sessionIDs: sessionIDs)
@@ -42,7 +43,8 @@ extension AppState {
     func richCardActionContext(canSend: Bool) -> RichCardActionContext? {
         guard offlineChatPresentation == nil else { return nil }
         let sessionIDs = activeChatArtifactSessionIDs
-        guard !sessionIDs.isEmpty else { return nil }
+        guard !sessionIDs.isEmpty,
+              let chat = RichCardActionContext.chat(profile: activeProfile, sessionID: activeSessionId) else { return nil }
         let profile = activeProfile
         let dashboardID = activeDashboardID
         let tap: (@MainActor ([String: Any], String) async throws -> Void)?
@@ -57,9 +59,9 @@ extension AppState {
                 // The message goes only to the chat the card was tapped in: after
                 // a switch the tap waits unheard and is forgotten on the host.
                 guard RichCardActionContext.mayFollowUp(
-                    tappedIn: sessionIDs, profile: profile, openSessionIDs: self.activeChatArtifactSessionIDs,
-                    openProfile: self.activeProfile, composerIsEnabled: self.composerIsEnabled,
-                    draft: self.predictive.draft) else {
+                    tappedIn: chat,
+                    openChat: RichCardActionContext.chat(profile: self.activeProfile, sessionID: self.activeSessionId),
+                    composerIsEnabled: self.composerIsEnabled, draft: self.predictive.draft) else {
                     throw DashboardTicketBridgeError.notReady
                 }
                 self.requestBoardFollowUp(.send, text: message)
@@ -67,7 +69,7 @@ extension AppState {
         } else {
             tap = nil
         }
-        return RichCardActionContext(sessionIDs: sessionIDs, canSend: canSend, composer: predictive,
+        return RichCardActionContext(sessionIDs: sessionIDs, chat: chat, canSend: canSend, composer: predictive,
                                      send: { [weak self] text in self?.requestBoardFollowUp(.send, text: text) },
                                      tap: tap)
     }
