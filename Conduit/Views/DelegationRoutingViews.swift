@@ -61,9 +61,15 @@ struct DelegationRoutingSettings: View {
                     if let routing {
                         modeRows(routing)
                         status(routing)
-                        if !answered && loadFailed {
+                        // A read that fails says so, a kept routing or an
+                        // answered one on screen: it may be out of date.
+                        if loadFailed {
+                            Text("Could not load subagent routing.")
+                                .scaledFont(.footnote).foregroundStyle(.secondary)
                             Button(AppLocalization.string("Try Again")) { Task { await reload() } }
                                 .buttonStyle(.settings)
+                        } else if !answered {
+                            ProgressView().controlSize(.small)
                         }
                     } else if loadFailed {
                         Text("Could not load subagent routing.")
@@ -407,7 +413,12 @@ struct DelegationRoutingSettings: View {
             guard var shown = routing else { return }
             shown.profileRoutes = saved.routes
             shown.defaultProfileRoute = saved.defaultRoute
-            descriptions = [:]
+            // Only what Hermes now holds leaves the drafts: a line typed
+            // in another row meanwhile stays, to save next.
+            descriptions = descriptions.filter { name, typed in
+                let stored = saved.routes.first { $0.name == name }?.description
+                return stored != nil && stored != typed.trimmingCharacters(in: .whitespacesAndNewlines)
+            }
             show(shown)
         }
     }
@@ -429,14 +440,21 @@ struct DelegationRoutingSettings: View {
         working = true
         error = nil
         Task {
+            var saved = false
             do {
                 try await change()
+                saved = true
             } catch is CancellationError {
             } catch let failure {
                 await reload()
                 error = UserFacingError.message(for: failure)
             }
             working = false
+            // A line finished while that change was out saves now (not
+            // after a failure, which would only fail again).
+            if saved, let pending = descriptions.keys.sorted().first(where: { $0 != describing }) {
+                commitDescription(pending)
+            }
         }
     }
 

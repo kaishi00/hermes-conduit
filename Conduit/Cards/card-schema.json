@@ -1,9 +1,9 @@
 {
-  "version": 5,
+  "version": 6,
   "about": "Conduit's rich cards: the one definition both the conduit_push plugin and Conduit read. Conduit ships a byte-identical copy (Conduit/Cards/card-schema.json) and its CI fails when the copy differs from this file on main. 'card' is a JSON Schema subset (type, enum, properties, required, items, minItems, maxItems, maxLength, minimum, maximum, format uri or line) that goes into the tool definitions as is, except that tools take a diff card's diff as 'inputs.diff' (a patch, a patch file or two texts), which the plugin reads into the card's diff. Text is cleaned the same way everywhere: control characters become spaces, and the invisible ones that can make text read differently from what it holds (U+202A to U+202E, U+2066 to U+2069, U+200B, U+2060 and U+FEFF) are dropped, except in a line, where each becomes U+FFFD so it shows. A line (format line) keeps its spaces: it is cut to maxLength, but it is never trimmed. Normalizing is the same on both sides: unknown keys are dropped, text is cleaned and cut to maxLength, an invalid optional value is dropped, an invalid list item is dropped, and an invalid required value makes its object invalid. Before that, a table's cells (and its column names) are made text: a string stays as it is, an empty one or anything that isn't text or a number becomes \u2013, and a number becomes its digits (a whole number with no decimal point, otherwise the shortest form that reads back as the same number). Then the rules in 'rules' apply. 'board' holds the shared definitions of a whole conduit_show call's layout and next, which tools offer beside the cards. cards/card-vectors.json holds the shared examples both test suites run.",
   "max_cards": 12,
   "rules": [
-    "A card keeps only its own type's field (places for map, place and places; people for contact; stats, chart, weather, options, steps, media, status, table, timeline, checklist, list, progress, callout or diff for the others), plus title and live, source on every type but map, place and places, needs on steps and ranked on list; a card without its type's field is dropped.",
+    "A card keeps only its own type's field (places for map, place and places; people for contact; stats, chart, weather, options, steps, media, status, table, timeline, checklist, list, progress, callout, diff or sections for the others), plus title, live and actions, source on every type but map, place and places, needs on steps and ranked on list; a card without its type's field is dropped.",
     "A route is kept only on a map card, only when every place given survived, when 'to' (and 'from' if given) name places in the list, and when 'from' differs from 'to'.",
     "A place card keeps only its first place.",
     "A place's or person's photo is kept only when its url is https.",
@@ -19,7 +19,12 @@
     "A progress item is kept only when its goal is above 0 and its value is 0 or more.",
     "A diff file keeps only the hunk lines that start with +, - or a space, and a hunk with none left is dropped; a binary file keeps no hunks.",
     "A diff's id is kept only when it is cd- and 16 hex digits.",
-    "Only the first card in a set keeps a given live name."
+    "Only the first card in a set keeps a given live name.",
+    "An element keeps only its own kind's fields: text and role for text; value, label and change for metric; text for badge; symbol for icon; url and label for image; progress and label for progress; nothing for divider; id, input, label, value, lines, options, min, max and placeholder for field; the button fields (label, action, id, target, symbol, style and confirm) for button; and tone on text, metric, badge, icon and progress. An element without its kind's own (text for text and badge, value for metric, symbol for icon, url for image, progress for progress, id and input for field, label and action for button) is dropped, and a section with none left is dropped.",
+    "An image element is kept only when its url is https.",
+    "A field is dropped when its id, label or placeholder names a secret: read in lower case with everything but letters (of any script) and digits as spaces, its words joined together hold password, passcode, secret, token, apikey, onetime, privatekey, recoverykey, licensekey, seedphrase, verificationcode, securitycode, authcode, backupcode, passphrase, totp, masterkey, credential, 2fa, twofactor, logincode, accesscode, unlockcode, securitykey, resetcode, recoverycode, activationcode, authkey, verificationkey or backupkey, or the same in another language (passwort, kennwort, contraseña, motdepasse, senha, пароль, hasło, şifre, katasandi, パスワード, 暗証番号, 認証コード, 密码, 密碼, 验证码, 驗證碼, 비밀번호, 인증번호, 인증코드, bestätigungscode, verifizierungscode, zugangscode, códigodeverificación, codigodeverificacion, códigodeverificação, codedevérification, codedeverification, codicediverifica, kodeverifikasi, doğrulamakodu, kodweryfikacyjny, кодподтверждения, clavedeacceso or contrasena), or one of its words is pin, otp, cvv or cvc, when the card already has a field with that id, or when the card already has six fields. lines and placeholder go with text, options with choice, min and max with number. A choice field needs options and keeps a value only when it is one of them (compared without regard to case, written as the option); a toggle's value is kept only when it is on or off, a date's only when it is YYYY-MM-DD or YYYY-MM-DDTHH:MM, a number's only when it reads as a number within min and max; min is dropped when it is above max.",
+    "A button (an element or an action) needs id for tap and target for open, copy and send, and is dropped without it; a tap button keeps no target and the others keep no id. An open target is kept only when it starts with https://, maps:, tel:, sms:, mailto:, calshow: or x-apple-reminderkit: (compared without regard to case) and holds no spaces, quotes, backticks, backslashes or angle brackets; a send target only when it is a plain message, as a follow-up must be, and a tap button only when its label is one (the tap sends it). A tap button is dropped when the card already has one with that id. A card's first primary button stays primary; the others become plain.",
+    "A composed card is dropped when no section is left."
   ],
   "board": {
     "layout": {"type": "string", "enum": ["stack", "tabs"], "description": "How the cards are laid out: stack (the default) one under another, or tabs, one card at a time with each card's title as its tab. Conduit picks the columns on wide screens itself."},
@@ -35,12 +40,12 @@
   },
   "card": {
     "type": "object",
-    "description": "One card Conduit draws natively. map: a map with a pin per place, and a route when you give one. place: one place in detail. places: several places to swipe through. stats: a few big numbers. chart: a line, bar or pie chart. weather: a forecast. comparison: two to four options side by side. steps: instructions to follow, with timers. media: photos, videos or audio to look at or play. contact: a few people to call, message or email, or someone to text with a message you wrote for the user to send. status: how something in progress is going, like a delivery, a flight, a match or a job. table: rows and columns the user can sort. timeline: a plan by day or phase, each with its stops. checklist: things to tick off, kept across the user's devices. list: a ranked or plain list of things, each with a line and a value. progress: how far along goals are. callout: a tip, note or warning.",
+    "description": "One card Conduit draws natively. map: a map with a pin per place, and a route when you give one. place: one place in detail. places: several places to swipe through. stats: a few big numbers. chart: a line, bar or pie chart. weather: a forecast. comparison: two to four options side by side. steps: instructions to follow, with timers. media: photos, videos or audio to look at or play. contact: a few people to call, message or email, or someone to text with a message you wrote for the user to send. status: how something in progress is going, like a delivery, a flight, a match or a job. table: rows and columns the user can sort. timeline: a plan by day or phase, each with its stops. checklist: things to tick off, kept across the user's devices. list: a ranked or plain list of things, each with a line and a value. progress: how far along goals are. callout: a tip, note or warning. diff: changes line by line. composed: anything else, built from sections of text, metrics, badges, icons, images, progress bars, fields and buttons, like an email ready to send, a day's agenda or an idea to act on.",
     "properties": {
       "type": {
         "type": "string",
-        "enum": ["map", "place", "places", "stats", "chart", "weather", "comparison", "steps", "media", "contact", "status", "table", "timeline", "checklist", "list", "progress", "callout", "diff"],
-        "description": "The kind of card; fill in its field: places for map, place and places, people for contact, otherwise the field named like the type (options for comparison)."
+        "enum": ["map", "place", "places", "stats", "chart", "weather", "comparison", "steps", "media", "contact", "status", "table", "timeline", "checklist", "list", "progress", "callout", "diff", "composed"],
+        "description": "The kind of card; fill in its field: places for map, place and places, people for contact, otherwise the field named like the type (options for comparison, sections for composed)."
       },
       "title": {
         "type": "string",
@@ -520,6 +525,72 @@
           "id": {"type": "string", "maxLength": 40, "description": "The whole diff, kept on the host."}
         },
         "required": ["files", "added", "removed"]
+      }
+,
+      "sections": {
+        "type": "array",
+        "minItems": 1,
+        "maxItems": 8,
+        "description": "composed only: the card built from sections, each a row or a column of elements, drawn natively in Conduit's own fonts and colors.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "layout": {"type": "string", "enum": ["column", "row"], "description": "column (the default) stacks its elements; row puts them side by side."},
+            "more": {"type": "boolean", "description": "true to fold this section until the user opens the card."},
+            "items": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 6,
+              "items": {
+                "type": "object",
+                "description": "One element. text: text with a role and tone. metric: a big value with a label. badge: a short tag. icon: an SF Symbol. image: a picture. progress: a bar from 0 to 1. divider: a line. field: something the user fills in, sent with a tap button. button: an action.",
+                "properties": {
+                  "kind": {"type": "string", "enum": ["text", "metric", "badge", "icon", "image", "progress", "divider", "field", "button"]},
+                  "text": {"type": "string", "maxLength": 500, "description": "text and badge: what it says."},
+                  "role": {"type": "string", "enum": ["heading", "body", "caption", "mono"], "description": "text: body if left out."},
+                  "tone": {"type": "string", "enum": ["neutral", "accent", "good", "warning", "bad"], "description": "text, metric, badge, icon and progress: neutral if left out."},
+                  "value": {"type": "string", "maxLength": 2000, "description": "metric: the value, like 72% or $1.2M. field: what it starts filled in with (a toggle on or off, a choice one of options, a date YYYY-MM-DD or YYYY-MM-DDTHH:MM)."},
+                  "change": {"type": "string", "maxLength": 40, "description": "metric: how it moved, like +4%."},
+                  "url": {"type": "string", "format": "uri", "maxLength": 500, "description": "image: a direct https image URL you actually found."},
+                  "progress": {"type": "number", "minimum": 0, "maximum": 1, "description": "progress: how far along, 0 to 1."},
+                  "input": {"type": "string", "enum": ["text", "choice", "toggle", "date", "number"], "description": "field: what the user fills in."},
+                  "lines": {"type": "integer", "minimum": 1, "maximum": 8, "description": "field text: the lines to show, 1 if left out."},
+                  "options": {"type": "array", "minItems": 2, "maxItems": 6, "description": "field choice: the options.", "items": {"type": "string", "maxLength": 60}},
+                  "min": {"type": "number", "description": "field number: the lowest allowed."},
+                  "max": {"type": "number", "description": "field number: the highest allowed."},
+                  "placeholder": {"type": "string", "maxLength": 80, "description": "field text: shown while it's empty."},
+                  "label": {"type": "string", "maxLength": 80, "description": "metric, progress and field: its label. image: what it shows. button: what it says, a verb like Send or Do it."},
+                  "action": {"type": "string", "enum": ["open", "copy", "send", "tap"], "description": "open: open target, an https link or a maps:, tel:, sms:, mailto:, calshow: or x-apple-reminderkit: link. copy: copy target. send: send target as the user's message. tap: the user's tap reaches you at once as a message from them, with the card's field values; do it with your tools, then show the card again under its live name with the result."},
+                  "id": {"type": "string", "maxLength": 40, "description": "tap: what you'll hear was tapped, like send or snooze."},
+                  "target": {"type": "string", "maxLength": 1000, "description": "open: the link. copy: the text. send: the message, in the user's words."},
+                  "symbol": {"type": "string", "maxLength": 60, "description": "An SF Symbol name, like paperplane.fill."},
+                  "style": {"type": "string", "enum": ["primary", "plain", "destructive"], "description": "plain if left out; one primary at most."},
+                  "confirm": {"type": "string", "maxLength": 120, "description": "A question Conduit asks before it goes, like Send to Mei?, for anything that sends, buys or deletes."}
+                },
+                "required": ["kind"]
+              }
+            }
+          },
+          "required": ["items"]
+        }
+      },
+      "actions": {
+        "type": "array",
+        "maxItems": 3,
+        "description": "Any card: up to three buttons at its foot.",
+        "items": {
+          "type": "object",
+          "properties": {
+            "label": {"type": "string", "maxLength": 40, "description": "What the button says, a verb like Send, Do it or Open in Calendar."},
+            "action": {"type": "string", "enum": ["open", "copy", "send", "tap"], "description": "open: open target, an https link or a maps:, tel:, sms:, mailto:, calshow: or x-apple-reminderkit: link. copy: copy target. send: send target as the user's message. tap: the user's tap reaches you at once as a message from them, with the card's field values; do it with your tools, then show the card again under its live name with the result."},
+            "id": {"type": "string", "maxLength": 40, "description": "tap: what you'll hear was tapped, like send or snooze."},
+            "target": {"type": "string", "maxLength": 1000, "description": "open: the link. copy: the text. send: the message, in the user's words."},
+            "symbol": {"type": "string", "maxLength": 60, "description": "An SF Symbol name, like paperplane.fill."},
+            "style": {"type": "string", "enum": ["primary", "plain", "destructive"], "description": "plain if left out; one primary at most."},
+            "confirm": {"type": "string", "maxLength": 120, "description": "A question Conduit asks before it goes, like Send to Mei?, for anything that sends, buys or deletes."}
+          },
+          "required": ["label", "action"]
+        }
       }
     },
     "required": ["type"]
