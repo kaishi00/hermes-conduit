@@ -312,7 +312,7 @@ struct PresentedConfirm: Identifiable, Equatable {
         let skipped = VoiceThreadRouting.answerJoiners.map { words(in: $0) }
         var rest = said[...]
         while let first = rest.first {
-            if VoiceThreadRouting.fillers.contains(first) {
+            if VoiceThreadRouting.fillers.contains(first) || leadingSkips.contains(first) {
                 rest = rest.dropFirst()
             } else if let joiner = skipped.first(where: { !$0.isEmpty && rest.starts(with: $0) }) {
                 rest = rest.dropFirst(joiner.count)
@@ -334,15 +334,32 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// change, not a no.
     private static func isOneClause(_ text: String) -> Bool {
         let breaks = CharacterSet(charactersIn: ",;:—–，；：、.!。！\n")
-        // A polite ending ("…, please", "…, thanks") isn't a second clause.
+        // A polite ending ("…, please", "…, thanks") or a bare no before
+        // the action ("no, cancel the email") isn't a second clause, but
+        // any other is, short ones too ("don't send it, send it to Bob").
         // A joiner said without the comma ("… and send it to Bob") starts
         // one too.
         let clauses = text.unicodeScalars.split(whereSeparator: { breaks.contains($0) })
             .map { words(in: String(String.UnicodeScalarView($0))) }
             .flatMap { $0.split(whereSeparator: { clauseJoiners.contains($0) }).map(Array.init) }
-            .filter { clause in !clause.isEmpty && !clause.allSatisfy { VoiceThreadRouting.answerFillerWords.contains($0) } }
+            .filter { clause in !clause.isEmpty && !clause.allSatisfy { politeWords.contains($0) || leadingSkips.contains($0) } }
         return clauses.count <= 1
     }
+
+    /// Thanks and please in the shipped languages: a clause of only these
+    /// adds nothing.
+    private static let politeWords: Set<String> = [
+        "please", "pls", "thanks", "thank", "you", "thx", "cheers", "bitte", "danke", "schön", "por", "favor", "gracias",
+        "s", "il", "vous", "plaît", "merci", "per", "favore", "grazie", "obrigado", "obrigada", "пожалуйста", "спасибо",
+        "proszę", "dziękuję", "dzięki", "lütfen", "teşekkürler", "sağol", "tolong", "terima", "kasih", "makasih",
+        "谢谢", "謝謝", "请", "請", "お願いします", "ありがとう", "부탁해요", "감사합니다", "고마워",
+    ]
+
+    /// Said before a no that names its action, and skipped to find it
+    /// ("please cancel the email", "no, cancel the email").
+    private static let leadingSkips: Set<String> = [
+        "please", "pls", "bitte", "no", "nope", "nah", "nein", "non", "não", "nao", "nie", "нет", "hayır", "tidak",
+    ]
 
     private static let clauseJoiners: Set<String> = [
         "and", "then", "but", "instead", "und", "dann", "aber", "stattdessen", "y", "pero", "luego", "et", "mais", "puis",

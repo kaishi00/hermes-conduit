@@ -208,6 +208,9 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(prompt.isDeclined(by: "Don't send it to Alex; send it to Bob"))
         XCTAssertFalse(prompt.isDeclined(by: "Don't send it to Alex and send it to Bob"))
         XCTAssertFalse(prompt.isDeclined(by: "Don't send it to Alex. Send it to Bob"))
+        XCTAssertFalse(prompt.isDeclined(by: "Don't send it, send it to Bob"))
+        XCTAssertFalse(prompt.isDeclined(by: "Don't send it to Alex, send it to Hermes"))
+        XCTAssertFalse(prompt.isDeclined(by: "Cancel the email, send it"))
         XCTAssertFalse(prompt.isDeclined(by: "Don't send it to Alex\nsend it to Bob"))
         XCTAssertFalse(prompt.isDeclined(by: "不要，改到周三"))
         XCTAssertFalse(prompt.isDeclined(by: "我不想发给Alex，发给Bob"))
@@ -226,7 +229,8 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertTrue(PresentVoiceTool.note(for: prompt).contains("with confirm or decline and its id"))
         for no in ["no", "Not now.", "don't send it", "cancel", "decline", "decline it", "I refuse", "not yet", "nein", "不要", "拒绝", "先不",
                    "Don't share", "Don't answer", "Don't start", "Don't send the email", "Cancel the email", "No, forget it",
-                   "Cancel the email, please", "Cancel the email.", "我不想发", "送らないで"] {
+                   "Cancel the email, please", "Cancel the email.", "我不想发", "送らないで",
+                   "Please cancel the email", "No, cancel the email", "Don't send it, thanks"] {
             XCTAssertTrue(prompt.isDeclined(by: no), no)
         }
     }
