@@ -532,7 +532,6 @@ private struct DelegationModelRouteSheet: View {
                             catalog: ModelChooserCatalog(providers: providers, loaded: models != nil, answered: models != nil),
                             retry: {},
                             pick: draft.provider.isEmpty && draft.model.isEmpty ? nil : ModelChooserPick(provider: draft.provider, model: draft.model),
-                            isPicked: { option, item in option.name == draft.provider && item.id == draft.model },
                             reasoning: ModelChooserReasoning(
                                 effort: draft.reasoningEffort,
                                 inheritTitle: AppLocalization.string("Subagent default"),

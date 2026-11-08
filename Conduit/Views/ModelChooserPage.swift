@@ -316,6 +316,9 @@ struct ModelChooserPage: View {
                     }
                 }
             }
+        } else if catalog.answered, !catalog.providers.isEmpty, visibleProviders.isEmpty {
+            Text("All providers are hidden. Tap Edit to restore one.")
+                .scaledFont(.caption).foregroundStyle(.secondary)
         }
     }
 

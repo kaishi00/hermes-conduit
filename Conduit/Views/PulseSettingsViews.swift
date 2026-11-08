@@ -776,7 +776,7 @@ struct PulseSettingsPage: View {
                 pageTitle: AppLocalization.string("Pulse model"),
                 defaultTitle: Self.defaultModelTitle(state, providers: providers),
                 choice: TaggedModelChoice(defaultTag: "", selection: selection),
-                catalog: ModelChooserCatalog(providers: providers, loaded: true, answered: modelsAnswered, failed: modelsFailed),
+                catalog: ModelChooserCatalog(providers: providers, loaded: !providers.isEmpty || modelsAnswered, answered: modelsAnswered, failed: modelsFailed),
                 disabled: waiting || !modelsAnswered,
                 retry: { Task { await loadModels(profile: state.profile) } },
                 onSelect: { tag in
