@@ -175,7 +175,7 @@ struct V2PulsePage: View {
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             // Quiet for today (0.80.2); while Pulse is quiet, the banner says so instead.
-            if canQuiet, page != nil, page?.quietNow == nil {
+            if canQuiet, let page, page.quietNow == nil {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         quiet(true)
