@@ -191,8 +191,9 @@ extension AppState {
         let generation = TranscriptImageCache.generation
         let kept: [(Attachment, String)] = zip(attachments, references).compactMap { attachment, reference in
             guard attachment.kind == .image,
-                  let path = MessageNormalizer.splitLeadingFileReferences(reference, messageId: "room").attachments.first?.uri,
-                  let key = resolver.imageCacheKey(forMediaPath: path) else { return nil }
+                  let stored = MessageNormalizer.splitLeadingFileReferences(reference, messageId: "room").attachments.first,
+                  GroupRoomFilesClient.isStoredFile(stored),
+                  let key = resolver.imageCacheKey(forMediaPath: stored.uri) else { return nil }
             return (attachment, key)
         }
         guard !kept.isEmpty else { return }
