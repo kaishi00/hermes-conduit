@@ -232,7 +232,8 @@ extension AppState {
         let client = roomApprovalsClient
         do {
             try await client.answer(approval, choice: choice)
-            answeredLinkedRoomApprovalIDs.insert(approval.id)
+            // Not after a switch: the set is the dashboard in use's.
+            if activeDashboardID == client.dashboardID { answeredLinkedRoomApprovalIDs.insert(approval.id) }
             if activeDashboardID == client.dashboardID, var approvals = linkedRoomApprovals,
                approvals.dashboardID == client.dashboardID {
                 approvals.approvals.removeAll { $0.id == approval.id }

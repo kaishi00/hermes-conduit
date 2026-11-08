@@ -295,6 +295,8 @@ extension AppState {
                 // send: Wrap Up never steers, queues or interrupts by the busy setting.
                 let shown = self.errorMessage
                 if await self.submitComposer(text: text, onBusy: {}) { return true }
+                // Another chat opened while it failed: its composer isn't the room's.
+                guard self.activeSessionId == active else { return false }
                 // Never over a draft the chat already has: the banner says Wrap Up wasn't sent, unless a send
                 // that failed has said why.
                 if self.composerDraftStore.hasDraft(for: self.composerDraftKeyOnScreen) {
