@@ -6672,7 +6672,7 @@ queue) · the notifier's CHANGELOG
 - The queue and its rows: `Conduit/Models/AuthorityQueue.swift` (QueuedPrompt, QueuedPromptReceipt, AuthorityQueueStore)
 - Reading it and its verbs: `Conduit/Services/HermesClient.swift` (SessionRuntimeSnapshot.queuedPrompts from the resume's and `session.info`'s `pending`; cancelQueuedPrompt, replaceQueuedPrompt, sendQueuedPromptNow, discardLostPrompt, queuedPrompts, unansweredSubmissionID, admittedAdmissionID, deliveringEventAdmissionID)
 - The user's queued rows and the lost-reply check: `Conduit/Services/AppState.swift` (applyRuntime's queue, holdQueuedSendRow, takeQueuedSendRow, noteOwnSend, adoptOwnQueuedSends, moveQueuedSendToDock, noteQueuedTurnStarted, heldInAuthorityQueue in reconcileAmbiguousPromptSubmission)
-- The buttons: `Conduit/Services/AppState+AuthorityQueue.swift`, `Conduit/Views/Components/AuthorityQueueDock.swift`, `Conduit/Views/ChatView.swift` (the bottom bar)
+- The buttons: `Conduit/Services/AppState+AuthorityQueue.swift`, `Conduit/Views/Components/AuthorityQueueDock.swift`, `Conduit/Views/ChatView.swift` (the bottom bar); Resend sends the user's words without the old @mention note, so it annotates them afresh: `Conduit/Services/BotMentions.swift` (`strippingAnnotation`)
 - The plugin's own cut-off turns: `notifier/gateway_chats.py` (OWN_SUBMISSION_PREFIX, _note_pending, _settle_lost)
 - Tests: `ConduitTests/HermesClientTests.swift` (the queue tests), `ConduitTests/AuthorityQueueAppStateTests.swift` (the user's own message in the dock and back), `notifier/tests/test_gateway_chats.py`, `notifier/upstream/test_gateway_queue.py` (a real listener killed and restarted)
 
