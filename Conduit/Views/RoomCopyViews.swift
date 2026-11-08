@@ -74,7 +74,7 @@ struct RoomCopyPortrait: View {
         Button {
             open()
         } label: {
-            BotRoomPortraitLabel(title: copy.name, talking: copy.state.working && !copy.isOver,
+            BotRoomPortraitLabel(title: copy.name, talking: copy.state.working && !copy.isOver && appState.isConnected,
                                  highlighted: selection == .open, zoomSource: zoomKey) { size in
                 RoomCopyIcon(copy: copy, size: size)
             }
