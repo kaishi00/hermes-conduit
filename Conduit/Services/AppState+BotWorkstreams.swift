@@ -245,9 +245,9 @@ extension AppState {
     /// A request from a call kept with one of a bot's workstreams' chats
     /// (Eric 2026-11-02): it goes into the workstream's own session through
     /// its bot's plugin, which takes it as the answer to a question the
-    /// workstream waits on, behind an approval it waits on, as an interrupt
-    /// while it works, and as its next turn otherwise; no job session is
-    /// made. What to tell the call (for the live model, not localized), or
+    /// workstream waits on, as words that wait behind an approval it waits
+    /// on, as an interrupt while it works, and as its next turn otherwise;
+    /// no job session is made. What to tell the call (for the live model, not localized), or
     /// nil when the chat isn't a workstream's.
     func sendCallRequestToWorkstream(_ thread: VoiceThreadTarget, _ request: String) async -> String? {
         let ids = Set([thread.runtimeSessionID, thread.storedSessionID ?? ""].filter { !$0.isEmpty })
