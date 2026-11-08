@@ -2966,6 +2966,12 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(words("admission_terminal"), "That message isn't waiting any more.")
         XCTAssertEqual(AppState.queueActionRefusal(URLError(.timedOut)),
                        "Hermes couldn't be reached. Check the queue before you try again.")
+        // Only a refusal saying the row is gone lets its words go back to the draft.
+        for reason in ["not_found", "stale_generation", "admission_terminal"] {
+            XCTAssertTrue(AppState.refusalMeansSettled(RpcError(code: 4001, message: reason, reason: reason)), reason)
+        }
+        XCTAssertFalse(AppState.refusalMeansSettled(RpcError(code: 4001, message: "steer_unavailable", reason: "steer_unavailable")))
+        XCTAssertFalse(AppState.refusalMeansSettled(URLError(.timedOut)), "No answer is handled as unreachable")
     }
 
     func testAuthorityResumeTakenBeforeASeenTurnStartedLeavesItRunning() async throws {

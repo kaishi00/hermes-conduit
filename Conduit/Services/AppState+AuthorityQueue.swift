@@ -101,8 +101,15 @@ extension AppState {
         let draftKey = durableComposerDraftKeyOnScreen
         let dashboardID = activeDashboardID
         let title = displayedChatTitle
-        // The user's own words: sending them annotates @mentions afresh.
-        let words = BotMentions.strippingAnnotation(row.text)
+        // The user's own words: sending them annotates @mentions afresh,
+        // and the files it had (its leading `@file:` lines, its pictures)
+        // aren't sent again, as the card says.
+        let words = BotMentions.strippingAnnotation(MessageNormalizer.visibleUserText(row.text))
+        // Files only: there are no words to send again, so it's a discard.
+        guard !words.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
+            await discardLostPrompt(row)
+            return
+        }
         func putWordsBack() {
             if let dashboardID {
                 returnFailedComposerSubmission(
@@ -162,6 +169,11 @@ extension AppState {
             // settled already (another client, or Hermes): either way the
             // card can vanish at the next queue push.
             if !(error is RpcError) || Self.refusalMeansSettled(error) { onUnreachable?() }
+            // A row no longer waiting: a later send of the same words is a
+            // new message, never a lookup of this settled one's receipt.
+            if Self.refusalMeansSettled(error) {
+                HermesClient.forgetUnansweredSubmission(row.inputID, for: sessionID)
+            }
             // Said under its own chat's queue only, not one opened meanwhile.
             guard authorityQueue.sessionID == sessionID else { return false }
             authorityQueue.notice = Self.queueActionRefusal(error)
