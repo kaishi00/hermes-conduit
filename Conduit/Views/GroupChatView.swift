@@ -2039,6 +2039,19 @@ struct GroupCreateSheet: View {
             && (pickedPeople.isEmpty || draftPicks != sendingDraft)
     }
 
+    /// Settings > People, pushed in the sheet: Link with someone, room
+    /// setup and your picture. Back returns here, which reads the people
+    /// again.
+    private func linkSomeoneLink(_ title: String) -> some View {
+        NavigationLink {
+            PeopleSettingsPage()
+        } label: {
+            Label(title, systemImage: "link.badge.plus")
+        }
+        .buttonStyle(.settingsPrimary)
+        .accessibilityIdentifier("newGroup.linkSomeone")
+    }
+
     var body: some View {
         NavigationStack {
             SettingsDetailContainer {
@@ -2078,6 +2091,9 @@ struct GroupCreateSheet: View {
                         .settingsCaption()
                         Text(AppLocalization.string("A room holds up to 6 agents: your bots, and at least one for each person."))
                             .settingsCaption()
+                        // Linking is set up here too, where rooms with people
+                        // are made (Eric, 2026-11-08), not only in Settings.
+                        linkSomeoneLink(AppLocalization.string("Link with someone else"))
                     }
                 } else if appState.linkedRoomStartsUnavailable {
                     ConduitSettingsSection(title: AppLocalization.string("People"), symbol: "person.2", tint: .green) {
@@ -2090,13 +2106,7 @@ struct GroupCreateSheet: View {
                     // Nobody linked yet: where to start, so rooms with other
                     // people are found from here too.
                     ConduitSettingsSection(title: AppLocalization.string("People"), symbol: "person.2", tint: .green) {
-                        NavigationLink {
-                            PeopleSettingsPage()
-                        } label: {
-                            Label(AppLocalization.string("Link with someone"), systemImage: "link.badge.plus")
-                        }
-                        .buttonStyle(.settingsPrimary)
-                        .accessibilityIdentifier("newGroup.linkSomeone")
+                        linkSomeoneLink(AppLocalization.string("Link with someone"))
                         Text(AppLocalization.string("Link with someone to make rooms with their agents."))
                             .settingsCaption()
                     }

@@ -148,7 +148,6 @@ extension SidebarLayoutTests {
         XCTAssertFalse(V2SplitLayout.showsChatRows(split: false, path: [.conversation]))
         XCTAssertFalse(V2SplitLayout.showsChatRows(split: false, path: [.project(project), .conversation]))
         XCTAssertFalse(V2SplitLayout.showsChatRows(split: true, path: [.artifacts, .conversation]))
-        XCTAssertFalse(V2SplitLayout.showsChatRows(split: false, path: [.people]))
     }
 
     func testV2SplitListMarksWhatShowsBesideIt() {

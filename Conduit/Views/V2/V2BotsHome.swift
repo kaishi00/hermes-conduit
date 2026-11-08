@@ -15,7 +15,7 @@ import SwiftUI
 import UniformTypeIdentifiers
 import TipKit
 
-/// A named shortcut under Bots Home's title: Pulse, Artifacts, People.
+/// A named shortcut under Bots Home's title: Pulse, Artifacts.
 struct V2ShortcutPill: View {
     let systemImage: String
     let title: String
@@ -66,19 +66,6 @@ struct BotsHomeShortcuts: View {
             .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
             .accessibilityLabel(AppLocalization.string("Artifacts"))
             .accessibilityIdentifier("bots.artifacts")
-            // Where rooms with other people's agents start: Links, this
-            // Hermes' room setup and your picture (Eric, 2026-11-08: he
-            // looked for it here, not in Settings).
-            if appState.canLinkRooms {
-                NavigationLink(value: V2Route.people) {
-                    V2ShortcutPill(systemImage: "person.2", title: AppLocalization.string("People"))
-                }
-                .buttonStyle(PressableButtonStyle())
-                .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
-                .accessibilityLabel(AppLocalization.string("People"))
-                .accessibilityHint(Text(AppLocalization.string("Link with someone to make rooms with their agents.")))
-                .accessibilityIdentifier("bots.people")
-            }
             Spacer(minLength: 0)
         }
     }
