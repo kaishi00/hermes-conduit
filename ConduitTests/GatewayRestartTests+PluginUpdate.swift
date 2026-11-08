@@ -41,23 +41,24 @@ extension GatewayRestartTests {
         status.hostCopy = .missing
         XCTAssertTrue(status.offersInstall)
         XCTAssertTrue(status.updateAvailable)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .install)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .install)
         // Finish setting up offers Install itself: no second call to action.
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: true), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: true), .none)
 
         // The host couldn't say: as missing, which is what installing fixes.
         status.hostCopy = nil
         XCTAssertTrue(status.offersInstall)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .install)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: true), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .install)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: true), .none)
     }
 
     func testTheNoticeOffersTheUpdateForAListedPluginOlderThanCapabilities() {
         var status = NotifierPluginStatus(state: .predatesCapabilities)
         status.hostCopy = .old
         XCTAssertFalse(status.offersInstall)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .update)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: true), .update)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .update)
+        // Finish setting up's plugin row offers the Update itself.
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: true), .none)
     }
 
     func testANewPluginTheDashboardDoesntServeIsOfferedNoInstallOrUpdate() {
@@ -69,8 +70,8 @@ extension GatewayRestartTests {
         XCTAssertFalse(status.offersInstall)
         XCTAssertFalse(status.updateAvailable)
         XCTAssertFalse(status.restartPending)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: true), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: true), .none)
         XCTAssertEqual(NotifierPluginSummary.detail(status, update: .idle), "Installed but not running")
         // Settings and Notifications still point at the plugin's page.
         XCTAssertTrue(status.needsAttention)
@@ -111,8 +112,8 @@ extension GatewayRestartTests {
     func testTheNoticeOffersNothingBeforeTheHostAnswers() {
         let status = NotifierPluginStatus(state: .unknown)
         XCTAssertFalse(status.offersInstall)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: true), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: true), .none)
     }
 
     func testTheNoticeOffersTheRestartOrTheUpdateForAReportingPlugin() {
@@ -123,21 +124,23 @@ extension GatewayRestartTests {
             state: .reported(version: current, capabilities: all),
             runtime: NotifierPluginStatus.Runtime(loadedVersion: "0.30.0", restartNeeded: true, bootID: "a")
         )
-        XCTAssertEqual(restart.noticeOffer(finishSetupOffersInstall: false), .restart)
-        XCTAssertEqual(restart.noticeOffer(finishSetupOffersInstall: true), .restart)
+        XCTAssertEqual(restart.noticeOffer(finishSetupOffersPlugin: false), .restart)
+        // Finish setting up's plugin row offers Finish Update itself.
+        XCTAssertEqual(restart.noticeOffer(finishSetupOffersPlugin: true), .none)
 
         let old = NotifierPluginStatus(
             state: .reported(version: "0.30.0", capabilities: all),
             runtime: NotifierPluginStatus.Runtime(loadedVersion: "0.30.0", restartNeeded: false, bootID: "a")
         )
         XCTAssertFalse(old.offersInstall)
-        XCTAssertEqual(old.noticeOffer(finishSetupOffersInstall: true), .update)
+        XCTAssertEqual(old.noticeOffer(finishSetupOffersPlugin: false), .update)
+        XCTAssertEqual(old.noticeOffer(finishSetupOffersPlugin: true), .none)
 
         let upToDate = NotifierPluginStatus(
             state: .reported(version: current, capabilities: all),
             runtime: NotifierPluginStatus.Runtime(loadedVersion: current, restartNeeded: false, bootID: "a")
         )
-        XCTAssertEqual(upToDate.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(upToDate.noticeOffer(finishSetupOffersPlugin: false), .none)
     }
 
     func testThePluginsCopyIsReadFromHermesPluginList() {
@@ -212,7 +215,7 @@ extension GatewayRestartTests {
         status.followsMain = false
         XCTAssertEqual(status.noticeVersion, "1.0.0")
         XCTAssertFalse(status.updateRecommended)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .none)
         XCTAssertFalse(status.needsAttention)
         // Settings still offers it, and it brings main.
         XCTAssertTrue(status.updateAvailable)
@@ -220,7 +223,7 @@ extension GatewayRestartTests {
 
         status.stableVersion = "1.1.0"
         XCTAssertTrue(status.updateRecommended)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .update)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .update)
 
         // Never below the build's floor, never above what an update brings.
         status.stableVersion = "0.1.0"
@@ -246,7 +249,7 @@ extension GatewayRestartTests {
         status.asksToUpdate = NotifierPluginNoticeChannel.never.asksToUpdate
         // Newer and stable versions ask nothing anywhere.
         XCTAssertFalse(status.updateRecommended)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .none)
         XCTAssertFalse(status.needsAttention)
         XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .done)
         XCTAssertEqual(FinishSetupStatus.pluginDoneNote(status), .newerVersionWaits)
@@ -258,7 +261,7 @@ extension GatewayRestartTests {
         status.state = .reported(version: "9.0.0", capabilities: [])
         XCTAssertTrue(status.needsUpdate)
         XCTAssertFalse(status.updateRecommended)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .none)
         XCTAssertTrue(status.updateAvailable)
         XCTAssertEqual(FinishSetupStatus.pluginDoneNote(status), .featuresWait)
 
@@ -274,7 +277,7 @@ extension GatewayRestartTests {
         // the next update's restart asks again.
         status.state = .reported(version: "9.2.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
         status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.0.0", restartNeeded: true, bootID: nil)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .restart)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .restart)
         XCTAssertTrue(status.needsAttention)
         XCTAssertEqual(status.noticeDismissalVersion, "9.2.0")
         status.state = .reported(version: "9.3.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
@@ -284,12 +287,12 @@ extension GatewayRestartTests {
         status.state = .predatesCapabilities
         status.runtime = nil
         status.hostCopy = .old
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .none)
         XCTAssertFalse(status.needsAttention)
 
         // Installing isn't updating: a missing plugin is still offered.
         status.hostCopy = .missing
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .install)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .install)
         XCTAssertTrue(status.needsAttention)
     }
 
@@ -306,7 +309,7 @@ extension GatewayRestartTests {
         XCTAssertFalse(status.updateRecommended)
         XCTAssertFalse(status.updateAvailable)
         XCTAssertFalse(status.needsAttention)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .none)
         XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .done)
         XCTAssertEqual(FinishSetupStatus.pluginDoneNote(status), .managed)
         XCTAssertEqual(NotifierPluginStatus.managedText(status.managedBy), "Family farm keeps the plugin up to date.")
@@ -319,7 +322,7 @@ extension GatewayRestartTests {
         XCTAssertFalse(status.updateAvailable)
         // A restart already waiting on the host is still offered.
         status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.0.9", restartNeeded: true, bootID: nil)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .restart)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .restart)
         XCTAssertTrue(status.needsAttention)
         // The restart it waits on wins over "managed" in the Settings row.
         XCTAssertEqual(NotifierPluginSummary.detail(status, update: .idle), "0.0.9 · Restart to finish updating")
@@ -337,11 +340,11 @@ extension GatewayRestartTests {
         status.managedBy = "Family farm"
         XCTAssertFalse(status.offersInstall)
         XCTAssertFalse(status.updateRecommended)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .none)
         XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .notRunning)
         XCTAssertEqual(NotifierPluginSummary.detail(status, update: .idle), "Installed but not running")
         status.hostCopy = .old
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .none)
     }
 
     func testWhoManagesEachHostIsRememberedAcrossLaunches() throws {
@@ -555,7 +558,7 @@ extension GatewayRestartTests {
         // a later update's restart asks again.
         status.state = .reported(version: "9.2.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
         status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.1.0", restartNeeded: true, bootID: nil)
-        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .restart)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersPlugin: false), .restart)
         XCTAssertEqual(status.noticeDismissalVersion, "9.2.0")
         status.state = .reported(version: "9.3.0", capabilities: Set(NotifierPluginStatus.usedCapabilities))
         XCTAssertEqual(status.noticeDismissalVersion, "9.3.0")
