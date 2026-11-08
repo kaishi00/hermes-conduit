@@ -647,7 +647,8 @@ struct BotEditorSheet: View {
                         BotModelPicker(provider: $draft.provider, model: $draft.model, allowsInherit: isCreating)
                     } label: {
                         let model = showsKeptDetails ? keptDetails?.model ?? "" : draft.model
-                        if showsKeptDetails || model.isEmpty {
+                        let provider = showsKeptDetails ? keptDetails?.provider ?? "" : draft.provider
+                        if model.isEmpty {
                             ModelChooserLinkRow(
                                 title: AppLocalization.string("Model"),
                                 value: BotModelPicker.summary(model: model, allowsInherit: isCreating),
@@ -656,7 +657,7 @@ struct BotEditorSheet: View {
                         } else {
                             // The model and provider as the catalog names them.
                             let lines = ModelChooserLinkRow.lines(
-                                pick: ModelChooserPick(provider: draft.provider, model: draft.model),
+                                pick: ModelChooserPick(provider: provider, model: model),
                                 providers: appState.keptModelProviders(),
                                 defaultTitle: BotModelPicker.summary(model: "", allowsInherit: isCreating)
                             )
