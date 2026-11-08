@@ -411,7 +411,7 @@ private struct ConnectionDirectorySheet: View {
                 }
         }
         .task(id: appState.hostedAppsScope) {
-            model.show(scope: appState.hostedAppsScope, kept: appState.keptHostedApps())
+            model.show(appState)
             guard appState.isConnected else { return }
             await model.reload(appState)
         }
