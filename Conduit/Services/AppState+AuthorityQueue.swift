@@ -75,12 +75,12 @@ extension AppState {
     /// Lets go of a turn a gateway restart cut off: Hermes marks it
     /// interrupted, never runs it again, and the messages behind it go on.
     @discardableResult
-    func discardLostPrompt(_ row: QueuedPrompt) async -> Bool {
+    func discardLostPrompt(_ row: QueuedPrompt, onUnreachable: (@MainActor () -> Void)? = nil) async -> Bool {
         guard let generation = row.executionGeneration else {
             authorityQueue.notice = AppLocalization.string("Hermes didn't say which turn this was. Reopen the chat and try again.")
             return false
         }
-        return await queueAction(row) { client, sessionID in
+        return await queueAction(row, onUnreachable: onUnreachable) { client, sessionID in
             _ = try await client.discardLostPrompt(sessionID, admissionID: row.admissionID, generation: generation)
             // Resend's words then go as a new message, never as this one again.
             HermesClient.forgetUnansweredSubmission(row.inputID, for: sessionID)
@@ -100,10 +100,30 @@ extension AppState {
         let title = displayedChatTitle
         // The user's own words: sending them annotates @mentions afresh.
         let words = BotMentions.strippingAnnotation(row.text)
+        func putWordsBack() {
+            if let dashboardID {
+                returnFailedComposerSubmission(
+                    ComposerDraft(text: words, attachments: []),
+                    key: draftKey,
+                    dashboardID: dashboardID,
+                    title: title,
+                    stoppedQuietly: true
+                )
+            } else {
+                prefillComposer(words)
+            }
+        }
         // Its own discard says whether it went: another row's refusal
         // meanwhile must not keep these words from going. A refused
-        // discard keeps the card, and the words with it.
-        guard await discardLostPrompt(row) else { return }
+        // discard keeps the card, and the words with it. One whose reply
+        // never came may have gone: the card can vanish at the next queue
+        // push, so the words go back in the draft (the notice says to
+        // check the queue) and a later send of them is a new message.
+        guard await discardLostPrompt(row, onUnreachable: {
+            if let sessionID { HermesClient.forgetUnansweredSubmission(row.inputID, for: sessionID) }
+            _ = self.takeQueuedSendRow(admissionID: row.admissionID)
+            putWordsBack()
+        }) else { return }
         // Hermes took these words as a message once: they go as one again,
         // never as a slash command run here.
         if authorityQueueIsOpenChat(sessionID),
@@ -112,17 +132,7 @@ extension AppState {
         }
         // The card is gone: the words go back in the chat's draft rather
         // than nowhere.
-        if let dashboardID {
-            returnFailedComposerSubmission(
-                ComposerDraft(text: words, attachments: []),
-                key: draftKey,
-                dashboardID: dashboardID,
-                title: title,
-                stoppedQuietly: true
-            )
-        } else {
-            prefillComposer(words)
-        }
+        putWordsBack()
     }
 
     /// Runs one of the dock's actions on the open chat's queue, saying why
@@ -130,6 +140,7 @@ extension AppState {
     @discardableResult
     private func queueAction(
         _ row: QueuedPrompt,
+        onUnreachable: (@MainActor () -> Void)? = nil,
         _ action: @escaping @MainActor (HermesClient, String) async throws -> Void
     ) async -> Bool {
         guard let sessionID = authorityQueue.sessionID, !authorityQueue.working.contains(row.admissionID) else { return false }
@@ -144,6 +155,8 @@ extension AppState {
             try await action(client, sessionID)
             return true
         } catch {
+            // No answer at all: Hermes may have done it.
+            if !(error is RpcError) { onUnreachable?() }
             // Said under its own chat's queue only, not one opened meanwhile.
             guard authorityQueue.sessionID == sessionID else { return false }
             authorityQueue.notice = Self.queueActionRefusal(error)
