@@ -17,7 +17,7 @@ extension AppState {
         guard notifierPlugin.reports(RichChecklistContext.capability), offlineChatPresentation == nil else { return nil }
         let sessionIDs = activeChatArtifactSessionIDs
         guard !sessionIDs.isEmpty,
-              let chat = RichCardActionContext.chat(profile: activeProfile, sessionID: activeSessionId) else { return nil }
+              let chat = richCardChat else { return nil }
         let profile = activeProfile
         let dashboardID = activeDashboardID
         let scope = RichChecklistContext.scope(profile: profile, sessionIDs: sessionIDs)
@@ -40,6 +40,16 @@ extension AppState {
     /// where they can't (the saved copy, a chat on its way). A tap posts to
     /// the plugin's /boards/taps on the chat's own dashboard, then sends the
     /// user's message about it, which hears the tap (issue 1946).
+    /// The open chat as its cards know it (RichCardActionContext.chat): its
+    /// dashboard, profile and durable id, which outlives the runtime id it's
+    /// open by and which a runtime id moved to another chat doesn't carry,
+    /// as for a waiting send (durableComposerSessionID).
+    var richCardChat: String? {
+        guard let activeSessionId, !activeSessionId.isEmpty else { return nil }
+        return RichCardActionContext.chat(dashboard: "\(activeDashboardID)", profile: activeProfile,
+                                          sessionID: durableComposerSessionID(for: activeSessionId))
+    }
+
     func richCardActionContext(canSend: Bool) -> RichCardActionContext? {
         guard offlineChatPresentation == nil else { return nil }
         let sessionIDs = activeChatArtifactSessionIDs
@@ -60,7 +70,7 @@ extension AppState {
                 // a switch the tap waits unheard and is forgotten on the host.
                 guard RichCardActionContext.mayFollowUp(
                     tappedIn: chat,
-                    openChat: RichCardActionContext.chat(profile: self.activeProfile, sessionID: self.activeSessionId),
+                    openChat: self.richCardChat,
                     composerIsEnabled: self.composerIsEnabled, draft: self.predictive.draft) else {
                     throw DashboardTicketBridgeError.notReady
                 }

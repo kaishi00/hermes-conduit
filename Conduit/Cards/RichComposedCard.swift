@@ -195,11 +195,12 @@ struct RichSection: Equatable, Hashable {
 struct RichCardActionContext {
     /// The ids the chat is known by, which the tap names to the host.
     let sessionIDs: [String]
-    /// The open chat itself, its profile and its own id: what's typed in or
-    /// tapped on one chat's card never shows on the same card in another
-    /// (RichCardFieldMemory, RichCardTapMemory), and a tap's message goes
-    /// only to it. A runtime id another chat can come to share doesn't
-    /// count, as for a waiting send.
+    /// The open chat itself, its dashboard, profile and durable id
+    /// (AppState.richCardChat): what's typed in or tapped on one chat's card
+    /// never shows on the same card in another (RichCardFieldMemory,
+    /// RichCardTapMemory), and a tap's message goes only to it. A runtime id
+    /// rotating keeps the chat; one another chat comes to share doesn't
+    /// carry it, as for a waiting send.
     let chat: String
     /// A send or tap can go now: Hermes is free and connected and the
     /// composer is on, as for a board's follow-ups.
@@ -239,10 +240,11 @@ struct RichCardActionContext {
         composerIsEnabled && openChat == chat && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
     }
 
-    /// The `chat` of the chat open on a profile, or nil without one.
-    static func chat(profile: String, sessionID: String?) -> String? {
+    /// The `chat` of a chat by its durable id on a dashboard's profile, or
+    /// nil without one.
+    static func chat(dashboard: String, profile: String, sessionID: String?) -> String? {
         guard let sessionID, !sessionID.isEmpty else { return nil }
-        return "\(profile)\u{1F}\(sessionID)"
+        return "\(dashboard)\u{1F}\(profile)\u{1F}\(sessionID)"
     }
 }
 

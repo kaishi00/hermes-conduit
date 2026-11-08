@@ -69,14 +69,14 @@ extension AppStateVoiceCapabilityTests {
                 ["kind": "field", "id": "note", "input": "text"]]]],
         ]], schema: schema).first)
         let memory = RichCardFieldMemory()
-        let chat = RichCardActionContext.chat(profile: "p", sessionID: "a")
+        let chat = RichCardActionContext.chat(dashboard: "d", profile: "p", sessionID: "a")
         XCTAssertNil(memory.kept(card: card, chat: chat))
         memory.keep(card: card, chat: chat, values: ["note": "typed"], open: true)
         XCTAssertEqual(memory.kept(card: card, chat: chat)?.values, ["note": "typed"])
         XCTAssertEqual(memory.kept(card: card, chat: chat)?.open, true)
-        XCTAssertNil(memory.kept(card: card, chat: RichCardActionContext.chat(profile: "p", sessionID: "b")),
+        XCTAssertNil(memory.kept(card: card, chat: RichCardActionContext.chat(dashboard: "d", profile: "p", sessionID: "b")),
                      "the same card in another chat starts on its own")
-        XCTAssertNil(memory.kept(card: card, chat: RichCardActionContext.chat(profile: "q", sessionID: "a")),
+        XCTAssertNil(memory.kept(card: card, chat: RichCardActionContext.chat(dashboard: "d", profile: "q", sessionID: "a")),
                      "or on another profile")
         memory.keep(card: card, chat: nil, values: ["note": "saved copy"], open: true)
         XCTAssertNil(memory.kept(card: card, chat: nil), "outside a chat nothing is kept")
@@ -119,19 +119,19 @@ extension AppStateVoiceCapabilityTests {
     }
 
     func testATapsMessageGoesOnlyToItsChatWithNoDraft() {
-        let tapped = RichCardActionContext.chat(profile: "p", sessionID: "s1")!
-        func may(open: String? = "p\u{1F}s1", enabled: Bool = true, draft: String = "") -> Bool {
+        let tapped = RichCardActionContext.chat(dashboard: "d", profile: "p", sessionID: "s1")!
+        func may(open: String? = "d\u{1F}p\u{1F}s1", enabled: Bool = true, draft: String = "") -> Bool {
             RichCardActionContext.mayFollowUp(tappedIn: tapped, openChat: open, composerIsEnabled: enabled, draft: draft)
         }
         XCTAssertTrue(may())
         XCTAssertTrue(may(draft: "  \n"))
-        XCTAssertFalse(may(open: RichCardActionContext.chat(profile: "p", sessionID: "other")),
+        XCTAssertFalse(may(open: RichCardActionContext.chat(dashboard: "d", profile: "p", sessionID: "other")),
                        "the user switched chats while the tap was on its way, even to one sharing a runtime id")
-        XCTAssertFalse(may(open: RichCardActionContext.chat(profile: "q", sessionID: "s1")))
+        XCTAssertFalse(may(open: RichCardActionContext.chat(dashboard: "d", profile: "q", sessionID: "s1")))
         XCTAssertFalse(may(open: nil))
         XCTAssertFalse(may(enabled: false))
         XCTAssertFalse(may(draft: "typed meanwhile"))
-        XCTAssertNil(RichCardActionContext.chat(profile: "p", sessionID: ""))
+        XCTAssertNil(RichCardActionContext.chat(dashboard: "d", profile: "p", sessionID: ""))
     }
 
     func testAFieldWhosePlaceholderAsksForASecretIsDropped() throws {
