@@ -11,13 +11,21 @@ final class GroupRoomFilesClient {
     /// Reads a stored picture back as a data URL (plugin 0.142+), so a room
     /// draws it instead of its name.
     static let pictureCapability = "room-file-pictures"
+    /// The same route reads any file sent into a room (plugin 0.143+), so
+    /// a room opens and plays them as a chat does.
+    static let readCapability = "room-file-reads"
     static let picturePath = "/api/plugins/conduit_push/room-files/data-url"
 
     /// A picture `/room-files` stored (`<hermes home>/conduit/room-files/
     /// <upload>/<name>`): only these are read back. Any other `@file:`
     /// picture keeps its name, since the route would refuse it.
     static func isStoredPicture(_ file: Attachment) -> Bool {
-        file.kind == .image && file.uri.hasPrefix("/") && file.uri.contains("/conduit/room-files/")
+        file.kind == .image && isStoredFile(file)
+    }
+
+    /// Any file `/room-files` stored: only these are read back.
+    static func isStoredFile(_ file: Attachment) -> Bool {
+        file.uri.hasPrefix("/") && file.uri.contains("/conduit/room-files/")
     }
     /// Base64 of a file near the host's 50 MB cap takes a while to send.
     static let minimumTimeoutMilliseconds = 180_000
@@ -141,7 +149,16 @@ extension AppState {
     /// its home's host. One instance per dashboard, so the rows reading it
     /// compare equal.
     var roomFilePicturesResolver: GatewayMediaDataURLResolver? {
-        guard notifierPlugin.reports(GroupRoomFilesClient.pictureCapability),
+        roomFilesResolver(reporting: GroupRoomFilesClient.pictureCapability)
+    }
+
+    /// Where a room's other files are read (plugin 0.143+), as pictures are.
+    var roomFileReadsResolver: GatewayMediaDataURLResolver? {
+        roomFilesResolver(reporting: GroupRoomFilesClient.readCapability)
+    }
+
+    private func roomFilesResolver(reporting capability: String) -> GatewayMediaDataURLResolver? {
+        guard notifierPlugin.reports(capability),
               activeRoomSurface?.copy == nil else { return nil }
         if let cached = cachedRoomFilePicturesResolver, cached.dashboardID == activeDashboardID {
             return cached
