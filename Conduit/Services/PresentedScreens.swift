@@ -617,8 +617,8 @@ enum PresentVoiceTool {
     /// the model heard them, so they're waited for, up to 2 seconds, while
     /// it still waits.
     private static func userSaid(
-        _ answers: @MainActor (String) -> Bool, to prompt: PresentedConfirm, sync: PresentedScreensSync,
-        lastUserTurn: @MainActor () -> (id: UUID?, text: String)
+        _ answers: @escaping @MainActor (String) -> Bool, to prompt: PresentedConfirm, sync: PresentedScreensSync,
+        lastUserTurn: @escaping @MainActor () -> (id: UUID?, text: String)
     ) async -> Bool {
         let shownAfter = sync.userTurnWhenShown[prompt.id]
         let deadline = ContinuousClock.now + .seconds(2)
