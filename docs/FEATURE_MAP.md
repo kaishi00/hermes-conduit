@@ -3612,7 +3612,7 @@ needed: no settings) · the notifier (not needed: Hermes' own routes) · Text:
 the pages' captions and README.md's Capabilities line (done)
 
 **Code**
-- Models: `Conduit/Models/CapabilityCatalogModels.swift` (PluginCatalogEntry's fields, imageURL, webURL, normalizedTier; CapabilityPluginFilter's tierRank, tiers, categories, browse, curatedFeatured, featured)
+- Models: `Conduit/Models/CapabilityCatalogModels.swift` (PluginCatalogEntry's fields, imageURL, webURL, normalizedTier; CapabilityPluginFilter's tierRank, tiers and categories (keeping a selection a refresh took away, in its place), browse, curatedFeatured, featured)
 - Views: `Conduit/Views/Capabilities/PluginCatalogViews.swift` (PluginCatalogShelf, PluginCatalogBrowsePage, PluginCatalogDetailPage, PluginCatalogArtwork, PluginCatalogStyle), `Conduit/Views/Capabilities/CapabilityPluginsTab.swift` (the shelf in place of the full list, a search's rows opening the page, PluginStyle.tierPill)
 - Tests: `ConduitTests/PluginCatalogBrowseTests.swift`
 
@@ -3625,7 +3625,7 @@ the pages' captions and README.md's Capabilities line (done)
 - The curated picks are Desktop's list as of 2026-11-08, written into Conduit: Hermes' catalog route doesn't carry them.
 - A plugin's README (Desktop's docs page) isn't shown.
 
-**Checked:** 2026-11-08, #2009 (the shelf, Browse All, the plugin page)
+**Checked:** 2026-11-08, #2010 (kept filters keep their place, the rule in CapabilityPluginFilter; the Category menu reads its selection to VoiceOver); 2026-11-08, #2009 (the shelf, Browse All, the plugin page)
 
 ## Reply progress signals
 
