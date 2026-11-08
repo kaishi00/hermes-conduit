@@ -17,7 +17,6 @@ struct RoomCopyRosterRow: View {
     let copy: RoomCopy
     @EnvironmentObject private var appState: AppState
     @State private var confirmingDelete = false
-    @State private var refusal: String?
 
     private var canDelete: Bool { copy.isOver && appState.canDeleteRoomCopies }
 
@@ -29,13 +28,13 @@ struct RoomCopyRosterRow: View {
             Task { await appState.openRoomCopy(copy) }
         } label: {
             RosterIconRow(title: copy.name, subtitle: line) { size in
-                GroupRoomIcon(picture: nil, members: copy.room.members, size: size)
+                RoomCopyIcon(copy: copy, size: size)
             }
         }
         .buttonStyle(.plain)
         .rosterListRow()
         .accessibilityLabel(Text(verbatim: copy.name))
-        .accessibilityValue(Text(verbatim: line))
+        .accessibilityValue(Text(verbatim: [AppLocalization.string("With linked people"), line].joined(separator: ", ")))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if canDelete {
@@ -53,27 +52,135 @@ struct RoomCopyRosterRow: View {
                 }
             }
         }
-        .confirmationDialog(RoomCopyText.deleteTitle, isPresented: $confirmingDelete, titleVisibility: .visible) {
-            Button(AppLocalization.string("Delete"), role: .destructive) {
-                Task { @MainActor in
-                    if case .refused(let message) = await appState.deleteLinkedRoomCopy(copy) {
-                        Haptics.error()
-                        refusal = message
-                    }
+        .modifier(RoomCopyDelete(copy: copy, confirming: $confirmingDelete))
+    }
+}
+
+/// A room someone else hosts, on Bots Home: a portrait among your own
+/// rooms, marked as a room over Links, with the same menu as its row.
+struct RoomCopyPortrait: View {
+    let copy: RoomCopy
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.v2OpenBeside) private var openBeside
+    @State private var confirmingDelete = false
+
+    private var canDelete: Bool { copy.isOver && appState.canDeleteRoomCopies }
+    private var selection: V2RowSelection { .room(copy.roomID, beside: openBeside) }
+
+    private var zoomKey: String { BotZoomArm.roomKey(copy.roomID) }
+
+    var body: some View {
+        let line = RoomCopyText.line(for: copy)
+        Button {
+            open()
+        } label: {
+            BotRoomPortraitLabel(title: copy.name, highlighted: selection == .open, zoomSource: zoomKey) { size in
+                RoomCopyIcon(copy: copy, size: size)
+            }
+            // One that's over reads as over at a glance.
+            .opacity(copy.isOver ? 0.55 : 1)
+        }
+        .buttonStyle(PressableButtonStyle())
+        .contextMenu {
+            if canDelete {
+                Button(role: .destructive) {
+                    confirmingDelete = true
+                } label: {
+                    Label(AppLocalization.string("Delete"), systemImage: "trash")
                 }
             }
-            Button(AppLocalization.string("Cancel"), role: .cancel) {}
-        } message: {
-            Text(RoomCopyText.deleteMessage)
         }
-        .alert(
-            AppLocalization.string("Could not delete this room"),
-            isPresented: Binding(get: { refusal != nil }, set: { if !$0 { refusal = nil } })
-        ) {
-            Button(AppLocalization.string("OK"), role: .cancel) { refusal = nil }
-        } message: {
-            Text(verbatim: refusal ?? "")
+        .modifier(RoomCopyDelete(copy: copy, confirming: $confirmingDelete))
+        .accessibilityLabel(Text(verbatim: copy.name))
+        .accessibilityValue(Text(verbatim: [AppLocalization.string("With linked people"), line].joined(separator: ", ")))
+        .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
+        .accessibilityIdentifier("bots.roomCopy.\(copy.roomID)")
+        .v2SelectedTrait(selection)
+    }
+
+    /// Opens in Bots and grows out of this portrait, as a hosted room's
+    /// tile does (GroupRoomPortrait), unless it opens beside the list.
+    private func open() {
+        Haptics.light()
+        appState.beginOpeningBotChat(zoomKey)
+        if openBeside == nil { appState.botZoom.tap(zoomKey) }
+        Task {
+            await appState.openRoomCopy(copy)
+            if appState.activeRoomSurface?.room.roomID != copy.roomID { appState.botZoom.openFailed(zoomKey) }
+            appState.endOpeningBotChat(zoomKey)
         }
+    }
+}
+
+/// A room someone else hosts' picture: its members as their own Conduits
+/// draw them, marked as a room over Links.
+struct RoomCopyIcon: View {
+    let copy: RoomCopy
+    let size: CGFloat
+    @EnvironmentObject private var appState: AppState
+
+    var body: some View {
+        GroupRoomIcon(picture: nil, members: copy.room.members, size: size)
+            .environment(\.groupRoomLooks, appState.homeRoomLooks(roomID: copy.roomID))
+            .modifier(RoomTileBadge(systemImage: RoomTileBadge.linked))
+    }
+}
+
+/// Reads how Group Chats' rooms over Links look while they show, so
+/// their pictures draw other people's agents as the room screen does: on
+/// showing, when the rooms change, and every 30 s.
+struct HomeRoomLooksReader: ViewModifier {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.v2Shell) private var shell
+    @Environment(\.scenePhase) private var scenePhase
+
+    func body(content: Content) -> some View {
+        // Not while hidden behind another tab or a pushed screen, or in the
+        // background: the open room's own reads keep its tile's faces.
+        let shown = shell.isTabActive && !shell.isRootCovered && scenePhase == .active
+        content.task(id: "\(shown)|\(appState.isConnected)|\(appState.homeLinkedRoomIDs.joined(separator: ","))") {
+            guard shown, appState.isConnected else { return }
+            // With none left it runs once, to drop the last one's faces.
+            if appState.homeLinkedRoomIDs.isEmpty { return await appState.readHomeRoomLooks() }
+            while !Task.isCancelled {
+                await appState.readHomeRoomLooks()
+                try? await Task.sleep(for: .seconds(AppState.roomLooksReadInterval))
+            }
+        }
+    }
+}
+
+/// Deleting a room someone else hosts once it's over: asked first, and
+/// a refusal said.
+private struct RoomCopyDelete: ViewModifier {
+    let copy: RoomCopy
+    @Binding var confirming: Bool
+    @EnvironmentObject private var appState: AppState
+    @State private var refusal: String?
+
+    func body(content: Content) -> some View {
+        content
+            .confirmationDialog(RoomCopyText.deleteTitle, isPresented: $confirming, titleVisibility: .visible) {
+                Button(AppLocalization.string("Delete"), role: .destructive) {
+                    Task { @MainActor in
+                        if case .refused(let message) = await appState.deleteLinkedRoomCopy(copy) {
+                            Haptics.error()
+                            refusal = message
+                        }
+                    }
+                }
+                Button(AppLocalization.string("Cancel"), role: .cancel) {}
+            } message: {
+                Text(RoomCopyText.deleteMessage)
+            }
+            .alert(
+                AppLocalization.string("Could not delete this room"),
+                isPresented: Binding(get: { refusal != nil }, set: { if !$0 { refusal = nil } })
+            ) {
+                Button(AppLocalization.string("OK"), role: .cancel) { refusal = nil }
+            } message: {
+                Text(verbatim: refusal ?? "")
+            }
     }
 }
 
