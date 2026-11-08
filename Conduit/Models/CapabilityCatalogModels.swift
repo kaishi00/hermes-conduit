@@ -740,17 +740,37 @@ struct PluginCatalogEntry: Equatable, Identifiable {
     let name: String
     var title: String?
     var description: String
-    /// official or community.
+    /// official (bundled reads as it), verified or community.
     var tier: String
     var capabilitySummary: String
     var installed: Bool
     var updateAvailable: Bool
+    var maintainer: String = ""
+    var category: String = ""
+    var version: String = ""
+    var repo: String = ""
+    var docsURL: URL?
+    /// The card's picture and the page's gallery: GitHub-hosted https
+    /// addresses only, as Hermes' catalog allows.
+    var imageURL: URL?
+    var screenshotURLs: [URL] = []
+    var tools: [String] = []
+    var hooks: [String] = []
+    var middleware: [String] = []
+    /// Keys it needs set before it works.
+    var requiresEnv: [String] = []
+    var platforms: [String] = []
+    var knownIssues: [String] = []
 
     var displayName: String { title ?? name }
+
+    /// The source repository, a web address only.
+    var repoURL: URL? { PluginCatalogEntry.webURL(repo) }
 
     static func list(from response: [String: Any]) -> [PluginCatalogEntry] {
         (response["entries"] as? [Any] ?? []).compactMap { value in
             guard let row = value as? [String: Any], let name = row["name"] as? String else { return nil }
+            let caps = row["capabilities"] as? [String: Any] ?? [:]
             return PluginCatalogEntry(
                 name: name,
                 title: (row["title"] as? String).flatMap { $0.isEmpty ? nil : $0 },
@@ -758,8 +778,50 @@ struct PluginCatalogEntry: Equatable, Identifiable {
                 tier: row["tier"] as? String ?? "community",
                 capabilitySummary: row["capability_summary"] as? String ?? "",
                 installed: row["installed"] as? Bool ?? false,
-                updateAvailable: row["update_available"] as? Bool ?? false
+                updateAvailable: row["update_available"] as? Bool ?? false,
+                maintainer: row["maintainer"] as? String ?? "",
+                category: row["category"] as? String ?? "",
+                version: row["version"] as? String ?? "",
+                repo: row["repo"] as? String ?? "",
+                docsURL: webURL(row["docs_url"] as? String ?? ""),
+                imageURL: imageURL(row["image"] as? String ?? ""),
+                screenshotURLs: strings(row["screenshots"]).compactMap(imageURL),
+                tools: strings(caps["provides_tools"]),
+                hooks: strings(caps["provides_hooks"]),
+                middleware: strings(caps["provides_middleware"]),
+                requiresEnv: strings(caps["requires_env"]),
+                platforms: strings(row["platforms"]),
+                knownIssues: strings(row["known_issues"])
             )
+        }
+    }
+
+    private static func strings(_ value: Any?) -> [String] {
+        (value as? [Any] ?? []).compactMap { $0 as? String }.filter { !$0.isEmpty }
+    }
+
+    /// An https address on GitHub's hosts, as Hermes' catalog check and
+    /// Desktop's browser allow, else nothing.
+    static func imageURL(_ text: String) -> URL? {
+        guard let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              url.scheme?.lowercased() == "https",
+              let host = url.host?.lowercased() else { return nil }
+        return host == "raw.githubusercontent.com" || host == "github.com" || host.hasSuffix(".githubusercontent.com") ? url : nil
+    }
+
+    static func webURL(_ text: String) -> URL? {
+        guard let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              url.host != nil else { return nil }
+        return url
+    }
+
+    /// The tier as the catalog's trust order reads it.
+    var normalizedTier: String {
+        switch tier {
+        case "official", "bundled": return "official"
+        case "verified": return "verified"
+        default: return "community"
         }
     }
 
@@ -798,9 +860,68 @@ enum CapabilityPluginFilter {
                     || entry.description.localizedCaseInsensitiveContains(query)
             }
             .sorted { lhs, rhs in
-                if (lhs.tier == "official") != (rhs.tier == "official") { return lhs.tier == "official" }
+                let left = tierRank(lhs), right = tierRank(rhs)
+                if left != right { return left < right }
                 return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
             }
+    }
+
+    /// The catalog's trust order: official, verified, community.
+    static func tierRank(_ entry: PluginCatalogEntry) -> Int {
+        switch entry.normalizedTier {
+        case "official": return 0
+        case "verified": return 1
+        default: return 2
+        }
+    }
+
+    /// The tiers present, in trust order.
+    static func tiers(in catalog: [PluginCatalogEntry]) -> [String] {
+        let present = Set(catalog.map(\.normalizedTier))
+        return ["official", "verified", "community"].filter(present.contains)
+    }
+
+    /// The categories present, A-Z.
+    static func categories(in catalog: [PluginCatalogEntry]) -> [String] {
+        Array(Set(catalog.map(\.category).filter { !$0.isEmpty })).sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+    }
+
+    /// The Browse page's list: a tier and a category narrow it, and a
+    /// search reads the name, what it does, the maintainer, the category
+    /// and the tools it adds. Installed entries stay, marked.
+    static func browse(_ catalog: [PluginCatalogEntry], query: String, tier: String?, category: String?) -> [PluginCatalogEntry] {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return catalog
+            .filter { tier == nil || $0.normalizedTier == tier }
+            .filter { category == nil || $0.category == category }
+            .filter { entry in
+                text.isEmpty
+                    || entry.displayName.localizedCaseInsensitiveContains(text)
+                    || entry.name.localizedCaseInsensitiveContains(text)
+                    || entry.description.localizedCaseInsensitiveContains(text)
+                    || entry.maintainer.localizedCaseInsensitiveContains(text)
+                    || entry.category.localizedCaseInsensitiveContains(text)
+                    || entry.tools.contains { $0.localizedCaseInsensitiveContains(text) }
+            }
+            .sorted { lhs, rhs in
+                let left = tierRank(lhs), right = tierRank(rhs)
+                if left != right { return left < right }
+                return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+            }
+    }
+
+    /// Desktop's curated hero picks (catalog-curation.json), first; then
+    /// official entries with a picture. A few, for the shelf.
+    static let curatedFeatured = ["claude-subscription-directsdk", "hermes-memory-wiki", "blender", "touchdesigner", "hermes-telegram-business"]
+
+    static func featured(_ catalog: [PluginCatalogEntry], limit: Int = 8) -> [PluginCatalogEntry] {
+        var picks: [PluginCatalogEntry] = curatedFeatured.compactMap { name in catalog.first { $0.name == name } }
+        for entry in catalog where entry.normalizedTier == "official" && entry.imageURL != nil && !picks.contains(where: { $0.name == entry.name }) {
+            picks.append(entry)
+        }
+        return Array(picks.prefix(limit))
     }
 }
 

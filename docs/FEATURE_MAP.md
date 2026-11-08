@@ -3565,7 +3565,8 @@ see Things Hermes connects from a chat) · a bot's profile (not needed: the
 page is the profile in use, as the other Capabilities tabs are) · the Kanban
 skill picker (not needed: it lists installed skills) · Watch, CarPlay and
 group rooms (not needed: no settings) · the notifier (not needed: Hermes'
-own routes) · Text: the page's captions and README.md's Capabilities line
+own routes) · Plugin catalog: browse and install (the plugins half of the
+marketplace) · Text: the page's captions and README.md's Capabilities line
 (done)
 
 **Code**
@@ -3585,6 +3586,46 @@ own routes) · Text: the page's captions and README.md's Capabilities line
 - A skill the scan would have Hermes ask about installs with Hermes' `--yes`, as Desktop's Install does; the page shows the findings first.
 
 **Checked:** 2026-11-08, #1999 (the page, the scan, install, remove and update)
+
+## Plugin catalog: browse and install
+
+Settings > Capabilities > Plugins' catalog, as Hermes Desktop's plugin
+catalog browses it: a shelf of featured plugins with their pictures, Browse
+All Plugins with the catalog's tiers (official, verified, community),
+categories and a search, and a plugin's page with its pictures, who made
+it, what it adds (tools, hooks, middleware), the keys it needs, its known
+issues, its documentation and source, and Install. All from Hermes'
+`/api/dashboard/plugins/catalog`; the install is the tab's
+(`/api/dashboard/agent-plugins/install` by catalog name).
+
+**Siblings:** the Plugins tab's installed list (done: its tier pills read
+verified too) · an installed plugin's page (not needed: Update stays there,
+and the catalog page points to it) · the gateway restart card after an
+install (done: the same install sets it) · Screens that open on their last
+answer (done: the kept catalog already holds every field) · Hermes Desktop's
+plugin catalog (upstream, the reference: its featured picks from
+catalog-curation.json, its tiers and pictures) · the chat card Hermes opens
+to install a catalog plugin (not needed: Hermes runs that install itself,
+see Things Hermes connects from a chat) · Skill Hub: browse and install (the
+skills half of the marketplace) · Watch, CarPlay and group rooms (not
+needed: no settings) · the notifier (not needed: Hermes' own routes) · Text:
+the pages' captions and README.md's Capabilities line (done)
+
+**Code**
+- Models: `Conduit/Models/CapabilityCatalogModels.swift` (PluginCatalogEntry's fields, imageURL, webURL, normalizedTier; CapabilityPluginFilter's tierRank, tiers, categories, browse, curatedFeatured, featured)
+- Views: `Conduit/Views/Capabilities/PluginCatalogViews.swift` (PluginCatalogShelf, PluginCatalogBrowsePage, PluginCatalogDetailPage, PluginCatalogArtwork, PluginCatalogStyle), `Conduit/Views/Capabilities/CapabilityPluginsTab.swift` (the shelf in place of the full list, a search's rows opening the page, PluginStyle.tierPill)
+- Tests: `ConduitTests/PluginCatalogBrowseTests.swift`
+
+**Rulings**
+- Pictures load only from GitHub's hosts over https, as Hermes' catalog check and Desktop's browser allow; any other address shows the plugin's glyph (#NUM).
+- The shelf leads with Desktop's curated picks, then official plugins with a picture; Browse All lists official, then verified, then community, A-Z within each, installed ones marked (#NUM).
+- Install asks first with what the plugin adds, as the tab does; the keys it needs are listed, never asked for or kept (#NUM).
+
+**Open gaps**
+- The curated picks are Desktop's list as of 2026-11-08, written into Conduit: Hermes' catalog route doesn't carry them.
+- A plugin's README (Desktop's docs page) isn't shown.
+
+**Checked:** 2026-11-08, #NUM (the shelf, Browse All, the plugin page)
 
 ## Reply progress signals
 
