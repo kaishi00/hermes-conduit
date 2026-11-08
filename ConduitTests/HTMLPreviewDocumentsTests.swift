@@ -6,6 +6,7 @@
 //  scrolled back into view, and two rows naming one file read it twice
 //  (issue 1961). Pages are now kept briefly, reads for one file are
 //  shared, and a file that couldn't be read isn't asked for again at once.
+//  A kept page whose file stops reading is dropped (issue 2003).
 //
 
 import XCTest
@@ -78,6 +79,23 @@ final class HTMLPreviewDocumentsTests: XCTestCase {
         clock = clock.addingTimeInterval(HTMLPreviewDocuments.freshFor + 1)
         _ = await store.read("a", fetch: failing)
         XCTAssertEqual(reads, 2)
+    }
+
+    func testAKeptPageWhoseFileNoLongerReadsIsDropped() async {
+        // The file was deleted after its page was kept: the row falls back
+        // to the file card instead of showing the dead file (issue 2003).
+        let store = documents()
+        _ = await store.read("a") { htmlDataURL("<p>one</p>") }
+        XCTAssertNotNil(store.kept("a"))
+        clock = clock.addingTimeInterval(HTMLPreviewDocuments.freshFor + 1)
+        let html = await store.read("a") { nil }
+        XCTAssertNil(html)
+        XCTAssertNil(store.kept("a"), "no row shows the dead file's page again")
+        // Once the file reads again, it's kept again.
+        clock = clock.addingTimeInterval(HTMLPreviewDocuments.freshFor + 1)
+        let back = await store.read("a") { htmlDataURL("<p>two</p>") }
+        XCTAssertEqual(back, "<p>two</p>")
+        XCTAssertEqual(store.kept("a")?.html, "<p>two</p>")
     }
 
     func testOnlyTheLatestPagesAreKept() {
