@@ -3388,7 +3388,9 @@ them when the dashboard's session is torn down.
 the one owner that invalidates it) · not needed: the password sign-in client
 (NativeAuthClient invalidates its URLSession only in deinit), HermesClient's
 socket (invalidate() drops its session, so nothing reuses it), sign-out and
-the certificate check (each invalidates a session of its own, in a defer)
+the certificate check (each invalidates a session of its own, in a defer) ·
+location's host pass (a copy of the access token, taken again on each
+rotation; see Maps lookups)
 
 **Code**
 - `Conduit/Services/NativeOAuth.swift` (NativeOAuthAPIClient: invalidate, bytes(for:), tokenRequest, requestJSON; NativeOAuthSession: invalidate, refresh, requestJSON)
@@ -3397,12 +3399,13 @@ the certificate check (each invalidates a session of its own, in a defer)
 
 **Rulings**
 - An invalidated session ends its requests as cancelled, never as a sign-in failure, and never touches the Keychain grant that replaced it.
+- A refresh whose rotated tokens reach the Keychain posts `.nativeOAuthTokensRotated` with its dashboard's id, so a copy of the access token kept elsewhere (location's host pass) is taken again; one whose save failed, or that was refused, posts nothing (2026-11-08, #2031, issue 2028).
 - The client's URLSession is invalidated only in deinit. invalidate() marks the client invalidated and cancels its tasks, and a request after that fails with URLError(.cancelled) before it reaches the URLSession. A refresh Task that started after its session was invalidated (cancellation is cooperative) used to make a task on the invalidated URLSession, which raises an Objective-C exception: seven aborts in tokenRequest on builds 223 and 244 (2026-11-04, #1737).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-04, #1737 (an invalidated client cancels instead of raising).
+**Checked:** 2026-11-08, #2031 (a saved refresh posts the rotation notice for location's host pass; see Maps lookups); 2026-11-04, #1737 (an invalidated client cancels instead of raising).
 
 ## Dashboard sign-in redirects
 
@@ -5062,7 +5065,7 @@ each connect and each native sign-in refresh)
 - Host pass: `Conduit/Services/AppState+Location.swift` (saveLocationHostPass, locationHostTokensRotated), `Conduit/Services/NativeOAuth.swift` (nativeOAuthTokensRotated)
 - Navigate: `Conduit/Location/MapsNavigator.swift` (openInCar)
 - Notifier: `notifier/maps_tool.py`, `notifier/maps_host.py`, `notifier/skills/using-location/SKILL.md`
-- Tests: `ConduitTests/LocationSharingTests.swift` (the Maps section), `notifier/tests/test_maps.py`
+- Tests: `ConduitTests/LocationSharingTests.swift` (the Maps section), `ConduitTests/NativeOAuthTests.swift` (testSavedRefreshPostsTheRotationOnlyForItsDashboard), `scripts/tests/test_extension_transport_security.py`, `notifier/tests/test_maps.py`
 
 **Rulings**
 - "Me" is never coordinates: "Current location" at Precise, the area's name at Area, refused at Places only or inside a private place. Distances from "me" are rounded to 10 m at Precise and 100 m at Area, and a route from or to "me" at Area has no steps.
