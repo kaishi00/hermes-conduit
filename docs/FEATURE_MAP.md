@@ -3858,7 +3858,7 @@ menus)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #1992 (entry added)
+**Checked:** 2026-11-08, #2002 (a bot's Model and Workstream Model rows name the catalog's model and provider, as every other row does); 2026-11-08, #1992 (entry added)
 
 ## The + that makes something new
 
