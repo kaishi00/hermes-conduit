@@ -138,7 +138,7 @@ extension MarkdownLargeDocumentTests {
             authorityEpoch: nil,
             payload: ["text": .string(
                 "@file:/h/conduit/room-files/20261108-a/photo.jpg\n@file:/h/elsewhere/other.jpg\n"
-                    + "@file:/h/conduit/room-files/20261108-b/notes.pdf\n\nLook ![web](https://example.com/w.png)"
+                    + "@file:/h/conduit/room-files/20261108-b/notes.pdf\n\nLook\n\n![web](https://example.com/w.png)"
             )],
             createdAt: 0
         )
