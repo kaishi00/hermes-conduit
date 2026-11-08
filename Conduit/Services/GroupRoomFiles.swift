@@ -8,6 +8,10 @@ import Foundation
 final class GroupRoomFilesClient {
     static let capability = "room-files"
     static let path = "/api/plugins/conduit_push/room-files"
+    /// Reads a stored picture back as a data URL (plugin 0.142+), so a room
+    /// draws it instead of its name.
+    static let pictureCapability = "room-file-pictures"
+    static let picturePath = "/api/plugins/conduit_push/room-files/data-url"
     /// Base64 of a file near the host's 50 MB cap takes a while to send.
     static let minimumTimeoutMilliseconds = 180_000
 
@@ -118,6 +122,52 @@ extension AppState {
             )
         })
         let references = try await client.upload(attachments)
+        if let pictures = roomFilePicturesResolver {
+            keepSentRoomPictures(attachments, references: references, resolver: pictures)
+        }
         return Self.promptText(text.trimmingCharacters(in: .whitespacesAndNewlines), fileReferences: references)
+    }
+
+    /// Where a room's pictures are read, or nil where they can't be: a
+    /// plugin before 0.142, or a room someone else hosts, whose files are on
+    /// its home's host. One instance per dashboard, so the rows reading it
+    /// compare equal.
+    var roomFilePicturesResolver: GatewayMediaDataURLResolver? {
+        guard notifierPlugin.reports(GroupRoomFilesClient.pictureCapability),
+              activeRoomSurface?.copy == nil else { return nil }
+        if let cached = cachedRoomFilePicturesResolver, cached.dashboardID == activeDashboardID {
+            return cached
+        }
+        // Its own profile name keeps its pictures apart from a chat's on
+        // the phone; room files aren't a profile's.
+        let resolver = GatewayMediaDataURLResolver(appState: self, profile: "room-files", source: .roomFiles)
+        cachedRoomFilePicturesResolver = resolver
+        return resolver
+    }
+
+    /// A picture `/room-files` stored, read back as a data URL.
+    func roomFilePictureRead(for path: String) async -> GatewayMediaRead {
+        guard let encodedPath = DashboardPath.encodedQueryComponent(path) else { return .gone }
+        return await dataURLRead(endpoint: "\(GroupRoomFilesClient.picturePath)?path=\(encodedPath)")
+    }
+
+    /// Keeps the pictures the user just sent on the phone under their room
+    /// file, so their message shows them without reading them back.
+    private func keepSentRoomPictures(_ attachments: [Attachment], references: [String], resolver: GatewayMediaDataURLResolver) {
+        let generation = TranscriptImageCache.generation
+        let kept: [(Attachment, String)] = zip(attachments, references).compactMap { attachment, reference in
+            guard attachment.kind == .image,
+                  let path = MessageNormalizer.splitLeadingFileReferences(reference, messageId: "room").attachments.first?.uri,
+                  let key = resolver.imageCacheKey(forMediaPath: path) else { return nil }
+            return (attachment, key)
+        }
+        guard !kept.isEmpty else { return }
+        Task.detached(priority: .utility) {
+            for (attachment, key) in kept {
+                guard let data = AttachmentHelper.data(for: attachment) else { continue }
+                let type = TranscriptImageCache.fileExtension(forDataURL: "data:\(attachment.mimeType ?? "");")
+                TranscriptImageCache.store(data, fileExtension: type, for: key, generation: generation)
+            }
+        }
     }
 }

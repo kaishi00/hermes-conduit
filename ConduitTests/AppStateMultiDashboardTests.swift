@@ -1654,6 +1654,34 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(explorer.entries.isEmpty, "nor its listing")
     }
 
+    /// A picture sent into a room is read back through the plugin's room
+    /// files (issue 2035), only from a plugin that serves it, and a refusal
+    /// says the file is gone rather than that the host was out of reach.
+    func testRoomPicturesReadThroughThePluginsRoomFiles() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        XCTAssertNil(appState.roomFilePicturesResolver, "an older plugin's pictures stay by name")
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.142.0", capabilities: [GroupRoomFilesClient.pictureCapability]))
+        let resolver = try XCTUnwrap(appState.roomFilePicturesResolver)
+        XCTAssertTrue(appState.roomFilePicturesResolver === resolver, "one resolver, so the rows holding it compare equal")
+        let inline = await resolver.inlineImageDataURL(InlineImageRef(sessionId: "s", profile: "default", rowId: 1, index: 0))
+        XCTAssertNil(inline, "room files hold no pictures inside messages")
+
+        let path = "/h/conduit/room-files/20261108-a/my photo.jpg"
+        let read = Task { await resolver.read(for: path) }
+        try await held.waitForRequests(1)
+        try await held.answer(["dataUrl": "data:image/jpeg;base64,/9j/"], toPathEnding: "/room-files/data-url")
+        let answered = await read.value
+        XCTAssertEqual(answered, .dataURL("data:image/jpeg;base64,/9j/"))
+        XCTAssertEqual(held.sent.last?.path, GroupRoomFilesClient.picturePath)
+        XCTAssertEqual(held.sent.last?.query?.removingPercentEncoding, "path=\(path)")
+
+        let refused = Task { await resolver.read(for: "/elsewhere/x.jpg") }
+        try await held.waitForRequests(2)
+        try await held.answer(["detail": "Not a room file"], status: 404)
+        let gone = await refused.value
+        XCTAssertEqual(gone, .gone)
+    }
+
     /// A folder opens on its listing and recent files as the plugin gave
     /// them last time, before Hermes answers, and a read that fails keeps
     /// them up (#1533).
