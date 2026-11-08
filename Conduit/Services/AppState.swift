@@ -19381,8 +19381,8 @@ final class AppState: ObservableObject {
                         return compact
                     }
                     guard !messages.isEmpty,
-                          ChatScrollIdentityNormalization.sessionID(activeSessionId)
-                            == ChatScrollIdentityNormalization.sessionID(sessionId) else { throw refusal }
+                          rowsOnScreenBelong(to: [sessionId, compact.sessionId, compact.storedSessionId])
+                    else { throw refusal }
                     keepsRowsOnScreen = true
                     // Only a source that isn't there settles them; a read
                     // that failed, or a page naming another chat, is tried
@@ -20019,6 +20019,19 @@ final class AppState: ObservableObject {
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
             chatResumeCoordinator.abandonPendingAutomaticSync()
             return false
+        }
+    }
+
+    /// Whether the rows on screen are the chat these ids name: the open
+    /// chat by any id it answers to (its durable id, a rotated runtime, the
+    /// catalog's aliases), since an automatic return resumes a Bot Chat by
+    /// its saved stored id while it is open by its runtime id (issue 2025).
+    private func rowsOnScreenBelong(to ids: [String?]) -> Bool {
+        guard let open = activeSessionId else { return false }
+        let own = Set((chatOwnSessionIDs(for: open).union([open]))
+            .compactMap { ChatScrollIdentityNormalization.sessionID($0) })
+        return ids.contains { id in
+            ChatScrollIdentityNormalization.sessionID(id).map(own.contains) == true
         }
     }
 

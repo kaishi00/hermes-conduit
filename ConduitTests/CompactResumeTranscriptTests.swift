@@ -682,6 +682,44 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertTrue(harness.appState.transcriptFreshnessIsStale)
     }
 
+    /// A chat open by its runtime id that a resume addresses by its stored
+    /// id (an automatic return to a Bot Chat) still keeps its rows.
+    func testAResumeTooLongKeepsTheRowsOfAChatOpenByAnotherOfItsIDs() async throws {
+        var refusesWholeTranscript = false
+        let shown = [
+            ChatMessage(id: "1", role: .user, content: "Long chat", timestamp: "2026-11-08T10:00:00Z"),
+            ChatMessage(id: "2", role: .assistant, content: "Kept", timestamp: "2026-11-08T10:00:02Z")
+        ]
+        let row = session("stored-long", alternateIDs: ["runtime-long"])
+        let harness = try makeHarness(
+            openSession: { _, _, compact in
+                if !compact, refusesWholeTranscript { throw Self.resumeTooLong }
+                return SessionResumeResult(
+                    sessionId: "runtime-long",
+                    storedSessionId: "stored-long",
+                    messages: compact ? [] : shown,
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            persistedTranscript: { _, _, _ in .unavailable },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [row] }
+                ops.refreshContext = { _, _ in }
+            }
+        )
+        harness.appState.sessions = [row]
+        let opened = await harness.appState.openSession("stored-long")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+        XCTAssertTrue(harness.appState.chatOwnSessionIDsForTesting("runtime-long").contains("stored-long"))
+
+        refusesWholeTranscript = true
+        await harness.appState.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
+        XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
+        XCTAssertNil(harness.appState.errorMessage)
+    }
+
     /// Drives one reconciliation against a history source that fails with
     /// `failure` and asserts the bounded-failure contract: a failing or slow
     /// BOUNDED history request must never escalate into the legacy
