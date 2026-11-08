@@ -69,12 +69,13 @@ extension AppState {
 
     /// Lets go of a turn a gateway restart cut off: Hermes marks it
     /// interrupted, never runs it again, and the messages behind it go on.
-    func discardLostPrompt(_ row: QueuedPrompt) async {
+    @discardableResult
+    func discardLostPrompt(_ row: QueuedPrompt) async -> Bool {
         guard let generation = row.executionGeneration else {
             authorityQueue.notice = AppLocalization.string("Hermes didn't say which turn this was. Reopen the chat and try again.")
-            return
+            return false
         }
-        await queueAction(row) { client, sessionID in
+        return await queueAction(row) { client, sessionID in
             _ = try await client.discardLostPrompt(sessionID, admissionID: row.admissionID, generation: generation)
             // Resend's words then go as a new message, never as this one again.
             HermesClient.forgetUnansweredSubmission(row.inputID, for: sessionID)
@@ -87,34 +88,37 @@ extension AppState {
     /// The messages that waited behind it run first.
     func resendLostPrompt(_ row: QueuedPrompt) async {
         let sessionID = authorityQueue.sessionID
-        await discardLostPrompt(row)
-        guard authorityQueue.row(row.admissionID) == nil, authorityQueue.notice == nil,
-              authorityQueueIsOpenChat(sessionID) else { return }
+        // Its own discard says whether it went: another row's refusal
+        // meanwhile must not keep these words from going.
+        guard await discardLostPrompt(row), authorityQueueIsOpenChat(sessionID) else { return }
         // Hermes took these words as a message once: they go as one again,
         // never as a slash command run here.
         _ = await submitComposer(text: row.text, busyMode: .queue, runsSlashCommands: false)
     }
 
     /// Runs one of the dock's actions on the open chat's queue, saying why
-    /// it didn't go when Hermes refuses it.
+    /// it didn't go when Hermes refuses it. True when the action went.
+    @discardableResult
     private func queueAction(
         _ row: QueuedPrompt,
         _ action: @escaping @MainActor (HermesClient, String) async throws -> Void
-    ) async {
-        guard let sessionID = authorityQueue.sessionID, !authorityQueue.working.contains(row.admissionID) else { return }
+    ) async -> Bool {
+        guard let sessionID = authorityQueue.sessionID, !authorityQueue.working.contains(row.admissionID) else { return false }
         guard let client, client.speaksSessionAuthority else {
             authorityQueue.notice = AppLocalization.string("Hermes isn't connected. Try again once it is.")
-            return
+            return false
         }
         authorityQueue.notice = nil
         authorityQueue.setWorking(row.admissionID, true)
         defer { authorityQueue.setWorking(row.admissionID, false) }
         do {
             try await action(client, sessionID)
+            return true
         } catch {
             // Said under its own chat's queue only, not one opened meanwhile.
-            guard authorityQueue.sessionID == sessionID else { return }
+            guard authorityQueue.sessionID == sessionID else { return false }
             authorityQueue.notice = Self.queueActionRefusal(error)
+            return false
         }
     }
 
