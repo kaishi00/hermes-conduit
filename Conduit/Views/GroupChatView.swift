@@ -936,7 +936,7 @@ private struct GroupMessageFiles: View {
                 }
             }
         } else if let picture = pictures.first {
-            UserImageAttachmentPreview(attachment: picture, gatewayResolver: pictureFiles, onAccent: onAccent)
+            UserImageAttachmentPreview(attachment: picture, gatewayResolver: pictureFiles, onAccent: onAccent, namesUnavailable: true)
         }
         ForEach(pictures.isEmpty ? files : files.filter { !GroupRoomFilesClient.isStoredPicture($0) }) { file in
             HStack(spacing: 8) {

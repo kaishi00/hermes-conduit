@@ -1992,6 +1992,9 @@ struct UserImageAttachmentPreview: View {
     var isTile = false
     /// On the user's accent bubble; a room member's plain bubble isn't.
     var onAccent = true
+    /// A picture that won't load shows its file name, not only "Image
+    /// unavailable": a room's message has no other place naming it.
+    var namesUnavailable = false
     @State private var gatewayImage: UIImage?
     /// The cache key `gatewayImage` was loaded for, so a reused view never
     /// shows the picture it held before.
@@ -2089,10 +2092,18 @@ struct UserImageAttachmentPreview: View {
                     .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
                     .modifier(OptionalAccessibilityHint(hint: attachment.imageDescription))
             } else {
+                let failed = gatewayLoadFailed || localPreviewFailed
+                let named = failed && namesUnavailable && !attachment.name.isEmpty
                 Label(
-                    (gatewayLoadFailed || localPreviewFailed) ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached"),
-                    systemImage: (gatewayLoadFailed || localPreviewFailed) ? "photo.badge.exclamationmark" : "photo"
+                    named ? attachment.name
+                        : failed ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached"),
+                    systemImage: failed ? "photo.badge.exclamationmark" : "photo"
                 )
+                .lineLimit(1)
+                .truncationMode(.middle)
+                .accessibilityLabel(Text(verbatim: named
+                    ? "\(AppLocalization.string("Image unavailable")): \(attachment.name)"
+                    : failed ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached")))
                 .scaledFont(.caption.weight(.medium))
                 .foregroundStyle(onAccent ? Color.white : Color.primary)
                 .padding(.horizontal, 10)

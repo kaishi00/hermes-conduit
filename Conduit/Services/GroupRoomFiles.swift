@@ -130,7 +130,8 @@ extension AppState {
         })
         let references = try await client.upload(attachments)
         if let pictures = roomFilePicturesResolver {
-            keepSentRoomPictures(attachments, references: references, resolver: pictures)
+            // Before the send: the composer clears its staged files after.
+            await keepSentRoomPictures(attachments, references: references, resolver: pictures)
         }
         return Self.promptText(text.trimmingCharacters(in: .whitespacesAndNewlines), fileReferences: references)
     }
@@ -160,7 +161,7 @@ extension AppState {
 
     /// Keeps the pictures the user just sent on the phone under their room
     /// file, so their message shows them without reading them back.
-    private func keepSentRoomPictures(_ attachments: [Attachment], references: [String], resolver: GatewayMediaDataURLResolver) {
+    private func keepSentRoomPictures(_ attachments: [Attachment], references: [String], resolver: GatewayMediaDataURLResolver) async {
         let generation = TranscriptImageCache.generation
         let kept: [(Attachment, String)] = zip(attachments, references).compactMap { attachment, reference in
             guard attachment.kind == .image,
@@ -169,7 +170,7 @@ extension AppState {
             return (attachment, key)
         }
         guard !kept.isEmpty else { return }
-        Task.detached(priority: .utility) {
+        await Task.detached(priority: .userInitiated) {
             for (attachment, key) in kept {
                 guard let data = AttachmentHelper.data(for: attachment) else { continue }
                 let type = TranscriptImageCache.fileExtension(forDataURL: "data:\(attachment.mimeType ?? "");")
