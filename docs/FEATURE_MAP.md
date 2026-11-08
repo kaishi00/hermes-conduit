@@ -2492,7 +2492,7 @@ Watch and CarPlay (not needed: neither shows a transcript)
 - An open, a refresh and a reconnect's resume settle once Hermes' transcript is applied: the context ring's breakdown read (`session.context_breakdown`) goes on beside them, as the approvals read does, and applies only while the same client has the same chat open. The resume's own snapshot sets the ring first, so the open's finish, an unread chat's landing and the viewport's transition no longer wait a round trip for it (2026-11-05, #1836, issue 1824).
 - A Chats row that shows (a top-level row, an expanded child, a match found by its messages, a project page's row, and another profile's row in All, under that profile; by any id the row answers to) reads its chat's saved copy into memory on the store's queue, as the read-ahead does: only while there's room among the 16 kept, and first to go. Tapping it then shows the copy without reading and decoding its file on the main thread (2026-11-04, #1734, issue 1725). A copy saved maps only the rows it keeps, the last 500 saved ones, and the chat list it saves with it is mapped on the store's queue.
 
-- Hermes refuses a resume carrying the whole transcript past `sessions.max_resume_messages` (20,000 rows by default, RPC 4130), and Conduit asks for one only when the history source can't be read at that moment (no dashboard page yet on a return, or a 404). The compact resume is guarded on the newest segment only, so a 4130 resumes compact instead and takes its rows from the history source if it answers now; else the open chat keeps the rows it shows, its freshness unresolved, so the next send or return reads them again. Only a chat with nothing on screen to keep shows the refusal. A restore error a chat's resume showed is cleared once a later resume works; it used to stay over a chat that came back on the next try (2026-11-08, #2026, issue 2025).
+- Hermes refuses a resume carrying the whole transcript past `sessions.max_resume_messages` (20,000 rows by default, RPC 4130), and Conduit asks for one only when the history source can't be read at that moment (no dashboard page yet on a return, or a 404). The compact resume is guarded on the newest segment only, so a 4130 resumes compact instead and takes its rows from the history source if it answers now; else the open chat keeps the rows it shows: a history read that failed for now leaves them unresolved, so the next send reads again, and a source that isn't there (which no read before a send could reach, so holding sends for it would block every one) is read on the next return. Only a chat with nothing on screen to keep shows the refusal. A restore error a chat's resume showed is cleared once a later resume works; it used to stay over a chat that came back on the next try (2026-11-08, #2026, issue 2025).
 
 **Open gaps**
 - A chat whose live transcript lands somewhere other than its newest row moves there at the handover: a restored reading place, and an unread reply when the saved rows already had one (Hermes' rows can start a newer turn below them, so that landing waits for them).
@@ -3090,7 +3090,7 @@ drawer shell's chat (not needed: its chat composer never rests; its rooms'
 composer follows the same rule, #1512) · iPhone, iPad and Mac · text:
 docs/VOICE_SETTINGS.md "Dictate into the composer" (done, #1512); no
 Settings caption describes it · the placeholder (the chat's: Message,
-Interrupt, Steer, Queue, a chat on its way; the room's; the drawer
+Interrupt, Steer, Queue, a chat on its way, which names the open chat's agent, a Bot Chat's bot, and the workspace profile only for a New Chat (#2026); the room's; the drawer
 shell's chat, the same ComposerBar; done, #1541) · accessibility Text
 Sizes on a narrow iPhone (both composers, resting and expanded, in both
 shells; done, #1541)
@@ -3138,7 +3138,7 @@ shells; done, #1541)
 - Not yet seen on a device: an iPhone at AX3 to AX5 in a running chat and
   in a group room (#1541, checked in code and a unit test only).
 
-**Checked:** 2026-10-31, #1556 (an iPhone rests again after a send, keyboard or not); 2026-10-30, #1541 (the resting bar and its placeholder at accessibility Text Sizes on a narrow iPhone); 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
+**Checked:** 2026-11-08, #2026 (the placeholder of a chat on its way names the chat's agent, issue 2025; see Bots: create and edit); 2026-10-31, #1556 (an iPhone rests again after a send, keyboard or not); 2026-10-30, #1541 (the resting bar and its placeholder at accessibility Text Sizes on a narrow iPhone); 2026-10-30, #1527 (a send keeps focus with a hardware keyboard, so the composer stays expanded after it); 2026-10-29, #1512 (new entry, issue 1483).
 
 ## Composer focus after a send
 

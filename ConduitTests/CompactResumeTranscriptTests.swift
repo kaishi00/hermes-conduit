@@ -568,11 +568,13 @@ final class CompactResumeTranscriptTests: XCTestCase {
         XCTAssertNil(harness.appState.errorMessage)
 
         // Refused again with no history source: the rows on screen stay.
+        // A source that isn't there can't be read before a send either, so
+        // sends aren't held for it; the next return reads it.
         historyAnswers = false
         await harness.appState.syncSession(purpose: .preserveCurrent, using: nil, automaticWorkToken: nil)
         XCTAssertEqual(harness.appState.messages.map { $0.content }, ["Long chat", "Kept"])
         XCTAssertNil(harness.appState.errorMessage)
-        XCTAssertTrue(harness.appState.transcriptFreshnessIsStale)
+        XCTAssertFalse(harness.appState.transcriptFreshnessIsStale)
     }
 
     /// Drives one reconciliation against a history source that fails with

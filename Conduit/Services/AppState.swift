@@ -19341,9 +19341,14 @@ final class AppState: ObservableObject {
             // (issue 2025: a Bot Chat past 20,000 rows, 29 in its newest
             // segment). That resume brings no rows: the history source fills
             // them in when it answers now, else the chat keeps the rows it
-            // shows and the next read brings them up to date. A chat with
-            // none to keep shows the refusal, which says what to do.
+            // shows. A history read that failed for now leaves them
+            // unresolved, so the next send reads again; a source that isn't
+            // there (no dashboard page, a 404) can't be read before a send
+            // either, which would block every send, so the next return to
+            // the app reads it. A chat with none to keep shows the refusal,
+            // which says what to do.
             var keepsRowsOnScreen = false
+            var keptRowsAwaitHistory = false
             func resumeCarryingTranscript() async throws -> SessionResumeResult {
                 do {
                     return try await openChatResumeSession(
@@ -19359,11 +19364,12 @@ final class AppState: ObservableObject {
                         compact: true,
                         profile: conversationScopeProfile
                     )
-                    if case .hydrated(let persisted) = await persistedTranscriptOutcome(
+                    let history = await persistedTranscriptOutcome(
                         sessionId: sessionId,
                         profile: conversationScopeProfile ?? profile,
                         using: dashboardTicketBridge
-                    ), transcriptMatchesSession(
+                    )
+                    if case .hydrated(let persisted) = history, transcriptMatchesSession(
                         persisted,
                         requestedSessionId: sessionId,
                         resumedSessionId: compact.sessionId
@@ -19375,6 +19381,7 @@ final class AppState: ObservableObject {
                           ChatScrollIdentityNormalization.sessionID(activeSessionId)
                             == ChatScrollIdentityNormalization.sessionID(sessionId) else { throw refusal }
                     keepsRowsOnScreen = true
+                    if case .failed = history { keptRowsAwaitHistory = true }
                     return compact
                 }
             }
@@ -19901,8 +19908,9 @@ final class AppState: ObservableObject {
                 )
             }
             // Rows kept from the screen aren't proof the chat is current
-            // (applyChatResume took them as if they were).
-            if keepsRowsOnScreen {
+            // (applyChatResume took them as if they were); a history read
+            // that failed for now is tried again before the next send.
+            if keptRowsAwaitHistory {
                 transcriptFreshnessIsStale = true
             }
             let settled = settleReconciliationAndPublish(
