@@ -5659,8 +5659,8 @@ drift pauses.
 **Siblings:** the open chat (chats, project chats, Bot Chat, group rooms) ·
 the Chats, Bots and Tasks tab roots · the persistent iPad sidebar column · sign-in ·
 the copy behind a bar's fade before iOS 26 and on a Mac (`V2LegacyEdgeBar`,
-the same view) · the working line's breathing (same pause rules) · the Settings tab root, sheets,
-pushed pages and the iPhone drawer (still by design) · the Apple Watch (no
+the same view) · the working line's breathing (same pause rules) · the Settings tab root, the iPad chat placeholder,
+sheets, pushed pages and the iPhone drawer (still by design) · the Apple Watch (no
 backdrop drift; its call bars run their own timeline) · Settings captions and
 model-facing text (none describe it)
 
@@ -5677,7 +5677,7 @@ model-facing text (none describe it)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #1994 (added; the glows move with the timeline, issue 1980; the Tasks root drifts like Chats and Bots, Settings holds still; UI tests and screenshots hold it still).
+**Checked:** 2026-11-08, #1994 (added; the glows move with the timeline, issue 1980; the Tasks root drifts like Chats and Bots, Settings and the iPad chat placeholder hold still; UI tests and screenshots hold it still; on the iPad simulator the drift ran its full cycle and held its phase through an idle pause and resume).
 
 ## Profile names
 
