@@ -2330,7 +2330,7 @@ README.md's Scheduled jobs line)
 
 **Rulings**
 - The pin is Hermes' own per-job `model`, `provider` and `reasoning_effort` (v0.22.5 and later), sent through the dashboard's PUT /api/cron/jobs; Profile default clears them, so the job follows the profile's model again. A new pick clears `base_url`, an endpoint kept for the provider before, which would otherwise override the new provider's.
-- Hermes' create takes a model but no reasoning, so a new job's reasoning is saved as an edit right after; if that fails the job is kept and a banner says its reasoning wasn't saved.
+- Hermes' create takes a model but no reasoning, so a new job's reasoning is saved as an edit right after; if that fails the job is kept, its Bot Chat choice is still saved, and one banner names whatever wasn't.
 - Only a pinned job (a model, or a reasoning, of its own) gets a model line in the lists; the rest run on the profile's and say so in their sheet ("Profile default").
 - Every reasoning level Hermes' cron takes is offered, Ultra included.
 

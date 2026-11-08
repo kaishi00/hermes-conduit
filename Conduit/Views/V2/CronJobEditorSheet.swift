@@ -229,6 +229,10 @@ struct CronJobEditorSheet: View {
             do {
                 let profile = appState.activeProfile
                 var jobID: String?
+                // What a saved job's later steps couldn't save. The job itself
+                // is saved, so the sheet closes either way (a second Create
+                // would make it twice) and the banner names each one.
+                var failures: [String] = []
                 if let job = editedJob {
                     try await appState.updateCronJob(job, updates: draft.updates(from: original))
                     jobID = job.id
@@ -236,42 +240,31 @@ struct CronJobEditorSheet: View {
                     let created = try await appState.createCronJob(body)
                     jobID = created?.id
                     // Hermes' create takes no reasoning; the new job gets it
-                    // as an edit. The job itself is saved, so the sheet
-                    // closes either way (a second Create would make it twice).
+                    // as an edit.
                     if let reasoning = draft.createReasoningUpdate {
                         do {
                             guard let created else { throw HermesError.invalidResponse }
                             try await appState.updateCronJob(created, updates: reasoning)
                         } catch {
-                            Haptics.mutationCompleted(false)
-                            appState.errorMessage = AppLocalization.string("The job is saved, but not its reasoning: \(UserFacingError.message(for: error))")
-                            dismiss()
-                            return
+                            failures.append(AppLocalization.string("The job is saved, but not its reasoning: \(UserFacingError.message(for: error))"))
                         }
                     }
                 }
                 // A new job just shows by default, so only "act" is sent for
                 // it, which needs the id Hermes gave it.
                 if offersBotChoice, editedJob == nil, botActs, jobID == nil {
-                    Haptics.mutationCompleted(false)
-                    appState.errorMessage = AppLocalization.string("The job is saved, but not whether the bot acts on it: \(HermesError.invalidResponse.localizedDescription)")
-                    dismiss()
-                    return
-                }
-                if offersBotChoice, let jobID, editedJob == nil ? botActs : botChoiceChanged {
+                    failures.append(AppLocalization.string("The job is saved, but not whether the bot acts on it: \(HermesError.invalidResponse.localizedDescription)"))
+                } else if offersBotChoice, let jobID, editedJob == nil ? botActs : botChoiceChanged {
                     do {
                         try await appState.setCronJobLetsBotAct(botActs, jobID: jobID, profile: profile)
                     } catch {
-                        // The job itself is saved, so the sheet closes (a
-                        // second Create would make it twice); the banner says
-                        // what wasn't.
-                        Haptics.mutationCompleted(false)
-                        appState.errorMessage = AppLocalization.string("The job is saved, but not whether the bot acts on it: \(UserFacingError.message(for: error))")
-                        dismiss()
-                        return
+                        failures.append(AppLocalization.string("The job is saved, but not whether the bot acts on it: \(UserFacingError.message(for: error))"))
                     }
                 }
-                Haptics.mutationCompleted(true)
+                Haptics.mutationCompleted(failures.isEmpty)
+                if !failures.isEmpty {
+                    appState.errorMessage = failures.joined(separator: "\n")
+                }
                 dismiss()
             } catch {
                 Haptics.mutationCompleted(false)
