@@ -63,14 +63,20 @@ extension AppState {
                 let bridge = try self.richChecklistBridge(for: dashboardID)
                 var body = body
                 body["sessions"] = Array(sessionIDs.prefix(4))
-                let _: [String: Any] = try await bridge.requestJSON(
+                let answer: [String: Any] = try await bridge.requestJSON(
                     path: RichCardActionContext.tapPath(profile: profile), method: "POST", body: body)
-                // The message goes only to the chat the card was tapped in: after
-                // a switch the tap waits unheard and is forgotten on the host.
+                // The message goes only to the chat the card was tapped in, into
+                // an empty composer: otherwise the host forgets the tap, so no
+                // later message that starts with its label hears it.
                 guard RichCardActionContext.mayFollowUp(
                     tappedIn: chat,
                     openChat: self.richCardChat,
-                    composerIsEnabled: self.composerIsEnabled, draft: self.predictive.draft) else {
+                    composerIsEnabled: self.composerIsEnabled, draft: self.predictive.draft,
+                    stagedAttachments: self.predictive.hasStagedAttachments) else {
+                    if let id = answer["id"] as? String, self.notifierPlugin.reports(RichCardActionContext.dropCapability) {
+                        let _: [String: Any]? = try? await bridge.requestJSON(
+                            path: RichCardActionContext.dropPath(profile: profile, id: id), method: "DELETE")
+                    }
                     throw DashboardTicketBridgeError.notReady
                 }
                 self.requestBoardFollowUp(.send, text: message)

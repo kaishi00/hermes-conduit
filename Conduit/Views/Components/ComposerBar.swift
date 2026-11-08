@@ -540,6 +540,11 @@ struct ComposerBar: View, Equatable {
             matching: .any(of: [.images, .videos])
         )
         .conduitOutOfProcessAccentTint()
+        // A card's send and tap buttons wait while something is staged, since
+        // the message they send would take it along.
+        .onChange(of: attachments.isEmpty && pendingScreenshot == nil, initial: true) { _, nothingStaged in
+            appState.predictive.stagedAttachmentsChanged(!nothingStaged)
+        }
         .onChange(of: text) { _, newValue in
             let isProgrammaticDraftRestore = suppressNextTextChangeSuggestions
             suppressNextTextChangeSuggestions = false
