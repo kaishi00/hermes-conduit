@@ -2,7 +2,7 @@
 //  RichReviewCard.swift
 //  Conduit
 //
-//  A review card (plugin 0.146+): options Hermes drew for the user to look
+//  A review card (plugin 0.147+): options Hermes drew for the user to look
 //  at and mark, when a choice is easier to see than to describe. One
 //  decision is a quick pick the user taps in the chat; several open the
 //  review sheet, where each decision is marked Approve, Change or Skip with
