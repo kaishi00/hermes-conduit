@@ -288,7 +288,9 @@ extension AppState {
         return Self.workstreamCallSent
     }
 
-    /// What a workstream's call is told once its request went in.
+    /// What a workstream's call is told once its request went in. Its
+    /// answer case needs notifier 0.141.1 (#618), which ships with it: an
+    /// older plugin queues the words behind the question instead.
     static let workstreamCallSent = "Sent to this workstream, in its own session: if it was waiting on the user's answer to its question, this answers it; if it was waiting on an approval, this waits until the user answers that in its chat or on its card; if it was working, Hermes takes this as an interrupt and keeps its work so far; otherwise it starts on it now. Its reply shows in the workstream's chat and its bot's Work panel, not on this call, so don't guess it."
 
     /// Sends a voice job's adopt, and once more after `wait` if that one
