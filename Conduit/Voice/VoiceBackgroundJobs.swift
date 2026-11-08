@@ -2611,6 +2611,11 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 jobs[index].inputRequestDelivered = false
                 jobs[index].waitingApproval = nil
                 jobs[index].waitingQuestion = nil
+            } else if !card.isOpen, before.status == .needsInput,
+                      before.waitingApproval == nil, before.waitingQuestion == nil {
+                // Settled: Hermes carries on, as after an answered input.
+                jobs[index].status = .running
+                jobs[index].inputRequestDelivered = false
             }
         case .messageComplete(_, let messageID, let content, _, _):
             // An earlier voice turn's late or replayed completion, once the

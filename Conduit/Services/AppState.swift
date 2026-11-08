@@ -28265,6 +28265,8 @@ final class AppState: ObservableObject {
         if !attachments.isEmpty {
             return await sendMessage(text, attachments: attachments, context: context, queued: true)
         }
+        // A steer or redirect waits behind an open connect card too.
+        if let sessionId = activeSessionId { continueOpenConnections(beforeSendingIn: sessionId) }
         switch mode {
         case .steer:
             return await steer(text, context: context)
@@ -37991,8 +37993,8 @@ final class AppState: ObservableObject {
             expireInputPrompt(requestId: requestId, reason: reason)
 
         case .connection(_, let activity):
-            applyConnectionActivity(activity, commitsStreamedText: true)
-            if activity.isOpen { setRunning(true) }
+            // An older frame moves nothing, so it marks no turn running.
+            if applyConnectionActivity(activity, commitsStreamedText: true), activity.isOpen { setRunning(true) }
 
         case .approvalWithdrawn(_, let requestId, let reason):
             withdrawApproval(requestId: requestId, reason: reason)
@@ -38709,16 +38711,17 @@ final class AppState: ObservableObject {
     /// whole snapshot each time, so the newest frame is the card, and an
     /// older one changes nothing. A settled operation leaves its rows'
     /// outcomes on the card.
-    private func applyConnectionActivity(_ activity: ConnectionActivity, commitsStreamedText: Bool = false) {
+    @discardableResult
+    private func applyConnectionActivity(_ activity: ConnectionActivity, commitsStreamedText: Bool = false) -> Bool {
         if let index = messages.firstIndex(where: { $0.connection?.opID == activity.opID }) {
             guard let existing = messages[index].connection,
-                  let next = activity.applied(over: existing) else { return }
+                  let next = activity.applied(over: existing) else { return false }
             messages[index].content = ConnectionActivity.transcriptLine(next)
             messages[index].connection = next
-            return
+            return true
         }
         // A settled operation this device never showed has nothing to ask.
-        guard activity.isOpen else { return }
+        guard activity.isOpen else { return false }
         settleReasoningSegmentIntoTranscript()
         if commitsStreamedText { flushStreamingPartial() }
         var appended = activity
@@ -38731,6 +38734,7 @@ final class AppState: ObservableObject {
         )
         row.connection = appended
         messages.append(row)
+        return true
     }
 
     /// One connect card's answer: rows approved (with the keys typed for

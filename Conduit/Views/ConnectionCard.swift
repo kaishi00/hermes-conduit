@@ -92,6 +92,7 @@ struct ConnectionCard: View {
                 guard settled else { return }
                 drafts = [:]
                 browser = nil
+                browserUp = false
             }
             .onChange(of: card.targets.filter(\.resolved).map(\.name)) { _, resolved in
                 for name in resolved { drafts[name] = nil }
@@ -189,6 +190,7 @@ struct ConnectionCard: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
             .disabled(!card.needsUser || browserUp)
+            .accessibilityLabel(Text(verbatim: "\(AppLocalization.string("Connect")) \(target.title)"))
         } else if target.reissues {
             Button(AppLocalization.string("Try Again")) {
                 opened.remove(target.name)
@@ -197,6 +199,7 @@ struct ConnectionCard: View {
             .buttonStyle(.bordered)
             .controlSize(.small)
             .disabled(!card.needsUser)
+            .accessibilityLabel(Text(verbatim: "\(AppLocalization.string("Try Again")) \(target.title)"))
         } else if target.kind == .connector, target.state == .pending {
             // Hermes is still making the sign-in page.
             ProgressView().controlSize(.small)
@@ -230,6 +233,7 @@ struct ConnectionCard: View {
             }
             .buttonStyle(.borderedProminent)
             .disabled(!card.needsUser || !ConnectionActivity.hasRequiredValues(target.fields, in: typed))
+            .accessibilityLabel(Text(verbatim: "\(approveTitle(target)) \(target.title)"))
 
             Spacer(minLength: 0)
 
@@ -244,6 +248,7 @@ struct ConnectionCard: View {
             }
             .buttonStyle(.bordered)
             .disabled(!card.needsUser)
+            .accessibilityLabel(Text(verbatim: "\(AppLocalization.string("Skip")) \(target.title)"))
         }
         .scaledFont(.subheadline.weight(.medium))
     }
@@ -306,7 +311,7 @@ struct ConnectionCard: View {
                 Label(AppLocalization.string("Browse Apps"), systemImage: "square.grid.2x2")
             }
             .buttonStyle(.borderedProminent)
-            .disabled(!card.needsUser)
+            .disabled(!card.needsUser || browserUp)
         }
     }
 
