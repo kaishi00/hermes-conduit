@@ -3599,8 +3599,9 @@ issues, its documentation and source, and Install. All from Hermes'
 (`/api/dashboard/agent-plugins/install` by catalog name).
 
 **Siblings:** the Plugins tab's installed list (done: its tier pills read
-verified too) · an installed plugin's page (not needed: Update stays there,
-and the catalog page points to it) · the gateway restart card after an
+verified too) · an installed plugin's page (Update stays there,
+and the catalog page points to it; done in #2018: its switch, Update and
+Uninstall read the store's profile live, as Install does) · the gateway restart card after an
 install (done: the same install sets it, and the plugin's page shows it) · Screens that open on their last
 answer (done: the kept catalog already holds every field) · Hermes Desktop's
 plugin catalog (upstream, the reference: its featured picks from
