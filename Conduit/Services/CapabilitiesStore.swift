@@ -575,7 +575,12 @@ final class CapabilitiesStore {
     /// A route this Hermes doesn't have.
     static func isMissingRoute(_ error: Error) -> Bool {
         if case DashboardTicketBridgeError.http(let status, let detail) = error {
-            return (status == 404 || status == 405) && !DashboardTicketBridgeError.isPluginOffDetail(detail)
+            guard !DashboardTicketBridgeError.isPluginOffDetail(detail) else { return false }
+            if status == 405 { return true }
+            // Only the framework's bare Not Found means no route: a profile
+            // that's gone answers 404 with its own detail.
+            let bare = detail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return status == 404 && (bare.isEmpty || bare == "not found")
         }
         return false
     }

@@ -118,6 +118,16 @@ final class SkillHubTests: XCTestCase {
         XCTAssertNil(store.skillHubError)
     }
 
+    func testAProfileThatIsGoneIsNotAHermesWithoutTheHub() async {
+        let requester = SkillHubRequester(responses: [:])
+        requester.failure = DashboardTicketBridgeError.http(status: 404, detail: "Profile 'work' does not exist.")
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        await store.loadSkillHub()
+        XCTAssertFalse(store.skillHubMissing)
+        XCTAssertNotNil(store.skillHubError)
+    }
+
     func testAFailedReadKeepsTheHubShown() async {
         let requester = SkillHubRequester(responses: ["/api/skills/hub/sources": ["sources": [["id": "github", "label": "GitHub"]]]])
         let store = CapabilitiesStore()
