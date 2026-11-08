@@ -554,6 +554,8 @@ final class CapabilitiesStore {
         skillsUpdate = .running
         do {
             let started = try await request(scoped("/api/skills/hub/update"), method: "POST", body: scopedBody([:]), timeout: 45_000)
+            // `skills-update` is the fixed action name Hermes' update route
+            // spawns, so an answer without one still points at it.
             let action = started["name"] as? String ?? "skills-update"
             let status = try await waitForAction(action, token: token)
             guard token == generation else { return false }

@@ -3573,7 +3573,7 @@ own routes) · Text: the page's captions and README.md's Capabilities line
 
 **Rulings**
 - Hermes searches the hub, as `hermes skills search` does, so the phone never downloads the public catalog's whole skills feed (Desktop's 100k rows); the profile's own sources are the ones searched (#1999).
-- Install waits for Hermes' security scan of the skill as it is now and is off when the scan says Hermes would refuse it; the page shows the verdict, the reason and every finding, worst first. A scan that fails leaves Install off, with Try Again (#1999).
+- Install waits for Hermes' security scan of the skill as it is now and is off when the scan says Hermes would refuse it; the page shows what Hermes would do (install, ask first or refuse), its reason and every finding, worst first. A scan that fails leaves Install off, with Try Again (#1999).
 - A skill's source page opens only as a web address (owner and name alone read as GitHub) (#1999).
 - A Hermes without the hub's routes shows that it has none rather than an error; a read that fails keeps what's shown (#1999).
 
