@@ -399,14 +399,18 @@ struct AddProviderSheet: View {
                     NavigationLink {
                         CustomEndpointForm(service: service, existing: nil, onSaved: { dismiss() })
                     } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(AppLocalization.string("Custom endpoint"))
-                                .scaledFont(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            Text(AppLocalization.string("Any OpenAI-compatible server, such as vLLM, LM Studio or Ollama"))
-                                .scaledFont(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(AppLocalization.string("Custom endpoint"))
+                                    .scaledFont(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                Text(AppLocalization.string("Any OpenAI-compatible server, such as vLLM, LM Studio or Ollama"))
+                                    .scaledFont(.caption).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            SettingsChevron()
                         }
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .frame(minHeight: 44)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -586,9 +590,9 @@ struct ProviderDetailPage: View {
                             CustomEndpointForm(service: service, existing: (name: entry.name, endpoint: endpoint), onSaved: {})
                                 .v2TabBarClearance()
                         } label: {
-                            Label(AppLocalization.string("Edit endpoint"), systemImage: "pencil")
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            SettingsLinkRow(title: AppLocalization.string("Edit endpoint"))
                         }
+                        .buttonStyle(.plain)
                         // The kept address has no path; editing waits for Hermes' full one.
                         .disabled(!service.answered)
                         .accessibilityIdentifier("settings.providers.endpoint.edit")

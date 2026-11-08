@@ -3763,7 +3763,13 @@ over them, captions inside the card, Settings' glass dropdown fields and its
 buttons (Eric 2026-11-05: Edit Bot and Work looked like a different app from
 Settings).
 
-**Siblings:** the Settings tab's pages (the look itself, unchanged) · Edit
+**Siblings:** the Settings tab's pages (the look itself; pages that had
+drifted brought back, #1985: Appearance's and Voice's Chat voice button as
+ConduitMenuPicker, the Predictive page on SettingsDetailContainer, the Chat
+page's title, the rows that open Predictive, Diagnostics & logs, What
+Pulse remembers and Edit endpoint as SettingsLinkRows, Custom endpoint's
+two-line row with a SettingsChevron, and a Kanban task's Status as
+ConduitMenuPicker) · Edit
 Bot and New Bot, with its Model, Work, personality and capabilities pages
 (done) · New Project and Rename (done) · New Group Chat (done) · the
 scheduled job editor, its blueprints gallery and blueprint form (done) · What
@@ -3785,19 +3791,21 @@ and Bots Home (not needed: already in V2's look)
 
 **Code**
 - The pieces: `Conduit/Views/AuxiliaryViews.swift` (SettingsDetailContainer, ConduitSettingsSection, SettingsCard, SettingsLinkRow, SettingsChevron, settingsCaption, settingsEditorBox, SettingsNames, ConduitMenuPicker, SettingsButtonStyle's `.settings`, `.settingsPrimary` and `.settingsDestructive`, ConduitList, ConduitFormRowFill, conduitFormBackdrop)
+- Settings pages brought back to it (#1985): `Conduit/Views/AuxiliaryViews.swift` (AppearanceSettingsDetail's Chat voice button, ChatSettingsDetail's title through ProfileConfigSettingsPage, the connection page's Diagnostics & logs), `Conduit/Views/VoiceSettingsView.swift` (chatVoiceButtonSection, chatVoiceButtonChoices), `Conduit/Views/PredictiveSettingsView.swift`, `Conduit/Views/PulseSettingsViews.swift` (What Pulse remembers), `Conduit/Views/ProviderSettingsViews.swift` (Custom endpoint, Edit endpoint), `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (Status)
 - Used by: `Conduit/Views/CredentialVaultViews.swift` (VaultItemAddSheet, VaultSourceUnlockSheet), `Conduit/Views/Capabilities/HostedAppsViews.swift` (HostedAccountNameSheet), `Conduit/Views/BotWorkViews.swift` (BotWorkPanel, BotWorkRow), `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotCapabilitiesView.swift`, `Conduit/Views/SidebarView.swift` (ProjectCreateSheet, RenameSheet), `Conduit/Views/V2/CronJobEditorSheet.swift`, `Conduit/Views/GeneratePictureSheet.swift`, `Conduit/Views/Capabilities/CapabilityConnectorsTab.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/CustomHeadersEditor.swift`, `Conduit/Views/KanbanViews.swift` (bulk sheets), `Conduit/Views/Kanban/KanbanTaskComposerView.swift`, `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (KanbanReassignSheet), `Conduit/Views/Kanban/KanbanBoardEditorView.swift`, `Conduit/Views/Kanban/KanbanBoardFilterSheet.swift`, `Conduit/Views/Kanban/KanbanOrchestrationSettingsSheet.swift`, `Conduit/Views/Kanban/KanbanProfileRoutingScreen.swift`, `Conduit/Views/Components/ChatCards.swift` (PlanSheet), `Conduit/Views/GroupChatView.swift` (GroupCreateSheet), `Conduit/Views/V2/V2PulsePage.swift` (PulseLearnedSheet, PulseLeftOutSheet), `Conduit/Views/V2/V2WorkspaceViews.swift` (WorkspaceMoveSheet), `Conduit/Views/V2/V2BotsHome.swift` (BotOverviewSheet)
 - Lists kept for move and swipe (ConduitList): `Conduit/Views/PinnedChatsOrderSheet.swift`, `Conduit/Views/SidebarView.swift` (SessionFilterOrderSheet), `Conduit/Views/V2/V2BotsHome.swift` (BotReorderSheet), `Conduit/Views/PulseSettingsViews.swift` (PulseMemoryList)
 
 **Rulings**
 - A sheet is built from Settings' pieces, never a Form: SettingsDetailContainer, a ConduitSettingsSection (or a SettingsCard for a group whose first row names it) per group, its caption inside the card, ConduitMenuPicker for a choice (the whole field opens the menu, and a value too long to sit beside the name goes under it on one line), a segmented picker for two or three short ones, `.settings` and `.settingsPrimary` buttons and rounded-border text fields. Eric first chose skinning the Forms (ConduitForm), then saw it still looked like a second app; the rebuild from Settings' pieces is the look he approved ("this is it", 2026-11-05, #1793).
 - Only a list you reorder or swipe stays a List, as ConduitList with Settings' backdrop and card fill, since move and swipe need one; its card fill lands behind its section footers too, a faint band accepted over styling each footer. New Project's folders take a remove button instead of a swipe.
-- A row that opens something (a model, Work, Skills, a blueprint) is a plain button with SettingsChevron, its title in the primary color rather than the accent; a choice row shows a checkmark in the accent.
+- A row that opens something (a model, Work, Skills, a blueprint, a Settings page) is a plain button with SettingsChevron, its title in the primary color rather than the accent; a choice row shows a checkmark in the accent. No system `.menu` Picker or bare Picker remains: a choice is ConduitMenuPicker, and a status Hermes sets itself is listed but does nothing when picked.
+- Every Settings page has its title: a page that shares ProfileConfigSettingsPage shows that page's title (#1985).
 - A section title is a catalog key through AppLocalization, or a SettingsNames constant for a name that isn't translated (MCP, JSON).
 
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-08, #1982 (the Apps account name sheet, built from Settings' pieces); 2026-11-07, #1979 (Subagent routing's route sheet, built from Settings' pieces); 2026-11-07, #1952 (Passwords & logins' Add and Unlock sheets, built from Settings' pieces); 2026-11-05, #1811 (the Bot Overview and its Work panel, beside a Bot Chat too, built from Settings' pieces: backdrop, section names, cards and buttons); 2026-11-05, #1805 (rows that open something, the routing rows included, tap across 44 pt, and New task's skill and dependency remove buttons take a 44 pt target; Kanban orchestration's Default row reads Default; SettingsPickerField's 11 choices moved to ConduitMenuPicker, so the whole field opens the menu, and its value no longer wraps, in Settings too); 2026-11-05, #1793 (sheets rebuilt from Settings' pieces)
+**Checked:** 2026-11-08, #1985 (Settings pages that had drifted: Chat voice button in Appearance and Voice, the Predictive page and its row, the Chat page's missing title, the rows that open a page, and a Kanban task's Status); 2026-11-08, #1982 (the Apps account name sheet, built from Settings' pieces); 2026-11-07, #1979 (Subagent routing's route sheet, built from Settings' pieces); 2026-11-07, #1952 (Passwords & logins' Add and Unlock sheets, built from Settings' pieces); 2026-11-05, #1811 (the Bot Overview and its Work panel, beside a Bot Chat too, built from Settings' pieces: backdrop, section names, cards and buttons); 2026-11-05, #1805 (rows that open something, the routing rows included, tap across 44 pt, and New task's skill and dependency remove buttons take a 44 pt target; Kanban orchestration's Default row reads Default; SettingsPickerField's 11 choices moved to ConduitMenuPicker, so the whole field opens the menu, and its value no longer wraps, in Settings too); 2026-11-05, #1793 (sheets rebuilt from Settings' pieces)
 
 ## Sharing into Conduit
 
