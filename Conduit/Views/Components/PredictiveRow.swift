@@ -38,6 +38,8 @@ struct PredictiveRow: View {
     /// Whole messages: a reply's suggestions, or a paused draft's.
     private var visibleReplies: [Predictive.Guess] {
         let forDraft = !store.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        // A reply sent with a photo staged would take the photo along.
+        guard forDraft || !store.hasStagedAttachments else { return [] }
         return (forDraft ? pauseOn : repliesOn) ? store.currentReplies : []
     }
 
