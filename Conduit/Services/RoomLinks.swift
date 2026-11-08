@@ -308,7 +308,7 @@ struct RoomLinksClient {
 
 extension AppState {
     /// Whether the host's plugin keeps Links. Not in `usedCapabilities`: an
-    /// older plugin just doesn't offer Settings > People, with no update
+    /// older plugin just doesn't offer Settings > Multiplayer, with no update
     /// notice.
     var canLinkRooms: Bool {
         notifierPlugin.reports(RoomLinksClient.capability)
