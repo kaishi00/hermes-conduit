@@ -444,7 +444,7 @@ struct RichCardSchema {
                                       // labels in the user's.
                                       "passwort", "kennwort", "contraseña", "motdepasse", "senha", "пароль",
                                       "hasło", "şifre", "katasandi", "パスワード", "暗証番号", "認証コード",
-                                      "密码", "密碼", "验证码", "驗證碼", "비밀번호", "인증번호",
+                                      "密码", "密碼", "验证码", "驗證碼", "비밀번호", "인증번호", "인증코드",
                                       "bestätigungscode", "verifizierungscode", "zugangscode",
                                       "códigodeverificación", "codigodeverificacion", "códigodeverificação",
                                       "codedevérification", "codedeverification", "codicediverifica",
