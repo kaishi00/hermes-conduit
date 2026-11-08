@@ -3540,12 +3540,12 @@ enum VoiceThreadRouting {
     /// are `finished`: "send Hermes the file" is a request.
     static func saysSendToHermes(_ words: String, finished: Bool = true) -> Bool {
         let folded = fold(words)
-        let send = #"\bsend\s*(it|this|that|this one|that one)?\s*(straight|right|over|directly)?"#
-        var patterns = [send + #"\s*to\s*hermes\b"#]
-        if finished { patterns.append(send + #"[\s,]*hermes\s*(now|please)?[\s.!]*$"#) }
-        for pattern in patterns {
+        var patterns = [sendToHermesPattern]
+        if finished { patterns.append(sendHermesAtEndPattern) }
+        for case let pattern? in patterns {
             var searchStart = folded.startIndex
-            while let match = folded.range(of: pattern, options: .regularExpression, range: searchStart..<folded.endIndex) {
+            while let found = pattern.firstMatch(in: folded, range: NSRange(searchStart..<folded.endIndex, in: folded)),
+                  let match = Range(found.range, in: folded) {
                 let clause = folded[..<match.lowerBound]
                     .split(omittingEmptySubsequences: false, whereSeparator: { ",.;:!?".contains($0) })
                     .last ?? ""
@@ -3556,6 +3556,12 @@ enum VoiceThreadRouting {
         }
         return false
     }
+
+    /// The two "send it to Hermes" patterns, compiled once: a live call
+    /// checks the user's words on every transcript piece (issue 1970).
+    private static let sendPhrase = #"\bsend\s*(it|this|that|this one|that one)?\s*(straight|right|over|directly)?"#
+    private static let sendToHermesPattern = try? NSRegularExpression(pattern: sendPhrase + #"\s*to\s*hermes\b"#)
+    private static let sendHermesAtEndPattern = try? NSRegularExpression(pattern: sendPhrase + #"[\s,]*hermes\s*(now|please)?[\s.!]*$"#)
 
     /// Words before "send it to Hermes" in its clause that make it
     /// something other than an instruction: a negation, a question about

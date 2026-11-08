@@ -458,6 +458,17 @@ struct RichCardButtonRow: View {
     }
 
     private func run(_ button: RichButton) {
+        // A confirmation can be answered after the row's gate closed (a draft
+        // typed beside the iPad's popover, a number changed): check it again.
+        if button.action == .send || button.action == .tap {
+            let draftEmpty = context?.composer.map {
+                $0.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            } ?? true
+            guard draftEmpty, button.action == .send || numbersFit else {
+                Haptics.error()
+                return
+            }
+        }
         switch button.action {
         case .open:
             if let url = button.openURL { openURL(url) }

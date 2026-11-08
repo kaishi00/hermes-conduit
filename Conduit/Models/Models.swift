@@ -1646,6 +1646,25 @@ struct ProfileConfigSchema: Equatable {
     subscript(key: String) -> Field? { fields[key] }
 }
 
+/// A fallback list that may follow another one: the subagents'
+/// (`delegation.fallback_providers`) follow the chat's while unset (null);
+/// an empty list of their own turns fallback off.
+struct ProfileFallbackChain: Equatable {
+    var inherits = false
+    var entries: [ProfileFallbackModel] = []
+
+    init(inherits: Bool = false, entries: [ProfileFallbackModel] = []) {
+        self.inherits = inherits
+        self.entries = entries
+    }
+
+    /// The subagents' chain in a profile's config.
+    init(delegationIn config: [String: Any]) {
+        let value = (config["delegation"] as? [String: Any])?["fallback_providers"]
+        self.init(inherits: value == nil || value is NSNull, entries: ProfileFallbackModel.list(from: value))
+    }
+}
+
 /// One `fallback_providers` entry: the model Hermes tries when the default
 /// fails. Entries can carry hand-written routing (`base_url`, `key_env`,
 /// `api_mode`…); `extras` keeps it so a save never drops it.

@@ -502,7 +502,7 @@ private struct LegacySettingsView: View {
 // MARK: - Settings home and detail routes
 
 private enum SettingsDestination: Hashable {
-    case profile, model, usage, chat, voice, hermesCalls, workspace, memory, advanced, capabilities, pulse, gateway, conduitPlugin, savedDashboards, appearance, notifications, syncedPreferences, health, location, phone, shortcutInbox, screenQuestion, about
+    case profile, model, usage, chat, voice, hermesCalls, workspace, memory, advanced, capabilities, credentialVault, pulse, gateway, conduitPlugin, savedDashboards, appearance, notifications, syncedPreferences, health, location, phone, shortcutInbox, screenQuestion, about
 
     init(_ link: ConduitAppLink.SettingsLink) {
         switch link {
@@ -730,10 +730,10 @@ struct SettingsView: View {
                 trailingSection: AnyView(VStack(alignment: .leading, spacing: 24) {
                     FallbackModelsSettings(
                         keptModels: { appState.keptProfileModelDefaults() },
-                        kept: { appState.keptProfileFallbackModels() },
+                        kept: { appState.keptProfileFallbackModels().map { ProfileFallbackChain(entries: $0) } },
                         loadModels: loadProfileModelDefaults,
-                        load: { await appState.loadProfileFallbackModels() },
-                        save: { await appState.setProfileFallbackModels($0) },
+                        load: { await appState.loadProfileFallbackModels().map { ProfileFallbackChain(entries: $0) } },
+                        save: { await appState.setProfileFallbackModels($0.entries) },
                         refresh: providerChanges
                     )
                     HelperModelsSettingsSection(settings: helperModelSettings)
@@ -1034,7 +1034,19 @@ struct SettingsView: View {
                 sections: Self.memorySections,
                 loadDelegationPaused: { await appState.loadDelegationPaused() },
                 keptDelegationPaused: { appState.keptDelegationPaused() },
-                setDelegationPaused: { await appState.setDelegationPaused($0) }
+                setDelegationPaused: { await appState.setDelegationPaused($0) },
+                routing: DelegationRoutingActions(
+                    kept: { appState.keptDelegationRouting() },
+                    load: { try await appState.loadDelegationRouting() },
+                    choose: { try await appState.chooseDelegationMode($0) },
+                    saveModelRoutes: { try await appState.saveDelegationModelRoutes($0) },
+                    saveProfileRoutes: { try await appState.saveDelegationProfileRoutes($0) },
+                    keptModels: { appState.keptProfileModelDefaults() },
+                    loadModels: loadProfileModelDefaults
+                ),
+                keptDelegateFallbacks: { appState.keptDelegateFallbackModels() },
+                loadDelegateFallbacks: { await appState.loadDelegateFallbackModels() },
+                saveDelegateFallbacks: { await appState.setDelegateFallbackModels($0) }
             )
         case .advanced:
             ProfileConfigSettingsPage(
@@ -1052,6 +1064,8 @@ struct SettingsView: View {
             UsageSettingsDetail()
         case .capabilities:
             CapabilitiesView()
+        case .credentialVault:
+            CredentialVaultSettingsPage()
         case .pulse:
             PulseSettingsPage()
         case .gateway:
@@ -1290,6 +1304,7 @@ private struct SettingsHome: View {
                         settingsLink(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
                         settingsLink(.advanced, icon: "wrench.and.screwdriver", title: AppLocalization.string("Advanced"), detail: AppLocalization.string("Turn limits, terminal, and tool output"))
                         settingsLink(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, tools, connectors, and plugins"))
+                        settingsLink(.credentialVault, icon: "key", title: AppLocalization.string("Passwords & logins"), detail: AppLocalization.string("Logins, cards and password managers Hermes signs in with"), identifier: "settings.vault")
                         // Where the plugin serves Pulse (AppState+Pulse.swift).
                         if appState.showsPulseSettings {
                             settingsLink(.pulse, icon: "waveform.path.ecg", title: AppLocalization.string("Pulse (beta)"), detail: AppLocalization.string("What Hermes would bring up on its own"), identifier: "settings.pulse")
@@ -1471,6 +1486,7 @@ private struct SettingsHome: View {
             v2Link(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
             v2Link(.advanced, icon: "wrench.and.screwdriver", title: AppLocalization.string("Advanced"), detail: AppLocalization.string("Turn limits, terminal, and tool output"))
             v2Link(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, tools, connectors, and plugins"))
+            v2Link(.credentialVault, icon: "key", title: AppLocalization.string("Passwords & logins"), detail: AppLocalization.string("Logins, cards and password managers Hermes signs in with"), identifier: "settings.vault")
             // Where the plugin serves Pulse (AppState+Pulse.swift).
             if appState.showsPulseSettings {
                 v2Link(.pulse, icon: "waveform.path.ecg", title: AppLocalization.string("Pulse (beta)"), detail: AppLocalization.string("What Hermes would bring up on its own"), identifier: "settings.pulse")
@@ -2964,22 +2980,32 @@ private struct DelegationPauseSettings: View {
 }
 
 /// The Model page's `fallback_providers`: the models Hermes tries, in
-/// order, when the default model fails.
+/// order, when the default model fails. Memory & delegation's subagent
+/// fallbacks (`delegation.fallback_providers`) too, which follow the
+/// chat's until they have their own (`offersInherit`).
 private struct FallbackModelsSettings: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    var title = AppLocalization.string("Fallback models")
+    var caption = AppLocalization.string("If the default model fails, Hermes tries these in order.")
+    /// The list can follow another one (null) instead of having its own.
+    var offersInherit = false
     /// The catalog and list Hermes gave last time, kept on the phone: the
     /// editor opens on them while it asks again (#1533).
     let keptModels: () -> ProfileModelDefaults?
-    let kept: () -> [ProfileFallbackModel]?
+    let kept: () -> ProfileFallbackChain?
     let loadModels: () async -> ProfileModelDefaults?
-    let load: () async -> [ProfileFallbackModel]?
-    let save: ([ProfileFallbackModel]) async -> Bool
+    let load: () async -> ProfileFallbackChain?
+    let save: (ProfileFallbackChain) async -> Bool
     /// Raised when a provider was added or removed: the catalog is read
     /// again, the rows being edited stay.
     var refresh = 0
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var defaults: ProfileModelDefaults?
     @State private var entries: [ProfileFallbackModel] = []
     @State private var saved: [ProfileFallbackModel] = []
+    /// Follows the other list (only with `offersInherit`).
+    @State private var inherits = false
+    @State private var savedInherits = false
     @State private var loaded = false
     /// Hermes' list is in. Until then the kept list can't be edited or
     /// saved: a save replaces the whole list, and the kept one may be
@@ -3001,9 +3027,17 @@ private struct FallbackModelsSettings: View {
 
     private var providers: [ProviderInfo] { defaults?.providers ?? [] }
 
+    /// Changed since Hermes' list, and every listed fallback complete
+    /// unless the list follows the other one.
+    private var canSave: Bool {
+        let shownInherits = offersInherit && inherits
+        guard shownInherits != savedInherits || (!shownInherits && entries != saved) else { return false }
+        return shownInherits || entries.allSatisfy(\.isComplete)
+    }
+
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Fallback models"), symbol: "arrow.triangle.branch", tint: .conduitAura) {
-            Text("If the default model fails, Hermes tries these in order.")
+        ConduitSettingsSection(title: title, symbol: "arrow.triangle.branch", tint: .conduitAura) {
+            Text(caption)
                 .scaledFont(.footnote).foregroundStyle(.secondary)
             if !loaded {
                 // A list that didn't load is never edited: saving it would
@@ -3015,24 +3049,40 @@ private struct FallbackModelsSettings: View {
                         .buttonStyle(.settings)
                 }
             } else {
-                if entries.isEmpty {
-                    Text("No fallback models yet.")
-                        .scaledFont(.footnote).foregroundStyle(.secondary)
+                if offersInherit {
+                    Picker(AppLocalization.string("Fallbacks"), selection: Binding(
+                        get: { inherits },
+                        set: { next in withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { inherits = next } }
+                    )) {
+                        Text("Same as the chat").tag(true)
+                        Text("Their own").tag(false)
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .disabled(!answered || saving)
+                    .accessibilityIdentifier("settings.delegateFallbacks.inherit")
                 }
-                ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
-                    entryRow(index: index, entry: entry)
-                        .disabled(!answered)
+                if !(offersInherit && inherits) {
+                    if entries.isEmpty {
+                        Text(offersInherit ? AppLocalization.string("None: a subagent's model that fails isn't retried on another.") : AppLocalization.string("No fallback models yet."))
+                            .scaledFont(.footnote).foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
+                        entryRow(index: index, entry: entry)
+                            .disabled(!answered)
+                    }
                 }
                 AdaptiveStack(spacing: 8) {
-                    Button { addEntry() } label: { Label(AppLocalization.string("Add fallback"), systemImage: "plus") }
-                        .buttonStyle(.settings)
-                        .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving, ready: !providers.isEmpty))
+                    if !(offersInherit && inherits) {
+                        Button { addEntry() } label: { Label(AppLocalization.string("Add fallback"), systemImage: "plus") }
+                            .buttonStyle(.settings)
+                            .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving, ready: !providers.isEmpty))
+                    }
                     Button(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save fallbacks")) { persist() }
                         .buttonStyle(.settingsPrimary)
-                        .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving,
-                                                          ready: entries != saved && entries.allSatisfy(\.isComplete)))
+                        .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving, ready: canSave))
                 }
-                if entries.contains(where: { !$0.isComplete }) {
+                if !(offersInherit && inherits), entries.contains(where: { !$0.isComplete }) {
                     Text("Pick a provider and model for every fallback to save.")
                         .scaledFont(.caption).foregroundStyle(.secondary)
                 }
@@ -3047,10 +3097,12 @@ private struct FallbackModelsSettings: View {
         // What it showed last time, before the first frame; Hermes'
         // answer follows.
         .onAppear {
-            guard !loaded, let models = keptModels(), let keptEntries = kept() else { return }
+            guard !loaded, let models = keptModels(), let keptChain = kept() else { return }
             defaults = models
-            entries = keptEntries
-            saved = keptEntries
+            entries = keptChain.entries
+            saved = keptChain.entries
+            inherits = keptChain.inherits
+            savedInherits = keptChain.inherits
             loaded = true
         }
         .task {
@@ -3157,9 +3209,10 @@ private struct FallbackModelsSettings: View {
         error = nil
         async let modelRequest = loadModels()
         async let entryRequest = load()
-        let (models, loadedEntries) = await (modelRequest, entryRequest)
+        let (models, loadedChain) = await (modelRequest, entryRequest)
         // A whole-page read asked since has the newer answer.
         guard read.page == pageRead else { return }
+        let loadedEntries = loadedChain?.entries
         // Without the model catalog no fallback can be added or changed, so
         // a half-loaded list fails with Try Again instead of a silently
         // disabled Add. A re-load (the editor re-appearing) that fails keeps
@@ -3186,7 +3239,10 @@ private struct FallbackModelsSettings: View {
         if !loaded || (entries == saved && entries != loadedEntries) {
             entries = loadedEntries
         }
+        let loadedInherits = offersInherit && (loadedChain?.inherits ?? false)
+        if !loaded || inherits == savedInherits { inherits = loadedInherits }
         saved = loadedEntries
+        savedInherits = loadedInherits
         loaded = true
         answered = true
     }
@@ -3209,8 +3265,10 @@ private struct FallbackModelsSettings: View {
             saving = true
             error = nil
             let next = entries
-            if await save(next) {
+            let nextInherits = offersInherit && inherits
+            if await save(ProfileFallbackChain(inherits: nextInherits, entries: next)) {
                 saved = next
+                savedInherits = nextInherits
                 savesLanded += 1
             } else {
                 error = AppLocalization.string("Could not save fallback models.")
@@ -3235,7 +3293,21 @@ private struct MemorySettingsDetail: View {
     let loadDelegationPaused: () async -> Bool?
     let keptDelegationPaused: () -> Bool?
     let setDelegationPaused: (Bool) async -> Bool?
+    let routing: DelegationRoutingActions
+    let keptDelegateFallbacks: () -> ProfileFallbackChain?
+    let loadDelegateFallbacks: () async -> ProfileFallbackChain?
+    let saveDelegateFallbacks: (ProfileFallbackChain) async -> Bool
     @State private var options: ProfileConfigOptions?
+    /// The routing the section shows: in a routed mode Delegate model
+    /// isn't used, and says so.
+    @State private var shownRouting: DelegationRouting?
+    @State private var schema: ProfileConfigSchema?
+
+    /// The subagents' fallbacks show only when this Hermes has them.
+    private var hasDelegateFallbacks: Bool {
+        guard let schema, !schema.isEmpty else { return false }
+        return schema["delegation.fallback_providers"] != nil
+    }
 
     var body: some View {
         let shownOptions = options ?? keptOptions() ?? ProfileConfigOptions()
@@ -3249,6 +3321,8 @@ private struct MemorySettingsDetail: View {
             optionOverrides: ["memory.provider": shownOptions.memoryProviders, "context.engine": shownOptions.contextEngines],
             trailingSection: AnyView(
                 VStack(spacing: 24) {
+                    DelegationRoutingSettings(actions: routing, onRouting: { shownRouting = $0 })
+                    let routed = shownRouting?.routesOwnSubagentModel ?? false
                     DelegationModelSettings(
                         keptModels: keptModels,
                         keptSettings: keptValues,
@@ -3256,6 +3330,21 @@ private struct MemorySettingsDetail: View {
                         loadSettings: load,
                         save: save
                     )
+                    .disabled(routed)
+                    .opacity(routed ? 0.45 : 1)
+                    .accessibilityHint(routed ? Text(AppLocalization.string("Not used while routes pick each subagent's model.")) : Text(verbatim: ""))
+                    if hasDelegateFallbacks {
+                        FallbackModelsSettings(
+                            title: AppLocalization.string("Delegate fallback models"),
+                            caption: AppLocalization.string("If a subagent's model fails, Hermes tries these in order. A subagent on the chat's model can use the chat's fallbacks; one on its own delegate model or route gets none unless these are its own."),
+                            offersInherit: true,
+                            keptModels: keptModels,
+                            kept: keptDelegateFallbacks,
+                            loadModels: loadModels,
+                            load: loadDelegateFallbacks,
+                            save: saveDelegateFallbacks
+                        )
+                    }
                     DelegationPauseSettings(kept: keptDelegationPaused, load: loadDelegationPaused, save: setDelegationPaused)
                 }
             ),
@@ -3263,7 +3352,14 @@ private struct MemorySettingsDetail: View {
             loadSchema: loadSchema,
             keptSchema: keptSchema
         )
-        .task { options = await loadOptions() }
+        .onAppear { if schema == nil { schema = keptSchema() } }
+        .task {
+            async let loadedOptions = loadOptions()
+            async let loadedSchema = loadSchema()
+            let (nextOptions, nextSchema) = await (loadedOptions, loadedSchema)
+            options = nextOptions
+            if !nextSchema.isEmpty { schema = nextSchema }
+        }
     }
 }
 

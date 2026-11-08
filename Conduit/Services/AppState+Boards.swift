@@ -16,8 +16,7 @@ extension AppState {
     var richChecklistContext: RichChecklistContext? {
         guard notifierPlugin.reports(RichChecklistContext.capability), offlineChatPresentation == nil else { return nil }
         let sessionIDs = activeChatArtifactSessionIDs
-        guard !sessionIDs.isEmpty,
-              let chat = richCardChat else { return nil }
+        guard !sessionIDs.isEmpty else { return nil }
         let profile = activeProfile
         let dashboardID = activeDashboardID
         let scope = RichChecklistContext.scope(profile: profile, sessionIDs: sessionIDs)
