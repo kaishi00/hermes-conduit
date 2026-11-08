@@ -131,7 +131,10 @@ extension MarkdownLargeDocumentTests {
     @MainActor
     func testRoomGalleryListsAMessagesSentPicturesFirst() throws {
         let appState = try galleryAppState()
-        let files = GatewayMediaDataURLResolver(appState: appState, profile: "room-files", source: .roomFiles)
+        let files = GatewayMediaDataURLResolver(
+            appState: appState, profile: "room-files", source: .roomFiles,
+            roomFileReads: .init(pluginPictures: true, pluginFiles: true)
+        )
         let sent = GroupEvent(
             roomID: "room", seq: 1, eventID: "e1", kind: "message.user",
             actor: GroupActor(kind: "user", id: "user", profile: nil, displayName: nil, connectionID: nil),
