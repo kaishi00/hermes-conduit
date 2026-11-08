@@ -173,6 +173,24 @@ extension GroupChatModelsTests {
         XCTAssertEqual(routes.copiesReads, reads + 1, "its copy is there: no more copies reads")
     }
 
+    /// A dictation Retry in an open room hosted elsewhere: the words reach
+    /// the draft its composer reads, kept by the copy's Link too.
+    @MainActor
+    func testRetriedDictationWordsReachAnOpenCopysDraft() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 1)])
+        routes.events = [copiesEvent(1)]
+        let appState = try copiesAppState(routes)
+        copiesConnect(appState)
+        appState.applyNotifierPluginReport(copiesPluginReport)
+        await appState.refreshGroupChatSupport()
+        await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
+        let surface = try XCTUnwrap(appState.activeRoomSurface)
+        appState.saveActiveRoomDraft("half a thought")
+
+        XCTAssertTrue(appState.appendToRoomDraft("and the rest", dashboardID: surface.dashboardID, roomID: surface.room.roomID))
+        XCTAssertEqual(appState.activeRoomDraft(), "half a thought and the rest")
+    }
+
     @MainActor
     func testACopyOpensFromItsLogAndPollsAfterTheCursor() async throws {
         let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 2)])

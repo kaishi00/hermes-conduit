@@ -13206,6 +13206,9 @@ final class AppState: ObservableObject {
         answeredLinkedRoomApprovalIDs = []
         presentedRoomApproval = nil
         linkedRoomCopies = nil
+        // Shared again after a sign-in: that Hermes may have lost them.
+        sharedRoomLooks = [:]
+        roomLookPictures = [:]
         talkingRoomIDs = []
         desktopGroupChats = []
         groupRoomPictureData = [:]
@@ -13483,7 +13486,10 @@ final class AppState: ObservableObject {
               isOpen || groupRooms.contains(where: { $0.roomID == roomID && !$0.isDisbanded }) else {
             return false
         }
-        let key = Self.roomKey(dashboardID: dashboardID, roomID: roomID)
+        // The open room's own key: a room hosted elsewhere keeps its draft
+        // by its Link too, as its composer reads it.
+        let openKey = isOpen ? activeRoomSurface.map(Self.roomKey(for:)) : nil
+        let key = openKey ?? Self.roomKey(dashboardID: dashboardID, roomID: roomID)
         let text = ComposerDictation.draft(before: groupRoomDrafts[key] ?? "", dictated: words)
         guard !text.isEmpty else { return true }
         groupRoomDrafts[key] = text

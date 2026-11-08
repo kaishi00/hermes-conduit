@@ -386,7 +386,7 @@ extension AppState {
         guard let copy = activeRoomSurface?.copy else { return [] }
         // Room ids are only unique per host: one without its Link is this
         // room's only when no other copy has the same id.
-        let shared = (linkedRoomCopies?.copies ?? []).contains { $0.roomID == copy.roomID && $0.link != copy.link }
+        let shared = (currentLinkedRoomCopies?.copies ?? []).contains { $0.roomID == copy.roomID && $0.link != copy.link }
         return linkedRoomApprovalRows.filter {
             $0.roomID == copy.roomID && ($0.link == copy.link || ($0.link == nil && !shared))
         }
