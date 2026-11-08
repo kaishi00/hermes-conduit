@@ -161,7 +161,12 @@ extension AppState {
 
     /// Keeps the pictures the user just sent on the phone under their room
     /// file, so their message shows them without reading them back.
-    private func keepSentRoomPictures(_ attachments: [Attachment], references: [String], resolver: GatewayMediaDataURLResolver) async {
+    func keepSentRoomPictures(
+        _ attachments: [Attachment],
+        references: [String],
+        resolver: GatewayMediaDataURLResolver,
+        in directory: URL = TranscriptImageCache.defaultDirectory
+    ) async {
         let generation = TranscriptImageCache.generation
         let kept: [(Attachment, String)] = zip(attachments, references).compactMap { attachment, reference in
             guard attachment.kind == .image,
@@ -174,7 +179,7 @@ extension AppState {
             for (attachment, key) in kept {
                 guard let data = AttachmentHelper.data(for: attachment) else { continue }
                 let type = TranscriptImageCache.fileExtension(forDataURL: "data:\(attachment.mimeType ?? "");")
-                TranscriptImageCache.store(data, fileExtension: type, for: key, generation: generation)
+                TranscriptImageCache.store(data, fileExtension: type, for: key, in: directory, generation: generation)
             }
         }
     }

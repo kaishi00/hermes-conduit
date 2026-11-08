@@ -1680,6 +1680,30 @@ extension AppStateMultiDashboardTests {
         try await held.answer(["detail": "Not a room file"], status: 404)
         let gone = await refused.value
         XCTAssertEqual(gone, .gone)
+
+        // The sender's own picture is kept under the key its message's
+        // preview and the viewer look it up by, so it shows without a read.
+        let cache = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let staged = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-photo.jpg")
+        try Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]).write(to: staged)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: cache)
+            try? FileManager.default.removeItem(at: staged)
+        }
+        let photo = Attachment(id: "p", name: "my photo.jpg", uri: staged.absoluteString, mimeType: "image/jpeg", kind: .image)
+        let notes = Attachment(id: "n", name: "notes.txt", uri: staged.absoluteString, mimeType: "text/plain", kind: .document)
+        await appState.keepSentRoomPictures(
+            [photo, notes],
+            references: ["@file:`\(path)`", "@file:/h/conduit/room-files/20261108-b/notes.txt"],
+            resolver: resolver,
+            in: cache
+        )
+        let shown = MessageNormalizer.splitLeadingFileReferences("@file:`\(path)`", messageId: "room").attachments
+        let key = try XCTUnwrap(resolver.imageCacheKey(for: try XCTUnwrap(shown.first)))
+        let kept = try XCTUnwrap(TranscriptImageCache.cachedFile(for: key, in: cache))
+        XCTAssertEqual(kept.pathExtension, "jpg")
+        XCTAssertEqual(try Data(contentsOf: kept), Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: cache.path).count, 1, "only the picture is kept")
     }
 
     /// A folder opens on its listing and recent files as the plugin gave
