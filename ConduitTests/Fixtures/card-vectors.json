@@ -3578,7 +3578,7 @@
                     "context": "def is\u2060_admin(user):",
                     "lines": [
                       "-    if user.role != \"admin\":",
-                      "+    if user.role != \"user\u202e ⁦// admin⁩ ⁦\":",
+                      "+    if user.role != \"user\u202e \u2066// admin\u2069 \u2066\":",
                       "     return \u200fTrue"
                     ]
                   }

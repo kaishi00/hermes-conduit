@@ -5755,7 +5755,7 @@ as a template (`save_templates`, `{{slot}}` placeholders, repeated
 sections) and show it again by name with only the data; the plugin fills
 it in, so Conduit never sees a template.
 
-A review card (plugin 0.143) shows options to choose between when they're
+A review card (plugin 0.144) shows options to choose between when they're
 easier to see than to describe: layouts, colours, charts, posters, a before
 and after. Each option is an HTML page or a picture; the plugin keeps the
 pages on the host round by round and the card carries labels and ids. One
