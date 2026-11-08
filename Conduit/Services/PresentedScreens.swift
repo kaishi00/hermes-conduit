@@ -252,6 +252,9 @@ struct PresentedConfirm: Identifiable, Equatable {
     func isDeclined(by words: String) -> Bool {
         // A question ("can't we wait?") asks; it doesn't answer.
         guard !words.contains("?"), !words.contains("？"), !VoiceCallDecisionOutcome.isYes(words) else { return false }
+        // A Chinese or Japanese question ends in its marker ("取消吗").
+        let ending = words.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        guard !Self.cjkQuestionEnds.contains(where: { ending.hasSuffix($0) }) else { return false }
         // Not knowing isn't a no ("no idea", "not sure").
         let folded = words.lowercased().replacingOccurrences(of: "’", with: "'")
         guard !Self.unsure.contains(where: { folded.contains($0) }) else { return false }
@@ -275,12 +278,26 @@ struct PresentedConfirm: Identifiable, Equatable {
                 && (VoiceThreadRouting.containsNegation(words) || Self.cjkNotYet.contains(where: { words.contains($0) }))
                 && !Self.opens(said, with: Self.neutralWaits)
         case .yes: return false
-        case .other: return VoiceThreadRouting.containsRefusalVerb(words)
+        // A not on the send itself ("我不想发", "送らないで") declines
+        // like a don't does.
+        case .other:
+            return VoiceThreadRouting.containsRefusalVerb(words)
+                || (Self.cjkSendRefusals.contains(where: { words.contains($0) }) && Self.isOneClause(words))
         }
     }
 
+    /// The marks that end a Chinese or Japanese question.
+    private static let cjkQuestionEnds = ["吗", "嗎", "么", "麼", "か", "かな"]
+    /// A not on sending, in Chinese, Japanese or Korean.
+    private static let cjkSendRefusals = [
+        "不想发", "不想發", "不想送", "不要发", "不要發", "不要送", "别发", "別發", "别送", "別送", "不发", "不發",
+        "送らないで", "送信しないで", "보내지 마", "보내지마", "보내지 말",
+    ]
+
     /// Led by a no but not one: a hit only keeps the panel up for the tap.
-    private static let unsure = ["not sure", "no idea", "no clue", "no problem", "no worries", "no rush"]
+    private static let unsure = ["not sure", "no idea", "no clue", "no problem", "no worries", "no rush",
+        "don't know", "dont know", "do not know", "don't remember", "dont remember", "do not remember", "can't remember",
+        "can't say", "cannot say"]
     /// Not knowing in the other shipped languages, as whole words.
     private static let unsureWords: [[String]] = [
         "no sé", "no lo sé", "ni idea", "não sei", "nao sei", "não faço ideia", "je ne sais pas", "je sais pas",
@@ -316,7 +333,7 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// names its action ("don't send it to Alex; send it to Bob") is a
     /// change, not a no.
     private static func isOneClause(_ text: String) -> Bool {
-        let breaks = CharacterSet(charactersIn: ",;:—–，；：、")
+        let breaks = CharacterSet(charactersIn: ",;:—–，；：、.!。！\n")
         // A polite ending ("…, please", "…, thanks") isn't a second clause.
         // A joiner said without the comma ("… and send it to Bob") starts
         // one too.

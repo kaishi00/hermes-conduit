@@ -3946,6 +3946,16 @@ enum VoiceThreadRouting {
     /// Words that make a refusal verb a question or a maybe, not an answer.
     private static let refusalVerbAskers: Set<String> = [
         "should", "shall", "can", "could", "would", "will", "if", "whether", "why", "how", "what", "do", "does", "did", "is", "are", "am", "was", "were", "have", "has", "had", "who", "where", "when", "which", "maybe", "might",
+        // The same in the other shipped languages ("soll ich es ablehnen").
+        "soll", "sollen", "sollte", "kann", "könnte", "würde", "ob", "wenn", "warum", "wie", "vielleicht",
+        "debo", "debería", "puedo", "podría", "quizás",
+        "dois", "devrais", "peux", "pourquoi", "peut", "faut",
+        "devo", "dovrei", "posso", "perché", "forse",
+        "deveria", "talvez", "porque",
+        "ли", "может", "стоит", "почему", "если",
+        "czy", "może", "jeśli", "dlaczego",
+        "mı", "mu", "mü", "neden", "belki",
+        "apakah", "haruskah", "bolehkah", "mungkin", "jika", "kalau", "kenapa",
     ]
 
     /// Verbs that refuse, in the shipped languages with word breaks
