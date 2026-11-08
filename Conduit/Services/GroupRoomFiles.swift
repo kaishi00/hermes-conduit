@@ -179,6 +179,8 @@ extension AppState {
         var sent: [(Attachment, GroupRoomAttachment)] = []
         var forPlugin: [Attachment] = []
         let pluginStores = notifierPlugin.reports(GroupRoomFilesClient.capability)
+        // Both legs of one send go to the dashboard it started on.
+        let pluginBridge = dashboardTicketBridge
         if roomTakesHermesAttachments, let client, let roomID = activeRoomSurface?.room.roomID {
             var total = 0
             for attachment in attachments {
@@ -219,21 +221,28 @@ extension AppState {
             return RoomMessage(text: typed, attachments: sent.map(\.1))
         }
         guard pluginStores else { throw GroupRoomFilesClient.Failure.unreadable(forPlugin[0].name) }
-        let pluginText = try await roomMessageText(typed, attachments: forPlugin)
+        let pluginText = try await roomMessageText(typed, attachments: forPlugin, bridge: pluginBridge)
         return RoomMessage(text: pluginText, attachments: sent.map(\.1))
     }
 
     /// Uploads a room message's files to the plugin and returns the text
     /// the room gets: their references, a blank line, then what was typed.
-    func roomMessageText(_ text: String, attachments: [Attachment]) async throws -> String {
+    func roomMessageText(
+        _ text: String, attachments: [Attachment], bridge: DashboardTicketBridge? = nil
+    ) async throws -> String {
         guard !attachments.isEmpty else { return text }
+        // The dashboard the send started on, not whichever is current when
+        // a file goes up.
+        let startedOn = bridge ?? dashboardTicketBridge
         let client = GroupRoomFilesClient(request: { [weak self] path, body in
             let timeout = GroupRoomFilesClient.timeoutMilliseconds(forBodyBytes: body.count)
             if let self, self.roomRouteIsStubbed {
                 let fields = try JSONSerialization.jsonObject(with: body) as? [String: Any]
                 return try await self.roomRouteJSON(path: path, method: "POST", body: fields, timeoutMilliseconds: timeout)
             }
-            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            guard let bridge = startedOn, self?.dashboardTicketBridge === bridge else {
+                throw DashboardTicketBridgeError.notReady
+            }
             return try await bridge.requestEncodedJSON(
                 path: path,
                 encodedBody: body,
