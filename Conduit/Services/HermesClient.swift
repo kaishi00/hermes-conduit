@@ -4175,6 +4175,107 @@ final class HermesClient: ObservableObject {
         return removed
     }
 
+    // MARK: Hosted apps
+
+    /// The account owner the Connectors page's calls name: the profile's
+    /// own Nous account, not a chat's.
+    private static let hostedAppsOwner: [String: Any] = ["type": "account"]
+    /// A sign-in start can wait up to 31 s for the Portal's page.
+    static let hostedAppsTimeout: TimeInterval = 45
+
+    /// Whether hosted apps are on for this Hermes, and each app's
+    /// connection on the profile (`connectors.list`).
+    func hostedAppStatuses() async throws -> (available: Bool, statuses: [HostedAppStatus]) {
+        let result = try await rpc("connectors.list", params: ["owner": Self.hostedAppsOwner], timeout: Self.hostedAppsTimeout)
+        guard let object = result.objectValue else { throw HermesError.invalidResponse }
+        let rows = object["connectors"]?.arrayValue ?? []
+        return (object["available"]?.boolValue ?? false, rows.compactMap { $0.objectValue.flatMap(HostedAppStatus.init(object:)) })
+    }
+
+    /// The apps Hermes can connect (`connectors.catalog`).
+    func hostedAppCatalog() async throws -> [HostedAppCatalogEntry] {
+        let result = try await rpc("connectors.catalog", timeout: Self.hostedAppsTimeout)
+        guard let rows = result.objectValue?["connectors"]?.arrayValue else { throw HermesError.invalidResponse }
+        return rows.compactMap { $0.objectValue.flatMap(HostedAppCatalogEntry.init(object:)) }
+    }
+
+    /// The profile's signed-in app accounts (`connectors.accounts`).
+    func hostedAppAccounts() async throws -> [HostedAppAccount] {
+        let result = try await rpc("connectors.accounts", timeout: Self.hostedAppsTimeout)
+        guard let rows = result.objectValue?["accounts"]?.arrayValue else { throw HermesError.invalidResponse }
+        return rows.compactMap { $0.objectValue.flatMap(HostedAppAccount.init(object:)) }
+    }
+
+    /// The rules over which apps and tools Hermes may use
+    /// (`connectors.policy.get`).
+    func hostedAppPolicy() async throws -> HostedAppPolicy {
+        let result = try await rpc("connectors.policy.get", timeout: Self.hostedAppsTimeout)
+        guard let object = result.objectValue, let policy = HostedAppPolicy(object: object) else { throw HermesError.invalidResponse }
+        return policy
+    }
+
+    /// Turns an app on or off, or sets which of its tools are off
+    /// (`connectors.policy.set`), against the member rules' revision.
+    /// Returns the new revision.
+    func setHostedAppPolicy(change: [String: Any], expectedRevision: String) async throws -> String {
+        let result = try await rpc("connectors.policy.set", params: ["change": change, "expected_revision": expectedRevision], timeout: Self.hostedAppsTimeout)
+        guard let revision = result.objectValue?["revision"]?.stringValue else { throw HermesError.invalidResponse }
+        return revision
+    }
+
+    /// An app's tools (`connectors.tools`), from Hermes' cache unless
+    /// `refresh`.
+    func hostedAppTools(_ slug: String, refresh: Bool = false) async throws -> [HostedAppTool] {
+        let result = try await rpc("connectors.tools", params: ["slug": slug, "refresh": refresh], timeout: Self.hostedAppsTimeout)
+        guard let rows = result.objectValue?["tools"]?.arrayValue else { throw HermesError.invalidResponse }
+        return rows.compactMap { $0.objectValue.flatMap(HostedAppTool.init(object:)) }
+    }
+
+    /// Starts connecting an app (`connectors.connect`): a new account
+    /// (named with `alias`, or by the vendor), or with `repairing` that
+    /// account signed in again. The answer carries the page to open.
+    func connectHostedApp(_ slug: String, alias: String? = nil, repairing connectionID: String? = nil) async throws -> HostedAppOperation {
+        var params: [String: Any] = ["owner": Self.hostedAppsOwner, "connectors": [slug], "reconnect": connectionID != nil]
+        if let connectionID {
+            params["connection_id"] = connectionID
+        } else if let alias {
+            params["alias"] = alias
+        }
+        let result = try await rpc("connectors.connect", params: params, timeout: Self.hostedAppsTimeout)
+        guard let object = result.objectValue, let operation = HostedAppOperation(object: object) else { throw HermesError.invalidResponse }
+        return operation
+    }
+
+    /// How far an app's sign-in got (`connectors.operation.status`).
+    func hostedAppOperation(_ id: String) async throws -> HostedAppOperation {
+        let result = try await rpc("connectors.operation.status", params: ["owner": Self.hostedAppsOwner, "op_id": id])
+        guard let object = result.objectValue, let operation = HostedAppOperation(object: object) else { throw HermesError.invalidResponse }
+        return operation
+    }
+
+    /// The browser came back: Hermes reads the accounts now rather than at
+    /// its next tick (`connectors.operation.wake`).
+    func wakeHostedAppOperation(_ id: String) async throws {
+        _ = try await rpc("connectors.operation.wake", params: ["owner": Self.hostedAppsOwner, "op_id": id])
+    }
+
+    /// Stops waiting on a sign-in (`connection.respond`, Continue).
+    func settleHostedAppOperation(_ id: String) async throws {
+        _ = try await rpc("connection.respond", params: ["owner": Self.hostedAppsOwner, "op_id": id, "result": ["targets": [Any](), "settled_by": "continue"]])
+    }
+
+    /// Names an account (`connectors.accounts.rename`); Hermes' copy back.
+    func renameHostedAppAccount(_ connectionID: String, to alias: String) async throws -> HostedAppAccount {
+        let result = try await rpc("connectors.accounts.rename", params: ["connection_id": connectionID, "alias": alias], timeout: Self.hostedAppsTimeout)
+        guard let object = result.objectValue, let account = HostedAppAccount(object: object) else { throw HermesError.invalidResponse }
+        return account
+    }
+
+    /// Disconnects an account (`connectors.accounts.remove`).
+    func removeHostedAppAccount(_ connectionID: String) async throws {
+        _ = try await rpc("connectors.accounts.remove", params: ["connection_id": connectionID], timeout: Self.hostedAppsTimeout)
+    }
+
     /// Hermes' models (`model.options`), for the model pickers, as the
     /// answer came, which they keep (AppState.modelProviders(in:) reads it).
     /// Its rows also carry each signed-in provider's subscription windows
