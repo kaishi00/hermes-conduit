@@ -246,8 +246,15 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             if state != .loaded(kept.html) { show(kept.html) }
             guard !documents.isFresh(kept) else { return }
             let html = await documents.read(key, fetch: read)
-            guard !Task.isCancelled, let html, html != kept.html else { return }
-            show(html)
+            guard !Task.isCancelled else { return }
+            // The file is gone or can't be read any more: the file card,
+            // as for a page never kept, rather than a dead file's page
+            // (issue 2003).
+            guard let html else {
+                fallBack()
+                return
+            }
+            if html != kept.html { show(html) }
             return
         }
         // The card keeps its room meanwhile, and a block showing its file
@@ -364,7 +371,7 @@ final class HTMLPreviewDocuments {
     private var order: [String] = []
     private var inFlight: [String: (id: UUID, task: Task<String?, Never>)] = [:]
     /// Files that couldn't be read just now: not asked again until they're
-    /// `freshFor` old.
+    /// `freshFor` old. A failed read drops the file's kept page too.
     private var failedAt: [String: Date] = [:]
     private let now: () -> Date
 
@@ -409,10 +416,18 @@ final class HTMLPreviewDocuments {
             if let html {
                 keep(html, for: key)
             } else {
+                // A kept page of a file that no longer reads is dropped, so
+                // no row shows it again (issue 2003).
+                drop(key)
                 failedAt[key] = now()
             }
         }
         return html
+    }
+
+    private func drop(_ key: String) {
+        pages[key] = nil
+        order.removeAll { $0 == key }
     }
 
     func keep(_ html: String, for key: String) {
