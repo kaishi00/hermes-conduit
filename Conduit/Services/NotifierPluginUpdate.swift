@@ -183,6 +183,13 @@ struct NotifierPluginUpdater {
            let outcome = await runOnHost(request: request, progress: progress, restartedForHermes: restartedForHermes) {
             return outcome
         }
+        // A restart only when the host still waits on one: the status this
+        // was offered from can be stale (another phone finished it).
+        if restartOnly, let current = try? await request(NotifierPluginStatus.path, "GET", nil),
+           let runtime = NotifierPluginStatus.runtime(from: current), !runtime.restartNeeded {
+            report?(current)
+            return .updated(version: runtime.loadedVersion)
+        }
         // 1. The new plugin onto the host, unless the host put it there.
         if !restartOnly {
             progress(.updating(install ? .installing : .downloading))

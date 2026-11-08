@@ -368,8 +368,10 @@ extension GatewayRestartTests {
         XCTAssertTrue(appState.showsNotifierPluginUpdateNotice)
     }
 
-    func testEachReportSaysWhetherTheHostManagesThePlugin() {
-        let defaults = UserDefaults(suiteName: "GatewayRestartTests.managed.\(UUID().uuidString)")!
+    func testEachReportSaysWhetherTheHostManagesThePlugin() throws {
+        let suite = "GatewayRestartTests.managed.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
         let appState = AppState(
             defaults: defaults,
             loadSavedConnection: false,
@@ -949,6 +951,8 @@ extension GatewayRestartTests {
     func testAManagedHostsWaitingRestartRunsOnlyTheRestarts() async {
         let host = PluginHost()
         host.capabilities = [
+            // Read before the restarts (still waiting), then before the dashboard's.
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
             Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
             Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
         ]
@@ -963,6 +967,18 @@ extension GatewayRestartTests {
         XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
         XCTAssertTrue(host.calls.contains("POST \(GatewayRestarter.restartPath)"))
         XCTAssertTrue(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
+    }
+
+    func testAManagedHostsRestartAlreadyDoneRestartsNothing() async {
+        // The offer came from a stale status: the host already runs the new plugin.
+        let host = PluginHost()
+        host.capabilities = [Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new")]
+        var updater = host.updater()
+        updater.restartOnly = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertFalse(host.calls.contains("POST \(GatewayRestarter.restartPath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
     }
 
     func testAHostThatCantPullThisPluginLeavesTheReinstallToConduit() async {
