@@ -92,6 +92,7 @@ final class FakeVoiceJobBackend {
     private(set) var keptEndings: [String?] = []
     /// Chats that are workstreams', and what their calls sent there.
     var workstreamChats: Set<String> = []
+    var workstreamReply = "sent to the workstream"
     private(set) var workstreamSends: [(String, String)] = []
     private(set) var leftChats: [(String?, String)] = []
     var activeProfile: String? = "default"
@@ -167,7 +168,7 @@ final class FakeVoiceJobBackend {
             sendToCallWorkstream: { [self] thread, request in
                 guard self.workstreamChats.contains(thread.runtimeSessionID) else { return nil }
                 self.workstreamSends.append((thread.runtimeSessionID, request))
-                return "sent to the workstream"
+                return self.workstreamReply
             },
             callLeftChat: { [self] profile, chat, _ in self.leftChats.append((profile, chat)) },
             activeProfile: { [self] in self.activeProfile },
@@ -430,6 +431,26 @@ extension VoiceConversationControllerTests {
         supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: nil, title: "Build"))
         let elsewhere = await supervisor.sendToWorkstream("check the build")
         XCTAssertNil(elsewhere)
+    }
+
+    func testAWorkstreamsRefusalIsToldToGPTLiveAsItCame() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.workstreamChats = ["rt-work"]
+        fake.workstreamReply = "W3 is busy with another action. Try again in a moment."
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-work", storedSessionID: nil, title: "W3"))
+        let gpt = GPTLiveDelegationBridge(supervisor: supervisor)
+        let refused = await gpt.handleDelegation(id: "del_1", request: "use the first option")
+        guard case .delegationReply(let delegationID, let text, let channel)? = refused.first, refused.count == 1 else {
+            return XCTFail("Expected the workstream's refusal, got \(refused)")
+        }
+        XCTAssertEqual(delegationID, "del_1")
+        XCTAssertEqual(channel, .speakable)
+        XCTAssertTrue(text.contains("W3 is busy with another action."), text)
+        // Not taken, so the same words asked again go to the workstream again.
+        fake.workstreamReply = "sent to the workstream"
+        _ = await gpt.handleDelegation(id: "del_2", request: "use the first option")
+        XCTAssertEqual(fake.workstreamSends.map(\.1), ["use the first option", "use the first option"])
+        XCTAssertTrue(fake.submissions.isEmpty)
     }
 
     func testJobsStartedInALiveCallAreAnchoredToItsTranscript() async {
