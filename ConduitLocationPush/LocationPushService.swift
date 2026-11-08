@@ -157,7 +157,7 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
         // Paused, turned off or its detail lowered while the fix was on its
         // way: nothing goes.
         guard Self.stillAnswers(request, detail: precision) else {
-            return Self.unanswered(id, "sharing no longer answers it after the fix (paused, off, detail lowered, or bound elsewhere)", kind: "locate")
+            return Self.unanswered(id, "sharing no longer answers it after the fix (paused, off, detail lowered, bound elsewhere, or its config unreadable)", kind: "locate")
         }
         guard let body = try? LocationIngest.body(batch, key: key) else {
             return Self.unanswered(id, "the batch couldn't be sealed", kind: "locate")
