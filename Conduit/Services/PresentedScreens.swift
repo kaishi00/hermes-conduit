@@ -329,7 +329,7 @@ struct PresentedConfirm: Identifiable, Equatable {
 
     private static let clauseJoiners: Set<String> = [
         "and", "then", "but", "instead", "und", "dann", "aber", "stattdessen", "y", "pero", "luego", "et", "mais", "puis",
-        "e", "ma", "poi", "и", "а", "но", "потом", "i", "ale", "potem", "ve", "ama", "sonra", "dan", "tapi", "lalu",
+        "e", "ma", "poi", "и", "а", "но", "потом", "ale", "potem", "ve", "ama", "sonra", "dan", "tapi", "lalu",
     ]
 
     /// A no that names its action: what follows it is what's turned down.
