@@ -249,8 +249,19 @@ struct PresentedConfirm: Identifiable, Equatable {
     func isDeclined(by words: String) -> Bool {
         // A question ("can't we wait?") asks; it doesn't answer.
         guard !words.contains("?"), !words.contains("？"), !VoiceCallDecisionOutcome.isYes(words) else { return false }
-        return VoiceThreadRouting.containsRefusal(words)
+        // Not knowing isn't a no ("I don't know", "no idea", "not sure").
+        let folded = words.lowercased().replacingOccurrences(of: "’", with: "'")
+        guard !Self.unsure.contains(where: { folded.contains($0) }) else { return false }
+        switch VoiceThreadRouting.heldRequestAnswer(words) {
+        // Led by a yes, more words or not ("No problem at all"): never a no.
+        case .yes: return false
+        case .no, .notYet: return true
+        // "Don't send it", "cancel": a refusal anywhere in the words.
+        case .other: return VoiceThreadRouting.containsRefusal(words)
+        }
     }
+
+    private static let unsure = ["don't know", "dont know", "not sure", "no idea", "unsure", "not a problem", "no worries"]
 
     private static func words(in text: String) -> [String] {
         text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)

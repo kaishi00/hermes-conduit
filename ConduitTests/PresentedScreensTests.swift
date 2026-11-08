@@ -166,6 +166,10 @@ extension AppStateVoiceCapabilityTests {
 
         // A no-led yes isn't a no; a no, not now or don't send is.
         XCTAssertFalse(prompt.isDeclined(by: "No problem"))
+        XCTAssertFalse(prompt.isDeclined(by: "No problem at all"))
+        XCTAssertFalse(prompt.isDeclined(by: "not a problem"))
+        XCTAssertFalse(prompt.isDeclined(by: "I don't know"))
+        XCTAssertFalse(prompt.isDeclined(by: "no idea"))
         XCTAssertFalse(prompt.isDeclined(by: "send it"))
         // A question with a not in it asks; it doesn't answer.
         XCTAssertFalse(prompt.isDeclined(by: "shouldn't we check the address first?"))
