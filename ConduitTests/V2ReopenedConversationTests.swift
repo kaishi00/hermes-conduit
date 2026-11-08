@@ -50,6 +50,14 @@ extension SidebarLayoutTests {
         XCTAssertNil(reopenLaunch("chats"))
     }
 
+    func testV2ReopensARoomOpenedFromPeopleOnBotsHomeUnderPeople() {
+        // People on Bots Home (2026-11-08): a room opened from it comes back over it.
+        let stored = V2ReopenedConversation.record(showing: .bots, path: [.people, .conversation], roomID: "conduit-9")
+        XCTAssertEqual(reopenLaunch(stored), .init(tab: .bots, path: [.people], roomID: "conduit-9"))
+        XCTAssertNotEqual(V2Route.people, V2Route.pulse)
+        XCTAssertEqual(Set<V2Route>([.people, .people, .artifacts]).count, 2)
+    }
+
     func testV2ReopensABotChatOnlyWhenTheKeptChatIsOne() {
         let stored = V2ReopenedConversation.record(showing: .bots, path: [.conversation], roomID: nil)
         XCTAssertEqual(reopenLaunch(stored, lastChat: .bot), .init(tab: .bots, path: [.conversation]))

@@ -68,12 +68,16 @@ enum V2Route: Hashable {
     case artifacts
     /// The Pulse screen (Chats bar): its cards and ratings.
     case pulse
+    /// Settings > People from Bots Home: Links, room setup and your
+    /// picture, where rooms with other people start.
+    case people
 
     static func == (lhs: V2Route, rhs: V2Route) -> Bool {
         switch (lhs, rhs) {
         case (.conversation, .conversation): return true
         case (.artifacts, .artifacts): return true
         case (.pulse, .pulse): return true
+        case (.people, .people): return true
         case let (.project(left), .project(right)): return left.id == right.id
         default: return false
         }
@@ -90,6 +94,8 @@ enum V2Route: Hashable {
             hasher.combine(2)
         case .pulse:
             hasher.combine(3)
+        case .people:
+            hasher.combine(4)
         }
     }
 }
@@ -1114,6 +1120,8 @@ struct V2Shell: View {
             // Full screen on a phone, as a chat is: its reply box sits where
             // the tabs were. Split, the list column keeps the bar (`splitColumns`).
             V2PulsePage()
+        case .people:
+            listRoot(tabBarClearance(PeopleSettingsPage()), alone: alone)
         }
     }
 
@@ -1127,7 +1135,7 @@ struct V2Shell: View {
         let target = V2Tab.conversationTab(
             selected: selectedTab,
             isBotsChat: appState.placesConversationAsBotChat,
-            fromBotsPage: botsPath.last == .pulse || botsPath.last == .artifacts
+            fromBotsPage: botsPath.last == .pulse || botsPath.last == .artifacts || botsPath.last == .people
         )
         appState.botChatOpeningPlaced()
         // The push itself, before the path moves: paired with the
@@ -1486,7 +1494,7 @@ enum V2SplitLayout {
     static func showsChatRows(split: Bool, path: [V2Route]) -> Bool {
         switch (split ? listRoutes(path) : path).last {
         case nil, .project?: return true
-        case .conversation?, .artifacts?, .pulse?: return false
+        case .conversation?, .artifacts?, .pulse?, .people?: return false
         }
     }
 
@@ -1788,6 +1796,7 @@ struct V2ReopenedConversation: Codable, Equatable {
             case .project(let project): return "project:" + project.id
             case .pulse: return "pulse"
             case .artifacts: return "artifacts"
+            case .people: return "people"
             case .conversation: return nil
             }
         }
@@ -1819,6 +1828,7 @@ struct V2ReopenedConversation: Codable, Equatable {
             switch token {
             case "pulse": return showsPulse ? .pulse : nil
             case "artifacts": return .artifacts
+            case "people": return .people
             default:
                 guard token.hasPrefix("project:") else { return nil }
                 let id = String(token.dropFirst("project:".count))

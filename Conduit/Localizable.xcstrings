@@ -452376,6 +452376,88 @@
         }
       }
     },
+    "Link with someone to make rooms with their agents.": {
+      "localizations": {
+        "de": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Verknüpfe dich mit jemandem, um Räume mit seinen Agenten zu erstellen."
+          }
+        },
+        "es": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vincúlate con alguien para crear salas con sus agentes."
+          }
+        },
+        "fr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Liez-vous à quelqu'un pour créer des salons avec ses agents."
+          }
+        },
+        "id": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tautkan dengan seseorang untuk membuat ruang bersama agennya."
+          }
+        },
+        "it": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Collegati con qualcuno per creare stanze con i suoi agenti."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "誰かとリンクすると、その人のエージェントとルームを作れます。"
+          }
+        },
+        "ko": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "다른 사람과 연결하면 그 사람의 에이전트와 방을 만들 수 있습니다."
+          }
+        },
+        "pl": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Połącz się z kimś, aby tworzyć pokoje z jego agentami."
+          }
+        },
+        "pt-BR": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Vincule-se a alguém para criar salas com os agentes dessa pessoa."
+          }
+        },
+        "ru": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Свяжитесь с кем-нибудь, чтобы создавать комнаты с его агентами."
+          }
+        },
+        "tr": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Birinin ajanlarıyla oda kurmak için onunla bağlantı kurun."
+          }
+        },
+        "zh-Hans": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "与他人建立链接，即可和对方的智能体一起创建房间。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "與他人建立連結，即可和對方的智慧體一起建立房間。"
+          }
+        }
+      }
+    },
     "Linked with %@": {
       "localizations": {
         "de": {

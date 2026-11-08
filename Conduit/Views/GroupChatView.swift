@@ -2086,6 +2086,20 @@ struct GroupCreateSheet: View {
                         ))
                         .settingsCaption()
                     }
+                } else if appState.canLinkRooms {
+                    // Nobody linked yet: where to start, so rooms with other
+                    // people are found from here too.
+                    ConduitSettingsSection(title: AppLocalization.string("People"), symbol: "person.2", tint: .green) {
+                        NavigationLink {
+                            PeopleSettingsPage()
+                        } label: {
+                            Label(AppLocalization.string("Link with someone"), systemImage: "link.badge.plus")
+                        }
+                        .buttonStyle(.settingsPrimary)
+                        .accessibilityIdentifier("newGroup.linkSomeone")
+                        Text(AppLocalization.string("Link with someone to make rooms with their agents."))
+                            .settingsCaption()
+                    }
                 }
             }
             .navigationTitle(AppLocalization.string("New Group Chat"))
