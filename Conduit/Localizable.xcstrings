@@ -495394,90 +495394,90 @@
         }
       }
     },
-    "Anything that needs a tool runs in the background, so its Bot Chat is always free to talk." : {
+    "Everything but cards, maps and its questions to you runs in the background, so its Bot Chat is always free to talk." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Alles, was ein Werkzeug braucht, läuft im Hintergrund, damit der Bot-Chat immer frei zum Reden bleibt."
+            "value" : "Alles außer Karten, Landkarten und seinen Fragen an dich läuft im Hintergrund, damit der Bot-Chat immer frei zum Reden bleibt."
           }
         },
         "en" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Anything that needs a tool runs in the background, so its Bot Chat is always free to talk."
+            "value" : "Everything but cards, maps and its questions to you runs in the background, so its Bot Chat is always free to talk."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Todo lo que necesita una herramienta se ejecuta en segundo plano, así su chat del bot siempre está libre para hablar."
+            "value" : "Todo salvo las tarjetas, los mapas y sus preguntas para ti se ejecuta en segundo plano, así su chat del bot siempre está libre para hablar."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tout ce qui demande un outil s’exécute en arrière-plan, pour que sa discussion du bot reste toujours libre pour parler."
+            "value" : "Tout sauf les cartes, les plans et ses questions pour toi s’exécute en arrière-plan, pour que sa discussion du bot reste toujours libre pour parler."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apa pun yang butuh alat berjalan di latar belakang, jadi Obrolan Bot-nya selalu bebas untuk mengobrol."
+            "value" : "Semua kecuali kartu, peta, dan pertanyaannya untukmu berjalan di latar belakang, jadi Obrolan Bot-nya selalu bebas untuk mengobrol."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tutto ciò che richiede uno strumento va in background, così la sua chat del bot è sempre libera per parlare."
+            "value" : "Tutto tranne le schede, le mappe e le sue domande per te va in background, così la sua chat del bot è sempre libera per parlare."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ツールが必要なことはすべてバックグラウンドで行うので、ボットチャットはいつでも話せる状態のままです。"
+            "value" : "カード、地図、あなたへの質問以外はすべてバックグラウンドで行うので、ボットチャットはいつでも話せる状態のままです。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "도구가 필요한 일은 모두 백그라운드에서 실행되므로 봇 채팅은 언제나 대화할 수 있습니다."
+            "value" : "카드, 지도, 사용자에게 하는 질문을 뺀 모든 일은 백그라운드에서 실행되므로 봇 채팅은 언제나 대화할 수 있습니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wszystko, co wymaga narzędzia, działa w tle, więc czat bota jest zawsze wolny do rozmowy."
+            "value" : "Wszystko poza kartami, mapami i pytaniami do ciebie działa w tle, więc czat bota jest zawsze wolny do rozmowy."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tudo o que precisa de uma ferramenta roda em segundo plano, então o chat do bot fica sempre livre para conversar."
+            "value" : "Tudo, menos cartões, mapas e as perguntas para você, roda em segundo plano, então o chat do bot fica sempre livre para conversar."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Всё, что требует инструмента, выполняется в фоне, поэтому чат бота всегда свободен для разговора."
+            "value" : "Всё, кроме карточек, карт и вопросов к вам, выполняется в фоне, поэтому чат бота всегда свободен для разговора."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Araç gerektiren her şey arka planda çalışır, böylece bot sohbeti konuşmak için hep boş kalır."
+            "value" : "Kartlar, haritalar ve sana soruları dışında her şey arka planda çalışır, böylece bot sohbeti konuşmak için hep boş kalır."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "需要工具的事都在后台进行，所以机器人聊天始终可以随时交谈。"
+            "value" : "除了卡片、地图和问你的问题，其余都在后台进行，所以机器人聊天始终可以随时交谈。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "需要工具的事都在背景進行，所以機器人聊天始終可以隨時交談。"
+            "value" : "除了卡片、地圖和問你的問題，其餘都在背景進行，所以機器人聊天始終可以隨時交談。"
           }
         }
       }
