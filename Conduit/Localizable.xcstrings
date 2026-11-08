@@ -446554,88 +446554,6 @@
         }
       }
     },
-    "Sends these words again as a new message." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sendet diese Worte noch einmal als neue Nachricht."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Vuelve a enviar estas palabras como un mensaje nuevo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Renvoie ces mots dans un nouveau message."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Mengirim kata-kata ini lagi sebagai pesan baru."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Invia di nuovo queste parole come nuovo messaggio."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "この言葉を新しいメッセージとしてもう一度送ります。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "이 내용을 새 메시지로 다시 보냅니다."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wysyła te słowa ponownie jako nową wiadomość."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Envia estas palavras de novo como uma nova mensagem."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Отправляет эти слова снова новым сообщением."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bu sözleri yeni bir mesaj olarak tekrar gönderir."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "把这些话作为新消息再发一次。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "把這些話當作新訊息再傳一次。"
-          }
-        }
-      }
-    },
     "Discard" : {
       "localizations" : {
         "de" : {
@@ -447452,6 +447370,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "它會排到隊尾。要撤回，請使用「從佇列中移除」。"
+          }
+        }
+      }
+    },
+    "Sends these words again as a new message, without any files it had." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sendet diese Worte noch einmal als neue Nachricht, ohne die Dateien, die sie hatte."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vuelve a enviar estas palabras como un mensaje nuevo, sin los archivos que tenía."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renvoie ces mots dans un nouveau message, sans les fichiers qu'il contenait."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mengirim ulang kata-kata ini sebagai pesan baru, tanpa file yang dibawanya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invia di nuovo queste parole come nuovo messaggio, senza i file che aveva."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この言葉を新しいメッセージとしてもう一度送ります。付いていたファイルは送られません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 말을 새 메시지로 다시 보냅니다. 첨부되어 있던 파일은 보내지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wysyła te słowa ponownie jako nową wiadomość, bez plików, które zawierała."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envia estas palavras de novo como uma nova mensagem, sem os arquivos que ela tinha."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправляет эти слова снова новым сообщением, без файлов, которые в нём были."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sözleri, içindeki dosyalar olmadan yeni bir mesaj olarak yeniden gönderir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "将这些文字作为新消息重新发送，不含原有的文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "將這些文字作為新訊息重新傳送，不含原有的檔案。"
           }
         }
       }

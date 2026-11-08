@@ -22,6 +22,7 @@ extension AppState {
     func cancelQueuedPrompt(_ row: QueuedPrompt) async {
         await queueAction(row) { client, sessionID in
             _ = try await client.cancelQueuedPrompt(sessionID, admissionID: row.admissionID)
+            HermesClient.forgetUnansweredSubmission(row.inputID, for: sessionID)
             _ = self.takeQueuedSendRow(admissionID: row.admissionID)
             self.authorityQueue.drop(row.admissionID)
         }
@@ -75,6 +76,8 @@ extension AppState {
         }
         await queueAction(row) { client, sessionID in
             _ = try await client.discardLostPrompt(sessionID, admissionID: row.admissionID, generation: generation)
+            // Resend's words then go as a new message, never as this one again.
+            HermesClient.forgetUnansweredSubmission(row.inputID, for: sessionID)
             _ = self.takeQueuedSendRow(admissionID: row.admissionID)
             self.authorityQueue.drop(row.admissionID)
         }

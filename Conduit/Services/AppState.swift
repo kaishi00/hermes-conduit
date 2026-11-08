@@ -32272,7 +32272,11 @@ final class AppState: ObservableObject {
     /// stays in the transcript.
     func holdQueuedSendRow(_ row: ChatMessage, admissionID: String) {
         guard !startedAdmissionIDs.contains(admissionID) else {
-            if !messages.contains(where: { $0.id == row.id }) { messages.append(row) }
+            if !messages.contains(where: { $0.id == row.id }) {
+                messages.append(row)
+                requestChatScrollToLatest()
+                cacheMessagePresentation()
+            }
             return
         }
         queuedSendRows[admissionID] = row

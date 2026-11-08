@@ -168,7 +168,7 @@ struct AuthorityQueueDock: View {
                         }
                         .buttonStyle(.plain)
                         .conduitGlassControl(cornerRadius: 22, tint: .conduitAccent.opacity(0.16))
-                        .accessibilityHint(Text("Sends these words again as a new message."))
+                        .accessibilityHint(Text("Sends these words again as a new message, without any files it had."))
                     }
                     Button {
                         Task { await appState.discardLostPrompt(row) }

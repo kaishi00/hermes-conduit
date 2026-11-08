@@ -3550,6 +3550,13 @@ final class HermesClient: ObservableObject {
         unansweredSubmissions[sessionId]?.id
     }
 
+    /// The lost send's admission was settled (discarded, withdrawn): the
+    /// same words sent again are a new message, not that admission again.
+    static func forgetUnansweredSubmission(_ submissionID: String, for sessionId: String) {
+        guard unansweredSubmissions[sessionId]?.id == submissionID else { return }
+        unansweredSubmissions.removeValue(forKey: sessionId)
+    }
+
     /// The admission id of the chat's last send the authority admitted,
     /// from its receipt: what its row in the chat's queue, and its turn's
     /// `message.start`, name.
