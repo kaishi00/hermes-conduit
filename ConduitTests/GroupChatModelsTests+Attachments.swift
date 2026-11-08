@@ -198,6 +198,16 @@ extension GroupChatModelsTests {
         XCTAssertTrue(upload.uploadID(stagedID: "ABC-1/x").hasPrefix("conduit-ABC-1x-"))
     }
 
+    /// A retry of a send keeps its attachments, under the same event id.
+    func testARoomSendRetryKeepsItsAttachments() {
+        let picture = GroupRoomAttachment(attachmentID: "a1", kind: "image", name: "cat.png", size: 12, mime: "image/png")
+        var outbox = GroupRoomOutbox()
+        let first = outbox.beginSend(text: "", attachments: [picture]) { "conduit-1" }
+        let retry = outbox.beginSend(text: "", attachments: []) { "conduit-2" }
+        XCTAssertEqual(retry.eventID, first.eventID)
+        XCTAssertEqual(retry.attachments, [picture])
+    }
+
     /// A picture goes up as Hermes' attachment and its send names it; the
     /// typed text goes as typed, with no `@file:` line.
     @MainActor

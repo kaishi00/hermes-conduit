@@ -4166,14 +4166,14 @@ message · the group room composer · the Settings caption for the limit
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (the attachment size limit setting)
 
 **Rulings**
-- The message names the limit that refused the file. When that is the user's Settings limit it says where to raise it; when it is a route's own cap at or below the Settings limit (a group room takes 50 MB), it names that cap and offers no setting (2026-10-24, from #935's review, #1190).
+- The message names the limit that refused the file. When that is the user's Settings limit it says where to raise it; when it is a route's own cap at or below the Settings limit (a group room takes 50 MB with the plugin's room files, 14 MB when only Hermes' own room attachments take its files), it names that cap and offers no setting (2026-10-24, from #935's review, #1190; the Hermes cap, #2045).
 
 **Open gaps**
 - The voice message says "larger than your attachment size limit" without the size or where to change it.
 - A pasted picture link whose header claims more pixels than a reply's picture may have is refused as "The image provider returned invalid image data.", not as too large.
-- The Settings caption doesn't say that a group room takes at most 50 MB whatever the limit.
+- The Settings caption doesn't say that a group room takes at most 50 MB (14 MB without the plugin) whatever the limit.
 
-**Checked:** 2026-11-05, #1821 (a picture whose file fails is held to the same limit when it is taken as its bytes or its image object, on the share sheet and a drop); 2026-10-29, #1515 (a long paste over the limit isn't attached: it goes into the field, as pastes did before); 2026-10-28, #1411 (dropped files refused with the same limit and message as picked ones); 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
+**Checked:** 2026-11-08, #2045 (a room without the plugin's room files caps its files at 14 MB, under Hermes' 15 MB); 2026-11-05, #1821 (a picture whose file fails is held to the same limit when it is taken as its bytes or its image object, on the share sheet and a drop); 2026-10-29, #1515 (a long paste over the limit isn't attached: it goes into the field, as pastes did before); 2026-10-28, #1411 (dropped files refused with the same limit and message as picked ones); 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
 
 ## Sending files in a chat
 
@@ -4192,7 +4192,7 @@ Hermes' own RPC)
 - The send: `Conduit/Services/AppState.swift` (sendMessage: image.attach_bytes, file.attach when Hermes refuses the image, file.attach for every other file; a long paste's `title_preview`, `Conduit/Services/HermesClient.swift` sendPrompt, from `Conduit/Views/Components/PastedTextAttachment.swift` titlePreview)
 - Resizing a picture: `Conduit/Services/PictureUpload.swift`, `Conduit/Services/AppState.swift` (AttachmentHelper.pictureForHermes)
 - Budgets and the socket: `Conduit/Services/HermesClient.swift` (uploadTimeout, attachImage, attachFile, requestsBeingWritten, keepaliveQuietTimeLeft, probe, healthCheck; canHandOffSocket, which keeps a profile switch from handing on a socket mid-write, #1452)
-- Group rooms: `Conduit/Services/GroupRoomFiles.swift` (timeoutMilliseconds)
+- Group rooms: `Conduit/Services/GroupRoomFiles.swift` (timeoutMilliseconds), `Conduit/Services/HermesClient.swift` (groupsAttachmentUpload, groupsAttachmentDownload and their timeouts)
 - Tests: `ConduitTests/HermesClientTests.swift`, `ConduitTests/ComposerAttachmentPolicyTests.swift`
 
 **Rulings**
@@ -4205,7 +4205,7 @@ Hermes' own RPC)
 - The foreground check skipped behind an upload counts as passed, so a chat resumed then finds a dead socket only when that upload's budget ends or its write fails.
 - An upload whose budget ends while its frame is still going out stops counting as written then, not when the socket finishes the write: the keepalive pings again, and a profile switch can hand the socket on behind it (#1452).
 
-**Checked:** 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-10-29, #1515 (a long paste goes as a text file with Desktop's title preview); 2026-10-28, #1452 (a profile switch's socket hand-off waits out a large write too); 2026-10-25, at #1268.
+**Checked:** 2026-11-08, #2045 (a room's files go up as Hermes' own attachments through groups.attachment.upload, its timeout growing with the file as the plugin route's does); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-10-29, #1515 (a long paste goes as a text file with Desktop's title preview); 2026-10-28, #1452 (a profile switch's socket hand-off waits out a large write too); 2026-10-25, at #1268.
 
 ## Phone change errors
 
@@ -5764,7 +5764,7 @@ pictures' VoiceOver hint "Opens full screen with save and share")
 - An animated GIF plays at up to 120 frames, drawn small enough that its frames stay within 32 MB (the pager holds three pages); Quick Look played every frame at full size.
 - The Folder pages through its listed files only: a folder not opened in the tree isn't listed.
 
-**Checked:** 2026-11-08, #2036 (a room's list leads each message with the pictures sent into it, read from the plugin's room files, see Pictures in messages); 2026-11-07, #1932 (the room gallery pages only a scheduled post's shown pictures); 2026-11-07, #1914 (a group room's list holds a bot's `MEDIA:` pictures too, each fetched through its own profile, see Pictures in messages); 2026-11-06, #1884 (the Markdown reader's pictures page through the file's own, not the chat's it opened over); 2026-11-05, #1803 (a tile of a message's picture grid opens the viewer as its picture did, the "+N" tile on its own picture, the rest paged to; Code); 2026-10-30, #1550 (a saved copy's pictures page through the chat's own list, from the rows drawn); 2026-10-29, #1491.
+**Checked:** 2026-11-08, #2045 (a room's list pages through its messages' Hermes attachments, a scheduled post's left out as its bubble draws none); 2026-11-08, #2036 (a room's list leads each message with the pictures sent into it, read from the plugin's room files, see Pictures in messages); 2026-11-07, #1932 (the room gallery pages only a scheduled post's shown pictures); 2026-11-07, #1914 (a group room's list holds a bot's `MEDIA:` pictures too, each fetched through its own profile, see Pictures in messages); 2026-11-06, #1884 (the Markdown reader's pictures page through the file's own, not the chat's it opened over); 2026-11-05, #1803 (a tile of a message's picture grid opens the viewer as its picture did, the "+N" tile on its own picture, the rest paged to; Code); 2026-10-30, #1550 (a saved copy's pictures page through the chat's own list, from the rows drawn); 2026-10-29, #1491.
 
 ## Cards Hermes shows
 

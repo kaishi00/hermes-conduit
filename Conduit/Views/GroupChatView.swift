@@ -899,7 +899,9 @@ enum GroupRoomImageGallery {
                 : event.isUserMessage ? (GroupRoomReplyQuote.parse(parts.text)?.message ?? parts.text) : parts.text
             // Its files come first, as its bubble draws them.
             let sent = files.map { files in
-                (event.attachments.map { $0.attachment(roomID: event.roomID) } + shownParts.files)
+                // A scheduled post's bubble draws no Hermes attachments.
+                ((event.isScheduledPost ? [] : event.attachments.map { $0.attachment(roomID: event.roomID) })
+                    + shownParts.files)
                     .filter(GroupRoomFilesClient.isStoredPicture)
                     .compactMap { ImageGalleryItem.attachment($0, resolver: files) }
             } ?? []
