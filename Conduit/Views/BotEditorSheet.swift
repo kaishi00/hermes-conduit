@@ -647,11 +647,21 @@ struct BotEditorSheet: View {
                         BotModelPicker(provider: $draft.provider, model: $draft.model, allowsInherit: isCreating)
                     } label: {
                         let model = showsKeptDetails ? keptDetails?.model ?? "" : draft.model
-                        ModelChooserLinkRow(
-                            title: AppLocalization.string("Model"),
-                            value: BotModelPicker.summary(model: model, allowsInherit: isCreating),
-                            detail: model.isEmpty || showsKeptDetails ? nil : draft.provider
-                        )
+                        if showsKeptDetails || model.isEmpty {
+                            ModelChooserLinkRow(
+                                title: AppLocalization.string("Model"),
+                                value: BotModelPicker.summary(model: model, allowsInherit: isCreating),
+                                detail: nil
+                            )
+                        } else {
+                            // The model and provider as the catalog names them.
+                            let lines = ModelChooserLinkRow.lines(
+                                pick: ModelChooserPick(provider: draft.provider, model: draft.model),
+                                providers: appState.keptModelProviders(),
+                                defaultTitle: BotModelPicker.summary(model: "", allowsInherit: isCreating)
+                            )
+                            ModelChooserLinkRow(title: AppLocalization.string("Model"), value: lines.value, detail: lines.detail)
+                        }
                     }
                     .buttonStyle(.plain)
                     .disabled(showsKeptDetails)

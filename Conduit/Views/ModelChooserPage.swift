@@ -198,7 +198,7 @@ struct ModelChooserPage: View {
         }
         if pick.model.isEmpty {
             // A provider pinned without a model runs on its default one.
-            return (VoiceJobModelSettingsSection.providerDefaultTitle(pick.provider), nil)
+            return (VoiceJobModelSettingsSection.providerDefaultTitle(pickedProvider?.title ?? pick.provider), nil)
         }
         let provider = pick.provider.isEmpty ? nil : (pickedProvider?.title ?? pick.provider)
         return (pick.model, catalog.answered ? [provider, AppLocalization.string("Not listed by Hermes")].compactMap { $0 }.joined(separator: " · ") : provider)
