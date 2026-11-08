@@ -51,17 +51,38 @@ final class GatewayMediaDataURLResolver {
         case roomFiles
     }
 
+    /// Which of a room's files a `.roomFiles` resolver reads: Hermes'
+    /// own attachments, and the plugin's stored pictures and other files,
+    /// each only where the host takes that read. A file it can't read
+    /// stays a name, as on an older plugin.
+    struct RoomFileReads: Equatable {
+        var hermesAttachments = false
+        var pluginPictures = false
+        var pluginFiles = false
+
+        var any: Bool { hermesAttachments || pluginPictures || pluginFiles }
+
+        func reads(_ file: Attachment) -> Bool {
+            if GroupRoomFilesClient.isHermesAttachment(file) { return hermesAttachments }
+            guard GroupRoomFilesClient.isStoredFile(file) else { return false }
+            return file.kind == .image ? pluginPictures : pluginFiles
+        }
+    }
+
     private weak var appState: AppState?
     let profile: String
     let source: Source
+    /// For `.roomFiles`: which files it reads.
+    let roomFileReads: RoomFileReads
     /// Dashboard this resolver was built for: a retained resolver must never
     /// start a request against a different server after a switch.
     let dashboardID: UUID?
 
-    init(appState: AppState, profile: String, source: Source = .hermes) {
+    init(appState: AppState, profile: String, source: Source = .hermes, roomFileReads: RoomFileReads = RoomFileReads()) {
         self.appState = appState
         self.profile = profile
         self.source = source
+        self.roomFileReads = roomFileReads
         self.dashboardID = appState.activeDashboardID
     }
 

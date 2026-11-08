@@ -304,6 +304,66 @@ extension GroupChatModelsTests {
         appState.closeGroupRoom()
     }
 
+    /// Past Hermes' 25 MB a message, the rest goes to the plugin; without
+    /// the plugin the message fails rather than going without it.
+    @MainActor
+    func testWhatPassesHermesMessageTotalGoesToThePlugin() async throws {
+        let big = Self.pngBytes + Data(count: 13_000_000)
+        let first = try attachmentsStaged("a.png", data: big, mimeType: "image/png", kind: .image)
+        let second = try attachmentsStaged("b.png", data: big, mimeType: "image/png", kind: .image)
+
+        let hermes = AttachmentsHermes()
+        let appState = attachmentsAppState(hermes)
+        appState.applyNotifierPluginReport(["ok": true, "version": "0.143.0", "capabilities": [GroupRoomFilesClient.capability]])
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(attachmentsRoom())
+        let message = try await appState.roomMessage("", attachments: [first, second])
+        XCTAssertEqual(message.attachments.map(\.name), ["a.png"])
+        XCTAssertEqual(hermes.pluginStored, ["b.png"])
+        appState.closeGroupRoom()
+
+        let alone = AttachmentsHermes()
+        let withoutPlugin = attachmentsAppState(alone)
+        await withoutPlugin.refreshGroupChatSupport()
+        await withoutPlugin.openGroupRoom(attachmentsRoom())
+        do {
+            _ = try await withoutPlugin.roomMessage("", attachments: [first, second])
+            XCTFail("expected the message to fail")
+        } catch {
+            XCTAssertTrue(error is GroupRoomFilesClient.Failure, "\(error)")
+        }
+        withoutPlugin.closeGroupRoom()
+    }
+
+    /// A room reads only what its host takes: Hermes' attachments where it
+    /// downloads them, the plugin's pictures and other files by its own
+    /// capabilities. An older plugin's file stays a name.
+    @MainActor
+    func testARoomReadsOnlyTheFilesItsHostTakes() async {
+        let appState = attachmentsAppState(AttachmentsHermes())
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(attachmentsRoom())
+        let hermesPicture = GroupRoomAttachment(attachmentID: "a1", kind: "image", name: "cat.png", size: 12, mime: "image/png")
+            .attachment(roomID: "room-1")
+        let pluginPicture = Attachment(id: "p", name: "dog.png", uri: "/h/conduit/room-files/u1/dog.png", mimeType: "image/png", kind: .image)
+        let pluginFile = Attachment(id: "f", name: "plan.pdf", uri: "/h/conduit/room-files/u2/plan.pdf", mimeType: "application/pdf", kind: .document)
+
+        let hermesOnly = appState.roomFilePicturesResolver
+        XCTAssertEqual(hermesOnly?.roomFileReads.reads(hermesPicture), true)
+        XCTAssertEqual(hermesOnly?.roomFileReads.reads(pluginPicture), false)
+        XCTAssertEqual(hermesOnly?.roomFileReads.reads(pluginFile), false)
+
+        appState.applyNotifierPluginReport(["ok": true, "version": "0.142.0", "capabilities": [
+            GroupRoomFilesClient.capability, GroupRoomFilesClient.pictureCapability,
+        ]])
+        let withPictures = appState.roomFilePicturesResolver
+        XCTAssertFalse(withPictures === hermesOnly, "what it reads changed, so the rows draw again")
+        XCTAssertEqual(withPictures?.roomFileReads.reads(pluginPicture), true)
+        XCTAssertEqual(withPictures?.roomFileReads.reads(pluginFile), false)
+        XCTAssertTrue(appState.roomFileReadsResolver === withPictures)
+        appState.closeGroupRoom()
+    }
+
     /// A linked room's files go through the plugin as `@file:` lines: Hermes'
     /// peer route carries no attachments and fails a guest agent's turn on
     /// a message that has them.

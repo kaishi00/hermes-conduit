@@ -904,7 +904,7 @@ enum GroupRoomImageGallery {
                 // A scheduled post's bubble draws no Hermes attachments.
                 ((event.isScheduledPost ? [] : event.attachments.map { $0.attachment(roomID: event.roomID) })
                     + shownParts.files)
-                    .filter(GroupRoomFilesClient.isStoredPicture)
+                    .filter { $0.kind == .image && files.roomFileReads.reads($0) }
                     .compactMap { ImageGalleryItem.attachment($0, resolver: files) }
             } ?? []
             let media = event.isMemberMessage ? resolver(event) : nil
@@ -937,7 +937,8 @@ private struct GroupMessageFiles: View {
     @Environment(\.roomFileReads) private var readFiles
 
     var body: some View {
-        let pictures = pictureFiles == nil ? [] : files.filter(GroupRoomFilesClient.isStoredPicture)
+        // Only what the room can read: a file on an older plugin stays a name.
+        let pictures = pictureFiles.map { resolver in files.filter { $0.kind == .image && resolver.roomFileReads.reads($0) } } ?? []
         if pictures.count > 1 {
             let shown = PictureGrid.shownCount(pictures.count)
             let more = PictureGrid.moreCount(total: pictures.count)
@@ -950,8 +951,8 @@ private struct GroupMessageFiles: View {
         } else if let picture = pictures.first {
             UserImageAttachmentPreview(attachment: picture, gatewayResolver: pictureFiles, onAccent: onAccent, namesUnavailable: true)
         }
-        ForEach(pictures.isEmpty ? files : files.filter { !GroupRoomFilesClient.isStoredPicture($0) }) { file in
-            if let readFiles, GroupRoomFilesClient.isStoredFile(file) {
+        ForEach(pictures.isEmpty ? files : files.filter { file in !pictures.contains { $0.id == file.id } }) { file in
+            if let readFiles, readFiles.roomFileReads.reads(file) {
                 UserDocumentAttachmentChip(attachment: file, gatewayResolver: readFiles, onAccent: onAccent)
             } else {
                 HStack(spacing: 8) {

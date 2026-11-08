@@ -262,15 +262,21 @@ extension AppState {
     }
 
     private func roomFilesResolver(reporting capability: String) -> GatewayMediaDataURLResolver? {
-        let hermesReads = groupCapabilities?.supports("groups.attachment.download") == true
+        let reads = GatewayMediaDataURLResolver.RoomFileReads(
+            hermesAttachments: groupCapabilities?.supports("groups.attachment.download") == true,
+            pluginPictures: notifierPlugin.reports(GroupRoomFilesClient.pictureCapability),
+            pluginFiles: notifierPlugin.reports(GroupRoomFilesClient.readCapability)
+        )
+        let hermesReads = reads.hermesAttachments
         guard notifierPlugin.reports(capability) || hermesReads,
               activeRoomSurface?.copy == nil else { return nil }
-        if let cached = cachedRoomFilesResolver, cached.dashboardID == activeDashboardID {
+        // A new resolver when what it reads changes, so the rows draw again.
+        if let cached = cachedRoomFilesResolver, cached.dashboardID == activeDashboardID, cached.roomFileReads == reads {
             return cached
         }
         // Its own profile name keeps its pictures apart from a chat's on
         // the phone; room files aren't a profile's.
-        let resolver = GatewayMediaDataURLResolver(appState: self, profile: "room-files", source: .roomFiles)
+        let resolver = GatewayMediaDataURLResolver(appState: self, profile: "room-files", source: .roomFiles, roomFileReads: reads)
         cachedRoomFilesResolver = resolver
         return resolver
     }
@@ -331,21 +337,32 @@ extension AppState {
     /// A room message's Hermes attachment, read back as a data URL. Hermes
     /// reads it by the message that carries it, found in the open room.
     func roomAttachmentRead(roomID: String, attachmentID: String) async -> GatewayMediaRead {
-        guard let client, activeRoomSurface?.room.roomID == roomID,
-              let event = activeRoomReplay.events.last(where: { event in
-                  event.attachments.contains { $0.attachmentID == attachmentID }
-              }) else { return .failed }
-        let size = event.attachments.first { $0.attachmentID == attachmentID }?.size ?? 0
+        guard let client, activeRoomSurface?.room.roomID == roomID else { return .failed }
+        let carrying: (eventID: String, attachments: [GroupRoomAttachment], pending: Bool)
+        if let event = activeRoomReplay.events.last(where: { event in
+            event.attachments.contains { $0.attachmentID == attachmentID }
+        }) {
+            carrying = (event.eventID, event.attachments, false)
+        } else if let pending = pendingRoomMessage,
+                  pending.attachments.contains(where: { $0.attachmentID == attachmentID }) {
+            // Still sending: its message's own event id, which Hermes keeps
+            // once the send lands.
+            carrying = (pending.eventID, pending.attachments, true)
+        } else {
+            return .failed
+        }
+        let size = carrying.attachments.first { $0.attachmentID == attachmentID }?.size ?? 0
         do {
             return .dataURL(try await groupsAttachmentDownload(
-                client, roomID: roomID, eventID: event.eventID, attachmentID: attachmentID, size: size
+                client, roomID: roomID, eventID: carrying.eventID, attachmentID: attachmentID, size: size
             ))
         } catch is CancellationError {
             return .failed
         } catch {
             // Hermes answered and won't give it (expired, or not this
-            // viewer's); anything else may read on a later ask.
-            return error is RpcError ? .gone : .failed
+            // viewer's); anything else may read on a later ask. A message
+            // still sending may not have landed yet, so that's a later ask.
+            return error is RpcError && !carrying.pending ? .gone : .failed
         }
     }
 }
