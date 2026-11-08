@@ -911,18 +911,15 @@ struct VoiceResumeContext: Equatable {
         }
         var kept = messages[...]
         if replyRunning {
+            // Back to the last completed reply: everything after it is the
+            // running turn (its question when it was asked here, steers,
+            // progress notes) or messages queued behind it, in any order.
             var cut = kept.endIndex
-            // Messages queued behind the running turn.
-            while cut > kept.startIndex, silent(kept[cut - 1]) || kept[cut - 1].role == .user { cut -= 1 }
-            // Back over the running turn: its steers and progress notes. A
-            // completed reply ends it.
             while cut > kept.startIndex {
                 let message = kept[cut - 1]
-                guard silent(message) || message.isSteer || isProgressNote(message) else { break }
+                guard silent(message) || message.role == .user || isProgressNote(message) else { break }
                 cut -= 1
             }
-            // The question that started it, when it was asked here.
-            if cut > kept.startIndex, kept[cut - 1].role == .user { cut -= 1 }
             kept = kept[..<cut]
         }
         var said: [VoiceResumeTurn] = kept.compactMap { message in

@@ -1473,6 +1473,10 @@ extension HermesVoiceGatewayTimeoutTests {
         // blank row doesn't end the turn.
         let queued = Array(running) + [row("13", .assistant, "  "), row("14", .user, "And a car?")]
         XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(queued, replyRunning: true)).recent.map(\.text), context.recent.map(\.text))
+        // The running reply goes on after a queued message: its later notes
+        // don't let the question through.
+        let laterNote = queued + [row("interim-15", .assistant, "Still checking…")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(laterNote, replyRunning: true)).recent.map(\.text), context.recent.map(\.text))
         // A turn typed on another device has no row here: the answered
         // exchange before it stays, and only its progress notes go.
         let answered = Array(messages.dropLast()) + [row("6", .user, "Book the hotel"), row("9", .assistant, "Booked the Kyoto Inn.")]
