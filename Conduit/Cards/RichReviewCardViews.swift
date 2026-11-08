@@ -872,12 +872,17 @@ struct RichReviewSheet: View {
     }
 
     private func load() async {
+        // A round the user has since left doesn't answer for the one shown.
+        let number = roundNumber
         do {
-            loaded = try await RichReviewLoader.shared.round(review.id, roundNumber, fresh: roundNumber == review.round)
+            let round = try await RichReviewLoader.shared.round(review.id, number, fresh: number == review.round)
+            guard number == roundNumber else { return }
+            loaded = round
             failed = false
         } catch {
+            guard number == roundNumber else { return }
             loaded = nil
-            failed = review.hasPages || roundNumber != review.round
+            failed = review.hasPages || number != review.round
         }
     }
 }
