@@ -2759,7 +2759,9 @@ private struct DelegationModelSettings: View {
                         onPick: { option, item in
                             // The row already picked keeps how it's saved.
                             guard !((provider.isEmpty ? option.isCurrent : option.name == provider) && item.id == model) else { return }
-                            provider = option.name
+                            // A model on the chat's provider leaves the
+                            // provider inherited, so it follows the chats'.
+                            if !(provider.isEmpty && option.isCurrent) { provider = option.name }
                             model = item.id
                             edited = true
                         }

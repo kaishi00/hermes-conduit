@@ -108,9 +108,12 @@ struct BotWorkSettingsView: View {
                     BotModelPicker(
                         provider: providerBinding, model: modelBinding, allowsInherit: true,
                         inheritTitle: AppLocalization.string("Same as Bot Chat"),
-                        reasoning: settings.workstreamModel == nil ? nil : ModelChooserReasoning(
+                        // Shown from the start, so the first pick keeps the
+                        // page open for its reasoning; it waits for a model.
+                        reasoning: ModelChooserReasoning(
                             effort: effortBinding.wrappedValue ?? "",
                             inheritTitle: AppLocalization.string("Default"),
+                            disabled: settings.workstreamModel == nil,
                             set: { effortBinding.wrappedValue = $0.isEmpty ? nil : $0 }
                         )
                     )

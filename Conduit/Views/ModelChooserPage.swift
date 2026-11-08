@@ -227,7 +227,7 @@ struct ModelChooserPage: View {
             if let reasoning {
                 ReasoningEffortBars(
                     effort: reasoning.effort,
-                    disabled: reasoning.disabled || disabled,
+                    disabled: reasoning.disabled,
                     levels: reasoning.levels,
                     unsetTitle: reasoning.inheritTitle,
                     onCommit: { reasoning.set($0.rawValue) }
@@ -266,7 +266,7 @@ struct ModelChooserPage: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .disabled(inherits || reasoning.disabled || disabled)
+        .disabled(inherits || reasoning.disabled)
         .accessibilityLabel(Text(AppLocalization.string("Reasoning")))
         .accessibilityValue(Text(verbatim: title))
         .accessibilityAddTraits(inherits ? .isSelected : [])
