@@ -60,7 +60,10 @@ struct RichReviewDecision: Equatable, Hashable, Identifiable {
 
     init?(json: [String: Any]) {
         guard let id = json["id"] as? String, let title = json["title"] as? String else { return nil }
+        // One option per id: a picker tells them apart by it.
+        var seen: Set<String> = []
         let options = (json["options"] as? [[String: Any]] ?? []).compactMap(RichReviewOption.init(json:))
+            .filter { seen.insert($0.id).inserted }
         guard options.count >= 2 else { return nil }
         self.id = id
         self.title = title
@@ -157,7 +160,10 @@ struct RichReviewRound: Equatable {
         self.round = round
         self.rounds = rounds
         pages = (json["pages"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
+        // One decision per id, as the card has them.
+        var seen: Set<String> = []
         decisions = (json["decisions"] as? [[String: Any]] ?? []).compactMap(RichReviewDecision.init(json:))
+            .filter { seen.insert($0.id).inserted }
         let given = json["marks"] as? [String: Any]
         var marks: [String: RichReviewMark] = [:]
         for entry in given?["decisions"] as? [[String: Any]] ?? [] {

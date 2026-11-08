@@ -3578,7 +3578,7 @@
                     "context": "def is\u2060_admin(user):",
                     "lines": [
                       "-    if user.role != \"admin\":",
-                      "+    if user.role != \"user\u202e \u2066// admin\u2069 \u2066\":",
+                      "+    if user.role != \"user\u202e ⁦// admin⁩ ⁦\":",
                       "     return \u200fTrue"
                     ]
                   }
@@ -4767,6 +4767,80 @@
               {
                 "id": "d1",
                 "title": "X",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "a",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "B",
+                    "label": "b",
+                    "kind": "page"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "A decision left out for too few options doesn't keep its id from a later one",
+      "input": [
+        {
+          "type": "review",
+          "review": {
+            "id": "rv-0123456789abcdef",
+            "round": 1,
+            "decisions": [
+              {
+                "id": "d1",
+                "title": "First",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "a",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "B",
+                    "label": "b",
+                    "kind": "image",
+                    "url": "http://a.test/b.png"
+                  }
+                ]
+              },
+              {
+                "id": "d1",
+                "title": "Second",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "a",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "B",
+                    "label": "b",
+                    "kind": "page"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "review",
+          "review": {
+            "id": "rv-0123456789abcdef",
+            "round": 1,
+            "decisions": [
+              {
+                "id": "d1",
+                "title": "Second",
                 "options": [
                   {
                     "id": "A",

@@ -192,9 +192,12 @@ struct RichReviewCard: View {
 
     private func load(_ review: RichReview) async {
         do {
-            round = try await RichReviewLoader.shared.round(review.id, review.round)
+            let loaded = try await RichReviewLoader.shared.round(review.id, review.round)
+            guard !Task.isCancelled else { return }
+            round = loaded
             failed = false
         } catch {
+            guard !Task.isCancelled else { return }
             // Pictures draw without the host; pages need it.
             failed = review.hasPages
         }
@@ -876,11 +879,11 @@ struct RichReviewSheet: View {
         let number = roundNumber
         do {
             let round = try await RichReviewLoader.shared.round(review.id, number, fresh: number == review.round)
-            guard number == roundNumber else { return }
+            guard number == roundNumber, !Task.isCancelled else { return }
             loaded = round
             failed = false
         } catch {
-            guard number == roundNumber else { return }
+            guard number == roundNumber, !Task.isCancelled else { return }
             loaded = nil
             failed = review.hasPages || number != review.round
         }

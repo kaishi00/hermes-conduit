@@ -685,7 +685,7 @@ struct RichCardSchema {
         var decisions: [[String: Any]] = []
         var seenDecisions: Set<String> = []
         for var decision in review["decisions"] as? [[String: Any]] ?? [] {
-            guard let decisionID = decision["id"] as? String, seenDecisions.insert(decisionID).inserted else { continue }
+            guard let decisionID = decision["id"] as? String, !seenDecisions.contains(decisionID) else { continue }
             var options: [[String: Any]] = []
             var seenOptions: Set<String> = []
             var recommended = false
@@ -704,6 +704,8 @@ struct RichCardSchema {
                 options.append(option)
             }
             guard options.count >= 2 else { continue }
+            // Only a decision kept holds its id: a later one may still use it.
+            seenDecisions.insert(decisionID)
             decision["options"] = options
             decisions.append(decision)
         }
