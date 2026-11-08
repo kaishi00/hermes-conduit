@@ -13,6 +13,9 @@ struct V2AllProfilesSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
+    /// Profiles: Current only hides the chips, so this sheet is the only
+    /// control the bar has left and needs its own way back to one profile.
+    @AppStorage(V2SessionsBarPreferences.Profiles.key) private var profilesPreference = V2SessionsBarPreferences.Profiles.defaultValue
 
     var body: some View {
         NavigationStack {
@@ -24,6 +27,10 @@ struct V2AllProfilesSheet: View {
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 4)
+
+                        if profilesPreference == .currentOnly {
+                            showOnlyProfileButton
+                        }
 
                         VStack(spacing: 0) {
                             ForEach(appState.profiles, id: \.self) { profile in
@@ -58,6 +65,36 @@ struct V2AllProfilesSheet: View {
                 ConduitSheetHeader(title: AppLocalization.string("Show in All"), close: { dismiss() })
             }
         }
+    }
+
+    /// Current only leaves one chip, and while All is on it opens this sheet:
+    /// the way back to a single profile has to be here, or only the
+    /// Appearance preference could leave All. With the chips drawn they do
+    /// this themselves, so the row stays out of the default sheet.
+    private var showOnlyProfileButton: some View {
+        let name = appState.profileDisplayName(appState.activeProfile)
+        return Button {
+            Haptics.selection()
+            appState.setAllProfilesChatsOn(false)
+            dismiss()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.crop.circle")
+                    .font(.system(size: 22))
+                    .conduitFixedGlyph()
+                    .foregroundStyle(Color.conduitAccent)
+                    .frame(width: 30, height: 30)
+                Text(AppLocalization.string("Show only \(name)"))
+                    .scaledFont(.body)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .frame(minHeight: 52)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        .settingsCard()
     }
 
     /// The last profile left in can't be turned off: All never lists

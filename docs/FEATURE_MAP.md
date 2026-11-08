@@ -4670,7 +4670,7 @@ dictation)
 
 ## Chats top bar and search
 
-The Chats screen's controls: the profile row, the filter, Projects,
+The Chats screen's controls: the profile row, the filter, Projects, Pulse,
 Artifacts, New chat and the search field, and how they lay out when the
 profiles don't fit beside the controls.
 
@@ -4681,10 +4681,17 @@ the profile strip on Tasks and Settings (same chips) · CarPlay's agent
 list (picks a profile too) · the profile picker sheet (same switch) ·
 Settings' busy-mode picker and display settings (show the new profile's
 at the switch) · the chat socket (the new profile's client takes over the
-open one) · the notifier's release of an idle chat's claim (#1123)
+open one) · the notifier's release of an idle chat's claim (#1123) ·
+Sync across devices (the four Sessions bar preferences, as
+`app.main_button_new_chat` does) · the Settings caption (Sessions bar)
 
 **Code**
 - Bar layout: `Conduit/Views/V2/V2TopBar.swift` (ViewThatFits: one row, else stacked with lowerLeading under the profiles)
+- Sessions bar preferences and read-only resolve step: `Conduit/Views/V2/V2SessionsBarPreferences.swift` (V2SessionsBarPreferences, V2SessionsBarControls.resolve)
+- Appearance settings: `Conduit/Views/AuxiliaryViews.swift` (AppearanceSettingsDetail, Sessions bar section)
+- The way out of All while one chip is drawn: `Conduit/Views/V2/V2AllProfilesSheet.swift` (showOnlyProfileButton), `Conduit/Views/V2/V2ChatsView.swift` (the list clears a stored Projects page once it sees the switch off)
+- Sync across devices: `Conduit/Services/AppState+SyncedPreferences.swift` (app.sessions_bar_profiles, app.sessions_bar_projects, app.sessions_bar_pulse, app.sessions_bar_artifacts)
+- Resolve tests: `ConduitTests/V2SessionsBarControlsTests.swift` (defaults, current-only and unknown profiles, hidden Projects and All profiles, Pulse capability, Artifacts)
 - Profile chips (on Chats, Tasks and Settings): `Conduit/Views/V2/V2TopBar.swift` (V2ProfileStrip), `Conduit/Views/V2/V2Shell.swift` (pickProfile, V2QueuedProfilePick, fadeContentBackIn, the activeProfile and isProfileSwitching handlers)
 - CarPlay's agent list: `Conduit/CarPlay/CarPlayVoiceCoordinator.swift` (selectAgent, queueAgent)
 - The switch itself: `Conduit/Services/AppState.swift` (switchProfile; the activeProfile didSet's restoreDisplayPreferences and restoreBusyInputMode; loadBusyInputMode, loadChatResumeProfileDisplayPreferences)
@@ -4696,6 +4703,9 @@ open one) · the notifier's release of an idle chat's claim (#1123)
 
 **Rulings**
 - The profiles get their own row when they don't fit beside the controls, and the filter becomes a labeled pill under them (2026-10-22, #1117, Eric).
+- Profiles defaults to All; Current only is opt-in because chips rather than a dropdown keep switching to one tap. Current only draws one chip opening the existing profiles sheet, or the selected All chip opening the All-profiles sheet while All chats is on, and keeps the gold dot for another profile's unread chats (at the picture's bottom corner there, so the waiting badge keeps the top). It applies wherever V2ProfileStrip renders (Chats, Tasks, Settings), including iPad and Mac through the same view; Tasks and Settings keep the active profile's chip while All chats is on, since the All chip is Chats'. A long name truncates in the one chip rather than holding the widest name's width, which is what a fixed row does (2026-11-09, #2012, Eric).
+- Hiding Projects resolves a stored "projects" to Sessions while it's hidden: for the settings tap, an old value, another window's write and a synced preference alike. The list clears the stored page once it sees the switch off, so showing Projects again starts on Sessions. The Pulse switch is consulted only while `showsPulseScreen` is true: the resolve step keeps that check and hides the button inside it. The hide switches default on, so nothing changes for anyone who never opens the section (2026-11-09, #2012, Eric).
+- With one chip drawn, the All chip is the only control the bar has left while All chats is on, and the All-profiles sheet does the rest: it carries a "Show only <profile>" row back to a single profile, which the chips do themselves whenever they're drawn (2026-11-09, #2012).
 - In the stacked bar, search is a magnifier leading the controls. Tapping it turns the whole second row (filter and controls) into the field with Cancel until the search is cancelled, the list has no search row, and the filter pill fills the row up to the controls. The one-row bar keeps the field as the list's first row (2026-10-24, #1199, Eric).
 - Going from the stacked bar to the one-row bar carries a query over to the list's field and closes an empty open field (2026-10-24, #1199).
 - A profile chip tapped while a switch is still running (its fade-out included) is kept, with its haptic at once (the highlighted chip too, rather than opening Profiles), and the last one tapped is switched to when that switch ends, with no second haptic (none when it's where the switch landed). The chips stay tappable meanwhile: a switch takes a couple of seconds on a real dashboard, and taps in it used to do nothing (2026-10-28, #1435). The profile picker sheet still disables its rows during a switch, as it closes on the one picked. An agent picked in CarPlay's Voice list during a switch is kept the same way and switched to once it ends (#1435). A tap in the fade-out, before the switch starts, changes its target, and one back on the profile showing cancels it; a tap on All drops a kept pick. A kept pick is dropped if the dashboard changed meanwhile, and the content stays out until a pick kept from the strip lands rather than flickering in between (one kept in CarPlay doesn't hold the phone's content: it comes back at the profile change and switches again when the CarPlay pick lands).

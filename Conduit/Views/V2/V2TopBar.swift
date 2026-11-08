@@ -220,8 +220,10 @@ struct V2LegacyEdgeBar<Bar: View>: ViewModifier {
 /// and fades out there, so a profile cut off at the edge reads as "more
 /// this way". A fixed one (the Chats bar's single row) is as wide as its
 /// widest selection, so switching profiles never moves the bar between one
-/// row and two.
+/// row and two. Current only draws one chip instead, so there is no row to
+/// keep still: a long name truncates rather than reserving the width.
 struct V2ProfileStrip: View {
+    @AppStorage(V2SessionsBarPreferences.Profiles.key) private var profilesPreference = V2SessionsBarPreferences.Profiles.defaultValue
     @EnvironmentObject private var appState: AppState
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -244,7 +246,11 @@ struct V2ProfileStrip: View {
     /// The All chip's scroll id; no profile is named this.
     private static let allChipID = "\u{1F}all"
 
-    /// All is on and its chip is the selected one.
+    private var currentOnly: Bool { profilesPreference == .currentOnly }
+
+    /// All is on and its chip is the selected one. Only Chats draws the All
+    /// chip, so only there does All stand in for the profile chips; Tasks and
+    /// Settings keep the active profile's chip.
     private var allSelected: Bool {
         showsAllChip && appState.isAllProfilesChatsOn
     }
@@ -268,7 +274,18 @@ struct V2ProfileStrip: View {
     }
 
     var body: some View {
-        if scrolls {
+        if currentOnly {
+            // No scrolling row or widest-name reservation: the user opted
+            // out of the one-tap strip to give this space back to the bar.
+            HStack(spacing: 8) {
+                if showsAllChip && allSelected {
+                    allChip
+                } else {
+                    chip(appState.activeProfile, unread: !unread.isEmpty)
+                }
+            }
+            .padding(.vertical, 2)
+        } else if scrolls {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {
                     chips
@@ -360,11 +377,26 @@ struct V2ProfileStrip: View {
         let name = appState.profileDisplayName(profile)
         let isSelected = !allSelected && profile == appState.activeProfile
         let waiting = needsYou.count(for: profile, matches: appState.profilesMatch)
+        // One chip stands for the active profile, so its gold dot means
+        // another profile's unread chats: say which, rather than sounding
+        // like this profile's own.
+        let unreadValue = unread
+            ? AppLocalization.string(currentOnly ? "Unread in another profile" : "Unread")
+            : nil
         return Button {
             // While a switch runs, every chip is a pick the shell keeps for
             // when it ends (`V2QueuedProfilePick`), the one on screen too.
             let switching = appState.isProfileSwitching || shell.isPickingProfile
-            if isSelected, !switching {
+            if currentOnly {
+                // The one chip is the active profile: a tap while a switch
+                // runs is kept like any other, and otherwise it opens the
+                // profiles list, which switches as well as manages.
+                if switching {
+                    shell.pickProfile(profile)
+                } else {
+                    onManage()
+                }
+            } else if isSelected, !switching {
                 onManage()
             } else if allSelected, profile == appState.activeProfile, !switching {
                 // Back to this profile's own list: nothing to switch.
@@ -383,13 +415,16 @@ struct V2ProfileStrip: View {
                             .strokeBorder(Color.conduitAccent, lineWidth: 1.5)
                             .opacity(isSelected ? 1 : 0)
                     }
-                    .overlay(alignment: .topTrailing) {
+                    // Another profile's unread. With one chip the waiting
+                    // badge owns the top-trailing corner, so the dot moves
+                    // to the bottom corner rather than hiding under it.
+                    .overlay(alignment: currentOnly ? .bottomTrailing : .topTrailing) {
                         if unread {
                             Circle()
                                 .fill(Color.conduitAccent)
                                 .frame(width: 9, height: 9)
                                 .overlay { Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 1) }
-                                .offset(x: 1, y: -1)
+                                .offset(x: 1, y: currentOnly ? 1 : -1)
                                 .transition(.opacity)
                         }
                     }
@@ -408,8 +443,17 @@ struct V2ProfileStrip: View {
                         .scaledFont(.subheadline.weight(.semibold))
                         .foregroundStyle(.primary)
                         .lineLimit(1)
-                        .fixedSize()
+                        // A fixed row reserves the widest name so its layout
+                        // never moves; one chip has no row to keep still, so
+                        // a long name truncates inside the bar instead.
+                        .fixedSize(horizontal: !currentOnly, vertical: false)
                         .transition(.opacity.combined(with: .scale(scale: 0.7, anchor: .leading)))
+                    if currentOnly {
+                        Image(systemName: "chevron.down")
+                            .scaledFont(.caption2.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .accessibilityHidden(true)
+                    }
                 }
             }
             .padding(.leading, 3)
@@ -431,8 +475,8 @@ struct V2ProfileStrip: View {
         .modifier(DashboardSwitchMenu(enabled: profile == appState.activeProfile))
         .accessibilityIdentifier(isSelected ? "sidebar.workspace" : "v2.profile.\(profile)")
         .accessibilityLabel(AppLocalization.string("\(name) profile"))
-        .accessibilityValue(Self.spokenValue(waiting: waiting, unread: unread))
-        .accessibilityHint(isSelected && !(appState.isProfileSwitching || shell.isPickingProfile) ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
+        .accessibilityValue(Self.spokenValue(waiting: waiting, unread: unreadValue))
+        .accessibilityHint(currentOnly || (isSelected && !(appState.isProfileSwitching || shell.isPickingProfile)) ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -468,6 +512,16 @@ struct V2ProfileStrip: View {
                 }
                 .frame(width: pictureSize, height: pictureSize, alignment: .leading)
                 .opacity(isSelected ? 1 : 0.62)
+                .overlay(alignment: .topTrailing) {
+                    if currentOnly && !unread.isEmpty {
+                        Circle()
+                            .fill(Color.conduitAccent)
+                            .frame(width: 9, height: 9)
+                            .overlay { Circle().strokeBorder(Color.black.opacity(0.35), lineWidth: 1) }
+                            .offset(x: 1, y: -1)
+                            .accessibilityHidden(true)
+                    }
+                }
                 if isSelected {
                     Text(Self.allTitle)
                         .scaledFont(.subheadline.weight(.semibold))
@@ -493,6 +547,10 @@ struct V2ProfileStrip: View {
         .buttonStyle(PressableButtonStyle())
         .accessibilityIdentifier("v2.profile.all")
         .accessibilityLabel(AppLocalization.string("All profiles"))
+        .accessibilityValue(Self.spokenValue(
+            waiting: 0,
+            unread: currentOnly && !unread.isEmpty ? AppLocalization.string("Unread in another profile") : nil
+        ))
         .accessibilityHint(isSelected
             ? AppLocalization.string("Chooses which profiles All shows")
             : AppLocalization.string("Shows the chats of several profiles in one list"))
@@ -672,9 +730,10 @@ struct V2SegmentedControl<Value: Hashable>: View {
 
 
 extension V2ProfileStrip {
-    /// A chip's spoken value: what waits there, then unread.
-    static func spokenValue(waiting: Int, unread: Bool) -> String {
-        [waiting > 0 ? AppLocalization.string("\(Int(waiting)) waiting on you") : nil,
-         unread ? AppLocalization.string("Unread") : nil].compactMap { $0 }.joined(separator: ", ")
+    /// A chip's spoken value: what waits there, then its unread line, which
+    /// the one chip words as another profile's.
+    static func spokenValue(waiting: Int, unread: String?) -> String {
+        [waiting > 0 ? AppLocalization.string("\(Int(waiting)) waiting on you") : nil, unread]
+            .compactMap { $0 }.joined(separator: ", ")
     }
 }
