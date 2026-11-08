@@ -526,7 +526,9 @@ extension AppState {
             let cleared = linkedRoomInvites?.dashboardID != client.dashboardID
             await refreshLinkedRoomInvites()
             // The answer may still reach the host, and the room start then.
-            if !agents.isEmpty, !cleared, activeDashboardID == client.dashboardID {
+            // A disconnect during the refresh clears the list too.
+            if !agents.isEmpty, !cleared, activeDashboardID == client.dashboardID,
+               linkedRoomInvites?.dashboardID == client.dashboardID {
                 followLinkedRoomInvites()
             }
             return .sending(message)

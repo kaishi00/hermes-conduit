@@ -492,6 +492,33 @@ extension GroupChatModelsTests {
         XCTAssertNil(appState.linkedRoomInviteFollow, "no follow for a list a disconnect cleared")
     }
 
+    /// A disconnect while the 504's refresh is still out starts no follow
+    /// either.
+    @MainActor
+    func testADisconnectDuringTheTimedOutAnswersRefreshStartsNoFollow() async throws {
+        let routes = InvitesRoutes(invites: [invitesInvite("conduit-1")])
+        routes.answerTimesOut = true
+        let appState = invitesAppState(routes)
+        invitesConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(invitesPluginReport)
+        await invitesWait("the invites read", until: { appState.linkedRoomInviteRows.map(\.roomID) == ["conduit-1"] })
+        let invite = try XCTUnwrap(appState.linkedRoomInviteRows.first)
+        let agents = try XCTUnwrap(RoomInviteAgent.agents(for: [invitesBot("default")], choices: invite.choices))
+
+        let answering = Task { @MainActor in await appState.answerLinkedRoomInvite(invite, agents: agents) }
+        await invitesWait("the held answer", until: { routes.answeringHeld })
+        routes.holdsNextRead = true
+        routes.releaseAnswer()
+        await invitesWait("the held refresh", until: { routes.holding })
+        appState.disconnect()
+        routes.answerHeldRead()
+        let result = await answering.value
+        guard case .sending = result else { return XCTFail("a 504 is still sending: \(result)") }
+        XCTAssertNil(appState.linkedRoomInvites)
+        XCTAssertNil(appState.linkedRoomInviteFollow, "no follow for a list a disconnect cleared mid-refresh")
+    }
+
     /// An invite's notification opens its card once the plugin's status
     /// is in; one the plugin no longer lists says so, and one from a
     /// dashboard this device doesn't know opens nothing.
