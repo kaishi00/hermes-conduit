@@ -2430,8 +2430,17 @@ struct UserDocumentAttachmentChip: View {
                 ProgressView()
                     .controlSize(.mini)
                     .tint(onAccent ? .white : nil)
+            } else if failed {
+                // The file couldn't be read (gone from the host, too large,
+                // or refused): say so rather than leave a tap that does nothing.
+                Image(systemName: "exclamationmark.circle")
+                    .accessibilityHidden(true)
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(failed
+            ? AppLocalization.string("\(AttachmentTypePolicy.displayName(for: attachment)) unavailable")
+            : AttachmentTypePolicy.displayName(for: attachment))
         .scaledFont(.caption.weight(.medium))
         .foregroundStyle(onAccent ? Color.white : Color.primary)
         .padding(.horizontal, 10)
