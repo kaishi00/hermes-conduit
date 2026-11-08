@@ -570,7 +570,7 @@ struct V2ChatsView: View, Equatable {
         // showing Projects again doesn't resurrect a page the user was moved
         // off. The resolve step already keeps the list on Sessions until then.
         .onChange(of: sessionsBar.showsProjects, initial: true) { _, shows in
-            if !shows, sessionPresentationRaw == "projects" {
+            if V2SessionsBarControls.hidesStoredProjectsPage(sessionPresentationRaw, showsProjects: shows) {
                 sessionPresentationRaw = "sessions"
             }
         }

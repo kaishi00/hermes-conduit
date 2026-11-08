@@ -128,6 +128,16 @@ extension SidebarLayoutTests {
             profiles: .all, allProfilesChatsOn: true))
     }
 
+    /// The list's write-back: a stored Projects page goes to Sessions once it
+    /// sees Projects hidden, and only then. Showing Projects again starts on
+    /// Sessions instead of resurrecting the page the user was moved off.
+    func testSessionsBarStoredProjectsPageIsClearedOnceProjectsIsHidden() {
+        XCTAssertTrue(V2SessionsBarControls.hidesStoredProjectsPage("projects", showsProjects: false))
+        XCTAssertFalse(V2SessionsBarControls.hidesStoredProjectsPage("projects", showsProjects: true))
+        XCTAssertFalse(V2SessionsBarControls.hidesStoredProjectsPage("sessions", showsProjects: false))
+        XCTAssertFalse(V2SessionsBarControls.hidesStoredProjectsPage(nil, showsProjects: false))
+    }
+
     /// A throwaway defaults store, so a test never reads or writes the test
     /// host's own preferences.
     private func withSessionsBarDefaults(_ body: (UserDefaults) -> Void) {

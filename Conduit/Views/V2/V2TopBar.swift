@@ -65,7 +65,7 @@ struct V2TopBar<Trailing: View, LowerLeading: View>: View {
         .frame(minHeight: 52)
         .dynamicTypeSize(...DynamicTypeSize.pinnedChromeCap)
         .sheet(isPresented: $showProfileManager) {
-            ProfilePickerSheet()
+            ProfilePickerSheet(offersAllChatsRow: true)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
                 .environmentObject(appState)

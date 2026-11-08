@@ -8,6 +8,12 @@ import SwiftUI
 
 struct ProfilePickerSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    /// The V2 bar's sheet carries the way into All while Current only leaves
+    /// it one chip. The classic sidebar presents this same sheet, so it passes
+    /// false: its chips are always drawn, the All view doesn't exist there, and
+    /// a synced Current only from another device shouldn't offer a row that
+    /// would change nothing this list shows.
+    var offersAllChatsRow = false
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var isReordering = false
@@ -109,7 +115,7 @@ struct ProfilePickerSheet: View {
     /// from Settings alone. The All-profiles sheet carries the way out in the
     /// other direction.
     private var showsAllChatsRow: Bool {
-        V2SessionsBarControls.showsAllChatsRow(
+        offersAllChatsRow && V2SessionsBarControls.showsAllChatsRow(
             profiles: profilesPreference,
             allProfilesChatsOn: appState.isAllProfilesChatsOn,
             allProfilesAvailable: AllProfilesChats.isAvailable(profiles: appState.profiles)
@@ -138,11 +144,13 @@ struct ProfilePickerSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
-        // The profile rows are disabled during a switch, and a dashboard's row
-        // while another dashboard is coming in. This row writes the same
-        // preference, so it waits for the same switch to end rather than
-        // applying it to a dashboard already on its way out.
-        .disabled(appState.isProfileSwitching || switchingToDashboard != nil)
+        // The profile rows are disabled during a switch, a dashboard's row
+        // while another dashboard is coming in, and every row while the order
+        // is being changed. This row writes the same preference, so it waits
+        // for the same switch to end rather than applying it to a dashboard
+        // already on its way out, and sits out a reorder rather than closing
+        // the sheet mid-drag.
+        .disabled(isReordering || appState.isProfileSwitching || switchingToDashboard != nil)
         .accessibilityHint(AppLocalization.string("Shows the chats of several profiles in one list"))
         .settingsCard()
     }

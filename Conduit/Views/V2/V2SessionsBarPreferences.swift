@@ -50,6 +50,14 @@ struct V2SessionsBarControls: Equatable {
         profiles == .currentOnly && allProfilesChatsOn
     }
 
+    /// The list's write-back, not the resolve step: once it sees Projects
+    /// hidden, a stored Projects page becomes Sessions, so showing Projects
+    /// again starts there. Only the list writes, so another window's render
+    /// never does.
+    static func hidesStoredProjectsPage(_ storedPage: String?, showsProjects: Bool) -> Bool {
+        !showsProjects && storedPage == Presentation.projects.rawValue
+    }
+
     /// Pulse remains inside the profile's own capability gate. Hidden
     /// Projects, or All profiles' chats-only list, resolves even an old value
     /// or another window's write to Sessions without writing during a render.
