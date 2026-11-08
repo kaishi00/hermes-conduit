@@ -47,7 +47,19 @@ final class HostedAppsModel {
     /// up. Kept for the app, not the page: one given up while the page was
     /// open still settles after it closes, and a page opened later waits
     /// for it too.
-    private static var retiring: [String: Task<Void, Never>] = [:]
+    private static var retiring: [String: (id: UUID, task: Task<Void, Never>)] = [:]
+
+    /// Holds `work` for the app until it has settled, then lets it go
+    /// unless a newer try took its place.
+    private static func retire(_ key: String, _ work: Task<Void, Never>) {
+        let id = UUID()
+        let previous = retiring[key]?.task
+        retiring[key] = (id, Task {
+            await previous?.value
+            await work.value
+            if retiring[key]?.id == id { retiring[key] = nil }
+        })
+    }
     @ObservationIgnored private var browserClosedAt: Date?
     /// Which close the fallback below belongs to: an earlier one's timer
     /// never ends a later close.
@@ -140,7 +152,7 @@ final class HostedAppsModel {
         let attempt = self.attempt
         // Left in place, so every page's start at the app waits for it
         // until it has settled, not only the first one's.
-        let previous = Self.retiring["\(hermes ?? "")|\(slug)"]
+        let previous = Self.retiring["\(hermes ?? "")|\(slug)"]?.task
         signInTask = Task { [weak self] in
             // A given-up try at this app first settles what it started:
             // Hermes hands a matching start the operation still open, so
@@ -164,7 +176,7 @@ final class HostedAppsModel {
     }
 
     func cancelSignIn() {
-        if let task = signInTask, let slug = signingIn { Self.retiring["\(hermes ?? "")|\(slug)"] = task }
+        if let task = signInTask, let slug = signingIn { Self.retire("\(hermes ?? "")|\(slug)", task) }
         signInTask?.cancel()
         signInTask = nil
         signingIn = nil
@@ -281,7 +293,7 @@ final class HostedAppsModel {
     /// open. Another Hermes switched to is never told.
     private func retireOnceConnected(_ operation: HostedAppOperation, slug: String, hermes: String?, appState: AppState) {
         let key = "\(hermes ?? "")|\(slug)"
-        Self.retiring[key] = Task { [weak self, weak appState] in
+        Self.retire(key, Task { [weak self, weak appState] in
             let deadline = Date().addingTimeInterval(Self.retireWait)
             while Date() < deadline {
                 // The app's own Hermes, not this page's, which may have
@@ -291,8 +303,9 @@ final class HostedAppsModel {
                 if appState.isConnected, appState.hostedAppsHermes == hermes {
                     do {
                         try await appState.stopHostedAppSignIn(operation)
-                    } catch where Self.isConnectionBlip(error, appState: appState) {
-                        // Dropped again on the way: asked again next tick.
+                    } catch where Self.isConnectionBlip(error, appState: appState) || Self.isTimeout(error) {
+                        // Dropped again on the way, or no answer in time:
+                        // asked again next tick.
                         try? await Task.sleep(for: Self.pollInterval)
                         continue
                     } catch {
@@ -304,7 +317,13 @@ final class HostedAppsModel {
                 }
                 try? await Task.sleep(for: Self.pollInterval)
             }
-        }
+        })
+    }
+
+    /// No answer in time: whether Hermes did it is unknown.
+    static func isTimeout(_ error: Error) -> Bool {
+        if case HermesError.timeout = error { return true }
+        return (error as? URLError)?.code == .timedOut
     }
 
     /// The connection, not Hermes, failed the ask: no connection, another
