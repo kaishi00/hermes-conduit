@@ -10,6 +10,7 @@
 //  on every change); `hermes dashboard` has no such list.
 //
 
+import Combine
 import Foundation
 
 /// One row of a chat's `pending` list (Hermes' PendingAdmission).

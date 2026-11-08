@@ -12710,7 +12710,7 @@ final class AppState: ObservableObject {
     /// The composer's @mention middleware, shared by every routing path (a
     /// new turn, a busy steer, a redirect) so a mention typed while the bot
     /// is streaming is identified exactly like one sent at idle.
-    private func mentionAnnotatedOutboundText(_ text: String) -> String {
+    func mentionAnnotatedOutboundText(_ text: String) -> String {
         // Quoted lines (#385) are not scanned for mentions; see
         // `middlewareAnnotation`. The whole text is sent.
         BotMentions.middlewareAnnotation(
@@ -30271,7 +30271,10 @@ final class AppState: ObservableObject {
         case .queued, .unknown:
             // Waiting, or cut off: the dock shows it (a cut-off one on its
             // card, whose Resend sends the words again), never the transcript too.
-            if let optimisticRowID, let index = messages.firstIndex(where: { $0.id == optimisticRowID }) {
+            // Its turn already started (the start came during this read):
+            // the bubble stays where it is.
+            if !startedAdmissionIDs.contains(row.admissionID),
+               let optimisticRowID, let index = messages.firstIndex(where: { $0.id == optimisticRowID }) {
                 holdQueuedSendRow(messages.remove(at: index), admissionID: row.admissionID)
                 cacheMessagePresentation()
             }

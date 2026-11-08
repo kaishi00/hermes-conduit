@@ -19,6 +19,10 @@ struct AuthorityQueueDock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var editing: QueuedPrompt?
     @State private var editText = ""
+    /// The rows' own height, so the dock is only as tall as they are, up
+    /// to a cap past which they scroll and the composer stays in reach.
+    @State private var rowsHeight: CGFloat = 0
+    private static let maxRowsHeight: CGFloat = 240
 
     private var shows: Bool {
         openChatID != nil && appState.authorityQueueIsOpenChat(store.sessionID) && !store.isEmpty
@@ -28,12 +32,19 @@ struct AuthorityQueueDock: View {
         Group {
             if shows {
                 VStack(alignment: .leading, spacing: 6) {
-                    ForEach(store.lost) { row in
-                        lostCard(row)
+                    ScrollView {
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(store.lost) { row in
+                                lostCard(row)
+                            }
+                            ForEach(store.queued) { row in
+                                queuedRow(row)
+                            }
+                        }
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { rowsHeight = $0 }
                     }
-                    ForEach(store.queued) { row in
-                        queuedRow(row)
-                    }
+                    .scrollBounceBehavior(.basedOnSize)
+                    .frame(height: min(rowsHeight, Self.maxRowsHeight))
                     if let notice = store.notice {
                         Text(verbatim: notice)
                             .scaledFont(.footnote)
@@ -114,7 +125,8 @@ struct AuthorityQueueDock: View {
             }
             if row.canEdit {
                 Button {
-                    editText = row.text
+                    // The user's own words: the @mention note is rebuilt on save.
+                    editText = BotMentions.strippingAnnotation(row.text)
                     editing = row
                 } label: {
                     Label("Edit", systemImage: "pencil")

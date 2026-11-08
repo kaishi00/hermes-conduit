@@ -33,12 +33,15 @@ extension AppState {
     func editQueuedPrompt(_ row: QueuedPrompt, text: String) async {
         let words = text.trimmingCharacters(in: .whitespacesAndNewlines)
         // Emptied is no edit: Remove from queue is the way to withdraw it.
-        guard !words.isEmpty, words != row.text.trimmingCharacters(in: .whitespacesAndNewlines) else { return }
+        let before = BotMentions.strippingAnnotation(row.text).trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty, words != before else { return }
+        // Sent as a send is: a bot the edited words name gets its note.
+        let outbound = mentionAnnotatedOutboundText(words)
         // One id for the edit: a retry after a lost reply is the same edit.
         let submissionID = UUID().uuidString.lowercased()
         await queueAction(row) { client, sessionID in
             let receipt = try await client.replaceQueuedPrompt(
-                sessionID, admissionID: row.admissionID, text: words, submissionID: submissionID
+                sessionID, admissionID: row.admissionID, text: outbound, submissionID: submissionID
             )
             // The old words are settled: sending them again is a new message.
             HermesClient.forgetUnansweredSubmission(row.inputID, for: sessionID)
