@@ -2370,9 +2370,14 @@ enum AttachmentPreviewFilename {
     }
 }
 
-private struct UserDocumentAttachmentChip: View {
+/// A message's file that isn't a picture: opens in Quick Look, and audio
+/// plays in place. A chat's sent files, and a group room's
+/// (GroupMessageFiles), read from the room's files.
+struct UserDocumentAttachmentChip: View {
     let attachment: Attachment
     let gatewayResolver: GatewayMediaDataURLResolver?
+    /// On the user's accent bubble; a room member's plain bubble isn't.
+    var onAccent = true
     @State private var loading = false
     @State private var failed = false
     @State private var openTask: Task<Void, Never>?
@@ -2400,7 +2405,7 @@ private struct UserDocumentAttachmentChip: View {
                         ? AppLocalization.string("Voice message")
                         : attachment.name,
                     filename: AttachmentPreviewFilename.make(name: attachment.name, uri: attachment.uri),
-                    style: .bubble,
+                    style: onAccent ? .bubble : .card,
                     opening: loading,
                     openFailed: failed,
                     load: loadAudio,
@@ -2424,14 +2429,23 @@ private struct UserDocumentAttachmentChip: View {
             if loading {
                 ProgressView()
                     .controlSize(.mini)
-                    .tint(.white)
+                    .tint(onAccent ? .white : nil)
+            } else if failed {
+                // The file couldn't be read (gone from the host, too large,
+                // or refused): say so rather than leave a tap that does nothing.
+                Image(systemName: "exclamationmark.circle")
+                    .accessibilityHidden(true)
             }
         }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(failed
+            ? AppLocalization.string("\(AttachmentTypePolicy.displayName(for: attachment)) unavailable")
+            : AttachmentTypePolicy.displayName(for: attachment))
         .scaledFont(.caption.weight(.medium))
-        .foregroundStyle(.white)
+        .foregroundStyle(onAccent ? Color.white : Color.primary)
         .padding(.horizontal, 10)
         .padding(.vertical, 7)
-        .background(Color.white.opacity(0.13), in: Capsule())
+        .background(onAccent ? Color.white.opacity(0.13) : Color.primary.opacity(0.05), in: Capsule())
         .opensMediaPreview(open)
     }
 

@@ -1663,6 +1663,20 @@ extension AppStateMultiDashboardTests {
         appState.setNotifierPluginStateForTesting(.reported(version: "0.142.0", capabilities: [GroupRoomFilesClient.pictureCapability]))
         let resolver = try XCTUnwrap(appState.roomFilePicturesResolver)
         XCTAssertTrue(appState.roomFilePicturesResolver === resolver, "one resolver, so the rows holding it compare equal")
+        XCTAssertNil(appState.roomFileReadsResolver, "a 0.142 plugin reads pictures only; other files stay names")
+        appState.setNotifierPluginStateForTesting(.reported(
+            version: "0.143.0", capabilities: [GroupRoomFilesClient.pictureCapability, GroupRoomFilesClient.readCapability]
+        ))
+        XCTAssertTrue(appState.roomFileReadsResolver === resolver, "other files read through the same room reader")
+        XCTAssertTrue(GroupRoomFilesClient.isStoredFile(Attachment(
+            id: "d", name: "report.pdf", uri: "/h/conduit/room-files/20261108-c/report.pdf", mimeType: "application/pdf", kind: .document
+        )))
+        XCTAssertFalse(GroupRoomFilesClient.isStoredFile(Attachment(
+            id: "e", name: "report.pdf", uri: "/h/projects/report.pdf", mimeType: "application/pdf", kind: .document
+        )), "a file the room didn't store keeps its name")
+        XCTAssertFalse(GroupRoomFilesClient.isStoredFile(Attachment(
+            id: "f", name: "photo.jpg", uri: "/w/conduit/room-files/photo.jpg", mimeType: "image/jpeg", kind: .image
+        )), "a path outside an upload's folder keeps its name")
         let inline = await resolver.inlineImageDataURL(InlineImageRef(sessionId: "s", profile: "default", rowId: 1, index: 0))
         XCTAssertNil(inline, "room files hold no pictures inside messages")
 

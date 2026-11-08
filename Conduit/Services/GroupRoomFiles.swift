@@ -11,13 +11,25 @@ final class GroupRoomFilesClient {
     /// Reads a stored picture back as a data URL (plugin 0.142+), so a room
     /// draws it instead of its name.
     static let pictureCapability = "room-file-pictures"
+    /// The same route reads any file sent into a room (plugin 0.143+), so
+    /// a room opens and plays them as a chat does.
+    static let readCapability = "room-file-reads"
     static let picturePath = "/api/plugins/conduit_push/room-files/data-url"
 
     /// A picture `/room-files` stored (`<hermes home>/conduit/room-files/
     /// <upload>/<name>`): only these are read back. Any other `@file:`
     /// picture keeps its name, since the route would refuse it.
     static func isStoredPicture(_ file: Attachment) -> Bool {
-        file.kind == .image && file.uri.hasPrefix("/") && file.uri.contains("/conduit/room-files/")
+        file.kind == .image && isStoredFile(file)
+    }
+
+    /// Any file `/room-files` stored: only these are read back. The route
+    /// reads only `room-files/<upload>/<name>`, so nothing else qualifies.
+    static func isStoredFile(_ file: Attachment) -> Bool {
+        guard file.uri.hasPrefix("/"),
+              let marker = file.uri.range(of: "/conduit/room-files/", options: .backwards) else { return false }
+        let parts = file.uri[marker.upperBound...].split(separator: "/", omittingEmptySubsequences: false)
+        return parts.count == 2 && !parts[0].isEmpty && !parts[1].isEmpty
     }
     /// Base64 of a file near the host's 50 MB cap takes a while to send.
     static let minimumTimeoutMilliseconds = 180_000
@@ -141,7 +153,16 @@ extension AppState {
     /// its home's host. One instance per dashboard, so the rows reading it
     /// compare equal.
     var roomFilePicturesResolver: GatewayMediaDataURLResolver? {
-        guard notifierPlugin.reports(GroupRoomFilesClient.pictureCapability),
+        roomFilesResolver(reporting: GroupRoomFilesClient.pictureCapability)
+    }
+
+    /// Where a room's other files are read (plugin 0.143+), as pictures are.
+    var roomFileReadsResolver: GatewayMediaDataURLResolver? {
+        roomFilesResolver(reporting: GroupRoomFilesClient.readCapability)
+    }
+
+    private func roomFilesResolver(reporting capability: String) -> GatewayMediaDataURLResolver? {
+        guard notifierPlugin.reports(capability),
               activeRoomSurface?.copy == nil else { return nil }
         if let cached = cachedRoomFilePicturesResolver, cached.dashboardID == activeDashboardID {
             return cached
@@ -153,7 +174,8 @@ extension AppState {
         return resolver
     }
 
-    /// A picture `/room-files` stored, read back as a data URL.
+    /// A file `/room-files` stored, read back as a data URL: pictures since
+    /// plugin 0.142, any type since 0.143.
     func roomFilePictureRead(for path: String) async -> GatewayMediaRead {
         guard let encodedPath = DashboardPath.encodedQueryComponent(path) else { return .gone }
         return await dataURLRead(endpoint: "\(GroupRoomFilesClient.picturePath)?path=\(encodedPath)")
@@ -170,8 +192,9 @@ extension AppState {
         let generation = TranscriptImageCache.generation
         let kept: [(Attachment, String)] = zip(attachments, references).compactMap { attachment, reference in
             guard attachment.kind == .image,
-                  let path = MessageNormalizer.splitLeadingFileReferences(reference, messageId: "room").attachments.first?.uri,
-                  let key = resolver.imageCacheKey(forMediaPath: path) else { return nil }
+                  let stored = MessageNormalizer.splitLeadingFileReferences(reference, messageId: "room").attachments.first,
+                  GroupRoomFilesClient.isStoredFile(stored),
+                  let key = resolver.imageCacheKey(forMediaPath: stored.uri) else { return nil }
             return (attachment, key)
         }
         guard !kept.isEmpty else { return }
