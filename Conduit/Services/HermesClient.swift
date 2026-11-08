@@ -4323,7 +4323,12 @@ final class HermesClient: ObservableObject {
     /// answers its fields as Hermes now has them.
     func savePluginSettings(key name: String, values: [String: Any], profile: String) async throws -> [PluginSettingField]? {
         let result = try await rpc("plugins.manage", params: ["action": "settings", "key": name, "values": values, "profile": profile])
-        guard let object = result.anyValue as? [String: Any], object["ok"] as? Bool == true else { throw HermesError.invalidResponse }
+        guard let object = result.anyValue as? [String: Any] else { throw HermesError.invalidResponse }
+        guard object["ok"] as? Bool == true else {
+            // Hermes' own reason for refusing a value, when it gives one.
+            if let reason = PluginSettings.text(object["error"]) { throw PluginSettings.FieldError(message: reason) }
+            throw HermesError.invalidResponse
+        }
         return (object["plugin"] as? [String: Any]).map(PluginSettings.fields(from:))
     }
 

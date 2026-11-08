@@ -259,10 +259,10 @@ final class CapabilitiesStore {
         let profile = profile
         let envPath = scoped("/api/env")
         for (env, value) in save.secrets.sorted(by: { $0.key < $1.key }) {
-            guard token == generation else { throw CancellationError() }
+            guard token == generation else { throw CapabilitiesStoreError.profileChanged }
             _ = try await request(envPath, method: "PUT", body: DashboardPath.bodyWithProfile(["key": env, "value": value], profile: profile))
         }
-        guard token == generation else { throw CancellationError() }
+        guard token == generation else { throw CapabilitiesStoreError.profileChanged }
         let values = PluginSettings.body(save.values)
         do {
             return try await ProfileConfigWriteQueue.runThrowing {

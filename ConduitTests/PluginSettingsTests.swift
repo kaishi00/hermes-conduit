@@ -87,6 +87,9 @@ extension PluginCatalogBrowseTests {
             .object(["extra": .object(["count": .number(1), "offset": .number(0), "on": .bool(true), "ratio": .number(0.5)])]),
             "A JSON 0 or 1 reaches Hermes as a number, not a switch"
         )
+        let days = try XCTUnwrap(fields.first { $0.key == "days" })
+        XCTAssertEqual(try days.wireValue("2,5", locale: Locale(identifier: "de_DE")) as? Double, 2.5, "The number pad's comma reads as a decimal")
+        XCTAssertEqual(try days.wireValue("2.5", locale: Locale(identifier: "en_US")) as? Double, 2.5)
         let decimal = try PluginSettings.save(fields: fields, draft: ["days": "2.5"])
         XCTAssertEqual(PluginSettings.body(decimal.values)["days"] as? Double, 2.5)
     }

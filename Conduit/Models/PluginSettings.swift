@@ -50,7 +50,7 @@ struct PluginSettingField: Equatable, Identifiable {
 
     /// The form's text as Hermes takes it. Throws a message for the field
     /// when the text doesn't fit.
-    func wireValue(_ raw: String) throws -> Any {
+    func wireValue(_ raw: String, locale: Locale = AppLocalization.formattingLocale) throws -> Any {
         let trimmed = raw.trimmingCharacters(in: .whitespacesAndNewlines)
         switch kind {
         case .boolean:
@@ -62,8 +62,11 @@ struct PluginSettingField: Equatable, Identifiable {
             return trimmed
         case .number:
             if trimmed.isEmpty, !required { return NSNull() }
-            if let integer = Int(trimmed) { return integer }
-            guard let number = Double(trimmed), number.isFinite else {
+            // The number pad types the locale's separator, a comma in many.
+            let separator = locale.decimalSeparator ?? "."
+            let text = separator == "." ? trimmed : trimmed.replacingOccurrences(of: separator, with: ".")
+            if let integer = Int(text) { return integer }
+            guard let number = Double(text), number.isFinite else {
                 throw PluginSettings.FieldError(message: AppLocalization.string("\(label): enter a number."))
             }
             return number

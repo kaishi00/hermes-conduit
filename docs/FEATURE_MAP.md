@@ -3585,7 +3585,7 @@ marketplace) · Text: the page's captions and README.md's Capabilities line
 - The hub's taps (adding a GitHub repository as a source, Desktop's Sources) aren't on the page.
 - A skill the scan would have Hermes ask about installs with Hermes' `--yes`, as Desktop's Install does; the page shows the findings first.
 
-**Checked:** 2026-11-08, #2009 (the plugin catalog named as a sibling; wording); 2026-11-08, #1999 (the page, the scan, install, remove and update)
+**Checked:** 2026-11-08, #2011 (README's Capabilities line, shared, also names each plugin's own settings); 2026-11-08, #2009 (the plugin catalog named as a sibling; wording); 2026-11-08, #1999 (the page, the scan, install, remove and update)
 
 ## Plugin catalog: browse and install
 
@@ -3625,7 +3625,7 @@ the pages' captions and README.md's Capabilities line (done)
 - The curated picks are Desktop's list as of 2026-11-08, written into Conduit: Hermes' catalog route doesn't carry them.
 - A plugin's README (Desktop's docs page) isn't shown.
 
-**Checked:** 2026-11-08, #2010 (kept filters keep their place, the rule in CapabilityPluginFilter; the Category menu reads its selection to VoiceOver); 2026-11-08, #2009 (the shelf, Browse All, the plugin page)
+**Checked:** 2026-11-08, #2011 (README's Capabilities line also names each plugin's own settings, see Plugin settings); 2026-11-08, #2010 (kept filters keep their place, the rule in CapabilityPluginFilter; the Category menu reads its selection to VoiceOver); 2026-11-08, #2009 (the shelf, Browse All, the plugin page)
 
 ## Plugin settings
 
@@ -3643,7 +3643,9 @@ Providers and keys (not needed: the same write-only `.env` rule, its keys
 listed there) · Hermes Desktop's plugin settings form (upstream, the
 reference) · profiles (done: Hermes keeps plugin settings for the default
 profile, so another profile's page shows them read-only with a caption) ·
-Watch, CarPlay and group rooms (not needed: no settings) · the notifier (not
+Screens that open on their last answer (not needed: the form is read from
+`plugins.manage` each time the page opens and keeps nothing, so offline it
+shows no section; drafts live only while the page is open) · Watch, CarPlay and group rooms (not needed: no settings) · the notifier (not
 needed: Hermes' own gateway call) · Text: the form's captions and README.md's
 Capabilities line (done)
 
@@ -3656,6 +3658,7 @@ Capabilities line (done)
 **Rulings**
 - A secret is write-only: the form never shows its value, even if Hermes sent one, and a secret left blank stays as it is (#2011).
 - A save sends only what changed; a Hermes without `plugins.manage` shows no section (#2011).
+- The form is read fresh each time, never kept: a reload that fails shows why and Try Again, never the fields from before; a dashboard or profile switch mid-save stops its later writes (#2011).
 
 **Open gaps**
 - None.
