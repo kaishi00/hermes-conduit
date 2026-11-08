@@ -5,7 +5,7 @@
 //  Settings > Capabilities > Plugins, the agent half of Hermes Desktop's
 //  Plugins tab: the plugins installed for the profile with their switches,
 //  each with a page to update or uninstall it, then Hermes' plugin catalog
-//  to install from. A change Hermes applies on the gateway's next start
+//  to install from (its featured shelf and Browse All, PluginCatalogViews). A change Hermes applies on the gateway's next start
 //  offers Restart Gateway.
 //
 
@@ -116,7 +116,9 @@ struct CapabilityPluginsTab: View {
                         }
                     }
                 }
-                if !catalog.isEmpty {
+                if query.isEmpty, !store.pluginCatalog.isEmpty {
+                    PluginCatalogShelf(store: store, canManage: canManage)
+                } else if !catalog.isEmpty {
                     CapabilitySection(
                         title: AppLocalization.string("Plugin catalog"),
                         symbol: "shippingbox",
@@ -126,13 +128,19 @@ struct CapabilityPluginsTab: View {
                         ForEach(Array(catalog.enumerated()), id: \.element.id) { index, entry in
                             CapabilityCardRow(divided: index > 0) {
                                 HStack(spacing: 10) {
-                                    CapabilityRowLabel(
-                                        symbol: "shippingbox",
-                                        active: false,
-                                        title: entry.displayName,
-                                        pills: [PluginStyle.tierPill(entry.tier)],
-                                        detail: entry.description
-                                    )
+                                    NavigationLink {
+                                        PluginCatalogDetailPage(name: entry.name, store: store, canManage: canManage)
+                                            .v2TabBarClearance()
+                                    } label: {
+                                        CapabilityRowLabel(
+                                            symbol: "shippingbox",
+                                            active: false,
+                                            title: entry.displayName,
+                                            pills: [PluginStyle.tierPill(entry.tier)],
+                                            detail: entry.description
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
                                     if canManage {
                                         CapabilityRowButton(
                                             title: AppLocalization.string("Install"),
@@ -188,9 +196,11 @@ struct CapabilityPluginsTab: View {
 
 enum PluginStyle {
     static func tierPill(_ tier: String) -> CapabilityPillModel {
-        tier == "official"
-            ? CapabilityPillModel(text: AppLocalization.string("Official"), tint: .conduitAura)
-            : CapabilityPillModel(text: AppLocalization.string("Community"))
+        switch tier {
+        case "official", "bundled": return PluginCatalogStyle.tierPill(tier: "official")
+        case "verified": return PluginCatalogStyle.tierPill(tier: "verified")
+        default: return PluginCatalogStyle.tierPill(tier: "community")
+        }
     }
 
     /// Where an installed plugin came from: its catalog tier when it came
