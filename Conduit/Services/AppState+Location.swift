@@ -27,6 +27,8 @@ extension AppState {
         return LocationBinding(dashboardID: dashboardID, profile: activeProfile, host: URL(string: baseURL)?.host ?? baseURL)
     }
 
+    private static var tokenRotationObserver: NSObjectProtocol?
+
     /// Wires location sharing to this app's connections. Once, at launch.
     func activateLocationSharing() {
         let controller = LocationSharingController.shared
@@ -47,7 +49,12 @@ extension AppState {
         // A native sign-in's refresh rotates its access token, and the host
         // pass carries a copy: saved again at once, or the push extension
         // goes on sending the old token until the next connect (issue 2028).
-        NotificationCenter.default.addObserver(forName: .nativeOAuthTokensRotated, object: nil, queue: .main) { [weak self] note in
+        // One observer for the app's one AppState: a newer one (tests make
+        // several) replaces it.
+        if let previous = Self.tokenRotationObserver { NotificationCenter.default.removeObserver(previous) }
+        Self.tokenRotationObserver = NotificationCenter.default.addObserver(
+            forName: .nativeOAuthTokensRotated, object: nil, queue: .main
+        ) { [weak self] note in
             guard let dashboardID = note.userInfo?["dashboardID"] as? UUID else { return }
             Task { @MainActor in await self?.saveLocationHostPass(dashboardID: dashboardID) }
         }
