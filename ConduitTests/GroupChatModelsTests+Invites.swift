@@ -454,7 +454,7 @@ extension GroupChatModelsTests {
         await appState.refreshGroupChatSupport()
         appState.applyNotifierPluginReport(invitesPluginReport)
         await invitesWait("the invites read", until: { appState.linkedRoomInviteRows.map(\.roomID) == ["conduit-1"] })
-        let invite = try XCTUnwrap(appState.linkedRoomInvite("conduit-1"))
+        let invite = try XCTUnwrap(appState.linkedRoomInviteRows.first)
         let agents = try XCTUnwrap(RoomInviteAgent.agents(for: [invitesBot("default")], choices: invite.choices))
 
         let answering = Task { @MainActor in await appState.answerLinkedRoomInvite(invite, agents: agents) }
