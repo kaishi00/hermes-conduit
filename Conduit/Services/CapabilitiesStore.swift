@@ -256,12 +256,16 @@ final class CapabilitiesStore {
     /// settings. A dashboard or profile switch while a write waits stops the
     /// rest, so no key or value lands on the new host or profile; when some
     /// keys were already saved, the error says so.
+    /// `generation` is the store's when Save was pressed: a switch before
+    /// the save starts writes nothing.
     func savePluginSettings(
         save: PluginSettings.Save,
+        generation pressed: Int? = nil,
         write: @escaping @MainActor ([String: Any], String) async throws -> [PluginSettingField]?
     ) async throws -> [PluginSettingField]? {
+        let token = pressed ?? generation
+        guard token == generation else { throw CapabilitiesStoreError.profileChanged }
         try requirePluginProfile()
-        let token = generation
         let profile = profile
         let envPath = scoped("/api/env")
         var written = false

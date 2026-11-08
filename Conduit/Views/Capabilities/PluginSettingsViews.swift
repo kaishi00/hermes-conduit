@@ -25,11 +25,14 @@ struct PluginSettingsSection: View {
     @State private var saved = false
     /// The newest load: an older one's answer (a second Try Again) is dropped.
     @State private var loadID = 0
+    /// Whose fields these are: the form edits only its own owner's.
+    @State private var loadedFor: CapabilitySnapshotOwner?
 
     /// Edits only while connected, on the default profile the store now
     /// serves: a page pushed on it keeps `canManage` across a switch.
     private var canEdit: Bool {
-        canManage && appState.isConnected && store.canManagePlugins && store.serves(appState.currentCapabilitiesOwner)
+        let owner = appState.currentCapabilitiesOwner
+        return canManage && appState.isConnected && store.canManagePlugins && store.serves(owner) && loadedFor == owner
     }
 
     private var dirty: Bool {
@@ -131,11 +134,14 @@ struct PluginSettingsSection: View {
             clear()
             return
         }
+        // Another owner's fields leave while this one's are read.
+        if loadedFor != owner { clear() }
         do {
             let answer = try await client.pluginSettingFields(plugin: pluginName, profile: owner.profile)
             guard isCurrent(id, owner) else { return }
             key = answer?.key
             apply(answer?.fields ?? [])
+            loadedFor = owner
             loadError = nil
         } catch {
             guard isCurrent(id, owner), !(error is CancellationError) else { return }
@@ -152,6 +158,7 @@ struct PluginSettingsSection: View {
     }
 
     private func clear() {
+        loadedFor = nil
         key = nil
         fields = []
         draft = [:]
@@ -173,6 +180,7 @@ struct PluginSettingsSection: View {
     private func save() {
         let owner = appState.currentCapabilitiesOwner
         guard canEdit, !saving, let key, let client = appState.client else { return }
+        let pressed = store.generation
         let plan: PluginSettings.Save
         do {
             plan = try PluginSettings.save(fields: fields, draft: draft)
@@ -188,7 +196,7 @@ struct PluginSettingsSection: View {
         Task {
             defer { saving = false }
             do {
-                let next = try await store.savePluginSettings(save: plan) { values, profile in
+                let next = try await store.savePluginSettings(save: plan, generation: pressed) { values, profile in
                     try await client.savePluginSettings(key: key, values: values, profile: profile)
                 }
                 guard appState.currentCapabilitiesOwner == owner, store.serves(owner) else { return }

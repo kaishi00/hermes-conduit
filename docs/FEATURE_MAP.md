@@ -3653,11 +3653,12 @@ Capabilities line (done)
 - Model: `Conduit/Models/PluginSettings.swift` (PluginSettingField, PluginSettings.save: only changed values, secrets apart, text that doesn't fit refused)
 - Client: `Conduit/Services/HermesClient.swift` (pluginSettingFields, savePluginSettings), `Conduit/Services/CapabilitiesStore.swift` (savePluginSettings: default profile only, secrets to `.env`, then the values through the write it's given, fenced by the store's generation)
 - Views: `Conduit/Views/Capabilities/PluginSettingsViews.swift` (PluginSettingsSection, PluginSettingFieldRow), `Conduit/Views/Capabilities/CapabilityPluginsTab.swift` (the section on AgentPluginDetailPage)
-- Tests: `ConduitTests/PluginSettingsTests.swift` (an extension of PluginCatalogBrowseTests: the unit suite is at its 224-class cap), `ConduitTests/KanbanTests+Capabilities.swift` (the store's save: order, the default profile, a switch mid-save)
+- Tests: `ConduitTests/PluginSettingsTests.swift` (an extension of PluginCatalogBrowseTests: the unit suite is at its 224-class cap), `ConduitTests/KanbanTests+Capabilities.swift` (the store's save: order, the default profile, a switch before or during a save)
 
 **Rulings**
 - A secret is write-only: the form never shows its value, even if Hermes sent one, and a secret left blank stays as it is (#2011).
 - A save sends only what changed; a Hermes without `plugins.manage` shows no section (#2011).
+- An emptied number or JSON field is refused, not cleared: Hermes takes no null for either (#2011).
 - The form is read fresh each time, never kept, and only once the store serves the page's dashboard and profile: offline, or after a reload that fails, the fields from before are gone (a failed reload shows why and Try Again). Edits follow the store's profile, not the one the page was opened on; a switch mid-save stops its later writes, and a save that wrote some keys first says so (#2011).
 
 **Open gaps**

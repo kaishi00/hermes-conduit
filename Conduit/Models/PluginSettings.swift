@@ -61,7 +61,6 @@ struct PluginSettingField: Equatable, Identifiable {
             }
             return trimmed
         case .number:
-            if trimmed.isEmpty, !required { return NSNull() }
             // The number pad types the locale's separator, a comma in many.
             let separator = locale.decimalSeparator ?? "."
             let text = separator == "." ? trimmed : trimmed.replacingOccurrences(of: separator, with: ".")
@@ -71,9 +70,8 @@ struct PluginSettingField: Equatable, Identifiable {
             }
             return number
         case .json:
-            // Emptied, an optional field is cleared; a required one was
-            // refused before this.
-            if trimmed.isEmpty { return NSNull() }
+            // Hermes takes only a list or an object here, never null, so
+            // an emptied field is refused rather than cleared.
             guard let data = trimmed.data(using: .utf8),
                   let parsed = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]),
                   parsed is [Any] || parsed is [String: Any] else {

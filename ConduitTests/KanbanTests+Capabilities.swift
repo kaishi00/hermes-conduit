@@ -746,6 +746,28 @@ extension KanbanTests {
         XCTAssertFalse(writes.contains { $0.body?["profile"] as? String == "home" })
     }
 
+    /// A plugin settings save pressed before a dashboard switch writes
+    /// nothing through the store pointed at the new one.
+    func testAPluginSettingsSavePressedBeforeASwitchWritesNothing() async throws {
+        let requester = CapabilityMockRequester(responses: ["/api/env": ["ok": true]])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        let pressed = store.generation
+        store.configure(requester: requester, profile: "default")
+        var called = false
+        do {
+            _ = try await store.savePluginSettings(save: PluginSettings.Save(values: ["days": 7], secrets: ["A_KEY": "a"]), generation: pressed) { _, _ in
+                called = true
+                return nil
+            }
+            XCTFail("a save from before the switch is turned down")
+        } catch {
+            XCTAssertEqual(error as? CapabilitiesStoreError, .profileChanged)
+        }
+        XCTAssertFalse(called)
+        XCTAssertTrue(requester.calls.isEmpty)
+    }
+
     /// A save pressed before a switch writes nothing on the profile switched to.
     func testAConnectorKeySavePressedBeforeASwitchWritesNothing() async throws {
         let requester = CapabilityMockRequester(responses: [
