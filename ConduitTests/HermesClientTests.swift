@@ -1917,10 +1917,11 @@ final class HermesClientTests: XCTestCase {
     /// A client on a socket whose `gateway.ready` says the gateway's
     /// session authority answers it (the Webapp's listener).
     private func authorityClient(
+        profile: String? = nil,
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws -> (HermesClient, FakeSocket) {
-        let (client, socket) = try await connectedClientForServerRequests(file: file, line: line)
+        let (client, socket) = try await connectedClientForServerRequests(profile: profile, file: file, line: line)
         let before = socket.sentTexts.count
         try await deliverFrame([
             "jsonrpc": "2.0", "method": "event",
@@ -2813,7 +2814,8 @@ final class HermesClientTests: XCTestCase {
     }
 
     func testAuthorityQueueVerbsNameTheQueuedMessageInHermesShapes() async throws {
-        let (client, socket) = try await authorityClient()
+        // A named profile's connection: the verbs still carry no `profile`.
+        let (client, socket) = try await authorityClient(profile: "work")
 
         var count = socket.sentTexts.count
         let cancel = Task<QueuedPromptReceipt, Error> { try await client.cancelQueuedPrompt("sess-q", admissionID: "adm-2") }
@@ -3210,13 +3212,14 @@ final class HermesClientTests: XCTestCase {
 
     /// Connects a client whose receive loop is ready for the next frame.
     private func connectedClientForServerRequests(
+        profile: String? = nil,
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws -> (HermesClient, FakeSocket) {
         let transport = FakeTransport()
         let socket = FakeSocket()
         transport.nextSocket = { socket }
-        let client = makeClient(transport: transport)
+        let client = makeClient(transport: transport, profile: profile)
         let connectTask = Task { try? await client.connect() }
         transport.open(socket)
         try await awaitCompletion(of: connectTask, "connect() to complete", file: file, line: line)

@@ -3599,10 +3599,11 @@ final class HermesClient: ObservableObject {
 
     @MainActor private static var admittedAdmissions: [String: String] = [:]
 
-    /// Hermes' queue verbs take a closed set of params (never `profile`).
+    /// Hermes' queue verbs take a closed set of params (never `profile`):
+    /// the session and admission ids name the row on any profile.
     private func queueVerb(_ method: String, _ params: [String: Any]) async throws -> QueuedPromptReceipt {
         guard speaksSessionAuthority else { throw QueueVerbsUnsupportedError() }
-        let result = try await rpc(method, params: params)
+        let result = try await rpc(method, params: params, scoped: false)
         return QueuedPromptReceipt(object: result.objectValue ?? [:])
     }
 

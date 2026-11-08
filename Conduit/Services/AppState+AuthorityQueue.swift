@@ -119,9 +119,9 @@ extension AppState {
         // Its own discard says whether it went: another row's refusal
         // meanwhile must not keep these words from going. A refused
         // discard keeps the card, and the words with it. One whose reply
-        // never came may have gone: the card can vanish at the next queue
-        // push, so the words go back in the draft (the notice says to
-        // check the queue) and a later send of them is a new message.
+        // never came may have gone, and one refused as no longer waiting
+        // has: the card can vanish at the next queue push, so the words go
+        // back in the draft and a later send of them is a new message.
         guard await discardLostPrompt(row, onUnreachable: {
             if let sessionID { HermesClient.forgetUnansweredSubmission(row.inputID, for: sessionID) }
             _ = self.takeQueuedSendRow(admissionID: row.admissionID)
@@ -158,13 +158,21 @@ extension AppState {
             try await action(client, sessionID)
             return true
         } catch {
-            // No answer at all: Hermes may have done it.
-            if !(error is RpcError) { onUnreachable?() }
+            // No answer at all: Hermes may have done it. Or the row is
+            // settled already (another client, or Hermes): either way the
+            // card can vanish at the next queue push.
+            if !(error is RpcError) || Self.refusalMeansSettled(error) { onUnreachable?() }
             // Said under its own chat's queue only, not one opened meanwhile.
             guard authorityQueue.sessionID == sessionID else { return false }
             authorityQueue.notice = Self.queueActionRefusal(error)
             return false
         }
+    }
+
+    /// Whether a refusal says the row isn't waiting any more.
+    static func refusalMeansSettled(_ error: Error) -> Bool {
+        guard let refusal = error as? RpcError else { return false }
+        return ["not_found", "stale_generation", "admission_terminal"].contains(refusal.reason ?? refusal.message)
     }
 
     /// The words for a refused queue action. Hermes' reasons: the turn has

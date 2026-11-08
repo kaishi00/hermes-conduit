@@ -6857,9 +6857,9 @@ composer's Queue and any send into a running turn (Two Hermes servers) · a
 send whose reply was lost in the chat (the lost-reply check reads the
 queue first) · sends from the voice modes (Local Live's turns included),
 CarPlay, the Watch and Shortcuts, on screen or off (a send admitted behind a
-cut-off turn reads as queued, not started, so they don't wait for a reply
-that can't come; the cut-off turn's card shows when the chat is opened on
-the phone) · the plugin's own chats (Watch jobs, Pulse's turns, a Watch
+cut-off turn reads as queued, not started, once this connection has read
+the chat's queue, so they don't wait for a reply that can't come; the
+cut-off turn's card shows when the chat is opened on the phone) · the plugin's own chats (Watch jobs, Pulse's turns, a Watch
 call's Local Live chat), which let go of their own cut-off turns · group
 rooms (not needed: rooms run on the gateway's groups API, not a chat's
 queue) · the notifier's CHANGELOG
@@ -6884,6 +6884,7 @@ queue) · the notifier's CHANGELOG
 - A `message.start` that lands while a resume is in flight restores the held bubble, and the resume's rows then drop it until the next resume.
 - Over a chat picked from the saved list, the dock shows the previous chat's rows until the new chat's open finishes.
 - When the receipt check's chat isn't the open one when the queue read comes back, the bubble isn't held, so the message shows in the transcript and the dock until its turn starts.
+- An off-screen send into a chat this connection never read the queue of (live already, resumed by another client after the restart) reads as started when a cut-off turn holds it, since only a resume or a `session.info` marks the chat held.
 
 **Checked:** 2026-11-07, #1978 with notifier #612 (added: the queue dock, the lost-turn card, the receipt check and the plugin's own lost turns).
 
