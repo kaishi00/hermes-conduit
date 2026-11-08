@@ -56,7 +56,7 @@ extension AppState {
             forName: .nativeOAuthTokensRotated, object: nil, queue: .main
         ) { [weak self] note in
             guard let dashboardID = note.userInfo?["dashboardID"] as? UUID else { return }
-            Task { @MainActor in await self?.saveLocationHostPass(dashboardID: dashboardID) }
+            Task { @MainActor in await self?.locationHostTokensRotated(dashboardID: dashboardID) }
         }
         controller.activateAtLaunch()
     }
@@ -114,6 +114,28 @@ extension AppState {
               activeDashboardID == binding.dashboardID, dashboardTicketBridge != nil else { return }
         await saveLocationHostPass(dashboardID: binding.dashboardID)
         controller.hostConnected()
+    }
+
+    /// A native sign-in rotated its tokens: the pass is built again for the
+    /// dashboard in use, or, for another dashboard sharing is bound to, its
+    /// bearer token is swapped for the rotated one (the rest of the pass,
+    /// address and proxy headers, didn't change).
+    func locationHostTokensRotated(dashboardID: UUID) async {
+        guard LocationSharingController.shared.binding?.dashboardID == dashboardID else { return }
+        if activeDashboardID == dashboardID, dashboardTicketBridge != nil {
+            await saveLocationHostPass(dashboardID: dashboardID)
+            return
+        }
+        guard var pass = LocationKeychain.loadHostPass(), pass.dashboardID == dashboardID,
+              pass.headers["Authorization"] != nil,
+              let tokens = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), !tokens.accessToken.isEmpty
+        else { return }
+        pass.headers["Authorization"] = "Bearer \(tokens.accessToken)"
+        pass.expiresAt = tokens.expiresAt > 0 ? Date(timeIntervalSince1970: tokens.expiresAt) : nil
+        pass.savedAt = Date()
+        if !LocationKeychain.saveHostPass(pass) {
+            LocationSyncEngine.log.error("Couldn't store the location host pass; background sends use the previous one")
+        }
     }
 
     /// Saves the host pass for the dashboard in use, when location sharing

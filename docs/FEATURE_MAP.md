@@ -5059,7 +5059,7 @@ each connect and each native sign-in refresh)
 - Voice: `Conduit/Location/MapsVoiceTool.swift` (run, allowsLocation)
 - Host requests: `ConduitLocationPush/LocationPushService.swift` (answerMaps, run, stillAnswers; unanswered, the device log of why a request went unanswered)
 - Extension transport: `ConduitLocationPush/Info.plist` (NSAppTransportSecurity), `scripts/tests/test_extension_transport_security.py`
-- Host pass: `Conduit/Services/AppState+Location.swift` (saveLocationHostPass), `Conduit/Services/NativeOAuth.swift` (nativeOAuthTokensRotated)
+- Host pass: `Conduit/Services/AppState+Location.swift` (saveLocationHostPass, locationHostTokensRotated), `Conduit/Services/NativeOAuth.swift` (nativeOAuthTokensRotated)
 - Navigate: `Conduit/Location/MapsNavigator.swift` (openInCar)
 - Notifier: `notifier/maps_tool.py`, `notifier/maps_host.py`, `notifier/skills/using-location/SKILL.md`
 - Tests: `ConduitTests/LocationSharingTests.swift` (the Maps section), `notifier/tests/test_maps.py`
@@ -5069,7 +5069,7 @@ each connect and each native sign-in refresh)
 - A saved place goes to the host and the voice model by name only. A distance to or from one is rounded to 100 m at every detail, and a route that starts or ends at one has no steps, so an answer can't pin it to the metre or the street. A search near one still shows roughly where it is, which is what the search is for (2026-11-06, #1901, issue 1880).
 - Consent, pause and the detail level are read again after each wait, not only when a lookup starts (a detail lowered meanwhile counts as turned off). The voice tool checks after the fix and after the lookup and says the location isn't shared. Navigate uses the area only to search near the user, so a detail lowered to Places drops that hint and goes on; consent or a pause turned off stops it after each wait, Apple Maps' and the car screen's included. The push extension reads the config again before it seals an answer and answers `paused`, and a locate drops its fix (2026-11-06, #1901, issue 1881).
 - An extension that sends to the dashboard carries the app's App Transport Security block word for word, so whatever address the app connects to (plain HTTP over Tailscale or on the LAN included) the extension reaches too; CI's script tests compare them (2026-11-08, #2031, issue 2028).
-- The host pass is saved again whenever a native sign-in's refresh rotates its tokens, not only at connect, so the extension never sends a retired access token while the app is signed in (2026-11-08, #2031, issue 2028).
+- The host pass is saved again whenever a native sign-in's refresh rotates its tokens, not only at connect (for a bound dashboard that isn't the one in use, its bearer token is swapped), so the extension never sends a retired access token while the app is signed in (2026-11-08, #2031, issue 2028).
 - A completion-based call under a deadline resumes exactly once, by its answer or by the deadline, and nothing is left waiting when it never answers: MapsKit.call for MapKit, MapsDeadline.first for CarPlay's open (2026-11-06, #1901, issue 1882).
 
 **Open gaps**
