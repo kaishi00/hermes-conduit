@@ -141,6 +141,10 @@ struct PeopleSettingsPage: View {
                 }
             }
             linksSection
+            // How the people in your rooms see you, on a plugin that carries looks.
+            if appState.canShareRoomLooks {
+                RoomPersonPictureSection()
+            }
             // What each linked person's Hermes may ask yours, on a plugin that answers asks.
             if appState.canSetLinkAsks, let links = shown?.list.links.filter({ $0.status == "linked" }), !links.isEmpty {
                 LinkAsksSection(linkIDs: links.map(\.id))
@@ -491,6 +495,67 @@ struct PeopleSettingsPage: View {
 /// there's more than one. Read once the page shows the Links, and again when
 /// they change.
 @MainActor
+/// Your picture in rooms over Links: kept on this phone, given to your
+/// Hermes and shown beside your messages on the other people's screens
+/// (RoomLooks.swift).
+struct RoomPersonPictureSection: View {
+    @EnvironmentObject private var appState: AppState
+    @State private var choosing = false
+    @State private var picked: UIImage?
+    /// Said here, where the picture was picked.
+    @State private var unusable = false
+
+    private var image: UIImage? { appState.roomPersonPicture.flatMap(RoomLookImages.image(for:)) }
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("You in rooms"), symbol: "person.crop.circle", tint: .conduitAccent) {
+            HStack(spacing: 14) {
+                BotAvatarView(name: "you", label: AppLocalization.string("You"), colorString: nil, image: image, size: 52)
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(AppLocalization.string("Your picture"))
+                        .scaledFont(.subheadline.weight(.semibold))
+                    Text(AppLocalization.string("The people in your rooms see it beside your messages, and beside your agents' names. Their pictures and glow colors for their bots show for you the same way."))
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            HStack(spacing: 10) {
+                Button {
+                    Haptics.selection()
+                    choosing = true
+                } label: {
+                    Label(image == nil ? AppLocalization.string("Choose Picture") : AppLocalization.string("Change Picture"),
+                          systemImage: "photo")
+                }
+                .buttonStyle(.settings)
+                if image != nil {
+                    Button(role: .destructive) {
+                        unusable = false
+                        Task { await appState.setRoomPersonPicture(nil) }
+                    } label: {
+                        Label(AppLocalization.string("Remove"), systemImage: "trash")
+                    }
+                    .buttonStyle(.settings)
+                }
+            }
+            if unusable {
+                Text(AppLocalization.string("That picture could not be used."))
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.red)
+            }
+        }
+        .sheet(isPresented: $choosing) {
+            ImagePicker(image: $picked)
+        }
+        .onChange(of: picked) { _, image in
+            guard let image else { return }
+            picked = nil
+            Task { unusable = !(await appState.setRoomPersonPicture(image)) }
+        }
+    }
+}
+
 struct LinkAsksSection: View {
     /// The Links the page shows as linked, in its order.
     let linkIDs: [String]

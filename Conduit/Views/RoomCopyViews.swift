@@ -175,13 +175,12 @@ struct RoomCopyHostSection: View {
     let copy: RoomCopy
 
     var body: some View {
-        Section {
+        SettingsCard {
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: RoomCopyText.host(for: copy))
                 if copy.isOver {
                     Text(verbatim: RoomCopyText.line(for: copy))
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.secondary)
+                        .settingsCaption()
                 }
             }
             .accessibilityElement(children: .combine)

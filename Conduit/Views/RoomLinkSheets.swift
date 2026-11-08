@@ -156,17 +156,12 @@ struct RoomLinkInviteSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                ConduitBackdrop()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        if let shown {
-                            invite(shown.invite)
-                        } else {
-                            ask
-                        }
-                    }
-                    .padding(16)
+            // Settings' own pieces, as Bots Home's sheets are (Sheets in Settings' look).
+            SettingsDetailContainer {
+                if let shown {
+                    invite(shown.invite)
+                } else {
+                    ask
                 }
             }
             .navigationTitle(Text(AppLocalization.string("Link with someone")))
@@ -344,14 +339,8 @@ struct RoomLinkOpenedSheet: View {
 
     var body: some View {
         NavigationStack {
-            ZStack {
-                ConduitBackdrop()
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
-                        content
-                    }
-                    .padding(16)
-                }
+            SettingsDetailContainer {
+                content
             }
             .navigationTitle(Text(AppLocalization.string("Link invite")))
             .navigationBarTitleDisplayMode(.inline)
@@ -452,7 +441,7 @@ struct RoomLinkOpenedSheet: View {
     }
 
     private func acceptForm(_ preview: RoomLinkPreview) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        SettingsCard {
             RoomLinkNameField(name: $name, caption: AppLocalization.string("\(preview.name) sees you by this name."))
             if let acceptError {
                 Label(acceptError, systemImage: "exclamationmark.triangle.fill")

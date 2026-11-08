@@ -370,9 +370,10 @@ extension GroupChatModelsTests {
         let members = copy.room.members
         let name = "Laifu"
         let owner = "Mona"
-        XCTAssertEqual(GroupRoomTurns.ownedName(name, of: members[2]), AppLocalization.string("\(name) · \(owner)'s"))
-        XCTAssertEqual(GroupRoomTurns.ownedName("Kuro", of: members[1]), "Kuro", "your own agent is just its name")
-        XCTAssertEqual(GroupRoomTurns.ownedName("Laifu", of: nil), "Laifu")
+        XCTAssertEqual(members[2].displayName, name)
+        XCTAssertEqual(GroupRoomTurns.shownOwner(of: members[2]), owner)
+        XCTAssertNil(GroupRoomTurns.shownOwner(of: members[1]), "your own agent shows no owner")
+        XCTAssertNil(GroupRoomTurns.shownOwner(of: nil))
         XCTAssertEqual(GroupRoomTurns.ownerLine(of: members[0]), AppLocalization.string("Furina's agent"))
         XCTAssertEqual(GroupRoomTurns.ownerLine(of: members[1]), AppLocalization.string("Your agent"))
         let unnamed = try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(from: ""))).room.members[0]
@@ -585,6 +586,15 @@ final class CopiesRoutes {
     /// Leaving and taking out are refused with this, at this status.
     var refusesLeaving: String?
     var leavingStatus = 409
+    /// What `GET /rooms/looks` answers; the next this many fail, and the
+    /// next ones each wait this long.
+    var looks: [String: Any] = ["ok": false]
+    var failingLooksReads = 0
+    var looksDelays: [Duration] = []
+    private(set) var looksReads = 0
+    /// `PUT /rooms/looks`'s bodies; the next this many fail.
+    private(set) var looksPuts: [[String: Any]] = []
+    var failingLooksPuts = 0
     /// The next people reads each wait this long, answering what the people
     /// were when they were asked.
     var peopleDelays: [Duration] = []
@@ -669,6 +679,26 @@ final class CopiesRoutes {
             posts.removeAll { $0["event_id"] as? String == eventID }
             posts.append(post)
             return ["ok": true, "message": post]
+        }
+        if path.hasPrefix(RoomLooksUpload.path), method == "PUT" {
+            looksPuts.append(body ?? [:])
+            if failingLooksPuts > 0 {
+                failingLooksPuts -= 1
+                throw DashboardTicketBridgeError.http(status: 502, detail: "Bad gateway")
+            }
+            return ["ok": true]
+        }
+        if path.hasPrefix(RoomLooksUpload.path), method == "GET" {
+            looksReads += 1
+            let answer = looks
+            if !looksDelays.isEmpty {
+                try await Task.sleep(for: looksDelays.removeFirst())
+            }
+            if failingLooksReads > 0 {
+                failingLooksReads -= 1
+                throw DashboardTicketBridgeError.http(status: 502, detail: "Bad gateway")
+            }
+            return answer
         }
         if path.hasPrefix(RoomPeople.path) {
             peopleReads.append(path)

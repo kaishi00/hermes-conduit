@@ -7212,6 +7212,8 @@ final class AppState: ObservableObject {
     // MARK: - Persistence
 
     private let defaults: UserDefaults
+    /// This AppState's defaults, for its extensions in other files.
+    var appDefaults: UserDefaults { defaults }
     /// Kept outside ChatResumeStore on purpose: the return surface is a
     /// presentation preference, not part of the resume schema.
     static let chatReturnSurfaceKey = "conduit.chatReturnSurface.v1"
@@ -7724,6 +7726,8 @@ final class AppState: ObservableObject {
             presentationCacheDebounceSuspension
             ?? { duration in try await Task.sleep(for: duration) }
         self.defaults = defaults
+        // The picture you show in rooms over Links (RoomLooks.swift).
+        self._roomPersonPicture = Published(wrappedValue: RoomLooksUpload.storedPersonPicture(defaults))
         let noticeChannel = NotifierPluginNoticeChannel.load(from: defaults)
         self.notifierPluginNoticeChannel = noticeChannel
         // The saved Update notices choice holds from the first status read.
@@ -12788,6 +12792,21 @@ final class AppState: ObservableObject {
     /// owner and whether it's out. Read when the room opens, when Group
     /// Info does, and after taking one out.
     @Published private(set) var activeRoomPeople: [String: RoomPerson] = [:]
+    /// How the open room's other people and their agents look, as their
+    /// own Conduits gave it (RoomLooks.swift).
+    @Published var activeRoomLooks = RoomLooks.empty
+    /// The open room's host, as your Link names them, in a room someone
+    /// else hosts (`GET /rooms/people`'s `home`).
+    @Published var activeRoomHomeName: String?
+    var activeRoomLooksReadAt: Date?
+    /// The room (epoch and id) whose looks are being read now.
+    var activeRoomLooksReading: String?
+    /// What was last given each dashboard's Hermes (`PUT /rooms/looks`).
+    var sharedRoomLooks: [UUID: String] = [:]
+    /// Each bot's picture as sent, by the image it was made from.
+    var roomLookPictures: [String: (image: UIImage, data: Data?)] = [:]
+    /// The picture you show in rooms over Links, kept on this phone.
+    @Published var roomPersonPicture: Data? = nil
     /// The latest people read started: an older one that answers later is
     /// dropped.
     private var activeRoomPeopleRead = 0
@@ -13253,7 +13272,8 @@ final class AppState: ObservableObject {
 
     /// Each member's color by `identityKey`: its bot's glow on Bots Home
     /// (`botColor`: the color picked for it or drawn from its photo, else
-    /// its color in Hermes), else the hue its picture falls back to, so a
+    /// its color in Hermes), another person's agent's as their Conduit
+    /// draws it (RoomLooks), else the hue its picture falls back to, so a
     /// bot looks the same on its tile, in its name, its bubble and the tags
     /// that name it.
     func groupMemberTints(_ members: [GroupMember]) -> [String: CustomAccentColor] {
@@ -13264,6 +13284,11 @@ final class AppState: ObservableObject {
             guard !key.isEmpty, tints[key] == nil else { continue }
             let name = GroupRoomTurns.displayName(of: member)
             let bot = groupMemberBot(member, name: name)
+            // Another person's agent: the color its owner's Conduit draws it in.
+            if bot == nil, let tint = activeRoomLooks.member(member)?.tint {
+                tints[key] = tint
+                continue
+            }
             let color = UIColor(Self.groupMemberColor(bot: bot, name: name, glows: glows))
             var red: CGFloat = 0, green: CGFloat = 0, blue: CGFloat = 0, alpha: CGFloat = 0
             guard color.getRed(&red, green: &green, blue: &blue, alpha: &alpha) else { continue }
@@ -13371,6 +13396,9 @@ final class AppState: ObservableObject {
         activeRoomReplay = GroupRoomReplay(roomID: "")
         activeRoomDriverStatus = nil
         activeRoomPeople = [:]
+        activeRoomLooks = .empty
+        activeRoomHomeName = nil
+        activeRoomLooksReadAt = nil
         activeRoomPeopleRetries = 0
         activeRoomPeopleReadFailed = false
         activeRoomPostAttribution = .none
@@ -13469,6 +13497,8 @@ final class AppState: ObservableObject {
             // Keep the last known room list; the roster surfaces the probe
             // failure path, and a stale room row is safer than an empty one.
         }
+        // How your bots and you look in rooms over Links, when that changed.
+        await shareRoomLooksIfNeeded()
     }
 
     /// The most rooms Bots Home asks after at once: the ones talked in
@@ -13654,6 +13684,9 @@ final class AppState: ObservableObject {
             ?? GroupRoomReplay(roomID: room.roomID)
         activeRoomDriverStatus = nil
         activeRoomPeople = [:]
+        activeRoomLooks = .empty
+        activeRoomHomeName = nil
+        activeRoomLooksReadAt = nil
         activeRoomPeopleRetries = 0
         activeRoomPeopleReadFailed = false
         activeRoomPostAttribution = .none
@@ -13794,6 +13827,7 @@ final class AppState: ObservableObject {
                 settlePendingRoomSend(from: fresh)
             }
             rereadActiveRoomPeopleForPosts(fresh)
+            readActiveRoomLooksIfDue()
             // Driver status tracks the DRIVER, not the log: refresh even on
             // an eventless tick, or a settled room keeps offering Stop and
             // showing "working…" until the next unrelated event.
@@ -14190,6 +14224,10 @@ final class AppState: ObservableObject {
         activeRoomPeopleReadFailed = false
         let people = RoomPeople.people(response)
         if people != activeRoomPeople { activeRoomPeople = people }
+        let home = (response["home"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
+        if home != activeRoomHomeName { activeRoomHomeName = home }
+        // How they look comes with who they are (RoomLooks.swift).
+        Task { await self.readActiveRoomLooks(epoch: epoch) }
         let attribution = RoomPostAttribution(
             isCopy: surface.copy != nil, you: RoomPeople.you(response), posts: RoomPeople.posts(response))
         if attribution != activeRoomPostAttribution { activeRoomPostAttribution = attribution }
@@ -14392,6 +14430,9 @@ final class AppState: ObservableObject {
         activeRoomReplay = GroupRoomReplay(roomID: copy.roomID)
         activeRoomDriverStatus = copy.state
         activeRoomPeople = [:]
+        activeRoomLooks = .empty
+        activeRoomHomeName = nil
+        activeRoomLooksReadAt = nil
         activeRoomPeopleRetries = 0
         activeRoomPeopleReadFailed = false
         // Its events say whose each post is; the people read names yours.
@@ -14484,6 +14525,7 @@ final class AppState: ObservableObject {
                 activeRoomReplay.adopt(page: page)
             }
             rereadActiveRoomPeopleForPosts(fresh)
+            readActiveRoomLooksIfDue()
             await refreshActiveRoomCopyPost(epoch: epoch)
             if fresh.isEmpty || activeRoomReplay.cursor >= page.latestSeq {
                 guard await refreshActiveRoomCopy(epoch: epoch) else { return }
@@ -14973,6 +15015,8 @@ final class AppState: ObservableObject {
         guard profileGlowPicks[profile] != hex else { return }
         profileAppearanceStore.saveGlowColor(hex, for: profile, dashboardID: activeDashboardID)
         profileGlowPicks[profile] = hex
+        // Rooms over Links draw the bot in it on other people's Conduits too.
+        Task { await shareRoomLooksIfNeeded() }
     }
 
     func saveDefaultProfileName(_ name: String) {
@@ -24890,6 +24934,8 @@ final class AppState: ObservableObject {
             botAvatarFetchedGeneration[name] = generation
             botAvatarImages[name] = image
             mirrorHermesPicture(data, for: name, dashboardID: dashboardID)
+            // Rooms over Links show it too (digest-gated, RoomLooks.swift).
+            Task { await self.shareRoomLooksIfNeeded() }
             return true
         } catch {
             // Not pinned to the generation, so the caller can retry; whatever
@@ -25800,6 +25846,7 @@ final class AppState: ObservableObject {
             botAvatarImages[name] = image
             botAvatarFetchedGeneration[name] = max(botAvatarFetchedGeneration[name] ?? generation, generation)
             mirrorHermesPicture(png, for: name, dashboardID: dashboardID)
+            Task { await self.shareRoomLooksIfNeeded() }
         }
         return true
     }
@@ -25924,6 +25971,9 @@ final class AppState: ObservableObject {
             }
         }
         await refreshBotRoster()
+        // A picture removed, a bot deleted or renamed: rooms over Links show
+        // the roster as it now is (digest-gated, RoomLooks.swift).
+        await shareRoomLooksIfNeeded()
     }
 
     func openWidgetConversation(

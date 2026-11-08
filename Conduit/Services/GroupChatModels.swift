@@ -1322,11 +1322,12 @@ enum GroupRoomTurns {
         }
     }
 
-    /// A bubble's name for another person's agent: "Laifu · Mona's".
-    static func ownedName(_ name: String, of member: GroupMember?) -> String {
+    /// Whose another person's agent is, for the chip beside its name in
+    /// its bubble (GroupMemberOwnerChip); nil for yours and an unnamed one.
+    static func shownOwner(of member: GroupMember?) -> String? {
         guard let member, member.isPeer, !member.isYours,
-              let owner = member.owner?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty else { return name }
-        return AppLocalization.string("\(name) · \(owner)'s")
+              let owner = member.owner?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty else { return nil }
+        return owner
     }
 
     /// Group Info's line under a member: whose agent it is.

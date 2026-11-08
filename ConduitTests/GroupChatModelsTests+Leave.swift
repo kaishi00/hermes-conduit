@@ -85,7 +85,7 @@ extension GroupChatModelsTests {
             AppLocalization.string("\(yours) · \(left)"),
             AppLocalization.string("\(mona) · \(takenOut)"),
         ])
-        XCTAssertEqual(GroupRoomTurns.ownedName("Kuro", of: members[1]), "Kuro", "yours is just its name")
+        XCTAssertNil(GroupRoomTurns.shownOwner(of: members[1]), "yours shows no owner")
         // Renamed by your roster, it's still out.
         let bot = BotProfile(
             name: "nahida", botTitle: "Kusanali", displayName: "Nahida", profileDescription: "",
@@ -274,7 +274,7 @@ extension GroupChatModelsTests {
         let yours = AppLocalization.string("Your agent")
         let left = AppLocalization.string("Left the room")
         XCTAssertEqual(GroupRoomTurns.ownerLine(of: kuro), AppLocalization.string("\(yours) · \(left)"))
-        XCTAssertEqual(GroupRoomTurns.ownedName("Kuro", of: kuro), "Kuro", "not the host's name for you")
+        XCTAssertNil(GroupRoomTurns.shownOwner(of: kuro), "not the host's name for you")
         let laifu = try XCTUnwrap(appState.activeRoomMembers.first { $0.memberID == "m-laifu" })
         XCTAssertFalse(laifu.isYours)
         XCTAssertNil(laifu.out)

@@ -30,7 +30,8 @@ struct GroupRoomInfoSheet: View {
 
     var body: some View {
         NavigationStack {
-            List {
+            // Settings' own pieces, as Bots Home's sheets are (Sheets in Settings' look).
+            SettingsDetailContainer {
                 if let copy = appState.activeRoomSurface?.copy {
                     RoomCopyHostSection(copy: copy)
                 }
@@ -39,14 +40,13 @@ struct GroupRoomInfoSheet: View {
                 }
                 roomChatSection
                 if appState.canLeaveActiveRoom {
-                    Section {
-                        Button(role: .destructive) {
-                            confirmingLeave = true
-                        } label: {
-                            Label(AppLocalization.string("Leave Room"), systemImage: "rectangle.portrait.and.arrow.right")
-                        }
-                        .disabled(working)
+                    Button(role: .destructive) {
+                        confirmingLeave = true
+                    } label: {
+                        Label(AppLocalization.string("Leave Room"), systemImage: "rectangle.portrait.and.arrow.right")
                     }
+                    .buttonStyle(.settingsDestructive)
+                    .disabled(working)
                 }
             }
             .confirmationDialog(
@@ -90,6 +90,9 @@ struct GroupRoomInfoSheet: View {
                 }
             }
         }
+        // Its own, not the room screen's: V2 raises this sheet outside
+        // GroupChatView, which sets them for V1.
+        .environment(\.groupRoomLooks, appState.activeRoomLooksShown)
         .onAppear { roomID = openRoomKey }
         // Who left or was taken out since the room opened.
         .task { await appState.refreshActiveRoomPeople() }
@@ -104,36 +107,58 @@ struct GroupRoomInfoSheet: View {
         let members = GroupRoomTurns.members(appState.activeRoomMembers, namedBy: appState.botRoster)
         // Choices matter only beside other people's agents.
         let offersChoices = appState.canSetRoomChoices && members.contains(where: \.isPeer)
-        Section {
+        ConduitSettingsSection(title: AppLocalization.string("Members"), symbol: "person.3", tint: .conduitAccent) {
             ForEach(members, id: \.identityKey) { member in
-                if offersChoices, !member.isPeer, member.out == nil, let profile = member.profile, !profile.isEmpty {
-                    NavigationLink {
-                        RoomAgentChoicesView(
-                            roomID: room.roomID,
-                            profile: profile,
-                            name: GroupRoomTurns.displayName(of: member)
+                let canTakeOut = appState.canTakeOut(member) && !working
+                HStack(spacing: 8) {
+                    if offersChoices, !member.isPeer, member.out == nil, let profile = member.profile, !profile.isEmpty {
+                        NavigationLink {
+                            RoomAgentChoicesView(
+                                roomID: room.roomID,
+                                profile: profile,
+                                name: GroupRoomTurns.displayName(of: member)
+                            )
+                        } label: {
+                            HStack {
+                                GroupRoomMemberRow(member: member, route: nil)
+                                Spacer(minLength: 8)
+                                SettingsChevron()
+                            }
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(.plain)
+                    } else {
+                        GroupRoomMemberRow(
+                            member: member,
+                            route: member.out == nil ? appState.activeRoomDriverStatus?.routeStatus(for: member) : nil
                         )
-                    } label: {
-                        GroupRoomMemberRow(member: member, route: nil)
+                        Spacer(minLength: 8)
                     }
-                    .modifier(TakeOutActions(enabled: appState.canTakeOut(member) && !working) {
-                        takingOut = member
-                    })
-                } else {
-                    GroupRoomMemberRow(
-                        member: member,
-                        route: member.out == nil ? appState.activeRoomDriverStatus?.routeStatus(for: member) : nil
-                    )
-                    .modifier(TakeOutActions(enabled: appState.canTakeOut(member) && !working) {
-                        takingOut = member
-                    })
+                    if canTakeOut {
+                        Menu {
+                            Button(role: .destructive) {
+                                takingOut = member
+                            } label: {
+                                Label(AppLocalization.string("Take Out"), systemImage: "person.badge.minus")
+                            }
+                        } label: {
+                            Image(systemName: "ellipsis.circle")
+                                .scaledFont(.body)
+                                .foregroundStyle(.secondary)
+                                .frame(width: 44, height: 44)
+                                .contentShape(Rectangle())
+                        }
+                        .accessibilityLabel(Text(AppLocalization.string("Take Out")))
+                    }
                 }
+                .frame(minHeight: 44)
+                .modifier(TakeOutActions(enabled: canTakeOut) {
+                    takingOut = member
+                })
             }
-        } header: {
-            Text(AppLocalization.string("Members"))
-        } footer: {
             if offersChoices {
                 Text(AppLocalization.string("Tap one of your agents to choose what it may do and share here."))
+                    .settingsCaption()
             }
         }
     }
@@ -146,25 +171,27 @@ extension GroupRoomInfoSheet {
     private var roomChatSection: some View {
         let agents = appState.activeRoomChatAgents
         if !agents.isEmpty {
-            Section {
+            ConduitSettingsSection(title: RoomChatText.sectionTitle, symbol: "bubble.left.and.text.bubble.right", tint: .conduitAccent) {
                 ForEach(agents, id: \.profile) { agent in
                     Button {
                         openRoomChat(with: agent, wrapUp: false)
                     } label: {
                         Label(RoomChatText.ask(agent.name), systemImage: "bubble.left.and.text.bubble.right")
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .buttonStyle(.settings)
                     .disabled(working)
                     Button {
                         openRoomChat(with: agent, wrapUp: true)
                     } label: {
                         Label(RoomChatText.wrapUp(agent.name), systemImage: "checklist")
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    .buttonStyle(.settings)
                     .disabled(working)
                 }
-            } header: {
-                Text(verbatim: RoomChatText.sectionTitle)
-            } footer: {
                 Text(verbatim: RoomChatText.footer)
+                    .settingsCaption()
             }
         }
     }
@@ -224,25 +251,25 @@ extension GroupRoomInfoSheet {
     }
 }
 
-/// Take Out on a member's row, by swipe and context menu.
+/// Take Out on a member's row, by a long press (its ⋯ menu beside it).
 private struct TakeOutActions: ViewModifier {
     let enabled: Bool
     let action: () -> Void
 
+    @ViewBuilder
     func body(content: Content) -> some View {
-        content
-            .swipeActions(edge: .trailing, allowsFullSwipe: false) {
-                if enabled {
-                    Button(AppLocalization.string("Take Out"), role: .destructive, action: action)
-                }
-            }
-            .contextMenu {
-                if enabled {
+        // A card has no swipe: the row's ⋯ and a long press take it out. A
+        // row that can't be taken out has no menu, not an empty one.
+        if enabled {
+            content
+                .contextMenu {
                     Button(role: .destructive, action: action) {
                         Label(AppLocalization.string("Take Out"), systemImage: "person.badge.minus")
                     }
                 }
-            }
+        } else {
+            content
+        }
     }
 }
 
@@ -311,36 +338,34 @@ struct RoomAgentChoicesView: View {
     }
 
     var body: some View {
-        Form {
+        // Settings' own pieces: each choice a dropdown in a card (Sheets in Settings' look).
+        SettingsDetailContainer {
             if let choices, loadedKey == key {
                 if !choices.saved {
-                    Section {
-                        Text(AppLocalization.string("These are \(name)'s defaults. A change here applies to this room only."))
-                            .scaledFont(.footnote)
-                            .foregroundStyle(.secondary)
-                    }
+                    Text(AppLocalization.string("These are \(name)'s defaults. A change here applies to this room only."))
+                        .settingsCaption()
                 }
                 toolsSection(choices)
                 shareSection(choices)
-                Section {
+                SettingsCard {
                     Toggle(AppLocalization.string("Search my past chats"), isOn: Binding(
                         get: { self.choices?.searchChats ?? false },
                         set: { on in change("search_chats", to: on) { $0.searchChats = on } }
                     ))
                     .tint(.conduitAccent)
-                } footer: {
                     Text(AppLocalization.string("It can search your other chats to answer here, other people's messages in them included."))
+                        .settingsCaption()
                 }
                 // A plugin without Run work sends no run_work.
                 if choices.runWork != nil {
-                    Section {
+                    SettingsCard {
                         Toggle(AppLocalization.string("Run work"), isOn: Binding(
                             get: { self.choices?.runWork ?? false },
                             set: { on in change("run_work", to: on) { $0.runWork = on } }
                         ))
                         .tint(.conduitAccent)
-                    } footer: {
                         Text(AppLocalization.string("It can start work for this room, like research or code. Before each start, and before it sends the work more, it asks you on your phone: Start, Change it or Don't start. What the work finds reaches the room only as your share choices allow."))
+                            .settingsCaption()
                     }
                 }
                 noteSection(choices)
@@ -349,7 +374,7 @@ struct RoomAgentChoicesView: View {
                     .frame(maxWidth: .infinity)
             }
             if let error {
-                Section {
+                SettingsCard {
                     Label(error, systemImage: "exclamationmark.triangle.fill")
                         .scaledFont(.footnote)
                         .foregroundStyle(.red)
@@ -357,6 +382,7 @@ struct RoomAgentChoicesView: View {
                         Button(AppLocalization.string("Try again")) {
                             Task { await load(key) }
                         }
+                        .buttonStyle(.settings)
                     }
                 }
             }
@@ -369,82 +395,71 @@ struct RoomAgentChoicesView: View {
     }
 
     private func toolsSection(_ choices: RoomChoices) -> some View {
-        Section {
-            Picker(AppLocalization.string("What it can do"), selection: Binding(
-                get: { self.choices?.tools ?? "talk" },
-                set: { tools in change("tools", to: tools) { $0.tools = tools } }
-            )) {
-                Text(AppLocalization.string("Talk only")).tag("talk")
-                Text(AppLocalization.string("Look things up")).tag("look")
-                // Offered where the plugin shares when you're busy; else shown while it's the choice.
-                if RoomChoices.offersUseMyData(freeBusy: appState.canShareFreeBusy, current: [choices.tools]) {
-                    Text(AppLocalization.string("Use my data")).tag("data")
-                }
-                if choices.tools == "custom" {
-                    Text(AppLocalization.string("Custom")).tag("custom")
-                }
+        var tools: [(id: String, title: String)] = [
+            (id: "talk", title: AppLocalization.string("Talk only")),
+            (id: "look", title: AppLocalization.string("Look things up")),
+        ]
+        // Offered where the plugin shares when you're busy; else shown while it's the choice.
+        if RoomChoices.offersUseMyData(freeBusy: appState.canShareFreeBusy, current: [choices.tools]) {
+            tools.append((id: "data", title: AppLocalization.string("Use my data")))
+        }
+        if choices.tools == "custom" {
+            tools.append((id: "custom", title: AppLocalization.string("Custom")))
+        }
+        return ConduitSettingsSection(title: AppLocalization.string("What it can do"), symbol: "wrench.and.screwdriver", tint: .conduitAccent) {
+            ConduitMenuPicker(value: choices.tools, choices: tools, onSelect: { picked in
+                change("tools", to: picked) { $0.tools = picked }
+            }) {
+                Text(AppLocalization.string("What it can do")).foregroundStyle(.secondary)
             }
-            .pickerStyle(.inline)
-            .labelsHidden()
-        } header: {
-            Text(AppLocalization.string("What it can do"))
-        } footer: {
             Text(Self.toolsDetail(choices, freeBusy: appState.canShareFreeBusy))
+                .settingsCaption()
         }
     }
 
     private func shareSection(_ choices: RoomChoices) -> some View {
-        Section {
-            Picker(AppLocalization.string("What it may share"), selection: Binding(
-                get: { self.choices?.share ?? "ask" },
-                set: { share in change("share", to: share) { $0.share = share } }
-            )) {
-                Text(AppLocalization.string("What helps")).tag("helps")
-                Text(AppLocalization.string("Ask me first")).tag("ask")
-                Text(AppLocalization.string("Nothing personal")).tag("nothing")
+        ConduitSettingsSection(title: AppLocalization.string("What it may share"), symbol: "hand.raised", tint: .conduitAccent) {
+            ConduitMenuPicker(value: choices.share, choices: RoomInviteChoicesView.shareChoices, onSelect: { picked in
+                change("share", to: picked) { $0.share = picked }
+            }) {
+                Text(AppLocalization.string("What it may share")).foregroundStyle(.secondary)
             }
-            .pickerStyle(.inline)
-            .labelsHidden()
-        } header: {
-            Text(AppLocalization.string("What it may share"))
-        } footer: {
             Text(Self.shareDetail(choices.share))
+                .settingsCaption()
         }
     }
 
     private func noteSection(_ choices: RoomChoices) -> some View {
-        Section {
+        ConduitSettingsSection(title: AppLocalization.string("Note for this room"), symbol: "note.text", tint: .conduitAccent) {
             TextField(
                 AppLocalization.string("Anything it should keep in mind here"),
                 text: $noteDraft,
                 axis: .vertical
             )
             .lineLimit(3...8)
+            .settingsEditorBox()
             .onChange(of: noteDraft) { _, text in
                 let clipped = RoomChoicesClient.clippedNote(text)
                 if clipped != text { noteDraft = clipped }
             }
             if noteDraft != choices.note {
-                HStack {
+                HStack(spacing: 10) {
                     Button(AppLocalization.string("Cancel")) { noteDraft = choices.note }
-                        .buttonStyle(.borderless)
+                        .buttonStyle(.settings)
                     Spacer()
                     Button(AppLocalization.string("Save")) {
                         let note = noteDraft
                         change("note", to: note) { $0.note = note }
                     }
-                    .buttonStyle(.borderless)
-                    .fontWeight(.semibold)
+                    .buttonStyle(.settingsPrimary)
                 }
             }
-        } header: {
-            Text(AppLocalization.string("Note for this room"))
-        } footer: {
             VStack(alignment: .leading, spacing: 4) {
                 Text(AppLocalization.string("\(name) reads this on each of its turns here. It isn't posted to the room."))
                 // RoomChoicesClient.noteLimit: past it, typing stops.
                 Text(AppLocalization.string("A note holds up to 1,000 characters."))
             }
+            .settingsCaption()
         }
     }
 
