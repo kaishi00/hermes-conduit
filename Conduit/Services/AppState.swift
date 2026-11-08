@@ -8799,6 +8799,12 @@ final class AppState: ObservableObject {
         liveVoiceResumeContext = resume?.context
         liveHermesCall = pendingHermesCall
         pendingHermesCall = nil
+        // A call started from the open chat, or a call from Hermes answered
+        // in it, follows on from the chat: every live mode is seeded with
+        // its latest turns, GPT-Live as history (issue 1983).
+        if resume == nil, let thread = voiceBackgroundJobSupervisor.liveThread, isOpenChat(thread) {
+            liveVoiceResumeContext = VoiceResumeContext.chat(messages, replyRunning: isBusy)
+        }
         hermesCallToldCards = []
         hermesCallbackEngine = engine
         beginHermesCallPresence()
@@ -10478,8 +10484,9 @@ final class AppState: ObservableObject {
                 ? " The user just shared a screenshot to that chat. You can't see it, but Hermes can: delegate their question about their screen as they asked it, and the screenshot goes with it. Don't guess what the screen shows."
                 : " The user just shared a screenshot to that chat. You can't see it, but Hermes can: send their question about their screen to the chat with ask_thread as they asked it, and the screenshot goes with it. Don't use start_job or a lookup for it, and don't guess what the screen shows."
         }
-        // A call Hermes made carries the reply in its own brief (#449).
-        if liveHermesCall == nil, let last = latestReplyInOpenChat(thread) {
+        // A call Hermes made carries the reply in its own brief (#449), and
+        // a call seeded with the chat's turns has it there (issue 1983).
+        if liveHermesCall == nil, liveVoiceResumeContext?.fromChat != true, let last = latestReplyInOpenChat(thread) {
             // Named before the clip, so a clip never cuts a path in two.
             let named = GatewayMediaTags.namingFiles(in: last)
             let clipped = named.count > 2_000 ? String(named.prefix(2_000)) + " […]" : named
