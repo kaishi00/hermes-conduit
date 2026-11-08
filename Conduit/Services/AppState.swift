@@ -27047,7 +27047,8 @@ final class AppState: ObservableObject {
     /// The label the saved last-chat reference keeps for the open Bot Chat,
     /// which the title shows after a relaunch before the resume captures it
     /// again (issue 2025: the composer named another label meanwhile). The
-    /// main bot's follows its Conduit name, as `noteBotChatSession` keeps.
+    /// main bot's follows its Conduit name, and a label that is only the
+    /// profile id names nothing, as `noteBotChatSession` keeps them.
     private func savedBotChatLabel(profile: String) -> String? {
         guard !BotManagement.isDefaultProfile(profile),
               let saved = chatResumeCoordinator.lastSession(for: activeProfile),
@@ -27055,7 +27056,10 @@ final class AppState: ObservableObject {
               let open = ChatScrollIdentityNormalization.sessionID(activeSessionId),
               ChatScrollIdentityNormalization.sessionID(saved.sessionID) == open,
               let label = saved.botLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
-              !label.isEmpty else { return nil }
+              !label.isEmpty,
+              // A label that is only the profile id is no label (#1448).
+              label.caseInsensitiveCompare(profile.trimmingCharacters(in: .whitespacesAndNewlines)) != .orderedSame
+        else { return nil }
         return label
     }
 

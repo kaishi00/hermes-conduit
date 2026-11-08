@@ -551,6 +551,11 @@ final class CompactResumeTranscriptTests: XCTestCase {
                         ]
                     ])
                     : .unavailable
+            },
+            additionalOperations: { ops in
+                ops.connectClient = { _ in }
+                ops.loadCatalog = { _, _ in [self.session("stored-long")] }
+                ops.refreshContext = { _, _ in }
             }
         )
         harness.appState.sessions = [session("stored-long")]
