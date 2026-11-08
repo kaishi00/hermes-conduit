@@ -60,8 +60,6 @@ final class GatewayMediaDataURLResolver {
         var pluginPictures = false
         var pluginFiles = false
 
-        var any: Bool { hermesAttachments || pluginPictures || pluginFiles }
-
         func reads(_ file: Attachment) -> Bool {
             if GroupRoomFilesClient.isHermesAttachment(file) { return hermesAttachments }
             guard GroupRoomFilesClient.isStoredFile(file) else { return false }
