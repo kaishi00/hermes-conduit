@@ -523,7 +523,11 @@ extension AppState {
             guard case DashboardTicketBridgeError.http(504, _) = error else { return .refused(message) }
             await refreshLinkedRoomInvites()
             // The answer may still reach the host, and the room start then.
-            if !agents.isEmpty { followLinkedRoomInvites() }
+            // Not followed when the invites were cleared meanwhile.
+            if !agents.isEmpty, linkedRoomInvites?.dashboardID == client.dashboardID,
+               activeDashboardID == client.dashboardID {
+                followLinkedRoomInvites()
+            }
             return .sending(message)
         }
     }
