@@ -174,7 +174,8 @@ extension AppState {
         return resolver
     }
 
-    /// A picture `/room-files` stored, read back as a data URL.
+    /// A file `/room-files` stored, read back as a data URL: pictures since
+    /// plugin 0.142, any type since 0.143.
     func roomFilePictureRead(for path: String) async -> GatewayMediaRead {
         guard let encodedPath = DashboardPath.encodedQueryComponent(path) else { return .gone }
         return await dataURLRead(endpoint: "\(GroupRoomFilesClient.picturePath)?path=\(encodedPath)")
