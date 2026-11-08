@@ -2110,9 +2110,10 @@ struct GroupCreateSheet: View {
                         ))
                         .settingsCaption()
                     }
-                } else if appState.canLinkRooms {
+                } else if appState.canLinkRooms, appState.linkedRoomDraftsRead {
                     // Nobody linked yet: where to start, so rooms with other
-                    // people are found from here too.
+                    // people are found from here too. Not before the drafts
+                    // are read, which say whether rooms with people can start.
                     ConduitSettingsSection(title: AppLocalization.string("Multiplayer"), symbol: "person.2", tint: .green) {
                         linkSomeoneLink(AppLocalization.string("Link with someone"))
                         Text(AppLocalization.string("Link with someone to make rooms with their agents."))
