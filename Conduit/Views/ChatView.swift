@@ -1372,6 +1372,8 @@ struct MessageBubble: View, Equatable {
             ApprovalCard(message: message)
         case .inputPrompt:
             InputPromptCard(message: message)
+        case .connection:
+            ConnectionCard(message: message)
         case .system:
             // A call card finds its call through AppState: this redraws it
             // when the links change.
@@ -3360,7 +3362,7 @@ private struct MessageTimestampLabel: View {
 /// time that doesn't parse truncates only past the row's width), and at
 /// the accessibility text
 /// sizes the time goes under the caption, as on VoiceJobLinkCard.
-private struct CardHeaderCaption<Caption: View>: View {
+struct CardHeaderCaption<Caption: View>: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let timestamp: String
     @ViewBuilder let caption: Caption

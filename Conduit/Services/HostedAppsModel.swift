@@ -27,6 +27,10 @@ final class HostedAppsModel {
     private(set) var signingIn: String?
     /// Safari over the page, for the sign-in.
     var browser: BotMcpBrowserPage?
+    /// A sign-in ended with Safari up and its cover is still going away
+    /// (that's asynchronous): a new one waits, or its Safari would never
+    /// show.
+    private(set) var browserClosing = false
     /// What the last sign-in or change said, per app.
     private(set) var notes: [String: String] = [:]
     /// The profile and client the snapshot belongs to.
@@ -34,6 +38,9 @@ final class HostedAppsModel {
     @ObservationIgnored private var reads = 0
     @ObservationIgnored private var signInTask: Task<Void, Never>?
     @ObservationIgnored private var browserClosedAt: Date?
+    /// Which close the fallback below belongs to: an earlier one's timer
+    /// never ends a later close.
+    @ObservationIgnored private var browserCloseGeneration = 0
 
     static let pollInterval: Duration = .seconds(2)
     /// How long a closed Safari is given for Hermes to see the account.
@@ -63,6 +70,7 @@ final class HostedAppsModel {
             guard read == reads, scope == self.scope else { return }
             snapshot = fresh
             showsKept = false
+            HostedAppLogoLoader.retryFailed()
             error = nil
             errorMessage = nil
         } catch is CancellationError {
@@ -94,7 +102,7 @@ final class HostedAppsModel {
 
     /// Connects `slug`: a new account (named `alias`), or `repairing` one.
     func signIn(_ slug: String, alias: String? = nil, repairing connectionID: String? = nil, appState: AppState) {
-        guard signingIn == nil, browser == nil else { return }
+        guard signingIn == nil, browser == nil, !browserClosing else { return }
         signingIn = slug
         notes[slug] = nil
         browserClosedAt = nil
@@ -106,16 +114,37 @@ final class HostedAppsModel {
 
     /// Safari went away: by Done, or because the sign-in finished.
     func browserClosed() {
-        browser = nil
+        closeBrowser()
         if signingIn != nil, browserClosedAt == nil { browserClosedAt = Date() }
+    }
+
+    /// Safari's cover is gone from the screen.
+    func browserDismissed() {
+        browserClosing = false
+        browserClosed()
     }
 
     func cancelSignIn() {
         signInTask?.cancel()
         signInTask = nil
         signingIn = nil
-        browser = nil
+        closeBrowser()
         browserClosedAt = nil
+    }
+
+    private func closeBrowser() {
+        if browser != nil {
+            browserClosing = true
+            browserCloseGeneration += 1
+            let generation = browserCloseGeneration
+            // Also when no cover was up to say it went (its page was left).
+            Task { [weak self] in
+                try? await Task.sleep(for: .seconds(1.5))
+                guard let self, self.browserCloseGeneration == generation else { return }
+                self.browserClosing = false
+            }
+        }
+        browser = nil
     }
 
     private func runSignIn(_ slug: String, alias: String?, repairing: String?, scope: String?, appState: AppState) async {
@@ -124,7 +153,7 @@ final class HostedAppsModel {
             if scope == self.scope, signingIn == slug {
                 signingIn = nil
                 signInTask = nil
-                browser = nil
+                closeBrowser()
                 browserClosedAt = nil
             }
         }
@@ -185,7 +214,7 @@ final class HostedAppsModel {
     }
 
     private func finished(_ slug: String, appState: AppState) async {
-        browser = nil
+        closeBrowser()
         Haptics.success()
         notes[slug] = AppLocalization.string("Connected. Hermes can use it in new chats.")
         await reload(appState)

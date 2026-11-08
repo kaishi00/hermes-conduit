@@ -155,7 +155,7 @@ several details only the user can give (notifier 0.82).
 - A clarify question whose push couldn't be queued goes to Hermes' own prompt and isn't listed.
 - Your agents' approvals in rooms other people host have no card in the app yet, and their notification opens a hidden chat the app doesn't show, whose card couldn't answer them. C3 (on `linked-rooms`) adds the card, matched to the notification by its `session_key`; until then `hermes conduit-push rooms approvals`, `approve` and `deny` answer them, as does a call from Hermes about one.
 
-**Checked:** 2026-11-05, #1835 (the relay's decision store in Code: changes written within a second, a poll checks only its decision; the crash window ruled on; notifier #569, issue 561); 2026-11-05, #1796 (a yes from the next live call never answers the last call's approval, issue 1792); 2026-11-05, #1776 (Needs you across chats and profiles: chip counts, banner, list, a waiting chat's notification opening at its card; notifier 553, issue 1705); 2026-11-04, #1757 (a question's notification copy leaves the chat when Hermes' card for it was there first too, opening a Bot Chat from the notification included); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1694 (a spoken Stop in Classic's answer window cancels the waiting turn and listens again; its late end is ignored, see Talking over Hermes); 2026-11-02, #1639 (a workstream's "Needs you" card on the Work panel, listed here, draws its approval through the chat card's texts, hidden characters shown); 2026-11-01, #1600 (the ruling's name rule for the flag text and the voice job's read-back spelled out); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-10-31, #1598 (Hermes' approval texts in the App Language on every card, voice line, the notification and the Watch, issue #1589); 2026-10-30, #1544 (a call from Hermes about an approval or question waits longer while the user is at a screen, an approval until shortly before Hermes would deny it; the card, the notification and the voice answers unchanged; notifier #479); 2026-10-30, #1524 (group rooms' Markdown gets the connected Hermes' resolver for Desktop cards; approval cards unchanged); 2026-10-29, #1507 (the chat card's time top right, its description or question full width below, #1440); 2026-10-29, #1497 (a linked person's ask to its owner in the siblings, notifier #465); 2026-10-29, #1485 (a room's ask to its owner in the siblings; the call-screen confirmation's panel and overlay listed in Code); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files); 2026-10-27, #1351 (your agents' approvals in rooms other people host, notifier #416); 2026-10-26, #1301 (the jump button goes to input cards too); 2026-10-26, #1294 (clarify forms: a field for each question and one Send, blanks skipped on every transport, "skip" by voice; notifier #391); 2026-10-26, #1247 (the Watch broker's grant answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, the table and the Watch row, at #1182, carried in #1235; 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
+**Checked:** 2026-11-08, #1988 (the jump button, the voice screens and the voice lines also serve the connect card, see Things Hermes connects from a chat); 2026-11-05, #1835 (the relay's decision store in Code: changes written within a second, a poll checks only its decision; the crash window ruled on; notifier #569, issue 561); 2026-11-05, #1796 (a yes from the next live call never answers the last call's approval, issue 1792); 2026-11-05, #1776 (Needs you across chats and profiles: chip counts, banner, list, a waiting chat's notification opening at its card; notifier 553, issue 1705); 2026-11-04, #1757 (a question's notification copy leaves the chat when Hermes' card for it was there first too, opening a Bot Chat from the notification included); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1694 (a spoken Stop in Classic's answer window cancels the waiting turn and listens again; its late end is ignored, see Talking over Hermes); 2026-11-02, #1639 (a workstream's "Needs you" card on the Work panel, listed here, draws its approval through the chat card's texts, hidden characters shown); 2026-11-01, #1600 (the ruling's name rule for the flag text and the voice job's read-back spelled out); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-10-31, #1598 (Hermes' approval texts in the App Language on every card, voice line, the notification and the Watch, issue #1589); 2026-10-30, #1544 (a call from Hermes about an approval or question waits longer while the user is at a screen, an approval until shortly before Hermes would deny it; the card, the notification and the voice answers unchanged; notifier #479); 2026-10-30, #1524 (group rooms' Markdown gets the connected Hermes' resolver for Desktop cards; approval cards unchanged); 2026-10-29, #1507 (the chat card's time top right, its description or question full width below, #1440); 2026-10-29, #1497 (a linked person's ask to its owner in the siblings, notifier #465); 2026-10-29, #1485 (a room's ask to its owner in the siblings; the call-screen confirmation's panel and overlay listed in Code); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (Local Live's screen shows a reply's attached files); 2026-10-27, #1351 (your agents' approvals in rooms other people host, notifier #416); 2026-10-26, #1301 (the jump button goes to input cards too); 2026-10-26, #1294 (clarify forms: a field for each question and one Send, blanks skipped on every transport, "skip" by voice; notifier #391); 2026-10-26, #1247 (the Watch broker's grant answers keep Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, the table and the Watch row, at #1182, carried in #1235; 2026-10-24, at #1221, for a Watch call's answer or voice approval whose reply lands while the call reconnects (said as a text update, not dropped); at #1207 (notifier 0.70.1), for the Watch's "approved" when nothing ran; at #1194 (after #1188, the approval card's shield); at #1191: message.interim ends a Local Live reply's approval wait and a voice job's needs-input state, as other output does (#912 review); the chat card's #951/#952 follow-ups; the call-screen confirmation's refusal veto (#1042).
 
 ## Passwords, logins and codes Hermes asks for
 
@@ -202,7 +202,7 @@ these prompts)
 - A voice job waiting on one shows no card on the call screen or Classic voice's screen: the job keeps only that it needs input, so the call says to open it in Conduit (waitingNotice). The same goes for Watch calls, which have no card at all.
 - The minimised call bar shows no card, as for approvals and questions; opening the call shows it. A call from Hermes is never about one: the plugin calls only for approvals and questions.
 
-**Checked:** 2026-11-07, #1952 (Settings > Passwords & logins lists the logins these cards save); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-10-29, #1507 (the card's time top right, its title full width below, #1440); 2026-10-28, #1452 (open requests move with a socket kept across a profile switch); 2026-10-26, #1301 (website logins and codes, #1299).
+**Checked:** 2026-11-08, #1988 (the input cards unchanged; the connect card follows their rules for a typed key, see Things Hermes connects from a chat); 2026-11-07, #1952 (Settings > Passwords & logins lists the logins these cards save); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-10-29, #1507 (the card's time top right, its title full width below, #1440); 2026-10-28, #1452 (open requests move with a socket kept across a profile switch); 2026-10-26, #1301 (website logins and codes, #1299).
 
 ## Passwords & logins settings
 
@@ -261,7 +261,8 @@ tab's MCP servers (done: Apps sits above them on the same tab, and the
 tab's pull to refresh reads both) · Screens that open on their last answer
 (done: the section opens on its kept apps) · Sheets in Settings' look
 (done: the account name sheet) · the chat card Hermes opens when the model
-connects an app (`connection.request`; gap, see Open gaps) · Pulse (not
+connects an app (done: see Things Hermes connects from a chat, whose
+directory card opens Browse Apps with Hermes' picks first) · Pulse (not
 needed: it already leaves an app the user never connected out of its
 reports) · a bot's profile (not needed: the section shows the profile in
 use, as the other Capabilities tabs do) · Watch, CarPlay and group rooms
@@ -280,13 +281,65 @@ Text: the section's captions and README.md's Capabilities line (done)
 - A sign-in asks Hermes how far it got every two seconds and finishes once the account is connected. Closing Safari wakes Hermes to read the accounts at once, and a sign-in still not connected six seconds later, failed, expired or settled is given up as Desktop's Stop waiting does: Hermes stops waiting and the account it started goes, so no half-made account stays. Leaving the page gives it up too; a switch of dashboard, profile or connection never gives it up on the Hermes switched to (#1982).
 - A second account takes a name before its sign-in (the Portal's format: lowercase letters, digits and dashes, up to 32); a reconnect repairs the account by its id, never by its name, as Desktop does (#1982).
 - The app and tool switches change the member's own rules against the revision read, then read the rules back; rules changed elsewhere meanwhile are read and shown and the change isn't sent again. A tool or app the organization or a role turned off shows off and can't be switched, and with no member rules the switches only read (#1982).
-- Logos are the catalog's, else the vendor mark Desktop draws for the slug. An SVG is drawn once by a hidden WebKit view with JavaScript off and navigation refused; one that won't load or draw shows the app's first letter (#1982).
+- Logos are the catalog's, else the vendor mark Desktop draws for the slug. An SVG is drawn once by a hidden WebKit view with JavaScript off and navigation refused; one that won't load or draw shows the app's first letter, and gets another try once the apps are read again. A render given up at its four seconds never ends the next one (#1982, #1988).
+- Giving up a sign-in reads how far it got first: an account that finished since the last look stays, and when Hermes can't say, none is removed. A new sign-in waits until the last one's Safari is gone from the screen, and an earlier close's fallback never ends a later one's wait (#1988, from #1982's review; #1993).
 - A Hermes without the calls shows no Apps section rather than an error, and one with hosted connectors off shows none either (#1982).
 
 **Open gaps**
-- The chat card for an app the model connects: Hermes sends `connection.request` to every gateway client and waits on a card's answer, which Conduit doesn't draw yet, so a Conduit chat that asks to connect an app waits until Hermes' deadline. Next in the same thread.
+- None.
 
-**Checked:** 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
+**Checked:** 2026-11-08, #1993 (Safari's close fallback fenced per close); 2026-11-08, #1988 (the chat card's gap closed; Browse Apps lists a chat's suggestions first; #1982's review: logo renders, give-up, Safari's dismissal, logo retries); 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
+
+## Things Hermes connects from a chat
+
+The card Hermes waits on in a chat when the model connects something
+(`manage_connections`, `manage_catalog`): an app to sign in to through Nous
+Portal, an MCP server to set up with the keys it asks for (then maybe sign
+in), a catalog plugin or skill to install, or the apps directory with
+Hermes' suggestions. Hermes runs the operation: `connection.request` opens
+the card, every change comes as `connection.update` with the operation's
+whole snapshot, and the card answers through `connection.respond` (rows
+approved with their keys, or skipped, or Continue), `connectors.connect`
+with `reconnect` (Try Again on a dead sign-in page) and
+`connectors.operation.wake` (Safari closed), all with
+`owner: {type: session}`.
+
+**Siblings:** chat card (chats, project chats, Bot Chat) · reopening the
+chat (a resume's `pending_connection`) and Hermes settling it (deadline,
+interrupt, all done) · the jump button · Classic voice's screen and the call
+screen (the card drawn there, tap only) · voice modes saying Hermes waits
+(Local Live once per card, a voice job's notice) · the Lock Screen's Live
+Activity (waiting on the user) · a message sent while it's open (Continue
+first, as Desktop's composer does) · Apps signed in through Nous Portal
+(the directory card opens its Browse Apps, Hermes' picks first) · Hermes
+Desktop's connector, MCP setup and catalog install cards (upstream, the
+reference) · Passwords, logins and codes Hermes asks for (the same rules for
+a typed key) · CarPlay and Watch calls (not needed: they speak the voice
+modes' lines) · notification (gap) · group rooms (gap) · Text (not needed:
+no README, docs, Settings or model-facing text describes the card)
+
+**Code**
+- Model: `Conduit/Models/ConnectionActivity.swift` (from, applied(over:), answer, hasRequiredValues, Target's opensPage, reissues and asksApproval)
+- Events and calls: `Conduit/Services/StreamEventParser.swift` (connection.request, connection.update), `Conduit/Services/HermesClient.swift` (StreamEvent.connection, respondToConnection, reissueConnection, wakeConnection, SessionRuntimeSnapshot.pendingConnectionPayload)
+- State: `Conduit/Services/AppState.swift` (applyConnectionActivity, respondToConnection, reissueConnection, wakeConnection, continueOpenConnections, hasPendingDecision)
+- Card: `Conduit/Views/ConnectionCard.swift` (ConnectionCard, ConnectionDirectorySheet), `Conduit/Views/ChatView.swift` (its row), `Conduit/Views/VoiceConversationSheet.swift` (VoiceApprovalPanel)
+- Siblings: `Conduit/Services/ChatResumeCoordinator.swift`, `Conduit/Services/AppState+SpokenApprovals.swift` (openChatWaitingInputs), `Conduit/Services/LiveTurnActivities.swift`, `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift`, `Conduit/Voice/VoiceBackgroundJobs.swift`, `Conduit/Services/SessionPresentationCache.swift` (never saved)
+- Tests: `ConduitTests/ConnectionCardTests.swift`
+
+**Rulings**
+- Hermes' snapshot is the card: a frame with a lower `seq` changes nothing, and an answer holds the card's buttons until a newer frame or the settlement answers it. A settled operation keeps its rows' outcomes on the card with nothing to press, no later frame reopens it, and one this device never showed opens no card (#1988, #1993).
+- An answer on its way stays on its way when reopening the chat brings the card back before Hermes answers, and only that answer's failure reopens the buttons, never an earlier one's arriving late (#1993).
+- A key typed for an MCP server lives only in the card's view state, goes once onto the socket with its approval (only the keys with a value) and is never on the message, in a cache, a log or a notification. A secret field never starts from a value Hermes sent. The card is live-only; reopening the chat brings an open one back from `pending_connection`. A card shown before a profile switch never sends: it stops offering anything (#1988, as Passwords, logins and codes Hermes asks for).
+- An app's or server's page opens in Safari (a web address only) from the card's Connect; closing Safari wakes Hermes to look at once. A dead page's Try Again has Hermes make a new one on the open operation. Continue lets Hermes carry on without what isn't connected, and a message sent while the card is open continues it first, as in Hermes Desktop, so the message doesn't wait behind the card (#1988).
+- The directory card lists Hermes' suggestions and opens Browse Apps with them first; connecting there signs in for the profile, as on the Apps page, and the card's Continue tells Hermes. A catalog row shows its tier and the catalog's scan of it as they come; the Advanced choices Desktop offers aren't on the card (#1988).
+- Never asked or answered by voice: Local Live says Hermes waits in the chat once per card, a voice job's notice says so, and the voice screens draw the card to tap (#1988).
+
+**Open gaps**
+- Notification: none, as for the input cards (Hermes gives plugins no hook on the operation).
+- Group rooms show no card.
+- A catalog install's Advanced choices (force, enable, a ref) and a settled install's Try Again, which Desktop's card offers.
+
+**Checked:** 2026-11-08, #1993 (#1988's review: a settled card stays settled, an answer survives a resume, failures fenced per answer, tests for these and for a message continuing the card); 2026-11-08, #1988 (the card, its reopening, its siblings)
 
 ## Voice follow-ups
 
@@ -503,6 +556,7 @@ caption, README.md's Apple Watch line)
 
 **Code**
 - Start paths: `Conduit/Voice/VoiceTypes.swift` (PendingVoiceIntent.Source), `Conduit/Services/AppState.swift` (prepareVoiceConversation, voiceWaitsForRunningTurn), widget and Shortcut launches: `Conduit/Services/WidgetLaunchCoordinator.swift` (WidgetInitialCaptureAuthorization), `Conduit/Voice/VoiceConversationController.swift` (startListening)
+- What the call knows of its chat: `Conduit/Voice/VoiceHistory.swift` (VoiceResumeContext.chat, fromChat, gptLiveHistory), `Conduit/Services/AppState.swift` (beginVoiceCallRecording seeds liveVoiceResumeContext; liveVoiceThreadInstructions leaves out the latest reply then), tests in `ConduitTests/VoiceHistoryTests.swift` (testAChatCallIsSeededWithTheChatsLatestTurns), `docs/VOICE_BACKGROUND_JOBS.md` (The call starts knowing the chat)
 - Which chat: `Conduit/Services/AppState.swift` (liveVoiceThreadForOpenChat, savedCallToResume, keepVoiceCallWithAdoptedChat); an unattached call's first request's chat: `Conduit/Voice/VoiceBackgroundJobs.swift` (adoptCallChat, callChatJobRuns, callChatClaim, waitForCallChatClaim; a deleted chat: noteChatDeleted, isDeletedChat, resolveRuntime, and continueJob's onRuntime, which hears the runtime a call's chat was resumed on), `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (callChat; AppState's localLiveTurns resolveChat and localLiveChatRuntime; deleteSession and deleteOtherProfileSession tell the supervisor), `Conduit/Watch/WatchDirectBroker.swift` (WatchCallJobSupervisor.startJob, whose continueJob onRuntime moves callChat to the resumed runtime), tests in `ConduitTests/VoiceCallChatTests.swift`, `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (startBackgroundJob), `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` (send), `Shared/WatchVoice/VoiceJobRouting.swift` (wantsJobOfItsOwn); on the Watch: `Shared/WatchVoice/WatchJobRelay.swift` (joinsCall), `ConduitWatch/WatchBridgeCallModel.swift` (startArguments), `ConduitWatch/WatchDirectCallModel.swift` (joins_call), `Conduit/Watch/WatchDirectBroker.swift` (WatchCallJobSupervisor.callChat, startingCallChat, callIsLive), `Conduit/Voice/VoiceBackgroundJobs.swift` (markOpensCallChat), `Conduit/Voice/VoiceBackgroundJobs.swift` (continueJob), `notifier/dashboard/api/watch_jobs.py` (_WatchJobs._continue_session)
 - Chat voice button: `Conduit/Views/V2/V2VoiceButton.swift`, `Conduit/Views/V2/ChatVoiceButtonAction.swift`, `Conduit/Views/V2/V2ConversationScreen.swift` (voiceButtonBottomPadding, V2RestingComposerHeightKey: level with the resting composer, or with the bottom of one that stays expanded, see Composer at rest and expanded), `Conduit/Views/Components/ComposerBar.swift` (the resting bar's height, keepsVoiceButtonBeside), `Conduit/Services/AppState+VoiceMessage.swift`, `Conduit/Voice/VoiceMessageRecorder.swift`
 - Siri and Shortcuts: `Conduit/Intents/StartVoiceConversationIntent.swift`; wake phrase: `Conduit/Voice/Wake/WakeLifecycleCoordinator.swift`
@@ -516,6 +570,7 @@ caption, README.md's Apple Watch line)
 
 **Rulings**
 - A live call started from a chat joins that chat for the whole call, and its requests become the chat's turns (2026-10-02, #312). An empty chat counts as a chat (2026-10-16, #679).
+- A live call started from the open chat, or a call from Hermes answered in it, starts knowing the chat: every live mode is seeded with the chat's latest user and assistant text, within a resume's word-for-word budget (24 turns in 6,000 characters, else the newest 10 that fit), GPT-Live as the session's history and the others in their instructions, in place of the chat's latest reply alone. A question still waiting for its reply, or one Hermes is still answering (with its progress notes), is left off the end, so the model doesn't answer it in Hermes' place; a user turn names its attachments, never their paths. Resume Call is seeded with the saved call, and a reconnect with the call so far, as before. Before, a fresh call from a chat sent GPT-Live 0 history items and the other modes only the latest reply (2026-11-08, #1989, issue 1983).
 - Started anywhere else, a live call stands alone until its first ordinary request: once Hermes takes that job, its chat becomes the call's, as if the call had started there. Background, quick and other-profile work still runs apart, and a first request of that kind leaves the call unattached. A request said while that chat is still being made joins it, on the iPhone and in a Watch call the iPhone runs jobs for; one that finishes starting after the hang-up attaches nothing and is let go of like the call's other requests, and the next call makes its own (Eric, 2026-10-25, #1252, for #1250; replaces #312's "stands alone"; the races from #1253's tests).
 - A Watch call does the same with its jobs: each later ordinary one is still a job of the call, with its own news, but runs as the next turn of the chat the first made, on the relay (notifier 0.78, `joins_call`) and on the iPhone alike. The call is saved as its own, as Watch calls are. A request still waiting its turn when the call ends goes no further, as a phone call's (2026-10-25, #1252, notifier #369).
 - A call's chat deleted mid-call (in Conduit's list, another profile's row, or Hermes Desktop) never fails the rest of the call: the call lets go of it and goes on in a new chat, as a call that started with none does. A delete in Conduit lets go at once; one in Desktop when a turn finds Hermes has no session for the chat, or, while the chat is open, when its turn didn't go in and a resume this run found the chat gone (that turn fails, the next request makes the chat). The new chat is on the deleted chat's bot, a Bot Chat call's included. Local Live's Hermes turns make it in that same turn (a call's own chat, and an iPhone-run Watch call's chat, follows the runtime it was resumed on, so a delete naming that one is found where the chat has no stored id, #1806), and a Watch call whose jobs the iPhone runs makes one for the chat its first job made on its next request. Any other resume failure keeps the chat (2026-11-05, issue 1797, #1799).
@@ -531,6 +586,7 @@ caption, README.md's Apple Watch line)
 - A widget's Talk ends its launch once the call listens, or, under push to talk, once the call opens and waits for the press (a Shortcut's Talk has no launch to end past the call's open): its 30-second deadline never says the action expired over a call the user is in, and a press after it still listens (2026-11-07, #1940, issue 1934).
 
 **Open gaps**
+- A call attached to a chat the iPhone doesn't have open yet (a CarPlay pick past its 3-second wait) starts with none of the chat's turns, the same window the latest-reply block it replaced had; the model can still read the chat ("Read chat:", read_chat). Reading the chat from the host first would put a round trip before every call start (#1989).
 - A widget Talk whose first listen is dropped by the foreground gate (the scene went inactive while the launch prepared, so the call opened with its listen deferred) leaves its launch unconsumed, so it can still say the action expired over the open screen at 30 seconds. Consuming it there would block a later manual Listen once the launch expires (#1940, issue 1934).
 - Group rooms have no voice button setting, and the Watch and CarPlay don't follow it (#1134).
 - When a Classic call can't take over its chat, it shows a generic error (#1066).
@@ -540,7 +596,7 @@ caption, README.md's Apple Watch line)
 - A Watch call on another profile asks Hermes' chat search for that profile's chats; on a plugin without that route (before 0.18) it falls back to the titles Conduit has listed, which hold that profile's chats only while All profiles is on (#1573).
 - A Siri or Action button start that switches the iPhone's profile (one the shortcut names, or the hands-free profile) shows no waiting call screen while the switch runs; the call opens once it's done (#1573).
 
-**Checked:** 2026-11-07, #1940 (a widget Talk under push to talk ends its launch when the call waits for the press, issue 1934); 2026-11-05, #1806 (a resumed Local Live own chat and an iPhone-run Watch call's chat follow their new runtime); 2026-11-05, #1804 (Local Live's new call chat made with no profile asked is checked against the active profile; a deleted own chat stays behind on a mode switch); 2026-11-05, #1799 (a call's chat deleted mid-call: the call goes on in a new chat, Local Live, the other live modes and iPhone-run Watch jobs, issue 1797); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-02, #1657 (on `bot-workstreams`: a workstream's call sends every request to the workstream, a Bot Chat call's jobs run on its bot as the coordinator's own, on the voice-job model chosen for it; a Watch call's jobs are kept in the bot's work registry as the Watch's, whichever profile they name; a job is filed under the bot it was made on, read before its session is made; how a call starts is unchanged); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-31, #1573 (Watch and Siri calls start on the hands-free profile, a Watch call without switching the iPhone, issue 1564); 2026-10-30, #1541 (at accessibility Text Sizes the resting bar's placeholder keeps to one line, so the voice button centres on a one-line bar; see Composer at rest and expanded); 2026-10-29, #1512 (the voice button stays beside a composer that stays expanded on a Mac or a wide iPad, issue 1483); 2026-10-29, #1476 (the chat's voice button centres on a resting composer taller than it, as when a long placeholder wraps); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1413 (the Siri and Shortcuts profile picker shows each profile's Conduit name, see Profile names); 2026-10-28, #1424 (a call starts its trace; Qwen Live calls are traced too); 2026-10-27, #1378 (CarPlay starts Local Live, agent mode and Classic's hands-free option, #1376); 2026-10-27, at #1370 (a chat picked in CarPlay shows Thinking, and a live call waits at most 3 s for the phone to open it); 2026-10-26, at #1319 (Home's main button points to its own entry); 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
+**Checked:** 2026-11-08, #1989 (a call from a chat, or a call from Hermes answered in it, is seeded with the chat's latest turns in every live mode, issue 1983; the Watch has no attached chat and a Watch call from Hermes keeps its brief, Classic talks in the chat itself, group rooms start no attached call); 2026-11-07, #1940 (a widget Talk under push to talk ends its launch when the call waits for the press, issue 1934); 2026-11-05, #1806 (a resumed Local Live own chat and an iPhone-run Watch call's chat follow their new runtime); 2026-11-05, #1804 (Local Live's new call chat made with no profile asked is checked against the active profile; a deleted own chat stays behind on a mode switch); 2026-11-05, #1799 (a call's chat deleted mid-call: the call goes on in a new chat, Local Live, the other live modes and iPhone-run Watch jobs, issue 1797); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-02, #1657 (on `bot-workstreams`: a workstream's call sends every request to the workstream, a Bot Chat call's jobs run on its bot as the coordinator's own, on the voice-job model chosen for it; a Watch call's jobs are kept in the bot's work registry as the Watch's, whichever profile they name; a job is filed under the bot it was made on, read before its session is made; how a call starts is unchanged); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-31, #1573 (Watch and Siri calls start on the hands-free profile, a Watch call without switching the iPhone, issue 1564); 2026-10-30, #1541 (at accessibility Text Sizes the resting bar's placeholder keeps to one line, so the voice button centres on a one-line bar; see Composer at rest and expanded); 2026-10-29, #1512 (the voice button stays beside a composer that stays expanded on a Mac or a wide iPad, issue 1483); 2026-10-29, #1476 (the chat's voice button centres on a resting composer taller than it, as when a long placeholder wraps); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1413 (the Siri and Shortcuts profile picker shows each profile's Conduit name, see Profile names); 2026-10-28, #1424 (a call starts its trace; Qwen Live calls are traced too); 2026-10-27, #1378 (CarPlay starts Local Live, agent mode and Classic's hands-free option, #1376); 2026-10-27, at #1370 (a chat picked in CarPlay shows Thinking, and a live call waits at most 3 s for the phone to open it); 2026-10-26, at #1319 (Home's main button points to its own entry); 2026-10-26, #1247 (the Watch broker's start answers keep Conduit running through BackgroundTaskHold); 2026-10-25, at #1252: an unattached phone or CarPlay call takes its first ordinary request's chat, and a Watch call runs its later ordinary jobs there (notifier #369); 2026-10-25, #1261, the chat-open-elsewhere code moved to its own entry; Qwen starts through the shared controller, at #1182, carried in #1235; 2026-10-24, at #1223, for a start's late answers and CarPlay's mode switch; 2026-10-23, seeded from main at 64d53c3.
 
 ## A live call's opening
 
@@ -1109,6 +1165,7 @@ live model is told when the host won't keep the watch
 - Answering is the only tap: the call opens its chat and starts talking by itself (2026-10-10, #508).
 - A declined or missed call is told to Hermes in that chat's next turn, with no second ring (2026-10-10, #518, notifier #78).
 - Hermes speaks first on a call it made (2026-10-11, #546, notifier #89).
+- A call answered on the iPhone also gets its chat's latest turns, as a call started from that chat does (GPT-Live as history), beside the brief with Hermes' reason and final reply (see Starting a call; 2026-11-08, #1989, issue 1983).
 - The open of a call answered in CallKit (locked, or unlocked through the Talk route) uses the chat list on hand when the list already holds the call's chat (by id, stored id or alias, and the call's durable id too when it names one, since the route resolves to that), instead of reading the whole list again first: that read took 2-3 s of every answer on a long list. Runtime and alias ids never pass to another chat, so the matched row is the call's chat; a stored id that moved since (a compacted chat) still resolves through the identity index, and the call's connection syncs the row after. A chat the list lacks (a run this device hasn't seen) still waits for the full read, and every notification tap, a call notification's included, is unchanged, except one for a known bot workstream, which Hermes hides from the list, so the read could never find it (2026-11-03, #1706). Answered on a locked phone, the call opens its chat at once rather than first waiting 1.5 s for Conduit to come on screen, which a locked phone can't do (Eric 2026-11-02, #1659).
 - An answered call from Hermes can go on the loudspeaker from Conduit's call screen in every mode: it has a Speaker button of its own, since it covers CallKit's (see "Audio route, Speaker and mute"; 2026-11-06, #1847).
 - A call from Hermes runs on the default audio even with "Talk over it on the speaker" on: the echo-cancelling engine looped under CallKit and left the answered call silent for 20 seconds or for good (see "Talking over Hermes"; Eric 2026-11-02, #1659).
@@ -1145,7 +1202,7 @@ live model is told when the host won't keep the watch
 - A Watch decline whose stop launched Conduit reads the ring's record before CallKit's report returns: two copies of that stop arriving together can post its missed call twice (the outcome is still sent once) (#1786).
 - Not yet tried on a device: a Watch answer after Conduit was quit or killed on the iPhone while it rang; the failed-handoff and decline paths have no test beyond the notice they pick (#1786).
 
-**Checked:** 2026-11-07, #1976 (with notifier #611: a chat open on several clients counts by its clients for the wait at a screen); 2026-11-07, #1919 (the reason and the watch's saw sentence never say "pick up", notifier #594; the app needed no change: the reason is spoken as sent); 2026-11-06, #1906 ("call me" with calls off answers from the call tool, not a call watch, notifier #589; the app needed no change: the answer links Calls from Hermes, which Settings already opens); 2026-11-06, #1847 (Speaker on the call screen of an answered call, every mode); 2026-11-05, #1789 (a Watch answer for a dashboard Conduit can't read, over the Watch link, is a plain hands-free call, as written; it and #1786's two leftovers are open gaps); 2026-11-05, #1786 (a Watch answer is handed its session when Conduit was quit or killed on the iPhone while it rang, from ring records kept on disk; a handoff that still fails posts the missed call and tells Hermes unless the call was answered here, a busy relay is tried again, a Watch decline after the relaunch is a missed call and a declined outcome, a dashboard Conduit can't read fails closed, and a ring taken or noticed here leaves no second missed call, issue 1780; the Watch, CarPlay, the headset keep and the relay needed no change); 2026-11-03, #1709 (a call about something after the turn is a call watch, in the tools' text; notifier #525); 2026-11-03, #1706 (a known workstream's notification open skips the list read too); 2026-11-03, #1703 (the lost-acknowledgement callback fix #1657 made is on main now, with Bot Mode); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-02, #1657 (on the bot-workstreams branch: a "call me when it's done" job whose start acknowledgement was lost after Hermes began its turn still calls back; main still misses it until that branch merges); 2026-11-02, #1675 (issue 1671: a "call me when it's done" watch refused because its profile turned the plugin off tells the live model how to turn it on, not to update; see "Conduit plugin update"); 2026-11-02, #1659 (an answered call takes the default audio, never talk-over's echo-cancelling engine, and opens its chat from the list on hand); 2026-11-01, #1613 (each bot rings from its own address and its call settings add its contact, so a Focus can let that bot through, issue 1606); 2026-10-31, #1593 (a Watch on watchOS 10 sends its nil token without waiting for PushKit); 2026-10-31, #1591 (a Watch on watchOS 10 sends no call token and doesn't ring); 2026-10-31, #1573 (a call answered on the Watch runs on the calling profile, issue 1564); 2026-10-30, #1544 (alert calls wait longer at a screen, failed turns there push, notifier #474); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (a file in the reply a call is about is named, never its path); 2026-10-28, #1441 (the Watch's ring follows a re-pair to a new iPhone, with notifier #440; the iPhone sends the token the Watch reports at each Watch launch, held or not, so a Watch back with it asks for its ring again; the Pair button says what it did); 2026-10-27, #1378 (a call on Local Live in agent mode opens Local Live, on the phone and in CarPlay); 2026-10-26, #1291 (a call from a cron job's worker waits for the relay before the worker exits, notifier #389, issue #388); 2026-10-26, #1247 (the ring's settle and a Watch answer's start, keep, mute and end keep Conduit running through BackgroundTaskHold); 2026-10-25, #1257 (the caller's name from `profile_name` on the phone, the Watch and the missed call); Qwen among the modes that answer, and its mute on a call kept on the iPhone's headset (nativeCallVoiceMuted), at #1182, carried in #1235; 2026-10-24, #1225: a call answered on the Watch stays on the iPhone's headset (#1204); at #1194.
+**Checked:** 2026-11-08, #1989 (an answered call is seeded with its chat's latest turns, issue 1983; the Watch's answer keeps its brief, read from the host); 2026-11-07, #1976 (with notifier #611: a chat open on several clients counts by its clients for the wait at a screen); 2026-11-07, #1919 (the reason and the watch's saw sentence never say "pick up", notifier #594; the app needed no change: the reason is spoken as sent); 2026-11-06, #1906 ("call me" with calls off answers from the call tool, not a call watch, notifier #589; the app needed no change: the answer links Calls from Hermes, which Settings already opens); 2026-11-06, #1847 (Speaker on the call screen of an answered call, every mode); 2026-11-05, #1789 (a Watch answer for a dashboard Conduit can't read, over the Watch link, is a plain hands-free call, as written; it and #1786's two leftovers are open gaps); 2026-11-05, #1786 (a Watch answer is handed its session when Conduit was quit or killed on the iPhone while it rang, from ring records kept on disk; a handoff that still fails posts the missed call and tells Hermes unless the call was answered here, a busy relay is tried again, a Watch decline after the relaunch is a missed call and a declined outcome, a dashboard Conduit can't read fails closed, and a ring taken or noticed here leaves no second missed call, issue 1780; the Watch, CarPlay, the headset keep and the relay needed no change); 2026-11-03, #1709 (a call about something after the turn is a call watch, in the tools' text; notifier #525); 2026-11-03, #1706 (a known workstream's notification open skips the list read too); 2026-11-03, #1703 (the lost-acknowledgement callback fix #1657 made is on main now, with Bot Mode); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-02, #1657 (on the bot-workstreams branch: a "call me when it's done" job whose start acknowledgement was lost after Hermes began its turn still calls back; main still misses it until that branch merges); 2026-11-02, #1675 (issue 1671: a "call me when it's done" watch refused because its profile turned the plugin off tells the live model how to turn it on, not to update; see "Conduit plugin update"); 2026-11-02, #1659 (an answered call takes the default audio, never talk-over's echo-cancelling engine, and opens its chat from the list on hand); 2026-11-01, #1613 (each bot rings from its own address and its call settings add its contact, so a Focus can let that bot through, issue 1606); 2026-10-31, #1593 (a Watch on watchOS 10 sends its nil token without waiting for PushKit); 2026-10-31, #1591 (a Watch on watchOS 10 sends no call token and doesn't ring); 2026-10-31, #1573 (a call answered on the Watch runs on the calling profile, issue 1564); 2026-10-30, #1544 (alert calls wait longer at a screen, failed turns there push, notifier #474); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1449 (a file in the reply a call is about is named, never its path); 2026-10-28, #1441 (the Watch's ring follows a re-pair to a new iPhone, with notifier #440; the iPhone sends the token the Watch reports at each Watch launch, held or not, so a Watch back with it asks for its ring again; the Pair button says what it did); 2026-10-27, #1378 (a call on Local Live in agent mode opens Local Live, on the phone and in CarPlay); 2026-10-26, #1291 (a call from a cron job's worker waits for the relay before the worker exits, notifier #389, issue #388); 2026-10-26, #1247 (the ring's settle and a Watch answer's start, keep, mute and end keep Conduit running through BackgroundTaskHold); 2026-10-25, #1257 (the caller's name from `profile_name` on the phone, the Watch and the missed call); Qwen among the modes that answer, and its mute on a call kept on the iPhone's headset (nativeCallVoiceMuted), at #1182, carried in #1235; 2026-10-24, #1225: a call answered on the Watch stays on the iPhone's headset (#1204); at #1194.
 
 ## Audio route, Speaker and mute
 
@@ -1256,7 +1313,7 @@ no live model is handed the path to read out either.
 Local Live's spoken and shown split (the call's screen shows the file) ·
 live read-back of a reply asked for again, and the result a Hermes call
 reads out · job results, chat replies (a job's thread reply, and the open
-chat's latest reply in a chat call's instructions) and read_chat as Gemini, Qwen, Grok,
+chat's latest turns a chat call is seeded with) and read_chat as Gemini, Qwen, Grok,
 GPT-Live and Local Live get them, on the phone and the Watch, and a
 Hermes call's reply in its instructions · the
 notifier's line for a spoken turn, which tells the model its answer is
@@ -1270,7 +1327,7 @@ cards, read from the bot's profile, see Pictures in messages)
 - Streaming speech: `Conduit/Voice/SpokenMediaTagFilter.swift`, used by `Conduit/Voice/SpokenTextFilter.swift` (Classic, Read Aloud's Now Playing) and `Conduit/Voice/LocalLive/SpokenVisualSplitter.swift` (Local Live, which puts the files on the call's screen)
 - Read Aloud: `Conduit/Voice/MessageReadAloudController.swift` (toggle)
 - Live read-back: `Conduit/Voice/VoiceReadBack.swift` (plainSpeech)
-- What live models are handed: `Conduit/Voice/VoiceBackgroundJobs.swift` (completionPrompt, threadReplyPrompt, replyBlock), `Conduit/Services/AppState.swift` (liveVoiceThreadInstructions: the open chat's latest reply), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (a job's tool response, read_chat), `Shared/WatchVoice/WatchJobRelay.swift` (WatchJobAnswer.completionPrompt), `Shared/WatchVoice/VoiceChatToolText.swift` (readResult, and delegatedRead for GPT-Live's "Read chat:" in `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` and the Watch's `Shared/WatchVoice/WatchToolRelay.swift`)
+- What live models are handed: `Conduit/Voice/VoiceBackgroundJobs.swift` (completionPrompt, threadReplyPrompt, replyBlock), `Conduit/Services/AppState.swift` (liveVoiceThreadInstructions: the open chat's latest reply), `Conduit/Voice/VoiceHistory.swift` (VoiceResumeContext.chat: the chat's latest turns a chat call is seeded with), `Conduit/Voice/GeminiLive/GeminiLiveToolBridge.swift` (a job's tool response, read_chat), `Shared/WatchVoice/WatchJobRelay.swift` (WatchJobAnswer.completionPrompt), `Shared/WatchVoice/VoiceChatToolText.swift` (readResult, and delegatedRead for GPT-Live's "Read chat:" in `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` and the Watch's `Shared/WatchVoice/WatchToolRelay.swift`)
 - A Hermes call's result: `Conduit/Voice/HermesCalls.swift` (instructionBlock names files; spokenBrief uses plainSpeech)
 - Local Live's screen: `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (finish)
 - What the model reads: `notifier/turn_surface.py` (SPOKEN_HINT)
@@ -1280,14 +1337,14 @@ cards, read from the bot's profile, see Pictures in messages)
 - A tag is never said, and a line that was only a tag says nothing; the words around it, and a link's label or an image's alt text, are said as written. A tag in a `>` quote is text, as Hermes doesn't deliver it, and is said like the rest of the quote. A quoted tag needs a path: one starting at a root, a home folder or a drive, or ending in a known extension, so "social media: \"we're live!\"" is words in speech, for live models and in the chat bubble alike (#1449). A quoted line's path is text too, so it is said and handed to live models as written; Hermes sends no file for it (2026-10-28, #1434, after a Local voice call on the farm read "MEDIA:/opt/data/cache/audio/tts_….mp3" out and its microphone heard "media." back).
 - Streaming voices hold from where a tag may begin (with its emphasis or `[label](`) to the end of its line, and only while it can still be one: `MEDIA:` with a path after it, or a directive. Prose such as "social media: we shipped" is said as it comes; a `[` with no `]` waits up to 80 characters, then is said as it comes (Local Live's splitter, older than this, holds a `[` until its `)` or the line's end, for links). Once a tag may have begun, the rest of its line waits for the line's end, the price of a reply being said the same however it is split (#1449). Text that can't start a tag goes out as it came, its chunks unchanged ("One " then "turn."), so a space said before a tag that arrives later stays, and "Hello!" is said while a "!" after a space or mark waits for a possible image.
 - Local Live puts a tagged file on the call's screen, as the chat shows it (a tag written as a link included), even when the model showed its own card or the call cut the reply off for its own line (#1449).
-- A live model is told of a file by name ("(a file in the chat: report.pdf)"), never its path: a job's result, a chat reply, a chat read into the call and the reply a Hermes call is about alike (#1449).
+- A live model is told of a file by name ("(a file in the chat: report.pdf)"), never its path: a job's result, a chat reply, a chat read into the call, the chat's turns a call is seeded with (#1989) and the reply a Hermes call is about alike (#1449).
 - A file card opens its file in the chat's viewers; a Markdown file opens in the Markdown reader Artifacts uses, formatted, falling back to Quick Look when it isn't UTF-8 or is over 16 MB (2026-11-06, #1884, carrying #1879).
 - A spoken message's line tells the model its answer is heard: say it in words, not with text_to_speech or a sound file of its own; a file the user asks for is still fine. Hermes' own spoken-reply note isn't on every Hermes (2026-10-28, #1434, notifier #444, 0.115.1).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-07, #1914 (a group room's bot messages draw their tags as files too, read from the bot's profile; voices unchanged, rooms have none); 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1434, carried in #1449.
+**Checked:** 2026-11-08, #1989 (the chat's turns a chat call is seeded with name their files, issue 1983); 2026-11-07, #1914 (a group room's bot messages draw their tags as files too, read from the bot's profile; voices unchanged, rooms have none); 2026-11-06, #1884 (a Markdown file card opens the Markdown reader, as Artifacts does since #1879); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-30, #1524 (Hermes Desktop's directives are read alongside, with their own entry, Cards made for Hermes Desktop); 2026-10-28, #1434, carried in #1449.
 
 ## Qwen direct voice
 
@@ -3585,11 +3642,11 @@ no models yet it says so, and keeps a route's own provider and model, #1979)
 **Code**
 - The rule: `Conduit/Views/ModelPickerView.swift` (ModelCatalogState, KeptModelCatalog, and the model sheet's catalogStateRows, quickPicksSection, modelSection, searchResultsSection, catalogFailedRow, modelRowsLocked, loadModels), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer: an answer that isn't one is a failed read)
 - Model page: `Conduit/Views/AuxiliaryViews.swift` (ModelCatalogPlaceholder, ProfileModelSettingsDetail, DelegationModelSettings, FallbackModelsSettings)
-- Bots: `Conduit/Views/BotModelPicker.swift` (load, loadFailedRows)
+- Bots: `Conduit/Views/BotModelPicker.swift` (load), `Conduit/Views/ModelChooserPage.swift` (failedRows, every setting's Model page)
 - Helper models: `Conduit/Views/HelperModelViews.swift` (HelperModelsPage's failed row and read, HelperModelsSettingsSection's read and its row hidden on a Hermes without the slots)
 - Providers: `Conduit/Views/ProviderSettingsViews.swift` (ProviderDetailPage's modelsSection and catalogFailedRow, ModelPageProviders.reloadCatalog)
 - Voice and Pulse: `Conduit/Views/GeminiLiveViews.swift` (the voice job and voice reply model settings: VoiceJobModelSettingsSection.loadProviders and modelsAnswered, VoiceReplyModelSettingsSection.read, tryAgain, reloadProviders and modelsAnswered, VoiceReplyModelPicks.readDidFail), `Conduit/Views/PulseSettingsViews.swift` (Settings > Pulse's model picker, loadModels and modelsAnswered), `Conduit/Views/AuxiliaryViews.swift` (ModelCatalogPlaceholder's failed row under them), `Conduit/Services/AppState.swift` (loadModelProviders, keptModelProviders)
-- Kanban: `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanModelOverrideSheet's catalogSection, showKept, optionsAnswered and loadOptions), `Conduit/Services/KanbanService.swift` (fetchModelOptions keeps an answer with a model to offer; offerable), `Conduit/Services/KanbanStore.swift` (keptModelOptions), `Conduit/Models/KanbanModels.swift` (KanbanModelOptionsResponse drops a provider row it can't read on its own)
+- Kanban: `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanModelOverrideSheet's chooserCatalog, catalogFooter, showKept, optionsAnswered and loadOptions), `Conduit/Services/KanbanService.swift` (fetchModelOptions keeps an answer with a model to offer; offerable), `Conduit/Services/KanbanStore.swift` (keptModelOptions), `Conduit/Models/KanbanModels.swift` (KanbanModelOptionsResponse drops a provider row it can't read on its own)
 - Tests: `ConduitTests/KanbanTests.swift` (testTheModelOverrideOpensOnTheRosterItListedLastTime), `ConduitTests/KanbanV2Tests.swift` (testModelOptionsDecodeTolerantly)
 
 **Rulings**
@@ -3597,13 +3654,13 @@ no models yet it says so, and keeps a route's own provider and model, #1979)
 - A list that didn't load is never edited or saved: Save stays off until the catalog is in.
 - The Model page's editors open on the catalog kept from Hermes' last answer (see Screens that open on their last answer); a read that fails leaves it up with "Could not load models." and Try Again under it, and Save stays off until Hermes answers (#1552). A Default model save reads the catalog again after, so the provider it marks in use, whose models an inherited delegate shows, follows the save (#1555).
 - The model sheet and a bot's model picker open on the models kept from Hermes' last `model.options` answer the same way, with "Could not load models." and Try Again under them (under the sheet's search matches too) after a read that fails, a later one after Hermes answered included (#1816). On the sheet itself, which lists its providers on an All providers page, that row sits under its Quick picks, or alone where they'd be when there are none, and the page says it under its providers (#1984); their kept models wait for Hermes' answer before they can be picked (#1567).
-- The voice job, voice reply and Settings > Pulse pickers keep the models they list (kept from Hermes' last answer, or none) when the read fails, and say "Could not load models." with Try Again under the Model menu, which waits for Hermes' answer before a model is picked, as the sheet's rows do. The voice reply section says it when the read of its setting fails too, with a setting kept (with none it stays hidden on Voice settings, as on a Hermes without the slot, until the page's next check asks again; a helper's page, which is the section alone, says it with nothing kept too, #1956), its Try Again asks for both, and a failure older than the answer shown says nothing (#1567). Settings > Pulse's picker lists the models of the profile Pulse runs in, read from the dashboard's route for that profile when it isn't the one open, and drops another profile's list when Pulse's changes (2026-11-03, #1684, issue 1681).
+- The voice job, voice reply and Settings > Pulse pickers keep the models they list (kept from Hermes' last answer, or none) when the read fails, and say "Could not load models." with Try Again under the Model row and on its Model page, whose models wait for Hermes' answer before one is picked, as the sheet's rows do. The voice reply section says it when the read of its setting fails too, with a setting kept (with none it stays hidden on Voice settings, as on a Hermes without the slot, until the page's next check asks again; a helper's page, which is the section alone, says it with nothing kept too, #1956), its Try Again asks for both, and a failure older than the answer shown says nothing (#1567). Settings > Pulse's picker lists the models of the profile Pulse runs in, read from the dashboard's route for that profile when it isn't the one open, and drops another profile's list when Pulse's changes (2026-11-03, #1684, issue 1681).
 - The Kanban model override, in the task composer and on a task's page, opens on the roster the kanban plugin gave last time, kept once per dashboard, and its models wait for the plugin's answer before one is picked. A read that fails keeps them up with "Could not load models." and Try Again, the free-text entry under them; "No curated model catalog available" and the free-text entry are otherwise only for a roster that loaded empty, and neither shows before the first read answers. A roster with nothing to offer (a plugin whose inventory is down) is shown but never kept over the last one. Try Again over a kept roster shows no loader, as the model sheet's doesn't (#1584). A provider row Conduit can't read drops on its own, so one bad row never empties the roster (#1588, from #1584's review).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #1984 (the model sheet's loading, failed and empty states show where its Quick picks go and on its All providers page; a failed read says so on the sheet with or without Quick picks); 2026-11-07, #1979 (Delegate fallback models share the Fallback models editor's states; the route sheet says when Hermes has listed no models yet); 2026-11-07, #1956 (a helper's page with nothing kept says a failed read with Try Again, VoiceReplyModelPicks.shown; Voice settings stays hidden as before); 2026-11-05, #1823 (Try Again after a failed Refresh models asks for the live lists again; see Model lists Hermes is still fetching); 2026-11-05, #1816 (the model sheet says a failed read under rows Hermes gave too, as a bot's Model page does, for Refresh models and the read again, see Model lists Hermes is still fetching); 2026-11-03, #1684 (Settings > Pulse's picker lists the models of Pulse's profile); 2026-11-01, #1625 (the Helper models pages reuse the voice reply section and its failed row); 2026-11-01, #1616 (a provider's page in Models & providers picks a default only from a catalog Hermes gave since the page opened, and says a failed read with Try Again; the Model sheet's Add a provider row reads the models again when its sheet closes); 2026-10-31, #1588 (from #1584's review, a provider row the Kanban override can't read drops on its own, never the whole roster); 2026-10-31, #1584 (the Kanban model override opens on its kept roster, picked once the plugin answers, and says a failed read with Try Again, closing its gap; from its review, neither the empty roster's note nor the free-text entry shows before the first read answers, and a roster with nothing to offer isn't kept); 2026-10-31, #1567 (the model sheet and a bot's model picker open on the kept models, picked once Hermes answers, and the bot picker's failed read offers Try Again, closing its gap; the voice and Pulse pickers say a failed read with Try Again, the voice reply section's setting read included, closing theirs, and their Model menus wait for Hermes' answer); 2026-10-31, #1563 (the voice and Pulse pickers' loader, loadModelProviders since #1558, and its gap brought up to date; nothing else changed); 2026-10-31, #1555 (a Default model save reads the catalog again for its kept copy; the Save buttons' rule moved to KeptAnswerGate); 2026-10-31, #1552 (the Model page's editors open on a kept catalog, with Try Again under it when the read fails); 2026-10-27, at #1395 (search matches show only once the catalog is in; loading, failed and empty states unchanged, the Kanban composer's included); at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
+**Checked:** 2026-11-08, #1992 (every setting's Model page says a failed read with Try Again under the models, from the setting's own read; Save and the pick wait as before); 2026-11-08, #1984 (the model sheet's loading, failed and empty states show where its Quick picks go and on its All providers page; a failed read says so on the sheet with or without Quick picks); 2026-11-07, #1979 (Delegate fallback models share the Fallback models editor's states; the route sheet says when Hermes has listed no models yet); 2026-11-07, #1956 (a helper's page with nothing kept says a failed read with Try Again, VoiceReplyModelPicks.shown; Voice settings stays hidden as before); 2026-11-05, #1823 (Try Again after a failed Refresh models asks for the live lists again; see Model lists Hermes is still fetching); 2026-11-05, #1816 (the model sheet says a failed read under rows Hermes gave too, as a bot's Model page does, for Refresh models and the read again, see Model lists Hermes is still fetching); 2026-11-03, #1684 (Settings > Pulse's picker lists the models of Pulse's profile); 2026-11-01, #1625 (the Helper models pages reuse the voice reply section and its failed row); 2026-11-01, #1616 (a provider's page in Models & providers picks a default only from a catalog Hermes gave since the page opened, and says a failed read with Try Again; the Model sheet's Add a provider row reads the models again when its sheet closes); 2026-10-31, #1588 (from #1584's review, a provider row the Kanban override can't read drops on its own, never the whole roster); 2026-10-31, #1584 (the Kanban model override opens on its kept roster, picked once the plugin answers, and says a failed read with Try Again, closing its gap; from its review, neither the empty roster's note nor the free-text entry shows before the first read answers, and a roster with nothing to offer isn't kept); 2026-10-31, #1567 (the model sheet and a bot's model picker open on the kept models, picked once Hermes answers, and the bot picker's failed read offers Try Again, closing its gap; the voice and Pulse pickers say a failed read with Try Again, the voice reply section's setting read included, closing theirs, and their Model menus wait for Hermes' answer); 2026-10-31, #1563 (the voice and Pulse pickers' loader, loadModelProviders since #1558, and its gap brought up to date; nothing else changed); 2026-10-31, #1555 (a Default model save reads the catalog again for its kept copy; the Save buttons' rule moved to KeptAnswerGate); 2026-10-31, #1552 (the Model page's editors open on a kept catalog, with Try Again under it when the read fails); 2026-10-27, at #1395 (search matches show only once the catalog is in; loading, failed and empty states unchanged, the Kanban composer's included); at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
 
 ## Model lists Hermes is still fetching
 
@@ -3624,7 +3681,7 @@ Fallback models editor's read again, #1979) · Subagent routing's route sheet
 
 **Code**
 - The read again and Refresh models: `Conduit/Views/ModelPickerView.swift` (ModelCatalogSettle, RefreshModelsButton, the model sheet's loadModels and refreshModelsButton), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer's refresh), `Conduit/Services/AppState.swift` (loadModelProviders' refresh)
-- Bots: `Conduit/Views/BotModelPicker.swift` (load, the toolbar's Refresh models)
+- Bots: `Conduit/Views/BotModelPicker.swift` (load, refreshModels), `Conduit/Views/ModelChooserPage.swift` (the toolbar's Refresh models)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ProfileModelSettingsDetail, DelegationModelSettings and FallbackModelsSettings' tasks and settleCatalog), `Conduit/Views/ProviderSettingsViews.swift` (ModelPageProviders' task and readAgain, ProviderDetailPage's task), `Conduit/Views/GeminiLiveViews.swift` (VoiceJobModelSettingsSection's loadProviders, VoiceReplyModelSettingsSection's read and reloadProviders), `Conduit/Views/PulseSettingsViews.swift` (the model picker's task and loadModels)
 - Tests: `ConduitTests/HermesClientTests.swift` (testRefreshModelsAsksHermesForLiveListsAndAPlainReadDoesNot, testRefreshModelsOnAHermesWithoutTheFlagReadsAgainWithoutIt)
 
@@ -3636,7 +3693,7 @@ Fallback models editor's read again, #1979) · Subagent routing's route sheet
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-07, #1979 (Delegate fallback models read the models again as the Model page's fallbacks do); 2026-11-07, #1956 (a helper's page now runs the section's read and its read again, which never ran there before); 2026-11-05, #1823 (Try Again after a failed Refresh models refreshes again); 2026-11-05, #1816 (added: the read again in every model picker, Refresh models in the model sheet and a bot's Model page).
+**Checked:** 2026-11-08, #1992 (each setting keeps its read again; a bot's Model page keeps Refresh models, now in the shared page's toolbar); 2026-11-07, #1979 (Delegate fallback models read the models again as the Model page's fallbacks do); 2026-11-07, #1956 (a helper's page now runs the section's read and its read again, which never ran there before); 2026-11-05, #1823 (Try Again after a failed Refresh models refreshes again); 2026-11-05, #1816 (added: the read again in every model picker, Refresh models in the model sheet and a bot's Model page).
 
 ## The Model sheet's settings
 
@@ -3675,32 +3732,30 @@ Typing part of a model's name in a model picker to find it, where each match
 names the provider that serves it, since several providers often offer the
 same model and the pick switches to that provider's route.
 
-**Siblings:** the model sheet (iPhone, iPad and Mac) · a bot's model
-picker · the Kanban task's model override · the model sheet's Edit
-(visibility) search (not needed: its matches sit under their provider's name)
-· the Model page's Default, Delegate and Fallback model editors and the voice
-job, voice reply, helper and Pulse model menus (not needed: the provider is
-picked first, or the menu opens a provider's models from its name, and the
-row reads "model · provider", see Model lists grouped by provider) · Text (not needed: no
-README, docs or Settings caption describes the pickers)
+**Siblings:** the model sheet (iPhone, iPad and Mac) · every model
+setting's Model page: a bot's, the Kanban override's, the Model page's
+Default, Delegate and Fallback editors', the route sheet's and the voice
+job, voice reply, Helper and Pulse models' (done: one page, #1992) · Edit's
+(visibility) search (not needed: its matches sit under their provider's
+name) · Text (not needed: no README, docs or Settings caption describes the
+pickers)
 
 **Code**
 - Matching and the result row: `Conduit/Views/ModelSearch.swift` (ModelSearchQuery, modelSearchMatches, modelSearchHighlight, modelSearchFocusesOnOpen, ModelSearchResultText)
 - Model sheet: `Conduit/Views/ModelPickerView.swift` (searchField, searchResultsSection, pickHighlightedMatch, modelRow's showsProvider)
-- Bots: `Conduit/Views/BotModelPicker.swift` (searchResults)
-- Kanban: `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanModelOverrideSheet's searchMatches)
+- Every setting's Model page: `Conduit/Views/ModelChooserPage.swift` (searchResults, matchRow)
 - Tests: `ConduitTests/ModelPickerTests.swift`
 
 **Rulings**
 - Every match shows its provider under the model; the same model from two providers is two matches (Eric, 2026-10-27, #1388).
 - Every word typed must appear in the model's id or label or the provider's names, so "sonnet openrouter" finds one provider's Sonnet.
-- The model sheet's search hides models and providers hidden with Edit; Edit's own search still finds them.
+- The model sheet's search hides models and providers hidden with Edit; Edit's own search still finds them. A setting's Model page finds them too, marked Hidden, so a setting can still be put on one (Eric 2026-11-08, #1992).
 - On a Mac or with a hardware keyboard the sheet opens with the search focused, ↑ and ↓ move a highlight, Return picks the highlighted match as a tap would (the sheet stays open, per "The Model sheet's settings") and Esc closes the sheet. On touch the keyboard stays down until the field is tapped, and Return only puts it away.
 
 **Open gaps**
 - A hardware keyboard connected while the sheet is open doesn't turn on the highlight until the sheet opens again.
 
-**Checked:** 2026-11-08, #1984 (the search sits under the current model card, which now says a switch's error or deferral in place of the matches' own status rows; matching unchanged); 2026-11-05, #1823 (#1816 checked here: the search and its highlight kept through the read again and Refresh models, see Model lists Hermes is still fetching); 2026-11-05, #1787 (the menus' models sit under their provider's submenu; a bot's picker closes its providers but its search still lists every match); 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
+**Checked:** 2026-11-08, #1992 (every setting's Model page searches, hidden models marked Hidden); 2026-11-08, #1984 (the search sits under the current model card, which now says a switch's error or deferral in place of the matches' own status rows; matching unchanged); 2026-11-05, #1823 (#1816 checked here: the search and its highlight kept through the read again and Refresh models, see Model lists Hermes is still fetching); 2026-11-05, #1787 (the menus' models sit under their provider's submenu; a bot's picker closes its providers but its search still lists every match); 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
 
 ## Model lists grouped by provider
 
@@ -3708,30 +3763,28 @@ A list of every provider's models, shown as its providers, each opened to
 its models when tapped, so a long catalog stays short (Eric 2026-11-05).
 
 **Siblings:** the model sheet (done before: its provider cards open one at a
-time, on its All providers page) · a bot's Model page, from New Bot, Edit Bot and Edit Bot > Work's
-Workstream Model (done) · the voice job, voice reply and Helper models menus
-and Settings > Pulse's model menu (done: one shared menu, a submenu per
-provider) · the Model page's Default, Delegate and Fallback model editors
-(not needed: the provider is picked first, then its models) · the Kanban
-model override (done before: a disclosure per provider) · Searching for a
-model (every match still lists, whatever is closed) · Text (not needed: no
-caption describes the lists)
+time, on its All providers page) · every model setting's Model page (done:
+one page, see One Model page for every model setting, #1992; it took over a
+bot's Model page, the voice job, voice reply, Helper and Pulse menus'
+submenus, the Model page editors' provider-then-model menus and the Kanban
+override's disclosures) · Searching for a model (every match still lists,
+whatever is closed) · Text (not needed: no caption describes the lists)
 
 **Code**
-- Bot's Model page: `Conduit/Views/BotModelPicker.swift` (providerRow, expandedProviders, openPickedProvider)
-- Menus: `Conduit/Views/AuxiliaryViews.swift` (ConduitMenuGroup, ConduitMenuPicker's groups), `Conduit/Views/GeminiLiveViews.swift` (VoiceJobModelSettingsSection.modelMenuGroups), used by `Conduit/Views/PulseSettingsViews.swift` (modelSection) and `Conduit/Views/HelperModelViews.swift` (through VoiceReplyModelSettingsSection)
+- Every setting's Model page: `Conduit/Views/ModelChooserPage.swift` (providerRow, expandedProviders, openPickedProvider)
+- Tagged picks (voice, Helper, Pulse): `Conduit/Views/GeminiLiveViews.swift` (TaggedModelChoice)
 - Model sheet: `Conduit/Views/ModelPickerView.swift` (providerCard, allProvidersPage, openHeldProvider)
 - Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift` (testAPinnedProviderAndAnEndpointAreShownAndKept)
 
 **Rulings**
-- Providers start closed; a bot's Model page and the model sheet's All providers page open the one holding the pick, once, and a menu marks that provider's name with a check (Eric 2026-11-05, #1787; the All providers page is part of the sheet redesign Eric picked 2026-11-08, #1984).
-- A menu's default choice and a held model the catalog doesn't list sit above the providers, outside any submenu; the row names a pick as "model · provider" (#1787).
+- Providers start closed; a setting's Model page and the model sheet's All providers page open the one holding the pick, once, and a closed provider holding it shows a check (Eric 2026-11-05, #1787; the All providers page is part of the sheet redesign Eric picked 2026-11-08, #1984; every setting's page since #1992).
+- The setting's default choice and a held model the catalog doesn't list sit above the providers; the Settings row names a pick as its model, then its provider (#1787, #1992).
 - A pick saved under another spelling of a listed provider (an alias, `custom:<key>`) is that provider's row, checked there, never a held row above it (#1788).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #1984 (the model sheet's providers moved to an All providers page that opens on the provider holding the checked model; Quick picks lead the sheet, see Pinned and recent models); 2026-11-05, #1805 (ConduitMenuPicker's value goes under its name on one line when both don't fit, instead of wrapping; see Sheets in Settings' look); 2026-11-05, #1793 (the Model page draws on Settings' backdrop and cards, its grouping unchanged, see Sheets in Settings' look); 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
+**Checked:** 2026-11-08, #1992 (the settings menus and pages grouped this way became one Model page; rulings say page and row); 2026-11-08, #1984 (the model sheet's providers moved to an All providers page that opens on the provider holding the checked model; Quick picks lead the sheet, see Pinned and recent models); 2026-11-05, #1805 (ConduitMenuPicker's value goes under its name on one line when both don't fit, instead of wrapping; see Sheets in Settings' look); 2026-11-05, #1793 (the Model page draws on Settings' backdrop and cards, its grouping unchanged, see Sheets in Settings' look); 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
 
 ## Pinned and recent models
 
@@ -3740,17 +3793,17 @@ away above the full list of providers (Eric, 2026-11-08).
 
 **Siblings:** the composer's Model sheet's Quick picks (done: pinned, then
 recent) · a bot's Model page from New Bot, Edit Bot and Workstream Model
-(done: the pinned ones, and Pin/Unpin; not recents, which are live session
-switches) · the Model page's Default, Delegate and Fallback editors, the
-subagent route sheet, the Helper, voice job, voice reply and Pulse model
-menus and the Kanban model override (gap: moving to one shared chooser page
-that takes these, in its own PR) · Text (not needed: no caption describes
-them)
+(done: pinned, then recent, on the shared Model page; recents come only
+from live session switches) · the Model page's Default, Delegate and
+Fallback editors, the subagent route sheet, the Helper, voice job, voice
+reply and Pulse models, the Kanban model override and a custom endpoint's
+model (done: they open the same Model page, #1992) · Text (not needed: no
+caption describes them)
 
 **Code**
 - Store: `Conduit/Models/ModelQuickPicks.swift`, `Conduit/Services/AppState.swift` (modelQuickPicks, updateModelQuickPicks)
 - Model sheet: `Conduit/Views/ModelPickerView.swift` (quickPicksSection, pinButton, modelRow's Pin menu, switchModel records a switch)
-- Bot's Model page: `Conduit/Views/BotModelPicker.swift` (Pinned section, pinMenu)
+- Every setting's Model page: `Conduit/Views/ModelChooserPage.swift` (quickPicks, pinMenu), used by `Conduit/Views/BotModelPicker.swift` and the settings (see One Model page for every model setting)
 - Tests: `ConduitTests/ModelQuickPicksTests.swift`
 
 **Rulings**
@@ -3759,9 +3812,53 @@ them)
 - Every model row offers Pin or Unpin in its long-press menu; a Quick pick row also has a pin button.
 
 **Open gaps**
-- The settings model pickers don't show pins yet (see Siblings).
+- None known.
 
-**Checked:** 2026-11-08, #1984 (entry added)
+**Checked:** 2026-11-08, #1992 (every settings model picker lists the pinned and recent models on the shared Model page); 2026-11-08, #1984 (entry added)
+
+## One Model page for every model setting
+
+A model setting outside the composer is one row in Settings naming its
+model and provider, which opens the same Model page: the pick on top, with
+its reasoning as the Model sheet's rising bars where the setting has one,
+then search, Quick picks and every provider, closed (Eric 2026-11-08: the
+drop-down menus were unusable with long provider lists).
+
+**Siblings:** the Model page's Default model, Delegate model and Fallback
+models (done) · Delegate fallback models and Subagent routing's route sheet
+(done) · the Helper models pages and Voice settings' Voice replies (done:
+one section) · Voice jobs (done) · Settings > Pulse's model (done) · a bot's
+Model page from New Bot and Edit Bot, and Edit Bot > Work's Workstream
+Model (done) · the Kanban model override, from the task composer and a
+task's page (done) · a custom endpoint's Model after Find models (done: its
+models as one provider) · the composer's Model sheet (not needed: it
+switches the live session and keeps its own sheet; it shares Edit's editor,
+the bars and Quick picks) · a provider's page in Models & providers (not
+needed: a list of that provider's models already) · Local Live's and
+ElevenLabs' model fields (not needed: typed names, not Hermes' list) ·
+Watch, CarPlay and group rooms (not needed: no model settings) · Text
+(done: the Default and Delegate model captions no longer describe two
+menus)
+
+**Code**
+- Page and row: `Conduit/Views/ModelChooserPage.swift` (ModelChooserPage, ModelChooserCatalog, ModelChooserReasoning, ModelChooserLinkRow.lines)
+- Hidden models: `Conduit/Views/ModelVisibilityEditor.swift` (ModelVisibility.visible and isHidden, ModelVisibilityEditor, ModelVisibilityEditorPage), shared with `Conduit/Views/ModelPickerView.swift`
+- Reasoning: `Conduit/Views/Components/ReasoningEffortBars.swift` (levels, unsetTitle)
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (ProfileModelSettingsDetail, DelegationModelSettings, FallbackModelsSettings' chooser and addChooser), `Conduit/Views/DelegationRoutingViews.swift` (DelegationModelRouteSheet), `Conduit/Views/GeminiLiveViews.swift` (TaggedModelChoice, TaggedModelChooserLink, VoiceJobModelSettingsSection, VoiceReplyModelSettingsSection's pickers and warnings), `Conduit/Views/PulseSettingsViews.swift` (modelSection), `Conduit/Views/ProviderSettingsViews.swift` (CustomEndpointForm)
+- Bots and Kanban: `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanModelOverrideSheet's chooserCatalog)
+- Tests: `ConduitTests/ModelQuickPicksTests.swift`, `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift` (testAPinnedProviderAndAnEndpointAreShownAndKept)
+
+**Rulings**
+- Every model setting outside the composer opens this page; none is a drop-down menu (Eric 2026-11-08, #1992). Each keeps its own reads, saves and Save button; the page only shows what the setting holds and hands back a pick.
+- The setting's own default ("Same as chats", "Profile default", "Inherit chat model", "Inherit from profile") is the first choice; a pick the catalog doesn't list stays on top as saved, never as another model.
+- Models hidden with Edit leave every page's lists, as in the Model sheet. A setting on a hidden model still shows it on top, marked Hidden, and search finds hidden models, marked Hidden, so a setting can still be put on one (Eric 2026-11-08). The page has its own Edit.
+- A setting's reasoning sits in the top card as the rising bars, with the setting's own levels (a helper slot, a voice job: no Ultra; a delegate: no Off) and its inherit choice under them. The page closes on a pick unless it has reasoning to set.
+- Add fallback opens the page and adds the model picked.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-08, #1992 (entry added)
 
 ## The + that makes something new
 
@@ -4210,7 +4307,7 @@ notifier's README and CHANGELOG (done) · README's Settings list (done)
 **Open gaps**
 - Hermes' Reset all (`__reset__`) isn't offered: it would reset Pulse's slot too.
 
-**Checked:** 2026-11-07, #1956 (a helper's page and Voice settings' Voice replies were blank: their reads sat on an empty Group and never ran; loader, Try Again and no-slot line added); 2026-11-05, #1823 (#1816 checked here: the Helper models pages read their models again after opening, see Model lists Hermes is still fetching); 2026-11-01, #1638 (readers asking together share one read; a save drops it and its own read after is the shared one); 2026-11-01, #1636 (the Model page reads the slots too, so Remove names them as Hermes holds them); 2026-11-01, #1632 (provider-only pins, slots on their own endpoint, kept slots follow a save, the Predictive caption waits for the slot; a gap closed); 2026-11-01, #1625 (entry added)
+**Checked:** 2026-11-08, #1992 (a helper's model and reasoning are picked on the shared Model page, its warnings and Use It Anyway on it too; see One Model page for every model setting); 2026-11-07, #1956 (a helper's page and Voice settings' Voice replies were blank: their reads sat on an empty Group and never ran; loader, Try Again and no-slot line added); 2026-11-05, #1823 (#1816 checked here: the Helper models pages read their models again after opening, see Model lists Hermes is still fetching); 2026-11-01, #1638 (readers asking together share one read; a save drops it and its own read after is the shared one); 2026-11-01, #1636 (the Model page reads the slots too, so Remove names them as Hermes holds them); 2026-11-01, #1632 (provider-only pins, slots on their own endpoint, kept slots follow a save, the Predictive caption waits for the slot; a gap closed); 2026-11-01, #1625 (entry added)
 
 ## Subagent settings
 
@@ -5701,7 +5798,7 @@ model-facing text (none describe the glow)
 
 **Code**
 - Colors: `Conduit/Services/ProfileGlowColors.swift`, `Conduit/Services/AppState+V2Shell.swift` (profileGlowTint), `Conduit/Services/AppState.swift` (profileGlowColors, setProfileGlowColor, conversationIdentityProfile), `Conduit/Services/ProfileAppearanceStore.swift` (picks)
-- Backdrop: `Conduit/Theme.swift` (ConduitBackdrop), `Conduit/Views/V2/V2TopBar.swift` (V2Backdrop, glowProfile)
+- Backdrop: `Conduit/Theme.swift` (ConduitBackdrop; its drift, see Backdrop drift), `Conduit/Views/V2/V2TopBar.swift` (V2Backdrop, glowProfile)
 - Open chat: `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/ChatRowState.swift` (agentGlowTint), `Conduit/Views/ModelPickerView.swift`, `Conduit/Views/AuxiliaryViews.swift` (ContextSheet, SettingsBackdrop)
 - Elsewhere: `Conduit/Views/V2/V2SettingsTab.swift`, `Conduit/Views/ProfilePickerSheet.swift`, `Conduit/Views/V2/V2AllProfilesSheet.swift`
 - Tests: `ConduitTests/ProfileGlowColorTests.swift`, `ConduitTests/BotModeTests.swift` (conversationIdentityProfile, the bot's glow)
@@ -5714,7 +5811,37 @@ model-facing text (none describe the glow)
 - The drawer shell (Appearance, V2 off) draws every chat on the gold backdrop, a Bot Chat included, though the Model and Context sheets over it take the chat's glow.
 - The chat's other sheets (gateway diagnostics, workspace browser, delegate agents, pinned replies) never took a profile glow and stay gold.
 
-**Checked:** 2026-11-06, #1874 (group room names and bubbles take the glow).
+**Checked:** 2026-11-08, #1994 (the backdrop's drift has an entry of its own, Backdrop drift; the glow color is unchanged); 2026-11-06, #1874 (group room names and bubbles take the glow).
+
+## Backdrop drift
+
+The backdrop's two glows (the warm one in the glow color at the top, the blue
+one at the bottom) drift slowly out and back over 26 seconds, ten frames a
+second, on the app's main surfaces, and hold still where they are when the
+drift pauses.
+
+**Siblings:** the open chat (chats, project chats, Bot Chat, group rooms) ·
+the Chats, Bots and Tasks tab roots · the persistent iPad sidebar column · sign-in ·
+the copy behind a bar's fade before iOS 26 and on a Mac (`V2LegacyEdgeBar`,
+the same view) · the working line's breathing (same pause rules) · the Settings tab root, the iPad chat placeholder,
+sheets, pushed pages and the iPhone drawer (still by design) · the Apple Watch (no
+backdrop drift; its call bars run their own timeline) · Settings captions and
+model-facing text (none describe it)
+
+**Code**
+- `Conduit/Theme.swift` (ConduitBackdrop, ConduitBackdropGlows, ConduitBackdropMotionPolicy, ConduitBackdropMotionClock), `Conduit/Views/V2/V2TopBar.swift` (V2Backdrop, V2LegacyEdgeBar), `Conduit/Views/ChatView.swift` (ConduitBreathing)
+- Tests: `ConduitTests/AppStateVoiceCapabilityTests.swift` (the policy, the clock, ConduitBackdropGlows); UI tests' launch: `ConduitUITests/V2NavigationHelpers.swift` (XCUIApplication.conduit), `ConduitScreenshots/AppStoreScreenshotTests.swift`
+
+**Rulings**
+- Only main surfaces drift (`drifts: true`); sheets and pushed screens keep the still composition (#474).
+- The drift pauses with the app inactive, Reduce Motion, Low Power Mode, a hot device (serious or critical), or Conduit idle for a couple of minutes with no turn running, and resumes from the phase it showed, never jumping (#465, #474).
+- UI tests and the App Store screenshots launch with `CONDUIT_STILL_BACKDROP=1` (`XCUIApplication.conduit()`), which holds the drift still: XCUITest waits for the app to settle before each step, and a drifting backdrop never settles (about two minutes a tap, #1994).
+- The glows are drawn from the timeline's tick, so they move on every frame. Drawn from a closure that only ran when something else redrew the backdrop, they sat still and then jumped across the screen in one frame whenever an input changed (the drift pausing or resuming, a color, a size), which looked like the backdrop going dark and coming back (issue 1980).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-08, #1994 (added; the glows move with the timeline, issue 1980; the Tasks root drifts like Chats and Bots, Settings and the iPad chat placeholder hold still; UI tests and screenshots hold it still; on the iPad simulator the drift ran its full cycle and held its phase through an idle pause and resume).
 
 ## Profile names
 

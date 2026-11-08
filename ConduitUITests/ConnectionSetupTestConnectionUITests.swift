@@ -27,7 +27,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
     }
 
     func testStagedTestSuccessShowsAllStagesAndEnablesHandoff() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:password"]
         app.launch()
 
@@ -56,7 +56,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
     }
 
     func testAuthenticationFailureKeepsPriorStagesAndOffersEditCredentials() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:authenticationRejected"]
         app.launch()
 
@@ -87,7 +87,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
     }
 
     func testRateLimitedTestOffersNoRetryAction() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:rateLimited"]
         app.launch()
 
@@ -112,7 +112,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         // handoff back to LoginView — where the user taps Connect and the
         // existing WebView flow runs. No real browser login is automated
         // here.
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:interactiveSignInRequired"]
         app.launch()
 
@@ -166,7 +166,7 @@ final class ConnectionSetupTestConnectionUITests: XCTestCase {
         // Password and browser sign-in both work and no credentials were
         // tested: Review authorizes the address-only handoff and offers
         // Enter Credentials to test the password method instead.
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += ["-CONNECTION_SETUP_TEST_RESULT", "auth:signInChoice"]
         app.launch()
 

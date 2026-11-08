@@ -42,6 +42,16 @@ enum LiveTurnProgress {
         case .clarify, .inputPrompt:
             next.phase = HermesTurnPhase.input.rawValue
             next.tool = nil
+        case .connection(_, let card):
+            // A connect card waits on the user like an input card; its
+            // settlement hands the turn back to Hermes.
+            if card.isOpen {
+                next.phase = HermesTurnPhase.input.rawValue
+                next.tool = nil
+            } else {
+                guard state.turnPhase.waitsOnUser else { return nil }
+                next.phase = HermesTurnPhase.thinking.rawValue
+            }
         case .approvalWithdrawn, .clarifyExpire, .inputPromptExpire:
             guard state.turnPhase.waitsOnUser else { return nil }
             next.phase = HermesTurnPhase.thinking.rawValue
