@@ -1403,9 +1403,6 @@ final class AppState: ObservableObject {
             InteractionIdleState.shared.setTurnRunning(turnState.isRunning)
             // Its reply sends no push while the chat is on screen.
             updateChatOnScreen()
-            // A settled turn has no notes left running, however it settled
-            // (a resume or a chat switch writes idle without setRunning).
-            if !turnState.mayBeRunning { runningTurnNoteIDs = [] }
         }
     }
     /// Whether `turnState` may have missed server-side turn edges. Set at
@@ -20592,6 +20589,10 @@ final class AppState: ObservableObject {
         } else {
             turnState = TurnState.fromGatewayRunning(result.snapshot.running)
         }
+        // A resume that says the turn is over settles it, as setRunning(false)
+        // does: its notes are no longer running (a forced idle that only
+        // unsticks a sync keeps them; their ids are unique to this turn).
+        if result.snapshot.running == false { runningTurnNoteIDs = [] }
         // The resume snapshot is authoritative about the turn state.
         turnLifecycleEvidence = TurnLifecycleEvidence(
             revision: turnLifecycleEvidence.revision &+ 1,
