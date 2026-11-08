@@ -1784,6 +1784,8 @@ final class AppState: ObservableObject {
     /// Bumped by an explicit roster reload so rows re-fetch their avatar
     /// (another client may have changed it; the roster carries no version).
     @Published private(set) var botAvatarGeneration = 0
+    /// When `reloadBotRoster` last asked for every picture again.
+    private(set) var botAvatarsReloadedAt: Date?
     private var botAvatarFetchedGeneration: [String: Int] = [:]
     /// Name to the generation its in-flight fetch serves, so a newer
     /// generation can start its own fetch instead of being deduped away.
@@ -2865,6 +2867,8 @@ final class AppState: ObservableObject {
     var stepSummaryEarlyAnswers: [String: String] = [:]
     /// Runs asked about and not answered yet, with when they were asked.
     @Published var stepSummaryRequested: [ChatStepSummaries.Run: Date] = [:]
+    /// Test seam: answers `POST /side-question` in place of the dashboard.
+    var stepSummarySender: (([String: Any]) async throws -> [String: Any])?
     /// The suggestion row's guesses (AppState+Predictive.swift).
     let predictive = PredictiveStore()
     /// What the row asks the composer to do: send, edit or insert a guess.
@@ -7842,6 +7846,13 @@ final class AppState: ObservableObject {
         )
         restoreActiveSessionState(for: activeProfile)
         restorePinnedSessions(for: activeProfile)
+        // The saved Chats list and the chat it opens on are read ahead off
+        // the main thread now, while the sign-in reads the keychain, so the
+        // saved copy launch shows comes from memory more often than from a
+        // file decoded on the main thread (issue 1963).
+        if shouldLoadSavedConnection, let initialDashboardID {
+            self.offlineChatCache.prefetch(dashboardID: initialDashboardID, profile: activeProfile, transcripts: 1)
+        }
         if shouldLoadSavedConnection {
             beginLaunchSignIn()
         }
@@ -8848,13 +8859,15 @@ final class AppState: ObservableObject {
         }
         let transcript: AnyPublisher<Void, Never>
         switch engine {
-        case .geminiLive: transcript = geminiLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
-        case .qwenLive: transcript = qwenLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
-        case .gptLive: transcript = gptLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
-        case .grokLive: transcript = grokLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
-        case .localLive: transcript = localLiveController.$transcript.map { _ in () }.eraseToAnyPublisher()
+        case .geminiLive: transcript = geminiLiveController.transcriptChanges
+        case .qwenLive: transcript = qwenLiveController.transcriptChanges
+        case .gptLive: transcript = gptLiveController.transcriptChanges
+        case .grokLive: transcript = grokLiveController.transcriptChanges
+        case .localLive: transcript = localLiveController.transcriptChanges
         }
-        // @Published fires before the change lands: read it on the next turn.
+        // Read on the next turn, after the change has landed. The
+        // transcript publishes a growing line at most ten times a second
+        // (issue 1960), so a capture doesn't run per word.
         voiceCallTranscriptSubscription = transcript
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in
@@ -12780,8 +12793,15 @@ final class AppState: ObservableObject {
     }
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "") {
         // An agent's new message may have a board kept for it (RoomBoards).
-        didSet { roomReplayChanged(from: oldValue) }
+        didSet {
+            roomReplayRevision &+= 1
+            roomReplayChanged(from: oldValue)
+        }
     }
+    /// Counts every change to `activeRoomReplay`, so the header's kept
+    /// statuses are read again after any replacement, even one that keeps
+    /// the same range and newest event (issue 1968).
+    private var roomReplayRevision = 0
     /// The open room's boards on the host, oldest first (AppState+RoomBoards).
     @Published var activeRoomBoards: [RoomBoard] = []
     var roomBoardsTask: Task<Void, Never>?
@@ -12896,7 +12916,7 @@ final class AppState: ObservableObject {
         if let activity = activeRoomDriverStatus?.memberActivity {
             return GroupRoomTurns.activeResponder(activity: activity, members: room?.members ?? [])
         }
-        let key = "\(activeRoomReplay.roomID)|\(activeRoomReplay.cursor)|\(room?.revision ?? -1)"
+        let key = "\(roomReplayKey)|\(room?.revision ?? -1)"
             + "|\(activeRoomDriverStatus?.maxRounds ?? 0)"
         let context = activeRoomContext
         if let cached = roomResponderCache, cached.key == key, cached.context == context { return cached.member }
@@ -12918,9 +12938,14 @@ final class AppState: ObservableObject {
     /// Each member's pill under the open room's title, by `identityKey`
     /// (GroupRoomTurns.memberStatuses). A driver that reports idle has no
     /// live turns, so only outcomes and approvals show.
+    ///
+    /// Kept for its inputs, like `activeRoomResponder`: the room's header
+    /// asks on every render, and every publish elsewhere renders it, while
+    /// the walk goes through the whole log with mention matching and
+    /// hashing (issue 1968).
     var activeRoomMemberStatuses: [String: GroupMemberStatus] {
-        GroupRoomTurns.memberStatuses(
-            events: activeRoomReplay.events,
+        let inputs = RoomMemberStatusInputs(
+            replay: roomReplayKey,
             activity: activeRoomDriverStatus?.memberActivity,
             working: activeRoomDriverStatus?.working,
             responder: activeRoomResponder,
@@ -12928,13 +12953,48 @@ final class AppState: ObservableObject {
             members: activeRoomSurface?.room.members ?? [],
             context: activeRoomContext
         )
+        if let cached = roomMemberStatusCache, cached.inputs == inputs { return cached.statuses }
+        let statuses = GroupRoomTurns.memberStatuses(
+            events: activeRoomReplay.events,
+            activity: inputs.activity,
+            working: inputs.working,
+            responder: inputs.responder,
+            approvals: inputs.approvals,
+            members: inputs.members,
+            context: inputs.context
+        )
+        roomMemberStatusCache = (inputs, statuses)
+        return statuses
     }
 
     /// Whether the open room's newest message settled, for its title. Not
-    /// while one is on its way.
+    /// while one is on its way. Kept for the log it read (issue 1968).
     var activeRoomSettled: Bool {
-        GroupRoomTurns.latestDiscussionSettled(activeRoomReplay.events, sending: pendingRoomMessage != nil)
+        let key = "\(roomReplayKey)|\(pendingRoomMessage != nil)"
+        if let cached = roomSettledCache, cached.key == key { return cached.settled }
+        let settled = GroupRoomTurns.latestDiscussionSettled(activeRoomReplay.events, sending: pendingRoomMessage != nil)
+        roomSettledCache = (key, settled)
+        return settled
     }
+
+    /// Which log the open room's replay holds: its room and how many times
+    /// it has changed, so any append, trim or replacement reads it again.
+    private var roomReplayKey: String {
+        "\(activeRoomReplay.roomID)|\(roomReplayRevision)"
+    }
+
+    private struct RoomMemberStatusInputs: Equatable {
+        let replay: String
+        let activity: [GroupMemberActivity]?
+        let working: Bool?
+        let responder: GroupMember?
+        let approvals: [GroupPendingApproval]
+        let members: [GroupMember]
+        let context: GroupRoomContext?
+    }
+
+    private var roomMemberStatusCache: (inputs: RoomMemberStatusInputs, statuses: [String: GroupMemberStatus])?
+    private var roomSettledCache: (key: String, settled: Bool)?
 
     /// The open room's settings, as `groups.state` last gave them (or a
     /// save here). Nil until the host answers, or on a host without them.
@@ -13144,7 +13204,43 @@ final class AppState: ObservableObject {
         } else {
             parkedRoomOutboxes.removeValue(forKey: key)
         }
+        if activeRoomReplay.roomID == surface.room.roomID, !activeRoomReplay.events.isEmpty {
+            keptRoomReplays[key] = activeRoomReplay
+            keptRoomReplayOrder.removeAll { $0 == key }
+            keptRoomReplayOrder.append(key)
+            // Up to 400 events each: the rooms left longest ago go past
+            // `maxKeptRoomReplays`, never one with a send still parked
+            // (issue 1969).
+            for dropped in Self.keptRoomReplaysToDrop(
+                order: keptRoomReplayOrder.filter { keptRoomReplays[$0] != nil },
+                pinned: Set(parkedRoomOutboxes.keys)
+            ) {
+                keptRoomReplays.removeValue(forKey: dropped)
+            }
+            keptRoomReplayOrder.removeAll { keptRoomReplays[$0] == nil }
+        }
     }
+
+    /// Rooms whose events stay in memory after they're left, to show at
+    /// once when they open again; as many as Bot Chats' kept copies.
+    static let maxKeptRoomReplays = 8
+
+    /// The kept room replays to drop: the least recently left first, past
+    /// `limit`, skipping any room `pinned` names (a parked send settles
+    /// against its events).
+    static func keptRoomReplaysToDrop(order: [String], pinned: Set<String>, limit: Int = maxKeptRoomReplays) -> [String] {
+        var excess = order.count - limit
+        guard excess > 0 else { return [] }
+        var dropped: [String] = []
+        for key in order where excess > 0 && !pinned.contains(key) {
+            dropped.append(key)
+            excess -= 1
+        }
+        return dropped
+    }
+
+    /// The rooms in `keptRoomReplays`, the one left last at the end.
+    private var keptRoomReplayOrder: [String] = []
 
     /// Drop parked sends and drafts of this dashboard's rooms that left the
     /// room list (disbanded elsewhere): they can never be reopened.
@@ -23661,6 +23757,35 @@ final class AppState: ObservableObject {
         }
     }
 
+    private var isReadingNewestCatalogPage = false
+
+    /// Reads the newest catalog page and the cron rows over the cached
+    /// catalog, keeping its full-history markers. The older pages follow
+    /// only when the full history is due (every
+    /// `SessionCatalogCache.fullHistoryRefreshInterval`), so a tab shown
+    /// again and again doesn't walk all 25 pages each time (issue 1962).
+    func refreshNewestSessionCatalogPage() async {
+        // One visit's read at a time (the Tasks tab and the drawer's Cron
+        // list both ask), without the pull's spinner.
+        guard !isRefreshingSessionCatalog, !isReadingNewestCatalogPage else { return }
+        isReadingNewestCatalogPage = true
+        defer { isReadingNewestCatalogPage = false }
+        let client = self.client
+        let profile = activeProfile
+        let dashboardID = activeDashboardID
+        await loadSessions(
+            forceRefresh: true,
+            requiredViewportTransitionGeneration: nil,
+            deferringOlderPages: true
+        )
+        guard let client, self.client === client, activeProfile == profile,
+              sessionCatalogCache.shouldLoadFullHistory(forKey: "\(profile):exclude", forceRefresh: false) else { return }
+        // An earlier visit's history walk still under way yields to this
+        // visit's newer read, so this walk takes its place rather than a
+        // second one running beside it.
+        loadDeferredCatalogPages(after: client, profile: profile, dashboardID: dashboardID)
+    }
+
     /// Replace this profile's in-memory catalog with Hermes' current data.
     /// Use this after database recovery or deletion outside Conduit.
     func refreshSessionCatalog() async {
@@ -24647,8 +24772,15 @@ final class AppState: ObservableObject {
     /// The Cron tab presents two independent server-backed surfaces: the job
     /// definitions and the cron-session history. Refresh them together so a
     /// newly completed run is visible without visiting the Sessions tab first.
-    func refreshCronContent() async {
-        async let sessionRefresh: Void = refreshSessionCatalog()
+    ///
+    /// Showing the tab reads only the newest page and the cron rows over the
+    /// cached catalog; the older pages wait for the full history's own
+    /// interval. Pull to refresh (`repairingCatalog`) still replaces the
+    /// whole catalog, as Chats' pull does (issue 1962).
+    func refreshCronContent(repairingCatalog: Bool = false) async {
+        async let sessionRefresh: Void = repairingCatalog
+            ? refreshSessionCatalog()
+            : refreshNewestSessionCatalogPage()
         async let jobsRefresh: Void = loadCronJobs()
         async let notificationsRefresh: Void = refreshCronNotifications()
         _ = await (sessionRefresh, jobsRefresh, notificationsRefresh)
@@ -24802,7 +24934,26 @@ final class AppState: ObservableObject {
     /// avatar version, and another client (Desktop) may have changed one.
     func reloadBotRoster() async {
         botAvatarGeneration &+= 1
+        botAvatarsReloadedAt = Date()
         await refreshBotRoster()
+    }
+
+    /// How old the pictures may be before opening the Profiles sheet reads
+    /// them all again. A picture changed on Desktop shows within this, or
+    /// at once on a pull in the Bots list.
+    static let botPictureRecheckInterval: TimeInterval = 10 * 60
+
+    /// The Profiles sheet's read each time it opens: the roster, and every
+    /// picture again only once they're `botPictureRecheckInterval` old.
+    /// Each open used to download every bot's picture, up to 2 MB each
+    /// (issue 1967).
+    func refreshBotRosterAndStalePictures(now: Date = Date()) async {
+        if let reloadedAt = botAvatarsReloadedAt,
+           now.timeIntervalSince(reloadedAt) < Self.botPictureRecheckInterval {
+            await refreshBotRoster()
+        } else {
+            await reloadBotRoster()
+        }
     }
 
     /// The bot's picture: the one fetched from its profile, else the copy
@@ -25894,6 +26045,7 @@ final class AppState: ObservableObject {
         let previous = profileAvatarSyncTask
         profileAvatarSyncTask = Task { @MainActor [weak self] in
             await previous?.value
+            var fetches: [BotProfile] = []
             for bot in rows {
                 guard let self, self.botRosterEpoch == epoch, self.activeDashboardID == dashboardID,
                       let client = self.client, self.isConnected else { return }
@@ -25904,7 +26056,7 @@ final class AppState: ObservableObject {
                     photoIsMirror: self.profileAppearanceStore.isMirrored(bot.name, dashboardID: dashboardID)
                 ) {
                 case .fetch:
-                    await self.loadBotAvatarIfNeeded(bot)
+                    fetches.append(bot)
                 case .dropMirror:
                     self.removeProfileAvatarFile(for: bot.name)
                 case .upload:
@@ -25913,8 +26065,22 @@ final class AppState: ObservableObject {
                     break
                 }
             }
+            // A few downloads at a time rather than one after another
+            // (issue 1967); each still fences itself on the roster epoch.
+            let width = Self.botPictureDownloadWidth
+            for start in stride(from: 0, to: fetches.count, by: width) {
+                guard let self, self.botRosterEpoch == epoch, self.activeDashboardID == dashboardID,
+                      self.isConnected, !Task.isCancelled else { return }
+                let downloads = fetches[start..<min(start + width, fetches.count)].map { bot in
+                    Task { @MainActor in _ = await self.loadBotAvatarIfNeeded(bot) }
+                }
+                for download in downloads { await download.value }
+            }
         }
     }
+
+    /// Bot pictures downloaded at once by a roster's picture sync.
+    static let botPictureDownloadWidth = 4
 
     /// A photo picked on this device before photos moved to Hermes becomes
     /// the profile's Hermes picture. A failed upload keeps the photo and is
@@ -34436,6 +34602,13 @@ final class AppState: ObservableObject {
             return false
         }
         guard !isProfileSwitching else { return false }
+        // What the switch shows first (the profile's saved list and the chat
+        // it opens on) is read ahead off the main thread while it waits on
+        // its ticket and teardown, if the read-ahead after the live list
+        // hasn't already (issue 1963).
+        if let dashboardID = savedDashboardRegistry.activeDashboardID {
+            offlineChatCache.prefetch(dashboardID: dashboardID, profile: target, transcripts: 1)
+        }
         // A switch that spares calls (a notification's or a chat link's)
         // mints its ticket before anything changes, so nothing waits between
         // its call check and the voice teardown below; it refuses while a
@@ -36838,6 +37011,49 @@ final class AppState: ObservableObject {
         } catch {
             // As for the sibling savers: a save that fails after a dashboard
             // or profile switch has nothing to report to the page on screen.
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
+            errorMessage = AppLocalization.string("Could not save fallback models: \(UserFacingError.message(for: error))")
+            return false
+        }
+    }
+
+    /// The subagents' own fallbacks (`delegation.fallback_providers`), or
+    /// nil when the config couldn't load. Unset (null) means a subagent on
+    /// the chat's model takes the chat's fallbacks.
+    func loadDelegateFallbackModels() async -> ProfileFallbackChain? {
+        let profile = activeProfile
+        guard let owner = currentDashboardRuntimeOwner() else { return nil }
+        do {
+            let config = try await readKeepingAnswer(KeptRoute.config, profile: profile, owner: owner)
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
+            return ProfileFallbackChain(delegationIn: config)
+        } catch {
+            guard ownsDashboardRuntime(owner), profile == activeProfile else { return nil }
+            errorMessage = AppLocalization.string("Could not load profile settings: \(UserFacingError.message(for: error))")
+            return nil
+        }
+    }
+
+    func keptDelegateFallbackModels() -> ProfileFallbackChain? {
+        keptAnswer(KeptRoute.config).map(ProfileFallbackChain.init(delegationIn:))
+    }
+
+    /// Saves the subagents' fallbacks: null for the chat's, else the
+    /// complete entries in order (none listed turns fallback off).
+    func setDelegateFallbackModels(_ chain: ProfileFallbackChain) async -> Bool {
+        let profile = activeProfile
+        guard let owner = currentDashboardRuntimeOwner() else { return false }
+        let value: Any = chain.inherits ? NSNull() : chain.entries.filter(\.isComplete).map(\.jsonObject)
+        do {
+            try await updateProfileConfig(profile: profile) { config in
+                var delegation = config["delegation"] as? [String: Any] ?? [:]
+                delegation["fallback_providers"] = value
+                config["delegation"] = delegation
+            }
+            return true
+        } catch is CancellationError {
+            return false
+        } catch {
             guard ownsDashboardRuntime(owner), profile == activeProfile else { return false }
             errorMessage = AppLocalization.string("Could not save fallback models: \(UserFacingError.message(for: error))")
             return false

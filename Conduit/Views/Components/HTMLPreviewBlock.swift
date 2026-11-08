@@ -234,21 +234,44 @@ struct HTMLPreviewBlock<Fallback: View>: View {
             state = .unavailable
             return
         }
-        // Read on every appearance, so a file the agent rewrote for a later
-        // reply shows its new version; the card keeps its room meanwhile,
-        // and a block showing its file card keeps that until the file reads.
+        // A row scrolled back into view shows the page it read moments
+        // ago at once, and reads the file again only once that copy is
+        // `HTMLPreviewDocuments.freshFor` old, so a file the agent rewrote
+        // for a later reply still shows its new version. Each appearance
+        // used to read and decode the file again (issue 1961).
+        let documents = HTMLPreviewDocuments.shared
+        let key = heightKey
+        let read: () async -> String? = { await gatewayMediaDataURL(path) }
+        if let kept = documents.kept(key) {
+            if state != .loaded(kept.html) { show(kept.html) }
+            guard !documents.isFresh(kept) else { return }
+            let html = await documents.read(key, fetch: read)
+            guard !Task.isCancelled, let html, html != kept.html else { return }
+            show(html)
+            return
+        }
+        // The card keeps its room meanwhile, and a block showing its file
+        // card keeps that until the file reads.
         let showsFileCard = state == .unavailable
         if !showsFileCard { state = .loading }
         load += 1
         isCut = false
         cardHeight.pageReplaced()
-        let dataURL = await gatewayMediaDataURL(path)
+        let html = await documents.read(key, fetch: read)
         guard !Task.isCancelled else { return }
-        guard let dataURL, let html = HTMLPreviewPage.decodedDocument(fromDataURL: dataURL) else {
+        guard let html else {
             if !showsFileCard { fallBack() }
             return
         }
         // A block showing its file card turns back into the card.
+        state = .loaded(html)
+    }
+
+    /// Draws `html` as a new page, measured afresh.
+    private func show(_ html: String) {
+        load += 1
+        isCut = false
+        cardHeight.pageReplaced()
         state = .loaded(html)
     }
 
@@ -316,6 +339,95 @@ struct HTMLPreviewTheme: Equatable {
 /// The page around an agent's HTML: the theme first (so the file's own
 /// styles win), then the scripts that report its height and stand in for
 /// Desktop's `window.hermes`.
+/// The preview pages read lately, so a row scrolled away and back shows
+/// its page without reading and decoding the file again, and two rows
+/// naming one file share one read (issue 1961). Keyed by the file on the
+/// connected Hermes, as the kept heights are.
+@MainActor
+final class HTMLPreviewDocuments {
+    static let shared = HTMLPreviewDocuments()
+
+    /// A kept page this young is shown without asking the host again.
+    static let freshFor: TimeInterval = 30
+    /// The pages kept, at most, and their size together (a page is at most
+    /// `HTMLPreviewPage.maximumDocumentBytes`).
+    static let capacity = 8
+    static let byteBudget = 16 * 1024 * 1024
+
+    struct Kept: Equatable {
+        let html: String
+        let readAt: Date
+    }
+
+    private var pages: [String: Kept] = [:]
+    /// Least recently read first.
+    private var order: [String] = []
+    private var inFlight: [String: (id: UUID, task: Task<String?, Never>)] = [:]
+    /// Files that couldn't be read just now: not asked again until they're
+    /// `freshFor` old.
+    private var failedAt: [String: Date] = [:]
+    private let now: () -> Date
+
+    init(now: @escaping () -> Date = { Date() }) {
+        self.now = now
+    }
+
+    /// The kept page, which counts as just used: the page dropped at
+    /// capacity is the one shown longest ago, not read longest ago.
+    func kept(_ key: String) -> Kept? {
+        guard let page = pages[key] else { return nil }
+        if order.last != key {
+            order.removeAll { $0 == key }
+            order.append(key)
+        }
+        return page
+    }
+
+    func isFresh(_ kept: Kept) -> Bool {
+        now().timeIntervalSince(kept.readAt) < Self.freshFor
+    }
+
+    /// The file's page from `fetch`'s data URL, decoded off the main
+    /// thread. A read already running for `key` is joined, not repeated,
+    /// and a page read within `freshFor` is answered as kept.
+    func read(_ key: String, fetch: @escaping () async -> String?) async -> String? {
+        if let running = inFlight[key] { return await running.task.value }
+        // A row that asks just after another's read finished takes its page.
+        if let page = pages[key], isFresh(page) { return page.html }
+        if let failed = failedAt[key], now().timeIntervalSince(failed) < Self.freshFor { return nil }
+        let id = UUID()
+        let task = Task { () -> String? in
+            guard let dataURL = await fetch() else { return nil }
+            return await Task.detached(priority: .userInitiated) {
+                HTMLPreviewPage.decodedDocument(fromDataURL: dataURL)
+            }.value
+        }
+        inFlight[key] = (id, task)
+        let html = await task.value
+        if inFlight[key]?.id == id {
+            inFlight[key] = nil
+            if let html {
+                keep(html, for: key)
+            } else {
+                failedAt[key] = now()
+            }
+        }
+        return html
+    }
+
+    func keep(_ html: String, for key: String) {
+        failedAt[key] = nil
+        pages[key] = Kept(html: html, readAt: now())
+        order.removeAll { $0 == key }
+        order.append(key)
+        var bytes = pages.values.reduce(0) { $0 + $1.html.utf8.count }
+        while order.count > 1, order.count > Self.capacity || bytes > Self.byteBudget {
+            let dropped = order.removeFirst()
+            bytes -= pages.removeValue(forKey: dropped)?.html.utf8.count ?? 0
+        }
+    }
+}
+
 enum HTMLPreviewPage {
     enum Presentation {
         case inline

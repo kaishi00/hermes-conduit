@@ -230,7 +230,7 @@ struct V2ScheduledList: View {
             guard shell.isTabActive else { return }
             await appState.refreshCronContent()
         }
-        .refreshable { await appState.refreshCronContent() }
+        .refreshable { await appState.refreshCronContent(repairingCatalog: true) }
         .sheet(item: $selectedJob) {
             CronJobDetailSheet(job: $0)
                 .environmentObject(appState)

@@ -288,7 +288,9 @@ final class PresentedScreensSync: ObservableObject {
     /// timelines, checklists, lists, progress and callouts, up to 12 cards
     /// as a stack or tabs, and follow-ups (plugin 0.128+); "room-boards": a
     /// group room's boards under its agents' messages (plugin 0.129+);
-    /// "diff-cards": changes line by line (plugin 0.133+). "room-asks": a
+    /// "diff-cards": changes line by line (plugin 0.133+); "composed-cards":
+    /// cards Hermes builds itself, and buttons and fields on any card
+    /// (plugin 0.140+). "room-asks": a
     /// room's asks, answered with Share, Say instead (with the words) or
     /// Don't share (plugin 0.118+, Linked Rooms). "link-asks": a linked
     /// person's Hermes' asks, the same way, with Share only when there's an
@@ -296,7 +298,7 @@ final class PresentedScreensSync: ObservableObject {
     /// work for it (Run work), answered Start, Change it (with what to do
     /// instead) or Don't start (plugin 0.137+).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
-                           "text-drafts", "board-cards", "room-boards", "diff-cards", "room-asks", "link-asks",
+                           "text-drafts", "board-cards", "room-boards", "diff-cards", "composed-cards", "room-asks", "link-asks",
                            "room-work"]
     /// The longest Say instead the host keeps.
     static let maxEditText = 2_000
