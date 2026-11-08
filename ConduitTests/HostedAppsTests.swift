@@ -158,7 +158,7 @@ final class HostedAppsTests: XCTestCase {
         for blip: Error in [HostedAppsError.notConnected, HostedAppsError.superseded, HermesError.notConnected, HermesError.connectionClosed, URLError(.networkConnectionLost)] {
             XCTAssertTrue(HostedAppsModel.isConnectionBlip(blip, appState: appState), "\(blip)")
         }
-        for failure: Error in [HermesError.timeout("x"), HermesError.invalidResponse, HostedAppsError.unsupported, RpcError(code: -32000, message: "x")] {
+        for failure: Error in [HermesError.timeout("x"), URLError(.timedOut), URLError(.badURL), HermesError.invalidResponse, HostedAppsError.unsupported, RpcError(code: -32000, message: "x")] {
             XCTAssertFalse(HostedAppsModel.isConnectionBlip(failure, appState: appState), "\(failure)")
         }
     }

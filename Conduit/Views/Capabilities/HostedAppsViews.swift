@@ -386,7 +386,8 @@ struct HostedAppPage: View {
                     }
                     .tint(.conduitAccent)
                     .disabled(!canAct || writingRules || policy?.revision == nil)
-                    if rulesFailed { rulesUnreadLine }
+                    // Once the tools list, it says so there, above the switches.
+                    if rulesFailed, tools?.isEmpty != false { rulesUnreadLine }
                 }
                 if let reason = app.statusReason, app.needsReconnect {
                     Text(verbatim: reason)

@@ -251,7 +251,13 @@ final class HostedAppsModel {
         switch error {
         case HostedAppsError.notConnected, HostedAppsError.superseded: return true
         case HermesError.notConnected, HermesError.connectionClosed: return true
-        case is URLError: return true
+        case let error as URLError:
+            switch error.code {
+            case .networkConnectionLost, .notConnectedToInternet, .cannotConnectToHost,
+                 .cannotFindHost, .dnsLookupFailed, .secureConnectionFailed:
+                return true
+            default: return false
+            }
         default: return false
         }
     }
