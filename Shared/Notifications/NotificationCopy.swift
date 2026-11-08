@@ -28,6 +28,8 @@ enum NotificationCopy {
             return (AppLocalization.string("Hermes wants to talk"), AppLocalization.string("Tap to talk to Hermes."))
         case "phone.changes":
             return (AppLocalization.string("Hermes has a change for you"), AppLocalization.string("Tap to review it in Conduit."))
+        case "room.invite":
+            return (AppLocalization.string("Room invite"), AppLocalization.string("Someone you've linked with invited you to a room."))
         default:
             return (AppLocalization.string("Response ready"), AppLocalization.string("Hermes has finished responding."))
         }
@@ -38,8 +40,9 @@ enum NotificationCopy {
     ///
     /// A push whose decrypted content names a `title_label` gets that
     /// label's title, joined with the chat's title when the host sent one;
-    /// a call composes its line from the call's outcome. Any other title or
-    /// body is the host's own text (an older plugin, a tool's prompt title).
+    /// a call composes its line from the call's outcome, and a room invite
+    /// says who invited you to which room. Any other title or body is the
+    /// host's own text (an older plugin, a tool's prompt title).
     /// The subtitle names the profile (`profileLine`). A reply whose
     /// notification Hermes wrote shows its `headline` as the title. A
     /// private Pulse push (`private`) answers with a generic line, not the
@@ -49,6 +52,11 @@ enum NotificationCopy {
         let hostBody = nonEmpty(content["body"])
         guard let label = nonEmpty(content["title_label"]) else {
             return (hostTitle, profileLine(content, title: hostTitle), hostBody)
+        }
+        if label == "room.invite" {
+            let title = roomInviteTitle(content["room"]) ?? hostTitle
+            return (title, profileLine(content, title: title),
+                    AppLocalization.string("Choose which of your agents join, or decline."))
         }
         // A reply whose notification Hermes wrote (conduit_notify, #1415):
         // its heading is the title, and the subtitle says which chat.
@@ -196,6 +204,15 @@ enum NotificationCopy {
         case "phone.change": return AppLocalization.string("Hermes has a change for you")
         default: return nil
         }
+    }
+
+    /// Who invited you to which room (Linked Rooms), from the room the host
+    /// sent: its name, and the name its Link shows for the person, which a
+    /// Link without one leaves out. Nil without the room's name.
+    private static func roomInviteTitle(_ room: Any?) -> String? {
+        guard let room = room as? [String: Any], let name = nonEmpty(room["name"]) else { return nil }
+        guard let sender = nonEmpty(room["from"]) else { return AppLocalization.string("Someone invited you to \(name)") }
+        return AppLocalization.string("\(sender) invited you to \(name)")
     }
 
     /// A call request's line, as the app's own call notification says it

@@ -35,6 +35,12 @@ final class HostedAppsModel {
     private(set) var notes: [String: String] = [:]
     /// The profile and client the snapshot belongs to.
     @ObservationIgnored private var scope: String?
+    /// The Hermes a sign-in runs on: the dashboard and profile, whatever
+    /// connection carries them. A reconnect keeps it.
+    @ObservationIgnored private var hermes: String?
+    /// Which sign-in is the latest: one given up while Hermes started it
+    /// runs on, and never touches a newer one's state.
+    @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var reads = 0
     @ObservationIgnored private var signInTask: Task<Void, Never>?
     @ObservationIgnored private var browserClosedAt: Date?
@@ -47,16 +53,27 @@ final class HostedAppsModel {
     static let closedGrace: TimeInterval = 6
 
     /// Opens on the kept apps for `scope` (the dashboard, profile and
-    /// client), and drops another scope's.
-    func show(scope: String, kept: HostedAppsSnapshot?) {
+    /// client), and drops another scope's. A sign-in and what the section
+    /// said go only with the Hermes (`hermes`, the dashboard and profile):
+    /// a connection that drops and comes back mid-sign-in keeps asking
+    /// the same Hermes, so the account it started is finished or given up
+    /// there, never left half-made (issue 1997).
+    func show(_ appState: AppState) {
+        show(scope: appState.hostedAppsScope, hermes: appState.hostedAppsHermes, kept: appState.keptHostedApps())
+    }
+
+    func show(scope: String, hermes: String, kept: HostedAppsSnapshot?) {
         guard scope != self.scope else { return }
-        cancelSignIn()
+        if hermes != self.hermes {
+            cancelSignIn()
+            notes = [:]
+        }
         self.scope = scope
+        self.hermes = hermes
         snapshot = kept
         showsKept = kept != nil
         error = nil
         errorMessage = nil
-        notes = [:]
     }
 
     func reload(_ appState: AppState) async {
@@ -88,6 +105,7 @@ final class HostedAppsModel {
     /// Takes Hermes' copy of the rules after a change.
     func take(policy: HostedAppPolicy) {
         snapshot?.policy = policy
+        snapshot?.rulesFailed = nil
     }
 
     func take(account: HostedAppAccount) {
@@ -106,9 +124,11 @@ final class HostedAppsModel {
         signingIn = slug
         notes[slug] = nil
         browserClosedAt = nil
-        let scope = self.scope
+        let hermes = self.hermes
+        attempt += 1
+        let attempt = self.attempt
         signInTask = Task { [weak self] in
-            await self?.runSignIn(slug, alias: alias, repairing: connectionID, scope: scope, appState: appState)
+            await self?.runSignIn(slug, alias: alias, repairing: connectionID, hermes: hermes, attempt: attempt, appState: appState)
         }
     }
 
@@ -147,10 +167,11 @@ final class HostedAppsModel {
         browser = nil
     }
 
-    private func runSignIn(_ slug: String, alias: String?, repairing: String?, scope: String?, appState: AppState) async {
+    private func runSignIn(_ slug: String, alias: String?, repairing: String?, hermes: String?, attempt: Int, appState: AppState) async {
         var operation: HostedAppOperation?
+        var isLatest: Bool { hermes == self.hermes && attempt == self.attempt }
         defer {
-            if scope == self.scope, signingIn == slug {
+            if isLatest, signingIn == slug {
                 signingIn = nil
                 signInTask = nil
                 closeBrowser()
@@ -158,9 +179,12 @@ final class HostedAppsModel {
             }
         }
         do {
-            var current = try await appState.connectHostedApp(slug, alias: alias, repairing: repairing)
+            // Left while Hermes starts it, the sign-in is still given up
+            // once it has an id: the start runs on, uncancelled.
+            var current = try await Task { try await appState.connectHostedApp(slug, alias: alias, repairing: repairing) }.value
             operation = current
-            guard !Task.isCancelled, scope == self.scope else { return }
+            try Task.checkCancellation()
+            guard isLatest else { return }
             if current.target(slug)?.connected == true {
                 await finished(slug, appState: appState)
                 return
@@ -174,14 +198,20 @@ final class HostedAppsModel {
             var wokeHermes = false
             while true {
                 try await Task.sleep(for: Self.pollInterval)
-                guard scope == self.scope else { return }
+                guard isLatest else { return }
                 if browserClosedAt != nil, !wokeHermes {
                     wokeHermes = true
                     try? await appState.wakeHostedAppOperation(current.id)
                 }
-                current = try await appState.hostedAppOperation(current.id).carryingLink(from: current)
+                do {
+                    current = try await appState.hostedAppOperation(current.id).carryingLink(from: current)
+                } catch let error where Self.isConnectionBlip(error, appState: appState) {
+                    // Asked again once the connection is back: the
+                    // sign-in lives on Hermes, and Safari stays up.
+                    continue
+                }
                 operation = current
-                guard scope == self.scope else { return }
+                guard isLatest else { return }
                 let target = current.target(slug)
                 if target?.connected == true {
                     await finished(slug, appState: appState)
@@ -203,13 +233,32 @@ final class HostedAppsModel {
         } catch is CancellationError {
             // Left the page: give it up there, never on a Hermes switched to.
             // A task of its own, since this one's calls are cancelled.
-            if scope == self.scope, let operation {
+            if hermes == self.hermes, let operation {
                 Task { try? await appState.stopHostedAppSignIn(operation) }
             }
         } catch {
-            guard scope == self.scope else { return }
+            guard isLatest else { return }
             notes[slug] = UserFacingError.message(for: error)
             if let operation { try? await appState.stopHostedAppSignIn(operation) }
+        }
+    }
+
+    /// The connection, not Hermes, failed the ask: no connection, another
+    /// client took over, or it dropped on the way. A timeout isn't one:
+    /// that Hermes may be stuck, and the sign-in says so.
+    static func isConnectionBlip(_ error: Error, appState: AppState) -> Bool {
+        if !appState.isConnected { return true }
+        switch error {
+        case HostedAppsError.notConnected, HostedAppsError.superseded: return true
+        case HermesError.notConnected, HermesError.connectionClosed: return true
+        case let error as URLError:
+            switch error.code {
+            case .networkConnectionLost, .notConnectedToInternet, .cannotConnectToHost,
+                 .cannotFindHost, .dnsLookupFailed, .secureConnectionFailed:
+                return true
+            default: return false
+            }
+        default: return false
         }
     }
 

@@ -161,6 +161,31 @@ struct CredentialVaultSnapshot: Equatable, Codable, Sendable {
 
     /// The password managers, without Hermes' own vault.
     var managers: [VaultSource] { sources.filter { !$0.isLocal } }
+
+    /// An item Hermes saved, as `vault.list` will describe it: a login's
+    /// identifier is metadata Hermes lists too; the secret's other values
+    /// are never kept.
+    mutating func add(id: String, _ request: VaultItemDraft.Request) {
+        guard !items.contains(where: { $0.id == id }) else { return }
+        items.append(VaultItem(
+            id: id, kind: request.kind, label: request.label, origin: request.origin,
+            identifier: request.secret["identifier"], identifierType: request.secret["identifier_type"],
+            hasOTP: request.secret["otp_secret"] != nil
+        ))
+    }
+
+    /// A source as Hermes holds it after a change it took. An off or
+    /// locked manager's items aren't listed, so they go with it.
+    mutating func changeSource(_ name: String, enabled: Bool? = nil, unlocked: Bool? = nil) {
+        sources = sources.map { source in
+            guard source.name == name else { return source }
+            return VaultSource(
+                name: source.name, displayName: source.displayName, enabled: enabled ?? source.enabled,
+                needsUnlock: source.needsUnlock, unlocked: unlocked ?? source.unlocked, installed: source.installed
+            )
+        }
+        if enabled == false || unlocked == false { items.removeAll { $0.source == name } }
+    }
 }
 
 /// The Add form's fields. They live in the form's own state and go once

@@ -286,6 +286,9 @@ final class PredictiveStore: ObservableObject {
     func stagedAttachmentsChanged(_ staged: Bool) {
         guard staged != hasStagedAttachments else { return }
         hasStagedAttachments = staged
+        // Replies coming back into view start their tap guard again, so a
+        // tap meant for what was there doesn't send one.
+        if !staged { shownAt = Date() }
     }
     /// Typing since the last guesses: the row folds to its ✦ button.
     @Published private(set) var isFolded = false

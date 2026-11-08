@@ -52,37 +52,66 @@ extension AppState {
         }
     }
 
-    /// Saves a login, card or address in Hermes' own vault.
+    /// Saves a login, card or address in Hermes' own vault. The kept list
+    /// takes it at once, so the page never opens without it.
     func addCredentialVaultItem(_ request: VaultItemDraft.Request) async throws {
-        _ = try await withVaultClient { client in
-            try await client.addVaultItem(kind: request.kind, label: request.label, origin: request.origin, secret: request.secret)
+        try await writeVault {
+            try await $0.addVaultItem(kind: request.kind, label: request.label, origin: request.origin, secret: request.secret)
+        } keep: { id, kept in
+            kept.add(id: id, request)
         }
     }
 
     /// Deletes an item from Hermes' own vault; false when it was gone.
+    /// Either way it leaves the kept list.
     func removeCredentialVaultItem(id: String) async throws -> Bool {
-        try await withVaultClient { try await $0.removeVaultItem(id: id) }
+        try await writeVault { try await $0.removeVaultItem(id: id) } keep: { _, kept in
+            kept.items.removeAll { $0.id == id }
+        }
     }
 
+    /// Turning a manager off also locks it.
     func setCredentialVaultSource(_ name: String, enabled: Bool) async throws {
-        try await withVaultClient { try await $0.setVaultSource(name, enabled: enabled) }
+        try await writeVault { try await $0.setVaultSource(name, enabled: enabled) } keep: { _, kept in
+            kept.changeSource(name, enabled: enabled, unlocked: enabled ? nil : false)
+        }
     }
 
+    /// The manager's items come with the next read.
     func unlockCredentialVaultSource(_ name: String, password: String) async throws {
-        try await withVaultClient { try await $0.unlockVaultSource(name, password: password) }
+        try await writeVault { try await $0.unlockVaultSource(name, password: password) } keep: { _, kept in
+            kept.changeSource(name, unlocked: true)
+        }
     }
 
     func lockCredentialVaultSource(_ name: String) async throws {
-        try await withVaultClient { try await $0.lockVaultSource(name) }
+        try await writeVault { try await $0.lockVaultSource(name) } keep: { _, kept in
+            kept.changeSource(name, unlocked: false)
+        }
+    }
+
+    /// Runs a change, and once Hermes took it changes the list kept for
+    /// the dashboard and profile it was made on, the one open by then or
+    /// not, over the answer to any read asked before it (#1533). Also when
+    /// the connection changed meanwhile: Hermes took it all the same.
+    @discardableResult
+    private func writeVault<T>(_ call: (HermesClient) async throws -> T, keep change: (T, inout CredentialVaultSnapshot) -> Void) async throws -> T {
+        let profile = activeProfile
+        let owner = currentDashboardRuntimeOwner()
+        return try await withVaultClient(call) { value in
+            self.keepWrittenChange(CredentialVaultSnapshot.self, Self.credentialVaultRoute, profile: profile, on: owner) { change(value, &$0) }
+        }
     }
 
     /// Runs a vault call on the client in use, which carries the profile.
     /// An answer that lands after the client changed is thrown away: it was
     /// about another connection or profile.
-    private func withVaultClient<T>(_ call: (HermesClient) async throws -> T) async throws -> T {
+    /// `took` runs as soon as Hermes answered, before that check.
+    private func withVaultClient<T>(_ call: (HermesClient) async throws -> T, took: (T) -> Void = { _ in }) async throws -> T {
         guard let client, isConnected else { throw CredentialVaultError.notConnected }
         do {
             let value = try await call(client)
+            took(value)
             guard self.client === client else { throw CredentialVaultError.superseded }
             return value
         } catch let error as RpcError where error.code == HermesClient.methodNotFoundCode {

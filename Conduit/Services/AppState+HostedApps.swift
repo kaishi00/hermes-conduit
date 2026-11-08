@@ -44,6 +44,12 @@ extension AppState {
         "\(activeDashboardID?.uuidString ?? "")|\(activeProfile)|\(client.map { "\(ObjectIdentifier($0).hashValue)" } ?? "")|\(isConnected)"
     }
 
+    /// The Hermes an app's sign-in runs on: the dashboard and profile,
+    /// which a reconnect keeps.
+    var hostedAppsHermes: String {
+        "\(activeDashboardID?.uuidString ?? "")|\(activeProfile)"
+    }
+
     /// The apps as Hermes gave them last time on this dashboard and profile.
     func keptHostedApps() -> HostedAppsSnapshot? {
         keptRead(HostedAppsSnapshot.self, Self.hostedAppsRoute, profile: activeProfile)
@@ -66,10 +72,20 @@ extension AppState {
                 async let catalog = client.hostedAppCatalog()
                 async let accounts = client.hostedAppAccounts()
                 // The rules need a Nous account; before the first app
-                // there may be none, and every app is on.
-                let policy = try? await client.hostedAppPolicy()
+                // there may be none, and every app is on. Rules Hermes
+                // couldn't give aren't none: the section says so.
+                var policy: HostedAppPolicy?
+                var rulesFailed: Bool?
+                do {
+                    policy = try await client.hostedAppPolicy()
+                } catch let error as RpcError where error.reason == "NEEDS_NOUS_AUTH" || error.code == HermesClient.methodNotFoundCode {
+                } catch is CancellationError {
+                    throw CancellationError()
+                } catch {
+                    rulesFailed = true
+                }
                 return try await HostedAppsSnapshot(
-                    available: true, catalog: catalog, statuses: list.statuses, accounts: accounts, policy: policy
+                    available: true, catalog: catalog, statuses: list.statuses, accounts: accounts, policy: policy, rulesFailed: rulesFailed
                 )
             }
         }
@@ -160,6 +176,7 @@ extension AppState {
             let current = try await client.hostedAppPolicy()
             self.keepWrittenChange(HostedAppsSnapshot.self, Self.hostedAppsRoute, profile: profile, on: owner) { kept in
                 kept.policy = current
+                kept.rulesFailed = nil
             }
             if conflict { throw HostedAppsError.rulesChanged }
             return current

@@ -38,6 +38,61 @@ struct PresentedMapsTarget: Equatable {
     }
 }
 
+/// The room a room's ask comes from (Linked Rooms, Ask me first): your agent
+/// in a room with other people's agents asks before it shares something
+/// personal about you.
+struct PresentedRoom: Equatable {
+    let id: String
+    let name: String
+    /// Run work's ask (plugin 0.137+): your agent asks before it starts work
+    /// for the room, or sends to it, answered Start, Change it or Don't start.
+    let work: Bool
+
+    init(id: String, name: String, work: Bool = false) {
+        self.id = id
+        self.name = name
+        self.work = work
+    }
+
+    /// Any room the host names makes it a room's ask, even one without an id:
+    /// never an ordinary confirmation whose Edit opens the room's hidden chat.
+    init?(json: Any?) {
+        guard let entry = json as? [String: Any] else { return nil }
+        let id = (entry["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let name = (entry["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.init(id: id, name: String(name.prefix(80)), work: entry["work"] as? Bool == true)
+    }
+}
+
+/// The Link a Link's ask comes from (asks between linked agents, C7): a
+/// linked person's Hermes asks yours, and what the plugin's rule would answer
+/// waits for you. Only an answer there is to Share: a question has none, so
+/// it's answered with Say instead or Don't share.
+struct PresentedLink: Equatable {
+    let id: String
+    let name: String
+    /// Whether there's an answer to Share (the host refuses a confirm
+    /// otherwise).
+    let share: Bool
+
+    init(id: String, name: String, share: Bool) {
+        self.id = id
+        self.name = name
+        self.share = share
+    }
+
+    /// Any Link the host names makes it a Link's ask, even one that can't be
+    /// read; one that doesn't say there's something to share has nothing
+    /// to Share.
+    init?(json: Any?) {
+        guard let json, !(json is NSNull) else { return nil }
+        let entry = json as? [String: Any] ?? [:]
+        let id = (entry["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let name = (entry["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        self.init(id: id, name: String(name.prefix(80)), share: entry["share"] as? Bool == true)
+    }
+}
+
 /// Something Hermes put on the screen of the user's voice call with
 /// `conduit_show`: a table, steps, a chart. Shown once, never answered.
 struct PresentedCard: Identifiable, Equatable {
@@ -93,9 +148,17 @@ struct PresentedConfirm: Identifiable, Equatable {
     let expiresAt: Date?
     /// A Go confirmation: confirming opens Apple Maps here.
     let maps: PresentedMapsTarget?
+    /// A room's ask: the preview is what your agent would share there, and
+    /// Say instead answers with what to say, never by opening the room's
+    /// hidden chat.
+    let room: PresentedRoom?
+    /// A Link's ask: a linked person's Hermes asks yours. The preview is the
+    /// answer to Share, or their question when there's none.
+    let link: PresentedLink?
 
     init(id: String, title: String, preview: String, actionLabel: String,
-         spokenYes: [String] = [], sessionID: String? = nil, expiresAt: Date? = nil, maps: PresentedMapsTarget? = nil) {
+         spokenYes: [String] = [], sessionID: String? = nil, expiresAt: Date? = nil, maps: PresentedMapsTarget? = nil,
+         room: PresentedRoom? = nil, link: PresentedLink? = nil) {
         self.id = id
         self.title = title
         self.preview = preview
@@ -104,7 +167,16 @@ struct PresentedConfirm: Identifiable, Equatable {
         self.sessionID = sessionID
         self.expiresAt = expiresAt
         self.maps = maps
+        self.room = room
+        self.link = link
     }
+
+    /// A room's or a Link's ask: answered with Share, Say instead or Don't
+    /// share, never Edit in a chat.
+    var isAsk: Bool { room != nil || link != nil }
+
+    /// Whether it has something to confirm: a Link's question doesn't.
+    var canConfirm: Bool { link?.share ?? true }
 
     init?(json: Any) {
         guard let entry = json as? [String: Any],
@@ -126,7 +198,9 @@ struct PresentedConfirm: Identifiable, Equatable {
                 .map { String($0.prefix(40)) },
             sessionID: session,
             expiresAt: expires,
-            maps: PresentedMapsTarget(json: entry["maps"])
+            maps: PresentedMapsTarget(json: entry["maps"]),
+            room: PresentedRoom(json: entry["room"]),
+            link: PresentedLink(json: entry["link"])
         )
     }
 
@@ -137,8 +211,12 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// Whether the user's own words confirm it: a plain yes, or one of the
     /// phrases Hermes gave said on its own ("send it", "yes, send it").
     /// Never a question, never a phrase buried in a longer request.
-    func isConfirmed(by words: String) -> Bool {
-        if VoiceCallDecisionOutcome.isYes(words) { return true }
+    /// `bareYes` false takes only its phrases: Classic voice never says a
+    /// Link's ask aloud, so a plain yes may have meant something else.
+    func isConfirmed(by words: String, bareYes: Bool = true) -> Bool {
+        // Nothing to Share: no yes confirms it.
+        guard canConfirm else { return false }
+        if bareYes, VoiceCallDecisionOutcome.isYes(words) { return true }
         guard !words.contains("?"), !words.contains("？") else { return false }
         // What a refusal is, the handset decides, not Hermes: whatever
         // phrases it put in spoken_yes, the user's "no", "cancel" or
@@ -212,9 +290,18 @@ final class PresentedScreensSync: ObservableObject {
     /// group room's boards under its agents' messages (plugin 0.129+);
     /// "diff-cards": changes line by line (plugin 0.133+); "composed-cards":
     /// cards Hermes builds itself, and buttons and fields on any card
-    /// (plugin 0.140+).
+    /// (plugin 0.140+). "room-asks": a
+    /// room's asks, answered with Share, Say instead (with the words) or
+    /// Don't share (plugin 0.118+, Linked Rooms). "link-asks": a linked
+    /// person's Hermes' asks, the same way, with Share only when there's an
+    /// answer to share (plugin 0.120+). "room-work": a room's ask to start
+    /// work for it (Run work), answered Start, Change it (with what to do
+    /// instead) or Don't start (plugin 0.137+).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
-                           "text-drafts", "board-cards", "room-boards", "diff-cards", "composed-cards"]
+                           "text-drafts", "board-cards", "room-boards", "diff-cards", "composed-cards", "room-asks", "link-asks",
+                           "room-work"]
+    /// The longest Say instead the host keeps.
+    static let maxEditText = 2_000
     /// Card ids remembered as seen, so a card is shown at most once.
     private static let maxSeenCards = 200
     private static let resultsKey = "conduit.presentedScreens.results.v1"
@@ -329,12 +416,20 @@ final class PresentedScreensSync: ObservableObject {
 
     /// Records the user's answer and takes the confirmation off screen; the
     /// next sync reports it.
-    func answer(_ prompt: PresentedConfirm, outcome: PresentedConfirmOutcome, via source: PresentedConfirmAnswerSource) {
+    /// `editText` is a room's ask's Say instead: what the agent says there.
+    func answer(_ prompt: PresentedConfirm, outcome: PresentedConfirmOutcome, via source: PresentedConfirmAnswerSource,
+                editText: String? = nil) {
         // The first answer wins: a second tap lands on a panel already gone.
         guard let scope, prompts.contains(where: { $0.id == prompt.id }) else { return }
+        // Nothing to confirm (a Link's question): never sent as a Share.
+        if outcome == .confirmed, !prompt.canConfirm { return }
         prompts.removeAll { $0.id == prompt.id }
         var list = results(for: scope).filter { ($0["id"] as? String) != prompt.id }
-        list.append(["id": prompt.id, "outcome": outcome.rawValue, "via": source.rawValue])
+        var result: [String: Any] = ["id": prompt.id, "outcome": outcome.rawValue, "via": source.rawValue]
+        if outcome == .edit, let text = editText?.trimmingCharacters(in: .whitespacesAndNewlines), !text.isEmpty {
+            result["edit_text"] = String(text.prefix(Self.maxEditText))
+        }
+        list.append(result)
         setResults(Array(list.suffix(Self.maxResults)), for: scope)
     }
 
@@ -399,6 +494,20 @@ enum PresentVoiceTool {
         var entry: [String: Any] = ["id": prompt.id, "title": prompt.title, "preview": String(prompt.preview.prefix(600)),
                                     "action": prompt.actionLabel]
         if !prompt.spokenYes.isEmpty { entry["confirming_phrases"] = prompt.spokenYes }
+        // Your agent asks before it shares this in a room with other people's agents.
+        if let room = prompt.room {
+            // Run work: it asks before it starts work for that room, or sends its
+            // running work more (confirm does it).
+            let key = !room.work ? "room" : prompt.actionLabel == "Send" ? "sends_to_work_for_room" : "starts_work_for_room"
+            entry[key] = room.name.isEmpty ? "a room" : room.name
+            // Work never starts on a plain yes, which may have answered something else.
+            if room.work { entry["plain_yes_counts"] = false }
+        }
+        // A linked person's Hermes asks; a question has nothing to confirm.
+        if let link = prompt.link {
+            entry["asked_by"] = link.name.isEmpty ? "a linked person's Hermes" : "\(link.name)'s Hermes"
+            if !link.share { entry["can_confirm"] = false }
+        }
         return entry
     }
 
@@ -406,6 +515,9 @@ enum PresentVoiceTool {
     static func note(for prompt: PresentedConfirm) -> String {
         let data = (try? JSONSerialization.data(withJSONObject: describe(prompt), options: [.sortedKeys])) ?? Data()
         let details = String(data: data, encoding: .utf8) ?? ""
+        if !prompt.canConfirm {
+            return "[A linked person's Hermes asked the user something on their screen: \(details). At the next natural pause, tell the user in a sentence; they type their answer on the panel, or call \(name) with decline and its id if they say they won't answer. Don't interrupt the user for it.]"
+        }
         return "[Hermes put a confirmation on the user's screen: \(details). At the next natural pause, tell the user in a sentence what it will do and ask whether to go ahead; then call \(name) with confirm or decline and its id. Don't interrupt the user for it.]"
     }
 
@@ -428,6 +540,9 @@ enum PresentVoiceTool {
         }
         switch action {
         case "confirm":
+            guard prompt.canConfirm else {
+                return ["error": "Nothing to confirm: it's their question. The user answers it on the panel with Say instead, or decline it if they don't want to."]
+            }
             // Their words reach Conduit a moment after the model heard them.
             let shownAfter = sync.userTurnWhenShown[prompt.id]
             let deadline = ContinuousClock.now + .seconds(2)
@@ -436,11 +551,20 @@ enum PresentVoiceTool {
                 let turn = lastUserTurn()
                 // A turn from before the panel appeared answers something else.
                 if let shownAfter, turn.id == shownAfter { return false }
-                return prompt.isConfirmed(by: turn.text)
+                // Room work takes only its phrase ("start it"), never a bare yes.
+                return prompt.isConfirmed(by: turn.text, bareYes: prompt.room?.work != true)
             }
             while !saidYes() {
                 guard stillWaiting() else { return alreadyAnswered }
                 guard ContinuousClock.now < deadline else {
+                    // Room work takes only its phrase, so asking for a yes wouldn't do.
+                    if prompt.room?.work == true {
+                        guard let phrase = prompt.spokenYes.first else {
+                            return ["error": "Not confirmed. Ask the user to answer it on the screen."]
+                        }
+                        let what = prompt.actionLabel == "Send" ? "send to work" : "start work"
+                        return ["error": "Not confirmed: a plain yes doesn't \(what). Ask the user to say \"\(phrase)\", and confirm only after they do."]
+                    }
                     return ["error": "Not confirmed: the user's own words weren't a yes. Ask them, and confirm only after they say yes."]
                 }
                 do { try await Task.sleep(for: .milliseconds(250)) } catch { return ["error": "Not confirmed."] }

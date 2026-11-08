@@ -78,6 +78,19 @@ struct GroupMember: Equatable, Codable {
     /// `previous_names` when the gateway supplies them — renamed members'
     /// old tags keep styling as mentions (presentation gap-fill only).
     var previousNames: [String] = []
+    /// Whose agent it is, for a member on another Hermes: the name your
+    /// Link gives its owner (Linked Rooms, `GET /rooms/people` or a room
+    /// copy's members). Nil for your own and when no Link names them.
+    var owner: String? = nil
+    /// Yours, though the room lists it as on another Hermes: an agent of
+    /// yours that left a room someone else hosts (`GET /rooms/people`).
+    var isYours = false
+    /// How it's out of a room over Links: left, or taken out.
+    var out: RoomMemberOut? = nil
+
+    /// A member on another installation (target kind `peer`): its turns run
+    /// on someone else's Hermes, over the room's link.
+    var isPeer: Bool { target?["kind"]?.stringValue == "peer" }
 
     /// Stable display identity: the member id when present, else the
     /// profile, else the handle. Display names are NEVER identity — two
@@ -131,6 +144,9 @@ struct GroupEvent: Equatable, Identifiable {
     let authorityEpoch: Int?
     let payload: [String: AnyCodable]
     let createdAt: Double
+    /// In a copy of a room someone else hosts, a message its home posted
+    /// for one of the room's people (RoomPosts.swift).
+    var post: GroupEventPost? = nil
 
     var id: String { eventID.isEmpty ? "seq-\(seq)" : eventID }
 
@@ -163,6 +179,12 @@ struct GroupEvent: Equatable, Identifiable {
 
     /// The thread a chat/turn event belongs to (`thread_id` payload key).
     var threadID: String? { payload["thread_id"]?.stringValue }
+}
+
+/// Who a room's home posted a message for: a person by the name its Link
+/// gives them, or nil for the copy's own person.
+struct GroupEventPost: Equatable {
+    let by: String?
 }
 
 /// A hosted room, as `groups.list`/`groups.state` return it. Codable for
@@ -208,12 +230,49 @@ struct GroupDriverStatus: Equatable {
     let blocked: Bool
     let counts: [String: Int]
     let pendingActions: [[String: AnyCodable]]
+    /// How the home last found each peer member's route. Hermes keeps these
+    /// in memory, so a member not tried since the room service started has
+    /// none.
+    var peerRoutes: [GroupPeerRoute] = []
+    /// The room's live member turns in admission order, from gateways that
+    /// report them; nil leaves who's live to the log.
+    var memberActivity: [GroupMemberActivity]? = nil
 
     /// The approvals members are waiting on, in the gateway's order. A row
     /// missing any part of its identity is skipped: `groups.approve` must
     /// name the exact request, or the gateway refuses it.
     var pendingApprovals: [GroupPendingApproval] {
         pendingActions.compactMap(GroupPendingApproval.init(action:))
+    }
+
+    /// The route to a member on another Hermes, as the home last found it;
+    /// nil for your own agents and for a route not tried yet.
+    func routeStatus(for member: GroupMember) -> GroupPeerRoute.Status? {
+        guard member.isPeer else { return nil }
+        return peerRoutes.last(where: { Self.names($0.memberID, member) })?.status
+    }
+
+    /// What a live member's row and the header say about it: a member on
+    /// another Hermes reads as cut off or unreachable while its route says
+    /// so, unless its turn is running. A turn names its member as
+    /// `GroupRoomTurns.liveMember` reads it, among the room's `members`.
+    func responderState(for member: GroupMember, in members: [GroupMember]) -> GroupResponderState {
+        let seated = members.contains(member) ? members : members + [member]
+        if memberActivity?.contains(where: {
+            $0.isWorking && GroupRoomTurns.member(withID: $0.memberID, in: seated) == member
+        }) == true {
+            return .responding
+        }
+        switch routeStatus(for: member) {
+        case .cutOff: return .cutOff
+        case .unreachable: return .unreachable
+        case .ready, .other, nil: return .responding
+        }
+    }
+
+    /// The gateway names peer routes by member id.
+    private static func names(_ id: String, _ member: GroupMember) -> Bool {
+        id.caseInsensitiveCompare(member.identityKey) == .orderedSame
     }
 
     /// How many times one discussion paused at its cap may be continued
@@ -225,10 +284,6 @@ struct GroupDriverStatus: Equatable {
     /// The room's settings, which `groups.state` answers beside the driver
     /// status (`context`); nil when the host didn't send them.
     var roomContext: GroupRoomContext? = nil
-    /// Who is answering right now (`member_activity`, Hermes 0.22.5): the
-    /// room's live turns, the lead's routing turn included. Nil on a host
-    /// before it, whose "is responding" line mirrors the planner instead.
-    var memberActivity: [GroupMemberActivity]? = nil
     /// The room's round limit (`max_rounds`), where the host's config can
     /// change it; nil means the default.
     var maxRounds: Int? = nil
@@ -242,10 +297,38 @@ struct GroupDriverStatus: Equatable {
         status.maxContinues = maxContinues
         status.routingModes = routingModes
         status.roomContext = roomContext
+        status.peerRoutes = peerRoutes
         status.memberActivity = memberActivity
         status.maxRounds = maxRounds
         return status
     }
+}
+
+/// One `peer_routes` row of `groups.state`'s driver status
+/// (tui_gateway/hosted_room_service.py `_route_statuses`).
+struct GroupPeerRoute: Equatable {
+    enum Status: Equatable {
+        case ready
+        /// `needs_reauthorization`: the member's Hermes refused the room's
+        /// grant, revoked or run out, until the link is saved again.
+        case cutOff
+        /// `unavailable`: its Hermes couldn't be reached, or didn't admit
+        /// the turn; Hermes tries again.
+        case unreachable
+        case other(String)
+
+        init(wire: String) {
+            switch wire {
+            case "ready": self = .ready
+            case "needs_reauthorization": self = .cutOff
+            case "unavailable": self = .unreachable
+            default: self = .other(wire)
+            }
+        }
+    }
+
+    let memberID: String
+    let status: Status
 }
 
 /// One live turn in `member_activity`: whose it is, where it stands
@@ -267,6 +350,17 @@ struct GroupMemberActivity: Equatable {
         self.status = status
         self.threadID = threadID
     }
+
+    /// The member's turn has the room (Hermes Desktop ranks it over queued).
+    var isWorking: Bool { status == "running" || status == "stopping" }
+    var isQueued: Bool { status == "queued" }
+}
+
+/// How a live member stands, for its row and the header.
+enum GroupResponderState: Equatable {
+    case responding
+    case cutOff
+    case unreachable
 }
 
 /// One member's status on its pill under a room's title
@@ -462,7 +556,13 @@ enum GroupDecoders {
             actor: actor(object["actor"]),
             authorityEpoch: HermesClient.exactIntValue(object["authority_epoch"]),
             payload: object["payload"]?.objectValue ?? [:],
-            createdAt: object["created_at"]?.doubleValue ?? 0
+            createdAt: object["created_at"]?.doubleValue ?? 0,
+            // An empty name counts as none (yours), as the people's `posts` drop it.
+            post: object["post"]?.objectValue.map {
+                GroupEventPost(by: $0["by"]?.stringValue.flatMap {
+                    $0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : $0
+                })
+            }
         )
     }
 
@@ -493,21 +593,38 @@ enum GroupDecoders {
             if let number = HermesClient.exactIntValue(count) { counts[key] = number }
         }
         let pending = (object["pending_actions"]?.arrayValue ?? []).compactMap { $0.objectValue }
+        let routes = (object["peer_routes"]?.arrayValue ?? []).compactMap { row -> GroupPeerRoute? in
+            guard let route = row.objectValue, let memberID = nonEmptyMemberID(route) else { return nil }
+            return GroupPeerRoute(memberID: memberID, status: .init(wire: route["status"]?.stringValue ?? ""))
+        }
+        var activity: [GroupMemberActivity]?
+        if let rows = object["member_activity"]?.arrayValue {
+            activity = rows.compactMap { row -> GroupMemberActivity? in
+                guard let task = row.objectValue, let memberID = nonEmptyMemberID(task) else { return nil }
+                return GroupMemberActivity(memberID: memberID, status: task["status"]?.stringValue ?? "",
+                                           threadID: task["thread_id"]?.stringValue)
+            }
+        }
         var status = GroupDriverStatus(
             running: object["running"]?.boolValue ?? false,
             working: object["working"]?.boolValue ?? false,
             blocked: object["blocked"]?.boolValue ?? false,
             counts: counts,
-            pendingActions: pending
+            pendingActions: pending,
+            peerRoutes: routes,
+            memberActivity: activity
         )
         status.maxContinues = HermesClient.exactIntValue(object["max_continues"])
         status.routingModes = object["routing_modes"]?.arrayValue?.compactMap(\.stringValue)
         status.roomContext = context?.objectValue.map(GroupRoomContext.init(object:))
-        status.memberActivity = object["member_activity"]?.arrayValue.map {
-            $0.compactMap { $0.objectValue.flatMap(GroupMemberActivity.init(object:)) }
-        }
         status.maxRounds = HermesClient.exactIntValue(object["max_rounds"]).flatMap { $0 > 0 ? $0 : nil }
         return status
+    }
+
+    private static func nonEmptyMemberID(_ row: [String: AnyCodable]) -> String? {
+        guard let id = row["member_id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !id.isEmpty else { return nil }
+        return id
     }
 
     static func logPage(_ result: AnyCodable?) -> GroupLogPage? {
@@ -946,11 +1063,11 @@ enum GroupRoomRecipients {
     }
 
     /// The members the "To" row offers: those with a handle the gateway
-    /// can route, each once.
+    /// can route, each once, and not out of a room over Links.
     static func pickable(_ members: [GroupMember]) -> [GroupMember] {
         var seen: Set<String> = ["all", "everyone", "user"]
         return members.filter { member in
-            guard let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines),
+            guard member.out == nil, let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !handle.isEmpty else { return false }
             return seen.insert(handle.lowercased()).inserted
         }
@@ -1058,6 +1175,24 @@ enum GroupRoomTurns {
         }
     }
 
+    /// How much of a linked member's failure the room screen shows.
+    static let maxFailureDetailCharacters = 300
+
+    /// Why a member on another Hermes failed its turn, as that member's
+    /// bridge wrote it ("Laifu's Hermes didn't answer."), on one line and
+    /// cut at `maxFailureDetailCharacters`. Nil for your own agents, whose
+    /// error is Hermes' raw one, and for any other kind.
+    static func failureDetail(_ event: GroupEvent, members: [GroupMember]) -> String? {
+        guard event.kind == "turn.failed", member(for: event, members: members)?.isPeer == true,
+              let error = event.payload["error"]?.stringValue else { return nil }
+        let line = error.split(whereSeparator: \.isNewline)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+        guard !line.isEmpty else { return nil }
+        return String(line.prefix(maxFailureDetailCharacters))
+    }
+
     enum RoomActivityOutcome: Equatable {
         case settled
         case bounded
@@ -1136,11 +1271,77 @@ enum GroupRoomTurns {
             )
             // The room's name for it and the bot's own rename history.
             renamed.previousNames = member.previousNames
+            renamed.owner = member.owner
+            renamed.isYours = member.isYours
+            renamed.out = member.out
             for name in [old] + bot.previousNames where !name.isEmpty && !renamed.previousNames.contains(name) {
                 renamed.previousNames.append(name)
             }
             return renamed
         }
+    }
+
+    /// The members as `people` (keyed by member id) shows them: how each is
+    /// out, and for one on another Hermes, its owner or that it's yours.
+    static func members(_ members: [GroupMember], people: [String: RoomPerson]) -> [GroupMember] {
+        guard !people.isEmpty else { return members }
+        return members.map { member in
+            guard let id = member.memberID,
+                  let person = people.first(where: { $0.key.caseInsensitiveCompare(id) == .orderedSame })?.value
+            else { return member }
+            var known = member
+            // Out stays out: an older read can't put one back in.
+            known.out = person.out ?? member.out
+            if member.isPeer {
+                if person.isYours {
+                    known.isYours = true
+                } else if let owner = person.owner {
+                    known.owner = owner
+                }
+            }
+            return known
+        }
+    }
+
+    /// A copy's members with your agents that are out, as its invite's
+    /// `gone` names them by handle: yours, and how they went. Once yours
+    /// leave, the copy lists them as another's, as the host names you.
+    static func members(_ members: [GroupMember], gone: [RoomInvite.Agent]) -> [GroupMember] {
+        let handles = Dictionary(
+            gone.compactMap { agent in agent.handle.map { ($0.lowercased(), agent.reason) } },
+            uniquingKeysWith: { first, _ in first }
+        )
+        guard !handles.isEmpty else { return members }
+        return members.map { member in
+            // Yours still listed as yours too, when the copy wasn't read again.
+            guard let handle = member.handle?.lowercased(), let reason = handles[handle] else { return member }
+            var known = member
+            known.isYours = member.isPeer || member.isYours
+            known.out = reason.flatMap(RoomMemberOut.init(rawValue:))
+            return known
+        }
+    }
+
+    /// Whose another person's agent is, for the chip beside its name in
+    /// its bubble (GroupMemberOwnerChip); nil for yours and an unnamed one.
+    static func shownOwner(of member: GroupMember?) -> String? {
+        guard let member, member.isPeer, !member.isYours,
+              let owner = member.owner?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty else { return nil }
+        return owner
+    }
+
+    /// Group Info's line under a member: whose agent it is.
+    static func ownerLine(of member: GroupMember) -> String {
+        let whose: String
+        if !member.isPeer || member.isYours {
+            whose = AppLocalization.string("Your agent")
+        } else if let owner = member.owner?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty {
+            whose = AppLocalization.string("\(owner)'s agent")
+        } else {
+            whose = AppLocalization.string("On another Hermes")
+        }
+        guard let out = member.out else { return whose }
+        return AppLocalization.string("\(whose) · \(RoomLeaveText.outLine(out))")
     }
 
     /// The member's name for captions, never empty: a member with no name
@@ -1676,6 +1877,53 @@ enum GroupRoomTurns {
         return members.first(where: { routingID(of: $0) == id })
             ?? members.first(where: { $0.profile?.caseInsensitiveCompare(id) == .orderedSame })
     }
+
+    /// The roster bot a room member is: by profile, else (a Desktop group's
+    /// member, which has none) by name. A member on another Hermes is
+    /// never one of yours, whatever its profile is called there.
+    static func rosterBot(for member: GroupMember?, name: String, in roster: [BotProfile]) -> BotProfile? {
+        if member?.isPeer == true { return nil }
+        if let profile = member?.profile?.trimmingCharacters(in: .whitespacesAndNewlines), !profile.isEmpty,
+           let bot = roster.first(where: { $0.name == profile }) {
+            return bot
+        }
+        let label = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !label.isEmpty else { return nil }
+        // The id first, then a bot's own name over another's id capitalized.
+        return roster.first { $0.name == label }
+            ?? roster.first { $0.displayLabel == label && $0.displayLabel.lowercased() != $0.name.lowercased() }
+            ?? roster.first { $0.displayLabel == label }
+    }
+
+    /// The member the gateway's live turns put first, as Hermes Desktop
+    /// reads them: a running (or stopping) turn's, else the first queued
+    /// one's. An id the room doesn't seat, and a status this build doesn't
+    /// know, are skipped.
+    static func liveMember(_ activity: [GroupMemberActivity], members: [GroupMember]) -> GroupMember? {
+        let ranked = activity.filter(\.isWorking) + activity.filter(\.isQueued)
+        for task in ranked {
+            if let member = member(withID: task.memberID, in: members) { return member }
+        }
+        return nil
+    }
+}
+
+/// What Disband's confirmation says. In a room with a member from another
+/// installation the room ends for everyone, the plugin deletes your agents'
+/// hidden sessions for it, and agents on other people's Hermes keep theirs
+/// (notifier 0.81, Eric 2026-10-26). A room of only your own agents ends
+/// whole.
+enum GroupRoomDisband {
+    static func warning(members: [GroupMember]) -> String {
+        if members.contains(where: \.isPeer) {
+            return AppLocalization.string(
+                "The room ends for everyone, and your agents' sessions for it are deleted. Agents on other people's Hermes keep theirs. This cannot be undone."
+            )
+        }
+        return AppLocalization.string(
+            "The room, its history, and every member's session end permanently. This cannot be undone."
+        )
+    }
 }
 
 // MARK: - Composer @mention picker
@@ -1742,13 +1990,14 @@ enum MentionAutocomplete {
     }
 
     /// Room members, then `@all`. Members without a handle cannot be routed
-    /// and are left out.
+    /// and are left out, as are those out of a room over Links: the home
+    /// cut off their route.
     static func roomCandidates(_ members: [GroupMember]) -> [Candidate] {
         // A member handle can never shadow the broadcast tags or the human
         // handoff (the create path reserves the same set).
         var seen: Set<String> = ["all", "everyone", "user"]
         var result: [Candidate] = []
-        for member in members {
+        for member in members where member.out == nil {
             guard let handle = member.handle?.trimmingCharacters(in: .whitespacesAndNewlines),
                   !handle.isEmpty, seen.insert(handle.lowercased()).inserted else { continue }
             result.append(Candidate(tag: handle, title: GroupRoomTurns.displayName(of: member)))
