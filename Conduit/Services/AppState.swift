@@ -2262,9 +2262,14 @@ final class AppState: ObservableObject {
     private func composerPlaceholder(namingAgent: Bool) -> String {
         // A chat on its way takes a message like any chat: the header says
         // Conduit is connecting, and the message says it will send then.
+        // A New Chat is the workspace profile's; an open chat waiting on
+        // Hermes names its own agent, the bot inside a Bot Chat (issue 2025).
         if composerWaitsForChat {
+            let name = composerChatOnScreen == .newChat
+                ? profileDisplayName(activeProfile)
+                : conversationAgentIdentity.name
             return namingAgent
-                ? AppLocalization.string("Message \(profileDisplayName(activeProfile))…")
+                ? AppLocalization.string("Message \(name)…")
                 : AppLocalization.string("Message…")
         }
         // A saved copy reads as the chat while Hermes is on its way, as a
@@ -2492,6 +2497,9 @@ final class AppState: ObservableObject {
     /// behind it (a return to the app) would put its error in the room
     /// (#1459); it waits here and shows when the room closes back to the chat.
     private var chatErrorBehindRoom: String?
+    /// The restore error the open chat's last failed resume showed, which a
+    /// later resume of it that works clears (issue 2025).
+    private var chatRestoreFailureShown: String?
     /// Where a chat sync puts its error: `errorMessage`, or
     /// `chatErrorBehindRoom` while a room is on screen.
     private var chatSyncErrorMessage: String? {
@@ -19327,6 +19335,49 @@ final class AppState: ObservableObject {
                 && (chatResumeLifecycleOperations.persistedTranscript != nil || bridge != nil)
             var result: SessionResumeResult
             var transcript: PersistedSessionTranscript?
+            // Hermes refuses a resume carrying the whole transcript past
+            // `sessions.max_resume_messages` (4130), yet resumes the same
+            // chat compact, whose guard counts only its newest segment
+            // (issue 2025: a Bot Chat past 20,000 rows, 29 in its newest
+            // segment). That resume brings no rows: the history source fills
+            // them in when it answers now, else the chat keeps the rows it
+            // shows and the next read brings them up to date. A chat with
+            // none to keep shows the refusal, which says what to do.
+            var keepsRowsOnScreen = false
+            func resumeCarryingTranscript() async throws -> SessionResumeResult {
+                do {
+                    return try await openChatResumeSession(
+                        sessionId,
+                        using: client,
+                        compact: false,
+                        profile: conversationScopeProfile
+                    )
+                } catch let refusal as RpcError where HermesClient.isResumeTooLongError(refusal) {
+                    let compact = try await openChatResumeSession(
+                        sessionId,
+                        using: client,
+                        compact: true,
+                        profile: conversationScopeProfile
+                    )
+                    if case .hydrated(let persisted) = await persistedTranscriptOutcome(
+                        sessionId: sessionId,
+                        profile: conversationScopeProfile ?? profile,
+                        using: dashboardTicketBridge
+                    ), transcriptMatchesSession(
+                        persisted,
+                        requestedSessionId: sessionId,
+                        resumedSessionId: compact.sessionId
+                    ) {
+                        transcript = persisted
+                        return compact
+                    }
+                    guard !messages.isEmpty,
+                          ChatScrollIdentityNormalization.sessionID(activeSessionId)
+                            == ChatScrollIdentityNormalization.sessionID(sessionId) else { throw refusal }
+                    keepsRowsOnScreen = true
+                    return compact
+                }
+            }
             if compactResume {
                 async let resumedSession = openChatResumeSession(
                     sessionId,
@@ -19360,12 +19411,7 @@ final class AppState: ObservableObject {
                         transcript = persisted
                     } else {
                         do {
-                            result = try await openChatResumeSession(
-                                sessionId,
-                                using: client,
-                                compact: false,
-                                profile: conversationScopeProfile
-                            )
+                            result = try await resumeCarryingTranscript()
                         } catch {
                             resumeRPCFailedSessionNotFound = (error as? RpcError)?.code == 4007
                             throw error
@@ -19376,12 +19422,7 @@ final class AppState: ObservableObject {
                     // predating the messages endpoint): re-resume carrying
                     // the transcript, exactly as pre-compact builds did.
                     do {
-                        result = try await openChatResumeSession(
-                            sessionId,
-                            using: client,
-                            compact: false,
-                            profile: conversationScopeProfile
-                        )
+                        result = try await resumeCarryingTranscript()
                     } catch {
                         resumeRPCFailedSessionNotFound = (error as? RpcError)?.code == 4007
                         throw error
@@ -19393,12 +19434,7 @@ final class AppState: ObservableObject {
                 }
             } else {
                 do {
-                    result = try await openChatResumeSession(
-                        sessionId,
-                        using: client,
-                        compact: false,
-                        profile: conversationScopeProfile
-                    )
+                    result = try await resumeCarryingTranscript()
                 } catch {
                     resumeRPCFailedSessionNotFound = (error as? RpcError)?.code == 4007
                     throw error
@@ -19417,6 +19453,17 @@ final class AppState: ObservableObject {
                 settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
                 chatResumeCoordinator.abandonPendingAutomaticSync()
                 return false
+            }
+            // The compact resume refused nothing but brought no rows: the
+            // ones on screen stand for the chat, and the next read (a send,
+            // a return to the app) brings them up to date.
+            if keepsRowsOnScreen {
+                result = SessionResumeResult(
+                    sessionId: result.sessionId,
+                    storedSessionId: result.storedSessionId,
+                    messages: messages,
+                    snapshot: result.snapshot
+                )
             }
 
             // Admission gate: validate what the resume response claims about
@@ -19853,15 +19900,26 @@ final class AppState: ObservableObject {
                     authoritativeApprovalsMode: bufferedApprovalsModeAuthority
                 )
             }
+            // Rows kept from the screen aren't proof the chat is current
+            // (applyChatResume took them as if they were).
+            if keepsRowsOnScreen {
+                transcriptFreshnessIsStale = true
+            }
             let settled = settleReconciliationAndPublish(
                 token,
                 automaticWorkToken: automaticWorkToken,
                 automaticSyncOperationID: automaticSyncOperationID
             )
             // The chat resumed: an earlier failure waiting behind a room is
-            // no longer news when the room closes.
+            // no longer news when the room closes, nor the one on screen if
+            // it was a failed restore of this chat (issue 2025: the error
+            // stayed over a chat that came back on the next try).
             if settled {
                 chatErrorBehindRoom = nil
+                if let failed = chatRestoreFailureShown, errorMessage == failed {
+                    errorMessage = nil
+                }
+                chatRestoreFailureShown = nil
             }
             if settled, reconcileExplicitYolo {
                 // Re-assert only after the ownership guard above (token,
@@ -19937,6 +19995,8 @@ final class AppState: ObservableObject {
             default:
                 chatSyncErrorMessage = AppLocalization.string("Failed to restore this conversation: \(UserFacingError.message(for: error))")
             }
+            // A later restore of the chat that works takes it down again.
+            chatRestoreFailureShown = chatSyncErrorMessage
             settleReconciliation(token, automaticSyncOperationID: automaticSyncOperationID)
             chatResumeCoordinator.abandonPendingAutomaticSync()
             return false
@@ -26898,9 +26958,16 @@ final class AppState: ObservableObject {
     }
     #endif
 
-    /// The bot whose chat is open, if the open conversation is a Bot Chat.
+    /// The bot whose chat is open, if the open conversation is a Bot Chat:
+    /// the same evidence the resume's scope reads (`botScopeProfile`: this
+    /// run's registry, the roster, the saved last-chat reference). The
+    /// registry alone is empty after a relaunch or a server boundary until
+    /// the resume lands, so a Bot Chat back from the background read as the
+    /// workspace's chat for that second: its title the bot's, its composer
+    /// and reply headers the workspace profile's (issue 2025).
     var activeBotChatProfile: String? {
-        activeSessionId.flatMap(botConversationProfile(for:))
+        guard let activeSessionId else { return nil }
+        return botScopeProfile(forSessionIDs: [activeSessionId], workspaceProfile: activeProfile)
     }
 
     /// The profile the open conversation's agent identity draws from: the
@@ -26964,8 +27031,24 @@ final class AppState: ObservableObject {
             }
             .flatMap { $0.isEmpty ? nil : $0 }
         return captured
+            ?? savedBotChatLabel(profile: profile)
             ?? rosterBot?.displayLabel
             ?? profileDisplayName(profile)
+    }
+
+    /// The label the saved last-chat reference keeps for the open Bot Chat,
+    /// which the title shows after a relaunch before the resume captures it
+    /// again (issue 2025: the composer named another label meanwhile). The
+    /// main bot's follows its Conduit name, as `noteBotChatSession` keeps.
+    private func savedBotChatLabel(profile: String) -> String? {
+        guard !BotManagement.isDefaultProfile(profile),
+              let saved = chatResumeCoordinator.lastSession(for: activeProfile),
+              saved.kind == .bot,
+              let open = ChatScrollIdentityNormalization.sessionID(activeSessionId),
+              ChatScrollIdentityNormalization.sessionID(saved.sessionID) == open,
+              let label = saved.botLabel?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !label.isEmpty else { return nil }
+        return label
     }
 
     #if DEBUG

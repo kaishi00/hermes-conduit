@@ -4759,6 +4759,16 @@ final class HermesClient: ObservableObject {
             || lowered.contains("no such method")
     }
 
+    /// Whether `session.resume` refused to carry the whole transcript: past
+    /// `sessions.max_resume_messages` (default 20,000) Hermes answers 4130
+    /// "This session is too long to reload safely" (`_resume_guard` in
+    /// `tui_gateway/methods_session.py`). Its compact resume
+    /// (`omit_messages`) counts only the newest segment and still opens the
+    /// chat (issue 2025).
+    static func isResumeTooLongError(_ error: RpcError) -> Bool {
+        error.code == 4130
+    }
+
     /// Whether `error` means "the runtime session id is gone" — the gateway
     /// answers session-scoped RPCs for a reaped/detached runtime with
     /// `_err(4001, "session not found")` (`tui_gateway/server.py::_sess_nowait`),

@@ -2709,6 +2709,27 @@ final class BotModeTests: XCTestCase {
         )
     }
 
+    /// A relaunched Bot Chat names its bot before the resume registers it
+    /// again: the title read the saved reference's label while the composer
+    /// and reply headers fell back to the workspace profile (issue 2025).
+    func testARelaunchedBotChatNamesItsBotBeforeTheResumeLands() {
+        let harness = makeBotHarness(
+            configureDefaults: { defaults in
+                ChatResumeStore(defaults: defaults).setLastSession(
+                    .bot(botName: "atlas", label: "Scout", sessionID: "stored-1"),
+                    for: "default"
+                )
+            },
+            lifecycleOperations: ChatResumeLifecycleOperations()
+        )
+        XCTAssertEqual(harness.appState.activeSessionId, "stored-1")
+        harness.appState.clearBotChatRegistryForTesting()
+
+        XCTAssertEqual(harness.appState.activeBotChatProfile, "atlas")
+        XCTAssertEqual(harness.appState.conversationIdentityProfile, "atlas")
+        XCTAssertEqual(harness.appState.conversationAgentIdentity.name, "Scout")
+    }
+
     /// Bot evidence can live on an ALIAS of the stored id (a compaction tip, a
     /// runtime the rebind minted, a lineage root). Healing and the
     /// missing-saved-session gate are therefore evaluated across the
