@@ -70,7 +70,6 @@ struct PluginCatalogArtwork: View {
 /// The Plugins tab's catalog: the featured shelf and Browse All.
 struct PluginCatalogShelf: View {
     let store: CapabilitiesStore
-    let canManage: Bool
 
     var body: some View {
         let featured = CapabilityPluginFilter.featured(store.pluginCatalog)
@@ -85,7 +84,7 @@ struct PluginCatalogShelf: View {
                     LazyHStack(spacing: 12) {
                         ForEach(featured) { entry in
                             NavigationLink {
-                                PluginCatalogDetailPage(name: entry.name, store: store, canManage: canManage)
+                                PluginCatalogDetailPage(name: entry.name, store: store)
                                     .v2TabBarClearance()
                             } label: {
                                 PluginFeaturedCard(entry: entry)
@@ -98,7 +97,7 @@ struct PluginCatalogShelf: View {
                 CapabilityRowDivider()
             }
             NavigationLink {
-                PluginCatalogBrowsePage(store: store, canManage: canManage)
+                PluginCatalogBrowsePage(store: store)
                     .v2TabBarClearance()
             } label: {
                 CapabilityRowLabel(
@@ -141,7 +140,6 @@ private struct PluginFeaturedCard: View {
 struct PluginCatalogBrowsePage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let store: CapabilitiesStore
-    let canManage: Bool
     @State private var query = ""
     @State private var tier: String?
     @State private var category: String?
@@ -166,7 +164,7 @@ struct PluginCatalogBrowsePage: View {
                     ForEach(Array(entries.enumerated()), id: \.element.id) { index, entry in
                         CapabilityCardRow(divided: index > 0) {
                             NavigationLink {
-                                PluginCatalogDetailPage(name: entry.name, store: store, canManage: canManage)
+                                PluginCatalogDetailPage(name: entry.name, store: store)
                                     .v2TabBarClearance()
                             } label: {
                                 PluginCatalogListRow(entry: entry)
@@ -283,8 +281,11 @@ struct PluginCatalogDetailPage: View {
     @Environment(\.openURL) private var openURL
     let name: String
     let store: CapabilitiesStore
-    let canManage: Bool
     @State private var confirmsInstall = false
+
+    /// Read live: a page pushed on another profile offers Install once the
+    /// store switches to the default one.
+    private var canManage: Bool { store.canManagePlugins }
     @State private var message: String?
 
     /// Read from the store, so an install shows at once.
