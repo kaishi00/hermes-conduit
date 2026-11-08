@@ -34,8 +34,8 @@ extension GroupChatModelsTests {
         )
     }
 
-    private func attachmentsUserEvent(seq: Int, attachments: [[String: Any]]) -> GroupEvent {
-        GroupDecoders.event(AnyCodable.from([
+    private func attachmentsUserEvent(seq: Int, attachments: [[String: Any]]) throws -> GroupEvent {
+        try XCTUnwrap(GroupDecoders.event(AnyCodable.from([
             "room_id": "room-1",
             "seq": seq,
             "event_id": "srv-\(seq)",
@@ -43,7 +43,7 @@ extension GroupChatModelsTests {
             "actor": ["kind": "user", "id": "human"],
             "payload": ["text": "", "thread_id": "main", "attachments": attachments],
             "created_at": 1.0,
-        ] as [String: Any]))!
+        ] as [String: Any])))
     }
 
     /// What the fake Hermes was asked.
@@ -146,7 +146,7 @@ extension GroupChatModelsTests {
 
     func testRoomAttachmentsDecodeFromUserMessagesOnly() throws {
         let line: [String: Any] = ["attachment_id": "a1", "kind": "image", "name": "cat.png", "size": 12, "mime": "image/png"]
-        let event = attachmentsUserEvent(seq: 3, attachments: [line, ["kind": "image"]])
+        let event = try attachmentsUserEvent(seq: 3, attachments: [line, ["kind": "image"]])
         XCTAssertEqual(event.attachments, [GroupRoomAttachment(attachmentID: "a1", kind: "image", name: "cat.png", size: 12, mime: "image/png")],
                        "a line without an id is dropped")
         let reply = try XCTUnwrap(GroupDecoders.event(AnyCodable.from([
@@ -299,9 +299,9 @@ extension GroupChatModelsTests {
     /// A message's attachment is read by the message carrying it; Hermes
     /// refusing it is `gone`, not a retryable failure.
     @MainActor
-    func testRoomAttachmentsReadByTheirMessage() async {
+    func testRoomAttachmentsReadByTheirMessage() async throws {
         let hermes = AttachmentsHermes()
-        hermes.logEvents = [attachmentsUserEvent(seq: 1, attachments: [
+        hermes.logEvents = try [attachmentsUserEvent(seq: 1, attachments: [
             ["attachment_id": "a1", "kind": "image", "name": "cat.png", "size": 12, "mime": "image/png"],
         ])]
         let appState = attachmentsAppState(hermes)
