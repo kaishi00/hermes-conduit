@@ -246,6 +246,23 @@ final class CapabilitiesStore {
         requester.map { ObjectIdentifier($0) } == owner.bridge && profile == owner.profile
     }
 
+    // MARK: Plugin settings
+
+    /// Saves a plugin's settings form: each new secret to the profile's
+    /// `.env` (never read back), then the values through Hermes' plugin
+    /// settings call, which also tells the plugin they changed. Answers the
+    /// fields as Hermes now has them.
+    func savePluginSettings(key: String, save: PluginSettings.Save, client: HermesClient) async throws -> [PluginSettingField]? {
+        for (env, value) in save.secrets.sorted(by: { $0.key < $1.key }) {
+            _ = try await request(scoped("/api/env"), method: "PUT", body: scopedBody(["key": env, "value": value]))
+        }
+        let values = PluginSettings.body(save.values)
+        let profile = profile
+        return try await ProfileConfigWriteQueue.runThrowing {
+            try await client.savePluginSettings(key: key, values: values, profile: profile)
+        }
+    }
+
     // MARK: Requests
 
     private func request(

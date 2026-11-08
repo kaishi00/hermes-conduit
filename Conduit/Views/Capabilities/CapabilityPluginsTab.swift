@@ -397,6 +397,7 @@ struct AgentPluginDetailPage: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 16)
                 }
+                PluginSettingsSection(pluginName: plugin.name, canManage: canManage, store: store)
                 if canManage, plugin.canUpdate {
                     Button {
                         update(plugin, accept: false)

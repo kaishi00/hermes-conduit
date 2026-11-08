@@ -3627,6 +3627,41 @@ the pages' captions and README.md's Capabilities line (done)
 
 **Checked:** 2026-11-08, #2010 (kept filters keep their place, the rule in CapabilityPluginFilter; the Category menu reads its selection to VoiceOver); 2026-11-08, #2009 (the shelf, Browse All, the plugin page)
 
+## Plugin settings
+
+An installed plugin's own settings on its page in Settings > Capabilities >
+Plugins, as Hermes Desktop's plugin settings form edits them: the fields its
+manifest's `config_schema` declares (text, number, switch, choice, JSON and
+secret), read from the gateway's `plugins.manage` `list` (each row's
+`settings_schema`) and saved with `plugins.manage` `settings`. A secret is
+written to the profile's `.env` (`PUT /api/env`), as Desktop does, and never
+read back.
+
+**Siblings:** Plugin catalog: browse and install (not needed: a plugin's
+settings appear once it's installed, on the installed plugin's page) ·
+Providers and keys (not needed: the same write-only `.env` rule, its keys
+listed there) · Hermes Desktop's plugin settings form (upstream, the
+reference) · profiles (done: Hermes keeps plugin settings for the default
+profile, so another profile's page shows them read-only with a caption) ·
+Watch, CarPlay and group rooms (not needed: no settings) · the notifier (not
+needed: Hermes' own gateway call) · Text: the form's captions and README.md's
+Capabilities line (done)
+
+**Code**
+- Model: `Conduit/Models/PluginSettings.swift` (PluginSettingField, PluginSettings.save: only changed values, secrets apart, text that doesn't fit refused)
+- Client: `Conduit/Services/HermesClient.swift` (pluginSettingFields, savePluginSettings), `Conduit/Services/CapabilitiesStore.swift` (savePluginSettings: secrets to `.env`, then the values)
+- Views: `Conduit/Views/Capabilities/PluginSettingsViews.swift` (PluginSettingsSection, PluginSettingFieldRow), `Conduit/Views/Capabilities/CapabilityPluginsTab.swift` (the section on AgentPluginDetailPage)
+- Tests: `ConduitTests/PluginSettingsTests.swift` (an extension of PluginCatalogBrowseTests: the unit suite is at its 224-class cap)
+
+**Rulings**
+- A secret is write-only: the form never shows its value, even if Hermes sent one, and a secret left blank stays as it is (#NUM).
+- A save sends only what changed; a Hermes without `plugins.manage` shows no section (#NUM).
+
+**Open gaps**
+- None.
+
+**Checked:** 2026-11-08, #NUM (the form, saving, secrets to `.env`)
+
 ## Reply progress signals
 
 Everything that reacts to a turn's output as it arrives: the agent's text,
