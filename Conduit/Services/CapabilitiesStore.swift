@@ -105,6 +105,9 @@ final class CapabilitiesStore {
     /// The newest read of the official skills: only it clears the flag.
     /// Its own count, since a change bumps `skillsEpoch` without a read.
     @ObservationIgnored private var officialSkillsRead = 0
+    /// The last read of the official skills failed: with none shown, the
+    /// tab says so with Try Again rather than "No skills yet".
+    private(set) var officialSkillsFailed = false
     private(set) var skillInstalls: [String: CapabilityInstallState] = [:]
     /// The skill hub, nil until read (or kept).
     private(set) var skillHub: SkillHubSnapshot?
@@ -140,6 +143,9 @@ final class CapabilitiesStore {
     /// The newest read of the catalog: only it clears the flag. Its own
     /// count, since a change bumps `pluginsEpoch` without a read.
     @ObservationIgnored private var pluginCatalogRead = 0
+    /// The last read of the catalog failed: with none shown, the tab says
+    /// so with Try Again rather than leaving the catalog out.
+    private(set) var pluginCatalogFailed = false
     private(set) var pluginsLoaded = false
     private(set) var pluginsError: String?
     private(set) var pluginBusy: Set<String> = []
@@ -193,6 +199,7 @@ final class CapabilitiesStore {
         generation &+= 1
         officialSkills = []
         officialSkillsLoading = false
+        officialSkillsFailed = false
         skillInstalls = [:]
         skillHub = nil
         hubInstalled = [:]
@@ -211,6 +218,7 @@ final class CapabilitiesStore {
         plugins = []
         pluginCatalog = []
         pluginCatalogLoading = false
+        pluginCatalogFailed = false
         pluginsLoaded = false
         pluginsError = nil
         pluginBusy = []
@@ -419,8 +427,9 @@ final class CapabilitiesStore {
         let skillsRead = officialSkillsRead
         officialSkillsLoading = true
         defer { if token == generation, skillsRead == officialSkillsRead { officialSkillsLoading = false } }
-        guard let response = try? await read(scoped(KeptRoute.officialSkills), keptAs: KeptRoute.officialSkills, in: answers) else { return }
-        guard token == generation, epoch == skillsEpoch else { return }
+        let answer = try? await read(scoped(KeptRoute.officialSkills), keptAs: KeptRoute.officialSkills, in: answers)
+        if token == generation, skillsRead == officialSkillsRead { officialSkillsFailed = answer == nil }
+        guard let response = answer, token == generation, epoch == skillsEpoch else { return }
         officialSkills = Self.officialSkills(from: response)
         showsKept.remove(.officialSkills)
     }
@@ -1139,6 +1148,7 @@ final class CapabilitiesStore {
         do {
             let plugins = AgentPluginRow.list(from: try await hubResponse)
             let catalog = await catalogResponse
+            if token == generation, catalogRead == pluginCatalogRead { pluginCatalogFailed = catalog == nil }
             guard token == generation, epoch == pluginsEpoch else { return }
             self.plugins = plugins
             // A catalog read that fails keeps the catalog shown: a kept one
@@ -1150,7 +1160,8 @@ final class CapabilitiesStore {
             pluginsError = nil
             showsKept.remove(.plugins)
         } catch {
-            _ = await catalogResponse
+            let catalog = await catalogResponse
+            if token == generation, catalogRead == pluginCatalogRead { pluginCatalogFailed = catalog == nil }
             // A read cut off by leaving the tab isn't a failure: the tab
             // asks again when it next shows, as the Connectors tab does.
             guard token == generation, epoch == pluginsEpoch, !(error is CancellationError) else { return }

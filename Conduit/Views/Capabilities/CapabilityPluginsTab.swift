@@ -95,13 +95,17 @@ struct CapabilityPluginsTab: View {
                 // otherwise wait below every installed plugin.
                 if query.isEmpty, !store.pluginCatalog.isEmpty {
                     PluginCatalogShelf(store: store)
-                } else if query.isEmpty, store.pluginCatalogLoading {
+                } else if query.isEmpty, store.pluginCatalogLoading || store.pluginCatalogFailed {
                     CapabilitySection(
                         title: AppLocalization.string("Plugin catalog"),
                         symbol: "shippingbox",
                         tint: .conduitAura
                     ) {
-                        CapabilityLoadingRow()
+                        if store.pluginCatalogLoading {
+                            CapabilityLoadingRow()
+                        } else {
+                            CapabilityLoadFailedRow { await store.loadPlugins() }
+                        }
                     }
                 }
                 CapabilitySection(

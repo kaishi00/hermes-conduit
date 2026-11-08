@@ -394,3 +394,29 @@ struct CapabilityLoadingRow: View {
         .accessibilityElement(children: .combine)
     }
 }
+
+/// A section's one row when its list couldn't be read and none is shown:
+/// why, and Try Again.
+struct CapabilityLoadFailedRow: View {
+    let retry: () async -> Void
+    @State private var retrying = false
+
+    var body: some View {
+        HStack(spacing: 10) {
+            Text("Couldn't load the catalog.")
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            Button(AppLocalization.string("Try Again")) {
+                retrying = true
+                Task {
+                    await retry()
+                    retrying = false
+                }
+            }
+            .buttonStyle(.settings)
+            .disabled(retrying)
+        }
+        .padding(.vertical, 12)
+    }
+}

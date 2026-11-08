@@ -63,7 +63,7 @@ struct CapabilitySkillsTab: View {
             await refresh()
             await store.loadOfficialSkills()
         }) {
-            if installed.isEmpty && available.isEmpty && !store.officialSkillsLoading {
+            if installed.isEmpty && available.isEmpty && !store.officialSkillsLoading && !store.officialSkillsFailed {
                 CapabilityEmptyState(
                     title: query.isEmpty ? AppLocalization.string("No skills yet") : AppLocalization.string("No matching skills"),
                     symbol: "puzzlepiece.extension",
@@ -104,13 +104,17 @@ struct CapabilitySkillsTab: View {
                     .foregroundStyle(.red)
                     .frame(maxWidth: .infinity)
             }
-            if available.isEmpty, store.officialSkillsLoading, query.isEmpty {
+            if available.isEmpty, store.officialSkillsLoading || store.officialSkillsFailed, query.isEmpty {
                 CapabilitySection(
                     title: AppLocalization.string("Available to install"),
                     symbol: "arrow.down.circle",
                     tint: .conduitAura
                 ) {
-                    CapabilityLoadingRow()
+                    if store.officialSkillsLoading {
+                        CapabilityLoadingRow()
+                    } else {
+                        CapabilityLoadFailedRow { await store.loadOfficialSkills() }
+                    }
                 }
             }
             if !available.isEmpty {
