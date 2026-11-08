@@ -408,10 +408,7 @@ struct ModelPickerView: View {
                             appState.saveModelVisibility(visibility)
                             editingVisibility = false
                         } else {
-                            searchFocused = false
-                            visibilityQuery = ""
-                            expandedVisibilityProvider = selectedProvider
-                            editingVisibility = true
+                            startEditingVisibility()
                         }
                     }
                     .scaledFont(.subheadline.weight(.semibold))
@@ -749,6 +746,12 @@ struct ModelPickerView: View {
                     catalogFailedRow
                 }
             }
+        } else if catalog.keptRowsFailed {
+            // No Quick picks to sit under, but a failed read still says so
+            // on the sheet, with Try Again.
+            ModelPickerSection(title: AppLocalization.string("Providers"), symbol: "server.rack", tint: .conduitAccent, flush: true) {
+                catalogFailedRow
+            }
         }
     }
 
@@ -796,6 +799,13 @@ struct ModelPickerView: View {
         withAnimation(ConduitMotion.response) {
             appState.updateModelQuickPicks { $0.togglePin(model: model.id, provider: provider) }
         }
+    }
+
+    private func startEditingVisibility() {
+        searchFocused = false
+        visibilityQuery = ""
+        expandedVisibilityProvider = selectedProvider
+        editingVisibility = true
     }
 
     /// Every provider, on a page of its own.
@@ -853,6 +863,18 @@ struct ModelPickerView: View {
         .navigationTitle(AppLocalization.string("All providers"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            // Hiding providers is the sheet's Edit; this page's goes back
+            // to it, so "Tap Edit to restore one" holds here too.
+            ToolbarItem(placement: .topBarTrailing) {
+                Button(AppLocalization.string("Edit")) {
+                    showingProviders = false
+                    startEditingVisibility()
+                }
+                .scaledFont(.subheadline.weight(.semibold))
+                .tint(.conduitAccent)
+            }
+        }
         .onAppear {
             if let held = visibleProviders.first(where: { $0.matches(selectedProvider) }) {
                 expandedProvider = held.name
