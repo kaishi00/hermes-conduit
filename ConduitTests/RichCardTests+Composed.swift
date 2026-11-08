@@ -217,8 +217,6 @@ extension AppStateVoiceCapabilityTests {
         memory.set(key, .sending)
         XCTAssertEqual(memory.state(key, now: Date().addingTimeInterval(RichCardTapMemory.holdSeconds + 1)), .sending,
                        "a slow tap keeps its spinner until it's answered")
-        XCTAssertNil(memory.state(key, now: Date().addingTimeInterval(RichCardTapMemory.sendingCeiling + 1)),
-                     "a tap whose answer never came loses its spinner")
     }
 
     func testAChatValueReadsBackItsParts() throws {

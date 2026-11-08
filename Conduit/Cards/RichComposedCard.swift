@@ -253,9 +253,10 @@ struct RichCardActionContext {
     /// place and would take a staged photo along, so words typed or a photo
     /// added while the tap was on its way keep the button tappable instead).
     static func mayFollowUp(tappedIn chat: String, openChat: String?, composerIsEnabled: Bool,
-                            draft: String, stagedAttachments: Bool = false) -> Bool {
-        composerIsEnabled && openChat == chat && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            && !stagedAttachments
+                            draft: String, stagedAttachments: Bool = false,
+                            sameChat: (String, String) -> Bool = { $0 == $1 }) -> Bool {
+        composerIsEnabled && openChat.map { sameChat(chat, $0) } == true
+            && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !stagedAttachments
     }
 
     /// The `chat` of a chat by its durable id on a dashboard's profile, or
@@ -323,15 +324,11 @@ final class RichCardFieldMemory {
 
 /// The taps on their way or sent, so a button shows it went until Hermes
 /// shows the card again (a new card is new buttons) or two minutes pass
-/// once it went. A tap still on its way keeps its spinner however slow, up
-/// to a ceiling no answer outlasts.
+/// once it went. A tap still on its way keeps its spinner however slow.
 @MainActor
 final class RichCardTapMemory: ObservableObject {
     static let shared = RichCardTapMemory()
     static let holdSeconds: TimeInterval = 120
-    /// A tap still on its way past this has lost its answer (the bridge
-    /// gives up after seconds): its spinner goes, as a safety net.
-    static let sendingCeiling: TimeInterval = 300
 
     enum State: Equatable { case sending, sent }
 
@@ -344,15 +341,14 @@ final class RichCardTapMemory: ObservableObject {
     }
 
     func state(_ key: String, now: Date = .now) -> State? {
-        guard let tap = taps[key], Self.isKept(tap, now: now) else {
+        guard let tap = taps[key], tap.state == .sending || now.timeIntervalSince(tap.at) < Self.holdSeconds else {
             return nil
         }
         return tap.state
     }
 
     func set(_ key: String, _ state: State?) {
-        let now = Date.now
-        taps = taps.filter { Self.isKept($0.value, now: now) }
+        taps = taps.filter { $0.value.state == .sending || Date.now.timeIntervalSince($0.value.at) < Self.holdSeconds }
         if let state {
             taps[key] = (state: state, at: .now)
             // Nothing else may redraw the button when the hold passes.
@@ -363,9 +359,5 @@ final class RichCardTapMemory: ObservableObject {
         } else {
             taps[key] = nil
         }
-    }
-
-    private static func isKept(_ tap: (state: State, at: Date), now: Date) -> Bool {
-        now.timeIntervalSince(tap.at) < (tap.state == .sending ? sendingCeiling : holdSeconds)
     }
 }

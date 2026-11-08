@@ -72,7 +72,8 @@ extension AppState {
                     tappedIn: chat,
                     openChat: self.richCardChat,
                     composerIsEnabled: self.composerIsEnabled, draft: self.predictive.draft,
-                    stagedAttachments: self.predictive.hasStagedAttachments) else {
+                    stagedAttachments: self.predictive.hasStagedAttachments,
+                    sameChat: self.richCardChatsAreSame) else {
                     if let id = answer["id"] as? String, self.notifierPlugin.reports(RichCardActionContext.dropCapability) {
                         let _: [String: Any]? = try? await bridge.requestJSON(
                             path: RichCardActionContext.dropPath(profile: profile, id: id), method: "DELETE")
