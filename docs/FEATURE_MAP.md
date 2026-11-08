@@ -261,7 +261,8 @@ tab's MCP servers (done: Apps sits above them on the same tab, and the
 tab's pull to refresh reads both) · Screens that open on their last answer
 (done: the section opens on its kept apps) · Sheets in Settings' look
 (done: the account name sheet) · the chat card Hermes opens when the model
-connects an app (`connection.request`; gap, see Open gaps) · Pulse (not
+connects an app (done: see Things Hermes connects from a chat, whose
+directory card opens Browse Apps with Hermes' picks first) · Pulse (not
 needed: it already leaves an app the user never connected out of its
 reports) · a bot's profile (not needed: the section shows the profile in
 use, as the other Capabilities tabs do) · Watch, CarPlay and group rooms
@@ -280,13 +281,64 @@ Text: the section's captions and README.md's Capabilities line (done)
 - A sign-in asks Hermes how far it got every two seconds and finishes once the account is connected. Closing Safari wakes Hermes to read the accounts at once, and a sign-in still not connected six seconds later, failed, expired or settled is given up as Desktop's Stop waiting does: Hermes stops waiting and the account it started goes, so no half-made account stays. Leaving the page gives it up too; a switch of dashboard, profile or connection never gives it up on the Hermes switched to (#1982).
 - A second account takes a name before its sign-in (the Portal's format: lowercase letters, digits and dashes, up to 32); a reconnect repairs the account by its id, never by its name, as Desktop does (#1982).
 - The app and tool switches change the member's own rules against the revision read, then read the rules back; rules changed elsewhere meanwhile are read and shown and the change isn't sent again. A tool or app the organization or a role turned off shows off and can't be switched, and with no member rules the switches only read (#1982).
-- Logos are the catalog's, else the vendor mark Desktop draws for the slug. An SVG is drawn once by a hidden WebKit view with JavaScript off and navigation refused; one that won't load or draw shows the app's first letter (#1982).
+- Logos are the catalog's, else the vendor mark Desktop draws for the slug. An SVG is drawn once by a hidden WebKit view with JavaScript off and navigation refused; one that won't load or draw shows the app's first letter, and gets another try once the apps are read again. A render given up at its four seconds never ends the next one (#1982, #NUM).
+- Giving up a sign-in reads how far it got first: an account that finished since the last look stays, and when Hermes can't say, none is removed. A new sign-in waits until the last one's Safari is gone from the screen (#NUM, from #1982's review).
 - A Hermes without the calls shows no Apps section rather than an error, and one with hosted connectors off shows none either (#1982).
 
 **Open gaps**
-- The chat card for an app the model connects: Hermes sends `connection.request` to every gateway client and waits on a card's answer, which Conduit doesn't draw yet, so a Conduit chat that asks to connect an app waits until Hermes' deadline. Next in the same thread.
+- None.
 
-**Checked:** 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
+**Checked:** 2026-11-08, #NUM (the chat card's gap closed; Browse Apps lists a chat's suggestions first; #1982's review: logo renders, give-up, Safari's dismissal, logo retries); 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
+
+## Things Hermes connects from a chat
+
+The card Hermes waits on in a chat when the model connects something
+(`manage_connections`, `manage_catalog`): an app to sign in to through Nous
+Portal, an MCP server to set up with the keys it asks for (then maybe sign
+in), a catalog plugin or skill to install, or the apps directory with
+Hermes' suggestions. Hermes runs the operation: `connection.request` opens
+the card, every change comes as `connection.update` with the operation's
+whole snapshot, and the card answers through `connection.respond` (rows
+approved with their keys, or skipped, or Continue), `connectors.connect`
+with `reconnect` (Try Again on a dead sign-in page) and
+`connectors.operation.wake` (Safari closed), all with
+`owner: {type: session}`.
+
+**Siblings:** chat card (chats, project chats, Bot Chat) · reopening the
+chat (a resume's `pending_connection`) and Hermes settling it (deadline,
+interrupt, all done) · the jump button · Classic voice's screen and the call
+screen (the card drawn there, tap only) · voice modes saying Hermes waits
+(Local Live once per card, a voice job's notice) · the Lock Screen's Live
+Activity (waiting on the user) · a message sent while it's open (Continue
+first, as Desktop's composer does) · Apps signed in through Nous Portal
+(the directory card opens its Browse Apps, Hermes' picks first) · Hermes
+Desktop's connector, MCP setup and catalog install cards (upstream, the
+reference) · Passwords, logins and codes Hermes asks for (the same rules for
+a typed key) · CarPlay and Watch calls (not needed: they speak the voice
+modes' lines) · notification (gap) · group rooms (gap) · Text (not needed:
+no README, docs, Settings or model-facing text describes the card)
+
+**Code**
+- Model: `Conduit/Models/ConnectionActivity.swift` (from, applied(over:), answer, hasRequiredValues, Target's opensPage, reissues and asksApproval)
+- Events and calls: `Conduit/Services/StreamEventParser.swift` (connection.request, connection.update), `Conduit/Services/HermesClient.swift` (StreamEvent.connection, respondToConnection, reissueConnection, wakeConnection, SessionRuntimeSnapshot.pendingConnectionPayload)
+- State: `Conduit/Services/AppState.swift` (applyConnectionActivity, respondToConnection, reissueConnection, wakeConnection, continueOpenConnections, hasPendingDecision)
+- Card: `Conduit/Views/ConnectionCard.swift` (ConnectionCard, ConnectionDirectorySheet), `Conduit/Views/ChatView.swift` (its row), `Conduit/Views/VoiceConversationSheet.swift` (VoiceApprovalPanel)
+- Siblings: `Conduit/Services/ChatResumeCoordinator.swift`, `Conduit/Services/AppState+SpokenApprovals.swift` (openChatWaitingInputs), `Conduit/Services/LiveTurnActivities.swift`, `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift`, `Conduit/Voice/VoiceBackgroundJobs.swift`, `Conduit/Services/SessionPresentationCache.swift` (never saved)
+- Tests: `ConduitTests/ConnectionCardTests.swift`
+
+**Rulings**
+- Hermes' snapshot is the card: a frame with a lower `seq` changes nothing, and an answer holds the card's buttons until a newer frame or the settlement answers it. A settled operation keeps its rows' outcomes on the card with nothing to press, and one this device never showed opens no card (#NUM).
+- A key typed for an MCP server lives only in the card's view state, goes once onto the socket with its approval (only the keys with a value) and is never on the message, in a cache, a log or a notification. A secret field never starts from a value Hermes sent. The card is live-only; reopening the chat brings an open one back from `pending_connection`. A card shown before a profile switch never sends: it stops offering anything (#NUM, as Passwords, logins and codes Hermes asks for).
+- An app's or server's page opens in Safari (a web address only) from the card's Connect; closing Safari wakes Hermes to look at once. A dead page's Try Again has Hermes make a new one on the open operation. Continue lets Hermes carry on without what isn't connected, and a message sent while the card is open continues it first, as in Hermes Desktop, so the message doesn't wait behind the card (#NUM).
+- The directory card lists Hermes' suggestions and opens Browse Apps with them first; connecting there signs in for the profile, as on the Apps page, and the card's Continue tells Hermes. A catalog row shows its tier and the catalog's scan of it as they come; the Advanced choices Desktop offers aren't on the card (#NUM).
+- Never asked or answered by voice: Local Live says Hermes waits in the chat once per card, a voice job's notice says so, and the voice screens draw the card to tap (#NUM).
+
+**Open gaps**
+- Notification: none, as for the input cards (Hermes gives plugins no hook on the operation).
+- Group rooms show no card.
+- A catalog install's Advanced choices (force, enable, a ref) and a settled install's Try Again, which Desktop's card offers.
+
+**Checked:** 2026-11-08, #NUM (the card, its reopening, its siblings)
 
 ## Voice follow-ups
 

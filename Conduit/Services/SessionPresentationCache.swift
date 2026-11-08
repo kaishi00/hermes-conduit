@@ -989,12 +989,13 @@ final class SessionPresentationCache {
         defer { signposter.endInterval("Save presentation rows", saving) }
 
         var store = load()
-        // Masked input prompts are live-only: never written to disk.
+        // Masked input prompts and connect cards are live-only: never
+        // written to disk.
         var savedRecords: [String: (message: ChatMessage, record: CachedMessage)] = [:]
         // Lazily, so a long chat is walked only as far back as the rows kept.
         let keptMessages = Array(
             messages.lazy
-                .filter { $0.role != .inputPrompt }
+                .filter { $0.role != .inputPrompt && $0.role != .connection }
                 .suffix(maxMessagesPerSession)
         )
         let freshRecords = keptMessages
