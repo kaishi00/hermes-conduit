@@ -92,7 +92,14 @@ enum CapabilitySkillOrdering {
     /// and `keeping` while it's picked even if none of them is in it.
     static func categories(_ skills: [OfficialSkill], keeping: String? = nil) -> [String] {
         Array(Set(skills.map(\.category) + [keeping].compactMap { $0 }))
-            .sorted { prettyCategory($0).localizedCaseInsensitiveCompare(prettyCategory($1)) == .orderedAscending }
+            .sorted { lhs, rhs in
+                // Two spellings can share a shown name: the raw one breaks the tie.
+                switch prettyCategory(lhs).localizedCaseInsensitiveCompare(prettyCategory(rhs)) {
+                case .orderedAscending: return true
+                case .orderedDescending: return false
+                case .orderedSame: return lhs < rhs
+                }
+            }
     }
 
     /// The skills to install by category, the categories A-Z by their shown

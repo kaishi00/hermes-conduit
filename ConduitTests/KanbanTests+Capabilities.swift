@@ -502,6 +502,20 @@ extension KanbanTests {
         XCTAssertEqual(Set(store.plugins.map(\.name)), ["Weather", "Maps"], "the older answer arrived last but is older")
         XCTAssertEqual(store.plugins.first { $0.name == "Weather" }?.isEnabled, true)
         XCTAssertFalse(store.pluginCatalogLoading, "the newest read cleared it, and the older one's end doesn't set it again")
+
+        // The official skills say so the same way.
+        var heldSkills: CheckedContinuation<Void, Never>?
+        requester.responses["/api/skills/hub/official"] = ["skills": [[String: Any]]()]
+        requester.beforeAnswering = { path in
+            guard path.hasPrefix("/api/skills/hub/official"), heldSkills == nil else { return }
+            await withCheckedContinuation { heldSkills = $0 }
+        }
+        let skills = Task { await store.loadOfficialSkills() }
+        while heldSkills == nil { await Task.yield() }
+        XCTAssertTrue(store.officialSkillsLoading)
+        heldSkills?.resume()
+        await skills.value
+        XCTAssertFalse(store.officialSkillsLoading)
     }
 
     /// A catalog connector's keys go to the profile's .env, only the
