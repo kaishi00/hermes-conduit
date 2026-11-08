@@ -502,22 +502,6 @@ private struct DelegationModelRouteSheet: View {
 
     private var providers: [ProviderInfo] { models?.providers ?? [] }
 
-    /// A provider or model the catalog doesn't list stays visible, so a
-    /// hand-written route is never shown as a different one.
-    private var providerChoices: [(id: String, title: String)] {
-        let listed = providers.map { (id: $0.name, title: $0.title) }
-        let current = draft.provider.isEmpty || listed.contains(where: { $0.id == draft.provider }) ? [] : [(id: draft.provider, title: draft.provider)]
-        let none = draft.provider.isEmpty ? [(id: "", title: AppLocalization.string("Choose a provider"))] : []
-        return none + current + listed
-    }
-
-    private var modelChoices: [(id: String, title: String)] {
-        let listed = (providers.first { $0.name == draft.provider }?.models ?? []).map { (id: $0.id, title: $0.label ?? $0.id) }
-        let current = draft.model.isEmpty || listed.contains(where: { $0.id == draft.model }) ? [] : [(id: draft.model, title: draft.model)]
-        let none = draft.model.isEmpty ? [(id: "", title: AppLocalization.string("Choose a model"))] : []
-        return none + current + listed
-    }
-
     var body: some View {
         NavigationStack {
             SettingsDetailContainer(compact: true) {
@@ -541,22 +525,38 @@ private struct DelegationModelRouteSheet: View {
                             .scaledFont(.caption).foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
                     }
-                    ConduitMenuPicker(value: draft.provider, choices: providerChoices, onSelect: chooseProvider) {
-                        Text("Provider").foregroundStyle(.secondary)
+                    NavigationLink {
+                        ModelChooserPage(
+                            catalog: ModelChooserCatalog(providers: providers, loaded: models != nil, answered: models != nil),
+                            retry: {},
+                            pick: draft.provider.isEmpty && draft.model.isEmpty ? nil : ModelChooserPick(provider: draft.provider, model: draft.model),
+                            isPicked: { option, item in option.name == draft.provider && item.id == draft.model },
+                            reasoning: ModelChooserReasoning(
+                                effort: draft.reasoningEffort,
+                                inheritTitle: AppLocalization.string("Subagent default"),
+                                levels: DelegationModelRouteDraft.reasoningEfforts.compactMap(ReasoningEffortLevel.init(rawValue:)),
+                                set: { draft.reasoningEffort = $0 }
+                            ),
+                            onDefault: {},
+                            onPick: { option, item in
+                                draft.provider = option.name
+                                draft.model = item.id
+                            }
+                        )
+                    } label: {
+                        let lines = ModelChooserLinkRow.lines(
+                            pick: draft.provider.isEmpty && draft.model.isEmpty ? nil : ModelChooserPick(provider: draft.provider, model: draft.model),
+                            providers: providers,
+                            defaultTitle: AppLocalization.string("Choose a model"),
+                            reasoning: draft.reasoningEffort.isEmpty ? nil : ReasoningEffortLevel.displayTitle(for: draft.reasoningEffort)
+                        )
+                        ModelChooserLinkRow(title: AppLocalization.string("Model"), value: lines.value, detail: lines.detail)
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.delegationRoute.model")
                     if draft.provider.isEmpty, let endpoint = route?.baseURL, !endpoint.isEmpty {
                         Text(AppLocalization.string("Runs on its endpoint, \(endpoint)."))
                             .scaledFont(.caption).foregroundStyle(.secondary)
-                    }
-                    ConduitMenuPicker(value: draft.model, choices: modelChoices, onSelect: { draft.model = $0 }) {
-                        Text("Model").foregroundStyle(.secondary)
-                    }
-                    ConduitMenuPicker(
-                        value: draft.reasoningEffort,
-                        choices: [(id: "", title: AppLocalization.string("Subagent default"))] + DelegationModelRouteDraft.reasoningEfforts.map { (id: $0, title: $0.capitalized) },
-                        onSelect: { draft.reasoningEffort = $0 }
-                    ) {
-                        Text("Reasoning effort").foregroundStyle(.secondary)
                     }
                     ConduitMenuPicker(
                         value: draft.serviceTier,
@@ -598,14 +598,6 @@ private struct DelegationModelRouteSheet: View {
             started = true
             if let route { draft = DelegationModelRouteDraft(route: route) }
         }
-    }
-
-    /// A model the new provider doesn't list isn't carried over to it.
-    private func chooseProvider(_ next: String) {
-        guard next != draft.provider else { return }
-        draft.provider = next
-        let listed = providers.first { $0.name == next }?.models ?? []
-        if !listed.contains(where: { $0.id == draft.model }) { draft.model = listed.first?.id ?? "" }
     }
 
     private func submit() {

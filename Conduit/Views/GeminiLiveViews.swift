@@ -479,29 +479,26 @@ struct VoiceJobModelSettingsSection: View {
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Voice jobs"), symbol: "bolt.horizontal.circle", tint: .conduitAccent) {
-            ConduitMenuPicker(
-                value: selection,
-                groups: VoiceJobModelSettingsSection.modelMenuGroups(
-                    defaultTitle: AppLocalization.string("Profile default"),
-                    defaultTag: Self.profileDefault,
-                    selection: selection,
-                    providers: providers
+            TaggedModelChooserLink(
+                pageTitle: AppLocalization.string("Voice jobs"),
+                defaultTitle: AppLocalization.string("Profile default"),
+                choice: TaggedModelChoice(defaultTag: Self.profileDefault, selection: selection),
+                catalog: ModelChooserCatalog(providers: providers, loaded: true, answered: modelsAnswered, failed: providersFailed),
+                disabled: !modelsAnswered,
+                retry: { Task { await loadProviders() } },
+                onSelect: { selection = $0 },
+                reasoning: ModelChooserReasoning(
+                    effort: reasoning,
+                    inheritTitle: AppLocalization.string("Profile default"),
+                    levels: Self.chooserLevels,
+                    set: { reasoning = $0 }
                 ),
-                onSelect: { selection = $0 }
-            ) {
-                Text("Model").foregroundStyle(.secondary)
-            }
-            .disabled(!modelsAnswered)
+                reasoningTitle: reasoning == Self.profileDefault ? nil : ReasoningEffortLevel.displayTitle(for: reasoning),
+                identifier: "settings.voiceJobs.model"
+            )
             if providersFailed {
                 // The models listed stay up; Hermes didn't answer.
                 ModelCatalogPlaceholder(state: .failed) { Task { await loadProviders() } }
-            }
-            ConduitMenuPicker(
-                value: reasoning,
-                choices: reasoningChoices,
-                onSelect: { reasoning = $0 }
-            ) {
-                Text("Reasoning").foregroundStyle(.secondary)
             }
             Text("The model Hermes uses for background jobs started by voice. A fast model with low reasoning keeps spoken requests quick; your chats keep the profile's model.")
                 .scaledFont(.caption)
@@ -536,67 +533,9 @@ struct VoiceJobModelSettingsSection: View {
         settings.save(chosen?.provider, chosen?.model, reasoning == Self.profileDefault ? nil : reasoning)
     }
 
-    private var reasoningChoices: [(id: String, title: String)] {
-        let levels = Self.reasoningLevels(offTitle: AppLocalization.string("None"))
-        return [(id: Self.profileDefault, title: AppLocalization.string("Profile default"))] + levels
-    }
-
-    /// Model menu: the default choice, a saved model the list doesn't carry
-    /// (kept visible even before the list loads), then a submenu per
-    /// provider, closed until opened, so a long list of providers stays
-    /// short (Eric 2026-11-05).
-    static func modelMenuGroups(
-        defaultTitle: String,
-        defaultTag: String,
-        selection: String,
-        providers: [ProviderInfo]
-    ) -> [ConduitMenuGroup<String>] {
-        var top = [(id: defaultTag, title: defaultTitle)]
-        let held = parse(selection)
-        // A pick saved under another of its provider's spellings (an alias,
-        // `custom:<key>`) is that provider's listed row, not a row of its own.
-        // One row only: the provider named exactly, else the first whose
-        // other spellings match, among those listing the model.
-        let heldProvider: String? = {
-            guard selection != defaultTag, !held.model.isEmpty, let wanted = held.provider else { return nil }
-            let listing = providers.filter { $0.models.contains { $0.id == held.model } }
-            return (listing.first { $0.name == wanted } ?? listing.first { $0.matches(wanted) })?.name
-        }()
-        func isHeld(_ provider: ProviderInfo, _ model: ModelInfo) -> Bool {
-            heldProvider == provider.name && model.id == held.model
-        }
-        if selection != defaultTag, !providers.contains(where: { provider in
-            provider.models.contains { isHeld(provider, $0) }
-        }) {
-            // A provider pinned without a model runs on its default one.
-            top.append((id: selection, title: held.model.isEmpty
-                ? providerDefaultTitle(held.provider ?? "")
-                : (held.provider ?? "").isEmpty ? held.model : "\(held.model) · \(held.provider ?? "")"))
-        }
-        var groups = [ConduitMenuGroup(title: nil, choices: top)]
-        for provider in providers where !provider.models.isEmpty {
-            groups.append(ConduitMenuGroup(
-                title: provider.name,
-                choices: provider.models.map { model in
-                    (id: isHeld(provider, model) ? selection : tag(provider: provider.name, model: model.id), title: model.label ?? model.id)
-                }
-            ))
-        }
-        return groups
-    }
-
-    /// Reasoning levels, the same as the model picker's reasoning control.
-    static func reasoningLevels(offTitle: String) -> [(id: String, title: String)] {
-        [
-            (id: "none", title: offTitle),
-            (id: "minimal", title: AppLocalization.string("Minimal")),
-            (id: "low", title: AppLocalization.string("Low")),
-            (id: "medium", title: AppLocalization.string("Medium")),
-            (id: "high", title: AppLocalization.string("High")),
-            (id: "xhigh", title: AppLocalization.string("Extra High")),
-            (id: "max", title: AppLocalization.string("Max")),
-        ]
-    }
+    /// The reasoning levels Hermes takes for a voice job and a helper
+    /// model: every level the Model sheet offers but Ultra.
+    static let chooserLevels: [ReasoningEffortLevel] = [.off, .minimal, .low, .medium, .high, .xhigh, .max]
 
     /// A provider pinned without a model: Hermes runs its default model.
     static func providerDefaultTitle(_ provider: String) -> String {
@@ -612,6 +551,100 @@ struct VoiceJobModelSettingsSection: View {
         let parts = tag.split(separator: "\u{1F}", maxSplits: 1, omittingEmptySubsequences: false)
         guard parts.count == 2 else { return (nil, tag) }
         return (parts[0].isEmpty ? nil : String(parts[0]), String(parts[1]))
+    }
+}
+
+/// A model setting saved as a picker tag (`provider\u{1F}model`, see
+/// VoiceJobModelSettingsSection.tag), with a default choice of its own: the
+/// voice job and voice reply models, the Helper models and Pulse's model.
+struct TaggedModelChoice {
+    let defaultTag: String
+    let selection: String
+
+    var isDefault: Bool { selection == defaultTag }
+
+    /// The setting's pick, nil on its default.
+    var pick: ModelChooserPick? {
+        guard !isDefault else { return nil }
+        let held = VoiceJobModelSettingsSection.parse(selection)
+        return ModelChooserPick(provider: held.provider ?? "", model: held.model)
+    }
+
+    /// The listed provider holding the pick. A pick saved under another of
+    /// its provider's spellings (an alias, `custom:<key>`) is that
+    /// provider's row; one row only: the provider named exactly, else the
+    /// first whose other spellings match, among those listing the model.
+    func heldProvider(in providers: [ProviderInfo]) -> String? {
+        let held = VoiceJobModelSettingsSection.parse(selection)
+        guard !isDefault, !held.model.isEmpty, let wanted = held.provider else { return nil }
+        let listing = providers.filter { $0.models.contains { $0.id == held.model } }
+        return (listing.first { $0.name == wanted } ?? listing.first { $0.matches(wanted) })?.name
+    }
+
+    func isPicked(_ provider: ProviderInfo, _ model: ModelInfo, in providers: [ProviderInfo]) -> Bool {
+        heldProvider(in: providers) == provider.name && model.id == VoiceJobModelSettingsSection.parse(selection).model
+    }
+
+    /// The tag a listed row saves: the pick's own spelling for its row, so
+    /// re-picking it writes nothing.
+    func tag(for provider: ProviderInfo, _ model: ModelInfo, in providers: [ProviderInfo]) -> String {
+        isPicked(provider, model, in: providers) ? selection : VoiceJobModelSettingsSection.tag(provider: provider.name, model: model.id)
+    }
+
+    /// The Settings row's lines: the default's title, the listed row, or a
+    /// held pick as saved ("model · provider", or "Default · provider" for
+    /// a provider pinned without a model).
+    func lines(in providers: [ProviderInfo], defaultTitle: String, reasoning: String? = nil) -> (value: String, detail: String?) {
+        guard let pick else { return (defaultTitle, reasoning) }
+        if pick.model.isEmpty {
+            return (VoiceJobModelSettingsSection.providerDefaultTitle(pick.provider), reasoning)
+        }
+        let provider = heldProvider(in: providers).flatMap { name in providers.first { $0.name == name } }
+        let model = provider?.models.first { $0.id == pick.model }
+        let providerTitle = provider?.title ?? (pick.provider.isEmpty ? nil : pick.provider)
+        let detail = [providerTitle, reasoning].compactMap { $0 }.joined(separator: " · ")
+        return (model?.label ?? pick.model, detail.isEmpty ? nil : detail)
+    }
+}
+
+/// A tagged model setting's row, opening its Model page.
+struct TaggedModelChooserLink: View {
+    var rowTitle = AppLocalization.string("Model")
+    var pageTitle = AppLocalization.string("Model")
+    let defaultTitle: String
+    var defaultDetail: String? = nil
+    let choice: TaggedModelChoice
+    let catalog: ModelChooserCatalog
+    var disabled = false
+    let retry: () -> Void
+    let onSelect: (String) -> Void
+    var reasoning: ModelChooserReasoning? = nil
+    /// The reasoning's name on the row, where the setting has one.
+    var reasoningTitle: String? = nil
+    var footer: AnyView? = nil
+    var identifier: String? = nil
+
+    var body: some View {
+        NavigationLink {
+            ModelChooserPage(
+                title: pageTitle,
+                catalog: catalog,
+                retry: retry,
+                defaultChoice: ModelChooserDefault(title: defaultTitle, detail: defaultDetail),
+                pick: choice.pick,
+                isPicked: { choice.isPicked($0, $1, in: catalog.providers) },
+                reasoning: reasoning,
+                disabled: disabled,
+                onDefault: { onSelect(choice.defaultTag) },
+                onPick: { onSelect(choice.tag(for: $0, $1, in: catalog.providers)) },
+                footer: footer
+            )
+        } label: {
+            let lines = choice.lines(in: catalog.providers, defaultTitle: defaultTitle, reasoning: reasoningTitle)
+            ModelChooserLinkRow(title: rowTitle, value: lines.value, detail: lines.detail)
+        }
+        .buttonStyle(.plain)
+        .accessibilityIdentifier(identifier ?? "modelChooser.link")
     }
 }
 
@@ -971,31 +1004,37 @@ struct VoiceReplyModelSettingsSection: View {
     }
 
     @ViewBuilder private var pickers: some View {
-        ConduitMenuPicker(
-            value: picks.selection,
-            groups: VoiceJobModelSettingsSection.modelMenuGroups(
-                defaultTitle: helper?.followTitle ?? AppLocalization.string("Same as chats"),
-                defaultTag: VoiceReplyModelPicks.sameAsChats,
-                selection: picks.selection,
-                providers: providers
+        let followTitle = helper?.followTitle ?? AppLocalization.string("Same as chats")
+        let inherits = picks.reasoning == VoiceReplyModelPicks.inheritReasoning
+        TaggedModelChooserLink(
+            pageTitle: helper?.title ?? AppLocalization.string("Voice replies"),
+            defaultTitle: followTitle,
+            choice: TaggedModelChoice(defaultTag: VoiceReplyModelPicks.sameAsChats, selection: picks.selection),
+            catalog: ModelChooserCatalog(providers: providers, loaded: true, answered: modelsAnswered, failed: providersFailed || picks.readFailed),
+            disabled: pickersWait || !modelsAnswered,
+            retry: { Task { await tryAgain() } },
+            onSelect: { picks.selection = $0 },
+            reasoning: ModelChooserReasoning(
+                effort: inherits ? "" : picks.reasoning,
+                inheritTitle: AppLocalization.string("Same as chats"),
+                levels: VoiceJobModelSettingsSection.chooserLevels,
+                disabled: pickersWait,
+                set: { picks.reasoning = $0.isEmpty ? VoiceReplyModelPicks.inheritReasoning : $0 }
             ),
-            onSelect: { picks.selection = $0 }
-        ) {
-            Text("Model").foregroundStyle(.secondary)
-        }
-        .disabled(pickersWait || !modelsAnswered)
+            reasoningTitle: inherits ? nil : ReasoningEffortLevel.displayTitle(for: picks.reasoning),
+            footer: AnyView(warnings),
+            identifier: helper.map { "settings.helperModel.\($0.id)" } ?? "settings.voiceReplies.model"
+        )
         if providersFailed || picks.readFailed {
             // What's listed stays up; Hermes didn't answer.
             ModelCatalogPlaceholder(state: .failed) { Task { await tryAgain() } }
         }
-        ConduitMenuPicker(
-            value: picks.reasoning,
-            choices: reasoningChoices,
-            onSelect: { picks.reasoning = $0 }
-        ) {
-            Text("Reasoning").foregroundStyle(.secondary)
-        }
-        .disabled(pickersWait)
+        warnings
+    }
+
+    /// Hermes' refusal, Use It Anyway and the endpoint, under the row and
+    /// on its Model page, where the pick that brought them is made.
+    @ViewBuilder private var warnings: some View {
         if let refusal = picks.refusal {
             Text(verbatim: refusal)
                 .scaledFont(.caption)
@@ -1078,10 +1117,6 @@ struct VoiceReplyModelSettingsSection: View {
         picks.showKept(settings.kept())
     }
 
-    private var reasoningChoices: [(id: String, title: String)] {
-        let levels = VoiceJobModelSettingsSection.reasoningLevels(offTitle: AppLocalization.string("Off"))
-        return levels + [(id: VoiceReplyModelPicks.inheritReasoning, title: AppLocalization.string("Same as chats"))]
-    }
 
     private func save() {
         guard let next = picks.writeAsked() else { return }

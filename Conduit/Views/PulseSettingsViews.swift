@@ -772,24 +772,20 @@ struct PulseSettingsPage: View {
     private func modelSection(_ state: PulseState) -> some View {
         let selection = state.model.map { VoiceJobModelSettingsSection.tag(provider: $0.provider, model: $0.model) } ?? ""
         return ConduitSettingsSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent) {
-            ConduitMenuPicker(
-                value: selection,
-                groups: VoiceJobModelSettingsSection.modelMenuGroups(
-                    defaultTitle: Self.defaultModelTitle(state, providers: providers),
-                    defaultTag: "",
-                    selection: selection,
-                    providers: providers
-                ),
+            TaggedModelChooserLink(
+                pageTitle: AppLocalization.string("Pulse model"),
+                defaultTitle: Self.defaultModelTitle(state, providers: providers),
+                choice: TaggedModelChoice(defaultTag: "", selection: selection),
+                catalog: ModelChooserCatalog(providers: providers, loaded: true, answered: modelsAnswered, failed: modelsFailed),
+                disabled: waiting || !modelsAnswered,
+                retry: { Task { await loadModels(profile: state.profile) } },
                 onSelect: { tag in
                     guard tag != selection else { return }
                     let pick = tag.isEmpty ? nil : VoiceJobModelSettingsSection.parse(tag)
                     setModel(pick.map { PulseModel(provider: $0.provider ?? "", model: $0.model) })
-                }
-            ) {
-                Text("Model").foregroundStyle(.secondary)
-            }
-            .disabled(waiting || !modelsAnswered)
-            .accessibilityIdentifier("settings.pulse.model")
+                },
+                identifier: "settings.pulse.model"
+            )
             if modelsFailed {
                 // The models listed stay up; Hermes didn't answer.
                 ModelCatalogPlaceholder(state: .failed) { Task { await loadModels(profile: state.profile) } }

@@ -19,6 +19,7 @@ import SwiftUI
 /// runs, events, and metadata but never overwrites unsaved user edits; diffs
 /// run against the last-synced server baseline.
 struct KanbanTaskDetailView: View {
+    @EnvironmentObject private var appState: AppState
     @ObservedObject var appLanguage = AppLanguageStore.shared
     /// Editable fields as last synced from the server. The draft fields below
     /// are compared against this so a poll can refresh collections WITHOUT
@@ -361,6 +362,7 @@ struct KanbanTaskDetailView: View {
             .sheet(isPresented: $showModelSheet) {
                 KanbanModelOverrideSheet(value: $modelOverrideDraft)
                     .environment(store)
+                    .environmentObject(appState)
                     .presentationDetents([.medium, .large])
             }
             .onChange(of: showModelSheet) { wasOpen, nowOpen in

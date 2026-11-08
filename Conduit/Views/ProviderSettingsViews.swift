@@ -1598,9 +1598,29 @@ private struct CustomEndpointForm: View {
                     Text(verbatim: checkMessage).scaledFont(.caption).foregroundStyle(checkFailed ? .orange : .secondary)
                 }
                 if !draft.models.isEmpty {
-                    ConduitMenuPicker(value: draft.model, choices: draft.models.map { (id: $0, title: $0) }, onSelect: { draft.model = $0 }) {
-                        Text(AppLocalization.string("Model")).foregroundStyle(.secondary)
+                    // The endpoint's own models, on the Model page every
+                    // model setting opens, as one provider.
+                    let endpoint = ProviderInfo(
+                        name: draft.trimmedName.isEmpty ? AppLocalization.string("Your own server") : draft.trimmedName,
+                        models: draft.models.map { ModelInfo(id: $0, label: nil, reasoningCapable: false) }
+                    )
+                    NavigationLink {
+                        ModelChooserPage(
+                            catalog: ModelChooserCatalog(providers: [endpoint], loaded: true, answered: true),
+                            retry: { check() },
+                            pick: draft.model.isEmpty ? nil : ModelChooserPick(provider: endpoint.name, model: draft.model),
+                            isPicked: { _, item in item.id == draft.model },
+                            onDefault: {},
+                            onPick: { _, item in draft.model = item.id }
+                        )
+                    } label: {
+                        ModelChooserLinkRow(
+                            title: AppLocalization.string("Model"),
+                            value: draft.model.isEmpty ? AppLocalization.string("Not set") : draft.model
+                        )
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.providers.endpoint.model")
                 } else {
                     TextField(AppLocalization.string("Model name"), text: $draft.model)
                         .textFieldStyle(.roundedBorder)
