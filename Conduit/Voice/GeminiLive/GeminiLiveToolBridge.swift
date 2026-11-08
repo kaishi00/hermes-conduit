@@ -624,9 +624,12 @@ final class GeminiLiveToolBridge {
         guard !isEnding else { return [] }
         // A workstream's chat: its session takes the request, never a
         // chat turn queued behind the question it waits on.
-        if let said = await supervisor.sendToWorkstream(request) {
-            guard !isEnding else { return [] }
-            return [.toolResponse(id: call.id, name: call.name, result: ["status": "sent", "message": said], scheduling: .whenIdle)]
+        let said = await supervisor.sendToWorkstream(request)
+        guard !isEnding else { return [] }
+        if let said {
+            // What the workstream's plugin did with it, said as is: it may
+            // also say the request couldn't go in.
+            return [.toolResponse(id: call.id, name: call.name, result: ["status": "workstream", "message": said], scheduling: .whenIdle)]
         }
         if let target = supervisor.threadFollowUpTarget() {
             let outcome = await supervisor.followUp(jobID: target, words: request, kind: call.arguments["kind"])

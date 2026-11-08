@@ -412,9 +412,17 @@ extension VoiceConversationControllerTests {
         let bridge = GeminiLiveToolBridge(supervisor: supervisor)
         let asked = await bridge.handle(.init(id: "c1", name: "ask_thread", arguments: ["request": "the second one"]))
         let started = await bridge.handle(.init(id: "c2", name: "start_job", arguments: ["instructions": "and check the logs"]))
-        XCTAssertEqual(asked, [.toolResponse(id: "c1", name: "ask_thread", result: ["status": "sent", "message": "sent to the workstream"], scheduling: .whenIdle)])
-        XCTAssertEqual(started, [.toolResponse(id: "c2", name: "start_job", result: ["status": "sent", "message": "sent to the workstream"], scheduling: .whenIdle)])
-        XCTAssertEqual(fake.workstreamSends.map(\.1), ["the second one", "and check the logs"])
+        XCTAssertEqual(asked, [.toolResponse(id: "c1", name: "ask_thread", result: ["status": "workstream", "message": "sent to the workstream"], scheduling: .whenIdle)])
+        XCTAssertEqual(started, [.toolResponse(id: "c2", name: "start_job", result: ["status": "workstream", "message": "sent to the workstream"], scheduling: .whenIdle)])
+        // GPT-Live's delegation in the chat goes the same way.
+        let gpt = GPTLiveDelegationBridge(supervisor: supervisor)
+        let delegated = await gpt.handleDelegation(id: "del_1", request: "use the first option")
+        guard case .delegationReply(let delegationID, _, let channel)? = delegated.first, delegated.count == 1 else {
+            return XCTFail("Expected the workstream's answer, got \(delegated)")
+        }
+        XCTAssertEqual(delegationID, "del_1")
+        XCTAssertEqual(channel, .speakable)
+        XCTAssertEqual(fake.workstreamSends.map(\.1), ["the second one", "and check the logs", "use the first option"])
         XCTAssertTrue(fake.submissions.isEmpty, "no chat turn queued behind its question")
         XCTAssertTrue(supervisor.backgroundJobs.isEmpty)
         XCTAssertTrue(supervisor.jobs.isEmpty)
