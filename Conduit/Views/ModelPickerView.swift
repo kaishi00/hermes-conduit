@@ -309,9 +309,6 @@ struct ModelPickerView: View {
     @State private var catalog = KeptModelCatalog()
     @State private var expandedProvider: String?
     @State private var editingVisibility = false
-    @State private var visibilityQuery = ""
-    @State private var expandedVisibilityProvider: String?
-    @State private var showAllModelsFor: Set<String> = []
     @State private var visibility = ModelVisibility()
     /// The row being switched to, while Hermes answers.
     @State private var switchingRow: ModelPickerSelection?
@@ -359,7 +356,11 @@ struct ModelPickerView: View {
                     ScrollView {
                         VStack(alignment: .leading, spacing: 24) {
                             if editingVisibility {
-                                visibilityEditor
+                                ModelVisibilityEditor(
+                                    visibility: $visibility,
+                                    providers: catalog.providers,
+                                    expandedProvider: selectedProvider
+                                )
                             } else {
                                 // The model in use and its reasoning lead,
                                 // since reasoning changes most often.
@@ -807,8 +808,6 @@ struct ModelPickerView: View {
 
     private func startEditingVisibility() {
         searchFocused = false
-        visibilityQuery = ""
-        expandedVisibilityProvider = selectedProvider
         editingVisibility = true
     }
 
@@ -1208,153 +1207,7 @@ struct ModelPickerView: View {
     }
 
     private var visibleProviders: [ProviderInfo] {
-        catalog.providers.map { provider in
-            ProviderInfo(
-                name: provider.name,
-                models: provider.models.filter { !visibility.hiddenModels.contains(modelVisibilityKey(provider: provider.name, model: $0.id)) },
-                // Kept so a saved provider spelled by alias still matches.
-                displayName: provider.displayName,
-                aliases: provider.aliases,
-                isCurrent: provider.isCurrent
-            )
-        }.filter { !visibility.hiddenProviders.contains($0.name) }
-    }
-
-    private var visibilityEditor: some View {
-        ModelPickerSection(title: AppLocalization.string("Model visibility"), symbol: "line.3.horizontal.decrease.circle", tint: .conduitAccent, flush: true) {
-            VStack(alignment: .leading, spacing: 10) {
-                TextField("Search providers or models", text: $visibilityQuery)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .padding(11)
-                    .background(rowFoundation, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-
-                Text("Hiding a provider preserves its individual model choices. These filters stay on this device.")
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            .padding(16)
-
-            let shown = visibilityProviders
-            ForEach(shown, id: \.name) { provider in
-                Divider().overlay(rowStroke).padding(.leading, provider.name == shown.first?.name ? 0 : 16)
-                visibilityProviderCard(provider)
-            }
-        }
-    }
-
-    private var visibilityProviders: [ProviderInfo] {
-        let query = visibilityQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty else { return catalog.providers }
-        return catalog.providers.filter { provider in
-            provider.name.lowercased().contains(query) || provider.models.contains { $0.id.lowercased().contains(query) }
-        }
-    }
-
-    private func visibilityProviderCard(_ provider: ProviderInfo) -> some View {
-        let expanded = expandedVisibilityProvider == provider.name
-        let providerHidden = visibility.hiddenProviders.contains(provider.name)
-        let models = matchingModels(in: provider)
-        let displayAll = !visibilityQuery.isEmpty || showAllModelsFor.contains(provider.name)
-        let shownModels = displayAll ? models : Array(models.prefix(8))
-
-        return VStack(spacing: 0) {
-            HStack(spacing: 10) {
-                Button {
-                    withAnimation(ConduitMotion.response) {
-                        expandedVisibilityProvider = expanded ? nil : provider.name
-                    }
-                } label: {
-                    HStack(spacing: 10) {
-                        Image(systemName: expanded ? "chevron.down" : "chevron.right")
-                            .scaledFont(.caption.weight(.semibold)).foregroundStyle(.secondary)
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(provider.name).scaledFont(.subheadline.weight(.semibold))
-                            Text("\(String(visibleModelCount(in: provider))) of \(String(provider.models.count)) shown")
-                                .scaledFont(.caption).foregroundStyle(.secondary)
-                        }
-                        Spacer()
-                    }
-                }
-                .buttonStyle(.plain)
-
-                Button(providerHidden ? AppLocalization.string("Hidden") : AppLocalization.string("Visible")) {
-                    toggleProviderVisibility(provider.name)
-                }
-                .scaledFont(.caption.weight(.semibold))
-                .foregroundStyle(providerHidden ? Color.secondary : Color.green)
-                .padding(.horizontal, 12).frame(minHeight: 30)
-                .background(providerHidden ? Color.secondary.opacity(0.12) : Color.green.opacity(0.12), in: Capsule())
-                .frame(minHeight: 44)
-                .contentShape(Rectangle())
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 4)
-
-            if expanded {
-                Divider().overlay(rowStroke)
-                HStack {
-                    Spacer()
-                    Button("Show all") { setAllModels(in: provider, visible: true) }
-                    Button("Hide all") { setAllModels(in: provider, visible: false) }
-                }
-                .scaledFont(.caption.weight(.semibold)).tint(.conduitAccent)
-                .padding(.horizontal, 16).padding(.vertical, 8)
-
-                ForEach(shownModels, id: \.id) { model in
-                    let key = modelVisibilityKey(provider: provider.name, model: model.id)
-                    let hidden = visibility.hiddenModels.contains(key)
-                    Button {
-                        toggleModelVisibility(key)
-                    } label: {
-                        HStack {
-                            Text(model.id).scaledFont(.footnote).lineLimit(2)
-                            Spacer()
-                            Text(hidden ? AppLocalization.string("Hidden") : AppLocalization.string("Visible"))
-                                .scaledFont(.caption.weight(.semibold))
-                                .foregroundStyle(hidden ? Color.secondary : Color.green)
-                        }
-                        .padding(.leading, 36).padding(.trailing, 16).padding(.vertical, 10)
-                    }
-                    .buttonStyle(.plain)
-                    if model.id != shownModels.last?.id { Divider().overlay(rowStroke).padding(.leading, 36) }
-                }
-                if models.count > shownModels.count {
-                    Button("Show \(models.count - shownModels.count) more") { showAllModelsFor.insert(provider.name) }
-                        .scaledFont(.caption.weight(.semibold)).tint(.conduitAccent)
-                        .frame(maxWidth: .infinity).padding(.vertical, 10)
-                }
-            }
-        }
-    }
-
-    private func matchingModels(in provider: ProviderInfo) -> [ModelInfo] {
-        let query = visibilityQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty, !provider.name.lowercased().contains(query) else { return provider.models }
-        return provider.models.filter { $0.id.lowercased().contains(query) }
-    }
-
-    private func visibleModelCount(in provider: ProviderInfo) -> Int {
-        provider.models.filter { !visibility.hiddenModels.contains(modelVisibilityKey(provider: provider.name, model: $0.id)) }.count
-    }
-
-    private func modelVisibilityKey(provider: String, model: String) -> String { "\(provider)\u{1F}\(model)" }
-
-    private func toggleProviderVisibility(_ provider: String) {
-        if visibility.hiddenProviders.contains(provider) { visibility.hiddenProviders.removeAll { $0 == provider } }
-        else { visibility.hiddenProviders.append(provider) }
-    }
-
-    private func toggleModelVisibility(_ key: String) {
-        if visibility.hiddenModels.contains(key) { visibility.hiddenModels.removeAll { $0 == key } }
-        else { visibility.hiddenModels.append(key) }
-    }
-
-    private func setAllModels(in provider: ProviderInfo, visible: Bool) {
-        let keys = Set(provider.models.map { modelVisibilityKey(provider: provider.name, model: $0.id) })
-        if visible { visibility.hiddenModels.removeAll { keys.contains($0) } }
-        else { visibility.hiddenModels = Array(Set(visibility.hiddenModels).union(keys)) }
+        visibility.visible(catalog.providers)
     }
 
     private var runtimeSpeed: ModelSpeed {
@@ -1595,7 +1448,7 @@ struct ModelPickerView: View {
     }
 }
 
-private struct ModelPickerSection<Content: View>: View {
+struct ModelPickerSection<Content: View>: View {
     let title: String
     let symbol: String
     let tint: Color

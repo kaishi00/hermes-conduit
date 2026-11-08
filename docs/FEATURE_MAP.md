@@ -3644,11 +3644,11 @@ no models yet it says so, and keeps a route's own provider and model, #1979)
 **Code**
 - The rule: `Conduit/Views/ModelPickerView.swift` (ModelCatalogState, KeptModelCatalog, and the model sheet's catalogStateRows, quickPicksSection, modelSection, searchResultsSection, catalogFailedRow, modelRowsLocked, loadModels), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer: an answer that isn't one is a failed read)
 - Model page: `Conduit/Views/AuxiliaryViews.swift` (ModelCatalogPlaceholder, ProfileModelSettingsDetail, DelegationModelSettings, FallbackModelsSettings)
-- Bots: `Conduit/Views/BotModelPicker.swift` (load, loadFailedRows)
+- Bots: `Conduit/Views/BotModelPicker.swift` (load), `Conduit/Views/ModelChooserPage.swift` (failedRows, every setting's Model page)
 - Helper models: `Conduit/Views/HelperModelViews.swift` (HelperModelsPage's failed row and read, HelperModelsSettingsSection's read and its row hidden on a Hermes without the slots)
 - Providers: `Conduit/Views/ProviderSettingsViews.swift` (ProviderDetailPage's modelsSection and catalogFailedRow, ModelPageProviders.reloadCatalog)
 - Voice and Pulse: `Conduit/Views/GeminiLiveViews.swift` (the voice job and voice reply model settings: VoiceJobModelSettingsSection.loadProviders and modelsAnswered, VoiceReplyModelSettingsSection.read, tryAgain, reloadProviders and modelsAnswered, VoiceReplyModelPicks.readDidFail), `Conduit/Views/PulseSettingsViews.swift` (Settings > Pulse's model picker, loadModels and modelsAnswered), `Conduit/Views/AuxiliaryViews.swift` (ModelCatalogPlaceholder's failed row under them), `Conduit/Services/AppState.swift` (loadModelProviders, keptModelProviders)
-- Kanban: `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanModelOverrideSheet's catalogSection, showKept, optionsAnswered and loadOptions), `Conduit/Services/KanbanService.swift` (fetchModelOptions keeps an answer with a model to offer; offerable), `Conduit/Services/KanbanStore.swift` (keptModelOptions), `Conduit/Models/KanbanModels.swift` (KanbanModelOptionsResponse drops a provider row it can't read on its own)
+- Kanban: `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanModelOverrideSheet's chooserCatalog, catalogFooter, showKept, optionsAnswered and loadOptions), `Conduit/Services/KanbanService.swift` (fetchModelOptions keeps an answer with a model to offer; offerable), `Conduit/Services/KanbanStore.swift` (keptModelOptions), `Conduit/Models/KanbanModels.swift` (KanbanModelOptionsResponse drops a provider row it can't read on its own)
 - Tests: `ConduitTests/KanbanTests.swift` (testTheModelOverrideOpensOnTheRosterItListedLastTime), `ConduitTests/KanbanV2Tests.swift` (testModelOptionsDecodeTolerantly)
 
 **Rulings**
@@ -3656,13 +3656,13 @@ no models yet it says so, and keeps a route's own provider and model, #1979)
 - A list that didn't load is never edited or saved: Save stays off until the catalog is in.
 - The Model page's editors open on the catalog kept from Hermes' last answer (see Screens that open on their last answer); a read that fails leaves it up with "Could not load models." and Try Again under it, and Save stays off until Hermes answers (#1552). A Default model save reads the catalog again after, so the provider it marks in use, whose models an inherited delegate shows, follows the save (#1555).
 - The model sheet and a bot's model picker open on the models kept from Hermes' last `model.options` answer the same way, with "Could not load models." and Try Again under them (under the sheet's search matches too) after a read that fails, a later one after Hermes answered included (#1816). On the sheet itself, which lists its providers on an All providers page, that row sits under its Quick picks, or alone where they'd be when there are none, and the page says it under its providers (#1984); their kept models wait for Hermes' answer before they can be picked (#1567).
-- The voice job, voice reply and Settings > Pulse pickers keep the models they list (kept from Hermes' last answer, or none) when the read fails, and say "Could not load models." with Try Again under the Model menu, which waits for Hermes' answer before a model is picked, as the sheet's rows do. The voice reply section says it when the read of its setting fails too, with a setting kept (with none it stays hidden on Voice settings, as on a Hermes without the slot, until the page's next check asks again; a helper's page, which is the section alone, says it with nothing kept too, #1956), its Try Again asks for both, and a failure older than the answer shown says nothing (#1567). Settings > Pulse's picker lists the models of the profile Pulse runs in, read from the dashboard's route for that profile when it isn't the one open, and drops another profile's list when Pulse's changes (2026-11-03, #1684, issue 1681).
+- The voice job, voice reply and Settings > Pulse pickers keep the models they list (kept from Hermes' last answer, or none) when the read fails, and say "Could not load models." with Try Again under the Model row and on its Model page, whose models wait for Hermes' answer before one is picked, as the sheet's rows do. The voice reply section says it when the read of its setting fails too, with a setting kept (with none it stays hidden on Voice settings, as on a Hermes without the slot, until the page's next check asks again; a helper's page, which is the section alone, says it with nothing kept too, #1956), its Try Again asks for both, and a failure older than the answer shown says nothing (#1567). Settings > Pulse's picker lists the models of the profile Pulse runs in, read from the dashboard's route for that profile when it isn't the one open, and drops another profile's list when Pulse's changes (2026-11-03, #1684, issue 1681).
 - The Kanban model override, in the task composer and on a task's page, opens on the roster the kanban plugin gave last time, kept once per dashboard, and its models wait for the plugin's answer before one is picked. A read that fails keeps them up with "Could not load models." and Try Again, the free-text entry under them; "No curated model catalog available" and the free-text entry are otherwise only for a roster that loaded empty, and neither shows before the first read answers. A roster with nothing to offer (a plugin whose inventory is down) is shown but never kept over the last one. Try Again over a kept roster shows no loader, as the model sheet's doesn't (#1584). A provider row Conduit can't read drops on its own, so one bad row never empties the roster (#1588, from #1584's review).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #1984 (the model sheet's loading, failed and empty states show where its Quick picks go and on its All providers page; a failed read says so on the sheet with or without Quick picks); 2026-11-07, #1979 (Delegate fallback models share the Fallback models editor's states; the route sheet says when Hermes has listed no models yet); 2026-11-07, #1956 (a helper's page with nothing kept says a failed read with Try Again, VoiceReplyModelPicks.shown; Voice settings stays hidden as before); 2026-11-05, #1823 (Try Again after a failed Refresh models asks for the live lists again; see Model lists Hermes is still fetching); 2026-11-05, #1816 (the model sheet says a failed read under rows Hermes gave too, as a bot's Model page does, for Refresh models and the read again, see Model lists Hermes is still fetching); 2026-11-03, #1684 (Settings > Pulse's picker lists the models of Pulse's profile); 2026-11-01, #1625 (the Helper models pages reuse the voice reply section and its failed row); 2026-11-01, #1616 (a provider's page in Models & providers picks a default only from a catalog Hermes gave since the page opened, and says a failed read with Try Again; the Model sheet's Add a provider row reads the models again when its sheet closes); 2026-10-31, #1588 (from #1584's review, a provider row the Kanban override can't read drops on its own, never the whole roster); 2026-10-31, #1584 (the Kanban model override opens on its kept roster, picked once the plugin answers, and says a failed read with Try Again, closing its gap; from its review, neither the empty roster's note nor the free-text entry shows before the first read answers, and a roster with nothing to offer isn't kept); 2026-10-31, #1567 (the model sheet and a bot's model picker open on the kept models, picked once Hermes answers, and the bot picker's failed read offers Try Again, closing its gap; the voice and Pulse pickers say a failed read with Try Again, the voice reply section's setting read included, closing theirs, and their Model menus wait for Hermes' answer); 2026-10-31, #1563 (the voice and Pulse pickers' loader, loadModelProviders since #1558, and its gap brought up to date; nothing else changed); 2026-10-31, #1555 (a Default model save reads the catalog again for its kept copy; the Save buttons' rule moved to KeptAnswerGate); 2026-10-31, #1552 (the Model page's editors open on a kept catalog, with Try Again under it when the read fails); 2026-10-27, at #1395 (search matches show only once the catalog is in; loading, failed and empty states unchanged, the Kanban composer's included); at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
+**Checked:** 2026-11-08, #1992 (every setting's Model page says a failed read with Try Again under the models, from the setting's own read; Save and the pick wait as before); 2026-11-08, #1984 (the model sheet's loading, failed and empty states show where its Quick picks go and on its All providers page; a failed read says so on the sheet with or without Quick picks); 2026-11-07, #1979 (Delegate fallback models share the Fallback models editor's states; the route sheet says when Hermes has listed no models yet); 2026-11-07, #1956 (a helper's page with nothing kept says a failed read with Try Again, VoiceReplyModelPicks.shown; Voice settings stays hidden as before); 2026-11-05, #1823 (Try Again after a failed Refresh models asks for the live lists again; see Model lists Hermes is still fetching); 2026-11-05, #1816 (the model sheet says a failed read under rows Hermes gave too, as a bot's Model page does, for Refresh models and the read again, see Model lists Hermes is still fetching); 2026-11-03, #1684 (Settings > Pulse's picker lists the models of Pulse's profile); 2026-11-01, #1625 (the Helper models pages reuse the voice reply section and its failed row); 2026-11-01, #1616 (a provider's page in Models & providers picks a default only from a catalog Hermes gave since the page opened, and says a failed read with Try Again; the Model sheet's Add a provider row reads the models again when its sheet closes); 2026-10-31, #1588 (from #1584's review, a provider row the Kanban override can't read drops on its own, never the whole roster); 2026-10-31, #1584 (the Kanban model override opens on its kept roster, picked once the plugin answers, and says a failed read with Try Again, closing its gap; from its review, neither the empty roster's note nor the free-text entry shows before the first read answers, and a roster with nothing to offer isn't kept); 2026-10-31, #1567 (the model sheet and a bot's model picker open on the kept models, picked once Hermes answers, and the bot picker's failed read offers Try Again, closing its gap; the voice and Pulse pickers say a failed read with Try Again, the voice reply section's setting read included, closing theirs, and their Model menus wait for Hermes' answer); 2026-10-31, #1563 (the voice and Pulse pickers' loader, loadModelProviders since #1558, and its gap brought up to date; nothing else changed); 2026-10-31, #1555 (a Default model save reads the catalog again for its kept copy; the Save buttons' rule moved to KeptAnswerGate); 2026-10-31, #1552 (the Model page's editors open on a kept catalog, with Try Again under it when the read fails); 2026-10-27, at #1395 (search matches show only once the catalog is in; loading, failed and empty states unchanged, the Kanban composer's included); at #1334 (the model sheet's loading, failed and empty states unchanged under its new error row); 2026-10-24, at #1190; a reload that lands under unsaved Fallback models edits keeps them at #1191 (#1016 review).
 
 ## Model lists Hermes is still fetching
 
@@ -3683,7 +3683,7 @@ Fallback models editor's read again, #1979) · Subagent routing's route sheet
 
 **Code**
 - The read again and Refresh models: `Conduit/Views/ModelPickerView.swift` (ModelCatalogSettle, RefreshModelsButton, the model sheet's loadModels and refreshModelsButton), `Conduit/Services/HermesClient.swift` (modelOptionsAnswer's refresh), `Conduit/Services/AppState.swift` (loadModelProviders' refresh)
-- Bots: `Conduit/Views/BotModelPicker.swift` (load, the toolbar's Refresh models)
+- Bots: `Conduit/Views/BotModelPicker.swift` (load, refreshModels), `Conduit/Views/ModelChooserPage.swift` (the toolbar's Refresh models)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ProfileModelSettingsDetail, DelegationModelSettings and FallbackModelsSettings' tasks and settleCatalog), `Conduit/Views/ProviderSettingsViews.swift` (ModelPageProviders' task and readAgain, ProviderDetailPage's task), `Conduit/Views/GeminiLiveViews.swift` (VoiceJobModelSettingsSection's loadProviders, VoiceReplyModelSettingsSection's read and reloadProviders), `Conduit/Views/PulseSettingsViews.swift` (the model picker's task and loadModels)
 - Tests: `ConduitTests/HermesClientTests.swift` (testRefreshModelsAsksHermesForLiveListsAndAPlainReadDoesNot, testRefreshModelsOnAHermesWithoutTheFlagReadsAgainWithoutIt)
 
@@ -3695,7 +3695,7 @@ Fallback models editor's read again, #1979) · Subagent routing's route sheet
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-07, #1979 (Delegate fallback models read the models again as the Model page's fallbacks do); 2026-11-07, #1956 (a helper's page now runs the section's read and its read again, which never ran there before); 2026-11-05, #1823 (Try Again after a failed Refresh models refreshes again); 2026-11-05, #1816 (added: the read again in every model picker, Refresh models in the model sheet and a bot's Model page).
+**Checked:** 2026-11-08, #1992 (each setting keeps its read again; a bot's Model page keeps Refresh models, now in the shared page's toolbar); 2026-11-07, #1979 (Delegate fallback models read the models again as the Model page's fallbacks do); 2026-11-07, #1956 (a helper's page now runs the section's read and its read again, which never ran there before); 2026-11-05, #1823 (Try Again after a failed Refresh models refreshes again); 2026-11-05, #1816 (added: the read again in every model picker, Refresh models in the model sheet and a bot's Model page).
 
 ## The Model sheet's settings
 
@@ -3734,32 +3734,30 @@ Typing part of a model's name in a model picker to find it, where each match
 names the provider that serves it, since several providers often offer the
 same model and the pick switches to that provider's route.
 
-**Siblings:** the model sheet (iPhone, iPad and Mac) · a bot's model
-picker · the Kanban task's model override · the model sheet's Edit
-(visibility) search (not needed: its matches sit under their provider's name)
-· the Model page's Default, Delegate and Fallback model editors and the voice
-job, voice reply, helper and Pulse model menus (not needed: the provider is
-picked first, or the menu opens a provider's models from its name, and the
-row reads "model · provider", see Model lists grouped by provider) · Text (not needed: no
-README, docs or Settings caption describes the pickers)
+**Siblings:** the model sheet (iPhone, iPad and Mac) · every model
+setting's Model page: a bot's, the Kanban override's, the Model page's
+Default, Delegate and Fallback editors', the route sheet's and the voice
+job, voice reply, Helper and Pulse models' (done: one page, #1992) · Edit's
+(visibility) search (not needed: its matches sit under their provider's
+name) · Text (not needed: no README, docs or Settings caption describes the
+pickers)
 
 **Code**
 - Matching and the result row: `Conduit/Views/ModelSearch.swift` (ModelSearchQuery, modelSearchMatches, modelSearchHighlight, modelSearchFocusesOnOpen, ModelSearchResultText)
 - Model sheet: `Conduit/Views/ModelPickerView.swift` (searchField, searchResultsSection, pickHighlightedMatch, modelRow's showsProvider)
-- Bots: `Conduit/Views/BotModelPicker.swift` (searchResults)
-- Kanban: `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanModelOverrideSheet's searchMatches)
+- Every setting's Model page: `Conduit/Views/ModelChooserPage.swift` (searchResults, matchRow)
 - Tests: `ConduitTests/ModelPickerTests.swift`
 
 **Rulings**
 - Every match shows its provider under the model; the same model from two providers is two matches (Eric, 2026-10-27, #1388).
 - Every word typed must appear in the model's id or label or the provider's names, so "sonnet openrouter" finds one provider's Sonnet.
-- The model sheet's search hides models and providers hidden with Edit; Edit's own search still finds them.
+- The model sheet's search hides models and providers hidden with Edit; Edit's own search still finds them. A setting's Model page finds them too, marked Hidden, so a setting can still be put on one (Eric 2026-11-08, #1992).
 - On a Mac or with a hardware keyboard the sheet opens with the search focused, ↑ and ↓ move a highlight, Return picks the highlighted match as a tap would (the sheet stays open, per "The Model sheet's settings") and Esc closes the sheet. On touch the keyboard stays down until the field is tapped, and Return only puts it away.
 
 **Open gaps**
 - A hardware keyboard connected while the sheet is open doesn't turn on the highlight until the sheet opens again.
 
-**Checked:** 2026-11-08, #1984 (the search sits under the current model card, which now says a switch's error or deferral in place of the matches' own status rows; matching unchanged); 2026-11-05, #1823 (#1816 checked here: the search and its highlight kept through the read again and Refresh models, see Model lists Hermes is still fetching); 2026-11-05, #1787 (the menus' models sit under their provider's submenu; a bot's picker closes its providers but its search still lists every match); 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
+**Checked:** 2026-11-08, #1992 (every setting's Model page searches, hidden models marked Hidden); 2026-11-08, #1984 (the search sits under the current model card, which now says a switch's error or deferral in place of the matches' own status rows; matching unchanged); 2026-11-05, #1823 (#1816 checked here: the search and its highlight kept through the read again and Refresh models, see Model lists Hermes is still fetching); 2026-11-05, #1787 (the menus' models sit under their provider's submenu; a bot's picker closes its providers but its search still lists every match); 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
 
 ## Model lists grouped by provider
 
@@ -3767,30 +3765,28 @@ A list of every provider's models, shown as its providers, each opened to
 its models when tapped, so a long catalog stays short (Eric 2026-11-05).
 
 **Siblings:** the model sheet (done before: its provider cards open one at a
-time, on its All providers page) · a bot's Model page, from New Bot, Edit Bot and Edit Bot > Work's
-Workstream Model (done) · the voice job, voice reply and Helper models menus
-and Settings > Pulse's model menu (done: one shared menu, a submenu per
-provider) · the Model page's Default, Delegate and Fallback model editors
-(not needed: the provider is picked first, then its models) · the Kanban
-model override (done before: a disclosure per provider) · Searching for a
-model (every match still lists, whatever is closed) · Text (not needed: no
-caption describes the lists)
+time, on its All providers page) · every model setting's Model page (done:
+one page, see One Model page for every model setting, #1992; it took over a
+bot's Model page, the voice job, voice reply, Helper and Pulse menus'
+submenus, the Model page editors' provider-then-model menus and the Kanban
+override's disclosures) · Searching for a model (every match still lists,
+whatever is closed) · Text (not needed: no caption describes the lists)
 
 **Code**
-- Bot's Model page: `Conduit/Views/BotModelPicker.swift` (providerRow, expandedProviders, openPickedProvider)
-- Menus: `Conduit/Views/AuxiliaryViews.swift` (ConduitMenuGroup, ConduitMenuPicker's groups), `Conduit/Views/GeminiLiveViews.swift` (VoiceJobModelSettingsSection.modelMenuGroups), used by `Conduit/Views/PulseSettingsViews.swift` (modelSection) and `Conduit/Views/HelperModelViews.swift` (through VoiceReplyModelSettingsSection)
+- Every setting's Model page: `Conduit/Views/ModelChooserPage.swift` (providerRow, expandedProviders, openPickedProvider)
+- Tagged picks (voice, Helper, Pulse): `Conduit/Views/GeminiLiveViews.swift` (TaggedModelChoice)
 - Model sheet: `Conduit/Views/ModelPickerView.swift` (providerCard, allProvidersPage, openHeldProvider)
 - Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift` (testAPinnedProviderAndAnEndpointAreShownAndKept)
 
 **Rulings**
-- Providers start closed; a bot's Model page and the model sheet's All providers page open the one holding the pick, once, and a menu marks that provider's name with a check (Eric 2026-11-05, #1787; the All providers page is part of the sheet redesign Eric picked 2026-11-08, #1984).
-- A menu's default choice and a held model the catalog doesn't list sit above the providers, outside any submenu; the row names a pick as "model · provider" (#1787).
+- Providers start closed; a setting's Model page and the model sheet's All providers page open the one holding the pick, once, and a closed provider holding it shows a check (Eric 2026-11-05, #1787; the All providers page is part of the sheet redesign Eric picked 2026-11-08, #1984; every setting's page since #1992).
+- The setting's default choice and a held model the catalog doesn't list sit above the providers; the Settings row names a pick as its model, then its provider (#1787, #1992).
 - A pick saved under another spelling of a listed provider (an alias, `custom:<key>`) is that provider's row, checked there, never a held row above it (#1788).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #1984 (the model sheet's providers moved to an All providers page that opens on the provider holding the checked model; Quick picks lead the sheet, see Pinned and recent models); 2026-11-05, #1805 (ConduitMenuPicker's value goes under its name on one line when both don't fit, instead of wrapping; see Sheets in Settings' look); 2026-11-05, #1793 (the Model page draws on Settings' backdrop and cards, its grouping unchanged, see Sheets in Settings' look); 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
+**Checked:** 2026-11-08, #1992 (the settings menus and pages grouped this way became one Model page; rulings say page and row); 2026-11-08, #1984 (the model sheet's providers moved to an All providers page that opens on the provider holding the checked model; Quick picks lead the sheet, see Pinned and recent models); 2026-11-05, #1805 (ConduitMenuPicker's value goes under its name on one line when both don't fit, instead of wrapping; see Sheets in Settings' look); 2026-11-05, #1793 (the Model page draws on Settings' backdrop and cards, its grouping unchanged, see Sheets in Settings' look); 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
 
 ## Pinned and recent models
 
@@ -3799,17 +3795,17 @@ away above the full list of providers (Eric, 2026-11-08).
 
 **Siblings:** the composer's Model sheet's Quick picks (done: pinned, then
 recent) · a bot's Model page from New Bot, Edit Bot and Workstream Model
-(done: the pinned ones, and Pin/Unpin; not recents, which are live session
-switches) · the Model page's Default, Delegate and Fallback editors, the
-subagent route sheet, the Helper, voice job, voice reply and Pulse model
-menus and the Kanban model override (gap: moving to one shared chooser page
-that takes these, in its own PR) · Text (not needed: no caption describes
-them)
+(done: pinned, then recent, on the shared Model page; recents come only
+from live session switches) · the Model page's Default, Delegate and
+Fallback editors, the subagent route sheet, the Helper, voice job, voice
+reply and Pulse models, the Kanban model override and a custom endpoint's
+model (done: they open the same Model page, #1992) · Text (not needed: no
+caption describes them)
 
 **Code**
 - Store: `Conduit/Models/ModelQuickPicks.swift`, `Conduit/Services/AppState.swift` (modelQuickPicks, updateModelQuickPicks)
 - Model sheet: `Conduit/Views/ModelPickerView.swift` (quickPicksSection, pinButton, modelRow's Pin menu, switchModel records a switch)
-- Bot's Model page: `Conduit/Views/BotModelPicker.swift` (Pinned section, pinMenu)
+- Every setting's Model page: `Conduit/Views/ModelChooserPage.swift` (quickPicks, pinMenu), used by `Conduit/Views/BotModelPicker.swift` and the settings (see One Model page for every model setting)
 - Tests: `ConduitTests/ModelQuickPicksTests.swift`
 
 **Rulings**
@@ -3818,9 +3814,53 @@ them)
 - Every model row offers Pin or Unpin in its long-press menu; a Quick pick row also has a pin button.
 
 **Open gaps**
-- The settings model pickers don't show pins yet (see Siblings).
+- None known.
 
-**Checked:** 2026-11-08, #1984 (entry added)
+**Checked:** 2026-11-08, #1992 (every settings model picker lists the pinned and recent models on the shared Model page); 2026-11-08, #1984 (entry added)
+
+## One Model page for every model setting
+
+A model setting outside the composer is one row in Settings naming its
+model and provider, which opens the same Model page: the pick on top, with
+its reasoning as the Model sheet's rising bars where the setting has one,
+then search, Quick picks and every provider, closed (Eric 2026-11-08: the
+drop-down menus were unusable with long provider lists).
+
+**Siblings:** the Model page's Default model, Delegate model and Fallback
+models (done) · Delegate fallback models and Subagent routing's route sheet
+(done) · the Helper models pages and Voice settings' Voice replies (done:
+one section) · Voice jobs (done) · Settings > Pulse's model (done) · a bot's
+Model page from New Bot and Edit Bot, and Edit Bot > Work's Workstream
+Model (done) · the Kanban model override, from the task composer and a
+task's page (done) · a custom endpoint's Model after Find models (done: its
+models as one provider) · the composer's Model sheet (not needed: it
+switches the live session and keeps its own sheet; it shares Edit's editor,
+the bars and Quick picks) · a provider's page in Models & providers (not
+needed: a list of that provider's models already) · Local Live's and
+ElevenLabs' model fields (not needed: typed names, not Hermes' list) ·
+Watch, CarPlay and group rooms (not needed: no model settings) · Text
+(done: the Default and Delegate model captions no longer describe two
+menus)
+
+**Code**
+- Page and row: `Conduit/Views/ModelChooserPage.swift` (ModelChooserPage, ModelChooserCatalog, ModelChooserReasoning, ModelChooserLinkRow.lines)
+- Hidden models: `Conduit/Views/ModelVisibilityEditor.swift` (ModelVisibility.visible and isHidden, ModelVisibilityEditor, ModelVisibilityEditorPage), shared with `Conduit/Views/ModelPickerView.swift`
+- Reasoning: `Conduit/Views/Components/ReasoningEffortBars.swift` (levels, unsetTitle)
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (ProfileModelSettingsDetail, DelegationModelSettings, FallbackModelsSettings' chooser and addChooser), `Conduit/Views/DelegationRoutingViews.swift` (DelegationModelRouteSheet), `Conduit/Views/GeminiLiveViews.swift` (TaggedModelChoice, TaggedModelChooserLink, VoiceJobModelSettingsSection, VoiceReplyModelSettingsSection's pickers and warnings), `Conduit/Views/PulseSettingsViews.swift` (modelSection), `Conduit/Views/ProviderSettingsViews.swift` (CustomEndpointForm)
+- Bots and Kanban: `Conduit/Views/BotModelPicker.swift`, `Conduit/Views/BotWorkSettingsView.swift`, `Conduit/Views/BotEditorSheet.swift`, `Conduit/Views/Kanban/KanbanTaskComposerView.swift` (KanbanModelOverrideSheet's chooserCatalog)
+- Tests: `ConduitTests/ModelQuickPicksTests.swift`, `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift` (testAPinnedProviderAndAnEndpointAreShownAndKept)
+
+**Rulings**
+- Every model setting outside the composer opens this page; none is a drop-down menu (Eric 2026-11-08, #1992). Each keeps its own reads, saves and Save button; the page only shows what the setting holds and hands back a pick.
+- The setting's own default ("Same as chats", "Profile default", "Inherit chat model", "Inherit from profile") is the first choice; a pick the catalog doesn't list stays on top as saved, never as another model.
+- Models hidden with Edit leave every page's lists, as in the Model sheet. A setting on a hidden model still shows it on top, marked Hidden, and search finds hidden models, marked Hidden, so a setting can still be put on one (Eric 2026-11-08). The page has its own Edit.
+- A setting's reasoning sits in the top card as the rising bars, with the setting's own levels (a helper slot, a voice job: no Ultra; a delegate: no Off) and its inherit choice under them. The page closes on a pick unless it has reasoning to set.
+- Add fallback opens the page and adds the model picked.
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-08, #1992 (entry added)
 
 ## The + that makes something new
 
@@ -4269,7 +4309,7 @@ notifier's README and CHANGELOG (done) · README's Settings list (done)
 **Open gaps**
 - Hermes' Reset all (`__reset__`) isn't offered: it would reset Pulse's slot too.
 
-**Checked:** 2026-11-07, #1956 (a helper's page and Voice settings' Voice replies were blank: their reads sat on an empty Group and never ran; loader, Try Again and no-slot line added); 2026-11-05, #1823 (#1816 checked here: the Helper models pages read their models again after opening, see Model lists Hermes is still fetching); 2026-11-01, #1638 (readers asking together share one read; a save drops it and its own read after is the shared one); 2026-11-01, #1636 (the Model page reads the slots too, so Remove names them as Hermes holds them); 2026-11-01, #1632 (provider-only pins, slots on their own endpoint, kept slots follow a save, the Predictive caption waits for the slot; a gap closed); 2026-11-01, #1625 (entry added)
+**Checked:** 2026-11-08, #1992 (a helper's model and reasoning are picked on the shared Model page, its warnings and Use It Anyway on it too; see One Model page for every model setting); 2026-11-07, #1956 (a helper's page and Voice settings' Voice replies were blank: their reads sat on an empty Group and never ran; loader, Try Again and no-slot line added); 2026-11-05, #1823 (#1816 checked here: the Helper models pages read their models again after opening, see Model lists Hermes is still fetching); 2026-11-01, #1638 (readers asking together share one read; a save drops it and its own read after is the shared one); 2026-11-01, #1636 (the Model page reads the slots too, so Remove names them as Hermes holds them); 2026-11-01, #1632 (provider-only pins, slots on their own endpoint, kept slots follow a save, the Predictive caption waits for the slot; a gap closed); 2026-11-01, #1625 (entry added)
 
 ## Subagent settings
 
@@ -5761,7 +5801,7 @@ model-facing text (none describe the glow)
 
 **Code**
 - Colors: `Conduit/Services/ProfileGlowColors.swift`, `Conduit/Services/AppState+V2Shell.swift` (profileGlowTint), `Conduit/Services/AppState.swift` (profileGlowColors, setProfileGlowColor, conversationIdentityProfile), `Conduit/Services/ProfileAppearanceStore.swift` (picks)
-- Backdrop: `Conduit/Theme.swift` (ConduitBackdrop), `Conduit/Views/V2/V2TopBar.swift` (V2Backdrop, glowProfile)
+- Backdrop: `Conduit/Theme.swift` (ConduitBackdrop; its drift, see Backdrop drift), `Conduit/Views/V2/V2TopBar.swift` (V2Backdrop, glowProfile)
 - Open chat: `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/ChatRowState.swift` (agentGlowTint), `Conduit/Views/ModelPickerView.swift`, `Conduit/Views/AuxiliaryViews.swift` (ContextSheet, SettingsBackdrop)
 - Elsewhere: `Conduit/Views/V2/V2SettingsTab.swift`, `Conduit/Views/ProfilePickerSheet.swift`, `Conduit/Views/V2/V2AllProfilesSheet.swift`
 - Tests: `ConduitTests/ProfileGlowColorTests.swift`, `ConduitTests/BotModeTests.swift` (conversationIdentityProfile, the bot's glow)
@@ -5774,7 +5814,37 @@ model-facing text (none describe the glow)
 - The drawer shell (Appearance, V2 off) draws every chat on the gold backdrop, a Bot Chat included, though the Model and Context sheets over it take the chat's glow.
 - The chat's other sheets (gateway diagnostics, workspace browser, delegate agents, pinned replies) never took a profile glow and stay gold.
 
-**Checked:** 2026-11-06, #1874 (group room names and bubbles take the glow).
+**Checked:** 2026-11-08, #1994 (the backdrop's drift has an entry of its own, Backdrop drift; the glow color is unchanged); 2026-11-06, #1874 (group room names and bubbles take the glow).
+
+## Backdrop drift
+
+The backdrop's two glows (the warm one in the glow color at the top, the blue
+one at the bottom) drift slowly out and back over 26 seconds, ten frames a
+second, on the app's main surfaces, and hold still where they are when the
+drift pauses.
+
+**Siblings:** the open chat (chats, project chats, Bot Chat, group rooms) ·
+the Chats, Bots and Tasks tab roots · the persistent iPad sidebar column · sign-in ·
+the copy behind a bar's fade before iOS 26 and on a Mac (`V2LegacyEdgeBar`,
+the same view) · the working line's breathing (same pause rules) · the Settings tab root, the iPad chat placeholder,
+sheets, pushed pages and the iPhone drawer (still by design) · the Apple Watch (no
+backdrop drift; its call bars run their own timeline) · Settings captions and
+model-facing text (none describe it)
+
+**Code**
+- `Conduit/Theme.swift` (ConduitBackdrop, ConduitBackdropGlows, ConduitBackdropMotionPolicy, ConduitBackdropMotionClock), `Conduit/Views/V2/V2TopBar.swift` (V2Backdrop, V2LegacyEdgeBar), `Conduit/Views/ChatView.swift` (ConduitBreathing)
+- Tests: `ConduitTests/AppStateVoiceCapabilityTests.swift` (the policy, the clock, ConduitBackdropGlows); UI tests' launch: `ConduitUITests/V2NavigationHelpers.swift` (XCUIApplication.conduit), `ConduitScreenshots/AppStoreScreenshotTests.swift`
+
+**Rulings**
+- Only main surfaces drift (`drifts: true`); sheets and pushed screens keep the still composition (#474).
+- The drift pauses with the app inactive, Reduce Motion, Low Power Mode, a hot device (serious or critical), or Conduit idle for a couple of minutes with no turn running, and resumes from the phase it showed, never jumping (#465, #474).
+- UI tests and the App Store screenshots launch with `CONDUIT_STILL_BACKDROP=1` (`XCUIApplication.conduit()`), which holds the drift still: XCUITest waits for the app to settle before each step, and a drifting backdrop never settles (about two minutes a tap, #1994).
+- The glows are drawn from the timeline's tick, so they move on every frame. Drawn from a closure that only ran when something else redrew the backdrop, they sat still and then jumped across the screen in one frame whenever an input changed (the drift pausing or resuming, a color, a size), which looked like the backdrop going dark and coming back (issue 1980).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-08, #1994 (added; the glows move with the timeline, issue 1980; the Tasks root drifts like Chats and Bots, Settings and the iPad chat placeholder hold still; UI tests and screenshots hold it still; on the iPad simulator the drift ran its full cycle and held its phase through an idle pause and resume).
 
 ## Profile names
 

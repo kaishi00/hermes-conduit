@@ -15,6 +15,12 @@ struct ReasoningEffortBars: View {
     /// The runtime's effort word ("none" when off).
     let effort: String
     let disabled: Bool
+    /// The levels offered, lowest first: a setting Hermes takes fewer
+    /// levels for (a helper's slot has no Ultra) shows only those.
+    var levels: [ReasoningEffortLevel] = ReasoningEffortLevel.allCases
+    /// What an empty `effort` means where it isn't Off: a setting that
+    /// follows another one's reasoning ("Same as chats"). No bar is lit.
+    var unsetTitle: String? = nil
     /// The level the finger lifted on, or VoiceOver stepped to.
     let onCommit: (ReasoningEffortLevel) -> Void
 
@@ -24,13 +30,12 @@ struct ReasoningEffortBars: View {
     /// This drag started up or down: it's the sheet's scroll, not a slide.
     @State private var dragIsScroll = false
 
-    private static let levels = ReasoningEffortLevel.allCases
     static let stripHeight: CGFloat = 50
 
     /// The level whose column holds `x` across a strip `width` wide: each
     /// level owns an equal column, the full strip high, and a finger past
     /// either end stays on the end level.
-    static func level(atX x: CGFloat, width: CGFloat) -> ReasoningEffortLevel {
+    static func level(atX x: CGFloat, width: CGFloat, levels: [ReasoningEffortLevel] = ReasoningEffortLevel.allCases) -> ReasoningEffortLevel {
         guard width > 0 else { return levels[0] }
         let index = Int((x / width * CGFloat(levels.count)).rounded(.down))
         return levels[min(max(index, 0), levels.count - 1)]
@@ -38,17 +43,24 @@ struct ReasoningEffortBars: View {
 
     /// The level VoiceOver's swipe up or down lands on. A level Conduit
     /// doesn't list steps from Medium.
-    static func level(stepping current: ReasoningEffortLevel?, by step: Int) -> ReasoningEffortLevel {
+    static func level(stepping current: ReasoningEffortLevel?, by step: Int, levels: [ReasoningEffortLevel] = ReasoningEffortLevel.allCases) -> ReasoningEffortLevel {
         let index = current.flatMap { levels.firstIndex(of: $0) } ?? levels.firstIndex(of: .medium) ?? 0
         return levels[min(max(index + step, 0), levels.count - 1)]
     }
 
+    /// The effort follows another setting's: nothing of its own is lit.
+    private var isUnset: Bool {
+        unsetTitle != nil && effort.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
     private var shownLevel: ReasoningEffortLevel? {
-        dragLevel ?? ReasoningEffortLevel(runtimeEffort: effort)
+        dragLevel ?? (isUnset ? nil : ReasoningEffortLevel(runtimeEffort: effort))
     }
 
     private var shownTitle: String {
-        dragLevel?.title ?? ReasoningEffortLevel.displayTitle(for: effort)
+        if let dragLevel { return dragLevel.title }
+        if isUnset, let unsetTitle { return unsetTitle }
+        return ReasoningEffortLevel.displayTitle(for: effort)
     }
 
     var body: some View {
@@ -69,8 +81,8 @@ struct ReasoningEffortBars: View {
 
             GeometryReader { proxy in
                 HStack(alignment: .bottom, spacing: 0) {
-                    ForEach(Array(Self.levels.enumerated()), id: \.element) { index, level in
-                        bar(index: index, level: level, columnWidth: proxy.size.width / CGFloat(Self.levels.count))
+                    ForEach(Array(levels.enumerated()), id: \.element) { index, level in
+                        bar(index: index, level: level, columnWidth: proxy.size.width / CGFloat(levels.count))
                     }
                 }
                 .frame(width: proxy.size.width, height: proxy.size.height, alignment: .bottom)
@@ -81,7 +93,7 @@ struct ReasoningEffortBars: View {
                 .onTapGesture(coordinateSpace: .local) { location in
                     guard !disabled else { return }
                     Haptics.selection()
-                    onCommit(Self.level(atX: location.x, width: proxy.size.width))
+                    onCommit(Self.level(atX: location.x, width: proxy.size.width, levels: levels))
                 }
                 // A slide, alongside the sheet's scroll: a drag that starts
                 // up or down is left to the scroll and picks nothing.
@@ -94,7 +106,7 @@ struct ReasoningEffortBars: View {
                                 dragIsScroll = true
                             }
                             guard !dragIsScroll else { return }
-                            let level = Self.level(atX: value.location.x, width: proxy.size.width)
+                            let level = Self.level(atX: value.location.x, width: proxy.size.width, levels: levels)
                             guard level != dragLevel else { return }
                             dragLevel = level
                             Haptics.selection()
@@ -104,7 +116,7 @@ struct ReasoningEffortBars: View {
                             dragIsScroll = false
                             dragLevel = nil
                             guard slid, !disabled else { return }
-                            onCommit(Self.level(atX: value.location.x, width: proxy.size.width))
+                            onCommit(Self.level(atX: value.location.x, width: proxy.size.width, levels: levels))
                         }
                 )
             }
@@ -112,9 +124,9 @@ struct ReasoningEffortBars: View {
             .animation(ConduitMotion.response, value: shownLevel)
 
             HStack {
-                Text(ReasoningEffortLevel.off.title)
+                Text((levels.first ?? .off).title)
                 Spacer()
-                Text(ReasoningEffortLevel.ultra.title)
+                Text((levels.last ?? .ultra).title)
             }
             .scaledFont(.caption)
             .foregroundStyle(.secondary)
@@ -129,10 +141,10 @@ struct ReasoningEffortBars: View {
             switch direction {
             case .increment:
                 Haptics.selection()
-                onCommit(Self.level(stepping: shownLevel, by: 1))
+                onCommit(Self.level(stepping: shownLevel, by: 1, levels: levels))
             case .decrement:
                 Haptics.selection()
-                onCommit(Self.level(stepping: shownLevel, by: -1))
+                onCommit(Self.level(stepping: shownLevel, by: -1, levels: levels))
             @unknown default: break
             }
         }
@@ -140,14 +152,14 @@ struct ReasoningEffortBars: View {
     }
 
     private func bar(index: Int, level: ReasoningEffortLevel, columnWidth: CGFloat) -> some View {
-        let shown = shownLevel.flatMap { Self.levels.firstIndex(of: $0) }
+        let shown = shownLevel.flatMap { levels.firstIndex(of: $0) }
         let fill: Color = {
             guard let shown else { return Color.primary.opacity(0.14) }
             if index == shown { return .conduitAccent }
             if index < shown { return Color.conduitAccent.opacity(colorScheme == .dark ? 0.5 : 0.4) }
             return Color.primary.opacity(0.14)
         }()
-        let rise = CGFloat(index) / CGFloat(max(Self.levels.count - 1, 1))
+        let rise = CGFloat(index) / CGFloat(max(levels.count - 1, 1))
         return RoundedRectangle(cornerRadius: 6, style: .continuous)
             .fill(fill)
             .frame(width: min(24, columnWidth * 0.6), height: 10 + rise * (Self.stripHeight - 14))

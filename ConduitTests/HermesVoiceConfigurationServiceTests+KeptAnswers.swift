@@ -338,40 +338,33 @@ extension HermesVoiceConfigurationServiceTests {
         picks.hermesAnswered(pinned, to: picks.readAsked())
         XCTAssertEqual(picks.selection, VoiceJobModelSettingsSection.tag(provider: "openrouter", model: ""))
         XCTAssertNil(picks.writeAsked(), "Showing it writes nothing")
-        let groups = VoiceJobModelSettingsSection.modelMenuGroups(
-            defaultTitle: "chats", defaultTag: VoiceReplyModelPicks.sameAsChats, selection: picks.selection, providers: []
-        )
-        XCTAssertEqual(groups.first?.choices.last?.title, VoiceJobModelSettingsSection.providerDefaultTitle("openrouter"))
-        let listed = VoiceJobModelSettingsSection.modelMenuGroups(
-            defaultTitle: "chats", defaultTag: VoiceReplyModelPicks.sameAsChats, selection: picks.selection,
-            providers: [ProviderInfo(name: "openrouter", models: [ModelInfo(id: "gpt-5", label: nil, reasoningCapable: false)])]
-        )
-        XCTAssertEqual(listed.map(\.title), [nil, "openrouter"], "each provider is a submenu of its own, after the default")
-        XCTAssertEqual(listed[1].choices.map(\.title), ["gpt-5"], "a submenu's models don't repeat its provider")
-        XCTAssertEqual(listed[0].choices.last?.title, VoiceJobModelSettingsSection.providerDefaultTitle("openrouter"),
-                       "a held pick the catalog doesn't list stays above the providers")
+        let unlisted = TaggedModelChoice(defaultTag: VoiceReplyModelPicks.sameAsChats, selection: picks.selection)
+        XCTAssertEqual(unlisted.lines(in: [], defaultTitle: "chats").value, VoiceJobModelSettingsSection.providerDefaultTitle("openrouter"),
+                       "a provider pinned without a model is named as its default model")
+        let openrouter = ProviderInfo(name: "openrouter", models: [ModelInfo(id: "gpt-5", label: nil, reasoningCapable: false)])
+        XCTAssertNil(unlisted.heldProvider(in: [openrouter]), "a provider-only pick is no listed row")
+        XCTAssertEqual(unlisted.pick, ModelChooserPick(provider: "openrouter", model: ""))
         let aliasPick = VoiceJobModelSettingsSection.tag(provider: "custom:key", model: "qwen3")
-        let aliased = VoiceJobModelSettingsSection.modelMenuGroups(
-            defaultTitle: "chats", defaultTag: VoiceReplyModelPicks.sameAsChats, selection: aliasPick,
-            providers: [ProviderInfo(name: "custom", models: [ModelInfo(id: "qwen3", label: nil, reasoningCapable: false)],
-                                     aliases: ["custom:key"])]
-        )
-        XCTAssertEqual(aliased[0].choices.map(\.id), [VoiceReplyModelPicks.sameAsChats],
+        let custom = ProviderInfo(name: "custom", models: [ModelInfo(id: "qwen3", label: nil, reasoningCapable: false)],
+                                  aliases: ["custom:key"])
+        let aliased = TaggedModelChoice(defaultTag: VoiceReplyModelPicks.sameAsChats, selection: aliasPick)
+        XCTAssertEqual(aliased.heldProvider(in: [custom]), "custom",
                        "a pick saved under its provider's alias is the listed row, not a held one")
-        XCTAssertEqual(aliased[1].choices.map(\.id), [aliasPick], "so the provider's row carries the pick")
-        let crowded = VoiceJobModelSettingsSection.modelMenuGroups(
-            defaultTitle: "chats", defaultTag: VoiceReplyModelPicks.sameAsChats, selection: aliasPick,
-            providers: [
-                ProviderInfo(name: "custom:key", models: [ModelInfo(id: "qwen3", label: nil, reasoningCapable: false)]),
-                ProviderInfo(name: "custom", models: [ModelInfo(id: "qwen3", label: nil, reasoningCapable: false),
-                                                      ModelInfo(id: "llama", label: nil, reasoningCapable: false)],
-                             aliases: ["custom:key"]),
-            ]
-        )
-        XCTAssertEqual(crowded[1].choices.map(\.id), [aliasPick], "the provider named exactly holds the pick")
-        XCTAssertEqual(crowded[2].choices.map(\.id), [VoiceJobModelSettingsSection.tag(provider: "custom", model: "qwen3"),
-                                                      VoiceJobModelSettingsSection.tag(provider: "custom", model: "llama")],
-                       "only one row is the pick; the other route stays pickable")
+        XCTAssertEqual(aliased.tag(for: custom, custom.models[0], in: [custom]), aliasPick,
+                       "so the provider's row carries the pick, and re-picking it writes nothing")
+        let exact = ProviderInfo(name: "custom:key", models: [ModelInfo(id: "qwen3", label: nil, reasoningCapable: false)])
+        let both = ProviderInfo(name: "custom", models: [ModelInfo(id: "qwen3", label: nil, reasoningCapable: false),
+                                                         ModelInfo(id: "llama", label: nil, reasoningCapable: false)],
+                                aliases: ["custom:key"])
+        let crowded = [exact, both]
+        XCTAssertTrue(aliased.isPicked(exact, exact.models[0], in: crowded), "the provider named exactly holds the pick")
+        XCTAssertFalse(aliased.isPicked(both, both.models[0], in: crowded), "only one row is the pick")
+        XCTAssertEqual(aliased.tag(for: both, both.models[0], in: crowded),
+                       VoiceJobModelSettingsSection.tag(provider: "custom", model: "qwen3"),
+                       "the other route stays pickable")
+        XCTAssertEqual(aliased.lines(in: crowded, defaultTitle: "chats").value, "qwen3")
+        XCTAssertNil(TaggedModelChoice(defaultTag: VoiceReplyModelPicks.sameAsChats, selection: VoiceReplyModelPicks.sameAsChats).pick,
+                     "the default choice is no pick")
         picks.selection = VoiceReplyModelPicks.sameAsChats
         let unpinned = try XCTUnwrap(picks.writeAsked())
         XCTAssertEqual(unpinned.provider, "auto")

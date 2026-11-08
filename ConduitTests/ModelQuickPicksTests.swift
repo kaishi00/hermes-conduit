@@ -100,4 +100,52 @@ final class ModelQuickPicksTests: XCTestCase {
         XCTAssertEqual(ReasoningEffortBars.level(stepping: .ultra, by: 1), .ultra)
         XCTAssertEqual(ReasoningEffortBars.level(stepping: nil, by: 1), .high)
     }
+
+    /// A setting whose reasoning has fewer levels (a helper's slot, no
+    /// Ultra) splits the strip among those, and VoiceOver stops at its last.
+    func testReasoningBarsTakeASettingsOwnLevels() {
+        let levels = VoiceJobModelSettingsSection.chooserLevels
+        XCTAssertFalse(levels.contains(.ultra))
+        XCTAssertEqual(ReasoningEffortBars.level(atX: 319, width: 320, levels: levels), .max)
+        XCTAssertEqual(ReasoningEffortBars.level(stepping: .max, by: 1, levels: levels), .max)
+        let delegate = ReasoningEffortLevel.allCases.filter { $0 != .off }
+        XCTAssertEqual(ReasoningEffortBars.level(atX: 0, width: 320, levels: delegate), .minimal)
+    }
+
+    /// Models hidden with Edit leave the lists of every Model page, and a
+    /// hidden provider takes its models with it.
+    func testHiddenModelsLeaveTheLists() {
+        let visibility = ModelVisibility(
+            hiddenProviders: ["zai"],
+            hiddenModels: [ModelVisibility.key(provider: "openrouter", model: "deepseek")]
+        )
+        let shown = visibility.visible([openrouter, zai])
+        XCTAssertEqual(shown.map(\.name), ["openrouter"])
+        XCTAssertEqual(shown.first?.models.map(\.id), ["opus", "sonnet"])
+        XCTAssertEqual(shown.first?.aliases, ["custom:openrouter"], "an alias still finds the row")
+        XCTAssertTrue(visibility.isHidden(model: "glm", provider: zai))
+        XCTAssertTrue(visibility.isHidden(model: "deepseek", provider: openrouter))
+        XCTAssertFalse(visibility.isHidden(model: "opus", provider: openrouter))
+    }
+
+    /// A setting's row names the model and the provider it runs on, as the
+    /// catalog spells them; a provider pinned alone is its default model.
+    func testASettingsRowNamesItsModelAndProvider() {
+        let labelled = ProviderInfo(name: "openrouter", models: [ModelInfo(id: "anthropic/opus", label: "Opus", reasoningCapable: true)],
+                                    displayName: "OpenRouter")
+        let listed = ModelChooserLinkRow.lines(
+            pick: ModelChooserPick(provider: "openrouter", model: "anthropic/opus"),
+            providers: [labelled], defaultTitle: "Same as chats", reasoning: "High"
+        )
+        XCTAssertEqual(listed.value, "Opus")
+        XCTAssertEqual(listed.detail, "OpenRouter · High")
+        let held = ModelChooserLinkRow.lines(pick: ModelChooserPick(provider: "gone", model: "old"), providers: [labelled], defaultTitle: "x")
+        XCTAssertEqual(held.value, "old", "a model the catalog no longer lists shows as saved")
+        XCTAssertEqual(held.detail, "gone")
+        let inherited = ModelChooserLinkRow.lines(pick: nil, providers: [labelled], defaultTitle: "Same as chats")
+        XCTAssertEqual(inherited.value, "Same as chats")
+        XCTAssertNil(inherited.detail)
+        let providerOnly = ModelChooserLinkRow.lines(pick: ModelChooserPick(provider: "openrouter", model: ""), providers: [labelled], defaultTitle: "x")
+        XCTAssertEqual(providerOnly.value, VoiceJobModelSettingsSection.providerDefaultTitle("OpenRouter"))
+    }
 }
