@@ -526,7 +526,9 @@ struct HostedAppPage: View {
                     Text(verbatim: AppLocalization.string("\(onCount) tools on") + " · " + AppLocalization.string("Hermes can't use a tool that's off."))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                     if rulesFailed {
-                        rulesUnreadLine
+                        // An app the organization turned off says it once,
+                        // in Connection.
+                        if app.state != .offByOrganization { rulesUnreadLine }
                     } else if policy?.revision == nil {
                         Text(AppLocalization.string("Your organization manages these switches."))
                             .scaledFont(.footnote).foregroundStyle(.secondary)

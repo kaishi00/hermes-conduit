@@ -439,12 +439,23 @@ final class HTMLPreviewDocuments {
     }
 
     /// Every page and read: they go with the saved chats, since the next
-    /// sign-in may be another account.
-    func removeAll() {
-        pages.removeAll()
-        order.removeAll()
-        inFlight.removeAll()
-        failedAt.removeAll()
+    /// sign-in may be another account. Given a dashboard, only its pages
+    /// go, with any page not tied to a dashboard.
+    func removeAll(dashboardID: UUID? = nil) {
+        guard let dashboardID else {
+            pages.removeAll()
+            order.removeAll()
+            inFlight.removeAll()
+            failedAt.removeAll()
+            return
+        }
+        let tied = "preview|path|"
+        let its = tied + dashboardID.uuidString + "|"
+        let goes: (String) -> Bool = { $0.hasPrefix(its) || !$0.hasPrefix(tied) }
+        pages = pages.filter { !goes($0.key) }
+        order.removeAll(where: goes)
+        inFlight = inFlight.filter { !goes($0.key) }
+        failedAt = failedAt.filter { !goes($0.key) }
     }
 
     private func drop(_ key: String) {

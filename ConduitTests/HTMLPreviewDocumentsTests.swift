@@ -135,6 +135,22 @@ final class HTMLPreviewDocumentsTests: XCTestCase {
         XCTAssertFalse(GatewayMediaRead.isRefusal(status: 0))
     }
 
+    func testSigningOutOfOneDashboardKeepsAnothersPages() {
+        let store = documents()
+        let gone = UUID(), stays = UUID()
+        let goneKey = "preview|" + TranscriptImageCache.key(dashboard: gone.uuidString, profile: "default", path: "/a.html")
+        let staysKey = "preview|" + TranscriptImageCache.key(dashboard: stays.uuidString, profile: "default", path: "/a.html")
+        store.keep("<p>a</p>", for: goneKey)
+        store.keep("<p>b</p>", for: staysKey)
+        store.keep("<p>c</p>", for: "preview|/loose.html")
+        store.removeAll(dashboardID: gone)
+        XCTAssertNil(store.kept(goneKey))
+        XCTAssertNil(store.kept("preview|/loose.html"), "a page tied to no dashboard goes too")
+        XCTAssertNotNil(store.kept(staysKey))
+        store.removeAll()
+        XCTAssertNil(store.kept(staysKey))
+    }
+
     func testOnlyTheLatestPagesAreKept() {
         let store = documents()
         for index in 0...HTMLPreviewDocuments.capacity {

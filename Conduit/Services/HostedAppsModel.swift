@@ -43,8 +43,11 @@ final class HostedAppsModel {
     @ObservationIgnored private var attempt = 0
     @ObservationIgnored private var reads = 0
     @ObservationIgnored private var signInTask: Task<Void, Never>?
-    /// A given-up try per Hermes and app, until it has given its operation up.
-    @ObservationIgnored private var retiring: [String: Task<Void, Never>] = [:]
+    /// A given-up try per Hermes and app, until it has given its operation
+    /// up. Kept for the app, not the page: one given up while the page was
+    /// open still settles after it closes, and a page opened later waits
+    /// for it too.
+    private static var retiring: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var browserClosedAt: Date?
     /// Which close the fallback below belongs to: an earlier one's timer
     /// never ends a later close.
@@ -135,7 +138,7 @@ final class HostedAppsModel {
         let hermes = self.hermes
         attempt += 1
         let attempt = self.attempt
-        let previous = retiring.removeValue(forKey: "\(hermes ?? "")|\(slug)")
+        let previous = Self.retiring.removeValue(forKey: "\(hermes ?? "")|\(slug)")
         signInTask = Task { [weak self] in
             // A given-up try at this app first settles what it started:
             // Hermes hands a matching start the operation still open, so
@@ -159,7 +162,7 @@ final class HostedAppsModel {
     }
 
     func cancelSignIn() {
-        if let task = signInTask, let slug = signingIn { retiring["\(hermes ?? "")|\(slug)"] = task }
+        if let task = signInTask, let slug = signingIn { Self.retiring["\(hermes ?? "")|\(slug)"] = task }
         signInTask?.cancel()
         signInTask = nil
         signingIn = nil
@@ -276,14 +279,16 @@ final class HostedAppsModel {
     /// open. Another Hermes switched to is never told.
     private func retireOnceConnected(_ operation: HostedAppOperation, slug: String, hermes: String?, appState: AppState) {
         let key = "\(hermes ?? "")|\(slug)"
-        retiring[key] = Task { [weak self] in
+        Self.retiring[key] = Task { [weak self, weak appState] in
             let deadline = Date().addingTimeInterval(Self.retireWait)
             while Date() < deadline {
-                guard let self, self.hermes == hermes else { return }
+                // The app's own Hermes, not this page's, which may have
+                // closed or not yet seen a switch.
+                guard let appState, appState.hostedAppsHermes == hermes else { return }
                 if appState.isConnected {
                     try? await appState.stopHostedAppSignIn(operation)
                     // An account that finished during the outage shows.
-                    await self.reload(appState)
+                    if let self, self.hermes == hermes { await self.reload(appState) }
                     return
                 }
                 try? await Task.sleep(for: Self.pollInterval)
