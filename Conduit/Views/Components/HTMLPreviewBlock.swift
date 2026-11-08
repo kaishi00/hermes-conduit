@@ -438,6 +438,15 @@ final class HTMLPreviewDocuments {
         return answer.html
     }
 
+    /// Every page and read: they go with the saved chats, since the next
+    /// sign-in may be another account.
+    func removeAll() {
+        pages.removeAll()
+        order.removeAll()
+        inFlight.removeAll()
+        failedAt.removeAll()
+    }
+
     private func drop(_ key: String) {
         pages[key] = nil
         order.removeAll { $0 == key }

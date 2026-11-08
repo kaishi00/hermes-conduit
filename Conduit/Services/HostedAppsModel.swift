@@ -57,6 +57,8 @@ final class HostedAppsModel {
     /// gives up and says so, so one dead try never holds the section
     /// (issue 2013).
     static let outageGrace: TimeInterval = 120
+    /// How long a sign-in given up over an outage waits to tell Hermes.
+    static let retireWait: TimeInterval = 600
 
     /// Opens on the kept apps for `scope` (the dashboard, profile and
     /// client), and drops another scope's. A sign-in and what the section
@@ -89,12 +91,8 @@ final class HostedAppsModel {
         loading = true
         defer { if read == reads { loading = false } }
         do {
-            var fresh = try await appState.loadHostedApps()
+            let fresh = try await appState.loadHostedApps()
             guard read == reads, scope == self.scope else { return }
-            // Rules that didn't read this time leave the last ones read
-            // showing what the organization turned off; nothing changes on
-            // them until they read again (issue 2014).
-            if fresh.rulesFailed == true, fresh.policy == nil { fresh.policy = snapshot?.policy }
             snapshot = fresh
             showsKept = false
             HostedAppLogoLoader.retryFailed()
@@ -232,7 +230,7 @@ final class HostedAppsModel {
                     downSince = since
                     guard Date().timeIntervalSince(since) >= Self.outageGrace else { continue }
                     notes[slug] = AppLocalization.string("The connection to Hermes dropped, so the sign-in stopped. Try again.")
-                    try? await appState.stopHostedAppSignIn(current)
+                    retireOnceConnected(current, slug: slug, hermes: hermes, appState: appState)
                     return
                 }
                 downSince = nil
@@ -267,6 +265,27 @@ final class HostedAppsModel {
             guard isLatest else { return }
             notes[slug] = UserFacingError.message(for: error)
             if let operation { try? await appState.stopHostedAppSignIn(operation) }
+        }
+    }
+
+    /// A sign-in given up while the connection is down: Hermes is told once
+    /// the same Hermes is connected again, and a new try at the app waits
+    /// for that, since Hermes hands a matching start the operation still
+    /// open. Another Hermes switched to is never told.
+    private func retireOnceConnected(_ operation: HostedAppOperation, slug: String, hermes: String?, appState: AppState) {
+        let key = "\(hermes ?? "")|\(slug)"
+        retiring[key] = Task { [weak self] in
+            let deadline = Date().addingTimeInterval(Self.retireWait)
+            while Date() < deadline {
+                guard let self, self.hermes == hermes else { return }
+                if appState.isConnected {
+                    try? await appState.stopHostedAppSignIn(operation)
+                    // An account that finished during the outage shows.
+                    await self.reload(appState)
+                    return
+                }
+                try? await Task.sleep(for: Self.pollInterval)
+            }
         }
     }
 

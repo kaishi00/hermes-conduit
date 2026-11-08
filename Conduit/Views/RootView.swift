@@ -458,6 +458,8 @@ struct MainView: View {
         // V2 tab's start over on a switch (V2SettingsTab): a switch made
         // under it, by a notification's route, closes it (issue 2016).
         .onChange(of: appState.activeDashboardID) { _, _ in
+            shouldPresentSettingsAfterSidebarDismissal = false
+            settingsOpensAt = nil
             settingsPresentation = nil
         }
         .onChange(of: appState.settingsDismissRequest) { _, _ in

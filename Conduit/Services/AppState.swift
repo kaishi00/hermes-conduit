@@ -7157,6 +7157,7 @@ final class AppState: ObservableObject {
         // named by a hash, so they cannot be told apart by server.
         TranscriptImageCache.purge()
         TranscriptPictureMemory.forgetAll()
+        HTMLPreviewDocuments.shared.removeAll()
         // So do the open dashboard's pinned replies (#918): they keep reply
         // text, and the next sign-in may be another account.
         if dashboardID == nil || dashboardID == activeDashboardID { clearPinnedReplies() }

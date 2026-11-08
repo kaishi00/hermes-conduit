@@ -339,7 +339,10 @@ struct HostedAppPage: View {
                 if let account = naming.account {
                     let renamed = try await appState.renameHostedAppAccount(account.connectionID, to: name)
                     model.take(account: renamed)
-                } else if !rulesFailed {
+                } else if rulesFailed {
+                    // The sheet keeps the name and says why (issue 2014).
+                    throw HostedAppRulesUnread(appTitle: app?.title ?? HostedApps.title(slug))
+                } else {
                     model.signIn(slug, alias: name, appState: appState)
                 }
             }
@@ -382,6 +385,8 @@ struct HostedAppPage: View {
             if app.state == .offByOrganization {
                 Text(AppLocalization.string("Your organization turned \(app.title) off for Hermes."))
                     .scaledFont(.footnote).foregroundStyle(.secondary)
+                // From the last rules read: they can be read again here.
+                if rulesFailed { rulesUnreadLine }
             } else {
                 if app.connected {
                     Toggle(isOn: Binding(get: { app.state != .off }, set: { setEnabled($0) })) {
@@ -652,6 +657,14 @@ extension HostedAppStyle {
 }
 
 /// Names a new account before its sign-in, or renames one.
+/// A new account asked for while the organization's rules are unread.
+private struct HostedAppRulesUnread: LocalizedError {
+    let appTitle: String
+    var errorDescription: String? {
+        AppLocalization.string("Hermes couldn't read your organization's rules just now, so it can't tell yet whether \(appTitle) is allowed.")
+    }
+}
+
 private struct HostedAccountNameSheet: View {
     let appTitle: String
     let account: HostedAppAccount?
