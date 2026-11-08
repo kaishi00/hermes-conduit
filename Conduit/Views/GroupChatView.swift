@@ -228,6 +228,7 @@ struct GroupChatView: View {
         }
         .environment(\.imageGallery, imageGallery)
         .environment(\.roomFilePictures, roomPictures)
+        .environment(\.roomFileReads, appState.roomFileReadsResolver)
         // As in a chat, text draws until a touch needs its text view, and
         // a drawn bubble sizes to its text.
         .environment(\.selectableTextDrawsUntilTouched, true)
@@ -918,11 +919,13 @@ struct GroupMessageParts {
 }
 
 /// A message's files: its pictures as pictures where the room's files can
-/// be read (one whole, more as tiles, as in a chat), the rest by name.
+/// be read (one whole, more as tiles, as in a chat), and its other files as
+/// a chat's chips that open and play, else by name.
 private struct GroupMessageFiles: View {
     let files: [Attachment]
     var onAccent = false
     @Environment(\.roomFilePictures) private var pictureFiles
+    @Environment(\.roomFileReads) private var readFiles
 
     var body: some View {
         let pictures = pictureFiles == nil ? [] : files.filter(GroupRoomFilesClient.isStoredPicture)
@@ -939,22 +942,26 @@ private struct GroupMessageFiles: View {
             UserImageAttachmentPreview(attachment: picture, gatewayResolver: pictureFiles, onAccent: onAccent, namesUnavailable: true)
         }
         ForEach(pictures.isEmpty ? files : files.filter { !GroupRoomFilesClient.isStoredPicture($0) }) { file in
-            HStack(spacing: 8) {
-                Image(systemName: AttachmentTypePolicy.symbolName(for: file))
-                    .scaledFont(.callout)
-                    .frame(width: 30, height: 30)
-                    .background(
-                        (onAccent ? Color.white.opacity(0.18) : Color.primary.opacity(0.07)),
-                        in: RoundedRectangle(cornerRadius: 8, style: .continuous)
-                    )
-                Text(AttachmentTypePolicy.displayName(for: file))
-                    .scaledFont(.caption.weight(.medium))
-                    .lineLimit(1)
-                    .truncationMode(.middle)
+            if let readFiles, GroupRoomFilesClient.isStoredFile(file) {
+                UserDocumentAttachmentChip(attachment: file, gatewayResolver: readFiles, onAccent: onAccent)
+            } else {
+                HStack(spacing: 8) {
+                    Image(systemName: AttachmentTypePolicy.symbolName(for: file))
+                        .scaledFont(.callout)
+                        .frame(width: 30, height: 30)
+                        .background(
+                            (onAccent ? Color.white.opacity(0.18) : Color.primary.opacity(0.07)),
+                            in: RoundedRectangle(cornerRadius: 8, style: .continuous)
+                        )
+                    Text(AttachmentTypePolicy.displayName(for: file))
+                        .scaledFont(.caption.weight(.medium))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                }
+                .foregroundStyle(onAccent ? Color.white : Color.primary)
+                .accessibilityElement(children: .combine)
+                .accessibilityLabel(Text(AppLocalization.string("Attached: \(AttachmentTypePolicy.displayName(for: file))")))
             }
-            .foregroundStyle(onAccent ? Color.white : Color.primary)
-            .accessibilityElement(children: .combine)
-            .accessibilityLabel(Text(AppLocalization.string("Attached: \(AttachmentTypePolicy.displayName(for: file))")))
         }
     }
 }
@@ -2712,7 +2719,18 @@ private struct RoomFilePicturesKey: EnvironmentKey {
     static let defaultValue: GatewayMediaDataURLResolver? = nil
 }
 
+private struct RoomFileReadsKey: EnvironmentKey {
+    static let defaultValue: GatewayMediaDataURLResolver? = nil
+}
+
 extension EnvironmentValues {
+    /// Where a room's messages read the other files sent into it; nil
+    /// shows them by name (AppState.roomFileReadsResolver).
+    var roomFileReads: GatewayMediaDataURLResolver? {
+        get { self[RoomFileReadsKey.self] }
+        set { self[RoomFileReadsKey.self] = newValue }
+    }
+
     /// Where a room's messages read the pictures sent into it; nil draws
     /// them by name (AppState.roomFilePicturesResolver).
     var roomFilePictures: GatewayMediaDataURLResolver? {

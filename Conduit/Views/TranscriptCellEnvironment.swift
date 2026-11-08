@@ -50,6 +50,7 @@ struct TranscriptCellEnvironment: Equatable {
     var markdownJoinsProseRuns: Bool
     var gatewayMediaFiles: GatewayMediaDataURLResolver?
     var roomFilePictures: GatewayMediaDataURLResolver?
+    var roomFileReads: GatewayMediaDataURLResolver?
     var v2Shell: V2ShellContext
     var v2OpenBeside: V2OpenBeside?
     var botZoomNamespace: Namespace.ID?
@@ -94,6 +95,7 @@ struct TranscriptCellEnvironment: Equatable {
         markdownJoinsProseRuns = values.markdownJoinsProseRuns
         gatewayMediaFiles = values.gatewayMediaFiles
         roomFilePictures = values.roomFilePictures
+        roomFileReads = values.roomFileReads
         v2Shell = values.v2Shell
         v2OpenBeside = values.v2OpenBeside
         botZoomNamespace = values.botZoomNamespace
@@ -140,6 +142,7 @@ struct TranscriptCellEnvironment: Equatable {
             && lhs.markdownJoinsProseRuns == rhs.markdownJoinsProseRuns
             && lhs.gatewayMediaFiles === rhs.gatewayMediaFiles
             && lhs.roomFilePictures === rhs.roomFilePictures
+            && lhs.roomFileReads === rhs.roomFileReads
             && lhs.v2Shell == rhs.v2Shell
             && lhs.v2OpenBeside == rhs.v2OpenBeside
             && lhs.botZoomNamespace == rhs.botZoomNamespace
@@ -201,6 +204,7 @@ private struct TranscriptCellConduitEnvironmentMore: ViewModifier {
             .environment(\.markdownJoinsProseRuns, values.markdownJoinsProseRuns)
             .environment(\.gatewayMediaFiles, values.gatewayMediaFiles)
             .environment(\.roomFilePictures, values.roomFilePictures)
+            .environment(\.roomFileReads, values.roomFileReads)
             .environment(\.v2Shell, values.v2Shell)
             .environment(\.v2OpenBeside, values.v2OpenBeside)
             .environment(\.botZoomNamespace, values.botZoomNamespace)
