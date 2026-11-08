@@ -62,6 +62,13 @@ final class PluginCatalogBrowseTests: XCTestCase {
         XCTAssertEqual(CapabilityPluginFilter.categories(in: entries), ["creative", "desktop", "finance", "tools"])
     }
 
+    func testASelectionARefreshTookAwayStaysListedInItsPlace() {
+        let entries = catalog().filter { $0.normalizedTier != "verified" }
+        XCTAssertEqual(CapabilityPluginFilter.tiers(in: entries, keeping: "verified"), ["official", "verified", "community"], "In trust order, not appended")
+        XCTAssertEqual(CapabilityPluginFilter.categories(in: entries, keeping: "finance"), ["creative", "desktop", "finance", "tools"])
+        XCTAssertEqual(CapabilityPluginFilter.tiers(in: entries, keeping: nil), ["official", "community"])
+    }
+
     func testBrowseNarrowsAndOrdersTheCatalog() {
         let entries = catalog()
         XCTAssertEqual(CapabilityPluginFilter.browse(entries, query: "", tier: nil, category: nil).map(\.name), ["blender", "kanban", "aave-mcp", "zeta"], "Official first, then verified, then community; installed ones stay")

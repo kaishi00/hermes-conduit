@@ -181,16 +181,11 @@ struct PluginCatalogBrowsePage: View {
         .searchable(text: $query, prompt: Text("Search plugins"))
     }
 
-    private static func keeping(_ selected: String?, in values: [String]) -> [String] {
-        guard let selected, !values.contains(selected) else { return values }
-        return values + [selected]
-    }
-
     @ViewBuilder
     private func filters(_ catalog: [PluginCatalogEntry]) -> some View {
         // A choice a refresh took away stays listed, so it can be cleared.
-        let tiers = Self.keeping(tier, in: CapabilityPluginFilter.tiers(in: catalog))
-        let categories = Self.keeping(category, in: CapabilityPluginFilter.categories(in: catalog))
+        let tiers = CapabilityPluginFilter.tiers(in: catalog, keeping: tier)
+        let categories = CapabilityPluginFilter.categories(in: catalog, keeping: category)
         VStack(alignment: .leading, spacing: 10) {
             if tiers.count > 1 || tier != nil {
                 Picker(selection: $tier) {
@@ -227,6 +222,7 @@ struct PluginCatalogBrowsePage: View {
                     .padding(.horizontal, 4)
                 }
                 .accessibilityLabel(Text("Category"))
+                .accessibilityValue(Text(verbatim: category.map(PluginCatalogStyle.categoryTitle) ?? AppLocalization.string("All Categories")))
             }
         }
     }
