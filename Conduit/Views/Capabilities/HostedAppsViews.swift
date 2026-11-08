@@ -273,6 +273,24 @@ struct HostedAppPage: View {
     private var app: HostedApp? { model.snapshot.map { $0.app(slug) } }
     private var policy: HostedAppPolicy? { model.snapshot?.policy }
     private var signingIn: Bool { model.signingIn == slug }
+    /// Hermes couldn't give the rules: the switches only read until they're
+    /// read again (issue 1998).
+    private var rulesFailed: Bool { model.snapshot?.rulesFailed == true }
+
+    private var rulesUnreadLine: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(AppLocalization.string("Hermes couldn't read the rules just now, so these switches can't change."))
+                .scaledFont(.footnote).foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            Spacer(minLength: 0)
+            Button(AppLocalization.string("Try Again")) {
+                Task { await model.reload(appState) }
+            }
+            .buttonStyle(.settings)
+            .disabled(!appState.isConnected || model.loading)
+        }
+    }
+
     private var canAct: Bool { appState.isConnected && !model.showsKept && model.signingIn == nil && !model.browserClosing }
 
     var body: some View {
@@ -368,6 +386,8 @@ struct HostedAppPage: View {
                     }
                     .tint(.conduitAccent)
                     .disabled(!canAct || writingRules || policy?.revision == nil)
+                    // Once the tools list, it says so there, above the switches.
+                    if rulesFailed, tools?.isEmpty != false { rulesUnreadLine }
                 }
                 if let reason = app.statusReason, app.needsReconnect {
                     Text(verbatim: reason)
@@ -489,7 +509,9 @@ struct HostedAppPage: View {
                     let onCount = tools.filter { !off.contains($0.slug) && !locked.contains($0.slug) }.count
                     Text(verbatim: AppLocalization.string("\(onCount) tools on") + " · " + AppLocalization.string("Hermes can't use a tool that's off."))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
-                    if policy?.revision == nil {
+                    if rulesFailed {
+                        rulesUnreadLine
+                    } else if policy?.revision == nil {
                         Text(AppLocalization.string("Your organization manages these switches."))
                             .scaledFont(.footnote).foregroundStyle(.secondary)
                     }

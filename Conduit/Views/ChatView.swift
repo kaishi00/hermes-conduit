@@ -311,6 +311,9 @@ struct ChatView: View {
             planDock
             // Predictive guesses (off unless turned on in Settings > Chat).
             PredictiveRow(store: appState.predictive, appState: appState)
+            // The chat's queue on the Webapp's listener: messages waiting
+            // their turn, and a turn a gateway restart cut off.
+            AuthorityQueueDock(store: appState.authorityQueue, appState: appState, openChatID: appState.activeSessionId)
             // Composer + control bar. Equatable: it redraws for what it
             // shows, not for every redraw of this view.
             ComposerBar(appState: appState).equatable()

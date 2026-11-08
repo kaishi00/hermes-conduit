@@ -1917,10 +1917,11 @@ final class HermesClientTests: XCTestCase {
     /// A client on a socket whose `gateway.ready` says the gateway's
     /// session authority answers it (the Webapp's listener).
     private func authorityClient(
+        profile: String? = nil,
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws -> (HermesClient, FakeSocket) {
-        let (client, socket) = try await connectedClientForServerRequests(file: file, line: line)
+        let (client, socket) = try await connectedClientForServerRequests(profile: profile, file: file, line: line)
         let before = socket.sentTexts.count
         try await deliverFrame([
             "jsonrpc": "2.0", "method": "event",
@@ -2812,6 +2813,161 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    func testAuthorityQueueVerbsNameTheQueuedMessageInHermesShapes() async throws {
+        // A named profile's connection: the verbs still carry no `profile`.
+        let (client, socket) = try await authorityClient(profile: "work")
+
+        var count = socket.sentTexts.count
+        let cancel = Task<QueuedPromptReceipt, Error> { try await client.cancelQueuedPrompt("sess-q", admissionID: "adm-2") }
+        let cancelled = try await answerRequest(on: socket, after: count, method: "prompt.cancel", result: [
+            "admission_id": "adm-2", "status": "terminal", "outcome": "cancelled", "sequence": 2
+        ])
+        XCTAssertEqual(cancelled as NSDictionary, ["session_id": "sess-q", "admission_id": "adm-2"] as NSDictionary,
+                       "Hermes' queue verbs take a closed set of params")
+        let cancelReceipt = try await awaitResult(of: cancel, "the cancel")
+        XCTAssertEqual(cancelReceipt.status, .terminal)
+        XCTAssertEqual(cancelReceipt.outcome, "cancelled")
+
+        count = socket.sentTexts.count
+        let edit = Task<QueuedPromptReceipt, Error> {
+            try await client.replaceQueuedPrompt("sess-q", admissionID: "adm-3", text: "new words", submissionID: "edit-1")
+        }
+        let edited = try await answerRequest(on: socket, after: count, method: "prompt.replace_queued", result: [
+            "admission_id": "adm-4", "status": "queued", "sequence": 4
+        ])
+        XCTAssertEqual(edited as NSDictionary, [
+            "session_id": "sess-q", "admission_id": "adm-3", "submission_id": "edit-1", "text": "new words"
+        ] as NSDictionary)
+        let editReceipt = try await awaitResult(of: edit, "the edit")
+        XCTAssertEqual(editReceipt.admissionID, "adm-4", "The edit is a new admission at the back of the line")
+
+        count = socket.sentTexts.count
+        let now = Task<QueuedPromptReceipt, Error> { try await client.sendQueuedPromptNow("sess-q", admissionID: "adm-4") }
+        let steered = try await answerRequest(on: socket, after: count, method: "prompt.steer_queued", error: [
+            "code": 4001, "message": "steer_unavailable",
+            "data": ["reason": "steer_unavailable", "detail": "the running turn has no agent to take a steer yet"]
+        ])
+        XCTAssertEqual(steered as NSDictionary, ["session_id": "sess-q", "admission_id": "adm-4"] as NSDictionary)
+        do {
+            _ = try await awaitResult(of: now, "the send now")
+            XCTFail("Hermes refused it")
+        } catch let error as RpcError {
+            XCTAssertEqual(AppState.queueActionRefusal(error),
+                           AppLocalization.string("Hermes can't take it into this reply yet. It stays queued."))
+        }
+
+        count = socket.sentTexts.count
+        let discard = Task<QueuedPromptReceipt, Error> {
+            try await client.discardLostPrompt("sess-q", admissionID: "adm-1", generation: 3)
+        }
+        let discarded = try await answerRequest(on: socket, after: count, method: "prompt.resolve_unknown", result: [
+            "admission_id": "adm-1", "status": "terminal", "outcome": "interrupted", "execution_generation": 3
+        ])
+        XCTAssertEqual(discarded as NSDictionary, [
+            "session_id": "sess-q", "admission_id": "adm-1", "execution_generation": 3
+        ] as NSDictionary, "A discard names the lost turn by the generation it ran as")
+        let discardReceipt = try await awaitResult(of: discard, "the discard")
+        XCTAssertEqual(discardReceipt.outcome, "interrupted")
+        client.disconnect()
+    }
+
+    func testTheDashboardKeepsNoQueueSoItsVerbsSendNothing() async throws {
+        let (client, socket) = try await connectedClientForServerRequests()
+        try await advertise(socket, result: [:])
+        let before = socket.sentTexts.count
+        do {
+            _ = try await client.cancelQueuedPrompt("sess-d", admissionID: "adm-1")
+            XCTFail("hermes dashboard has no queue")
+        } catch is HermesClient.QueueVerbsUnsupportedError {}
+        let queue = try await client.queuedPrompts("sess-d")
+        XCTAssertNil(queue)
+        XCTAssertEqual(socket.sentTexts.count, before, "Nothing goes to a server without a queue")
+        client.disconnect()
+    }
+
+    func testAuthorityResumeAndTurnStartNameTheChatsQueue() async throws {
+        let (client, socket) = try await authorityClient()
+        var seenAdmission: String?
+        var started = false
+        client.onEvent = { [weak client] event in
+            if case .messageStart = event {
+                started = true
+                seenAdmission = client?.deliveringEventAdmissionID
+            }
+        }
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "message.start", "session_id": "sess-q", "execution_generation": 2,
+                       "admission_id": "adm-2"]
+        ], to: socket)
+        XCTAssertTrue(started)
+        XCTAssertEqual(seenAdmission, "adm-2", "A turn's start names the queued message it ran from")
+        XCTAssertNil(client.deliveringEventAdmissionID, "Only while the event is delivered")
+
+        let count = socket.sentTexts.count
+        let open = Task<SessionResumeResult, Error> { try await client.openSession("sess-q") }
+        try await answerRequest(on: socket, after: count, method: "session.resume", result: [
+            "session_id": "sess-q", "running": false, "execution_generation": 2, "revision": 1, "messages": [],
+            "pending": [
+                ["admission_id": "adm-3", "input_id": "sub-3", "text": "later", "status": "queued", "sequence": 3,
+                 "execution_generation": NSNull(), "controls": ["steer", "replace"], "steering": false],
+                ["admission_id": "adm-1", "input_id": "sub-1", "text": "cut off", "status": "unknown", "sequence": 1,
+                 "execution_generation": 1, "controls": [], "steering": false]
+            ]
+        ])
+        let resumed = try await awaitResult(of: open, "the resume")
+        let queue = try XCTUnwrap(resumed.snapshot.queuedPrompts)
+        XCTAssertEqual(queue.map(\.admissionID), ["adm-1", "adm-3"], "Oldest first")
+        XCTAssertEqual(queue.first?.status, .unknown)
+        XCTAssertEqual(queue.first?.executionGeneration, 1)
+        XCTAssertEqual(queue.last?.inputID, "sub-3")
+        XCTAssertTrue(queue.last?.canSendNow == true && queue.last?.canEdit == true)
+        XCTAssertTrue(client.chatIsHeldByLostTurn("sess-q"), "A cut-off turn with nothing started holds the chat")
+        // Discarded elsewhere: the next session.info lists no cut-off turn.
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "session.info", "session_id": "sess-q",
+                       "payload": ["running": false, "pending": [
+                           ["admission_id": "adm-3", "input_id": "sub-3", "text": "later", "status": "queued", "sequence": 3,
+                            "execution_generation": NSNull(), "controls": ["steer", "replace"], "steering": false]
+                       ]]]
+        ], to: socket)
+        XCTAssertFalse(client.chatIsHeldByLostTurn("sess-q"))
+        client.disconnect()
+    }
+
+    func testTheDockShowsWaitingAndCutOffMessagesOnly() {
+        let store = AuthorityQueueStore()
+        store.apply([
+            QueuedPrompt(admissionID: "a", text: "cut off", status: .unknown, executionGeneration: 1, sequence: 1),
+            QueuedPrompt(admissionID: "b", text: "running", status: .started, sequence: 2),
+            QueuedPrompt(admissionID: "c", text: "steering", status: .queued, sequence: 3, steering: true),
+            QueuedPrompt(admissionID: "d", text: "waiting", status: .queued, sequence: 4)
+        ], for: "sess-q")
+        XCTAssertEqual(store.lost.map(\.admissionID), ["a"])
+        XCTAssertEqual(store.queued.map(\.admissionID), ["d"], "A message on its way into the turn isn't waiting")
+        store.setWorking("d", true)
+        store.notice = "refused"
+        store.apply(store.rows.filter { $0.admissionID != "d" }, for: "sess-q")
+        XCTAssertTrue(store.working.isEmpty, "A row Hermes no longer lists has nothing to wait for")
+        XCTAssertEqual(store.notice, "refused")
+        store.apply([], for: "sess-other")
+        XCTAssertNil(store.notice, "Another chat's queue starts clean")
+        XCTAssertTrue(store.isEmpty)
+        XCTAssertNil(QueuedPrompt.list(from: nil), "No list says nothing about the queue")
+    }
+
+    func testARefusedQueueActionSaysWhatHappenedToTheMessage() {
+        func words(_ reason: String) -> String {
+            AppState.queueActionRefusal(RpcError(code: 4001, message: reason, reason: reason))
+        }
+        XCTAssertEqual(words("steer_unavailable"), "Hermes can't take it into this reply yet. It stays queued.")
+        XCTAssertEqual(words("session_idle"), "No reply is running to send it into. It runs next.")
+        XCTAssertEqual(words("admission_terminal"), "That message isn't waiting any more.")
+        XCTAssertEqual(AppState.queueActionRefusal(URLError(.timedOut)),
+                       "Hermes couldn't be reached. Check the queue before you try again.")
+    }
+
     func testAuthorityResumeTakenBeforeASeenTurnStartedLeavesItRunning() async throws {
         let (client, socket) = try await authorityClient()
         try await deliverFrame([
@@ -3056,13 +3212,14 @@ final class HermesClientTests: XCTestCase {
 
     /// Connects a client whose receive loop is ready for the next frame.
     private func connectedClientForServerRequests(
+        profile: String? = nil,
         file: StaticString = #filePath,
         line: UInt = #line
     ) async throws -> (HermesClient, FakeSocket) {
         let transport = FakeTransport()
         let socket = FakeSocket()
         transport.nextSocket = { socket }
-        let client = makeClient(transport: transport)
+        let client = makeClient(transport: transport, profile: profile)
         let connectTask = Task { try? await client.connect() }
         transport.open(socket)
         try await awaitCompletion(of: connectTask, "connect() to complete", file: file, line: line)

@@ -4431,6 +4431,70 @@
           ]
         }
       ]
+    },
+    {
+      "name": "A choice field keeps one of each option and needs two",
+      "input": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "when",
+                  "input": "choice",
+                  "options": [
+                    "Now",
+                    "Tonight",
+                    "now",
+                    "Tonight"
+                  ],
+                  "value": "NOW"
+                },
+                {
+                  "kind": "field",
+                  "id": "sure",
+                  "input": "choice",
+                  "options": [
+                    "Yes",
+                    "yes"
+                  ]
+                },
+                {
+                  "kind": "text",
+                  "text": "Pick one"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "value": "Now",
+                  "input": "choice",
+                  "options": [
+                    "Now",
+                    "Tonight"
+                  ],
+                  "id": "when"
+                },
+                {
+                  "kind": "text",
+                  "text": "Pick one"
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ]
 }

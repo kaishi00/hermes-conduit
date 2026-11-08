@@ -2860,6 +2860,26 @@ final class AppState: ObservableObject {
     var stepSummarySender: (([String: Any]) async throws -> [String: Any])?
     /// The suggestion row's guesses (AppState+Predictive.swift).
     let predictive = PredictiveStore()
+    /// The open chat's queue on the session authority: messages waiting
+    /// their turn and turns a restart cut off (AppState+AuthorityQueue.swift).
+    let authorityQueue = AuthorityQueueStore()
+    /// The user's own messages the authority queued, by their admission id
+    /// (the receipt's, which their queue row and their turn's start name):
+    /// their bubble waits in the dock above the composer and comes back to
+    /// the transcript when their turn starts. The newest few are kept.
+    var queuedSendRows: [String: ChatMessage] = [:]
+    var queuedSendOrder: [String] = []
+    /// The user's sends the authority took as a new turn, by admission id,
+    /// with their bubble's id: one Hermes then lists as waiting behind
+    /// another client's turn moves to the dock too. Cleared when it starts.
+    var ownSendRowIDs: [String: String] = [:]
+    /// Admissions whose turn this socket saw start, so a reply that comes
+    /// after its start never holds that bubble back.
+    var startedAdmissionIDs: Set<String> = []
+    /// For a started admission whose bubble wasn't held yet: the row its
+    /// turn began after (nil, an empty transcript), so a late bubble goes
+    /// above its reply.
+    var startedAdmissionAnchors: [String: String?] = [:]
     /// What the row asks the composer to do: send, edit or insert a guess.
     @Published private(set) var predictiveComposerRequest: PredictiveComposerRequest?
     /// The reply suggested replies were last asked for (asked once each).
@@ -4791,6 +4811,11 @@ final class AppState: ObservableObject {
                     defer { self.spokenSubmissionText = nil }
                     let stillWanted = self.localLiveTurns.currentTurnCheck()
                     if await self.submitComposerForCall(text: text, onBusy: { foundBusy = true }, stillWanted: stillWanted) {
+                        // Admitted behind a turn a restart cut off: the
+                        // chat's card holds it until it's discarded.
+                        if client.chatIsHeldByLostTurn(chat.runtimeID) {
+                            return .notStarted(message: AppLocalization.string("Hermes queued this in the chat. Its reply will appear there."))
+                        }
                         return .started(runtimeID: chat.runtimeID)
                     }
                 }
@@ -4813,12 +4838,12 @@ final class AppState: ObservableObject {
                 throw error
             }
             switch outcome {
+            case .accepted where client.chatIsHeldByLostTurn(chat.runtimeID), .queued:
+                return .notStarted(message: AppLocalization.string("Hermes queued this in the chat. Its reply will appear there."))
             case .accepted:
                 return .started(runtimeID: chat.runtimeID)
             case .steered, .redirected:
                 return .notStarted(message: AppLocalization.string("Hermes added this to the reply already running in the chat."))
-            case .queued:
-                return .notStarted(message: AppLocalization.string("Hermes queued this in the chat. Its reply will appear there."))
             }
         },
         redirect: { [weak self] runtimeID, text in
@@ -10176,7 +10201,10 @@ final class AppState: ObservableObject {
         if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
             return try await sendPrompt(client, runtimeID, text)
         }
-        return try await client.sendPrompt(runtimeID, text: text)
+        let outcome = try await client.sendPrompt(runtimeID, text: text)
+        // Admitted behind a turn a restart cut off: it waits in the queue.
+        if outcome == .accepted, client.chatIsHeldByLostTurn(runtimeID) { return .queued }
+        return outcome
     }
 
     /// Whether Hermes still has `runtimeID`. A failed read says yes: the send
@@ -10218,7 +10246,14 @@ final class AppState: ObservableObject {
                 let sent = await submitComposerForCall(text: text, onBusy: { foundBusy = true }, stillWanted: stillWanted)
                 // The id captured before the send: the user may have moved to
                 // another chat while it was in flight.
-                if sent { return sessionID }
+                if sent {
+                    // Admitted behind a turn a restart cut off: nothing runs
+                    // until it's discarded in the chat.
+                    if client.chatIsHeldByLostTurn(sessionID) {
+                        throw VoiceThreadNotStartedError(message: AppLocalization.string("Hermes queued this in the chat. Its reply will appear there."))
+                    }
+                    return sessionID
+                }
             }
             if foundBusy { throw VoiceThreadBusyError() }
             noteCallChatIfGone(thread)
@@ -10255,6 +10290,10 @@ final class AppState: ObservableObject {
             throw error
         }
         switch outcome {
+        case .accepted where client.chatIsHeldByLostTurn(target):
+            // Admitted behind a turn a restart cut off: nothing runs until
+            // it's discarded in the chat.
+            throw VoiceThreadNotStartedError(message: AppLocalization.string("Hermes queued this in the chat. Its reply will appear there."))
         case .accepted:
             return target
         case .steered, .redirected:
@@ -12556,6 +12595,7 @@ final class AppState: ObservableObject {
         activeSessionTitle = AppLocalization.string("New conversation")
         keepDelegateAgents(of: [])
         messages = []
+        clearAuthorityQueueState()
         persistedTranscriptWindow = nil
         resetTranscriptLifecycleEvidence()
         clearStreamingText()
@@ -12694,7 +12734,7 @@ final class AppState: ObservableObject {
     /// The composer's @mention middleware, shared by every routing path (a
     /// new turn, a busy steer, a redirect) so a mention typed while the bot
     /// is streaming is identified exactly like one sent at idle.
-    private func mentionAnnotatedOutboundText(_ text: String) -> String {
+    func mentionAnnotatedOutboundText(_ text: String) -> String {
         // Quoted lines (#385) are not scanned for mentions; see
         // `middlewareAnnotation`. The whole text is sent.
         BotMentions.middlewareAnnotation(
@@ -16093,6 +16133,7 @@ final class AppState: ObservableObject {
         sessionCatalogLoadState.reset()
         pinnedSessionIDs = []
         messages = []
+        clearAuthorityQueueState()
         persistedTranscriptWindow = nil
         setActiveSessionState(id: nil, title: AppLocalization.string("New conversation"))
         keepDelegateAgents(of: [])
@@ -16730,11 +16771,16 @@ final class AppState: ObservableObject {
         let epoch = UUID()
         activeClientEpoch = epoch
         client.onEvent = { [weak self, weak client] event in
-            // Read while the client delivers this event: the turn it names.
+            // Read while the client delivers this event: the turn it names,
+            // and the queued message it ran from.
             let turnGeneration = client?.deliveringEventGeneration
+            let admissionID = client?.deliveringEventAdmissionID
             Task { @MainActor in
                 guard let self, self.activeClientEpoch == epoch else { return }
                 self.handleStreamEvent(event, turnGeneration: turnGeneration)
+                if case .messageStart(let sessionID) = event, let admissionID {
+                    self.noteQueuedTurnStarted(sessionID: sessionID, admissionID: admissionID)
+                }
             }
         }
         client.onDisconnected = { [weak self] in
@@ -20598,6 +20644,15 @@ final class AppState: ObservableObject {
             snapshotYolo: authoritativeYolo ?? snapshot.yolo,
             snapshotReportedApprovalsMode: authoritativeApprovalsMode ?? snapshot.approvalsMode
         )
+        // The session authority lists the chat's queue in every resume and
+        // pushes it on every change; a snapshot without it says nothing.
+        if let queued = snapshot.queuedPrompts, let requestedSessionID {
+            // Waiting behind a running turn (another client's, which this
+            // socket didn't see start) or a turn a restart cut off: the
+            // user's own send moves to the dock.
+            adoptOwnQueuedSends(queued)
+            authorityQueue.apply(queued, for: requestedSessionID)
+        }
     }
 
     /// Resolve the effective session YOLO state from the current profile
@@ -24125,7 +24180,7 @@ final class AppState: ObservableObject {
         return !left.isDisjoint(with: right)
     }
 
-    private func knownSessionIDs(for sessionID: String) -> Set<String> {
+    func knownSessionIDs(for sessionID: String) -> Set<String> {
         guard let session = [sessions, cronSessions].joined().first(where: {
             $0.id == sessionID || $0.alternateIds.contains(sessionID)
         }) else {
@@ -28076,7 +28131,8 @@ final class AppState: ObservableObject {
         attachments: [Attachment] = [],
         context: ComposerSubmissionContext? = nil,
         onBusy: (() -> Void)? = nil,
-        busyMode: BusyInputMode? = nil
+        busyMode: BusyInputMode? = nil,
+        runsSlashCommands: Bool = true
     ) async -> Bool {
         noteUserWordsSent()
         var submissionContext = context ?? composerSubmissionContext()
@@ -28094,14 +28150,15 @@ final class AppState: ObservableObject {
             attachments: attachments,
             submissionContext: submissionContext,
             onBusy: onBusy,
-            busyMode: busyMode ?? busyInputMode
+            busyMode: busyMode ?? busyInputMode,
+            runsSlashCommands: runsSlashCommands
         )
         // Only something Hermes took moves the registry's count; a refused
         // or busy-diverted submission leaves another device's turn due. A
         // slash command reports true even when it ran only here, so it
         // marks nothing: missing a mark costs one extra read, a wrong mark
         // hides the other device's turn.
-        let isSlashCommand = attachments.isEmpty && Self.parseSlashCommand(text) != nil
+        let isSlashCommand = runsSlashCommands && attachments.isEmpty && Self.parseSlashCommand(text) != nil
         if sent, !isSlashCommand, activeSessionId == submissionContext.sessionID {
             noteOpenChatSentHere()
         }
@@ -29652,6 +29709,27 @@ final class AppState: ObservableObject {
                 turnStateIsStale = false
                 switch outcome {
                 case .accepted:
+                    if client.speaksSessionAuthority, let admission = HermesClient.admittedAdmissionID(for: sessionId) {
+                        noteOwnSend(admissionID: admission, rowID: userMessage.id)
+                        // A queue push that came before this reply already
+                        // listed it: read that list again now it's known as ours.
+                        if authorityQueue.sessionID.map({ $0 == sessionId || knownSessionIDs(for: sessionId).contains($0) }) == true {
+                            adoptOwnQueuedSends(authorityQueue.rows)
+                            if messages.contains(where: { $0.id == userMessage.id }) == false {
+                                locallyOwnedInFlightTurn = nil
+                                break
+                            }
+                        }
+                        // A turn a restart cut off holds the chat: the send
+                        // waits behind it in the dock, and no turn starts.
+                        if !authorityQueue.lost.isEmpty, !startedAdmissionIDs.contains(admission),
+                           let queueChat = authorityQueue.sessionID,
+                           queueChat == sessionId || knownSessionIDs(for: sessionId).contains(queueChat) {
+                            locallyOwnedInFlightTurn = nil
+                            moveQueuedSendToDock(rowID: userMessage.id, sessionID: sessionId)
+                            break
+                        }
+                    }
                     // The turn in flight is now provably Conduit's own: record
                     // the optimistic user row so a later foreground freshness
                     // check can prove same-turn continuity WITHOUT demanding a
@@ -29688,6 +29766,11 @@ final class AppState: ObservableObject {
                         expectedUserTurnIncrement: 0,
                         allowTrailingRowsWithoutNewUserBoundary: true
                     )
+                    // On the session authority it waits in the chat's queue,
+                    // where the dock above the composer shows it.
+                    if client.speaksSessionAuthority {
+                        moveQueuedSendToDock(rowID: userMessage.id, sessionID: sessionId)
+                    }
                 case .redirected:
                     // Hermes replaces/corrects the current live model request;
                     // it does not create an independent canonical user turn —
@@ -29768,7 +29851,8 @@ final class AppState: ObservableObject {
                     // check projects it the way
                     // the persisted user row is shown.
                     submittedText: promptText,
-                    submissionContext: submissionContext
+                    submissionContext: submissionContext,
+                    optimisticRowID: userMessage.id
                 )
                 // Ordering guard for the recovery STATE stamps: the recovery
                 // captured the lifecycle revision at its registry
@@ -29863,6 +29947,18 @@ final class AppState: ObservableObject {
                                 preSubmitOrderingBaseline: preSubmitOrderingBaseline
                             )
                         }
+                    }
+                    return true
+                case .acceptedHeld:
+                    // Taken, and waiting behind a cut-off turn (or cut off
+                    // itself): its bubble is in the dock and nothing runs
+                    // until the dock's Discard or Resend. The chat reads
+                    // idle, so the next message queues rather than steers.
+                    lifecycleLog.notice(
+                        "prompt.submit accepted (authority queue); held, no turn running session=\(sessionId, privacy: .private(mask: .hash))"
+                    )
+                    if isCurrentComposerSubmission(submissionContext), recoveryMayStampLifecycle {
+                        turnState = .idle
                     }
                     return true
                 case .acceptedSettled:
@@ -30005,6 +30101,11 @@ final class AppState: ObservableObject {
         /// inconclusive. Settlement is UNPROVEN; the next authoritative
         /// registry/stream edge settles the turn.
         case acceptedUnsettled
+        /// Accepted and waiting in the chat's queue on the session authority
+        /// with no turn running (a turn cut off by a restart holds the
+        /// queue): its bubble is in the dock, and nothing runs until the
+        /// cut-off turn is discarded.
+        case acceptedHeld
         /// Accepted and proven settled by the durable transcript: the turn ran
         /// to completion before recovery looked (the registry had already gone
         /// idle/absent, which alone cannot prove non-acceptance).
@@ -30081,7 +30182,8 @@ final class AppState: ObservableObject {
         acceptedSessionIDs: Set<String>,
         baseline: PromptTranscriptBaseline,
         submittedText: String,
-        submissionContext: ComposerSubmissionContext
+        submissionContext: ComposerSubmissionContext,
+        optimisticRowID: String? = nil
     ) async -> (resolution: AmbiguousPromptResolution, reconnected: Bool, lifecycleEvidence: TurnLifecycleEvidence) {
         var reconnected = false
         var probeClient = client
@@ -30107,6 +30209,18 @@ final class AppState: ObservableObject {
         // deliberate: an edge processed DURING the probe await may postdate
         // the registry snapshot server-side, so it must keep winning.
         let lifecycleEvidence = turnLifecycleEvidence
+        // The session authority names every message it holds by the id it
+        // was sent with: one its queue lists was taken, whatever the
+        // registry or the transcript can show yet.
+        if let held = await heldInAuthorityQueue(
+            requestedSessionID: requestedSessionID,
+            // The chat's own profile: a Bot Chat's queue is under its bot's.
+            profile: presentationProfile(for: requestedSessionID),
+            client: probeClient,
+            optimisticRowID: optimisticRowID
+        ) {
+            return (held, reconnected, lifecycleEvidence)
+        }
         // The alias set was captured from the ORIGINAL submission before any
         // await; it is never re-derived from the mutable active session here.
         let evidenceProfile = activeProfile
@@ -30169,6 +30283,49 @@ final class AppState: ObservableObject {
             reconnected,
             lifecycleEvidence
         )
+    }
+
+    /// A send whose reply never came back, looked up in the chat's queue on
+    /// the session authority by its submission id (`input_id`): waiting its
+    /// turn, its bubble moves to the dock above the composer; running, or
+    /// cut off by a restart, it reads as taken. Nil when the queue doesn't
+    /// list it (not taken, or already done: the transcript decides) or the
+    /// server keeps none.
+    private func heldInAuthorityQueue(
+        requestedSessionID: String,
+        profile: String,
+        client: HermesClient,
+        optimisticRowID: String?
+    ) async -> AmbiguousPromptResolution? {
+        guard client.speaksSessionAuthority,
+              let submissionID = HermesClient.unansweredSubmissionID(for: requestedSessionID),
+              let rows = try? await client.queuedPrompts(requestedSessionID, profile: profile),
+              let row = rows.first(where: { $0.inputID == submissionID }) else { return nil }
+        switch row.status {
+        case .queued, .unknown:
+            // Waiting, or cut off: the dock shows it (a cut-off one on its
+            // card, whose Resend sends the words again), never the transcript too.
+            // Its turn already started (the start came during this read):
+            // the bubble stays where it is.
+            if !startedAdmissionIDs.contains(row.admissionID),
+               let optimisticRowID, let index = messages.firstIndex(where: { $0.id == optimisticRowID }) {
+                holdQueuedSendRow(messages.remove(at: index), admissionID: row.admissionID)
+                cacheMessagePresentation()
+            }
+            if activeSessionId == requestedSessionID || eventBelongsToActiveSession(requestedSessionID) {
+                authorityQueue.apply(rows, for: requestedSessionID)
+            }
+            // Taken either way; it runs only behind a running turn. Held by
+            // a cut-off one, nothing runs: the next snapshot says so.
+            return row.status == .queued && rows.contains { $0.status == .started } ? .acceptedRunning : .acceptedHeld
+        case .started:
+            if activeSessionId == requestedSessionID || eventBelongsToActiveSession(requestedSessionID) {
+                authorityQueue.apply(rows, for: requestedSessionID)
+            }
+            return .acceptedRunning
+        case .terminal:
+            return nil
+        }
     }
 
     /// Durable before/after identity captured BEFORE the optimistic append.
@@ -32324,7 +32481,7 @@ final class AppState: ObservableObject {
     }
 
     /// Ids of durable steer rows on screen whose visible text matches `text`.
-    private func persistedSteerIDs(matching text: String) -> Set<String> {
+    func persistedSteerIDs(matching text: String) -> Set<String> {
         let visible = MessageNormalizer.visibleUserText(text)
             .trimmingCharacters(in: .whitespacesAndNewlines)
         return Set(messages.lazy.filter {
@@ -32334,7 +32491,7 @@ final class AppState: ObservableObject {
         }.map(\.id))
     }
 
-    private func appendLocalSteerMessage(_ text: String, persistedTwinsBefore: Set<String>) {
+    func appendLocalSteerMessage(_ text: String, persistedTwinsBefore: Set<String>) {
         // A reconcile while the steer RPC was suspended may already have
         // adopted THIS steer's persisted row; don't confirm it twice. Only a
         // matching row that appeared during the RPC counts, so repeating an
@@ -32360,6 +32517,123 @@ final class AppState: ObservableObject {
         ))
         requestChatScrollToLatest()
         cacheMessagePresentation()
+    }
+
+    /// Another connection or a sign-out: no queue, and no held bubble,
+    /// carries over to the next account's chats.
+    func clearAuthorityQueueState() {
+        authorityQueue.clear()
+        queuedSendRows = [:]
+        queuedSendOrder = []
+        ownSendRowIDs = [:]
+        startedAdmissionIDs = []
+        startedAdmissionAnchors = [:]
+    }
+
+    /// Keeps a queued message's bubble for when its turn starts. One whose
+    /// turn already started (its start came before this send's reply)
+    /// stays in the transcript.
+    func holdQueuedSendRow(_ row: ChatMessage, admissionID: String) {
+        guard !startedAdmissionIDs.contains(admissionID) else {
+            if !messages.contains(where: { $0.id == row.id }) {
+                // Above the rows its turn has already streamed: they follow
+                // the row that was last when it started.
+                let turnStart: Int
+                switch startedAdmissionAnchors[admissionID] {
+                case .some(.some(let anchorID)):
+                    turnStart = messages.firstIndex(where: { $0.id == anchorID }).map { $0 + 1 } ?? messages.endIndex
+                case .some(.none):
+                    turnStart = messages.startIndex
+                case .none:
+                    turnStart = messages.endIndex
+                }
+                messages.insert(row, at: turnStart)
+                requestChatScrollToLatest()
+                cacheMessagePresentation()
+            }
+            return
+        }
+        queuedSendRows[admissionID] = row
+        queuedSendOrder.removeAll { $0 == admissionID }
+        queuedSendOrder.append(admissionID)
+        while queuedSendOrder.count > 32 {
+            queuedSendRows.removeValue(forKey: queuedSendOrder.removeFirst())
+        }
+    }
+
+    /// A send the authority admitted as a new turn, with its bubble.
+    func noteOwnSend(admissionID: String, rowID: String) {
+        if ownSendRowIDs.count >= 32 { ownSendRowIDs.removeAll() }
+        ownSendRowIDs[admissionID] = rowID
+    }
+
+    /// The user's sends the chat's queue lists as waiting (or cut off by a
+    /// restart): their bubbles go to the dock until their turn starts.
+    func adoptOwnQueuedSends(_ rows: [QueuedPrompt]) {
+        var moved = false
+        for row in rows where (row.status == .queued && !row.steering) || row.status == .unknown {
+            guard let rowID = ownSendRowIDs.removeValue(forKey: row.admissionID),
+                  !startedAdmissionIDs.contains(row.admissionID),
+                  let index = messages.firstIndex(where: { $0.id == rowID }) else { continue }
+            holdQueuedSendRow(messages.remove(at: index), admissionID: row.admissionID)
+            moved = true
+        }
+        if moved { cacheMessagePresentation() }
+    }
+
+    func takeQueuedSendRow(admissionID: String) -> ChatMessage? {
+        queuedSendOrder.removeAll { $0 == admissionID }
+        return queuedSendRows.removeValue(forKey: admissionID)
+    }
+
+    /// A send the authority queued behind the running turn: its bubble
+    /// leaves the transcript for the dock above the composer, where it can
+    /// be cancelled, edited or sent now, and comes back when its turn starts.
+    func moveQueuedSendToDock(rowID: String, sessionID: String) {
+        guard let admissionID = HermesClient.admittedAdmissionID(for: sessionID),
+              !startedAdmissionIDs.contains(admissionID),
+              let index = messages.firstIndex(where: { $0.id == rowID }) else { return }
+        holdQueuedSendRow(messages.remove(at: index), admissionID: admissionID)
+        cacheMessagePresentation()
+    }
+
+    /// A turn the authority started from the chat's queue (its
+    /// `message.start` names the admission): a message of the user's that
+    /// waited in the dock takes its place in the transcript, above the
+    /// reply. Another client's queued message shows as other turns do.
+    func noteQueuedTurnStarted(sessionID: String, admissionID: String) {
+        ownSendRowIDs.removeValue(forKey: admissionID)
+        if startedAdmissionIDs.count >= 64 {
+            startedAdmissionIDs.removeAll()
+            startedAdmissionAnchors.removeAll()
+        }
+        startedAdmissionIDs.insert(admissionID)
+        guard let row = takeQueuedSendRow(admissionID: admissionID) else {
+            if eventBelongsToActiveSession(sessionID) {
+                startedAdmissionAnchors[admissionID] = .some(messages.last?.id)
+            }
+            return
+        }
+        authorityQueue.drop(admissionID)
+        guard eventBelongsToActiveSession(sessionID) else { return }
+        settleReasoningSegmentIntoTranscript()
+        var started = row
+        started.timestamp = Self.localTimestamp()
+        messages.append(started)
+        requestChatScrollToLatest()
+        cacheMessagePresentation()
+    }
+
+    /// The user's message as the composer shows it before Hermes stores it.
+    func localUserRow(_ text: String) -> ChatMessage {
+        ChatMessage(
+            id: "local-queued-\(UUID().uuidString)",
+            role: .user,
+            content: text,
+            rawContent: nil,
+            timestamp: Self.localTimestamp(),
+            author: nil
+        )
     }
 
     private func appendLocalUserMessage(_ text: String) {
