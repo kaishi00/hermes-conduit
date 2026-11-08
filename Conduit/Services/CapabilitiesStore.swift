@@ -252,12 +252,18 @@ final class CapabilitiesStore {
     /// `.env` (never read back), then the values through Hermes' plugin
     /// settings call, which also tells the plugin they changed. Answers the
     /// fields as Hermes now has them.
+    /// A dashboard or profile switch while a write waits stops the rest, so
+    /// no key or value lands on the new host or profile.
     func savePluginSettings(key: String, save: PluginSettings.Save, client: HermesClient) async throws -> [PluginSettingField]? {
-        for (env, value) in save.secrets.sorted(by: { $0.key < $1.key }) {
-            _ = try await request(scoped("/api/env"), method: "PUT", body: scopedBody(["key": env, "value": value]))
-        }
-        let values = PluginSettings.body(save.values)
+        let token = generation
         let profile = profile
+        let envPath = scoped("/api/env")
+        for (env, value) in save.secrets.sorted(by: { $0.key < $1.key }) {
+            guard token == generation else { throw CancellationError() }
+            _ = try await request(envPath, method: "PUT", body: DashboardPath.bodyWithProfile(["key": env, "value": value], profile: profile))
+        }
+        guard token == generation else { throw CancellationError() }
+        let values = PluginSettings.body(save.values)
         return try await ProfileConfigWriteQueue.runThrowing {
             try await client.savePluginSettings(key: key, values: values, profile: profile)
         }

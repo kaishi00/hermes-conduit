@@ -182,9 +182,27 @@ enum PluginSettings {
         private let text: String
 
         init(_ value: Any) {
-            self.value = value
+            self.value = Self.native(value)
             let data = (try? JSONSerialization.data(withJSONObject: value, options: [.sortedKeys])) ?? Data()
             text = String(decoding: data, as: UTF8.self)
+        }
+
+        /// JSONSerialization's numbers as Swift's own Bool, Int and Double,
+        /// so the RPC's encoder can't read a 0 or 1 as a switch.
+        static func native(_ value: Any) -> Any {
+            switch value {
+            case let number as NSNumber:
+                if AnyCodable.isBoolean(number) { return number.boolValue }
+                let double = number.doubleValue
+                if double.rounded() == double, abs(double) < 1e15 { return Int(double) }
+                return double
+            case let object as [String: Any]:
+                return object.mapValues(native)
+            case let array as [Any]:
+                return array.map(native)
+            default:
+                return value
+            }
         }
 
         static func == (lhs: JSONBox, rhs: JSONBox) -> Bool { lhs.text == rhs.text }

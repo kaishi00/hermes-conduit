@@ -158,6 +158,9 @@ struct PluginSettingsSection: View {
                 saved = true
                 message = AppLocalization.string("Saved. The plugin reads its new settings.")
             } catch {
+                // A dashboard or profile switch stopped the save; the page
+                // reloads for the new one.
+                guard !(error is CancellationError) else { return }
                 saved = false
                 message = UserFacingError.message(for: error)
             }

@@ -81,6 +81,12 @@ extension PluginCatalogBrowseTests {
         XCTAssertThrowsError(try PluginSettings.save(fields: fields, draft: ["units": ""]), "A required field can't be emptied")
         let json = try PluginSettings.save(fields: fields, draft: ["extra": "[1, 2]"])
         XCTAssertEqual(PluginSettings.body(json.values)["extra"] as? [Int], [1, 2])
+        let numbers = try PluginSettings.save(fields: fields, draft: ["extra": "{\"count\": 1, \"offset\": 0, \"on\": true, \"ratio\": 0.5}"])
+        XCTAssertEqual(
+            AnyCodable.from(PluginSettings.body(numbers.values)),
+            .object(["extra": .object(["count": .number(1), "offset": .number(0), "on": .bool(true), "ratio": .number(0.5)])]),
+            "A JSON 0 or 1 reaches Hermes as a number, not a switch"
+        )
         let decimal = try PluginSettings.save(fields: fields, draft: ["days": "2.5"])
         XCTAssertEqual(PluginSettings.body(decimal.values)["days"] as? Double, 2.5)
     }
