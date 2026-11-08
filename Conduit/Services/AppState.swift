@@ -10185,7 +10185,10 @@ final class AppState: ObservableObject {
         if let sendPrompt = chatResumeLifecycleOperations.sendPrompt {
             return try await sendPrompt(client, runtimeID, text)
         }
-        return try await client.sendPrompt(runtimeID, text: text)
+        let outcome = try await client.sendPrompt(runtimeID, text: text)
+        // Admitted behind a turn a restart cut off: it waits in the queue.
+        if outcome == .accepted, client.chatIsHeldByLostTurn(runtimeID) { return .queued }
+        return outcome
     }
 
     /// Whether Hermes still has `runtimeID`. A failed read says yes: the send
@@ -10264,6 +10267,10 @@ final class AppState: ObservableObject {
             throw error
         }
         switch outcome {
+        case .accepted where client.chatIsHeldByLostTurn(target):
+            // Admitted behind a turn a restart cut off: nothing runs until
+            // it's discarded in the chat.
+            throw VoiceThreadNotStartedError(message: AppLocalization.string("Hermes queued this in the chat. Its reply will appear there."))
         case .accepted:
             return target
         case .steered, .redirected:
@@ -29681,7 +29688,8 @@ final class AppState: ObservableObject {
                         }
                         // A turn a restart cut off holds the chat: the send
                         // waits behind it in the dock, and no turn starts.
-                        if !authorityQueue.lost.isEmpty, let queueChat = authorityQueue.sessionID,
+                        if !authorityQueue.lost.isEmpty, !startedAdmissionIDs.contains(admission),
+                           let queueChat = authorityQueue.sessionID,
                            queueChat == sessionId || knownSessionIDs(for: sessionId).contains(queueChat) {
                             locallyOwnedInFlightTurn = nil
                             moveQueuedSendToDock(rowID: userMessage.id, sessionID: sessionId)

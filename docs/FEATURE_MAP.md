@@ -6727,17 +6727,18 @@ dashboard` keeps no queue, so none of this shows there.
 
 **Siblings:** chats, project chats and Bot Chat (the same chat screen) · the
 composer's Queue and any send into a running turn (Two Hermes servers) · a
-send whose reply was lost (the lost-reply check reads the queue first) ·
-the voice modes, CarPlay and the Watch (not needed: their sends still say
-they were queued, and a cut-off turn shows its card when the chat is opened
-on the phone) · the plugin's own chats (Watch jobs, Pulse's turns, a Watch
+send whose reply was lost in the chat (the lost-reply check reads the
+queue first) · off-screen sends from the voice modes, CarPlay, the Watch and
+Shortcuts (a send admitted behind a cut-off turn reads as queued, not
+started, so they don't wait for a reply that can't come; the cut-off turn's
+card shows when the chat is opened on the phone) · the plugin's own chats (Watch jobs, Pulse's turns, a Watch
 call's Local Live chat), which let go of their own cut-off turns · group
 rooms (not needed: rooms run on the gateway's groups API, not a chat's
 queue) · the notifier's CHANGELOG
 
 **Code**
 - The queue and its rows: `Conduit/Models/AuthorityQueue.swift` (QueuedPrompt, QueuedPromptReceipt, AuthorityQueueStore)
-- Reading it and its verbs: `Conduit/Services/HermesClient.swift` (SessionRuntimeSnapshot.queuedPrompts from the resume's and `session.info`'s `pending`; cancelQueuedPrompt, replaceQueuedPrompt, sendQueuedPromptNow, discardLostPrompt, queuedPrompts, unansweredSubmissionID, admittedAdmissionID, deliveringEventAdmissionID)
+- Reading it and its verbs: `Conduit/Services/HermesClient.swift` (SessionRuntimeSnapshot.queuedPrompts from the resume's and `session.info`'s `pending`; chatIsHeldByLostTurn, which the off-screen voice and Shortcut sends in `Conduit/Services/AppState.swift` read (submitLiveVoiceThreadTurn, sendShortcutPrompt); cancelQueuedPrompt, replaceQueuedPrompt, sendQueuedPromptNow, discardLostPrompt, queuedPrompts, unansweredSubmissionID, admittedAdmissionID, deliveringEventAdmissionID)
 - The user's queued rows and the lost-reply check: `Conduit/Services/AppState.swift` (applyRuntime's queue, holdQueuedSendRow, takeQueuedSendRow, noteOwnSend, adoptOwnQueuedSends, moveQueuedSendToDock, noteQueuedTurnStarted, heldInAuthorityQueue in reconcileAmbiguousPromptSubmission)
 - The buttons: `Conduit/Services/AppState+AuthorityQueue.swift`, `Conduit/Views/Components/AuthorityQueueDock.swift`, `Conduit/Views/ChatView.swift` (the bottom bar); Resend sends the user's words without the old @mention note, so it annotates them afresh: `Conduit/Services/BotMentions.swift` (`strippingAnnotation`)
 - The plugin's own cut-off turns: `notifier/gateway_chats.py` (OWN_SUBMISSION_PREFIX, _note_pending, _settle_lost)

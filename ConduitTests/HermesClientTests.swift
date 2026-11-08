@@ -2920,6 +2920,17 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(queue.first?.executionGeneration, 1)
         XCTAssertEqual(queue.last?.inputID, "sub-3")
         XCTAssertTrue(queue.last?.canSendNow == true && queue.last?.canEdit == true)
+        XCTAssertTrue(client.chatIsHeldByLostTurn("sess-q"), "A cut-off turn with nothing started holds the chat")
+        // Discarded elsewhere: the next session.info lists no cut-off turn.
+        try await deliverFrame([
+            "jsonrpc": "2.0", "method": "event",
+            "params": ["type": "session.info", "session_id": "sess-q",
+                       "payload": ["running": false, "pending": [
+                           ["admission_id": "adm-3", "input_id": "sub-3", "text": "later", "status": "queued", "sequence": 3,
+                            "execution_generation": NSNull(), "controls": ["steer", "replace"], "steering": false]
+                       ]]]
+        ], to: socket)
+        XCTAssertFalse(client.chatIsHeldByLostTurn("sess-q"))
         client.disconnect()
     }
 

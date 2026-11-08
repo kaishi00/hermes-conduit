@@ -1380,6 +1380,7 @@ final class HermesClient: ObservableObject {
         // A token binds the session's revision on the old socket's server.
         modelConfirmTokens = [:]
         authorityRunningSessions = []
+        authorityLostTurnSessions = []
 
         closedIntentionally = false
         socketHasOpened = false
@@ -1461,6 +1462,7 @@ final class HermesClient: ObservableObject {
         // A confirm token belongs to the socket, which stays the same.
         modelConfirmTokens.merge(predecessor.modelConfirmTokens) { mine, _ in mine }
         authorityRunningSessions.formUnion(predecessor.authorityRunningSessions)
+        authorityLostTurnSessions.formUnion(predecessor.authorityLostTurnSessions)
         // Server requests still open on the socket come here, so a later
         // request.cancel still withdraws their cards.
         openServerRequestIDs.formUnion(predecessor.openServerRequestIDs)
@@ -2364,6 +2366,8 @@ final class HermesClient: ObservableObject {
             // (its error card rides on it, run_turn_runner); it sends no
             // turn-ending `error` event.
             authorityRunningSessions.remove(sessionId)
+        case "session.info":
+            noteLostTurn(event["payload"]?.objectValue?["pending"], sessionIds: [sessionId])
         default:
             break
         }
@@ -2374,6 +2378,26 @@ final class HermesClient: ObservableObject {
     /// send into a running turn as the next turn, with the same receipt
     /// as an idle send, so this is what tells the two apart.
     private var authorityRunningSessions: Set<String> = []
+
+    /// Chats whose queue, as this socket last read it, is held by a turn a
+    /// gateway restart cut off (an `unknown` row, nothing started): a send
+    /// there is admitted with the same receipt as any other, but it waits
+    /// until someone discards that turn.
+    private var authorityLostTurnSessions: Set<String> = []
+
+    /// Whether `sessionId`'s queue is held by a cut-off turn, so a send
+    /// admitted there waits rather than starts.
+    func chatIsHeldByLostTurn(_ sessionId: String) -> Bool {
+        speaksSessionAuthority && authorityLostTurnSessions.contains(sessionId)
+    }
+
+    private func noteLostTurn(_ pending: AnyCodable?, sessionIds: [String]) {
+        guard let rows = QueuedPrompt.list(from: pending) else { return }
+        let held = rows.contains { $0.status == .unknown } && !rows.contains { $0.status == .started }
+        for id in sessionIds {
+            if held { authorityLostTurnSessions.insert(id) } else { authorityLostTurnSessions.remove(id) }
+        }
+    }
 
     /// The turn the stream event `onEvent` is delivering belongs to, by the
     /// `execution_generation` it names: nil when it names none, as
@@ -2424,6 +2448,7 @@ final class HermesClient: ObservableObject {
             if running == true { authorityRunningSessions.insert(id) }
             if running == false { authorityRunningSessions.remove(id) }
         }
+        noteLostTurn(object["pending"], sessionIds: Array(ids))
         guard let prompts = object["prompts"]?.arrayValue else { return }
         // A resume lists every prompt Hermes still waits on in the chat: one
         // it no longer lists was answered elsewhere or its turn ended.
