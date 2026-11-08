@@ -65,6 +65,10 @@ struct RichButton: Equatable, Hashable {
 struct RichField: Equatable, Hashable {
     enum Input: String { case text, choice, toggle, date, number }
 
+    /// What the host keeps of a text field's value (the plugin's
+    /// MAX_VALUE_CHARS), so a field holds no more.
+    static let maxTextCharacters = 2000
+
     let id: String
     let input: Input
     let label: String?
@@ -215,7 +219,16 @@ struct RichCardActionContext {
     let tap: (@MainActor (_ body: [String: Any], _ message: String) async throws -> Void)?
 
     static let capability = "card-taps"
+    /// The plugin forgets a tap whose message didn't go (DELETE
+    /// /boards/taps?id=, plugin 0.140.1).
+    static let dropCapability = "card-tap-drop"
     static let path = "/api/plugins/conduit_push/boards/taps"
+
+    static func dropPath(profile: String, id: String) -> String {
+        var components = URLComponents()
+        components.queryItems = [URLQueryItem(name: "profile", value: profile), URLQueryItem(name: "id", value: id)]
+        return path + "?" + (components.percentEncodedQuery ?? "")
+    }
 
     static func tapPath(profile: String) -> String {
         var components = URLComponents()
@@ -233,11 +246,13 @@ struct RichCardActionContext {
 
     /// Whether the message about a tap the host took may go now: only to
     /// the chat and profile it was tapped in, while the composer is on and
-    /// holds no draft (the message goes in the draft's place, so words typed
-    /// while the tap was on its way keep the button tappable instead).
+    /// holds no draft and nothing staged (the message goes in the draft's
+    /// place and would take a staged photo along, so words typed or a photo
+    /// added while the tap was on its way keep the button tappable instead).
     static func mayFollowUp(tappedIn chat: String, openChat: String?, composerIsEnabled: Bool,
-                            draft: String) -> Bool {
+                            draft: String, stagedAttachments: Bool = false) -> Bool {
         composerIsEnabled && openChat == chat && draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            && !stagedAttachments
     }
 
     /// The `chat` of a chat by its durable id on a dashboard's profile, or
@@ -297,7 +312,8 @@ final class RichCardFieldMemory {
 }
 
 /// The taps on their way or sent, so a button shows it went until Hermes
-/// shows the card again (a new card is new buttons) or two minutes pass.
+/// shows the card again (a new card is new buttons) or two minutes pass
+/// once it went. A tap still on its way keeps its spinner however slow.
 @MainActor
 final class RichCardTapMemory: ObservableObject {
     static let shared = RichCardTapMemory()
@@ -314,12 +330,14 @@ final class RichCardTapMemory: ObservableObject {
     }
 
     func state(_ key: String, now: Date = .now) -> State? {
-        guard let tap = taps[key], now.timeIntervalSince(tap.at) < Self.holdSeconds else { return nil }
+        guard let tap = taps[key], tap.state == .sending || now.timeIntervalSince(tap.at) < Self.holdSeconds else {
+            return nil
+        }
         return tap.state
     }
 
     func set(_ key: String, _ state: State?) {
-        taps = taps.filter { Date.now.timeIntervalSince($0.value.at) < Self.holdSeconds }
+        taps = taps.filter { $0.value.state == .sending || Date.now.timeIntervalSince($0.value.at) < Self.holdSeconds }
         if let state {
             taps[key] = (state: state, at: .now)
             // Nothing else may redraw the button when the hold passes.

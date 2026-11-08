@@ -4317,6 +4317,102 @@
           ]
         }
       ]
+    },
+    {
+      "name": "Fields read joined and mixed-script secret words, and keep only real days",
+      "input": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "pincode",
+                  "input": "number"
+                },
+                {
+                  "kind": "field",
+                  "id": "mfa",
+                  "input": "text",
+                  "label": "MFA code"
+                },
+                {
+                  "kind": "field",
+                  "id": "code",
+                  "input": "text",
+                  "label": "PIN码"
+                },
+                {
+                  "kind": "field",
+                  "id": "spin",
+                  "input": "text",
+                  "label": "Spinning クラス"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "id": "day",
+                  "input": "date",
+                  "value": "2026-02-31"
+                },
+                {
+                  "kind": "field",
+                  "id": "leap",
+                  "input": "date",
+                  "value": "2028-02-29"
+                },
+                {
+                  "kind": "field",
+                  "id": "at",
+                  "input": "date",
+                  "value": "2026-11-08T24:00"
+                }
+              ]
+            }
+          ]
+        }
+      ],
+      "output": [
+        {
+          "type": "composed",
+          "sections": [
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "input": "text",
+                  "label": "Spinning クラス",
+                  "id": "spin"
+                }
+              ]
+            },
+            {
+              "items": [
+                {
+                  "kind": "field",
+                  "input": "date",
+                  "id": "day"
+                },
+                {
+                  "kind": "field",
+                  "value": "2028-02-29",
+                  "input": "date",
+                  "id": "leap"
+                },
+                {
+                  "kind": "field",
+                  "input": "date",
+                  "id": "at"
+                }
+              ]
+            }
+          ]
+        }
+      ]
     }
   ]
 }

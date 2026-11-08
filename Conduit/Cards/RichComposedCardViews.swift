@@ -42,11 +42,11 @@ struct RichComposedCard: View {
             }
         }
         .onAppear(perform: startValues)
-        .onChange(of: card.normalizedJSON) { _, _ in
-            values = [:]
-            open = false
-            startValues()
-        }
+        .onChange(of: card.normalizedJSON) { _, _ in restart() }
+        // A row kept for another chat (a branch keeps the same rows) starts
+        // on that chat's own values: one chat's typing never goes with
+        // another's tap.
+        .onChange(of: context?.chat) { _, _ in restart() }
         // A board's tabs draw one card at a time, so a tab switch remounts
         // this view: what was typed and folded is kept for when it's back.
         .onChange(of: values) { old, new in
@@ -67,6 +67,12 @@ struct RichComposedCard: View {
 
     private var shownSections: [RichSection] {
         open ? card.sections : card.sections.filter { !$0.more }
+    }
+
+    private func restart() {
+        values = [:]
+        open = false
+        startValues()
     }
 
     private func startValues() {
@@ -246,6 +252,11 @@ private struct RichFieldView: View {
             .lineLimit(field.lines...max(field.lines, 8))
             .scaledFont(.subheadline)
             .textFieldStyle(.roundedBorder)
+            // The host keeps this much of a field, so the card holds no more
+            // than reaches Hermes.
+            .onChange(of: value) { _, new in
+                if new.count > RichField.maxTextCharacters { value = String(new.prefix(RichField.maxTextCharacters)) }
+            }
         case .number:
             VStack(alignment: .leading, spacing: 2) {
                 TextField(text: $value, prompt: field.placeholder.map { Text(verbatim: $0) }) {
@@ -282,6 +293,19 @@ private struct RichFieldView: View {
             Toggle(isOn: Binding(get: { value == "on" }, set: { value = $0 ? "on" : "off" })) {
                 Text(verbatim: field.label ?? field.id).scaledFont(.subheadline)
             }
+        case .date where RichFieldDates.date(value) == nil:
+            // No day yet: the picker would show today while a tap sent none,
+            // so the day is picked first.
+            Button {
+                value = RichFieldDates.text(.now, timed: false)
+            } label: {
+                Label { Text("Not set") } icon: { Image(systemName: "calendar") }
+                    .scaledFont(.subheadline)
+                    .frame(minHeight: 44)
+            }
+            .buttonStyle(.bordered)
+            .accessibilityLabel(Text(verbatim: field.label ?? field.id))
+            .accessibilityValue(Text("Not set"))
         case .date:
             let timed = value.contains("T")
             DatePicker(selection: Binding(
@@ -327,7 +351,7 @@ private struct RichDraftGate<Content: View>: View {
     @ViewBuilder let content: (Bool) -> Content
 
     var body: some View {
-        content(composer.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        content(composer.isEmpty)
     }
 }
 
@@ -474,11 +498,10 @@ struct RichCardButtonRow: View {
     private func run(_ button: RichButton) {
         // A confirmation can be answered after the row's gate closed (a draft
         // typed beside the iPad's popover, a number changed): check it again.
+        // Hermes may have turned busy or the connection dropped meanwhile too.
         if button.action == .send || button.action == .tap {
-            let draftEmpty = context?.composer.map {
-                $0.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
-            } ?? true
-            guard draftEmpty, button.action == .send || numbersFit else {
+            let composerEmpty = context?.composer?.isEmpty ?? true
+            guard composerEmpty, context?.canSend ?? false, button.action == .send || numbersFit else {
                 Haptics.error()
                 return
             }

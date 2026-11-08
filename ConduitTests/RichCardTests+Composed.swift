@@ -131,6 +131,9 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(may(open: nil))
         XCTAssertFalse(may(enabled: false))
         XCTAssertFalse(may(draft: "typed meanwhile"))
+        XCTAssertFalse(RichCardActionContext.mayFollowUp(tappedIn: tapped, openChat: tapped, composerIsEnabled: true,
+                                                         draft: "", stagedAttachments: true),
+                       "a photo staged meanwhile would go along with the message")
         XCTAssertNil(RichCardActionContext.chat(dashboard: "d", profile: "p", sessionID: ""))
     }
 
@@ -152,11 +155,12 @@ extension AppStateVoiceCapabilityTests {
                      "2FA code", "Two-factor code", "Login code", "パスワード", "Passwort", "Contraseña",
                      "Mot de passe", "Пароль", "Kata sandi", "비밀번호를 입력", "인증 코드", "密码", "Access code",
                      "Unlock code", "Security key", "Bestätigungscode", "Código de verificación",
-                     "Code de vérification", "Kode verifikasi", "Doğrulama kodu", "Код подтверждения"] {
+                     "Code de vérification", "Kode verifikasi", "Doğrulama kodu", "Код подтверждения",
+                     "Pincode", "pin_code", "MFA code", "mfaCode", "PIN码", "输入PIN", "OTP認証"] {
             XCTAssertTrue(RichCardSchema.namesSecret(name), name)
         }
         for name in ["Spin class", "Subject", "Opinion", "Pinned note", "to", "Topic", "Key dates", "Zip code", "メモ",
-                     "Betreff", "Тема"] {
+                     "Betreff", "Тема", "Spinning クラス", "Comfort level"] {
             XCTAssertFalse(RichCardSchema.namesSecret(name), name)
         }
     }
@@ -178,6 +182,8 @@ extension AppStateVoiceCapabilityTests {
                        "a title that would make the message a file reference stays out")
         XCTAssertEqual(RichCardActionContext.tapPath(profile: "work"),
                        "/api/plugins/conduit_push/boards/taps?profile=work")
+        XCTAssertEqual(RichCardActionContext.dropPath(profile: "work", id: "ab12"),
+                       "/api/plugins/conduit_push/boards/taps?profile=work&id=ab12")
     }
 
     func testALiveModelsButtonsOpenAndCopyOnly() throws {
@@ -207,6 +213,31 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertNil(memory.state(key, now: Date().addingTimeInterval(RichCardTapMemory.holdSeconds + 1)))
         memory.set(key, nil)
         XCTAssertNil(memory.state(key))
+        memory.set(key, .sending)
+        XCTAssertEqual(memory.state(key, now: Date().addingTimeInterval(RichCardTapMemory.holdSeconds + 1)), .sending,
+                       "a slow tap keeps its spinner until it's answered")
+    }
+
+    func testADateFieldKeepsOnlyARealDay() {
+        for (value, real) in [("2026-02-31", false), ("2026-02-29", false), ("2028-02-29", true), ("2100-02-29", false),
+                              ("2000-02-29", true), ("2026-13-01", false), ("0000-01-01", false),
+                              ("2026-11-08T24:00", false), ("2026-11-08T23:59", true), ("2026-04-31T09:00", false),
+                              ("Friday", false)] {
+            XCTAssertEqual(RichCardSchema.isRealDate(value), real, value)
+        }
+    }
+
+    @MainActor
+    func testAStagedPhotoKeepsTheComposerFromEmpty() {
+        let store = PredictiveStore()
+        XCTAssertTrue(store.isEmpty)
+        store.stagedAttachmentsChanged(true)
+        XCTAssertFalse(store.isEmpty, "a card's send would take the photo along")
+        store.stagedAttachmentsChanged(false)
+        store.draftChanged("hi")
+        XCTAssertFalse(store.isEmpty)
+        store.forgetAll()
+        XCTAssertTrue(store.isEmpty)
     }
 
     func testAFieldsDateReadsAndWritesAsTheSchemaDoes() throws {
