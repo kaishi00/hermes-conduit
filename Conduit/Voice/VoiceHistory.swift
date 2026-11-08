@@ -894,12 +894,13 @@ struct VoiceResumeContext: Equatable {
     /// file is named, never given by its path. A question still waiting for
     /// its reply is left off the end, so a model seeded with it as history
     /// doesn't answer it in Hermes' place: while Hermes is still answering
-    /// (`replyRunning`), the running turn's rows go (its progress notes and
+    /// (`runningNotes`, the ids of the progress notes the running turn has
+    /// sealed so far), the running turn's rows go (its progress notes and
     /// steers, and the question that started it when it was asked here). A
     /// turn typed on another device has no row here, so the answered
     /// exchange before it stays. A turn names its files even when its text
     /// is clipped. Nil when nothing is left.
-    static func chat(_ messages: [ChatMessage], replyRunning: Bool = false) -> VoiceResumeContext? {
+    static func chat(_ messages: [ChatMessage], runningNotes: Set<String>? = nil) -> VoiceResumeContext? {
         func spoken(_ message: ChatMessage) -> Bool {
             message.tool == nil && message.approval == nil && message.clarify == nil && message.inputPrompt == nil
                 && (message.role == .user || message.role == .assistant)
@@ -910,14 +911,14 @@ struct VoiceResumeContext: Equatable {
                 && (message.attachments ?? []).isEmpty)
         }
         var kept = messages[...]
-        if replyRunning {
+        if let runningNotes {
             // Back to the last completed reply: everything after it is the
             // running turn (its question when it was asked here, steers,
             // progress notes) or messages queued behind it, in any order.
             var cut = kept.endIndex
             while cut > kept.startIndex {
                 let message = kept[cut - 1]
-                guard silent(message) || message.role == .user || isProgressNote(message) else { break }
+                guard silent(message) || message.role == .user || runningNotes.contains(message.id) else { break }
                 cut -= 1
             }
             kept = kept[..<cut]
@@ -938,12 +939,6 @@ struct VoiceResumeContext: Equatable {
         case .verbatim(let recent), .summarized(_, let recent), .needsSummary(_, _, let recent):
             return VoiceResumeContext(summary: nil, recent: recent, fromChat: true)
         }
-    }
-
-    /// A reply's progress note: commentary sealed as its own row while the
-    /// turn ran, or kept beside a stored reply.
-    static func isProgressNote(_ message: ChatMessage) -> Bool {
-        message.role == .assistant && (message.id.hasPrefix("interim-") || message.id.contains("-commentary-"))
     }
 
     /// A turn's text within `VoiceResumePlan.turnCharacterLimit` with every

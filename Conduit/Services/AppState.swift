@@ -5833,6 +5833,11 @@ final class AppState: ObservableObject {
     private var streamingBuffer = ""
     /// The last row a `message.interim` sealed in the running turn.
     private var interimRowID: String?
+    /// Every row `message.interim` sealed while the current turn runs: its
+    /// progress notes, which a call's chat seed leaves out (#1991). A
+    /// finished reply can keep an interim row's id, so the id alone doesn't
+    /// tell.
+    private(set) var runningTurnNoteIDs: Set<String> = []
     /// Gateway deltas can arrive much faster than SwiftUI can lay out a chat
     /// transcript. Keep the authoritative buffer intact, but publish at a
     /// display-friendly cadence so an active response cannot monopolize the
@@ -8803,7 +8808,7 @@ final class AppState: ObservableObject {
         // in it, follows on from the chat: every live mode is seeded with
         // its latest turns, GPT-Live as history (issue 1983).
         if resume == nil, let thread = voiceBackgroundJobSupervisor.liveThread, isOpenChat(thread) {
-            liveVoiceResumeContext = VoiceResumeContext.chat(messages, replyRunning: isBusy)
+            liveVoiceResumeContext = VoiceResumeContext.chat(messages, runningNotes: isBusy ? runningTurnNoteIDs : nil)
         }
         hermesCallToldCards = []
         hermesCallbackEngine = engine
@@ -39256,6 +39261,7 @@ final class AppState: ObservableObject {
             // locally-owned turn must anchor AFTER it.
             recordLocalOrderingDebtForSettledTurn()
             locallyOwnedInFlightTurn = nil
+            runningTurnNoteIDs = []
         }
         // Every message and reasoning delta re-affirms `.running`. Writing
         // the same value would still publish AppState once per gateway frame
@@ -41794,6 +41800,7 @@ final class AppState: ObservableObject {
             author: activeProfile
         ))
         interimRowID = id
+        runningTurnNoteIDs.insert(id)
     }
 
     private func clearStreamingText() {

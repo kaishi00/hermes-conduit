@@ -1459,34 +1459,40 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(gptBlock.contains("wait for the user to speak first"))
 
         // While Hermes is still answering, the question goes with the
-        // progress note after it.
+        // progress notes the running turn sealed.
+        let notes: Set<String> = ["interim-7", "interim-10", "interim-15"]
         let running = messages.dropLast() + [row("6", .user, "Book the hotel"), row("interim-7", .assistant, "Checking availability…")]
-        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(Array(running), replyRunning: true)).recent.count, 2)
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(Array(running), runningNotes: notes)).recent.count, 2)
         XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(Array(running))).recent.count, 4)
         // A steer is part of the running turn: the question it steers goes too.
         var steer = row("8", .user, "Make it near the station")
         steer.displayKind = ChatMessage.steerDisplayKind
-        let steered = try XCTUnwrap(VoiceResumeContext.chat(Array(running) + [steer], replyRunning: true)).recent
+        let steered = try XCTUnwrap(VoiceResumeContext.chat(Array(running) + [steer], runningNotes: notes)).recent
         XCTAssertEqual(steered.map(\.text).last, context.recent.last?.text)
         XCTAssertFalse(steered.contains { $0.text.contains("hotel") || $0.text.contains("station") })
         // A message queued behind the running turn goes with it, and a
         // blank row doesn't end the turn.
         let queued = Array(running) + [row("13", .assistant, "  "), row("14", .user, "And a car?")]
-        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(queued, replyRunning: true)).recent.map(\.text), context.recent.map(\.text))
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(queued, runningNotes: notes)).recent.map(\.text), context.recent.map(\.text))
         // The running reply goes on after a queued message: its later notes
         // don't let the question through.
         let laterNote = queued + [row("interim-15", .assistant, "Still checking…")]
-        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(laterNote, replyRunning: true)).recent.map(\.text), context.recent.map(\.text))
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(laterNote, runningNotes: notes)).recent.map(\.text), context.recent.map(\.text))
         // A turn typed on another device has no row here: the answered
         // exchange before it stays, and only its progress notes go.
         let answered = Array(messages.dropLast()) + [row("6", .user, "Book the hotel"), row("9", .assistant, "Booked the Kyoto Inn.")]
-        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(answered, replyRunning: true)).recent.last?.text, "Booked the Kyoto Inn.")
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(answered, runningNotes: notes)).recent.last?.text, "Booked the Kyoto Inn.")
         let remote = answered + [row("interim-10", .assistant, "Looking up trains…")]
-        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(remote, replyRunning: true)).recent.last?.text, "Booked the Kyoto Inn.")
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(remote, runningNotes: notes)).recent.last?.text, "Booked the Kyoto Inn.")
+        // A finished reply that kept its interim row's id is no running
+        // note: a new question running after it leaves it in.
+        let finishedInterim = Array(messages.dropLast()) + [row("6", .user, "Book the hotel"), row("interim-old", .assistant, "Booked the Kyoto Inn."),
+                                                             row("16", .user, "Trains?"), row("interim-7", .assistant, "Checking…")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(finishedInterim, runningNotes: notes)).recent.last?.text, "Booked the Kyoto Inn.")
         // A stored reply's progress notes come before it, so a finished
         // exchange keeps its reply.
         let stored = Array(messages.dropLast()) + [row("11", .user, "Trains?"), row("12-commentary-0", .assistant, "Checking."), row("12", .assistant, "The 9:10.")]
-        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(stored, replyRunning: true)).recent.last?.text, "The 9:10.")
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(stored, runningNotes: notes)).recent.last?.text, "The 9:10.")
 
         // Tool steps, approvals, questions and prompts never reach the seed,
         // whatever text they carry.
