@@ -166,6 +166,44 @@ struct V2PulsePage: View {
 
     private var client: PulseClient { appState.pulseClient }
 
+    /// Quiet for today (0.80.2); while Pulse is quiet, the banner says so instead.
+    private var offersQuietToday: Bool { canQuiet && page?.quietNow == nil }
+
+    /// Kept out of `body`, whose expression the type-checker otherwise stalls
+    /// on (Smoke, #2020).
+    @ToolbarContentBuilder
+    private var pageToolbar: some ToolbarContent {
+        if offersQuietToday {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    quiet(true)
+                } label: {
+                    Label(AppLocalization.string("Quiet for today"), systemImage: "moon.zzz")
+                }
+                .disabled(quieting)
+                .accessibilityIdentifier("pulse.quiet-today")
+            }
+        }
+        if appState.pulseExplainsLearning {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showsLeftOut = true
+                } label: {
+                    Label(AppLocalization.string("What Pulse left out"), systemImage: "tray.full")
+                }
+                .accessibilityIdentifier("pulse.left-out")
+            }
+        }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                showsLearned = true
+            } label: {
+                Label(AppLocalization.string("What Pulse learned"), systemImage: "slider.horizontal.3")
+            }
+            .accessibilityIdentifier("pulse.learned")
+        }
+    }
+
     var body: some View {
         ZStack {
             V2Backdrop(drifts: false)
@@ -173,38 +211,7 @@ struct V2PulsePage: View {
         }
         .navigationTitle(Text("Pulse"))
         .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            // Quiet for today (0.80.2); while Pulse is quiet, the banner says so instead.
-            if canQuiet, let page, page.quietNow == nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        quiet(true)
-                    } label: {
-                        Label(AppLocalization.string("Quiet for today"), systemImage: "moon.zzz")
-                    }
-                    .disabled(quieting)
-                    .accessibilityIdentifier("pulse.quiet-today")
-                }
-            }
-            if appState.pulseExplainsLearning {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showsLeftOut = true
-                    } label: {
-                        Label(AppLocalization.string("What Pulse left out"), systemImage: "tray.full")
-                    }
-                    .accessibilityIdentifier("pulse.left-out")
-                }
-            }
-            ToolbarItem(placement: .topBarTrailing) {
-                Button {
-                    showsLearned = true
-                } label: {
-                    Label(AppLocalization.string("What Pulse learned"), systemImage: "slider.horizontal.3")
-                }
-                .accessibilityIdentifier("pulse.learned")
-            }
-        }
+        .toolbar { pageToolbar }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             // Stacked on the call bar, so it never covers the call's controls.
             VStack(spacing: 0) {
