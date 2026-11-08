@@ -139,7 +139,7 @@ struct RichReviewMark: Equatable, Hashable {
         return json
     }
 
-    /// The plugin's cap on a note (review_store.MAX_NOTE_CHARS).
+    /// The plugin's cap on a note (card_actions cuts a note at MAX_VALUE_CHARS).
     static let maxNote = 2_000
 }
 
