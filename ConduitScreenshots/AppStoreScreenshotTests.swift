@@ -29,6 +29,9 @@ final class AppStoreScreenshotTests: XCTestCase {
         app.launchEnvironment["TZ"] = Self.timeZoneNearStatusBarTime()
         // No tips over the screens (BotsHomeGesturesTip).
         app.launchEnvironment["CONDUIT_HIDE_TIPS"] = "1"
+        // A still backdrop, so XCUITest's settle wait doesn't hang on its
+        // drift and every shot shows the glows in the same place.
+        app.launchEnvironment["CONDUIT_STILL_BACKDROP"] = "1"
         app.launch()
     }
 

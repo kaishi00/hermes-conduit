@@ -839,10 +839,14 @@ enum VoiceResumePlan: Equatable {
     }
 }
 
-/// What a resumed call is seeded with.
+/// What a resumed call is seeded with, or a call started from (or
+/// answered in) a chat: that chat's latest turns.
 struct VoiceResumeContext: Equatable {
     var summary: String?
     var recent: [VoiceResumeTurn]
+    /// The turns are the attached chat's, not an earlier call's: the call
+    /// follows on from them, and may still open with its greeting.
+    var fromChat = false
 
     var isEmpty: Bool { (summary ?? "").isEmpty && recent.isEmpty }
 
@@ -857,7 +861,11 @@ struct VoiceResumeContext: Equatable {
 
     private func instructionBlock(includingRecent: Bool) -> String {
         guard !isEmpty else { return "" }
-        let preface = "\nThis call continues an earlier conversation with the user. Use it as context; don't recap it or mention it unless the user brings it up, and wait for the user to speak first."
+        let preface = fromChat
+            ? (includingRecent
+                ? "\nThis call is attached to one of the user's Hermes chats (named below). Its latest turns are below, for context: follow on from them, and don't recap them or read them out unless the user asks."
+                : "\nThe conversation so far is the latest of the user's Hermes chat this call is attached to (named below), for context: follow on from it, and don't recap it or read it out unless the user asks.")
+            : "\nThis call continues an earlier conversation with the user. Use it as context; don't recap it or mention it unless the user brings it up, and wait for the user to speak first."
         var body = ""
         if let summary, !summary.isEmpty { body += "Summary of the earlier conversation:\n\(summary)\n" }
         if includingRecent, !recent.isEmpty {
@@ -877,6 +885,43 @@ struct VoiceResumeContext: Equatable {
         switch VoiceResumePlan.plan(turns: said, stored: nil) {
         case .verbatim(let recent), .summarized(_, let recent), .needsSummary(_, _, let recent):
             return VoiceResumeContext(summary: nil, recent: recent)
+        }
+    }
+
+    /// A chat call's seed (issue 1983): the open chat's latest user and
+    /// assistant text, within the same budget as a resume's word-for-word
+    /// turns. Tool steps, cards and notes stay out; links to jobs go and a
+    /// file is named, never given by its path. A question still waiting for
+    /// its reply is left off the end, so a model seeded with it as history
+    /// doesn't answer it in Hermes' place: while Hermes is still answering
+    /// (`replyRunning`), the last question goes with the progress notes
+    /// after it. A user turn names its attachments, never their paths. Nil
+    /// when nothing is left.
+    static func chat(_ messages: [ChatMessage], replyRunning: Bool = false) -> VoiceResumeContext? {
+        var said: [VoiceResumeTurn] = messages.compactMap { message in
+            guard message.tool == nil, message.approval == nil, message.clarify == nil, message.inputPrompt == nil else { return nil }
+            let speaker: VoiceConversationTranscriptEntry.Speaker
+            switch message.role {
+            case .user: speaker = .user
+            case .assistant: speaker = .assistant
+            default: return nil
+            }
+            let attached = speaker == .user
+                ? (message.attachments ?? []).map { "[Attached: \($0.name.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? $0.name) (\($0.kind.rawValue))]" }
+                : []
+            let text = ([GatewayMediaTags.namingFiles(in: ConduitAppLink.removingLinks(from: message.content))] + attached)
+                .joined(separator: " ")
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            return text.isEmpty ? nil : VoiceResumeTurn(speaker: speaker, text: text)
+        }
+        if replyRunning, let question = said.lastIndex(where: { $0.speaker == .user }) {
+            said.removeSubrange(question...)
+        }
+        while said.last?.speaker == .user { said.removeLast() }
+        guard !said.isEmpty else { return nil }
+        switch VoiceResumePlan.plan(turns: said, stored: nil) {
+        case .verbatim(let recent), .summarized(_, let recent), .needsSummary(_, _, let recent):
+            return VoiceResumeContext(summary: nil, recent: recent, fromChat: true)
         }
     }
 

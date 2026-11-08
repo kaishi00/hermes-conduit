@@ -646,12 +646,11 @@ struct BotEditorSheet: View {
                     NavigationLink {
                         BotModelPicker(provider: $draft.provider, model: $draft.model, allowsInherit: isCreating)
                     } label: {
-                        SettingsLinkRow(
+                        let model = showsKeptDetails ? keptDetails?.model ?? "" : draft.model
+                        ModelChooserLinkRow(
                             title: AppLocalization.string("Model"),
-                            value: BotModelPicker.summary(
-                                model: showsKeptDetails ? keptDetails?.model ?? "" : draft.model,
-                                allowsInherit: isCreating
-                            )
+                            value: BotModelPicker.summary(model: model, allowsInherit: isCreating),
+                            detail: model.isEmpty || showsKeptDetails ? nil : draft.provider
                         )
                     }
                     .buttonStyle(.plain)

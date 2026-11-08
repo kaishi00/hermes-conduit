@@ -37,6 +37,23 @@ struct TurnSurface: Equatable {
     /// from another client in that chat don't take its line.
     static let discardCapability = "turn-surface-discard"
     static let discardPath = "/api/plugins/conduit_push/turn-surface/discard"
+    /// A discard that didn't go is tried again after these pauses: until it
+    /// lands, the same words sent from another client could take its line.
+    static let discardRetryDelays: [Duration] = [.seconds(1), .seconds(3), .seconds(9)]
+
+    /// Whether a discard that failed with `error` may still go on a later
+    /// try: not one the plugin refused (a 4xx other than 408 and 429), and
+    /// not one the old dashboard answered after a switch (it was dropped).
+    static func discardMayGoLater(_ error: Error) -> Bool {
+        switch error as? DashboardTicketBridgeError {
+        case .answeredAfterSwitch?, .oversizedResponse?:
+            return false
+        case .http(let status, _)?:
+            return status == 0 || status == 408 || status == 429 || status >= 500
+        default:
+            return true
+        }
+    }
     /// The send waits at most this long for the plugin, then goes anyway:
     /// a turn without the line is only what Hermes had before.
     static let wait: Duration = .milliseconds(600)

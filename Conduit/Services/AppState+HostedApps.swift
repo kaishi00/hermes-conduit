@@ -38,6 +38,12 @@ enum HostedAppsError: Error, Equatable, LocalizedError {
 extension AppState {
     static let hostedAppsRoute = "rpc:connectors.list"
 
+    /// What the apps a screen shows belong to: the dashboard, the profile
+    /// and the client that carries it.
+    var hostedAppsScope: String {
+        "\(activeDashboardID?.uuidString ?? "")|\(activeProfile)|\(client.map { "\(ObjectIdentifier($0).hashValue)" } ?? "")|\(isConnected)"
+    }
+
     /// The apps as Hermes gave them last time on this dashboard and profile.
     func keptHostedApps() -> HostedAppsSnapshot? {
         keptRead(HostedAppsSnapshot.self, Self.hostedAppsRoute, profile: activeProfile)
@@ -88,12 +94,17 @@ extension AppState {
     }
 
     /// Gives up a sign-in, as Desktop's Stop waiting does: Hermes stops
-    /// waiting, and the accounts it started that never finished go.
+    /// waiting, and the accounts it started that never finished go. Which
+    /// ones is read again first: one finished since the last look stays,
+    /// and when Hermes can't say, none is removed.
     func stopHostedAppSignIn(_ operation: HostedAppOperation) async throws {
         try await withHostedAppsClient { client in
+            let fresh = try? await client.hostedAppOperation(operation.id)
             try await client.settleHostedAppOperation(operation.id)
-            for target in operation.targets where !target.connected {
-                if let id = target.connectionID { try? await client.removeHostedAppAccount(id) }
+            guard let fresh else { return }
+            for target in fresh.targets where !target.connected {
+                let id = target.connectionID ?? operation.target(target.name)?.connectionID
+                if let id { try? await client.removeHostedAppAccount(id) }
             }
         }
     }

@@ -127,7 +127,7 @@ final class WidgetLaunchUITests: XCTestCase {
 
     private func launchApp(coldURL: URL? = nil, warmURL: URL? = nil, holdReadiness: Bool = false) -> XCUIApplication {
         precondition(coldURL == nil || warmURL == nil, "Choose cold or warm fixture delivery")
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchEnvironment["CONDUIT_UITEST"] = "1"
         app.launchArguments += [
             Identity.connectedDashboard, "https://conduit-ui-test.invalid",

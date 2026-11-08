@@ -532,7 +532,7 @@ struct MainView: View {
                 )
                 .frame(width: persistentSidebarWidth)
                 // The leading column's share of the window's side insets.
-                .environment(\.windowSideInsets, windowSideInsets?.reaching(.leading))
+                .environment(\.windowSideInsets, windowSideInsets?.reaching(.leading, width: persistentSidebarWidth))
 
                 // Drags the sidebar's width, as V2's list (#1487).
                 ColumnDivider(
@@ -546,7 +546,7 @@ struct MainView: View {
                 )
 
                 chatNavigationContent
-                    .environment(\.windowSideInsets, windowSideInsets?.reaching(.trailing))
+                    .environment(\.windowSideInsets, windowSideInsets?.reaching(.trailing, width: availableWindowWidth - persistentSidebarWidth - 1))
             }
         } else {
             chatNavigationContent
@@ -774,7 +774,7 @@ struct MainView: View {
     private var windowWidthReader: some View {
         GeometryReader { proxy in
             Color.clear.preference(key: MainViewWindowWidthKey.self, value: proxy.size.width)
-                .onGeometryChange(for: WindowSideInsets.self) { WindowSideInsets($0.safeAreaInsets) } action: { insets in
+                .onGeometryChange(for: WindowSideInsets.self) { WindowSideInsets($0.safeAreaInsets, width: $0.size.width) } action: { insets in
                     if windowSideInsets != insets { windowSideInsets = insets }
                 }
         }

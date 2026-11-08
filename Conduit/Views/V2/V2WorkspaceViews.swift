@@ -1190,7 +1190,7 @@ struct WorkspaceCodeText: View {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(verbatim: "\(index + 1)")
                             .scaledFont(.caption2.monospacedDigit())
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.conduitTertiary)
                             .frame(minWidth: 30, alignment: .trailing)
                             .accessibilityHidden(true)
                         Text(verbatim: line.isEmpty ? " " : line)

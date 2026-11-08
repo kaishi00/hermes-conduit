@@ -33,6 +33,10 @@ struct GroupRoomComposer: View {
     @Environment(\.composerStaysExpanded) private var staysExpanded
     @State private var attachments: [Attachment] = []
     @State private var isFocused = false
+    /// The mention row a hardware keyboard's arrows highlighted; typing
+    /// clears it. And the draft whose list Escape closed.
+    @State private var mentionHighlight: Int?
+    @State private var mentionsDismissedFor: String?
     @State private var isUploading = false
     /// The upload in flight, cancelled when the composer goes away.
     @State private var uploadTask: Task<Void, Never>?
@@ -106,8 +110,32 @@ struct GroupRoomComposer: View {
     }
 
     private var mentionCandidates: [MentionAutocomplete.Candidate] {
-        guard isFocused, let query = MentionAutocomplete.activeQuery(in: draft) else { return [] }
+        guard isFocused, mentionsDismissedFor != draft,
+              let query = MentionAutocomplete.activeQuery(in: draft) else { return [] }
         return MentionAutocomplete.filter(MentionAutocomplete.roomCandidates(members), query: query)
+    }
+
+    /// The field's arrows, Tab, Escape and a highlighted Return, while the
+    /// mention list shows (ComposerSuggestionKeys).
+    private var mentionKeys: ComposerSuggestionKeys? {
+        let count = mentionCandidates.count
+        guard count > 0 else { return nil }
+        return ComposerSuggestionKeys(hasHighlight: (mentionHighlight ?? count) < count) { key in
+            let candidates = mentionCandidates
+            switch key {
+            case .up, .down:
+                mentionHighlight = ComposerSuggestionHighlight.moved(mentionHighlight, by: key, count: candidates.count)
+            case .dismiss:
+                mentionHighlight = nil
+                mentionsDismissedFor = draft
+            case .choose, .chooseFirst:
+                guard let index = ComposerSuggestionHighlight.picked(mentionHighlight, by: key, count: candidates.count)
+                else { return }
+                mentionHighlight = nil
+                Haptics.selection()
+                draft = MentionAutocomplete.completing(draft, with: candidates[index])
+            }
+        }
     }
 
     /// Solid, so the chat scrolling under the composer never shows
@@ -126,7 +154,7 @@ struct GroupRoomComposer: View {
         VStack(spacing: 0) {
             notices
             if !mentionCandidates.isEmpty {
-                MentionSuggestionList(candidates: mentionCandidates) { candidate in
+                MentionSuggestionList(candidates: mentionCandidates, highlighted: mentionHighlight) { candidate in
                     draft = MentionAutocomplete.completing(draft, with: candidate)
                 }
                 .padding(.horizontal, 10)
@@ -216,6 +244,8 @@ struct GroupRoomComposer: View {
         }
         .onChange(of: draft) { _, text in
             appState.saveActiveRoomDraft(text)
+            mentionHighlight = nil
+            if mentionsDismissedFor != text { mentionsDismissedFor = nil }
             composerError = nil
             // Typing ends a dictation; the words so far stay.
             if ComposerDictation.isTyping(text, dictationWrote: dictatedDraft), isDictationActive {
@@ -373,7 +403,8 @@ struct GroupRoomComposer: View {
             maxLines: 6,
             canSubmitFromReturn: canSubmitFromReturn,
             onSubmitFromReturn: { submitFromReturnKey() },
-            onLongTextPaste: { pasted in attachLongPaste(pasted) }
+            onLongTextPaste: { pasted in attachLongPaste(pasted) },
+            suggestionKeys: mentionKeys
         )
             .background(alignment: .topLeading) {
                 if draft.isEmpty {

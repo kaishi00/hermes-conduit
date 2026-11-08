@@ -1909,6 +1909,8 @@ private struct GroupReadAloudControl: View {
 /// is being typed. Tapping a row completes the tag.
 struct MentionSuggestionList: View {
     let candidates: [MentionAutocomplete.Candidate]
+    /// The row a hardware keyboard's arrows highlighted.
+    var highlighted: Int? = nil
     let onSelected: (MentionAutocomplete.Candidate) -> Void
     @ScaledMetric(relativeTo: .subheadline) private var rowHeight: CGFloat = 44
 
@@ -1916,6 +1918,7 @@ struct MentionSuggestionList: View {
     private var dividerAllowance: CGFloat { CGFloat(max(0, min(candidates.count, 5) - 1)) }
 
     var body: some View {
+        ScrollViewReader { reader in
         ScrollView {
             VStack(spacing: 0) {
                 ForEach(Array(candidates.enumerated()), id: \.element.id) { index, candidate in
@@ -1940,12 +1943,19 @@ struct MentionSuggestionList: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .background(index == highlighted ? Color.conduitAccent.opacity(0.14) : Color.clear)
+                    .accessibilityAddTraits(index == highlighted ? .isSelected : [])
                     .accessibilityHint(Text(AppLocalization.string("Inserts this mention.")))
                     if index < candidates.count - 1 {
                         Divider().opacity(0.3)
                     }
                 }
             }
+        }
+        .onChange(of: highlighted) { _, index in
+            guard let index, candidates.indices.contains(index) else { return }
+            reader.scrollTo(candidates[index].id)
+        }
         }
         // Sized to its rows (a bare max height would stretch two rows to
         // the cap), scrolling past five; the row height follows Dynamic Type.

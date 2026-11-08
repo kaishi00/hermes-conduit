@@ -248,6 +248,69 @@ final class ComposerReturnKeyTests: XCTestCase {
         XCTAssertEqual(view.text, "")
     }
 
+    // MARK: - Suggestion list keys (issue 1576)
+
+    func testArrowsMoveTheHighlightAndWrap() {
+        XCTAssertEqual(ComposerSuggestionHighlight.moved(nil, by: .down, count: 3), 0)
+        XCTAssertEqual(ComposerSuggestionHighlight.moved(nil, by: .up, count: 3), 2)
+        XCTAssertEqual(ComposerSuggestionHighlight.moved(2, by: .down, count: 3), 0)
+        XCTAssertEqual(ComposerSuggestionHighlight.moved(0, by: .up, count: 3), 2)
+        XCTAssertEqual(ComposerSuggestionHighlight.moved(5, by: .down, count: 3), 0, "A list that shrank starts over")
+        XCTAssertNil(ComposerSuggestionHighlight.moved(nil, by: .down, count: 0))
+    }
+
+    func testReturnPicksOnlyAHighlightedRowAndTabTheFirst() {
+        XCTAssertNil(ComposerSuggestionHighlight.picked(nil, by: .choose, count: 3))
+        XCTAssertEqual(ComposerSuggestionHighlight.picked(1, by: .choose, count: 3), 1)
+        XCTAssertEqual(ComposerSuggestionHighlight.picked(nil, by: .chooseFirst, count: 3), 0)
+        XCTAssertEqual(ComposerSuggestionHighlight.picked(2, by: .chooseFirst, count: 3), 2)
+        XCTAssertNil(ComposerSuggestionHighlight.picked(4, by: .choose, count: 3))
+    }
+
+    func testSuggestionKeysAreTheListsOnlyWhileOneShows() {
+        let view = ImagePasteTextView()
+        let up = #selector(ReturnKeyTextView.suggestionUpPressed)
+        let commands = view.keyCommands ?? []
+        for input in [UIKeyCommand.inputUpArrow, UIKeyCommand.inputDownArrow, "\t", UIKeyCommand.inputEscape] {
+            let command = commands.first { $0.input == input }
+            XCTAssertEqual(command?.wantsPriorityOverSystemBehavior, true, "\(input) reaches the list before the text")
+        }
+        XCTAssertFalse(view.canPerformAction(up, withSender: nil), "No list: the arrow moves the cursor")
+
+        var keys: [ComposerSuggestionKey] = []
+        view.suggestionKeys = ComposerSuggestionKeys(hasHighlight: false) { keys.append($0) }
+        XCTAssertTrue(view.canPerformAction(up, withSender: nil))
+        let shiftedUp = UIKeyCommand(input: UIKeyCommand.inputUpArrow, modifierFlags: .shift, action: up)
+        XCTAssertFalse(view.canPerformAction(up, withSender: shiftedUp), "Shift-Up still selects text")
+        view.suggestionUpPressed()
+        view.suggestionDownPressed()
+        view.suggestionTabPressed()
+        view.suggestionEscapePressed()
+        XCTAssertEqual(keys, [.up, .down, .chooseFirst, .dismiss])
+    }
+
+    func testReturnPicksAHighlightedSuggestionInsteadOfSending() {
+        let view = ImagePasteTextView()
+        view.returnKeySends = true
+        view.canSubmitFromReturn = true
+        var submitCount = 0
+        view.onSubmitFromReturn = { submitCount += 1; return true }
+        var keys: [ComposerSuggestionKey] = []
+        let returnAction = #selector(ReturnKeyTextView.returnKeyCommandPressed)
+
+        view.suggestionKeys = ComposerSuggestionKeys(hasHighlight: false) { keys.append($0) }
+        view.returnKeyCommandPressed()
+        XCTAssertEqual(submitCount, 1, "Nothing highlighted: Return sends, so /status and Return still runs it")
+
+        view.returnKeySends = false
+        view.suggestionKeys = ComposerSuggestionKeys(hasHighlight: true) { keys.append($0) }
+        XCTAssertTrue(view.canPerformAction(returnAction, withSender: nil), "Even where Return types a newline")
+        view.returnKeyCommandPressed()
+        XCTAssertEqual(keys, [.choose])
+        XCTAssertEqual(submitCount, 1)
+        XCTAssertEqual(view.text, "")
+    }
+
     func testDeclinedKeyCommandStillInsertsTheNewline() {
         let view = ImagePasteTextView()
         view.returnKeySends = true

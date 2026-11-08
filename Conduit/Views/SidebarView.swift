@@ -2395,6 +2395,9 @@ enum CronJobFilter: String, CaseIterable, Identifiable {
 }
 
 private struct CronJobRow: View {
+    // Bigger text gets the room to say what a job is and when it runs, as the
+    // V2 list's rows do: a name cut to one line is no use at that size.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let job: CronJob
     /// Whether the job's runs notify (the host's per-job setting).
@@ -2408,9 +2411,11 @@ private struct CronJobRow: View {
                 .foregroundStyle(job.isActive ? .green : .secondary)
                 .frame(width: 30, height: 30).background((job.isActive ? Color.green : .secondary).opacity(0.13), in: Circle())
             VStack(alignment: .leading, spacing: 3) {
-                Text(job.displayName).scaledFont(.subheadline.weight(.medium)).lineLimit(1)
+                Text(job.displayName).scaledFont(.subheadline.weight(.medium))
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                 Text(CronScheduleText.describe(job, zoneLabel: zoneLabel) ?? AppLocalization.string("No schedule"))
-                    .scaledFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+                    .scaledFont(.caption).foregroundStyle(.secondary)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
             }
             Spacer()
             if !notifies {

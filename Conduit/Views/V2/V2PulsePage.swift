@@ -28,6 +28,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 /// The Chats bar's Pulse button: a dot while cards are unseen.
 struct V2PulseButton: View {
@@ -93,7 +94,7 @@ struct PulseMessageMark: View {
             Image(systemName: "waveform.path.ecg")
                 .font(.system(size: 13, weight: .semibold))
                 .foregroundStyle(Color.conduitAccent)
-                // The message action row's 34 pt, like the buttons beside it.
+                // The Pulse marker reserves its own 34 pt within the action row.
                 .frame(width: 34, height: 34)
                 .contentShape(Rectangle())
         }
@@ -104,6 +105,7 @@ struct PulseMessageMark: View {
 }
 
 struct V2PulsePage: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
     /// On screen (not under a chat pushed over it): only then is it read and marked seen.
@@ -267,7 +269,7 @@ struct V2PulsePage: View {
             try? await Task.sleep(for: .seconds(6))
             // A newer undo restarted this task: that one clears its own bar.
             guard !Task.isCancelled else { return }
-            withAnimation(.snappy) { undo = nil }
+            withAnimation(ConduitMotion.ease(reduceMotion: UIAccessibility.isReduceMotionEnabled)) { undo = nil }
         }
         .onAppear { isShown = true }
         .onDisappear {
@@ -694,7 +696,7 @@ struct V2PulsePage: View {
     /// goes back to Done and cleared, where it was before the mark.
     private func fold(_ brief: PulseLayout.Brief, _ folded: Bool) {
         Haptics.selection()
-        withAnimation(.snappy) {
+        withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) {
             if folded {
                 expandedBriefs.remove(brief.id)
                 if let focused = focusedCard, focused == brief.id || brief.items.contains(where: { $0.id == focused }) {
@@ -750,13 +752,13 @@ struct V2PulsePage: View {
     private func clearedToggle(count: Int) -> some View {
         Button {
             Haptics.selection()
-            withAnimation(.snappy) { showsCleared.toggle() }
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { showsCleared.toggle() }
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "checkmark.circle")
                 Text(AppLocalization.string("Done and cleared"))
                 Text(verbatim: "\(count)")
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(.conduitTertiary)
                 Spacer(minLength: 0)
                 Image(systemName: "chevron.down")
                     .rotationEffect(.degrees(showsCleared ? 180 : 0))
@@ -786,7 +788,7 @@ struct V2PulsePage: View {
             Spacer(minLength: 0)
             Button(AppLocalization.string("Undo")) {
                 Haptics.selection()
-                withAnimation(.snappy) { self.undo = nil }
+                withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { self.undo = nil }
                 if let card = page?.cards.first(where: { $0.id == undo.card }) {
                     switch undo.action {
                     case .dismissed: dismiss(card, false)
@@ -813,7 +815,8 @@ struct V2PulsePage: View {
             // Put off until a time: the one the plugin set, as the cleared row says it.
             if let back { message = PulseRest.returning(back).undoMessage }
         }
-        withAnimation(.snappy) { undo = PulseUndo(card: card, action: action, message: message) }
+        // Called after the plugin answers: read the setting at animation time.
+        withAnimation(ConduitMotion.ease(reduceMotion: UIAccessibility.isReduceMotionEnabled)) { undo = PulseUndo(card: card, action: action, message: message) }
         AccessibilityNotification.Announcement(message).post()
     }
 
@@ -1328,7 +1331,7 @@ struct V2PulsePage: View {
                 }
                 if !up, reason == .wrongTime, let back = rated.restUntil {
                     // Wrong time put it away until a better time: it moves as Not now's does, with Undo.
-                    withAnimation(.snappy) {
+                    withAnimation(ConduitMotion.ease(reduceMotion: UIAccessibility.isReduceMotionEnabled)) {
                         if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                             page?.cards[index].dismissedAt = now
                             page?.cards[index].restUntil = back
@@ -1383,7 +1386,7 @@ struct V2PulsePage: View {
                 let answer = try await client.dismiss(card: card.id, dismissed: dismissed, until: until)
                 guard appState.activeDashboardID == dashboard else { return }
                 guard answer.changed else { return await load() }
-                withAnimation(.snappy) {
+                withAnimation(ConduitMotion.ease(reduceMotion: UIAccessibility.isReduceMotionEnabled)) {
                     if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                         page?.cards[index].dismissedAt = dismissed ? Date() : nil
                         page?.cards[index].restUntil = dismissed ? answer.restUntil : nil
@@ -1507,7 +1510,7 @@ struct V2PulsePage: View {
             do {
                 let answer = try await client.dismissProposal(proposal.id)
                 guard appState.activeDashboardID == dashboard else { return }
-                withAnimation(.snappy) {
+                withAnimation(ConduitMotion.ease(reduceMotion: UIAccessibility.isReduceMotionEnabled)) {
                     setProposal(answer, on: card.id)
                     if let index = page?.cards.firstIndex(where: { $0.id == card.id }) {
                         page?.cards[index].dismissedAt = Date()

@@ -103,26 +103,32 @@ struct BotWorkSettingsView: View {
         if settings.isOn {
             ConduitSettingsSection(title: AppLocalization.string("Workstream Model"), symbol: "cpu", tint: .purple) {
                 NavigationLink {
-                    BotModelPicker(provider: providerBinding, model: modelBinding, allowsInherit: true,
-                                   inheritTitle: AppLocalization.string("Same as Bot Chat"))
+                    // Hermes' per-session reasoning, as the Model sheet offers
+                    // it, beside the model it runs with.
+                    BotModelPicker(
+                        provider: providerBinding, model: modelBinding, allowsInherit: true,
+                        inheritTitle: AppLocalization.string("Same as Bot Chat"),
+                        // Shown from the start, so the first pick keeps the
+                        // page open for its reasoning; it waits for a model.
+                        reasoning: ModelChooserReasoning(
+                            effort: effortBinding.wrappedValue ?? "",
+                            inheritTitle: AppLocalization.string("Default"),
+                            disabled: settings.workstreamModel == nil,
+                            set: { effortBinding.wrappedValue = $0.isEmpty ? nil : $0 }
+                        )
+                    )
                 } label: {
-                    SettingsLinkRow(
+                    let effort = effortBinding.wrappedValue
+                    ModelChooserLinkRow(
                         title: AppLocalization.string("Model"),
-                        value: settings.workstreamModel?.model ?? AppLocalization.string("Same as Bot Chat")
+                        value: settings.workstreamModel?.model ?? AppLocalization.string("Same as Bot Chat"),
+                        detail: settings.workstreamModel == nil
+                            ? nil
+                            : [settings.workstreamModel?.provider, effort.map(ReasoningEffortLevel.displayTitle(for:))]
+                                .compactMap { $0 }.filter { !$0.isEmpty }.joined(separator: " · ")
                     )
                 }
                 .buttonStyle(.plain)
-                if settings.workstreamModel != nil {
-                    // Hermes' per-session reasoning, as the Model sheet offers it.
-                    ConduitMenuPicker(
-                        value: effortBinding.wrappedValue ?? "",
-                        choices: [(id: "", title: AppLocalization.string("Default"))]
-                            + ReasoningEffortLevel.allCases.map { (id: $0.rawValue, title: $0.title) },
-                        onSelect: { effortBinding.wrappedValue = $0.isEmpty ? nil : $0 }
-                    ) {
-                        Text(AppLocalization.string("Reasoning")).foregroundStyle(.secondary)
-                    }
-                }
                 caption(AppLocalization.string("New workstreams start on this model. Work that’s already running keeps its own."))
             }
             ConduitSettingsSection(title: AppLocalization.string("Safety"), symbol: "checkmark.shield", tint: .green) {

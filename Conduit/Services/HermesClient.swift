@@ -461,6 +461,9 @@ enum StreamEvent {
     /// `request.cancel` for one of those: the gateway withdrew it, with its
     /// `reason` (`timeout`, `interrupted`, `shutdown`, `session_closed`).
     case inputPromptExpire(sessionId: String, requestId: String, reason: String? = nil)
+    /// `connection.request` or `connection.update`: the connect card Hermes
+    /// waits on, with the operation's whole snapshot (settled included).
+    case connection(sessionId: String, activity: ConnectionActivity)
     /// `request.cancel` for an approval server request, translated to the
     /// approval queue id the card is keyed by. `resolved` means a choice was
     /// committed — by this device or another surface.
@@ -545,6 +548,10 @@ struct SessionRuntimeSnapshot {
     /// `session.resume` (`open_requests`), oldest first. Upstream never puts
     /// `open_requests` in `session.info`, so a live snapshot parses none.
     let pendingInputPrompts: [InputPromptActivity]
+    /// The open connect card `session.resume` restores
+    /// (`pending_connection`), as its `connection.request` payload.
+    /// AppState adds the resumed session's id.
+    let pendingConnectionPayload: [String: AnyCodable]?
     /// The agent's plan (Hermes 0.21+ `todo_state`), worked out by the
     /// gateway from the whole stored history; nil when the chat has none.
     let todoState: AgentPlan?
@@ -612,6 +619,7 @@ struct SessionRuntimeSnapshot {
         }
         pendingApprovalPayload = object["pending_approval"]?.objectValue
         pendingInputPrompts = InputPromptActivity.pending(inOpenRequests: object["open_requests"])
+        pendingConnectionPayload = object["pending_connection"]?.objectValue
         todoState = (object["todo_state"]?.anyValue as? [String: Any]).flatMap { AgentPlan(snapshot: $0) }
         self.inflight = inflight
         self.queued = queued
@@ -1248,6 +1256,8 @@ final class HermesClient: ObservableObject {
     }
     static let promptSubmitTimeout: TimeInterval = 180 // 3 minutes
     static let titleGenerationTimeout: TimeInterval = 90
+    /// `reload.mcp` connects each configured MCP server before it answers.
+    static let mcpReloadTimeout: TimeInterval = 120
     /// The legacy full-transcript resume is the RPC most likely to carry the
     /// largest payload over the slowest connections (issue #106 follow-up),
     /// so it gets a bounded-but-generous budget instead of the ordinary
@@ -3081,7 +3091,7 @@ final class HermesClient: ObservableObject {
         // Pending decisions and the plan ride the resume response top level.
         // Hoist them so the snapshot parser sees the same contract as
         // session.info.
-        for key in ["pending_clarify", "pending_approval", "todo_state"] {
+        for key in ["pending_clarify", "pending_approval", "pending_connection", "todo_state"] {
             if let value = object[key] {
                 snapshotObject[key] = value
             }
@@ -4274,6 +4284,38 @@ final class HermesClient: ObservableObject {
         _ = try await rpc("connectors.accounts.remove", params: ["connection_id": connectionID], timeout: Self.hostedAppsTimeout)
     }
 
+    // MARK: Connect cards
+
+    /// A chat's connect card names its session as the owner.
+    private static func connectionOwner(_ sessionId: String) -> [String: Any] {
+        ["type": "session", "session_id": sessionId]
+    }
+
+    /// The connect card's answer (`connection.respond`): rows approved
+    /// (with the keys typed for them) or skipped, or Continue. Hermes
+    /// answers with the next `connection.update`.
+    func respondToConnection(opID: String, sessionId: String, targets: [[String: Any]] = [], continues: Bool = false) async throws {
+        var result: [String: Any] = ["targets": targets]
+        if continues { result["settled_by"] = "continue" }
+        _ = try await rpc("connection.respond", params: [
+            "owner": Self.connectionOwner(sessionId), "op_id": opID, "result": result
+        ], timeout: Self.hostedAppsTimeout)
+    }
+
+    /// Try Again on an app whose sign-in page went dead: Hermes mints a
+    /// new one on the open operation (`connectors.connect`, `reconnect`).
+    func reissueConnection(sessionId: String, name: String) async throws {
+        _ = try await rpc("connectors.connect", params: [
+            "owner": Self.connectionOwner(sessionId), "connectors": [name], "reconnect": true
+        ], timeout: Self.hostedAppsTimeout)
+    }
+
+    /// The sign-in page closed: Hermes reads the account now rather than
+    /// at its next tick (`connectors.operation.wake`).
+    func wakeConnection(opID: String, sessionId: String) async throws {
+        _ = try await rpc("connectors.operation.wake", params: ["owner": Self.connectionOwner(sessionId), "op_id": opID])
+    }
+
     /// Hermes' models (`model.options`), for the model pickers, as the
     /// answer came, which they keep (AppState.modelProviders(in:) reads it).
     /// Its rows also carry each signed-in provider's subscription windows
@@ -4418,6 +4460,26 @@ final class HermesClient: ObservableObject {
             "session_id": sessionId,
             "command": cleaned
         ])
+    }
+
+    /// `/reload-mcp` (`reload.mcp`), which `slash.exec` refuses: Hermes
+    /// brings the profile's MCP servers in step with its config. Without
+    /// `confirm` it may only ask (`confirm_required`, with what to send).
+    /// `always` (`hermes dashboard` only; the gateway's listener refuses
+    /// the key) also turns off approvals.mcp_reload_confirm.
+    func reloadMCP(sessionId: String, confirm: Bool, always: Bool) async throws -> MCPReloadOutcome {
+        var params: [String: Any] = ["session_id": sessionId]
+        if confirm { params["confirm"] = true }
+        if always, !speaksSessionAuthority { params["always"] = true }
+        let result = try await rpc("reload.mcp", params: params, timeout: Self.mcpReloadTimeout)
+        return MCPReloadOutcome(from: result)
+    }
+
+    /// `/reload-skills` (`skills.reload`), which `slash.exec` refuses:
+    /// Hermes rescans the profile's skills and says what changed.
+    func reloadSkills(sessionId: String) async throws -> String {
+        let result = try await rpc("skills.reload", params: ["session_id": sessionId])
+        return result.objectValue?["output"]?.stringValue ?? ""
     }
 
     /// Starts a side agent (`prompt.background` / `prompt.btw`) and
@@ -5004,6 +5066,25 @@ extension ProviderInfo {
         }
     }
 
+}
+
+/// What `reload.mcp` answered: it reloaded, or it asks first.
+struct MCPReloadOutcome: Equatable {
+    var needsConfirmation: Bool
+    /// Hermes' own words, when it sent some.
+    var message: String?
+
+    init(needsConfirmation: Bool, message: String?) {
+        self.needsConfirmation = needsConfirmation
+        self.message = message
+    }
+
+    init(from codable: AnyCodable) {
+        let object = codable.objectValue ?? [:]
+        needsConfirmation = object["status"]?.stringValue == "confirm_required"
+        let text = object["message"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines)
+        message = (text?.isEmpty ?? true) ? nil : text
+    }
 }
 
 struct ContextBreakdown {

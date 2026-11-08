@@ -41,6 +41,12 @@ struct ComposerBar: View, Equatable {
     @State private var showCamera = false
     @State private var isFocused = false
     @State private var isShowingSlashSuggestions = false
+    /// The suggestion row a hardware keyboard's arrows highlighted, in the
+    /// list that shows (slash commands, else mentions). Typing clears it.
+    @State private var suggestionHighlight: Int?
+    /// The draft whose mention list Escape closed; it stays closed until
+    /// the draft changes.
+    @State private var mentionsDismissedFor: String?
     @State private var composerErrorMessage: String?
     /// NOT view state: the store is owned by AppState because it must
     /// outlive this view's unmount (the room surface swap destroys the
@@ -352,9 +358,55 @@ struct ComposerBar: View, Equatable {
         }
     }
 
+    private var showsSlashSuggestionList: Bool {
+        isShowingSlashSuggestions && !filteredSlashCommands.isEmpty
+    }
+
+    private func pickSlashSuggestion(_ command: SlashCommand) {
+        replaceComposerText("/\(command.name) ")
+        isShowingSlashSuggestions = false
+    }
+
+    /// What the field's arrows, Tab, Escape and a highlighted Return act
+    /// on, while a list shows (ComposerSuggestionKeys).
+    private var suggestionKeys: ComposerSuggestionKeys? {
+        let count = showsSlashSuggestionList ? filteredSlashCommands.count : mentionCandidates.count
+        guard count > 0 else { return nil }
+        return ComposerSuggestionKeys(hasHighlight: (suggestionHighlight ?? count) < count) { key in
+            handleSuggestionKey(key)
+        }
+    }
+
+    private func handleSuggestionKey(_ key: ComposerSuggestionKey) {
+        let slash = showsSlashSuggestionList ? filteredSlashCommands : []
+        let mentions = slash.isEmpty ? mentionCandidates : []
+        let count = slash.isEmpty ? mentions.count : slash.count
+        switch key {
+        case .up, .down:
+            suggestionHighlight = ComposerSuggestionHighlight.moved(suggestionHighlight, by: key, count: count)
+        case .dismiss:
+            suggestionHighlight = nil
+            if !slash.isEmpty {
+                isShowingSlashSuggestions = false
+            } else {
+                mentionsDismissedFor = text
+            }
+        case .choose, .chooseFirst:
+            guard let index = ComposerSuggestionHighlight.picked(suggestionHighlight, by: key, count: count) else { return }
+            suggestionHighlight = nil
+            Haptics.selection()
+            if !slash.isEmpty {
+                pickSlashSuggestion(slash[index])
+            } else {
+                replaceComposerText(MentionAutocomplete.completing(text, with: mentions[index]))
+            }
+        }
+    }
+
     /// Roster bots matching a trailing `@query`, while the editor has focus.
     private var mentionCandidates: [MentionAutocomplete.Candidate] {
-        guard isFocused, let query = MentionAutocomplete.activeQuery(in: text) else { return [] }
+        guard isFocused, mentionsDismissedFor != text,
+              let query = MentionAutocomplete.activeQuery(in: text) else { return [] }
         return MentionAutocomplete.filter(appState.composerMentionCandidates, query: query)
     }
 
@@ -491,6 +543,8 @@ struct ComposerBar: View, Equatable {
         .onChange(of: text) { _, newValue in
             let isProgrammaticDraftRestore = suppressNextTextChangeSuggestions
             suppressNextTextChangeSuggestions = false
+            suggestionHighlight = nil
+            if mentionsDismissedFor != newValue { mentionsDismissedFor = nil }
             composerErrorMessage = nil
             if newValue.isEmpty {
                 composerTextHeight = restingTextHeight
@@ -687,21 +741,19 @@ struct ComposerBar: View, Equatable {
                 attachmentStrip
             }
 
-            if isShowingSlashSuggestions && !filteredSlashCommands.isEmpty {
+            if showsSlashSuggestionList {
                 SlashSuggestionsOverlay(
                     commands: filteredSlashCommands,
-                    onSelected: { cmd in
-                        replaceComposerText("/\(cmd.name) ")
-                        isShowingSlashSuggestions = false
-                    }
+                    highlighted: suggestionHighlight,
+                    onSelected: { cmd in pickSlashSuggestion(cmd) }
                 )
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            if (!isShowingSlashSuggestions || filteredSlashCommands.isEmpty) && !mentionCandidates.isEmpty {
-                MentionSuggestionList(candidates: mentionCandidates) { candidate in
+            if !showsSlashSuggestionList && !mentionCandidates.isEmpty {
+                MentionSuggestionList(candidates: mentionCandidates, highlighted: suggestionHighlight) { candidate in
                     replaceComposerText(MentionAutocomplete.completing(text, with: candidate))
                 }
                 .padding(.horizontal, 10)
@@ -823,6 +875,7 @@ struct ComposerBar: View, Equatable {
                 // submitFromReturnKey() re-checks the live gate.
                 canSubmitFromReturn: ComposerReturnKey.canSubmit(action: action) || dictationHoldsSendSlot,
                 onSubmitFromReturn: { submitFromReturnKey() },
+                suggestionKeys: suggestionKeys,
                 onUserEdit: {
                     // Typed here: no later change matching dictation's last
                     // write is dictation's.
@@ -2979,10 +3032,13 @@ struct ContextRingView: View {
 
 private struct SlashSuggestionsOverlay: View {
     let commands: [SlashCommand]
+    /// The row a hardware keyboard's arrows highlighted.
+    var highlighted: Int? = nil
     let onSelected: (SlashCommand) -> Void
     @ScaledMetric(relativeTo: .caption2) private var categoryBadgeSize: CGFloat = 9
 
     var body: some View {
+        ScrollViewReader { reader in
         ScrollView {
             VStack(spacing: 0) {
                 ForEach(Array(commands.enumerated()), id: \.element.id) { index, cmd in
@@ -3027,6 +3083,8 @@ private struct SlashSuggestionsOverlay: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
+                    .background(index == highlighted ? Color.conduitAccent.opacity(0.14) : Color.clear)
+                    .accessibilityAddTraits(index == highlighted ? .isSelected : [])
 
                     if index < commands.count - 1 {
                         Divider()
@@ -3034,6 +3092,11 @@ private struct SlashSuggestionsOverlay: View {
                     }
                 }
             }
+        }
+        .onChange(of: highlighted) { _, index in
+            guard let index, commands.indices.contains(index) else { return }
+            reader.scrollTo(commands[index].id)
+        }
         }
         .frame(maxHeight: 280)
         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: 20, style: .continuous))

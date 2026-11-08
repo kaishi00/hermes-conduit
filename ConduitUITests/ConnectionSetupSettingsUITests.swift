@@ -30,7 +30,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
     }
 
     func testSettingsConnectionSetupEditsTestsAndAppliesWithoutTouchingTheSession() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += [
             "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", Identity.stubDashboardURL,
             "-CONNECTION_SETUP_TEST_RESULT", "auth:password"
@@ -107,7 +107,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         // Conduit is set up for, Review offers Sign In Again first and plain
         // Done (unchanged settings) beside it, and Done leaves the active
         // session untouched.
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += [
             "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", Identity.stubDashboardURL,
             "-CONNECTION_SETUP_TEST_RESULT", "auth:interactiveSignInRequired"
@@ -148,7 +148,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
         // the staged test stops at Credentials required — no empty-credential
         // login request is ever sent — and Enter Credentials routes to the
         // existing credentials step with the URL preserved.
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += [
             "-CONDUIT_UI_TEST_CONNECTED_DASHBOARD", Identity.stubDashboardURL,
             "-CONNECTION_SETUP_TEST_RESULT", "auth:credentialsRequired"
