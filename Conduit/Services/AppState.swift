@@ -13728,6 +13728,9 @@ final class AppState: ObservableObject {
         if let at = talkingRoomsReadAt, Date().timeIntervalSince(at) < interval { return }
         talkingRoomsReadAt = Date()
         await refreshTalkingRooms()
+        // Rooms someone else hosts say they're working in their copies,
+        // read on the same tick so their rings come and go with these.
+        if !linkedRoomCopyRows.isEmpty { await refreshLinkedRoomCopies() }
     }
 
     /// Which hosted rooms are talking now: one `groups.state` per room
