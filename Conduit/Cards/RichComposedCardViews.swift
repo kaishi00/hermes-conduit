@@ -49,7 +49,11 @@ struct RichComposedCard: View {
         }
         // A board's tabs draw one card at a time, so a tab switch remounts
         // this view: what was typed and folded is kept for when it's back.
-        .onChange(of: values) { _, new in
+        .onChange(of: values) { old, new in
+            // Seeding a card's starting values on mount isn't typing: only
+            // a change to a filled card counts, so scrolling past cards
+            // doesn't push out the one typed in.
+            guard !old.isEmpty else { return }
             RichCardFieldMemory.shared.keep(card: card, chat: chat, values: new, open: open)
         }
         .onChange(of: open) { _, new in
@@ -338,6 +342,9 @@ struct RichCardButtonRow: View {
     @Environment(\.openURL) private var openURL
     @ObservedObject private var taps = RichCardTapMemory.shared
     @State private var asking: RichButton?
+    /// The chat the confirmation was asked in: answered in another (a switch
+    /// beside the iPad's popover), it goes nowhere.
+    @State private var askedChat: String?
 
     var body: some View {
         let shown = buttons.filter(isShown)
@@ -353,6 +360,10 @@ struct RichCardButtonRow: View {
                                 isPresented: Binding(get: { asking != nil }, set: { if !$0 { asking = nil } }),
                                 titleVisibility: .visible, presenting: asking) { button in
                 Button(role: button.style == .destructive ? .destructive : nil) {
+                    guard context?.chat == askedChat else {
+                        Haptics.error()
+                        return
+                    }
                     run(button)
                 } label: {
                     Text(verbatim: button.label)
@@ -373,14 +384,15 @@ struct RichCardButtonRow: View {
     private func rows(_ shown: [RichButton], draftEmpty: Bool) -> some View {
         ViewThatFits(in: .horizontal) {
             // Ideal widths, so long labels stack rather than truncate side by side.
-            HStack(spacing: 8) { row(shown, draftEmpty: draftEmpty) }
+            HStack(spacing: 8) { row(shown, draftEmpty: draftEmpty, lines: 1) }
                 .fixedSize(horizontal: true, vertical: false)
-            VStack(alignment: .leading, spacing: 8) { row(shown, draftEmpty: draftEmpty) }
+            // Stacked, a long label wraps instead of being cut.
+            VStack(alignment: .leading, spacing: 8) { row(shown, draftEmpty: draftEmpty, lines: nil) }
         }
     }
 
     @ViewBuilder
-    private func row(_ shown: [RichButton], draftEmpty: Bool) -> some View {
+    private func row(_ shown: [RichButton], draftEmpty: Bool, lines: Int?) -> some View {
         ForEach(Array(shown.enumerated()), id: \.offset) { _, button in
             let state = button.id.flatMap { id in
                 context.flatMap { taps.state(RichCardTapMemory.key(card: card, button: id, chat: $0.chat)) }
@@ -388,6 +400,7 @@ struct RichCardButtonRow: View {
             Button {
                 Haptics.light()
                 if button.confirm != nil || button.style == .destructive && button.action == .tap {
+                    askedChat = context?.chat
                     asking = button
                 } else {
                     run(button)
@@ -408,7 +421,8 @@ struct RichCardButtonRow: View {
                     }
                 }
                 .scaledFont(.subheadline.weight(.semibold))
-                .lineLimit(1)
+                .lineLimit(lines)
+                .fixedSize(horizontal: false, vertical: lines == nil)
                 .padding(.horizontal, 14)
                 .frame(minHeight: 44)
                 .foregroundStyle(foreground(button))
