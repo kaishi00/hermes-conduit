@@ -1469,6 +1469,9 @@ extension HermesVoiceGatewayTimeoutTests {
         shared.attachments = [Attachment(id: "a", name: "/Users/me/Desktop/board.jpg", uri: "file:///private/board.jpg", mimeType: "image/jpeg", kind: .image)]
         let named = try XCTUnwrap(VoiceResumeContext.chat([shared, row("9", .assistant, "A to-do list.")])).recent[0].text
         XCTAssertEqual(named, "What's on this? [Attached: board.jpg (image)]")
+        shared.attachments?[0].name = #"C:\Users\me\board.jpg"#
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat([shared, row("9", .assistant, "A to-do list.")])).recent[0].text,
+                       "What's on this? [Attached: board.jpg (image)]", "a Windows path too")
 
         XCTAssertNil(VoiceResumeContext.chat([]))
         XCTAssertNil(VoiceResumeContext.chat([row("1", .user, "Hello?")]), "nothing answered yet: no seed")
