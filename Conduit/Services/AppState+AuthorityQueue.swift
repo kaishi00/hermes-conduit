@@ -88,12 +88,34 @@ extension AppState {
     /// The messages that waited behind it run first.
     func resendLostPrompt(_ row: QueuedPrompt) async {
         let sessionID = authorityQueue.sessionID
+        // Where the words go back if the resend doesn't go: this chat's
+        // draft, wherever the user is by then.
+        let draftKey = durableComposerDraftKeyOnScreen
+        let dashboardID = activeDashboardID
+        let title = displayedChatTitle
         // Its own discard says whether it went: another row's refusal
-        // meanwhile must not keep these words from going.
-        guard await discardLostPrompt(row), authorityQueueIsOpenChat(sessionID) else { return }
+        // meanwhile must not keep these words from going. A refused
+        // discard keeps the card, and the words with it.
+        guard await discardLostPrompt(row) else { return }
         // Hermes took these words as a message once: they go as one again,
         // never as a slash command run here.
-        _ = await submitComposer(text: row.text, busyMode: .queue, runsSlashCommands: false)
+        if authorityQueueIsOpenChat(sessionID),
+           await submitComposer(text: row.text, busyMode: .queue, runsSlashCommands: false) {
+            return
+        }
+        // The card is gone: the words go back in the chat's draft rather
+        // than nowhere.
+        if let dashboardID {
+            returnFailedComposerSubmission(
+                ComposerDraft(text: row.text, attachments: []),
+                key: draftKey,
+                dashboardID: dashboardID,
+                title: title,
+                stoppedQuietly: true
+            )
+        } else {
+            prefillComposer(row.text)
+        }
     }
 
     /// Runs one of the dock's actions on the open chat's queue, saying why
