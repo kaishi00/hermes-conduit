@@ -229,6 +229,8 @@ final class HostedAppsModel {
                     let since = downSince ?? Date()
                     downSince = since
                     guard Date().timeIntervalSince(since) >= Self.outageGrace else { continue }
+                    // Only on its own Hermes, as the other exits.
+                    guard isLatest else { return }
                     notes[slug] = AppLocalization.string("The connection to Hermes dropped, so the sign-in stopped. Try again.")
                     retireOnceConnected(current, slug: slug, hermes: hermes, appState: appState)
                     return
