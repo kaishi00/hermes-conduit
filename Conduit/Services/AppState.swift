@@ -30138,7 +30138,8 @@ final class AppState: ObservableObject {
         // registry or the transcript can show yet.
         if let held = await heldInAuthorityQueue(
             requestedSessionID: requestedSessionID,
-            profile: submissionContext.profile,
+            // The chat's own profile: a Bot Chat's queue is under its bot's.
+            profile: presentationProfile(for: requestedSessionID),
             client: probeClient,
             optimisticRowID: optimisticRowID
         ) {

@@ -62,6 +62,8 @@ extension AppState {
         await queueAction(row) { client, sessionID in
             let persistedTwinsBefore = self.persistedSteerIDs(matching: row.text)
             _ = try await client.sendQueuedPromptNow(sessionID, admissionID: row.admissionID)
+            // Steered in: the same words sent later are a new message.
+            HermesClient.forgetUnansweredSubmission(row.inputID, for: sessionID)
             _ = self.takeQueuedSendRow(admissionID: row.admissionID)
             self.authorityQueue.drop(row.admissionID)
             if self.authorityQueueIsOpenChat(sessionID) {
@@ -96,6 +98,8 @@ extension AppState {
         let draftKey = durableComposerDraftKeyOnScreen
         let dashboardID = activeDashboardID
         let title = displayedChatTitle
+        // The user's own words: sending them annotates @mentions afresh.
+        let words = BotMentions.strippingAnnotation(row.text)
         // Its own discard says whether it went: another row's refusal
         // meanwhile must not keep these words from going. A refused
         // discard keeps the card, and the words with it.
@@ -103,21 +107,21 @@ extension AppState {
         // Hermes took these words as a message once: they go as one again,
         // never as a slash command run here.
         if authorityQueueIsOpenChat(sessionID),
-           await submitComposer(text: row.text, busyMode: .queue, runsSlashCommands: false) {
+           await submitComposer(text: words, busyMode: .queue, runsSlashCommands: false) {
             return
         }
         // The card is gone: the words go back in the chat's draft rather
         // than nowhere.
         if let dashboardID {
             returnFailedComposerSubmission(
-                ComposerDraft(text: row.text, attachments: []),
+                ComposerDraft(text: words, attachments: []),
                 key: draftKey,
                 dashboardID: dashboardID,
                 title: title,
                 stoppedQuietly: true
             )
         } else {
-            prefillComposer(row.text)
+            prefillComposer(words)
         }
     }
 

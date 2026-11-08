@@ -183,6 +183,14 @@ final class BotMentionTests: XCTestCase {
         ))
     }
 
+    func testStrippingTheAnnotationGivesBackTheUsersWords() {
+        let words = "have a look @researcher"
+        let annotated = BotMentions.annotated(text: words, mentions: [bot("researcher", title: "Research Buddy")])
+        XCTAssertNotEqual(annotated, words)
+        XCTAssertEqual(BotMentions.strippingAnnotation(annotated), words)
+        XCTAssertEqual(BotMentions.strippingAnnotation(words), words, "No note: the words stay as they are")
+    }
+
     func testPrimaryAnnotationUsesHermesHandle() {
         let annotated = BotMentions.annotated(
             text: "x",
