@@ -368,10 +368,20 @@ struct NotifierPluginUpdater {
             // No answer at all (a timeout, a dropped connection) may still
             // have started the job: follow one that runs rather than start
             // a second update from here.
-            guard Self.httpStatus(of: error) == nil,
-                  let probe = try? await request(path, "GET", nil),
-                  let running = probe["job"] as? [String: Any], Self.hostStep(running) != nil else { return nil }
-            job = running
+            guard Self.httpStatus(of: error) == nil else { return nil }
+            if let probe = try? await request(path, "GET", nil),
+               let running = probe["job"] as? [String: Any], Self.hostStep(running) != nil {
+                job = running
+            } else {
+                // Nothing runs there: a host that manages the plugin now, unknown
+                // to the status this started from, never gets Hermes' own pull.
+                if let current = try? await request(NotifierPluginStatus.path, "GET", nil),
+                   let managedBy = NotifierPluginStatus.managedBy(from: current) {
+                    report?(current)
+                    return .failed(detail: NotifierPluginStatus.managedText(managedBy))
+                }
+                return nil
+            }
         }
         guard let jobID = job["id"] as? String else { return nil }
         let started = now()

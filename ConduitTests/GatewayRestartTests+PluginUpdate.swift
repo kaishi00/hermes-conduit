@@ -951,6 +951,23 @@ extension GatewayRestartTests {
         XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
     }
 
+    func testALostStartOnAHostNowManagedNeverFallsBackToHermesPull() async {
+        // The status this ran from predates the host's CONDUIT_PUSH_MANAGED,
+        // and the start's answer was lost with nothing running there.
+        let host = PluginHost()
+        host.selfUpdateStartError = URLError(.timedOut)
+        var managed = Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a")
+        managed["managed"] = true
+        managed["managed_by"] = "Family farm"
+        host.capabilities = [managed]
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .failed(detail: "Family farm keeps the plugin up to date."))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
+    }
+
     func testAManagedHostsWaitingRestartRunsOnlyTheRestarts() async {
         let host = PluginHost()
         host.capabilities = [
