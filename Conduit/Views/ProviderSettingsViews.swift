@@ -195,6 +195,7 @@ struct ModelPageProviders: View {
 /// The top of the Model page: each provider this profile is connected to,
 /// and Add a provider.
 struct ProvidersSettingsSection: View {
+    @EnvironmentObject private var appState: AppState
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @ObservedObject var service: ProviderSettingsService
     let context: ProviderModelContext
@@ -239,6 +240,7 @@ struct ProvidersSettingsSection: View {
         .task { await service.reload() }
         .sheet(isPresented: $adding) {
             AddProviderSheet(service: service, retryCatalog: { await context.reloadCatalog() })
+                .environmentObject(appState)
         }
     }
 

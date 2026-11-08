@@ -24,6 +24,7 @@ struct DelegationRoutingActions {
 }
 
 struct DelegationRoutingSettings: View {
+    @EnvironmentObject private var appState: AppState
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let actions: DelegationRoutingActions
     /// Tells the page the routing it shows, so Delegate model can say it
@@ -101,6 +102,7 @@ struct DelegationRoutingSettings: View {
                     models: models,
                     save: { route in try await saveRoute(route, replacing: editing.route?.name) }
                 )
+                .environmentObject(appState)
             }
             .confirmationDialog(
                 AppLocalization.string("Delete route \(deleting?.name ?? "")?"),
