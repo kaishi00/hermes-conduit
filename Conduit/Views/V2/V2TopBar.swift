@@ -273,18 +273,28 @@ struct V2ProfileStrip: View {
         appState.profilesWithUnread(among: profiles(appState).filter { $0 != appState.activeProfile })
     }
 
+    /// What this strip draws, from the same value the tests read.
+    private var stripStyle: V2SessionsBarControls.StripStyle {
+        V2SessionsBarControls.stripStyle(profiles: profilesPreference, allChipDrawn: allSelected)
+    }
+
     var body: some View {
-        if currentOnly {
+        if stripStyle != .strip {
             // No scrolling row or widest-name reservation: the user opted
             // out of the one-tap strip to give this space back to the bar.
             HStack(spacing: 8) {
-                if showsAllChip && allSelected {
+                if stripStyle == .allChip {
                     allChip
                 } else {
                     chip(appState.activeProfile, unread: !unread.isEmpty)
                 }
             }
             .padding(.vertical, 2)
+            // A full-width context (a stacked Chats bar, Tasks, Settings) puts
+            // the lone chip on the row's leading edge as the strip does rather
+            // than centering it; the one-row candidate stays content-sized, so
+            // ViewThatFits still measures it as it is.
+            .frame(maxWidth: scrolls ? .infinity : nil, alignment: .leading)
         } else if scrolls {
             ScrollViewReader { proxy in
                 ScrollView(.horizontal, showsIndicators: false) {

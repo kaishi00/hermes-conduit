@@ -50,6 +50,18 @@ struct V2SessionsBarControls: Equatable {
         profiles == .currentOnly && allProfilesChatsOn
     }
 
+    /// What the strip draws: every profile's chip, the All chip on its own,
+    /// or the active profile's chip on its own. Current only is what takes
+    /// the row away; the All chip is drawn only while All chats is on with
+    /// two profiles to list (issue 2012).
+    enum StripStyle: Equatable { case strip, allChip, singleChip }
+
+    static func stripStyle(profiles: V2SessionsBarPreferences.Profiles,
+                           allChipDrawn: Bool) -> StripStyle {
+        guard profiles == .currentOnly else { return .strip }
+        return allChipDrawn ? .allChip : .singleChip
+    }
+
     /// The list's write-back, not the resolve step: once it sees Projects
     /// hidden, a stored Projects page becomes Sessions, so showing Projects
     /// again starts there. Only the list writes, so another window's render

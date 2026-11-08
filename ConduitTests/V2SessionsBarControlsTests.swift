@@ -138,6 +138,15 @@ extension SidebarLayoutTests {
         XCTAssertFalse(V2SessionsBarControls.hidesStoredProjectsPage(nil, showsProjects: false))
     }
 
+    /// The strip's own decision, so a regression that draws every chip under
+    /// Current only fails a test rather than a device check.
+    func testSessionsBarCurrentOnlyDrawsOneChip() {
+        XCTAssertEqual(V2SessionsBarControls.stripStyle(profiles: .currentOnly, allChipDrawn: true), .allChip)
+        XCTAssertEqual(V2SessionsBarControls.stripStyle(profiles: .currentOnly, allChipDrawn: false), .singleChip)
+        XCTAssertEqual(V2SessionsBarControls.stripStyle(profiles: .all, allChipDrawn: true), .strip)
+        XCTAssertEqual(V2SessionsBarControls.stripStyle(profiles: .all, allChipDrawn: false), .strip)
+    }
+
     /// A throwaway defaults store, so a test never reads or writes the test
     /// host's own preferences.
     private func withSessionsBarDefaults(_ body: (UserDefaults) -> Void) {
