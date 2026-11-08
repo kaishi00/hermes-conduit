@@ -33,8 +33,6 @@ import UIKit
 /// The Chats bar's Pulse button: a dot while cards are unseen.
 struct V2PulseButton: View {
     @EnvironmentObject private var appState: AppState
-    @Environment(\.scenePhase) private var scenePhase
-    @Environment(\.v2Shell) private var shell
     /// Bots Home's shortcut: a named pill beside Artifacts' rather than
     /// the Sessions bar's icon (`V2ShortcutPill`).
     var named = false
@@ -54,28 +52,46 @@ struct V2PulseButton: View {
             ? AppLocalization.string("Pulse, new cards")
             : AppLocalization.string("Pulse"))
         .accessibilityIdentifier(named ? "bots.pulse" : "chats.pulse")
-        // While the Chats tab shows, every minute: new cards light the dot and
-        // mark their messages in the chats. At once when the plugin answers
-        // after a launch or a reconnect, so the feed names Pulse's chat.
-        .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID,
-                                  active: scenePhase == .active && shell.isTabActive,
-                                  served: appState.notifierPlugin.reports(PulseClient.feedCapability))) {
-            guard scenePhase == .active, shell.isTabActive else { return }
-            while !Task.isCancelled {
-                // The Pulse page, open over or beside the list, reads the
-                // feed every minute itself; a read of its that just landed
-                // stands for this one (issue 1728).
-                if appState.pulseFeedIsFresh(within: 50), let applied = appState.pulseFeedAppliedAt?.at {
-                    // Wake a minute after that read, so the page closing
-                    // meanwhile doesn't leave the feed two minutes old.
-                    let wait = max(1, 60 - Date().timeIntervalSince(applied))
-                    try? await Task.sleep(for: .seconds(wait))
-                } else {
-                    await appState.refreshPulseFeed()
-                    try? await Task.sleep(for: .seconds(60))
+    }
+}
+
+/// The Chats tab's feed read, mounted by the tab rather than carried by the
+/// Pulse button: hiding the button (Sessions bar) must not stop the dot and
+/// the chats' marks updating. Only the tab that shows runs it, as the
+/// button's own task did.
+struct PulseFeedReader: View {
+    @EnvironmentObject private var appState: AppState
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.v2Shell) private var shell
+
+    var body: some View {
+        Color.clear
+            .frame(width: 0, height: 0)
+            .accessibilityHidden(true)
+            // While the Chats tab shows, every minute: new cards light the dot
+            // and mark their messages in the chats. At once when the plugin
+            // answers after a launch or a reconnect, so the feed names Pulse's
+            // chat.
+            .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID,
+                                      active: scenePhase == .active && shell.isTabActive,
+                                      served: appState.notifierPlugin.reports(PulseClient.feedCapability),
+                                      available: appState.showsPulseScreen)) {
+                guard scenePhase == .active, shell.isTabActive, appState.showsPulseScreen else { return }
+                while !Task.isCancelled {
+                    // The Pulse page, open over or beside the list, reads the
+                    // feed every minute itself; a read of its that just landed
+                    // stands for this one (issue 1728).
+                    if appState.pulseFeedIsFresh(within: 50), let applied = appState.pulseFeedAppliedAt?.at {
+                        // Wake a minute after that read, so the page closing
+                        // meanwhile doesn't leave the feed two minutes old.
+                        let wait = max(1, 60 - Date().timeIntervalSince(applied))
+                        try? await Task.sleep(for: .seconds(wait))
+                    } else {
+                        await appState.refreshPulseFeed()
+                        try? await Task.sleep(for: .seconds(60))
+                    }
                 }
             }
-        }
     }
 }
 
@@ -83,6 +99,7 @@ private struct PulseRefreshKey: Hashable {
     let dashboard: UUID?
     let active: Bool
     let served: Bool
+    let available: Bool
 }
 
 /// The mark under a message whose promise Pulse follows up: opens its card.
@@ -149,113 +166,49 @@ struct V2PulsePage: View {
 
     private var client: PulseClient { appState.pulseClient }
 
-    var body: some View {
-        ZStack {
-            V2Backdrop(drifts: false)
-            content
-        }
-        .navigationTitle(Text("Pulse"))
-        .navigationBarTitleDisplayMode(.large)
-        .toolbar {
-            // Quiet for today (0.80.2); while Pulse is quiet, the banner says so instead.
-            if canQuiet, page != nil, page?.quietNow == nil {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        quiet(true)
-                    } label: {
-                        Label(AppLocalization.string("Quiet for today"), systemImage: "moon.zzz")
-                    }
-                    .disabled(quieting)
-                    .accessibilityIdentifier("pulse.quiet-today")
-                }
-            }
-            if appState.pulseExplainsLearning {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        showsLeftOut = true
-                    } label: {
-                        Label(AppLocalization.string("What Pulse left out"), systemImage: "tray.full")
-                    }
-                    .accessibilityIdentifier("pulse.left-out")
-                }
-            }
+    /// Quiet for today (0.80.2); while Pulse is quiet, the banner says so instead.
+    private var offersQuietToday: Bool { canQuiet && page?.quietNow == nil }
+
+    /// Kept out of `body`, whose expression the type-checker otherwise stalls
+    /// on (Smoke, #2020).
+    @ToolbarContentBuilder
+    private var pageToolbar: some ToolbarContent {
+        if offersQuietToday {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
-                    showsLearned = true
+                    quiet(true)
                 } label: {
-                    Label(AppLocalization.string("What Pulse learned"), systemImage: "slider.horizontal.3")
+                    Label(AppLocalization.string("Quiet for today"), systemImage: "moon.zzz")
                 }
-                .accessibilityIdentifier("pulse.learned")
+                .disabled(quieting)
+                .accessibilityIdentifier("pulse.quiet-today")
             }
         }
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            // Stacked on the call bar, so it never covers the call's controls.
-            VStack(spacing: 0) {
-                if let undo {
-                    undoBar(undo)
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
-                        .transition(.move(edge: .bottom).combined(with: .opacity))
+        if appState.pulseExplainsLearning {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showsLeftOut = true
+                } label: {
+                    Label(AppLocalization.string("What Pulse left out"), systemImage: "tray.full")
                 }
-                MinimisedLiveVoiceBar()
+                .accessibilityIdentifier("pulse.left-out")
             }
         }
-        .sheet(isPresented: $showsLearned) {
-            PulseLearnedSheet {
-                learnedNote = nil  // it may name a lesson just undone
-                Task { await load() }
+        ToolbarItem(placement: .topBarTrailing) {
+            Button {
+                showsLearned = true
+            } label: {
+                Label(AppLocalization.string("What Pulse learned"), systemImage: "slider.horizontal.3")
             }
-            .environmentObject(appState)
+            .accessibilityIdentifier("pulse.learned")
         }
-        .sheet(isPresented: $showsLeftOut) {
-            PulseLeftOutSheet { card in
-                // It shows as new, at the card, once the sheet is down.
-                newCards?.insert(card)
-                Task {
-                    await load()
-                    focus(PulseOpenRequest(card: card))
-                }
-            }
-            .environmentObject(appState)
-        }
-        .confirmationDialog(
-            AppLocalization.string("What was wrong with it?"),
-            isPresented: Binding(get: { reasonCard != nil }, set: { if !$0 { reasonCard = nil } }),
-            titleVisibility: .visible,
-            presenting: reasonCard
-        ) { card in
-            ForEach(appState.pulseDownReasons) { reason in
-                Button(reason.title) { rate(card, up: false, reason: reason) }
-            }
-            Button(AppLocalization.string("Just thumbs down")) { rate(card, up: false, reason: nil) }
-        } message: { _ in
-            Text("A reason changes what Pulse does right away, and you can undo it under What Pulse learned. Just thumbs down only teaches Pulse.")
-        }
-        .confirmationDialog(
-            AppLocalization.string("Not now, until when?"),
-            isPresented: Binding(get: { restCard != nil }, set: { if !$0 { restCard = nil } }),
-            titleVisibility: .visible,
-            presenting: restCard
-        ) { card in
-            ForEach(PulseRest.choices(night: page?.night, brief: page?.briefTime)) { rest in
-                Button(rest.title) { dismiss(card, true, until: rest) }
-            }
-        } message: { _ in
-            Text("It comes back as new then, unless it got done meanwhile.")
-        }
-        .confirmationDialog(
-            undoCard?.proposal?.isEvent == false ? AppLocalization.string("Remove it from your reminders?")
-                : AppLocalization.string("Remove it from your calendar?"),
-            isPresented: Binding(get: { undoCard != nil }, set: { if !$0 { undoCard = nil } }),
-            titleVisibility: .visible,
-            presenting: undoCard
-        ) { card in
-            Button(AppLocalization.string("Remove"), role: .destructive) { undoProposal(card) }
-        } message: { card in
-            Text(verbatim: card.proposal?.line ?? card.title)
-        }
+    }
+
+    var body: some View {
+        pageWithDialogs
         .task(id: PulseRefreshKey(dashboard: appState.activeDashboardID, active: isShown && scenePhase == .active,
-                                  served: appState.notifierPlugin.reports(PulseClient.feedCapability))) {
+                                  served: appState.notifierPlugin.reports(PulseClient.feedCapability),
+                                  available: appState.showsPulseScreen)) {
             guard isShown, scenePhase == .active else { return }
             // Cards that come in while the page is open show up too, and the
             // feed is read again once the plugin answers after a launch.
@@ -309,6 +262,90 @@ struct V2PulsePage: View {
         .onChange(of: appState.pulseOpenRequest) { _, request in
             // Only the page on screen: one covered by a chat leaves it to the one pushed over it.
             if let request, isShown { focus(request) }
+        }
+    }
+
+    private var pageWithDialogs: some View {
+        pageSheets
+        .confirmationDialog(
+            AppLocalization.string("What was wrong with it?"),
+            isPresented: Binding(get: { reasonCard != nil }, set: { if !$0 { reasonCard = nil } }),
+            titleVisibility: .visible,
+            presenting: reasonCard
+        ) { card in
+            ForEach(appState.pulseDownReasons) { reason in
+                Button(reason.title) { rate(card, up: false, reason: reason) }
+            }
+            Button(AppLocalization.string("Just thumbs down")) { rate(card, up: false, reason: nil) }
+        } message: { _ in
+            Text("A reason changes what Pulse does right away, and you can undo it under What Pulse learned. Just thumbs down only teaches Pulse.")
+        }
+        .confirmationDialog(
+            AppLocalization.string("Not now, until when?"),
+            isPresented: Binding(get: { restCard != nil }, set: { if !$0 { restCard = nil } }),
+            titleVisibility: .visible,
+            presenting: restCard
+        ) { card in
+            ForEach(PulseRest.choices(night: page?.night, brief: page?.briefTime)) { rest in
+                Button(rest.title) { dismiss(card, true, until: rest) }
+            }
+        } message: { _ in
+            Text("It comes back as new then, unless it got done meanwhile.")
+        }
+        .confirmationDialog(
+            undoCard?.proposal?.isEvent == false ? AppLocalization.string("Remove it from your reminders?")
+                : AppLocalization.string("Remove it from your calendar?"),
+            isPresented: Binding(get: { undoCard != nil }, set: { if !$0 { undoCard = nil } }),
+            titleVisibility: .visible,
+            presenting: undoCard
+        ) { card in
+            Button(AppLocalization.string("Remove"), role: .destructive) { undoProposal(card) }
+        } message: { card in
+            Text(verbatim: card.proposal?.line ?? card.title)
+        }
+    }
+
+    private var pageSheets: some View {
+        pageScaffold
+        .sheet(isPresented: $showsLearned) {
+            PulseLearnedSheet {
+                learnedNote = nil  // it may name a lesson just undone
+                Task { await load() }
+            }
+            .environmentObject(appState)
+        }
+        .sheet(isPresented: $showsLeftOut) {
+            PulseLeftOutSheet { card in
+                // It shows as new, at the card, once the sheet is down.
+                newCards?.insert(card)
+                Task {
+                    await load()
+                    focus(PulseOpenRequest(card: card))
+                }
+            }
+            .environmentObject(appState)
+        }
+    }
+
+    private var pageScaffold: some View {
+        ZStack {
+            V2Backdrop(drifts: false)
+            content
+        }
+        .navigationTitle(Text("Pulse"))
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar { pageToolbar }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            // Stacked on the call bar, so it never covers the call's controls.
+            VStack(spacing: 0) {
+                if let undo {
+                    undoBar(undo)
+                        .padding(.horizontal, 16)
+                        .padding(.bottom, 12)
+                        .transition(.move(edge: .bottom).combined(with: .opacity))
+                }
+                MinimisedLiveVoiceBar()
+            }
         }
     }
 

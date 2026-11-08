@@ -44,6 +44,15 @@ extension KanbanTests {
         XCTAssertEqual(OfficialSkill(["name": "solo"])?.identifier, "solo")
         XCTAssertEqual(CapabilitySkillOrdering.prettyCategory("software_development"), "Software Development")
         XCTAssertEqual(CapabilitySkillOrdering.prettyCategory(nil), "General")
+        let available = CapabilitySkillOrdering.available(catalog, installedNames: [], query: "")
+        XCTAssertEqual(CapabilitySkillOrdering.categories(available), ["general", "research"])
+        XCTAssertEqual(
+            CapabilitySkillOrdering.grouped(available, category: nil).map { "\($0.category): \($0.skills.map(\.name))" },
+            ["general: [\"notes\", \"pdf-tools\"]", "research: [\"arxiv\"]"],
+            "Categories A-Z by their shown name, each one's skills A-Z"
+        )
+        XCTAssertEqual(CapabilitySkillOrdering.grouped(available, category: "research").map(\.category), ["research"])
+        XCTAssertEqual(CapabilitySkillOrdering.categories([], keeping: "research"), ["research"], "a picked category stays in the menu")
     }
 
     func testCapabilitySkillFrontmatterKeepsTopLevelFields() {
@@ -481,6 +490,7 @@ extension KanbanTests {
         // A refresh leaves, then a newer one reads the list after a change.
         let older = Task { await store.loadPlugins() }
         while held == nil { await Task.yield() }
+        XCTAssertTrue(store.pluginCatalogLoading, "the tab says the catalog is loading while it's read")
         requester.responses["/api/dashboard/plugins/hub"] = ["plugins": [
             ["name": "Weather", "source": "git", "runtime_status": "enabled"],
             ["name": "Maps", "source": "git", "runtime_status": "enabled"],
@@ -491,6 +501,47 @@ extension KanbanTests {
 
         XCTAssertEqual(Set(store.plugins.map(\.name)), ["Weather", "Maps"], "the older answer arrived last but is older")
         XCTAssertEqual(store.plugins.first { $0.name == "Weather" }?.isEnabled, true)
+        XCTAssertFalse(store.pluginCatalogLoading, "the newest read cleared it, and the older one's end doesn't set it again")
+
+        // The official skills say so the same way.
+        var heldSkills: CheckedContinuation<Void, Never>?
+        requester.responses["/api/skills/hub/official"] = ["skills": [[String: Any]]()]
+        requester.beforeAnswering = { path in
+            guard path.hasPrefix("/api/skills/hub/official"), heldSkills == nil else { return }
+            await withCheckedContinuation { heldSkills = $0 }
+        }
+        let skills = Task { await store.loadOfficialSkills() }
+        while heldSkills == nil { await Task.yield() }
+        XCTAssertTrue(store.officialSkillsLoading)
+        heldSkills?.resume()
+        await skills.value
+        XCTAssertFalse(store.officialSkillsLoading)
+
+        // A read that fails says so, a retry that lands clears it, and a
+        // read cut off by leaving the tab says nothing either way.
+        requester.beforeAnswering = nil
+        requester.failures["/api/skills/hub/official"] = URLError(.timedOut)
+        requester.failures["/api/dashboard/plugins/catalog"] = URLError(.timedOut)
+        await store.loadOfficialSkills()
+        await store.loadPlugins()
+        XCTAssertTrue(store.officialSkillsFailed, "the tab says the catalog couldn't be read")
+        XCTAssertTrue(store.pluginCatalogFailed)
+        requester.failures = [:]
+        await store.loadOfficialSkills()
+        await store.loadPlugins()
+        XCTAssertFalse(store.officialSkillsFailed, "Try Again that lands clears it")
+        XCTAssertFalse(store.pluginCatalogFailed)
+        var heldCut: CheckedContinuation<Void, Never>?
+        requester.beforeAnswering = { path in
+            guard path.hasPrefix("/api/skills/hub/official"), heldCut == nil else { return }
+            await withCheckedContinuation { heldCut = $0 }
+        }
+        let cut = Task { await store.loadOfficialSkills() }
+        while heldCut == nil { await Task.yield() }
+        cut.cancel()
+        heldCut?.resume()
+        await cut.value
+        XCTAssertFalse(store.officialSkillsFailed, "a read cut off isn't the catalog failing")
     }
 
     /// A catalog connector's keys go to the profile's .env, only the

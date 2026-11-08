@@ -173,6 +173,22 @@ extension GroupChatModelsTests {
         XCTAssertEqual(routes.copiesReads, reads + 1, "its copy is there: no more copies reads")
     }
 
+    @MainActor
+    func testBotsHomesTalkingTickReadsTheCopiesSoACopysRingFollowsItsWork() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(working: true)])
+        let appState = try copiesAppState(routes)
+        copiesConnect(appState)
+        appState.applyNotifierPluginReport(copiesPluginReport)
+        await appState.refreshGroupChatSupport()
+        await copiesWait("the copies read", until: { appState.linkedRoomCopyRows.first?.state.working == true })
+
+        routes.copies = [copiesCopy(working: false)]
+        let reads = routes.copiesReads
+        await appState.refreshTalkingRoomsIfDue(every: .seconds(12))
+        XCTAssertEqual(routes.copiesReads, reads + 1, "the tick reads the copies too")
+        XCTAssertEqual(appState.linkedRoomCopyRows.first?.state.working, false, "its ring goes when its work does")
+    }
+
     /// A dictation Retry in an open room hosted elsewhere: the words reach
     /// the draft its composer reads, kept by the copy's Link too.
     @MainActor
