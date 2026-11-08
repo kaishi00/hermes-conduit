@@ -2297,7 +2297,7 @@ Dynamic Type cap) · text for row wrapping (none: no captions or strings change)
 **Open gaps**
 - Without a dashboard, a run of Hermes' unified runtime (a `local-*` id) that `cron.runs` doesn't name a job for is left out of every job's history.
 
-**Checked:** 2026-11-08, #PRNUM (a pinned job's model line in both rows follows the same two-line rule at accessibility sizes; see A scheduled job's model); 2026-11-08, #1924 (description and Siblings now record both scheduled-job rows, the copied chat-row rule, the scrolling detail sheet and unchanged text); 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code now names CronJobRow and V2ScheduledList's row); 2026-11-03, #1712 (added, fixing #1707).
+**Checked:** 2026-11-08, #2047 (a pinned job's model line in both rows follows the same two-line rule at accessibility sizes; see A scheduled job's model); 2026-11-08, #1924 (description and Siblings now record both scheduled-job rows, the copied chat-row rule, the scrolling detail sheet and unchanged text); 2026-11-07, #1924 (a job's name and schedule wrap to two lines at accessibility text sizes in the drawer's Cron list and Tasks › Scheduled, its next run too in Tasks, as a chat's row already does; Code now names CronJobRow and V2ScheduledList's row); 2026-11-03, #1712 (added, fixing #1707).
 
 ## A scheduled job's model
 
@@ -2337,7 +2337,7 @@ README.md's Scheduled jobs line)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #PRNUM (added)
+**Checked:** 2026-11-08, #2047 (added)
 
 ## Links in messages
 
@@ -4038,7 +4038,7 @@ one section) · Voice jobs (done) · Settings > Pulse's model (done) · a bot's
 Model page from New Bot and Edit Bot, and Edit Bot > Work's Workstream
 Model (done) · the Kanban model override, from the task composer and a
 task's page (done) · a scheduled job's Model in its editor (done,
-#PRNUM: see A scheduled job's model) · a custom endpoint's Model after Find models (done: its
+#2047: see A scheduled job's model) · a custom endpoint's Model after Find models (done: its
 models as one provider) · the composer's Model sheet (not needed: it
 switches the live session and keeps its own sheet; it shares Edit's editor,
 the bars and Quick picks) · a provider's page in Models & providers (not
@@ -4067,7 +4067,7 @@ menus)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #PRNUM (a scheduled job's Model row in Edit job and New job opens this page, Profile default first, with every reasoning level); 2026-11-08, #2002 (a bot's Model and Workstream Model rows name the catalog's model and provider, as every other row does; a provider-only pick is named by its row's title on the Model page's top card and on the tagged rows, Voice jobs, Voice replies, Helper models' pages and Pulse; the Helper models list's own summary, HelperModelSlot.value, keeps the saved spelling as it does for every pick, having no catalog); 2026-11-08, #1992 (entry added)
+**Checked:** 2026-11-08, #2047 (a scheduled job's Model row in Edit job and New job opens this page, Profile default first, with every reasoning level); 2026-11-08, #2002 (a bot's Model and Workstream Model rows name the catalog's model and provider, as every other row does; a provider-only pick is named by its row's title on the Model page's top card and on the tagged rows, Voice jobs, Voice replies, Helper models' pages and Pulse; the Helper models list's own summary, HelperModelSlot.value, keeps the saved spelling as it does for every pick, having no catalog); 2026-11-08, #1992 (entry added)
 
 ## The + that makes something new
 
