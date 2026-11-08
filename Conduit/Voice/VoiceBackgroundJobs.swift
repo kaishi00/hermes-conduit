@@ -2603,6 +2603,20 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             jobs[index].inputRequestDelivered = false
             jobs[index].waitingApproval = nil
             jobs[index].waitingQuestion = nil
+        case .connection(_, let card):
+            // A connect card waits on the user in the chat, like an input
+            // card; told once, not at each of its updates.
+            if card.isOpen, before.status != .needsInput {
+                jobs[index].status = .needsInput
+                jobs[index].inputRequestDelivered = false
+                jobs[index].waitingApproval = nil
+                jobs[index].waitingQuestion = nil
+            } else if !card.isOpen, before.status == .needsInput,
+                      before.waitingApproval == nil, before.waitingQuestion == nil {
+                // Settled: Hermes carries on, as after an answered input.
+                jobs[index].status = .running
+                jobs[index].inputRequestDelivered = false
+            }
         case .messageComplete(_, let messageID, let content, _, _):
             // An earlier voice turn's late or replayed completion, once the
             // next turn owns the chat, is not this turn's reply.
@@ -2838,7 +2852,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         case .messageStart(let id), .messageDelta(let id, _), .messageInterim(let id, _, _), .reasoningDelta(let id, _),
              .messageComplete(let id, _, _, _, _), .messageError(let id, _), .messageInterrupted(let id),
              .toolStart(let id, _, _, _), .toolComplete(let id, _, _, _),
-             .approval(let id, _), .clarify(let id, _), .inputPrompt(let id, _):
+             .approval(let id, _), .clarify(let id, _), .inputPrompt(let id, _), .connection(let id, _):
             return id
         default:
             return nil

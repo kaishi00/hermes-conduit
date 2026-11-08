@@ -36,7 +36,7 @@ final class LoginKeyboardUITests: XCTestCase {
     }
 
     func testCloudflareFieldsAndConnectStayReachableWithKeyboardVisible() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launch()
 
         let serverField = app.textFields[Identity.serverURL]
@@ -117,7 +117,7 @@ final class LoginKeyboardUITests: XCTestCase {
     /// the top of the login card and open the Connection Setup shell without
     /// touching any other control.
     func testConnectionSetupAffordanceIsReachableAndOpensShell() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launch()
 
         let serverField = app.textFields[Identity.serverURL]
@@ -177,7 +177,7 @@ final class LoginKeyboardUITests: XCTestCase {
     /// copy and a Troubleshoot action that lands in the Connection Setup
     /// shell — and it must not trap Connect below the keyboard/viewport.
     func testMalformedURLShowsActionableErrorWithTroubleshootAndConnectStaysReachable() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launch()
 
         let serverField = app.textFields[Identity.serverURL]
@@ -225,7 +225,7 @@ final class LoginKeyboardUITests: XCTestCase {
     /// failure (still no network I/O: the policy rejects before any request),
     /// with its own title distinct from the malformed-URL case.
     func testRemotePlainHTTPShowsInsecureTransportErrorAndConnectStaysReachable() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launch()
 
         let serverField = app.textFields[Identity.serverURL]

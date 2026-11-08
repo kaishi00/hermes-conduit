@@ -183,6 +183,8 @@ struct HostedAppsDirectoryPage: View {
     @EnvironmentObject private var appState: AppState
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let model: HostedAppsModel
+    /// Apps Hermes suggested in a chat, listed first in its order.
+    var suggested: [String] = []
     @State private var query = ""
 
     private struct AppGroup: Identifiable {
@@ -216,6 +218,18 @@ struct HostedAppsDirectoryPage: View {
                     symbol: "square.grid.3x3",
                     message: query.isEmpty ? nil : AppLocalization.string("Nothing matches “\(query)”.")
                 )
+            }
+            let picks = suggested.compactMap { slug in
+                (model.snapshot?.apps ?? []).first { $0.slug == slug && HostedAppsSection.matches($0, query) }
+            }
+            if !picks.isEmpty {
+                CapabilitySection(title: AppLocalization.string("Suggested"), symbol: "sparkles", tint: .conduitAura) {
+                    ForEach(Array(picks.enumerated()), id: \.element.id) { index, app in
+                        CapabilityCardRow(divided: index > 0) {
+                            HostedAppRow(app: app, model: model)
+                        }
+                    }
+                }
             }
             ForEach(groups) { group in
                 CapabilitySection(title: group.category, symbol: "square.grid.2x2", tint: .conduitAura) {
@@ -259,7 +273,7 @@ struct HostedAppPage: View {
     private var app: HostedApp? { model.snapshot.map { $0.app(slug) } }
     private var policy: HostedAppPolicy? { model.snapshot?.policy }
     private var signingIn: Bool { model.signingIn == slug }
-    private var canAct: Bool { appState.isConnected && !model.showsKept && model.signingIn == nil }
+    private var canAct: Bool { appState.isConnected && !model.showsKept && model.signingIn == nil && !model.browserClosing }
 
     var body: some View {
         SettingsDetailContainer {
@@ -285,7 +299,7 @@ struct HostedAppPage: View {
             if model.browser == nil, signingIn { model.cancelSignIn() }
         }
         .fullScreenCover(item: Binding(get: { signingIn ? model.browser : nil }, set: { if $0 == nil { model.browserClosed() } }), onDismiss: {
-            model.browserClosed()
+            model.browserDismissed()
         }) { page in
             BotMcpBrowserView(url: page.url, onDone: { model.browserClosed() })
                 .ignoresSafeArea()
@@ -683,9 +697,20 @@ private struct HostedAccountNameSheet: View {
 /// An app's logo, or its first letter while the logo loads or when none
 /// draws.
 struct HostedAppLogo: View {
-    let app: HostedApp
+    let title: String
+    let logo: URL?
     let size: CGFloat
     @Environment(\.displayScale) private var displayScale
+
+    init(app: HostedApp, size: CGFloat) {
+        self.init(title: app.title, logo: app.logo, size: size)
+    }
+
+    init(title: String, logo: URL?, size: CGFloat) {
+        self.title = title
+        self.logo = logo
+        self.size = size
+    }
     @State private var image: UIImage?
 
     var body: some View {
@@ -698,15 +723,15 @@ struct HostedAppLogo: View {
                     .scaledToFit()
                     .padding(size * 0.16)
             } else {
-                Text(verbatim: String(app.title.prefix(1)).uppercased())
+                Text(verbatim: String(title.prefix(1)).uppercased())
                     .font(.system(size: size * 0.44, weight: .semibold, design: .rounded))
                     .foregroundStyle(Color.conduitAura)
             }
         }
         .frame(width: size, height: size)
         .accessibilityHidden(true)
-        .task(id: app.logo) {
-            guard let url = app.logo else { return }
+        .task(id: logo) {
+            guard let url = logo else { return }
             image = HostedAppLogoLoader.cached(url)
             guard image == nil else { return }
             image = await HostedAppLogoLoader.load(url, pixels: 96 * max(displayScale, 1) / 2)
@@ -729,6 +754,10 @@ enum HostedAppLogoLoader {
     private static let byteLimit = 512 * 1024
 
     static func cached(_ url: URL) -> UIImage? { cache.object(forKey: url as NSURL) }
+
+    /// The apps were read again: a logo that failed (offline a moment, a
+    /// server error) gets another try.
+    static func retryFailed() { failed.removeAll() }
 
     static func load(_ url: URL, pixels: CGFloat) async -> UIImage? {
         if let image = cached(url) { return image }
@@ -765,8 +794,13 @@ final class SVGLogoRenderer: NSObject, WKNavigationDelegate {
     private var webView: WKWebView?
     private var queue: [(Data, CGFloat, CheckedContinuation<UIImage?, Never>)] = []
     private var current: CheckedContinuation<UIImage?, Never>?
+    /// The load drawing now. A callback about another one (a load given
+    /// up at the timeout, cancelled by the next) is ignored, so it never
+    /// ends the render after it.
+    private var currentNavigation: WKNavigation?
     private var currentPoints: CGFloat = 64
     private var timeout: Task<Void, Never>?
+    private var generation = 0
 
     func render(_ svg: Data, points: CGFloat) async -> UIImage? {
         await withCheckedContinuation { continuation in
@@ -787,11 +821,13 @@ final class SVGLogoRenderer: NSObject, WKNavigationDelegate {
         currentPoints = points
         let side = Int(points)
         let html = "<!doctype html><html><head><meta name=\"viewport\" content=\"width=\(side)\"><style>html,body{margin:0;padding:0;background:transparent}img{display:block;width:\(side)px;height:\(side)px;object-fit:contain}</style></head><body><img src=\"data:image/svg+xml;base64,\(svg.base64EncodedString())\"></body></html>"
-        view.loadHTMLString(html, baseURL: nil)
+        generation += 1
+        let render = generation
+        currentNavigation = view.loadHTMLString(html, baseURL: nil)
         timeout = Task { [weak self] in
             try? await Task.sleep(for: .seconds(4))
             guard !Task.isCancelled else { return }
-            self?.finish(nil)
+            self?.finish(nil, render: render)
         }
     }
 
@@ -821,20 +857,24 @@ final class SVGLogoRenderer: NSObject, WKNavigationDelegate {
     }
 
     func webView(_ webView: WKWebView, didFinish navigation: WKNavigation!) {
+        guard navigation === currentNavigation else { return }
+        let render = generation
         let configuration = WKSnapshotConfiguration()
         configuration.rect = CGRect(x: 0, y: 0, width: currentPoints, height: currentPoints)
         configuration.afterScreenUpdates = true
         webView.takeSnapshot(with: configuration) { [weak self] image, _ in
-            self?.finish(image)
+            self?.finish(image, render: render)
         }
     }
 
     func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
-        finish(nil)
+        guard navigation === currentNavigation else { return }
+        finish(nil, render: generation)
     }
 
     func webView(_ webView: WKWebView, didFailProvisionalNavigation navigation: WKNavigation!, withError error: Error) {
-        finish(nil)
+        guard navigation === currentNavigation else { return }
+        finish(nil, render: generation)
     }
 
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction, decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
@@ -843,11 +883,12 @@ final class SVGLogoRenderer: NSObject, WKNavigationDelegate {
         decisionHandler(scheme == nil || scheme == "about" ? .allow : .cancel)
     }
 
-    private func finish(_ image: UIImage?) {
+    private func finish(_ image: UIImage?, render: Int) {
+        guard render == generation, let continuation = current else { return }
         timeout?.cancel()
         timeout = nil
-        guard let continuation = current else { return }
         current = nil
+        currentNavigation = nil
         continuation.resume(returning: image)
         startNext()
     }

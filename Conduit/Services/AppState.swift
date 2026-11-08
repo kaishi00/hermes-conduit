@@ -19774,6 +19774,12 @@ final class AppState: ObservableObject {
         for prompt in result.snapshot.pendingInputPrompts {
             applyInputPromptActivity(prompt, authoritative: true)
         }
+        // The open connect card, live-only like the input cards: the
+        // resume's copy is the whole truth.
+        if let payload = result.snapshot.pendingConnectionPayload,
+           let connection = ConnectionActivity.from(payload: payload, sessionId: result.sessionId) {
+            applyConnectionActivity(connection)
+        }
         let authoritativePendingApproval = result.snapshot.pendingApprovalPayload.flatMap {
             MessageNormalizer.approvalActivity(from: $0, sessionId: result.sessionId)
         }
@@ -19974,7 +19980,8 @@ final class AppState: ObservableObject {
             let inputPending = message.inputPrompt.map {
                 $0.isAnswerable || $0.status == .submitting
             } ?? false
-            return clarifyPending || approvalPending || inputPending
+            let connectionPending = message.connection?.isOpen ?? false
+            return clarifyPending || approvalPending || inputPending || connectionPending
         }
     }
 
@@ -28304,6 +28311,8 @@ final class AppState: ObservableObject {
         if !attachments.isEmpty {
             return await sendMessage(text, attachments: attachments, context: context, queued: true)
         }
+        // A steer or redirect waits behind an open connect card too.
+        if let sessionId = activeSessionId { continueOpenConnections(beforeSendingIn: sessionId) }
         switch mode {
         case .steer:
             return await steer(text, context: context)
@@ -29433,6 +29442,7 @@ final class AppState: ObservableObject {
             return false
         }
         let joinsRunningTurn = queued && turnState.isRunning
+        continueOpenConnections(beforeSendingIn: sessionId)
         cancelChatResumeRestoration()
         if !joinsRunningTurn { resetResponseHapticTurn() }
         // Bot Mode composer middleware (upstream `mention-middleware`):
@@ -37614,7 +37624,7 @@ final class AppState: ObservableObject {
         for event in reconciliation.bufferedEvents {
             switch event {
             case .approval, .approvalWithdrawn, .clarify, .clarifyExpire,
-                    .inputPrompt, .inputPromptExpire:
+                    .inputPrompt, .inputPromptExpire, .connection:
                 applyStreamEvent(event)
             default:
                 continue
@@ -37652,6 +37662,7 @@ final class AppState: ObservableObject {
                 .toolComplete(let sessionId, _, _, _), .reviewSummary(let sessionId, _), .clarify(let sessionId, _), .clarifyExpire(let sessionId, _, _),
                 .approval(let sessionId, _), .approvalWithdrawn(let sessionId, _, _),
                 .inputPrompt(let sessionId, _), .inputPromptExpire(let sessionId, _, _),
+                .connection(let sessionId, _),
                 .contextUpdate(let sessionId, _, _, _), .cwdUpdate(let sessionId, _),
                 .modelUpdate(let sessionId, _, _), .agentCount(let sessionId, _),
                 .delegateAgent(let sessionId, _), .statusUpdate(let sessionId, _, _),
@@ -38027,6 +38038,10 @@ final class AppState: ObservableObject {
         case .inputPromptExpire(_, let requestId, let reason):
             expireInputPrompt(requestId: requestId, reason: reason)
 
+        case .connection(_, let activity):
+            // An older frame moves nothing, so it marks no turn running.
+            if applyConnectionActivity(activity, commitsStreamedText: true), activity.isOpen { setRunning(true) }
+
         case .approvalWithdrawn(_, let requestId, let reason):
             withdrawApproval(requestId: requestId, reason: reason)
 
@@ -38261,6 +38276,10 @@ final class AppState: ObservableObject {
     /// lost its send to an ownership fence, and only an authoritative replay
     /// of the still-open request can make it answerable again.
     private var liveInputPromptSubmissions = Set<String>()
+    /// Connect-card answers on their way, by operation: which submission
+    /// and the seq it went out at. A resume that rebuilds the card keeps
+    /// its buttons waiting, and only that submission's failure reopens them.
+    private var liveConnectionSubmissions: [String: (token: UUID, seq: Int)] = [:]
 
     private func hasLiveApprovalSubmission(
         for activity: ApprovalActivity,
@@ -38734,6 +38753,146 @@ final class AppState: ObservableObject {
             messages[updated].inputPrompt?.error = AppLocalization.string("Hermes did not receive that answer.")
             errorMessage = UserFacingError.message(for: error)
         }
+    }
+
+    // MARK: Connect cards
+
+    /// Shows a connect card or moves it on: Hermes sends the operation's
+    /// whole snapshot each time, so the newest frame is the card, and an
+    /// older one changes nothing. A settled operation leaves its rows'
+    /// outcomes on the card.
+    @discardableResult
+    private func applyConnectionActivity(_ activity: ConnectionActivity, commitsStreamedText: Bool = false) -> Bool {
+        if let pending = liveConnectionSubmissions[activity.opID], activity.settled || activity.seq > pending.seq {
+            liveConnectionSubmissions[activity.opID] = nil
+        }
+        if let index = messages.firstIndex(where: { $0.connection?.opID == activity.opID }) {
+            // A settled operation leaves nothing to press: no frame reopens it.
+            guard let existing = messages[index].connection, !(existing.settled && activity.isOpen),
+                  let next = activity.applied(over: existing) else { return false }
+            messages[index].content = ConnectionActivity.transcriptLine(next)
+            messages[index].connection = next
+            return true
+        }
+        // A settled operation this device never showed has nothing to ask.
+        guard activity.isOpen else { return false }
+        settleReasoningSegmentIntoTranscript()
+        if commitsStreamedText { flushStreamingPartial() }
+        var appended = activity
+        appended.profile = activeProfile
+        // A resume rebuilt the transcript while an answer was on its way.
+        if let pending = liveConnectionSubmissions[activity.opID] {
+            appended.status = .sending
+            appended.sentAtSeq = pending.seq
+        }
+        var row = ChatMessage(
+            id: "connection-\(activity.opID)",
+            role: .connection,
+            content: ConnectionActivity.transcriptLine(appended),
+            timestamp: Self.localTimestamp()
+        )
+        row.connection = appended
+        messages.append(row)
+        return true
+    }
+
+    /// One connect card's answer: rows approved (with the keys typed for
+    /// them, which go once onto the socket and nowhere else) or skipped,
+    /// or Continue. The buttons wait until Hermes' next frame shows what
+    /// it made of it.
+    func respondToConnection(messageId: String, targets: [[String: Any]] = [], continues: Bool = false) async {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }),
+              let current = messages[index].connection, current.needsUser else { return }
+        guard let client = connectionClient(for: current, at: index) else { return }
+        let profile = activeProfile
+        messages[index].connection?.status = .sending
+        messages[index].connection?.sentAtSeq = current.seq
+        messages[index].connection?.error = nil
+        let token = UUID()
+        liveConnectionSubmissions[current.opID] = (token, current.seq)
+        setRunning(true)
+        do {
+            try await client.respondToConnection(opID: current.opID, sessionId: current.sessionId, targets: targets, continues: continues)
+        } catch {
+            failConnectionAnswer(messageId: messageId, opID: current.opID, token: token, profile: profile, client: client, error: error)
+        }
+    }
+
+    /// Try Again on an app whose sign-in page went dead.
+    func reissueConnection(messageId: String, target name: String) async {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }),
+              let current = messages[index].connection, current.needsUser else { return }
+        guard let client = connectionClient(for: current, at: index) else { return }
+        let profile = activeProfile
+        messages[index].connection?.status = .sending
+        messages[index].connection?.sentAtSeq = current.seq
+        messages[index].connection?.error = nil
+        let token = UUID()
+        liveConnectionSubmissions[current.opID] = (token, current.seq)
+        do {
+            try await client.reissueConnection(sessionId: current.sessionId, name: name)
+        } catch {
+            failConnectionAnswer(messageId: messageId, opID: current.opID, token: token, profile: profile, client: client, error: error)
+        }
+    }
+
+    /// The sign-in page closed: Hermes looks at the account now. Only
+    /// shortens the wait; Hermes' own check finds it anyway.
+    func wakeConnection(messageId: String) async {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }),
+              let current = messages[index].connection, current.isOpen,
+              current.profile.isEmpty || current.profile == activeProfile,
+              let client else { return }
+        try? await client.wakeConnection(opID: current.opID, sessionId: current.sessionId)
+    }
+
+    /// A message sent into a chat whose connect card is open continues it
+    /// first, as Hermes Desktop's composer does: the turn waits inside the
+    /// tool until the card answers, so the message would wait behind it.
+    func continueOpenConnections(beforeSendingIn sessionId: String) {
+        let open = chatOwnSessionIDs(for: sessionId)
+        for message in messages {
+            guard let connection = message.connection, connection.needsUser,
+                  open.contains(connection.sessionId) else { continue }
+            let id = message.id
+            Task { [weak self] in await self?.respondToConnection(messageId: id, continues: true) }
+        }
+    }
+
+    /// The client a card's answer goes out on, or nil when there is none
+    /// or the card is from the profile before a switch (it then stops
+    /// offering anything: its operation is that profile's).
+    private func connectionClient(for card: ConnectionActivity, at index: Int) -> HermesClient? {
+        guard card.profile.isEmpty || card.profile == activeProfile else {
+            messages[index].connection?.settled = true
+            messages[index].connection?.status = .open
+            return nil
+        }
+        guard let client else {
+            messages[index].connection?.status = .error
+            messages[index].connection?.error = AppLocalization.string("Gateway connection is unavailable.")
+            return nil
+        }
+        return client
+    }
+
+    private func failConnectionAnswer(messageId: String, opID: String, token: UUID, profile: String, client: HermesClient, error: Error) {
+        // Only this submission's failure: a later answer owns the card now.
+        guard liveConnectionSubmissions[opID]?.token == token else { return }
+        liveConnectionSubmissions[opID] = nil
+        guard profile == activeProfile, self.client === client,
+              let index = messages.firstIndex(where: { $0.id == messageId }),
+              messages[index].connection?.opID == opID,
+              messages[index].connection?.status == .sending else { return }
+        messages[index].connection?.status = .error
+        messages[index].connection?.sentAtSeq = nil
+        if let rpc = error as? RpcError, rpc.reason == "UNKNOWN_OPERATION" || rpc.code == 4004 {
+            // Hermes stopped waiting: the operation is gone.
+            messages[index].connection?.settled = true
+            messages[index].connection?.status = .open
+            return
+        }
+        messages[index].connection?.error = AppLocalization.string("Hermes did not receive that answer.")
     }
 
     /// Applies `request.cancel` for an approval server request. Only a card
@@ -39357,6 +39516,7 @@ final class AppState: ObservableObject {
             message.clarify.map { $0.hasPendingDecision } == true
                 || message.approval.map { $0.status == .pending || $0.status == .submitting } == true
                 || message.inputPrompt.map { $0.isAnswerable || $0.status == .submitting } == true
+                || message.connection?.isOpen == true
         }
     }
 

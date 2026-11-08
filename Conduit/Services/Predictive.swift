@@ -272,6 +272,21 @@ final class PredictiveStore: ObservableObject {
     @Published private(set) var answeredDraft: String?
     /// The composer's draft as it stands.
     @Published private(set) var draft = ""
+    /// Photos, files or a screenshot staged in the composer, which a send
+    /// from a card would take along: its send and tap buttons wait, as for
+    /// a draft.
+    @Published private(set) var hasStagedAttachments = false
+
+    /// Nothing in the composer that a message sent in its place would take
+    /// along: no words, nothing staged.
+    var isEmpty: Bool {
+        draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasStagedAttachments
+    }
+
+    func stagedAttachmentsChanged(_ staged: Bool) {
+        guard staged != hasStagedAttachments else { return }
+        hasStagedAttachments = staged
+    }
     /// Typing since the last guesses: the row folds to its ✦ button.
     @Published private(set) var isFolded = false
     /// The row hidden in these chats with "Hide for this chat".
@@ -379,6 +394,7 @@ final class PredictiveStore: ObservableObject {
         clear()
         forgetFollowUps()
         draft = ""
+        // What's staged stays the composer's: it reports it again on any change.
     }
 
     /// Whether a tap now would be on a row that only just appeared.

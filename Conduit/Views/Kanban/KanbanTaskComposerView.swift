@@ -97,6 +97,7 @@ struct KanbanTaskComposerView: View {
             .sheet(isPresented: $showModelSheet) {
                 KanbanModelOverrideSheet(value: modelOverrideBinding)
                     .environment(store)
+                    .environmentObject(appState)
                     .presentationDetents([.medium, .large])
             }
             .sheet(isPresented: $showSkillsSheet) {
@@ -477,8 +478,6 @@ struct KanbanModelOverrideSheet: View {
     /// shows.
     @State private var optionsAnswered = false
     @State private var loadFailed = false
-    @State private var query = ""
-    @State private var expandedProvider: String?
     @State private var customProvider = ""
     @State private var customModel = ""
 
@@ -486,42 +485,36 @@ struct KanbanModelOverrideSheet: View {
 
     var body: some View {
         NavigationStack {
-            SettingsDetailContainer {
-                SettingsCard {
-                    Button {
-                        value = TaskModelOverride()
-                    } label: {
-                        HStack {
-                            Text(inheritCopy)
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            if value.isInherited {
-                                Image(systemName: "checkmark")
-                                    .foregroundStyle(.conduitAccent)
-                            }
-                        }
-                        .frame(minHeight: 44)
-                        .contentShape(Rectangle())
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(value.isInherited)
-                    .accessibilityHint("Uses the assigned profile's own model and reasoning settings")
-                    Text("An unset override runs the task on the assigned profile's own model, provider, and reasoning effort.")
-                        .settingsCaption()
-                }
-
-                reasoningSection
-                catalogSection
-                if loadFailed || (optionsAnswered && providers.isEmpty) {
-                    customEntrySection
-                }
-            }
+            // The Model page every model setting opens.
+            ModelChooserPage(
+                title: AppLocalization.string("Model override"),
+                catalog: chooserCatalog,
+                retry: {
+                    loadFailed = false
+                    Task { await loadOptions() }
+                },
+                defaultChoice: ModelChooserDefault(
+                    title: inheritCopy,
+                    detail: AppLocalization.string("An unset override runs the task on the assigned profile's own model, provider, and reasoning effort.")
+                ),
+                pick: chooserPick,
+                isPicked: { provider, model in isSelected(provider.name, model.id) },
+                reasoning: ModelChooserReasoning(
+                    effort: value.reasoningEffort ?? "",
+                    inheritTitle: AppLocalization.string("Inherit"),
+                    levels: TaskModelOverride.validReasoningEfforts.compactMap(ReasoningEffortLevel.init(rawValue:)),
+                    set: { value.reasoningEffort = $0.isEmpty ? nil : $0 }
+                ),
+                emptyNote: nil,
+                onDefault: { value = TaskModelOverride() },
+                onPick: { provider, model in
+                    value = TaskModelOverride(provider: provider.name, model: model.id, reasoningEffort: value.reasoningEffort)
+                },
+                footer: AnyView(catalogFooter)
+            )
             // Text fields as Settings draws them.
             .textFieldStyle(.roundedBorder)
             .tint(.conduitAccent)
-            .searchable(text: $query, prompt: Text(AppLocalization.string("Search providers or models")))
-            .navigationTitle("Model override")
-            .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("Done") { dismiss() }
@@ -535,109 +528,43 @@ struct KanbanModelOverrideSheet: View {
         }
     }
 
-    private var reasoningSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Reasoning effort"), symbol: "brain", tint: .conduitAccent) {
-            ConduitMenuPicker(
-                value: effortBinding.wrappedValue,
-                choices: [(id: "", title: AppLocalization.string("Inherit"))]
-                    + TaskModelOverride.validReasoningEfforts.map { (id: $0, title: displayEffort($0)) },
-                onSelect: { effortBinding.wrappedValue = $0 }
-            ) {
-                Text("Effort").foregroundStyle(.secondary)
-            }
-        }
+    /// The kanban plugin's roster as the Model page lists it. Over a kept
+    /// roster, nothing comes or goes when the plugin answers, and its
+    /// models wait for that answer.
+    private var chooserCatalog: ModelChooserCatalog {
+        ModelChooserCatalog(
+            providers: providers.map { option in
+                ProviderInfo(
+                    name: option.slug,
+                    models: option.models.map { ModelInfo(id: $0, label: nil, reasoningCapable: false) },
+                    displayName: option.label
+                )
+            },
+            loaded: showsKept || optionsAnswered,
+            answered: optionsAnswered && !showsKept && !isLoadingOptions && !loadFailed,
+            failed: loadFailed
+        )
     }
 
-    /// Search matches across providers, each naming its provider: several
-    /// often serve the same model.
-    private var searchMatches: [KanbanModelSearchMatch] {
-        let search = ModelSearchQuery(query)
-        guard !search.isEmpty else { return [] }
-        return providers.flatMap { provider in
-            provider.models
-                .filter { search.matches([$0, provider.slug, provider.displayName]) }
-                .map { KanbanModelSearchMatch(provider: provider, model: $0) }
-        }
+    /// The override's model; nil while the task runs on the profile's.
+    private var chooserPick: ModelChooserPick? {
+        let model = (value.model ?? "").trimmingCharacters(in: .whitespaces)
+        guard !model.isEmpty else { return nil }
+        return ModelChooserPick(provider: value.provider ?? "", model: model)
     }
 
     @ViewBuilder
-    private var catalogSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Catalog"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
-            // Over a kept roster, nothing comes or goes when Hermes answers.
-            if isLoadingOptions || !optionsAnswered, !showsKept {
-                HStack { ProgressView(); Text("Loading models…") }.foregroundStyle(.secondary)
-            }
-            if ModelSearchQuery(query).isEmpty {
-                ForEach(providers) { provider in
-                    providerDisclosure(provider)
-                }
-            } else {
-                let matches = searchMatches
-                if matches.isEmpty {
-                    Text(verbatim: AppLocalization.string("Nothing matches “\(query.trimmingCharacters(in: .whitespacesAndNewlines))”."))
-                        .foregroundStyle(.secondary)
-                }
-                ForEach(matches) { match in
-                    modelButton(match.model, provider: match.provider, showsProvider: true)
-                }
-            }
-            if loadFailed {
-                // A failed read keeps the roster shown, under this.
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Could not load models.")
-                        .foregroundStyle(.secondary)
-                    Button("Try Again") {
-                        loadFailed = false
-                        Task { await loadOptions() }
-                    }
-                }
-            } else if optionsAnswered && !isLoadingOptions && providers.isEmpty {
-                Text("No curated model catalog available from Hermes — enter a provider and model below.")
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            Text("Curated by Hermes so a worker can always spawn what you pick.")
-                .settingsCaption()
+    private var catalogFooter: some View {
+        if optionsAnswered && !isLoadingOptions && !loadFailed && providers.isEmpty {
+            Text("No curated model catalog available from Hermes — enter a provider and model below.")
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
         }
-    }
-
-    private func providerDisclosure(_ provider: KanbanModelProviderOption) -> some View {
-        DisclosureGroup(isExpanded: expandedBinding(provider.slug)) {
-            ForEach(provider.models, id: \.self) { model in
-                modelButton(model, provider: provider, showsProvider: false)
-            }
-        } label: {
-            Text(provider.displayName)
-                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                .contentShape(Rectangle())
+        Text("Curated by Hermes so a worker can always spawn what you pick.")
+            .settingsCaption()
+        if loadFailed || (optionsAnswered && providers.isEmpty) {
+            customEntrySection
         }
-    }
-
-    private func modelButton(_ model: String, provider: KanbanModelProviderOption, showsProvider: Bool) -> some View {
-        let selected = isSelected(provider.slug, model)
-        return Button {
-            value = TaskModelOverride(provider: provider.slug, model: model, reasoningEffort: value.reasoningEffort)
-        } label: {
-            HStack {
-                if showsProvider {
-                    ModelSearchResultText(title: model, provider: provider.displayName)
-                } else {
-                    Text(model)
-                }
-                Spacer()
-                if selected {
-                    Image(systemName: "checkmark")
-                        .foregroundStyle(.conduitAccent)
-                        .accessibilityHidden(true)
-                }
-            }
-            .frame(minHeight: 44)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(.primary)
-        .disabled(showsKept)
-        .accessibilityAddTraits(selected ? .isSelected : [])
     }
 
     private var customEntrySection: some View {
@@ -661,26 +588,8 @@ struct KanbanModelOverrideSheet: View {
         }
     }
 
-    private var effortBinding: Binding<String> {
-        Binding(
-            get: { value.reasoningEffort ?? "" },
-            set: { value.reasoningEffort = $0.isEmpty ? nil : $0 }
-        )
-    }
-
-    private func expandedBinding(_ slug: String) -> Binding<Bool> {
-        Binding(
-            get: { expandedProvider == slug },
-            set: { expandedProvider = $0 ? slug : (expandedProvider == slug ? nil : expandedProvider) }
-        )
-    }
-
     private func isSelected(_ providerSlug: String, _ model: String) -> Bool {
         value.provider == providerSlug && value.model == model
-    }
-
-    private func displayEffort(_ effort: String) -> String {
-        effort == "none" ? AppLocalization.string("None (thinking off)") : effort.capitalized.replacingOccurrences(of: "Xhigh", with: AppLocalization.string("Extra High"))
     }
 
     private func seedCustomFields() {
@@ -694,7 +603,6 @@ struct KanbanModelOverrideSheet: View {
         guard providers.isEmpty, let kept = store.keptModelOptions(), !kept.isEmpty else { return }
         providers = kept
         showsKept = true
-        expandCurrentProvider()
     }
 
     private func loadOptions() async {
@@ -708,26 +616,10 @@ struct KanbanModelOverrideSheet: View {
             providers = try await store.fetchModelOptions().filter { !$0.models.isEmpty }
             showsKept = false
             loadFailed = false
-            expandCurrentProvider()
         } catch {
             loadFailed = true
         }
     }
-
-    /// Pre-expands the provider matching the current override.
-    private func expandCurrentProvider() {
-        guard expandedProvider == nil, let current = value.provider,
-              let match = providers.first(where: { $0.slug == current }) else { return }
-        expandedProvider = match.slug
-    }
-}
-
-/// One model the override sheet's search found, with its provider.
-private struct KanbanModelSearchMatch: Identifiable {
-    let provider: KanbanModelProviderOption
-    let model: String
-
-    var id: String { "\(provider.slug)\u{1F}\(model)" }
 }
 
 // MARK: - Skills picker

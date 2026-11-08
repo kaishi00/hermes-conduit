@@ -122,7 +122,8 @@ private struct RichBoardTabs: View {
 /// A board's follow-ups under it: tap sends one as the user's message,
 /// long-press puts it in the composer, as Predictive's reply chips do, and
 /// like them they step aside while the user writes a draft (a tap would
-/// replace it) and ignore taps in their first moment on screen.
+/// replace it) or has something staged (a tap would send it along), and
+/// ignore taps in their first moment on screen.
 struct RichBoardFollowUps: View {
     let followUps: [String]
     /// Holds the composer's draft (Predictive's store sees every edit).
@@ -133,7 +134,7 @@ struct RichBoardFollowUps: View {
     @State private var shownAt = Date.distantFuture
 
     var body: some View {
-        if composer.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+        if composer.isEmpty {
             CapabilityFlowLayout(spacing: 8) {
                 ForEach(Array(followUps.enumerated()), id: \.offset) { index, text in
                     PredictiveReplyChip(text: text, isFirst: index == 0,
