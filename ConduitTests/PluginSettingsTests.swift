@@ -21,6 +21,7 @@ extension PluginCatalogBrowseTests {
             ["key": "city", "type": "string", "label": "City", "description": "Where you are"],
             ["key": "extra", "type": "json", "label": "Extra", "value": ["b": 1, "a": [2]]],
             ["key": "api_key", "type": "secret", "label": "API key", "env": "WEATHER_API_KEY", "has_value": true, "value": "leaked?"],
+            ["key": "token", "type": "secret", "label": "No env"],
             ["key": "units", "type": "string", "label": "Duplicate"],
             ["label": "No key"]
         ]]
@@ -32,7 +33,7 @@ extension PluginCatalogBrowseTests {
 
     func testPluginSettingFieldsReadAsHermesSendsThem() throws {
         let fields = try settingsFields()
-        XCTAssertEqual(fields.map(\.key), ["units", "days", "alerts", "city", "extra", "api_key"], "First of each key; a field without one is dropped")
+        XCTAssertEqual(fields.map(\.key), ["units", "days", "alerts", "city", "extra", "api_key"], "First of each key; a field without one, or a secret naming no env, is dropped")
         XCTAssertEqual(fields[0].kind, .enum)
         XCTAssertEqual(fields[0].initialText, "imperial")
         XCTAssertTrue(fields[0].required)
@@ -40,7 +41,10 @@ extension PluginCatalogBrowseTests {
         for (sent, shown) in [(0, "0"), (1, "1")] {
             let json = try JSONSerialization.data(withJSONObject: ["key": "n", "type": "number", "value": sent])
             let parsed = try JSONSerialization.jsonObject(with: json)
-            XCTAssertEqual(PluginSettingField(parsed)?.initialText, shown, "A JSON \(sent) is a number, not a switch")
+            let field = try XCTUnwrap(PluginSettingField(parsed))
+            XCTAssertEqual(field.initialText, shown, "A JSON \(sent) is a number, not a switch")
+            let edited = try PluginSettings.save(fields: [field], draft: ["n": sent == 0 ? "1" : "0"])
+            XCTAssertEqual(AnyCodable.from(PluginSettings.body(edited.values)), .object(["n": .number(Double(1 - sent))]), "and saves as one")
         }
         XCTAssertEqual(fields[2].initialText, "true")
         XCTAssertEqual(fields[3].initialText, "")
@@ -97,6 +101,7 @@ extension PluginCatalogBrowseTests {
         let days = try XCTUnwrap(fields.first { $0.key == "days" })
         XCTAssertEqual(try days.wireValue("2,5", locale: Locale(identifier: "de_DE")) as? Double, 2.5, "The number pad's comma reads as a decimal")
         XCTAssertEqual(try days.wireValue("2.5", locale: Locale(identifier: "en_US")) as? Double, 2.5)
+        XCTAssertEqual(try days.wireValue("2,5", locale: Locale(identifier: "en_US")) as? Double, 2.5, "A keyboard's comma reads as a decimal in an English app")
         let decimal = try PluginSettings.save(fields: fields, draft: ["days": "2.5"])
         XCTAssertEqual(PluginSettings.body(decimal.values)["days"] as? Double, 2.5)
     }

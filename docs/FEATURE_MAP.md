@@ -3660,7 +3660,8 @@ Capabilities line (done)
 - A secret is write-only: the form never shows its value, even if Hermes sent one, and a secret left blank stays as it is (#2011).
 - A save sends only what changed; a Hermes without `plugins.manage` shows no section (#2011).
 - An emptied number or JSON field is refused, not cleared: Hermes takes no null for either (#2011).
-- The form is read fresh each time, never kept, and only once the store serves the page's dashboard and profile: offline, or after a reload that fails, the fields from before are gone (a failed reload shows why and Try Again). Edits follow the store's profile, not the one the page was opened on; a switch mid-save stops its later writes, and a save that wrote some keys first says so, and those keys' fields empty while the rest stay filled (#2011).
+- A number takes either decimal mark (the app language's, or a lone comma from a keyboard set to another region), and a secret field that names no `.env` variable isn't shown, since it couldn't be saved (#2011).
+- The form is read fresh each time, never kept, and only once the store serves the page's dashboard and profile: offline, or after a reload that fails, the fields from before are gone (a failed reload shows why and Try Again). Edits follow the store's profile, not the one the page was opened on, and a save that ends after a switch leaves the new form alone; a switch mid-save stops its later writes, and a save that wrote some keys first says so, and those keys' fields empty while the rest stay filled (#2011).
 
 **Open gaps**
 - None.

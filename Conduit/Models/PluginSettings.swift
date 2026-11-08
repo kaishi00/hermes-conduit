@@ -36,6 +36,8 @@ struct PluginSettingField: Equatable, Identifiable {
         guard let dict = value as? [String: Any],
               let key = PluginSettings.text(dict["key"]) else { return nil }
         let kind = PluginSettings.text(dict["type"]).flatMap(Kind.init(rawValue:)) ?? .string
+        // A secret goes only to `.env`: one that names no variable can't be saved.
+        if kind == .secret, PluginSettings.text(dict["env"]) == nil { return nil }
         self.key = key
         self.kind = kind
         label = PluginSettings.text(dict["label"]) ?? key
@@ -61,9 +63,14 @@ struct PluginSettingField: Equatable, Identifiable {
             }
             return trimmed
         case .number:
-            // The number pad types the locale's separator, a comma in many.
+            // The keyboard types its own region's separator, which can be a
+            // comma when Conduit's language uses a point: a lone comma is
+            // a decimal too.
             let separator = locale.decimalSeparator ?? "."
-            let text = separator == "." ? trimmed : trimmed.replacingOccurrences(of: separator, with: ".")
+            var text = separator == "." ? trimmed : trimmed.replacingOccurrences(of: separator, with: ".")
+            if !text.contains("."), text.filter({ $0 == "," }).count == 1 {
+                text = text.replacingOccurrences(of: ",", with: ".")
+            }
             if let integer = Int(text) { return integer }
             guard let number = Double(text), number.isFinite else {
                 throw PluginSettings.FieldError(message: AppLocalization.string("\(label): enter a number."))

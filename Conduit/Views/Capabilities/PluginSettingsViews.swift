@@ -13,7 +13,6 @@ import SwiftUI
 struct PluginSettingsSection: View {
     @EnvironmentObject private var appState: AppState
     let pluginName: String
-    let canManage: Bool
     let store: CapabilitiesStore
 
     @State private var key: String?
@@ -29,10 +28,11 @@ struct PluginSettingsSection: View {
     @State private var loadedFor: CapabilitySnapshotOwner?
 
     /// Edits only while connected, on the default profile the store now
-    /// serves: a page pushed on it keeps `canManage` across a switch.
+    /// serves, read live: a page pushed on another profile opens up once
+    /// the store switches to the default one.
     private var canEdit: Bool {
         let owner = appState.currentCapabilitiesOwner
-        return canManage && appState.isConnected && store.canManagePlugins && store.serves(owner) && loadedFor == owner
+        return appState.isConnected && store.canManagePlugins && store.serves(owner) && loadedFor == owner
     }
 
     private var dirty: Bool {
@@ -207,6 +207,8 @@ struct PluginSettingsSection: View {
                 message = AppLocalization.string("Saved. The plugin reads its new settings.")
             } catch {
                 guard !(error is CancellationError) else { return }
+                // After a switch the form shows another owner's fields.
+                guard appState.currentCapabilitiesOwner == owner, store.serves(owner) else { return }
                 // A key that landed empties its field; the rest stay filled.
                 if let partial = error as? PluginSettings.PartialSave {
                     for index in fields.indices where fields[index].kind == .secret && fields[index].env.map(partial.saved.contains) == true {
