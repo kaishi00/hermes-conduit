@@ -56,6 +56,20 @@ final class AuthorityQueueAppStateTests: XCTestCase {
         XCTAssertEqual(appState.messages.map(\.id), ["local-1"], "Its turn already runs: it never goes back to the dock")
     }
 
+    func testALateRestoreGoesAboveTheRowsItsTurnStreamed() {
+        let appState = makeAppState()
+        appState.activeSessionId = "sess-q"
+        appState.messages = [
+            ChatMessage(id: "u-1", role: .user, content: "before", timestamp: "1"),
+            ChatMessage(id: "a-1", role: .assistant, content: "its answer", timestamp: "2")
+        ]
+        appState.noteQueuedTurnStarted(sessionID: "sess-q", admissionID: "adm-1")
+        // The started turn streams before the edit's reply comes back.
+        appState.messages.append(ChatMessage(id: "a-2", role: .assistant, content: "streaming", timestamp: "4"))
+        appState.holdQueuedSendRow(ChatMessage(id: "local-1", role: .user, content: "edited", timestamp: "3"), admissionID: "adm-1")
+        XCTAssertEqual(appState.messages.map(\.id), ["u-1", "a-1", "local-1", "a-2"])
+    }
+
     func testAnotherConnectionCarriesNoQueueOrHeldBubble() {
         let appState = makeAppState()
         appState.authorityQueue.apply([QueuedPrompt(admissionID: "adm-1", text: "mine", status: .queued)], for: "sess-q")

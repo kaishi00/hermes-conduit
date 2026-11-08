@@ -151,6 +151,11 @@ struct AuthorityQueueDock: View {
             Text("Messages after it wait until you choose.")
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
+            if !row.text.isEmpty {
+                Text("Resend sends the words only, without any files.")
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+            }
             HStack(spacing: 10) {
                 if store.working.contains(row.admissionID) {
                     ProgressView()

@@ -456885,6 +456885,88 @@
           }
         }
       }
+    },
+    "Resend sends the words only, without any files." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Erneut senden“ schickt nur den Text, ohne Dateien."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reenviar envía solo el texto, sin archivos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Renvoyer n’envoie que le texte, sans les fichiers."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kirim ulang hanya mengirim teksnya, tanpa file."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Invia di nuovo invia solo il testo, senza file."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "再送信では文章だけが送られ、ファイルは送られません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다시 보내기는 파일 없이 글만 보냅니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wyślij ponownie wysyła tylko tekst, bez plików."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reenviar envia só o texto, sem arquivos."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Отправить снова» отправляет только текст, без файлов."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeniden gönder yalnızca metni gönderir, dosyalar gönderilmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新发送只会发送文字，不含任何文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新傳送只會傳送文字，不含任何檔案。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

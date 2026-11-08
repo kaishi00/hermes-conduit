@@ -2874,6 +2874,10 @@ final class AppState: ObservableObject {
     /// Admissions whose turn this socket saw start, so a reply that comes
     /// after its start never holds that bubble back.
     var startedAdmissionIDs: Set<String> = []
+    /// For a started admission whose bubble wasn't held yet: the row its
+    /// turn began after (nil, an empty transcript), so a late bubble goes
+    /// above its reply.
+    var startedAdmissionAnchors: [String: String?] = [:]
     /// What the row asks the composer to do: send, edit or insert a guess.
     @Published private(set) var predictiveComposerRequest: PredictiveComposerRequest?
     /// The reply suggested replies were last asked for (asked once each).
@@ -29869,6 +29873,18 @@ final class AppState: ObservableObject {
                         }
                     }
                     return true
+                case .acceptedHeld:
+                    // Taken, and waiting behind a cut-off turn (or cut off
+                    // itself): its bubble is in the dock and nothing runs
+                    // until the dock's Discard or Resend. The chat reads
+                    // idle, so the next message queues rather than steers.
+                    lifecycleLog.notice(
+                        "prompt.submit accepted (authority queue); held, no turn running session=\(sessionId, privacy: .private(mask: .hash))"
+                    )
+                    if isCurrentComposerSubmission(submissionContext), recoveryMayStampLifecycle {
+                        turnState = .idle
+                    }
+                    return true
                 case .acceptedSettled:
                     // The durable transcript proves the submitted turn landed
                     // and settled (the registry had already gone idle/absent
@@ -30009,6 +30025,11 @@ final class AppState: ObservableObject {
         /// inconclusive. Settlement is UNPROVEN; the next authoritative
         /// registry/stream edge settles the turn.
         case acceptedUnsettled
+        /// Accepted and waiting in the chat's queue on the session authority
+        /// with no turn running (a turn cut off by a restart holds the
+        /// queue): its bubble is in the dock, and nothing runs until the
+        /// cut-off turn is discarded.
+        case acceptedHeld
         /// Accepted and proven settled by the durable transcript: the turn ran
         /// to completion before recovery looked (the registry had already gone
         /// idle/absent, which alone cannot prove non-acceptance).
@@ -30216,7 +30237,7 @@ final class AppState: ObservableObject {
             }
             // Taken either way; it runs only behind a running turn. Held by
             // a cut-off one, nothing runs: the next snapshot says so.
-            return row.status == .queued && rows.contains { $0.status == .started } ? .acceptedRunning : .acceptedUnsettled
+            return row.status == .queued && rows.contains { $0.status == .started } ? .acceptedRunning : .acceptedHeld
         case .started:
             if activeSessionId == requestedSessionID || eventBelongsToActiveSession(requestedSessionID) {
                 authorityQueue.apply(rows, for: requestedSessionID)
@@ -32426,6 +32447,7 @@ final class AppState: ObservableObject {
         queuedSendOrder = []
         ownSendRowIDs = [:]
         startedAdmissionIDs = []
+        startedAdmissionAnchors = [:]
     }
 
     /// Keeps a queued message's bubble for when its turn starts. One whose
@@ -32434,7 +32456,18 @@ final class AppState: ObservableObject {
     func holdQueuedSendRow(_ row: ChatMessage, admissionID: String) {
         guard !startedAdmissionIDs.contains(admissionID) else {
             if !messages.contains(where: { $0.id == row.id }) {
-                messages.append(row)
+                // Above the rows its turn has already streamed: they follow
+                // the row that was last when it started.
+                let turnStart: Int
+                switch startedAdmissionAnchors[admissionID] {
+                case .some(.some(let anchorID)):
+                    turnStart = messages.firstIndex(where: { $0.id == anchorID }).map { $0 + 1 } ?? messages.endIndex
+                case .some(.none):
+                    turnStart = messages.startIndex
+                case .none:
+                    turnStart = messages.endIndex
+                }
+                messages.insert(row, at: turnStart)
                 requestChatScrollToLatest()
                 cacheMessagePresentation()
             }
@@ -32490,9 +32523,17 @@ final class AppState: ObservableObject {
     /// reply. Another client's queued message shows as other turns do.
     func noteQueuedTurnStarted(sessionID: String, admissionID: String) {
         ownSendRowIDs.removeValue(forKey: admissionID)
-        if startedAdmissionIDs.count >= 64 { startedAdmissionIDs.removeAll() }
+        if startedAdmissionIDs.count >= 64 {
+            startedAdmissionIDs.removeAll()
+            startedAdmissionAnchors.removeAll()
+        }
         startedAdmissionIDs.insert(admissionID)
-        guard let row = takeQueuedSendRow(admissionID: admissionID) else { return }
+        guard let row = takeQueuedSendRow(admissionID: admissionID) else {
+            if eventBelongsToActiveSession(sessionID) {
+                startedAdmissionAnchors[admissionID] = .some(messages.last?.id)
+            }
+            return
+        }
         authorityQueue.drop(admissionID)
         guard eventBelongsToActiveSession(sessionID) else { return }
         settleReasoningSegmentIntoTranscript()
