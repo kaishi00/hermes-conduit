@@ -950,11 +950,23 @@ struct VoiceResumeContext: Equatable {
         let whole = ([collapsed] + attached).filter { !$0.isEmpty }.joined(separator: " ")
         let limit = VoiceResumePlan.turnCharacterLimit
         guard whole.count > limit else { return whole }
-        let named = collapsed.matches(of: #/\(a file in the chat: [^)\n]*\)/#).map { String($0.output) }
+        let matches = collapsed.matches(of: #/\(a file in the chat: [^)\n]*\)/#)
+        let named = matches.map { String($0.output) }
         let reserved = (named + attached).reduce(0) { $0 + $1.count + 1 }
-        let head = String(collapsed.prefix(max(0, limit - reserved - 1))) + "…"
-        let cutOff = named.filter { !head.contains($0) }
-        return ([head] + cutOff + attached).joined(separator: " ")
+        // No room for any text: as many of the files as fit.
+        guard reserved + 1 < limit else {
+            var kept: [String] = []
+            for marker in named + attached where (kept + [marker]).joined(separator: " ").count <= limit { kept.append(marker) }
+            return kept.joined(separator: " ")
+        }
+        var cut = collapsed.index(collapsed.startIndex, offsetBy: limit - reserved - 1)
+        // A file's name the cut lands in goes whole after it instead.
+        if let straddling = matches.first(where: { $0.range.lowerBound < cut && cut < $0.range.upperBound }) {
+            cut = straddling.range.lowerBound
+        }
+        let clipped = collapsed[..<cut].trimmingCharacters(in: .whitespaces) + "…"
+        let cutOff = named.filter { !clipped.contains($0) }
+        return ([clipped] + cutOff + attached).joined(separator: " ")
     }
 
     /// GPT-Live's seeded history (the Codex frameless `initial_items`).

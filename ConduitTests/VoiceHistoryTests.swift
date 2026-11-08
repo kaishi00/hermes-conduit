@@ -1510,6 +1510,16 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(clipped[0].text.hasSuffix("[Attached: board.jpg (image)]"))
         XCTAssertTrue(clipped[1].text.contains("report.pdf"))
         XCTAssertTrue(clipped.allSatisfy { $0.text.count <= VoiceResumePlan.turnCharacterLimit })
+        // A name the cut lands in goes whole after it, once.
+        let straddle = String(repeating: "x", count: 1_150) + " (a file in the chat: report.pdf) " + String(repeating: "y", count: 200)
+        let fitted = VoiceResumeContext.fitting(straddle, naming: [])
+        XCTAssertEqual(fitted.components(separatedBy: "(a file in the chat:").count, 2)
+        XCTAssertTrue(fitted.hasSuffix("… (a file in the chat: report.pdf)"))
+        // Files that leave no room for text: as many as fit, within the limit.
+        let crowded = (0..<80).map { "[Attached: photo-\($0)-from-the-trip.jpg (image)]" }
+        let onlyFiles = VoiceResumeContext.fitting("Look", naming: crowded)
+        XCTAssertLessThanOrEqual(onlyFiles.count, VoiceResumePlan.turnCharacterLimit)
+        XCTAssertTrue(onlyFiles.hasPrefix("[Attached: photo-0-from-the-trip.jpg (image)]"))
 
         XCTAssertNil(VoiceResumeContext.chat([]))
         XCTAssertNil(VoiceResumeContext.chat([row("1", .user, "Hello?")]), "nothing answered yet: no seed")
