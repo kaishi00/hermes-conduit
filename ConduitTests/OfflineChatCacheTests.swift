@@ -2769,6 +2769,25 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(appState.messages.isEmpty)
     }
 
+    func testACardTapKeepsToItsChatAcrossARotationButNotAReattribution() throws {
+        let (appState, _, _) = makeAppState()
+        var original = session("stored-a")
+        original.storedSessionId = "stored-a"
+        original.alternateIds = ["runtime-old", "runtime-new"]
+        appState.sessions = [original]
+        appState.activeSessionId = "runtime-old"
+        let tapped = try XCTUnwrap(appState.richCardChat)
+        appState.activeSessionId = "runtime-new"
+        XCTAssertEqual(appState.richCardChat, tapped, "the same chat under its next runtime id")
+        var other = session("stored-b")
+        other.storedSessionId = "stored-b"
+        other.alternateIds = ["runtime-new"]
+        appState.sessions = [other]
+        XCTAssertNotEqual(appState.richCardChat, tapped, "the runtime id now belongs to B")
+        XCTAssertFalse(RichCardActionContext.mayFollowUp(
+            tappedIn: tapped, openChat: appState.richCardChat, composerIsEnabled: true, draft: ""))
+    }
+
     func testANewChatsWaitingMessageCannotFollowAReattributedCreatedRuntime() throws {
         let (appState, store, dashboard) = makeAppState()
         let pending = PendingComposerSend(
