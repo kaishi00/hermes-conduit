@@ -87,6 +87,12 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func takePendingCallPrompt() -> String?
     /// The call's own request still open in its attached chat (#451).
     func threadFollowUpTarget() -> UUID?
+    /// A request for the attached chat when it's a bot workstream's: sent
+    /// to the workstream through its plugin, as start_job's are (Eric
+    /// 2026-11-02), so it answers the question the workstream waits on
+    /// (notifier #618). What to tell the call, or nil when the chat isn't
+    /// a workstream's.
+    func sendToWorkstream(_ request: String) async -> String?
     /// The background job with this number in spoken job lists.
     func backgroundJob(numbered number: Int) -> VoiceBackgroundJob?
     /// Puts the user's follow-up into a request Hermes is working on.
@@ -125,6 +131,7 @@ protocol GeminiLiveJobSupervising: AnyObject {
 /// as new work, as before #451.
 extension GeminiLiveJobSupervising {
     func threadFollowUpTarget() -> UUID? { nil }
+    func sendToWorkstream(_ request: String) async -> String? { nil }
     func backgroundJob(numbered number: Int) -> VoiceBackgroundJob? { nil }
     func followUp(jobID: UUID, words: String, kind: String?) async -> VoiceFollowUpOutcome { .finished(title: "") }
     var asksBeforeSending: Bool { false }
@@ -615,6 +622,12 @@ final class GeminiLiveToolBridge {
     /// for the user's OK while asking first is on, unless `confirmed`.
     private func sendToThread(_ call: GeminiLiveProtocol.FunctionCall, request: String, confirmed: Bool = false) async -> [Outgoing] {
         guard !isEnding else { return [] }
+        // A workstream's chat: its session takes the request, never a
+        // chat turn queued behind the question it waits on.
+        if let said = await supervisor.sendToWorkstream(request) {
+            guard !isEnding else { return [] }
+            return [.toolResponse(id: call.id, name: call.name, result: ["status": "sent", "message": said], scheduling: .whenIdle)]
+        }
         if let target = supervisor.threadFollowUpTarget() {
             let outcome = await supervisor.followUp(jobID: target, words: request, kind: call.arguments["kind"])
             guard !isEnding else { return [] }

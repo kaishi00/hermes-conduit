@@ -1721,6 +1721,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         job.isThreadTurn || (job.id == callChatJobID && liveThread != nil)
     }
 
+    /// A workstream's call: a request the live model sends as the chat's
+    /// turn goes to the workstream too (see startJob).
+    func sendToWorkstream(_ request: String) async -> String? {
+        guard let thread = liveThread else { return nil }
+        return await backend.sendToCallWorkstream(thread, request)
+    }
+
     // MARK: Follow-ups (#451)
 
     /// The call's own request in its attached chat that a follow-up goes

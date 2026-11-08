@@ -402,6 +402,28 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(said, "sent to the workstream")
     }
 
+    /// A live model's chat turn in a workstream's chat (ask_thread, or a
+    /// start_job kept in the chat) goes to the workstream too, so it answers
+    /// the question the workstream waits on (notifier #618).
+    func testAWorkstreamsCallSendsItsChatTurnsToItsSession() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.workstreamChats = ["rt-work"]
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-work", storedSessionID: nil, title: "W3"))
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let asked = await bridge.handle(.init(id: "c1", name: "ask_thread", arguments: ["request": "the second one"]))
+        let started = await bridge.handle(.init(id: "c2", name: "start_job", arguments: ["instructions": "and check the logs"]))
+        XCTAssertEqual(asked, [.toolResponse(id: "c1", name: "ask_thread", result: ["status": "sent", "message": "sent to the workstream"], scheduling: .whenIdle)])
+        XCTAssertEqual(started, [.toolResponse(id: "c2", name: "start_job", result: ["status": "sent", "message": "sent to the workstream"], scheduling: .whenIdle)])
+        XCTAssertEqual(fake.workstreamSends.map(\.1), ["the second one", "and check the logs"])
+        XCTAssertTrue(fake.submissions.isEmpty, "no chat turn queued behind its question")
+        XCTAssertTrue(supervisor.backgroundJobs.isEmpty)
+        XCTAssertTrue(supervisor.jobs.isEmpty)
+        // Another chat's turns are its own.
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: nil, title: "Build"))
+        let elsewhere = await supervisor.sendToWorkstream("check the build")
+        XCTAssertNil(elsewhere)
+    }
+
     func testJobsStartedInALiveCallAreAnchoredToItsTranscript() async {
         let (supervisor, _) = makeSupervisor()
         var lines: [VoiceConversationTranscriptEntry]? = nil
