@@ -220,7 +220,7 @@ struct RichCardActionContext {
 
     static let capability = "card-taps"
     /// The plugin forgets a tap whose message didn't go (DELETE
-    /// /boards/taps?id=, plugin 0.140.1).
+    /// /boards/taps?id=, plugin 0.140.2).
     static let dropCapability = "card-tap-drop"
     static let path = "/api/plugins/conduit_push/boards/taps"
 

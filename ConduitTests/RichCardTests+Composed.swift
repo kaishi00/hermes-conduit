@@ -241,6 +241,8 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertTrue(store.isEmpty)
         store.stagedAttachmentsChanged(true)
         XCTAssertFalse(store.isEmpty, "a card's send would take the photo along")
+        store.forgetAll()
+        XCTAssertFalse(store.isEmpty, "sign-out leaves what the composer has staged to the composer")
         store.stagedAttachmentsChanged(false)
         store.draftChanged("hi")
         XCTAssertFalse(store.isEmpty)

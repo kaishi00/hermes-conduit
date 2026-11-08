@@ -394,7 +394,7 @@ final class PredictiveStore: ObservableObject {
         clear()
         forgetFollowUps()
         draft = ""
-        hasStagedAttachments = false
+        // What's staged stays the composer's: it reports it again on any change.
     }
 
     /// Whether a tap now would be on a row that only just appeared.
