@@ -3595,15 +3595,16 @@ Fallback models editor's read again, #1979) · Subagent routing's route sheet
 How the composer's Model sheet changes the chat's model, reasoning, speed and
 YOLO: each one applies when it's tapped, with no Apply step.
 
-**Siblings:** the sheet's Model rows and search matches (tapped, or picked
-with Return), Reasoning pills, Fast mode and YOLO toggles · the composer's
+**Siblings:** the sheet's Model rows, Quick picks and search matches (tapped,
+or picked with Return), Reasoning bars, Fast mode and YOLO toggles · the composer's
 reasoning chip · typed `/model` (opens the sheet),
 `/fast` and `/yolo` · a bot's model picker and the Model page's Default,
 Delegate and Fallback model editors (not siblings: they're saved with the bot
 or the profile, not live session settings)
 
 **Code**
-- Sheet: `Conduit/Views/ModelPickerView.swift` (switchModel, runModelPickerSwitch, modelPickerShouldSwitch, modelRowsLocked, applySpeed, applyYolo, applyReasoning)
+- Sheet: `Conduit/Views/ModelPickerView.swift` (currentModelSection, switchModel, runModelPickerSwitch, modelPickerShouldSwitch, modelRowsLocked, applySpeed, applyYolo, applyReasoning)
+- Reasoning bars: `Conduit/Views/Components/ReasoningEffortBars.swift`
 - Chip and writes: `Conduit/Views/Components/ComposerBar.swift` (the reasoning chip), `Conduit/Services/AppState.swift` (setReasoningEffort, setYoloModeReportingFailure), `Conduit/Services/HermesClient.swift` (setModel, setSpeed, ModelSwitchOutcome)
 - Tests: `ConduitTests/ModelPickerTests.swift`
 
@@ -3612,12 +3613,13 @@ or the profile, not live session settings)
 - A model Hermes wants confirmed asks on the tap; Cancel leaves the checkmark on the model the session still runs. A failed switch puts it back too and says why under the list.
 - A switch made mid-turn is held by Hermes for the next turn, and the sheet says it switches when the reply finishes.
 - Switching to a model without Ultrafast drops Ultrafast to Fast.
-- Errors show in their own section of the sheet, since the composer's banner is behind it.
+- Errors show in the sheet, since the composer's banner is behind it: a switch's in the current model card at the top, whichever list the tap came from.
+- The sheet opens on the model the chat runs and its reasoning. Reasoning is one bar per level, rising from Off to Ultra; a finger slides across them, the level follows the column it's in (the strip's full height), a selection haptic plays on each bar crossed, and the level is sent once, on lift. A level picked while one is being sent goes next. VoiceOver adjusts it as one control (Eric, 2026-11-08, #1984).
 
 **Open gaps**
 - The checked row doesn't follow a model changed elsewhere while the sheet is open.
 
-**Checked:** 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-11-01, #1616 (an Add a provider row under the list and the search matches, whose sheet's Custom endpoint waits for the sheet's catalog; the models are read again when it closes); 2026-10-31, #1567 (the sheet opens on the models kept from Hermes' last answer, whose rows switch once Hermes answers; a row being switched to keeps its check when an answer lands); 2026-10-27, at #1395 (a search match switches like a tapped row, through the same pick); at #1334.
+**Checked:** 2026-11-08, #1984 (current model card, reasoning bars replace the pills that scrolled sideways, see Pinned and recent models); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-11-01, #1616 (an Add a provider row under the list and the search matches, whose sheet's Custom endpoint waits for the sheet's catalog; the models are read again when it closes); 2026-10-31, #1567 (the sheet opens on the models kept from Hermes' last answer, whose rows switch once Hermes answers; a row being switched to keeps its check when an answer lands); 2026-10-27, at #1395 (a search match switches like a tapped row, through the same pick); at #1334.
 
 ## Searching for a model
 
@@ -3658,7 +3660,7 @@ A list of every provider's models, shown as its providers, each opened to
 its models when tapped, so a long catalog stays short (Eric 2026-11-05).
 
 **Siblings:** the model sheet (done before: its provider cards open one at a
-time) · a bot's Model page, from New Bot, Edit Bot and Edit Bot > Work's
+time, on its All providers page) · a bot's Model page, from New Bot, Edit Bot and Edit Bot > Work's
 Workstream Model (done) · the voice job, voice reply and Helper models menus
 and Settings > Pulse's model menu (done: one shared menu, a submenu per
 provider) · the Model page's Default, Delegate and Fallback model editors
@@ -3670,7 +3672,7 @@ caption describes the lists)
 **Code**
 - Bot's Model page: `Conduit/Views/BotModelPicker.swift` (providerRow, expandedProviders, openPickedProvider)
 - Menus: `Conduit/Views/AuxiliaryViews.swift` (ConduitMenuGroup, ConduitMenuPicker's groups), `Conduit/Views/GeminiLiveViews.swift` (VoiceJobModelSettingsSection.modelMenuGroups), used by `Conduit/Views/PulseSettingsViews.swift` (modelSection) and `Conduit/Views/HelperModelViews.swift` (through VoiceReplyModelSettingsSection)
-- Model sheet: `Conduit/Views/ModelPickerView.swift` (providerCard)
+- Model sheet: `Conduit/Views/ModelPickerView.swift` (providerCard, allProvidersPage)
 - Tests: `ConduitTests/HermesVoiceConfigurationServiceTests+KeptAnswers.swift` (testAPinnedProviderAndAnEndpointAreShownAndKept)
 
 **Rulings**
@@ -3681,7 +3683,37 @@ caption describes the lists)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-05, #1805 (ConduitMenuPicker's value goes under its name on one line when both don't fit, instead of wrapping; see Sheets in Settings' look); 2026-11-05, #1793 (the Model page draws on Settings' backdrop and cards, its grouping unchanged, see Sheets in Settings' look); 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
+**Checked:** 2026-11-08, #1984 (the model sheet's providers moved to an All providers page that opens on the provider holding the checked model; Quick picks lead the sheet, see Pinned and recent models); 2026-11-05, #1805 (ConduitMenuPicker's value goes under its name on one line when both don't fit, instead of wrapping; see Sheets in Settings' look); 2026-11-05, #1793 (the Model page draws on Settings' backdrop and cards, its grouping unchanged, see Sheets in Settings' look); 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
+
+## Pinned and recent models
+
+Models the person pinned, and the ones they switched between lately, a tap
+away above the full list of providers (Eric, 2026-11-08).
+
+**Siblings:** the composer's Model sheet's Quick picks (done: pinned, then
+recent) · a bot's Model page from New Bot, Edit Bot and Workstream Model
+(done: the pinned ones, and Pin/Unpin; not recents, which are live session
+switches) · the Model page's Default, Delegate and Fallback editors, the
+subagent route sheet, the Helper, voice job, voice reply and Pulse model
+menus and the Kanban model override (gap: moving to one shared chooser page
+that takes these, in its own PR) · Text (not needed: no caption describes
+them)
+
+**Code**
+- Store: `Conduit/Models/ModelQuickPicks.swift`, `Conduit/Services/AppState.swift` (modelQuickPicks, updateModelQuickPicks)
+- Model sheet: `Conduit/Views/ModelPickerView.swift` (quickPicksSection, pinButton, modelRow's Pin menu, switchModel records a switch)
+- Bot's Model page: `Conduit/Views/BotModelPicker.swift` (Pinned section, pinMenu)
+- Tests: `ConduitTests/ModelQuickPicksTests.swift`
+
+**Rulings**
+- Pinned models come first in pin order, then up to three recent ones: the model switched to, then the one left, never the model in use or a pinned one (#1984).
+- A pin is a model under its provider; the same model from two providers is two picks. Pins and recents are kept per dashboard on this device, like the models hidden with Edit; a hidden or unlisted model stays kept but isn't shown.
+- Every model row offers Pin or Unpin in its long-press menu; a Quick pick row also has a pin button.
+
+**Open gaps**
+- The settings model pickers don't show pins yet (see Siblings).
+
+**Checked:** 2026-11-08, #1984 (entry added)
 
 ## The + that makes something new
 
