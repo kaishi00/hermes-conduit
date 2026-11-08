@@ -738,7 +738,9 @@ extension KanbanTests {
             }
             XCTFail("the save stops at the switch")
         } catch {
-            XCTAssertTrue(error is PluginSettings.FieldError, "a partial save says so")
+            let partial = try XCTUnwrap(error as? PluginSettings.PartialSave, "a partial save says so")
+            XCTAssertEqual(partial.saved, ["A_KEY"])
+            XCTAssertTrue(partial.switched)
         }
         XCTAssertFalse(called)
         let writes = requester.calls.filter { $0.method == "PUT" }

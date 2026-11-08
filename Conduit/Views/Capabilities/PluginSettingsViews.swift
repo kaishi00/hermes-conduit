@@ -207,6 +207,12 @@ struct PluginSettingsSection: View {
                 message = AppLocalization.string("Saved. The plugin reads its new settings.")
             } catch {
                 guard !(error is CancellationError) else { return }
+                // A key that landed empties its field; the rest stay filled.
+                if let partial = error as? PluginSettings.PartialSave {
+                    for field in fields where field.kind == .secret && field.env.map(partial.saved.contains) == true {
+                        draft[field.key] = nil
+                    }
+                }
                 saved = false
                 message = UserFacingError.message(for: error)
             }
@@ -264,7 +270,8 @@ private struct PluginSettingFieldRow: View {
             case .number:
                 title
                 TextField(text: $raw) { Text(verbatim: field.label) }
-                    .keyboardType(.decimalPad)
+                    // Has the minus sign a decimal pad lacks.
+                    .keyboardType(.numbersAndPunctuation)
                     .textFieldStyle(.roundedBorder)
             case .string:
                 title

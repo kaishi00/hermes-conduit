@@ -494479,6 +494479,88 @@
           }
         }
       }
+    },
+    "Conduit switched profiles after saving some keys, so the other settings weren't saved." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit hat das Profil gewechselt, nachdem einige Schlüssel gespeichert waren, daher wurden die anderen Einstellungen nicht gespeichert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit cambió de perfil después de guardar algunas claves, así que los demás ajustes no se guardaron."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit a changé de profil après avoir enregistré certaines clés, les autres réglages n'ont donc pas été enregistrés."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit berpindah profil setelah menyimpan beberapa kunci, jadi pengaturan lainnya tidak disimpan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit ha cambiato profilo dopo aver salvato alcune chiavi, quindi le altre impostazioni non sono state salvate."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "一部のキーを保存した後に Conduit がプロファイルを切り替えたため、ほかの設定は保存されませんでした。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "일부 키를 저장한 뒤 Conduit가 프로필을 전환해서 다른 설정은 저장되지 않았습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit przełączył profil po zapisaniu części kluczy, więc pozostałe ustawienia nie zostały zapisane."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit trocou de perfil depois de salvar algumas chaves, então as outras configurações não foram salvas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit переключил профиль после сохранения части ключей, поэтому остальные настройки не сохранены."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bazı anahtarları kaydettikten sonra profil değiştirdi, bu yüzden diğer ayarlar kaydedilmedi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 在保存部分密钥后切换了配置文件，因此其他设置未保存。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 在儲存部分金鑰後切換了設定檔，因此其他設定未儲存。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

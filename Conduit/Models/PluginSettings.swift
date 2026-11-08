@@ -92,6 +92,20 @@ enum PluginSettings {
         var errorDescription: String? { message }
     }
 
+    /// A save that stopped after some keys reached `.env`: which ones, and
+    /// why the rest didn't.
+    struct PartialSave: LocalizedError {
+        let saved: [String]
+        let switched: Bool
+        let reason: String
+
+        var errorDescription: String? {
+            switched
+                ? AppLocalization.string("Conduit switched profiles after saving some keys, so the other settings weren't saved.")
+                : AppLocalization.string("The keys were saved, but the other settings weren't: \(reason)")
+        }
+    }
+
     /// What one save sends: the values Hermes writes to the plugin's
     /// settings, and the secrets the profile's `.env` takes.
     struct Save: Equatable {

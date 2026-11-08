@@ -268,12 +268,12 @@ final class CapabilitiesStore {
         try requirePluginProfile()
         let profile = profile
         let envPath = scoped("/api/env")
-        var written = false
+        var written: [String] = []
         do {
             for (env, value) in save.secrets.sorted(by: { $0.key < $1.key }) {
                 guard token == generation else { throw CapabilitiesStoreError.profileChanged }
                 _ = try await request(envPath, method: "PUT", body: DashboardPath.bodyWithProfile(["key": env, "value": value], profile: profile))
-                written = true
+                written.append(env)
             }
             guard token == generation else { throw CapabilitiesStoreError.profileChanged }
             let values = PluginSettings.body(save.values)
@@ -281,10 +281,14 @@ final class CapabilitiesStore {
                 guard token == self.generation else { throw CapabilitiesStoreError.profileChanged }
                 return try await write(values, profile)
             }
-        } catch where written && !(error is CancellationError) {
-            // Keys already in `.env` stay there: say so, rather than suggest
-            // the whole save was undone.
-            throw PluginSettings.FieldError(message: AppLocalization.string("The keys were saved, but the other settings weren't: \(UserFacingError.message(for: error))"))
+        } catch where !written.isEmpty && !(error is CancellationError) {
+            // Keys already in `.env` stay there: say which, rather than
+            // suggest the whole save was undone.
+            throw PluginSettings.PartialSave(
+                saved: written,
+                switched: error as? CapabilitiesStoreError == .profileChanged,
+                reason: UserFacingError.message(for: error)
+            )
         }
     }
 

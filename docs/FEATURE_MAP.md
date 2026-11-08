@@ -3645,13 +3645,14 @@ reference) · profiles (done: Hermes keeps plugin settings for the default
 profile, so another profile's page shows them read-only with a caption) ·
 Screens that open on their last answer (not needed: the form is read from
 `plugins.manage` each time the page opens and keeps nothing, so offline it
-shows no section; drafts live only while the page is open) · Watch, CarPlay and group rooms (not needed: no settings) · the notifier (not
-needed: Hermes' own gateway call) · Text: the form's captions and README.md's
+shows no section; drafts live only while the page is open) · Profile config saves (done: the values wait their turn in the one queue, the
+secrets go to `.env` outside it) · Watch, CarPlay and group rooms (not
+needed: no settings) · the notifier (not needed: Hermes' own gateway call) · Text: the form's captions and README.md's
 Capabilities line (done)
 
 **Code**
 - Model: `Conduit/Models/PluginSettings.swift` (PluginSettingField, PluginSettings.save: only changed values, secrets apart, text that doesn't fit refused)
-- Client: `Conduit/Services/HermesClient.swift` (pluginSettingFields, savePluginSettings), `Conduit/Services/CapabilitiesStore.swift` (savePluginSettings: default profile only, secrets to `.env`, then the values through the write it's given, fenced by the store's generation)
+- Client: `Conduit/Services/HermesClient.swift` (pluginSettingFields, savePluginSettings), `Conduit/Services/CapabilitiesStore.swift` (savePluginSettings: default profile only, secrets to `.env`, then the values through the write it's given in ProfileConfigWriteQueue, fenced by the store's generation; PluginSettings.PartialSave names the keys that landed)
 - Views: `Conduit/Views/Capabilities/PluginSettingsViews.swift` (PluginSettingsSection, PluginSettingFieldRow), `Conduit/Views/Capabilities/CapabilityPluginsTab.swift` (the section on AgentPluginDetailPage)
 - Tests: `ConduitTests/PluginSettingsTests.swift` (an extension of PluginCatalogBrowseTests: the unit suite is at its 224-class cap), `ConduitTests/KanbanTests+Capabilities.swift` (the store's save: order, the default profile, a switch before or during a save)
 
@@ -3659,7 +3660,7 @@ Capabilities line (done)
 - A secret is write-only: the form never shows its value, even if Hermes sent one, and a secret left blank stays as it is (#2011).
 - A save sends only what changed; a Hermes without `plugins.manage` shows no section (#2011).
 - An emptied number or JSON field is refused, not cleared: Hermes takes no null for either (#2011).
-- The form is read fresh each time, never kept, and only once the store serves the page's dashboard and profile: offline, or after a reload that fails, the fields from before are gone (a failed reload shows why and Try Again). Edits follow the store's profile, not the one the page was opened on; a switch mid-save stops its later writes, and a save that wrote some keys first says so (#2011).
+- The form is read fresh each time, never kept, and only once the store serves the page's dashboard and profile: offline, or after a reload that fails, the fields from before are gone (a failed reload shows why and Try Again). Edits follow the store's profile, not the one the page was opened on; a switch mid-save stops its later writes, and a save that wrote some keys first says so, and those keys' fields empty while the rest stay filled (#2011).
 
 **Open gaps**
 - None.
@@ -4511,7 +4512,9 @@ through `setProfileSetting`) · the helper models (`/api/model/set`, scope
 auxiliary, Hermes writes the config) · Memory & delegation's Delegate
 fallback models (done: the whole config, as the Model page's fallbacks,
 #1979) and Subagent routing (done: `/api/delegation/*`, Hermes writes the
-config, in the queue, #1979)
+config, in the queue, #1979) · a plugin's own settings (done: `plugins.manage`
+`settings`, Hermes writes the config, in the queue; its secrets go to `.env`
+outside it, see Plugin settings, #2011)
 
 **Code**
 - Queue: `Conduit/Services/ProfileConfigWriteQueue.swift`
@@ -4537,7 +4540,7 @@ not the config.
 **Open gaps**
 - A config edit from Hermes Desktop or the terminal can still land between Conduit's GET and PUT; Hermes has no revision check to refuse the stale PUT.
 
-**Checked:** 2026-11-07, #1979 (Memory & delegation's Delegate fallback models and Subagent routing's writes wait their turn in the queue); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-11-01, #1625 (helper model writes run in the queue as the voice reply model's do; key order is a profile setting); 2026-11-01, #1616 (custom endpoint saves and removals run in the queue; provider keys go to the credential pool and `/api/env`, outside it); 2026-10-31, #1574 (Edit Server reads in turn, and reads and writes the whole MCP map in one turn); 2026-10-31, #1558 (voice settings' saves are what the page opens on next, kept on the phone; what's written is unchanged); 2026-10-31, #1552 (a config save, a single setting's included, is what the settings pages open on next, kept on the phone; what's written is unchanged); 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
+**Checked:** 2026-11-08, #2011 (a plugin's own settings wait their turn in the queue, its keys don't); 2026-11-07, #1979 (Memory & delegation's Delegate fallback models and Subagent routing's writes wait their turn in the queue); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-11-01, #1625 (helper model writes run in the queue as the voice reply model's do; key order is a profile setting); 2026-11-01, #1616 (custom endpoint saves and removals run in the queue; provider keys go to the credential pool and `/api/env`, outside it); 2026-10-31, #1574 (Edit Server reads in turn, and reads and writes the whole MCP map in one turn); 2026-10-31, #1558 (voice settings' saves are what the page opens on next, kept on the phone; what's written is unchanged); 2026-10-31, #1552 (a config save, a single setting's included, is what the settings pages open on next, kept on the phone; what's written is unchanged); 2026-10-26, #1282 (the Thinking choice writes `display.show_reasoning` and `display.conduit_thinking_on_request` in one save); 2026-10-25, at #1230 (host-run plugin update recorded); at #1222.
 
 ## Wake phrase
 
