@@ -283,9 +283,10 @@ final class HostedAppsModel {
             let deadline = Date().addingTimeInterval(Self.retireWait)
             while Date() < deadline {
                 // The app's own Hermes, not this page's, which may have
-                // closed or not yet seen a switch.
-                guard let appState, appState.hostedAppsHermes == hermes else { return }
-                if appState.isConnected {
+                // closed or not yet seen a switch. Switched away, it waits
+                // for a switch back.
+                guard let appState else { return }
+                if appState.isConnected, appState.hostedAppsHermes == hermes {
                     try? await appState.stopHostedAppSignIn(operation)
                     // An account that finished during the outage shows.
                     if let self, self.hermes == hermes { await self.reload(appState) }

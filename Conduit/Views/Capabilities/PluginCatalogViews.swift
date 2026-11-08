@@ -418,7 +418,9 @@ struct PluginCatalogDetailPage: View {
                 .padding(.vertical, 6)
                 .frame(minHeight: 44)
             }
-            .disabled(busy)
+            // A page left open across a switch installs nowhere: Install
+            // waits for its own dashboard and profile, as install() does.
+            .disabled(busy || openedOn.map { $0 != appState.currentCapabilitiesOwner || !store.serves($0) } ?? false)
             .conduitGlassControl(cornerRadius: 16, tint: .conduitAccent.opacity(0.14))
         } else {
             Text("Hermes installs plugins for the host's default profile. Switch to it to change them.")
