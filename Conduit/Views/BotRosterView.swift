@@ -1110,6 +1110,8 @@ struct BotRosterView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 2)
                     .padding(.bottom, 16)
+                    // So the last linked room's faces go when it does.
+                    .modifier(HomeRoomLooksReader())
             } else {
                 BotRoomGrid(onDropAtEnd: { dropRoom($0, onto: nil) }) { homeRoomTiles }
                     .padding(.horizontal, 16)
