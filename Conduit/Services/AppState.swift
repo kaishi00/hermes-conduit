@@ -7203,6 +7203,7 @@ final class AppState: ObservableObject {
         forgetLeftBackfilledTranscripts(dashboardID: nil)
         TranscriptImageCache.purge()
         TranscriptPictureMemory.forgetAll()
+        HTMLPreviewDocuments.shared.removeAll()
         // The summaries describing runs of steps go with the chats.
         forgetStepSummaries(scopePrefix: nil)
         if connection == nil, let copy = offlineChatPresentation {
