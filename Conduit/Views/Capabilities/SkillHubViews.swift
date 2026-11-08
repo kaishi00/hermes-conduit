@@ -505,7 +505,7 @@ struct HubSkillDetailPage: View {
         guard isCurrent, scan != nil, scan?.policy != .block else { return }
         Haptics.selection()
         Task {
-            if await store.installSkill(identifier: skill.identifier) {
+            if await store.installSkill(identifier: skill.identifier, name: skill.name) {
                 Haptics.success()
                 await reload()
             }

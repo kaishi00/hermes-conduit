@@ -403,12 +403,12 @@ final class CapabilitiesStore {
     /// background) and waits for it. True once it's installed.
     @discardableResult
     func installSkill(_ skill: OfficialSkill) async -> Bool {
-        await installSkill(identifier: skill.identifier)
+        await installSkill(identifier: skill.identifier, name: skill.name)
     }
 
     /// Installs a skill from the catalog or the hub by its identifier.
     @discardableResult
-    func installSkill(identifier: String) async -> Bool {
+    func installSkill(identifier: String, name: String? = nil) async -> Bool {
         let token = generation
         let answers = self.answers
         skillInstalls[identifier] = .running
@@ -439,9 +439,9 @@ final class CapabilitiesStore {
                 officialSkills[index].installed = true
             }
             skillHubEpoch &+= 1
-            // Hermes keys a hub skill by identifier and names it by its
-            // last part until the next read says otherwise.
-            hubInstalled[identifier] = hubInstalled[identifier] ?? identifier.split(separator: "/").last.map(String.init) ?? identifier
+            // Hermes keys a hub skill by identifier and names it as the
+            // catalog does until the next read says otherwise.
+            hubInstalled[identifier] = hubInstalled[identifier] ?? name ?? identifier.split(separator: "/").last.map(String.init) ?? identifier
             if showsKept.contains(.officialSkills) { await loadOfficialSkills() }
             if skillHub != nil { await loadSkillHub() }
             return true
