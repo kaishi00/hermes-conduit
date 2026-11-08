@@ -1654,6 +1654,58 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(explorer.entries.isEmpty, "nor its listing")
     }
 
+    /// A picture sent into a room is read back through the plugin's room
+    /// files (issue 2035), only from a plugin that serves it, and a refusal
+    /// says the file is gone rather than that the host was out of reach.
+    func testRoomPicturesReadThroughThePluginsRoomFiles() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        XCTAssertNil(appState.roomFilePicturesResolver, "an older plugin's pictures stay by name")
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.142.0", capabilities: [GroupRoomFilesClient.pictureCapability]))
+        let resolver = try XCTUnwrap(appState.roomFilePicturesResolver)
+        XCTAssertTrue(appState.roomFilePicturesResolver === resolver, "one resolver, so the rows holding it compare equal")
+        let inline = await resolver.inlineImageDataURL(InlineImageRef(sessionId: "s", profile: "default", rowId: 1, index: 0))
+        XCTAssertNil(inline, "room files hold no pictures inside messages")
+
+        let path = "/h/conduit/room-files/20261108-a/my photo.jpg"
+        let read = Task { await resolver.read(for: path) }
+        try await held.waitForRequests(1)
+        try await held.answer(["dataUrl": "data:image/jpeg;base64,/9j/"], toPathEnding: "/room-files/data-url")
+        let answered = await read.value
+        XCTAssertEqual(answered, .dataURL("data:image/jpeg;base64,/9j/"))
+        XCTAssertEqual(held.sent.last?.path, GroupRoomFilesClient.picturePath)
+        XCTAssertEqual(held.sent.last?.query?.removingPercentEncoding, "path=\(path)")
+
+        let refused = Task { await resolver.read(for: "/elsewhere/x.jpg") }
+        try await held.waitForRequests(2)
+        try await held.answer(["detail": "Not a room file"], status: 404)
+        let gone = await refused.value
+        XCTAssertEqual(gone, .gone)
+
+        // The sender's own picture is kept under the key its message's
+        // preview and the viewer look it up by, so it shows without a read.
+        let cache = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let staged = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-photo.jpg")
+        try Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]).write(to: staged)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: cache)
+            try? FileManager.default.removeItem(at: staged)
+        }
+        let photo = Attachment(id: "p", name: "my photo.jpg", uri: staged.absoluteString, mimeType: "image/jpeg", kind: .image)
+        let notes = Attachment(id: "n", name: "notes.txt", uri: staged.absoluteString, mimeType: "text/plain", kind: .document)
+        await appState.keepSentRoomPictures(
+            [photo, notes],
+            references: ["@file:`\(path)`", "@file:/h/conduit/room-files/20261108-b/notes.txt"],
+            resolver: resolver,
+            in: cache
+        )
+        let shown = MessageNormalizer.splitLeadingFileReferences("@file:`\(path)`", messageId: "room").attachments
+        let key = try XCTUnwrap(resolver.imageCacheKey(for: try XCTUnwrap(shown.first)))
+        let kept = try XCTUnwrap(TranscriptImageCache.cachedFile(for: key, in: cache))
+        XCTAssertEqual(kept.pathExtension, "jpg")
+        XCTAssertEqual(try Data(contentsOf: kept), Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: cache.path).count, 1, "only the picture is kept")
+    }
+
     /// A folder opens on its listing and recent files as the plugin gave
     /// them last time, before Hermes answers, and a read that fails keeps
     /// them up (#1533).

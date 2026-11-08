@@ -190,8 +190,9 @@ struct GroupChatView: View {
         let galleryEvents = replay.events.filter(GroupRoomTurns.isVisible)
         let roster = members
         let galleryAppState = appState
+        let roomPictures = appState.roomFilePicturesResolver
         imageGallery.update {
-            GroupRoomImageGallery.items(in: galleryEvents) { event in
+            GroupRoomImageGallery.items(in: galleryEvents, files: roomPictures) { event in
                 GroupRoomTurns.localProfile(of: GroupRoomTurns.speaker(of: event, members: roster))
                     .map { galleryAppState.gatewayMediaResolver(for: $0) }
             }
@@ -226,6 +227,7 @@ struct GroupChatView: View {
             .padding(.bottom, 14)
         }
         .environment(\.imageGallery, imageGallery)
+        .environment(\.roomFilePictures, roomPictures)
         // As in a chat, text draws until a touch needs its text view, and
         // a drawn bubble sizes to its text.
         .environment(\.selectableTextDrawsUntilTouched, true)
@@ -872,23 +874,31 @@ struct GroupEventRow: View {
     }
 }
 
-/// The pictures in a room's messages, in order: web pictures, and a
-/// member's `MEDIA:` pictures where `resolver` gives its message one. The
-/// user's own messages draw their `MEDIA:` lines as text, as in a chat.
+/// The pictures in a room's messages, in order: pictures sent into the
+/// room where `files` reads them, web pictures, and a member's `MEDIA:`
+/// pictures where `resolver` gives its message one. The user's own messages
+/// draw their `MEDIA:` lines as text, as in a chat.
 enum GroupRoomImageGallery {
     @MainActor
     static func items(
         in events: [GroupEvent],
+        files: GatewayMediaDataURLResolver? = nil,
         resolver: (GroupEvent) -> GatewayMediaDataURLResolver? = { _ in nil }
     ) -> [ImageGalleryItem] {
         let items = events.filter(\.isChatMessage).flatMap { event -> [ImageGalleryItem] in
-            let text = GroupMessageParts(event.messageText ?? "").text
+            let parts = GroupMessageParts(event.messageText ?? "")
             // A scheduled post's pictures are the ones its bubble shows.
+            let shownParts = event.isScheduledPost
+                ? GroupMessageParts(event.workUpdateText ?? event.messageText ?? "") : parts
             let shown = event.isScheduledPost
-                ? GroupMessageParts(event.workUpdateText ?? event.messageText ?? "").text
-                : event.isUserMessage ? (GroupRoomReplyQuote.parse(text)?.message ?? text) : text
+                ? shownParts.text
+                : event.isUserMessage ? (GroupRoomReplyQuote.parse(parts.text)?.message ?? parts.text) : parts.text
+            // Its files come first, as its bubble draws them.
+            let sent = files.map { files in
+                shownParts.files.filter(GroupRoomFilesClient.isStoredPicture).compactMap { ImageGalleryItem.attachment($0, resolver: files) }
+            } ?? []
             let media = event.isMemberMessage ? resolver(event) : nil
-            return ChatImageGallery.markdownItems(shown, resolver: media, recognizesGatewayMedia: media != nil)
+            return sent + ChatImageGallery.markdownItems(shown, resolver: media, recognizesGatewayMedia: media != nil)
         }
         return ImageGallery.deduplicated(items)
     }
@@ -907,12 +917,28 @@ struct GroupMessageParts {
     }
 }
 
+/// A message's files: its pictures as pictures where the room's files can
+/// be read (one whole, more as tiles, as in a chat), the rest by name.
 private struct GroupMessageFiles: View {
     let files: [Attachment]
     var onAccent = false
+    @Environment(\.roomFilePictures) private var pictureFiles
 
     var body: some View {
-        ForEach(files) { file in
+        let pictures = pictureFiles == nil ? [] : files.filter(GroupRoomFilesClient.isStoredPicture)
+        if pictures.count > 1 {
+            let shown = PictureGrid.shownCount(pictures.count)
+            let more = PictureGrid.moreCount(total: pictures.count)
+            PictureGridLayout {
+                ForEach(Array(pictures.prefix(shown).enumerated()), id: \.element.id) { index, picture in
+                    UserImageAttachmentPreview(attachment: picture, gatewayResolver: pictureFiles, isTile: true, onAccent: onAccent)
+                        .modifier(PictureGridMoreBadge(more: index == shown - 1 ? more : nil))
+                }
+            }
+        } else if let picture = pictures.first {
+            UserImageAttachmentPreview(attachment: picture, gatewayResolver: pictureFiles, onAccent: onAccent, namesUnavailable: true)
+        }
+        ForEach(pictures.isEmpty ? files : files.filter { !GroupRoomFilesClient.isStoredPicture($0) }) { file in
             HStack(spacing: 8) {
                 Image(systemName: AttachmentTypePolicy.symbolName(for: file))
                     .scaledFont(.callout)
@@ -2679,5 +2705,18 @@ struct DesktopGroupChatView: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: message.isMember ? .leading : .trailing)
+    }
+}
+
+private struct RoomFilePicturesKey: EnvironmentKey {
+    static let defaultValue: GatewayMediaDataURLResolver? = nil
+}
+
+extension EnvironmentValues {
+    /// Where a room's messages read the pictures sent into it; nil draws
+    /// them by name (AppState.roomFilePicturesResolver).
+    var roomFilePictures: GatewayMediaDataURLResolver? {
+        get { self[RoomFilePicturesKey.self] }
+        set { self[RoomFilePicturesKey.self] = newValue }
     }
 }
