@@ -1403,6 +1403,9 @@ final class AppState: ObservableObject {
             InteractionIdleState.shared.setTurnRunning(turnState.isRunning)
             // Its reply sends no push while the chat is on screen.
             updateChatOnScreen()
+            // A settled turn has no notes left running, however it settled
+            // (a resume or a chat switch writes idle without setRunning).
+            if !turnState.mayBeRunning { runningTurnNoteIDs = [] }
         }
     }
     /// Whether `turnState` may have missed server-side turn edges. Set at

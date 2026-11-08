@@ -396,6 +396,30 @@ final class AppStateReasoningStreamTests: XCTestCase {
         XCTAssertTrue(state.runningTurnNoteIDs.isEmpty)
     }
 
+    /// A resume that finds the turn idle forgets its notes too, so a
+    /// reply that took over a note's row isn't left off the next call's
+    /// seed (#1991's CodeRabbit review).
+    func testAResumeThatFindsTheTurnIdleForgetsItsNotes() {
+        let state = makeAppState()
+        installActiveSession(state, id: "stored-a")
+        state.handleStreamEvent(.messageStart(sessionId: "stored-a"))
+        state.handleStreamEvent(.messageInterim(sessionId: "stored-a", text: "Checking", alreadyStreamed: false))
+        XCTAssertEqual(state.runningTurnNoteIDs.count, 1)
+        _ = state.applyChatResume(SessionResumeResult(
+            sessionId: "stored-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(true)])
+        ))
+        XCTAssertEqual(state.runningTurnNoteIDs.count, 1, "a resume that finds it running keeps them")
+        _ = state.applyChatResume(SessionResumeResult(
+            sessionId: "stored-a",
+            messages: [],
+            snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+        ))
+        XCTAssertEqual(state.turnState, .idle)
+        XCTAssertTrue(state.runningTurnNoteIDs.isEmpty)
+    }
+
     /// A turn Voice cancelled can stream a few words after its cancel; once
     /// the next question owns the chat they'd read as its reply (#1696).
     /// They're held back by the turn they name, and the next turn's events
