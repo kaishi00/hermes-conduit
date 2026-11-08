@@ -5078,11 +5078,13 @@ final class HermesClient: ObservableObject {
     }
 
     /// One sent room file's bytes as a data URL (`groups.attachment.download`).
-    func groupsAttachmentDownload(roomID: String, eventID: String, attachmentID: String) async throws -> String {
+    func groupsAttachmentDownload(roomID: String, eventID: String, attachmentID: String, size: Int = 0)
+        async throws -> String {
         let result = try await rpc(
             "groups.attachment.download",
             params: ["room_id": roomID, "event_id": eventID, "attachment_id": attachmentID],
-            timeout: Self.roomAttachmentTimeout,
+            // Its base64 at 64 KB a second, as the upload.
+            timeout: max(Self.roomAttachmentTimeout, TimeInterval(size) * 4 / 3 / 65_536),
             scoped: false
         )
         guard let object = result.objectValue,

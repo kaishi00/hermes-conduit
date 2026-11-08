@@ -328,9 +328,10 @@ extension AppState {
               let event = activeRoomReplay.events.last(where: { event in
                   event.attachments.contains { $0.attachmentID == attachmentID }
               }) else { return .failed }
+        let size = event.attachments.first { $0.attachmentID == attachmentID }?.size ?? 0
         do {
             return .dataURL(try await groupsAttachmentDownload(
-                client, roomID: roomID, eventID: event.eventID, attachmentID: attachmentID
+                client, roomID: roomID, eventID: event.eventID, attachmentID: attachmentID, size: size
             ))
         } catch is CancellationError {
             return .failed

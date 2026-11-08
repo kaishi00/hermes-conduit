@@ -13257,12 +13257,15 @@ final class AppState: ObservableObject {
         )
     }
 
-    func groupsAttachmentDownload(_ client: HermesClient, roomID: String, eventID: String, attachmentID: String)
-        async throws -> String {
+    func groupsAttachmentDownload(
+        _ client: HermesClient, roomID: String, eventID: String, attachmentID: String, size: Int = 0
+    ) async throws -> String {
         if let operation = groupChatOperations.downloadAttachment {
             return try await operation(client, roomID, eventID, attachmentID)
         }
-        return try await client.groupsAttachmentDownload(roomID: roomID, eventID: eventID, attachmentID: attachmentID)
+        return try await client.groupsAttachmentDownload(
+            roomID: roomID, eventID: eventID, attachmentID: attachmentID, size: size
+        )
     }
 
     private func groupsCreate(_ client: HermesClient, roomID: String, name: String, members: [[String: Any]])
