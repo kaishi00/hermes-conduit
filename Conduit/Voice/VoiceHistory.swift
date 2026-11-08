@@ -950,7 +950,7 @@ struct VoiceResumeContext: Equatable {
         let whole = ([collapsed] + attached).filter { !$0.isEmpty }.joined(separator: " ")
         let limit = VoiceResumePlan.turnCharacterLimit
         guard whole.count > limit else { return whole }
-        let matches = collapsed.matches(of: #/\(a file in the chat: [^)\n]*\)/#)
+        let matches = collapsed.matches(of: #/\(a file in the chat: (?:[^()\n]|\([^()\n]*\))*\)/#)
         let named = matches.map { String($0.output) }
         let reserved = (named + attached).reduce(0) { $0 + $1.count + 1 }
         // No room for any text: as many of the files as fit.

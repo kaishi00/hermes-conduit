@@ -1515,6 +1515,9 @@ extension HermesVoiceGatewayTimeoutTests {
         let fitted = VoiceResumeContext.fitting(straddle, naming: [])
         XCTAssertEqual(fitted.components(separatedBy: "(a file in the chat:").count, 2)
         XCTAssertTrue(fitted.hasSuffix("… (a file in the chat: report.pdf)"))
+        // A name with brackets in it goes whole too.
+        let bracketed = String(repeating: "x", count: 1_300) + " (a file in the chat: report(1).pdf)"
+        XCTAssertTrue(VoiceResumeContext.fitting(bracketed, naming: []).hasSuffix("… (a file in the chat: report(1).pdf)"))
         // Files that leave no room for text: as many as fit, within the limit.
         let crowded = (0..<80).map { "[Attached: photo-\($0)-from-the-trip.jpg (image)]" }
         let onlyFiles = VoiceResumeContext.fitting("Look", naming: crowded)
