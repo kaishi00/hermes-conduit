@@ -97,7 +97,7 @@ struct LinkAsksClient {
     }
 }
 
-/// What Settings > People says about a Link's asks.
+/// What Settings > Multiplayer says about a Link's asks.
 enum LinkAskText {
     static func freeOnTitle(_ choice: String) -> String {
         switch choice {

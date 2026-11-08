@@ -84,9 +84,9 @@ struct ProfilePickerSheet: View {
                     .padding(16)
                 }
             }
-            // Photos are Hermes pictures: re-read them, since Desktop or
-            // another device may have changed one.
-            .task { await appState.reloadBotRoster() }
+            // Photos are Hermes pictures: re-read them once they're a while
+            // old, since Desktop or another device may have changed one.
+            .task { await appState.refreshBotRosterAndStalePictures() }
             .task { dashboardRows = SavedDashboardRowModel.rows(appState) }
             .onChange(of: appState.savedDashboardRegistry) { _, _ in dashboardRows = SavedDashboardRowModel.rows(appState) }
             .toolbar(.hidden, for: .navigationBar)

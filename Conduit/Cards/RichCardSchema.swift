@@ -282,7 +282,7 @@ struct RichCardSchema {
         "chart": ["chart"], "weather": ["weather"], "comparison": ["options"], "steps": ["steps", "needs"],
         "media": ["media"], "contact": ["people"], "status": ["status"], "table": ["table"],
         "timeline": ["timeline"], "checklist": ["checklist"], "list": ["list", "ranked"],
-        "progress": ["progress"], "callout": ["callout"], "diff": ["diff"],
+        "progress": ["progress"], "callout": ["callout"], "diff": ["diff"], "composed": ["sections"],
     ]
 
     /// The cards about places; every other type can name a source.
@@ -315,10 +315,22 @@ struct RichCardSchema {
     /// The card after the schema's rules, or nil when they drop it.
     private static func applyRules(_ card: [String: Any], raw: [String: Any]) -> [String: Any]? {
         guard let type = card["type"] as? String, let fields = typeFields[type], let field = fields.first else { return nil }
-        var keep = Set(fields).union(["type", "title", "live"])
+        var keep = Set(fields).union(["type", "title", "live", "actions"])
         if !placeTypes.contains(type) { keep.insert("source") }
         var card = card.filter { keep.contains($0.key) }
         guard card[field] != nil else { return nil }
+        // Buttons and fields are checked over the whole card (ids, the one
+        // primary), sections first, then the foot's actions.
+        var controls = Controls()
+        if type == "composed" {
+            let sections = composedRules(card["sections"] as? [[String: Any]] ?? [], controls: &controls)
+            guard !sections.isEmpty else { return nil }
+            card["sections"] = sections
+        }
+        if let given = card["actions"] as? [[String: Any]] {
+            let actions = given.compactMap { buttonRules($0, controls: &controls) }
+            card["actions"] = actions.isEmpty ? nil : actions
+        }
         switch type {
         case "map", "place", "places":
             placeRules(&card, raw: raw)
@@ -402,6 +414,169 @@ struct RichCardSchema {
         return card
     }
 
+    // MARK: Composed cards and buttons
+
+    /// Each element kind's own fields, and those it needs (the plugin's
+    /// _ELEMENT_FIELDS and _ELEMENT_NEEDS).
+    private static let elementFields: [String: Set<String>] = [
+        "text": ["text", "role", "tone"], "metric": ["value", "label", "change", "tone"],
+        "badge": ["text", "tone"], "icon": ["symbol", "tone"], "image": ["url", "label"],
+        "progress": ["progress", "label", "tone"], "divider": [],
+        "field": ["id", "input", "label", "value", "lines", "options", "min", "max", "placeholder"],
+        "button": ["label", "action", "id", "target", "symbol", "style", "confirm"],
+    ]
+    private static let elementNeeds: [String: [String]] = [
+        "text": ["text"], "metric": ["value"], "badge": ["text"], "icon": ["symbol"], "image": ["url"],
+        "progress": ["progress"], "divider": [], "field": ["id", "input"], "button": ["label", "action"],
+    ]
+    /// Which field fits which input.
+    private static let fieldExtras: [String: String] = [
+        "lines": "text", "placeholder": "text", "options": "choice", "min": "number", "max": "number",
+    ]
+    static let maxFields = 6
+    private static let secretParts = ["password", "passcode", "secret", "token", "apikey", "onetime", "privatekey",
+                                      "recoverykey", "licensekey", "seedphrase", "verificationcode", "securitycode",
+                                      "authcode", "backupcode", "passphrase", "totp", "masterkey", "credential",
+                                      "2fa", "twofactor", "logincode", "accesscode", "unlockcode", "securitykey",
+                                      "resetcode", "recoverycode", "activationcode", "authkey", "verificationkey",
+                                      "backupkey",
+                                      // The same in the languages Conduit ships, as a model writes
+                                      // labels in the user's.
+                                      "passwort", "kennwort", "contraseña", "motdepasse", "senha", "пароль",
+                                      "hasło", "şifre", "katasandi", "パスワード", "暗証番号", "認証コード",
+                                      "密码", "密碼", "验证码", "驗證碼", "비밀번호", "인증번호", "인증코드",
+                                      "bestätigungscode", "verifizierungscode", "zugangscode",
+                                      "códigodeverificación", "codigodeverificacion", "códigodeverificação",
+                                      "codedevérification", "codedeverification", "codicediverifica",
+                                      "kodeverifikasi", "doğrulamakodu", "kodweryfikacyjny", "кодподтверждения",
+                                      "clavedeacceso", "contrasena"]
+    private static let secretWords: Set<String> = ["pin", "otp", "cvv", "cvc"]
+    private static let datePattern = try! NSRegularExpression(pattern: #"^[0-9]{4}-[0-9]{2}-[0-9]{2}(T[0-9]{2}:[0-9]{2})?$"#)
+    private static let numberPattern = try! NSRegularExpression(pattern: #"^-?[0-9]+(\.[0-9]+)?$"#)
+    /// What an open button may open: web pages and the links iOS hands to
+    /// Maps, Phone, Messages, Mail, Calendar and Reminders.
+    static let openSchemes = ["https://", "maps:", "tel:", "sms:", "mailto:", "calshow:", "x-apple-reminderkit:"]
+    private static let openBanned = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "\"'`\\<>"))
+
+    /// What a card's buttons and fields have used so far.
+    private struct Controls {
+        var fields: Set<String> = []
+        var taps: Set<String> = []
+        var primary = false
+    }
+
+    /// Whether a field's id, label or placeholder asks for a secret (the
+    /// plugin's names_secret): read in lower case with everything but
+    /// letters of any script and digits as spaces.
+    static func namesSecret(_ text: String) -> Bool {
+        var spaced = String.UnicodeScalarView()
+        for scalar in text.lowercased().unicodeScalars {
+            spaced.append(CharacterSet.alphanumerics.contains(scalar) ? scalar : " ")
+        }
+        let words = String(spaced).split(separator: " ").map(String.init)
+        let joined = words.joined()
+        return secretParts.contains { joined.contains($0) } || words.contains { secretWords.contains($0) }
+    }
+
+    /// A message a tap may send as the user's: never a command, a file
+    /// reference or a shell line (the plugin's plain_message).
+    static func isPlainMessage(_ text: String) -> Bool {
+        !(text.hasPrefix("/") || text.hasPrefix("!") || text.contains("`") || matches(followUpMention, text))
+    }
+
+    /// Whether an open button's target is a link it may open.
+    static func isOpenable(_ target: String) -> Bool {
+        let lowered = target.lowercased()
+        return openSchemes.contains { lowered.hasPrefix($0) } && !target.unicodeScalars.contains { openBanned.contains($0) }
+    }
+
+    private static func composedRules(_ sections: [[String: Any]], controls: inout Controls) -> [[String: Any]] {
+        sections.compactMap { section in
+            let items = (section["items"] as? [[String: Any]] ?? []).compactMap { elementRules($0, controls: &controls) }
+            guard !items.isEmpty else { return nil }
+            var section = section
+            section["items"] = items
+            return section
+        }
+    }
+
+    private static func elementRules(_ element: [String: Any], controls: inout Controls) -> [String: Any]? {
+        guard let kind = element["kind"] as? String, let fields = elementFields[kind] else { return nil }
+        let element = element.filter { $0.key == "kind" || fields.contains($0.key) }
+        for key in elementNeeds[kind] ?? [] where element[key] == nil { return nil }
+        switch kind {
+        case "image":
+            return isHTTPS(element["url"]) ? element : nil
+        case "field":
+            return fieldRules(element, controls: &controls)
+        case "button":
+            return buttonRules(element, controls: &controls)
+        default:
+            return element
+        }
+    }
+
+    private static func fieldRules(_ field: [String: Any], controls: inout Controls) -> [String: Any]? {
+        guard let id = field["id"] as? String, let input = field["input"] as? String else { return nil }
+        if ([id] + ["label", "placeholder"].compactMap({ field[$0] as? String })).contains(where: namesSecret) {
+            return nil
+        }
+        if controls.fields.contains(id) || controls.fields.count == maxFields { return nil }
+        var field = field
+        for (key, fits) in fieldExtras where fits != input { field[key] = nil }
+        if input == "choice", field["options"] == nil { return nil }
+        if let low = (field["min"] as? NSNumber)?.doubleValue, let high = (field["max"] as? NSNumber)?.doubleValue,
+           low > high {
+            field["min"] = nil
+        }
+        if let value = field["value"] as? String {
+            field["value"] = fieldValue(value, field: field)
+        }
+        controls.fields.insert(id)
+        return field
+    }
+
+    private static func fieldValue(_ value: String, field: [String: Any]) -> String? {
+        switch field["input"] as? String {
+        case "choice":
+            return (field["options"] as? [String] ?? []).first { $0.lowercased() == value.lowercased() }
+        case "toggle":
+            return ["on", "off"].contains(value.lowercased()) ? value.lowercased() : nil
+        case "date":
+            return matches(datePattern, value) ? value : nil
+        case "number":
+            guard matches(numberPattern, value), let number = Double(value) else { return nil }
+            if let low = (field["min"] as? NSNumber)?.doubleValue, number < low { return nil }
+            if let high = (field["max"] as? NSNumber)?.doubleValue, number > high { return nil }
+            return value
+        default:
+            return value
+        }
+    }
+
+    /// The button tidied, or nil when it's dropped (the plugin's
+    /// _button_rules).
+    private static func buttonRules(_ button: [String: Any], controls: inout Controls) -> [String: Any]? {
+        guard let action = button["action"] as? String else { return nil }
+        var button = button
+        if action == "tap" {
+            guard let id = button["id"] as? String, isPlainMessage(button["label"] as? String ?? "") else { return nil }
+            button["target"] = nil
+            guard !controls.taps.contains(id) else { return nil }
+            controls.taps.insert(id)
+        } else {
+            guard let target = button["target"] as? String else { return nil }
+            button["id"] = nil
+            if action == "open", !isOpenable(target) { return nil }
+            if action == "send", !isPlainMessage(target) { return nil }
+        }
+        if button["style"] as? String == "primary" {
+            if controls.primary { button["style"] = "plain" }
+            controls.primary = true
+        }
+        return button
+    }
+
     // MARK: Diffs
 
     private static let diffID = try! NSRegularExpression(pattern: #"^cd-[0-9a-f]{16}$"#)
@@ -464,9 +639,7 @@ struct RichCardSchema {
             if text.unicodeScalars.count > 200 {
                 text = trimmingTrailingWhitespace(String(String.UnicodeScalarView(text.unicodeScalars.prefix(200))))
             }
-            if text.hasPrefix("/") || text.hasPrefix("!") || text.contains("`") || matches(followUpMention, text) {
-                continue
-            }
+            if !isPlainMessage(text) { continue }
             if kept.contains(where: { $0.lowercased() == text.lowercased() }) { continue }
             if kept.count == maxFollowUps { break }
             kept.append(text)
@@ -526,6 +699,28 @@ struct RichCardSchema {
             kind["enum"] = kinds.filter { !Self.notLiveTypes.contains($0) }
             properties["type"] = kind
         }
+        // A call has no chat to hear a tap or take a message, and nothing to
+        // send a field with: a live model's buttons open and copy only.
+        if var actions = properties["actions"] as? [String: Any] {
+            actions["items"] = Self.openAndCopyOnly(actions["items"])
+            properties["actions"] = actions
+        }
+        if var sections = properties["sections"] as? [String: Any], var section = sections["items"] as? [String: Any],
+           var sectionProperties = section["properties"] as? [String: Any],
+           var items = sectionProperties["items"] as? [String: Any],
+           var element = Self.openAndCopyOnly(items["items"]) as? [String: Any],
+           var elementProperties = element["properties"] as? [String: Any],
+           var kind = elementProperties["kind"] as? [String: Any], let kinds = kind["enum"] as? [String] {
+            kind["enum"] = kinds.filter { $0 != "field" }
+            elementProperties["kind"] = kind
+            for key in ["input", "lines", "options", "min", "max", "placeholder", "id"] { elementProperties[key] = nil }
+            element["properties"] = elementProperties
+            items["items"] = element
+            sectionProperties["items"] = items
+            section["properties"] = sectionProperties
+            sections["items"] = section
+            properties["sections"] = sections
+        }
         live["properties"] = properties
         return [
             "type": "ARRAY",
@@ -533,6 +728,21 @@ struct RichCardSchema {
             "description": description,
             "items": Self.geminiSchema(live),
         ]
+    }
+
+    /// A button's schema with only open and copy left, and no tap id.
+    private static func openAndCopyOnly(_ value: Any?) -> Any? {
+        guard var button = value as? [String: Any], var properties = button["properties"] as? [String: Any],
+              var action = properties["action"] as? [String: Any], let actions = action["enum"] as? [String] else {
+            return value
+        }
+        action["enum"] = actions.filter { $0 == "open" || $0 == "copy" }
+        action["description"] = "open: open target, an https link or a maps:, tel:, sms:, mailto:, calshow: or x-apple-reminderkit: link. copy: copy target."
+        properties["action"] = action
+        properties["id"] = nil
+        properties["confirm"] = nil
+        button["properties"] = properties
+        return button
     }
 
     private static func geminiSchema(_ schema: [String: Any]) -> [String: Any] {

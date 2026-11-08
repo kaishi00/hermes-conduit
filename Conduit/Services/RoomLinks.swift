@@ -2,7 +2,7 @@
 //  RoomLinks.swift
 //  Conduit
 //
-//  Settings > People (designs/cross-owner-agents, C2): the Links between
+//  Settings > Multiplayer (designs/cross-owner-agents, C2): the Links between
 //  this Hermes and other people's, which let two people bring their agents
 //  into rooms together, and the invites that make them. The host's notifier
 //  plugin keeps them for the whole installation (room_links.py) and talks to
@@ -308,7 +308,7 @@ struct RoomLinksClient {
 
 extension AppState {
     /// Whether the host's plugin keeps Links. Not in `usedCapabilities`: an
-    /// older plugin just doesn't offer Settings > People, with no update
+    /// older plugin just doesn't offer Settings > Multiplayer, with no update
     /// notice.
     var canLinkRooms: Bool {
         notifierPlugin.reports(RoomLinksClient.capability)

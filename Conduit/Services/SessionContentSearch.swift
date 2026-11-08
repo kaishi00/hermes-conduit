@@ -431,43 +431,77 @@ final class SessionContentSearchModel: ObservableObject {
         task = Task { @MainActor [weak self] in
             do { try await sleep(debounce) } catch { return }
             guard !Task.isCancelled, let self, self.generation == generation else { return }
-            let outcome: Result<[String: Any], Error>
-            do { outcome = .success(try await request(path)) } catch { outcome = .failure(error) }
-            // The bridge doesn't stop a request it already sent: an answer
-            // for a query the field has moved past is dropped here.
-            guard self.generation == generation else { return }
-            switch outcome {
-            case .success(let response):
-                guard var hits = SessionContentSearch.hits(from: response, query: query) else {
-                    self.isSearching = false
-                    self.support.markUnsupported(scope)
-                    return
-                }
-                // The other profiles' hits follow; one that fails is left
-                // out, as the list's own matches still show.
-                for other in others {
-                    guard let response = try? await request(other.path) else { continue }
-                    guard self.generation == generation else { return }
-                    let found = SessionContentSearch.hits(from: response, query: query) ?? []
-                    hits += found.map { hit in
+            // The other profiles are asked alongside this one, not one after
+            // another behind it; one that fails is left out, as the list's
+            // own matches still show (issue 1965).
+            let otherSearches = others.map { other in
+                Task { @MainActor () -> [SessionContentSearchHit] in
+                    guard let response = try? await request(other.path) else { return [] }
+                    return (SessionContentSearch.hits(from: response, query: query) ?? []).map { hit in
                         var hit = hit
                         hit.profile = other.profile
                         return hit
                     }
                 }
+            }
+            await withTaskCancellationHandler {
+                await self.collect(
+                    primary: { try await request(path) },
+                    others: otherSearches,
+                    query: query,
+                    scope: scope,
+                    generation: generation
+                )
+            } onCancel: {
+                otherSearches.forEach { $0.cancel() }
+            }
+        }
+    }
+
+    /// Publishes this profile's hits as soon as they land, then each other
+    /// profile's as it answers, in profile order so rows never reshuffle.
+    /// The search reads as running until the last profile answers.
+    private func collect(
+        primary: @MainActor () async throws -> [String: Any],
+        others: [Task<[SessionContentSearchHit], Never>],
+        query: String,
+        scope: AnyObject,
+        generation: Int
+    ) async {
+        let outcome: Result<[String: Any], Error>
+        do { outcome = .success(try await primary()) } catch { outcome = .failure(error) }
+        // The bridge doesn't stop a request it already sent: an answer
+        // for a query the field has moved past is dropped here.
+        guard self.generation == generation else { return }
+        switch outcome {
+        case .success(let response):
+            guard let primaryHits = SessionContentSearch.hits(from: response, query: query) else {
+                others.forEach { $0.cancel() }
+                isSearching = false
+                support.markUnsupported(scope)
+                return
+            }
+            var hits = primaryHits
+            isSearching = !others.isEmpty
+            self.hits = hits
+            resultsQuery = query
+            for other in others {
+                let found = await other.value
                 guard self.generation == generation else { return }
-                self.isSearching = false
+                guard !found.isEmpty else { continue }
+                hits += found
                 self.hits = hits
-                self.resultsQuery = query
-            case .failure(let error):
-                self.isSearching = false
-                if SessionContentSearch.isUnsupported(error) {
-                    self.support.markUnsupported(scope)
-                } else {
-                    // A failed answer settles nothing: the same query,
-                    // asked again, is sent again.
-                    self.currentKey = nil
-                }
+            }
+            isSearching = false
+        case .failure(let error):
+            others.forEach { $0.cancel() }
+            isSearching = false
+            if SessionContentSearch.isUnsupported(error) {
+                support.markUnsupported(scope)
+            } else {
+                // A failed answer settles nothing: the same query,
+                // asked again, is sent again.
+                currentKey = nil
             }
         }
     }

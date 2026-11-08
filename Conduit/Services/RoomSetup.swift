@@ -2,7 +2,7 @@
 //  RoomSetup.swift
 //  Conduit
 //
-//  Host setup on Settings > People (designs/cross-owner-agents, C2): what
+//  Host setup on Settings > Multiplayer (designs/cross-owner-agents, C2): what
 //  this Hermes needs before rooms with other people's agents can reach a
 //  profile's agent, and the one switch that does it. The notifier plugin
 //  (room_setup.py) turns on Hermes' API server, which rooms reach agents

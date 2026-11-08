@@ -5,7 +5,7 @@
 //  Scan Code on the address step: the camera reads a sign-in code Hermes
 //  showed as a QR code, or a dashboard address shown as text (a tap picks
 //  it). Under the camera, the prompt that asks Hermes for a code.
-//  Settings > People's Scan reads a Link invite's QR code with the same
+//  Settings > Multiplayer's Scan reads a Link invite's QR code with the same
 //  sheet (CodeScanPurpose.linkInvite).
 //
 

@@ -392,11 +392,17 @@ extension AppState {
         return drafts.people
     }
 
-    /// There are people to invite, but this Hermes can't start rooms with
-    /// them, which New Group Chat says.
+    /// The drafts are read for the dashboard in use, so New Group Chat
+    /// knows whether rooms with people can start before offering Link with
+    /// someone.
+    var linkedRoomDraftsRead: Bool { currentLinkedRoomDrafts != nil }
+
+    /// This Hermes can't start rooms with linked people, which New Group
+    /// Chat says in place of its people or Link with someone, whether or
+    /// not anyone is linked yet.
     var linkedRoomStartsUnavailable: Bool {
         guard let drafts = currentLinkedRoomDrafts else { return false }
-        return !drafts.list.startsAvailable && !drafts.people.isEmpty
+        return !drafts.list.startsAvailable
     }
 
     /// Reads the drafts, with your Links unless `readingPeople` is false

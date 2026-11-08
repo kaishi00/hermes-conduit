@@ -2,7 +2,7 @@ import XCTest
 
 @testable import Conduit
 
-/// Settings > People (designs/cross-owner-agents, C2): the Links this
+/// Settings > Multiplayer (designs/cross-owner-agents, C2): the Links this
 /// installation keeps, its four words, the host setup for rooms with other
 /// people's agents (C2a), and invites made, opened and accepted (C2b).
 /// Notifier 0.83 (`room_links.py`, the links routes) and 0.85
