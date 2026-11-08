@@ -45,7 +45,9 @@ a job. At most three jobs run at once.
   kept with a workstream's chat makes no jobs at all: every request goes to
   the workstream through its plugin, interrupting it while it works. While
   the workstream waits on its question, the request answers it; while it
-  waits on an approval, the request waits until that's answered.
+  waits on an approval, the request waits until that's answered. A chat
+  turn the live model starts with `ask_thread` doesn't go through the
+  workstream's send, so it doesn't answer the question.
 - During a live call, the call screen shows each job the call started: the
   latest above the captions, and every one in the transcript panel where it
   started (`VoiceJobCallAnchor`). Tapping one shows its status and, once it
