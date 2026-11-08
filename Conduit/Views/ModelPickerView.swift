@@ -297,6 +297,8 @@ struct ModelPickerView: View {
     @State private var queuedReasoning: ReasoningEffortLevel?
     /// All providers is pushed.
     @State private var showingProviders = false
+    /// All providers opened the provider holding the pick; a collapse sticks.
+    @State private var heldProviderOpened = false
     @State private var reasoningError: String?
     /// The speed or YOLO value being written, shown until Hermes answers.
     @State private var writingSpeed: ModelSpeed?
@@ -814,6 +816,7 @@ struct ModelPickerView: View {
     private var allProvidersRow: some View {
         Button {
             searchFocused = false
+            heldProviderOpened = false
             showingProviders = true
         } label: {
             HStack(spacing: 10) {
@@ -885,14 +888,15 @@ struct ModelPickerView: View {
         // arrives after the page did.
         .onAppear(perform: openHeldProvider)
         .onChange(of: visibleProviders.map(\.name)) { _, _ in
-            if expandedProvider == nil { openHeldProvider() }
+            if !heldProviderOpened { openHeldProvider() }
         }
     }
 
     private func openHeldProvider() {
-        if let held = visibleProviders.first(where: { $0.matches(selectedProvider) }) {
-            expandedProvider = held.name
-        }
+        guard !heldProviderOpened,
+              let held = visibleProviders.first(where: { $0.matches(selectedProvider) }) else { return }
+        heldProviderOpened = true
+        expandedProvider = held.name
     }
 
     /// A model missing from the list may need its provider connected first.

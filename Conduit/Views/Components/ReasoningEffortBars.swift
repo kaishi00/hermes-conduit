@@ -127,8 +127,12 @@ struct ReasoningEffortBars: View {
         .accessibilityAdjustableAction { direction in
             guard !disabled else { return }
             switch direction {
-            case .increment: onCommit(Self.level(stepping: shownLevel, by: 1))
-            case .decrement: onCommit(Self.level(stepping: shownLevel, by: -1))
+            case .increment:
+                Haptics.selection()
+                onCommit(Self.level(stepping: shownLevel, by: 1))
+            case .decrement:
+                Haptics.selection()
+                onCommit(Self.level(stepping: shownLevel, by: -1))
             @unknown default: break
             }
         }
