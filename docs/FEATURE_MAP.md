@@ -2451,7 +2451,7 @@ and their README section
 
 **Open gaps**
 - A dropped folder's files aren't attached for the user; they drop the files themselves.
-- In a room someone else hosts (a Linked Rooms copy), pictures the home's people sent show by name: their files are on the home's host, which your plugin can't read (issue 2035).
+- In a room someone else hosts (a Linked Rooms copy), pictures and files the home's people sent show by name: their files are on the home's host, which your plugin can't read (issue 2035).
 - A picture over 16 MB in a room shows as unavailable (by its name when it's the message's only one); Conduit stages photos as JPEG well under that. Any other file over 16 MB doesn't open from a room, nor from a chat: both read sent files as data URLs (a room takes up to 50 MB).
 
 **Checked:** 2026-11-08, #2043 (other files sent into a room open and play as a chat's; notifier #628); 2026-11-08, #2036 (pictures sent into a room show as pictures, issue 2035; notifier #625); 2026-11-05, #1821 (a dropped picture whose file fails is taken as its image object; pictures without a bitmap are drawn before they're written); 2026-11-04, #1766 (the "Drop to attach" outline clears when a drag ends on the field); 2026-11-03, #1695 (a file dropped on a composer field attaches instead of hanging the drop, issue 1689); 2026-11-02, #1631 (pictures reach the reply on the gateway's own listener; see Two Hermes servers); 2026-10-29, #1515 (long pastes become text attachments); 2026-10-28, #1422 (folder drops say why they aren't attached).
