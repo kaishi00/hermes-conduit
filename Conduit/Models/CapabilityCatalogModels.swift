@@ -875,15 +875,19 @@ enum CapabilityPluginFilter {
         }
     }
 
-    /// The tiers present, in trust order.
-    static func tiers(in catalog: [PluginCatalogEntry]) -> [String] {
-        let present = Set(catalog.map(\.normalizedTier))
+    /// The tiers present, in trust order. A selected tier stays listed
+    /// when a refresh takes it away, so it can still be cleared.
+    static func tiers(in catalog: [PluginCatalogEntry], keeping selected: String? = nil) -> [String] {
+        var present = Set(catalog.map(\.normalizedTier))
+        if let selected { present.insert(selected) }
         return ["official", "verified", "community"].filter(present.contains)
     }
 
-    /// The categories present, A-Z.
-    static func categories(in catalog: [PluginCatalogEntry]) -> [String] {
-        Array(Set(catalog.map(\.category).filter { !$0.isEmpty })).sorted {
+    /// The categories present, A-Z, a selected one kept as tiers are.
+    static func categories(in catalog: [PluginCatalogEntry], keeping selected: String? = nil) -> [String] {
+        var present = Set(catalog.map(\.category).filter { !$0.isEmpty })
+        if let selected { present.insert(selected) }
+        return Array(present).sorted {
             $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
         }
     }
