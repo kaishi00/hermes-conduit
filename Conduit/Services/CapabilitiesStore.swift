@@ -103,6 +103,10 @@ final class CapabilitiesStore {
     private(set) var skillInstalls: [String: CapabilityInstallState] = [:]
     /// The skill hub, nil until read (or kept).
     private(set) var skillHub: SkillHubSnapshot?
+    /// Hub skills the profile has installed, identifier -> name: from the
+    /// hub's read or the latest search, so a search still marks them when
+    /// the sources read failed.
+    private(set) var hubInstalled: [String: String] = [:]
     private(set) var skillHubError: String?
     /// A Hermes without the hub's routes: Browse Skill Hub isn't offered.
     private(set) var skillHubMissing = false
@@ -180,6 +184,7 @@ final class CapabilitiesStore {
         officialSkills = []
         skillInstalls = [:]
         skillHub = nil
+        hubInstalled = [:]
         skillHubError = nil
         skillHubMissing = false
         skillRemovals = [:]
@@ -209,6 +214,7 @@ final class CapabilitiesStore {
         }
         if let kept = answers?.kept(KeptRoute.skillHub) {
             skillHub = SkillHubSnapshot(kept)
+            hubInstalled = skillHub?.installed ?? [:]
             showsKept.insert(.skillHub)
         }
         if let kept = answers?.kept(KeptRoute.toolCalls) {
@@ -433,7 +439,9 @@ final class CapabilitiesStore {
                 officialSkills[index].installed = true
             }
             skillHubEpoch &+= 1
-            skillHub?.installed[identifier] = skillHub?.installed[identifier] ?? identifier
+            // Hermes keys a hub skill by identifier and names it by its
+            // last part until the next read says otherwise.
+            hubInstalled[identifier] = hubInstalled[identifier] ?? identifier.split(separator: "/").last.map(String.init) ?? identifier
             if showsKept.contains(.officialSkills) { await loadOfficialSkills() }
             if skillHub != nil { await loadSkillHub() }
             return true
@@ -456,7 +464,9 @@ final class CapabilitiesStore {
         do {
             let response = try await read(scoped(KeptRoute.skillHub), keptAs: KeptRoute.skillHub, in: answers, timeout: 45_000)
             guard token == generation, epoch == skillHubEpoch else { return }
-            skillHub = SkillHubSnapshot(response)
+            let hub = SkillHubSnapshot(response)
+            skillHub = hub
+            hubInstalled = hub.installed
             skillHubError = nil
             skillHubMissing = false
             showsKept.remove(.skillHub)
@@ -481,7 +491,7 @@ final class CapabilitiesStore {
         let response = try await request(scoped(path), timeout: 45_000)
         let results = SkillHubResults(response)
         guard token == generation else { throw CancellationError() }
-        if epoch == skillHubEpoch { skillHub?.installed = results.installed }
+        if epoch == skillHubEpoch { hubInstalled = results.installed }
         return results
     }
 
@@ -515,9 +525,7 @@ final class CapabilitiesStore {
             }
             skillRemovals[name] = nil
             skillHubEpoch &+= 1
-            if let hub = skillHub {
-                skillHub?.installed = hub.installed.filter { $0.value != name }
-            }
+            hubInstalled = hubInstalled.filter { $0.value != name && $0.key.split(separator: "/").last.map(String.init) != name }
             // An official skill removed here can be installed again from
             // the catalog's list.
             let answers = self.answers

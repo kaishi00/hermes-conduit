@@ -86,13 +86,25 @@ final class SkillHubTests: XCTestCase {
         let results = try await store.searchSkillHub("git tools", source: "github")
         XCTAssertEqual(results.results.map(\.identifier), ["github/a/git"])
         XCTAssertEqual(results.timedOut, ["clawhub"])
-        XCTAssertEqual(store.skillHub?.installed, ["github/a/git": "git"], "A search's answer says what's installed now")
+        XCTAssertEqual(store.hubInstalled, ["github/a/git": "git"], "A search's answer says what's installed now")
         let path = try XCTUnwrap(requester.paths.last)
         XCTAssertTrue(path.hasPrefix("/api/skills/hub/search?"))
         XCTAssertTrue(path.contains("q=git%20tools"))
         XCTAssertTrue(path.contains("source=github"))
         XCTAssertTrue(path.contains("limit=50"))
         XCTAssertTrue(path.contains("profile=work"), "The search is the profile's")
+    }
+
+    func testASearchMarksInstalledSkillsWhenTheSourcesReadFailed() async throws {
+        let requester = SkillHubRequester(responses: [
+            "/api/skills/hub/search": ["results": [["identifier": "github/a/git"]], "installed": ["github/a/git": ["name": "git"]]]
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        await store.loadSkillHub()
+        XCTAssertNil(store.skillHub)
+        _ = try await store.searchSkillHub("git")
+        XCTAssertEqual(store.hubInstalled, ["github/a/git": "git"])
     }
 
     func testAHermesWithoutTheHubOffersNone() async {

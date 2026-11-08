@@ -84,7 +84,7 @@ struct SkillHubBrowsePage: View {
     }
 
     private var trimmedQuery: String { query.trimmingCharacters(in: .whitespacesAndNewlines) }
-    private var installed: [String: String] { store.skillHub?.installed ?? [:] }
+    private var installed: [String: String] { store.hubInstalled }
 
     var body: some View {
         CapabilityTabScroll(refresh: { await store.loadSkillHub() }) {
@@ -311,7 +311,7 @@ struct HubSkillDetailPage: View {
     }
 
     private var state: CapabilityInstallState? { store.skillInstalls[skill.identifier] }
-    private var installed: Bool { store.skillHub?.installed[skill.identifier] != nil }
+    private var installed: Bool { store.hubInstalled[skill.identifier] != nil }
 
     var body: some View {
         SettingsDetailContainer {
