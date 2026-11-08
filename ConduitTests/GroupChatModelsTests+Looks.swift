@@ -177,11 +177,13 @@ extension GroupChatModelsTests {
 
     @MainActor
     func testBotsHomeKeepsEachLinkedRoomsLooksForItsPicture() async throws {
-        let routes = CopiesRoutes(copies: [])
+        // Picnic is yours with Mona's Laifu in it; Zoo trip is Furina's.
+        let routes = CopiesRoutes(copies: [copiesCopy()])
         let appState = try await looksRoomAppState(routes)
         await copiesWait("Laifu's look", until: { appState.activeRoomLooks.members["m-laifu"] != nil })
+        await copiesWait("the copies read", until: { appState.linkedRoomCopyRows.count == 1 })
         XCTAssertTrue(appState.shownGroupRooms.first { $0.roomID == "conduit-5" }?.isLinked == true)
-        XCTAssertEqual(appState.homeLinkedRoomIDs, ["conduit-5"])
+        XCTAssertEqual(appState.homeLinkedRoomIDs, ["conduit-5", "conduit-9"])
         XCTAssertEqual(appState.homeRoomLooks(roomID: "conduit-5").members["m-laifu"]?.color, "#AA3300",
                        "the open room's read is kept for its tile")
         XCTAssertEqual(appState.homeRoomLooks(roomID: "conduit-other"), .empty)
@@ -190,7 +192,11 @@ extension GroupChatModelsTests {
         routes.looks["members"] = ["m-laifu": ["picture": NSNull(), "color": "#0033AA"]]
         let before = routes.looksReads
         await appState.readHomeRoomLooks()
-        XCTAssertEqual(routes.looksReads, before, "read again only 30 s on")
+        XCTAssertEqual(routes.looksReads, before + 1, "only the copy is read; Picnic again only 30 s on")
+        XCTAssertEqual(appState.homeRoomLooks(roomID: "conduit-9").members["m-laifu"]?.color, "#0033AA",
+                       "a room someone else hosts draws its faces too")
+        XCTAssertEqual(appState.homeRoomLooks(roomID: "conduit-5").members["m-laifu"]?.color, "#AA3300")
+
         appState.homeRoomLooksReadAt = [:]
         let dashboard = try XCTUnwrap(appState.activeDashboardID)
         let gone = AppState.homeRoomLooksKey(dashboard, "conduit-gone")
@@ -198,7 +204,7 @@ extension GroupChatModelsTests {
         appState.homeRoomLooksByKey[gone] = appState.homeRoomLooks(roomID: "conduit-5")
         appState.homeRoomLooksByKey[elsewhere] = appState.homeRoomLooks(roomID: "conduit-5")
         await appState.readHomeRoomLooks()
-        XCTAssertEqual(routes.looksReads, before + 1)
+        XCTAssertEqual(routes.looksReads, before + 3)
         XCTAssertEqual(appState.homeRoomLooks(roomID: "conduit-5").members["m-laifu"]?.color, "#0033AA")
         XCTAssertNil(appState.homeRoomLooksByKey[gone], "a room no longer shown keeps no faces")
         XCTAssertNotNil(appState.homeRoomLooksByKey[elsewhere], "another dashboard's are its own")

@@ -131,10 +131,15 @@ struct RoomCopyIcon: View {
 /// showing, when the rooms change, and every 30 s.
 struct HomeRoomLooksReader: ViewModifier {
     @EnvironmentObject private var appState: AppState
+    @Environment(\.v2Shell) private var shell
+    @Environment(\.scenePhase) private var scenePhase
 
     func body(content: Content) -> some View {
-        content.task(id: "\(appState.isConnected)|\(appState.homeLinkedRoomIDs.joined(separator: ","))") {
-            guard appState.isConnected, !appState.homeLinkedRoomIDs.isEmpty else { return }
+        // Not while hidden behind another tab or a pushed screen, or in the
+        // background: the open room's own reads keep its tile's faces.
+        let shown = shell.isTabActive && !shell.isRootCovered && scenePhase == .active
+        content.task(id: "\(shown)|\(appState.isConnected)|\(appState.homeLinkedRoomIDs.joined(separator: ","))") {
+            guard shown, appState.isConnected, !appState.homeLinkedRoomIDs.isEmpty else { return }
             while !Task.isCancelled {
                 await appState.readHomeRoomLooks()
                 try? await Task.sleep(for: .seconds(AppState.roomLooksReadInterval))
