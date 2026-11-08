@@ -84,6 +84,21 @@ struct CapabilitySkillsTab: View {
                     }
                 }
             }
+            if case .failed(let reason) = store.skillsUpdate {
+                Text(verbatim: AppLocalization.string("Updating hub skills failed: \(reason)"))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity)
+            }
+            if query.isEmpty, !store.skillHubMissing {
+                CapabilitySection(
+                    title: AppLocalization.string("Skill Hub"),
+                    symbol: "bag",
+                    tint: .conduitAura
+                ) {
+                    SkillHubEntryRow(store: store, reload: refresh)
+                }
+            }
             if !available.isEmpty {
                 CapabilitySection(
                     title: AppLocalization.string("Available to install"),
@@ -112,6 +127,14 @@ struct CapabilitySkillsTab: View {
             } label: {
                 Text("Sort")
             }
+            if appState.skills.contains(where: { $0.provenance == "hub" }) {
+                Button {
+                    updateHubSkills()
+                } label: {
+                    Label(AppLocalization.string("Update Hub Skills"), systemImage: "arrow.triangle.2.circlepath")
+                }
+                .disabled(store.skillsUpdate == .running || !appState.canChangeCapabilities)
+            }
             Divider()
             // They pick their skills from the list shown: a kept one waits
             // for Hermes' answer.
@@ -134,7 +157,7 @@ struct CapabilitySkillsTab: View {
             }
             .disabled(appState.capabilitiesAreKept || !appState.canChangeCapabilities)
         } label: {
-            if bulkRunning {
+            if bulkRunning || store.skillsUpdate == .running {
                 ProgressView().controlSize(.small)
             } else {
                 Image(systemName: "ellipsis.circle")
@@ -144,6 +167,16 @@ struct CapabilitySkillsTab: View {
         }
         .disabled(bulkRunning)
         .accessibilityLabel(Text("Skill options"))
+    }
+
+    private func updateHubSkills() {
+        Haptics.selection()
+        Task {
+            if await store.updateHubSkills() {
+                Haptics.success()
+                await refresh()
+            }
+        }
     }
 
     /// One switch at a time, as Hermes takes them; skills already in that
@@ -281,8 +314,10 @@ struct CapabilitySkillDetailPage: View {
     @EnvironmentObject private var appState: AppState
     let name: String
     let store: CapabilitiesStore
+    @Environment(\.dismiss) private var dismiss
     @State private var document: SkillFrontmatter?
     @State private var loadError: String?
+    @State private var confirmsRemove = false
 
     /// Reads again for another dashboard or profile, and once the store
     /// has been pointed at it.
@@ -317,6 +352,9 @@ struct CapabilitySkillDetailPage: View {
                     }
                     .disabled(!appState.canChangeCapabilities)
                     .tint(.conduitAccent)
+                    if skill.provenance == "hub" {
+                        removeControl
+                    }
                 }
             }
             if appState.capabilitiesAreCurrent {
@@ -344,6 +382,49 @@ struct CapabilitySkillDetailPage: View {
                 // A read that fails keeps the SKILL.md shown.
                 if document == nil { loadError = UserFacingError.message(for: error) }
             }
+        }
+    }
+
+    /// A skill from the hub comes off the profile as it went on
+    /// (`hermes skills uninstall`).
+    @ViewBuilder
+    private var removeControl: some View {
+        let state = store.skillRemovals[name]
+        Button(role: .destructive) {
+            confirmsRemove = true
+        } label: {
+            if state == .running {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Removing…")
+                }
+            } else {
+                Label(AppLocalization.string("Remove Skill"), systemImage: "trash")
+            }
+        }
+        .scaledFont(.subheadline)
+        .disabled(state == .running || !appState.canChangeCapabilities)
+        .confirmationDialog(Text("Remove \(name)?"), isPresented: $confirmsRemove, titleVisibility: .visible) {
+            Button(AppLocalization.string("Remove Skill"), role: .destructive) { remove() }
+        } message: {
+            Text("This deletes the skill from your host. You can install it again from the Skill Hub.")
+        }
+        if case .failed(let reason) = state {
+            Text(verbatim: reason)
+                .scaledFont(.caption)
+                .foregroundStyle(.red)
+        }
+    }
+
+    private func remove() {
+        let owner = appState.currentCapabilitiesOwner
+        guard store.serves(owner) else { return }
+        Haptics.selection()
+        Task {
+            guard await store.removeHubSkill(name: name) else { return }
+            Haptics.success()
+            _ = await appState.loadCapabilities()
+            if appState.currentCapabilitiesOwner == owner { dismiss() }
         }
     }
 
@@ -466,7 +547,7 @@ struct OfficialSkillDetailPage: View {
 
 /// A skill page's top card: its name, what it does, its pills, and the
 /// control (its switch, or Install).
-private struct CapabilitySkillHeader<Control: View>: View {
+struct CapabilitySkillHeader<Control: View>: View {
     let title: String
     let description: String?
     let pills: [CapabilityPillModel]
@@ -505,7 +586,7 @@ private struct CapabilitySkillHeader<Control: View>: View {
 }
 
 /// A SKILL.md: its frontmatter as rows, then its body as written.
-private struct CapabilitySkillDocument: View {
+struct CapabilitySkillDocument: View {
     let document: SkillFrontmatter?
     let error: String?
 
