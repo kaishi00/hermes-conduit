@@ -8,6 +8,12 @@ import SwiftUI
 
 struct ProfilePickerSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    /// The V2 bar's sheet carries the way into All while Current only leaves
+    /// it one chip. The classic sidebar presents this same sheet, so it passes
+    /// false: its chips are always drawn, the All view doesn't exist there, and
+    /// a synced Current only from another device shouldn't offer a row that
+    /// would change nothing this list shows.
+    var offersAllChatsRow = false
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var isReordering = false
@@ -15,6 +21,10 @@ struct ProfilePickerSheet: View {
     /// (Keychain reads stay off the render path).
     @State private var dashboardRows: [SavedDashboardRowModel] = []
     @State private var switchingToDashboard: UUID?
+    /// The bar's Profiles preference: Current only leaves one chip, so the All
+    /// chip is out of the bar whenever All chats is off, and this sheet is
+    /// where the bar sends a tap.
+    @AppStorage(V2SessionsBarPreferences.Profiles.key) private var profilesPreference = V2SessionsBarPreferences.Profiles.defaultValue
 
     private var visibleProfiles: [String] {
         appState.profiles.isEmpty ? [appState.activeProfile] : appState.profiles
@@ -60,6 +70,10 @@ struct ProfilePickerSheet: View {
                         }
                         .padding(.horizontal, 4)
 
+                        if showsAllChatsRow {
+                            allChatsRow
+                        }
+
                         ForEach(Array(visibleProfiles.enumerated()), id: \.element) { index, profile in
                             ProfilePickerRow(
                                 profile: profile,
@@ -94,6 +108,51 @@ struct ProfilePickerSheet: View {
                 ConduitSheetHeader(title: AppLocalization.string("Profiles"), close: { dismiss() })
             }
         }
+    }
+
+    /// Current only and All chats off: the bar draws no All chip, and the one
+    /// chip it does draw opens this sheet, so All is reachable from here or
+    /// from Settings alone. The All-profiles sheet carries the way out in the
+    /// other direction.
+    private var showsAllChatsRow: Bool {
+        offersAllChatsRow && V2SessionsBarControls.showsAllChatsRow(
+            profiles: profilesPreference,
+            allProfilesChatsOn: appState.isAllProfilesChatsOn,
+            allProfilesAvailable: AllProfilesChats.isAvailable(profiles: appState.profiles)
+        )
+    }
+
+    private var allChatsRow: some View {
+        Button {
+            Haptics.selection()
+            appState.setAllProfilesChatsOn(true)
+            dismiss()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.2")
+                    .font(.system(size: 22))
+                    .conduitFixedGlyph()
+                    .foregroundStyle(Color.conduitAccent)
+                    .frame(width: 30, height: 30)
+                Text(AppLocalization.string("All profiles"))
+                    .scaledFont(.body)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .frame(minHeight: 52)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        // The profile rows are disabled during a switch, a dashboard's row
+        // while another dashboard is coming in, and every row while the order
+        // is being changed. This row writes the same preference, so it waits
+        // for the same switch to end rather than applying it to a dashboard
+        // already on its way out, and sits out a reorder rather than closing
+        // the sheet mid-drag.
+        .disabled(isReordering || appState.isProfileSwitching || switchingToDashboard != nil)
+        .accessibilityHint(AppLocalization.string("Shows the chats of several profiles in one list"))
+        .settingsCard()
     }
 }
 
