@@ -311,14 +311,28 @@ private struct RichFieldView: View {
             .accessibilityValue(Text("Not set"))
         case .date:
             let timed = value.contains("T")
-            DatePicker(selection: Binding(
-                get: { RichFieldDates.date(value) ?? .now },
-                set: { value = RichFieldDates.text($0, timed: timed) }),
-                       displayedComponents: timed ? [.date, .hourAndMinute] : [.date]) {
-                Text(verbatim: field.label ?? field.id)
+            HStack(spacing: 8) {
+                DatePicker(selection: Binding(
+                    get: { RichFieldDates.date(value) ?? .now },
+                    set: { value = RichFieldDates.text($0, timed: timed) }),
+                           displayedComponents: timed ? [.date, .hourAndMinute] : [.date]) {
+                    Text(verbatim: field.label ?? field.id)
+                }
+                .labelsHidden()
+                .accessibilityLabel(Text(verbatim: field.label ?? field.id))
+                // A field Hermes left without a day can go back to none.
+                if field.value == nil {
+                    Button {
+                        value = ""
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(.secondary)
+                            .frame(minWidth: 44, minHeight: 44)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(Text("Clear"))
+                }
             }
-            .labelsHidden()
-            .accessibilityLabel(Text(verbatim: field.label ?? field.id))
         }
     }
 }
