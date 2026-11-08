@@ -20,10 +20,11 @@ EXTENSIONS = {
     "ConduitNotificationService": "ConduitNotificationService",
     "ConduitShareExtension": "ConduitShareExtension",
     "ConduitWidgets": "ConduitWidgets",
-    # Generated Info.plist; no requests of its own.
+    # No requests of its own.
     "ConduitWatchWidgets": "ConduitWatch/Widgets",
 }
-# What sends a request to the dashboard from an extension's own sources.
+# What sends a request to the dashboard. Only the target's own directory is
+# scanned; a Shared/ file it compiles (LocationHostClient) is named here.
 HOST_REQUESTS = re.compile(r"\b(URLSession|URLRequest|LocationHostClient)\b")
 
 
