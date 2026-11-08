@@ -212,7 +212,7 @@ final class PresentedScreensSync: ObservableObject {
     /// group room's boards under its agents' messages (plugin 0.129+);
     /// "diff-cards": changes line by line (plugin 0.133+); "composed-cards":
     /// cards Hermes builds itself, and buttons and fields on any card
-    /// (plugin 0.138+).
+    /// (plugin 0.140+).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
                            "text-drafts", "board-cards", "room-boards", "diff-cards", "composed-cards"]
     /// Card ids remembered as seen, so a card is shown at most once.
