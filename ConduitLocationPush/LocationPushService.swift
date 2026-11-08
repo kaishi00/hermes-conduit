@@ -107,12 +107,20 @@ final class LocationPushService: NSObject, CLLocationPushServiceExtension, CLLoc
             await answerMaps(request)
             return
         }
+        let id = request.id
         guard case .value(let config) = LocationSharedStore.readConfig(),
               request.isAnswered(by: config, at: Date()),
-              let binding = config.binding,
-              let key = LocationKeychain.loadKey(), key.deviceID == config.deviceID,
-              let pass = LocationKeychain.loadHostPass(), pass.dashboardID == binding.dashboardID, pass.isUsable(at: Date())
-        else { return Self.unanswered(request.id, "not answered by sharing's binding, key or host pass", kind: "locate") }
+              let binding = config.binding
+        else { return Self.unanswered(id, "not answered by sharing's binding, consent or pause", kind: "locate") }
+        guard let key = LocationKeychain.loadKey(), key.deviceID == config.deviceID else {
+            return Self.unanswered(id, "no location key for this device", kind: "locate")
+        }
+        guard let pass = LocationKeychain.loadHostPass(), pass.dashboardID == binding.dashboardID else {
+            return Self.unanswered(id, "no host pass for the bound dashboard", kind: "locate")
+        }
+        guard pass.isUsable(at: Date()) else {
+            return Self.unanswered(id, "the host pass's sign-in has expired", kind: "locate")
+        }
         // A second delivery of the same request is answered once. The key
         // is claimed now (a concurrent delivery stops here), marked answered
         // after the post, and released if the answer doesn't reach the

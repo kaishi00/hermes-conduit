@@ -23,7 +23,7 @@ def info(target):
 
 
 def reaches_host(target):
-    return any(HOST_REQUESTS.search(path.read_text()) for path in (ROOT / target).rglob("*.swift"))
+    return any(HOST_REQUESTS.search(path.read_text(encoding="utf-8")) for path in (ROOT / target).rglob("*.swift"))
 
 
 class ExtensionTransportSecurityTests(unittest.TestCase):
