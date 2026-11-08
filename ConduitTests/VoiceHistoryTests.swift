@@ -1458,6 +1458,18 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(gptBlock.contains("Kyoto"), "GPT-Live has the turns as history")
         XCTAssertFalse(gptBlock.contains("wait for the user to speak first"))
 
+        // While Hermes is still answering, the question goes with the
+        // progress note after it.
+        let running = messages.dropLast() + [row("6", .user, "Book the hotel"), row("7", .assistant, "Checking availability…")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(Array(running), replyRunning: true)).recent.count, 2)
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(Array(running))).recent.count, 4)
+
+        // A user turn names its attachments, never their paths.
+        var shared = row("8", .user, "What's on this?")
+        shared.attachments = [Attachment(id: "a", name: "board.jpg", uri: "file:///private/board.jpg", mimeType: "image/jpeg", kind: .image)]
+        let named = try XCTUnwrap(VoiceResumeContext.chat([shared, row("9", .assistant, "A to-do list.")])).recent[0].text
+        XCTAssertEqual(named, "What's on this? [Attached: board.jpg (image)]")
+
         XCTAssertNil(VoiceResumeContext.chat([]))
         XCTAssertNil(VoiceResumeContext.chat([row("1", .user, "Hello?")]), "nothing answered yet: no seed")
         // A long chat keeps its newest turns within the word-for-word budget.

@@ -893,8 +893,11 @@ struct VoiceResumeContext: Equatable {
     /// turns. Tool steps, cards and notes stay out; links to jobs go and a
     /// file is named, never given by its path. A question still waiting for
     /// its reply is left off the end, so a model seeded with it as history
-    /// doesn't answer it in Hermes' place. Nil when nothing is left.
-    static func chat(_ messages: [ChatMessage]) -> VoiceResumeContext? {
+    /// doesn't answer it in Hermes' place: while Hermes is still answering
+    /// (`replyRunning`), the last question goes with the progress notes
+    /// after it. A user turn names its attachments, never their paths. Nil
+    /// when nothing is left.
+    static func chat(_ messages: [ChatMessage], replyRunning: Bool = false) -> VoiceResumeContext? {
         var said: [VoiceResumeTurn] = messages.compactMap { message in
             guard message.tool == nil, message.approval == nil, message.clarify == nil, message.inputPrompt == nil else { return nil }
             let speaker: VoiceConversationTranscriptEntry.Speaker
@@ -903,9 +906,16 @@ struct VoiceResumeContext: Equatable {
             case .assistant: speaker = .assistant
             default: return nil
             }
-            let text = GatewayMediaTags.namingFiles(in: ConduitAppLink.removingLinks(from: message.content))
+            let attached = speaker == .user
+                ? (message.attachments ?? []).map { "[Attached: \($0.name) (\($0.kind.rawValue))]" }
+                : []
+            let text = ([GatewayMediaTags.namingFiles(in: ConduitAppLink.removingLinks(from: message.content))] + attached)
+                .joined(separator: " ")
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             return text.isEmpty ? nil : VoiceResumeTurn(speaker: speaker, text: text)
+        }
+        if replyRunning, let question = said.lastIndex(where: { $0.speaker == .user }) {
+            said.removeSubrange(question...)
         }
         while said.last?.speaker == .user { said.removeLast() }
         guard !said.isEmpty else { return nil }
