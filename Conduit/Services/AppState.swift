@@ -39449,6 +39449,7 @@ final class AppState: ObservableObject {
             message.clarify.map { $0.hasPendingDecision } == true
                 || message.approval.map { $0.status == .pending || $0.status == .submitting } == true
                 || message.inputPrompt.map { $0.isAnswerable || $0.status == .submitting } == true
+                || message.connection?.isOpen == true
         }
     }
 

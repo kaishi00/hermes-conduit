@@ -79,6 +79,12 @@ final class ConnectionCardTests: XCTestCase {
         XCTAssertEqual(card.suggested, ["gmail", "slack"])
         XCTAssertTrue(card.unresolved, "Only Continue ends a directory card")
         XCTAssertNil(card.deadline)
+
+        let settled = try XCTUnwrap(ConnectionActivity.from(payload: object(#"""
+        {"op_id": "op4", "seq": 2, "targets": [], "settled": true, "settled_by": "continue"}
+        """#), sessionId: "rt-1")?.applied(over: card))
+        XCTAssertEqual(settled.suggested, ["gmail", "slack"], "A frame without display keeps the directory card")
+        XCTAssertFalse(settled.isOpen)
     }
 
     func testANewerFrameMovesTheCardAndAnOlderOneDoesNot() throws {

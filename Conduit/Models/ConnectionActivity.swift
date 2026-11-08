@@ -124,7 +124,7 @@ struct ConnectionActivity: Equatable {
     let toolCallID: String?
     var targets: [Target]
     /// The apps directory card (`display`): no targets, these apps first.
-    let suggested: [String]?
+    var suggested: [String]?
     var settled: Bool
     /// all_resolved, continue, deadline or interrupt.
     var settledBy: String?
@@ -224,6 +224,8 @@ struct ConnectionActivity: Equatable {
         guard seq > existing.seq || settled != existing.settled || targets != existing.targets else { return nil }
         var next = self
         next.profile = existing.profile
+        // A directory card stays one when a later frame leaves out `display`.
+        if next.suggested == nil, targets.isEmpty { next.suggested = existing.suggested }
         next.targets = targets.map { target in
             guard target.connectURL == nil, target.state == .initiated,
                   let held = existing.targets.first(where: { $0.name == target.name }),
