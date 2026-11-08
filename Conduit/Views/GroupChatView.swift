@@ -798,6 +798,7 @@ struct GroupEventRow: View {
                 continuesRun: continuesRun,
                 roomEventID: event.id,
                 roomThreadID: event.threadID,
+                files: event.attachments.map { $0.attachment(roomID: event.roomID) },
                 personLook: looks.person(named: name)
             )
         } else if event.isUserMessage, attribution.poster(of: event) == nil, let host {
@@ -810,6 +811,7 @@ struct GroupEventRow: View {
                 continuesRun: continuesRun,
                 roomEventID: event.id,
                 roomThreadID: event.threadID,
+                files: event.attachments.map { $0.attachment(roomID: event.roomID) },
                 personLook: looks.home
             )
         } else if event.isUserMessage {
@@ -1059,6 +1061,9 @@ struct GroupMemberBubble: View {
     var roomThreadID: String? = nil
     /// The boards the agent showed with this message, under its bubble.
     var boards: [RichBoard] = []
+    /// A person's message's Hermes attachments (a room over Links shows
+    /// people's messages on this side), above its `@file:` files.
+    var files: [Attachment] = []
     /// Reads the files its `MEDIA:` tags attach, from its own profile on
     /// the connected Hermes, as a Bot Chat's reply does. Nil (a Desktop
     /// group, another gateway's bot) leaves the tags as text.
@@ -1119,7 +1124,7 @@ struct GroupMemberBubble: View {
                     }
                 }
                 VStack(alignment: .leading, spacing: 8) {
-                    GroupMessageFiles(files: parts.files)
+                    GroupMessageFiles(files: files + parts.files)
                     if !parts.text.isEmpty {
                         HugsIdealWidth {
                             MarkdownText(

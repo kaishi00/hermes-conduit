@@ -143,9 +143,15 @@ extension AppState {
     /// The open room's Hermes keeps files as its messages' own attachments
     /// (`groups.attachment.upload`, Hermes 0.22.6+), which it hands to each
     /// bot as a chat's: pictures to a model without vision through the
-    /// auxiliary vision model. Not in a copy: Hermes' Links carry no files.
+    /// auxiliary vision model. Not in a copy, and not in a linked room:
+    /// Hermes' peer route carries no files, and its driver fails a guest
+    /// agent's whole turn on a message that has them
+    /// (`attachments_unsupported_on_route`), so a linked room's files go
+    /// through the plugin as `@file:` lines, which notifier #629 carries.
     var roomTakesHermesAttachments: Bool {
-        groupCapabilities?.supports("groups.attachment.upload") == true && activeRoomSurface?.copy == nil
+        groupCapabilities?.supports("groups.attachment.upload") == true
+            && activeRoomSurface?.copy == nil
+            && activeRoomSurface?.room.isLinked != true
     }
 
     /// The largest file the room composer stages, in MB.

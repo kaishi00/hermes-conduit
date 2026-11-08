@@ -16,14 +16,20 @@ extension GroupChatModelsTests {
         return Attachment(id: UUID().uuidString, name: name, uri: url.absoluteString, mimeType: mimeType, kind: kind)
     }
 
-    private func attachmentsRoom() -> GroupRoom {
-        GroupRoom(
+    /// `linked` adds a guest's agent (a `peer` member, Linked Rooms).
+    private func attachmentsRoom(linked: Bool = false) -> GroupRoom {
+        var members = [
+            GroupMember(memberID: "researcher", profile: "researcher", handle: "research-buddy",
+                        displayName: "Research Buddy", target: nil, extra: [:]),
+        ]
+        if linked {
+            members.append(GroupMember(memberID: "guest", profile: "guest", handle: "guest-bot",
+                                       displayName: "Guest Bot", target: ["kind": .string("peer")], extra: [:]))
+        }
+        return GroupRoom(
             roomID: "room-1",
             name: "Planning",
-            members: [
-                GroupMember(memberID: "researcher", profile: "researcher", handle: "research-buddy",
-                            displayName: "Research Buddy", target: nil, extra: [:]),
-            ],
+            members: members,
             authorityGatewayID: "gw-a",
             authorityEpoch: 1,
             revision: 1,
@@ -61,11 +67,13 @@ extension GroupChatModelsTests {
     }
 
     @MainActor
-    private func attachmentsAppState(_ hermes: AttachmentsHermes, attachmentMethods: Bool = true) -> AppState {
+    private func attachmentsAppState(
+        _ hermes: AttachmentsHermes, attachmentMethods: Bool = true, linked: Bool = false
+    ) -> AppState {
         let suite = "GroupChatModelsTests.attachments.\(UUID().uuidString)"
         let defaults = UserDefaults(suiteName: suite)!
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
-        let room = attachmentsRoom()
+        let room = attachmentsRoom(linked: linked)
         var methods = GroupWire.requiredMethods
         if attachmentMethods {
             methods.formUnion(["groups.attachment.upload", "groups.attachment.download"])
@@ -290,6 +298,28 @@ extension GroupChatModelsTests {
         XCTAssertEqual(message.attachments.map(\.name), (1...8).map { "p\($0).png" })
         XCTAssertEqual(hermes.pluginStored, ["odd.png", "p9.png"])
         XCTAssertEqual(message.text, "@file:/h/conduit/room-files/u1/odd.png\n@file:/h/conduit/room-files/u2/p9.png\n\nlook")
+        appState.closeGroupRoom()
+    }
+
+    /// A linked room's files go through the plugin as `@file:` lines: Hermes'
+    /// peer route carries no attachments and fails a guest agent's turn on
+    /// a message that has them.
+    @MainActor
+    func testALinkedRoomSendsFilesThroughThePlugin() async throws {
+        let hermes = AttachmentsHermes()
+        let appState = attachmentsAppState(hermes, linked: true)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(attachmentsRoom(linked: true))
+        XCTAssertFalse(appState.roomTakesHermesAttachments)
+        XCTAssertFalse(appState.canAttachRoomFiles, "no plugin, no way to carry the files")
+
+        appState.applyNotifierPluginReport(["ok": true, "version": "0.143.0", "capabilities": [GroupRoomFilesClient.capability]])
+        XCTAssertTrue(appState.canAttachRoomFiles)
+        let png = try attachmentsStaged("cat.png", data: Self.pngBytes, mimeType: "image/png", kind: .image)
+        let message = try await appState.roomMessage("look", attachments: [png])
+        XCTAssertTrue(hermes.uploads.isEmpty)
+        XCTAssertTrue(message.attachments.isEmpty)
+        XCTAssertEqual(message.text, "@file:/h/conduit/room-files/u1/cat.png\n\nlook")
         appState.closeGroupRoom()
     }
 
