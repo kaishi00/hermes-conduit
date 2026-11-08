@@ -345,9 +345,9 @@ extension AppState {
             carrying = (event.eventID, event.attachments, false)
         } else if let pending = pendingRoomMessage,
                   pending.attachments.contains(where: { $0.attachmentID == attachmentID }) {
-            // Still sending: its message's own event id, which Hermes keeps
-            // once the send lands.
-            carrying = (pending.eventID, pending.attachments, true)
+            // Still sending: the id Hermes files its message under once the
+            // send lands (`user:` + the client id's digest), as its row's.
+            carrying = (GroupRoomOutbox.serverEventID(forClientEventID: pending.eventID), pending.attachments, true)
         } else {
             return .failed
         }

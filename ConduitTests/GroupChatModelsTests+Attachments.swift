@@ -63,6 +63,8 @@ extension GroupChatModelsTests {
         /// What the plugin's `/room-files` stored, by name.
         var pluginStored: [String] = []
         var downloadError: Error?
+        /// The send's outcome is unknown: the message stays pending.
+        var sendsFail = false
         var logEvents: [GroupEvent] = []
     }
 
@@ -92,10 +94,12 @@ extension GroupChatModelsTests {
                                     authorityGatewayID: "gw-a", authorityEpoch: 1)
             },
             send: { _, roomID, eventID, _, _ in
+                if hermes.sendsFail { throw URLError(.networkConnectionLost) }
                 guard let event = GroupDecoders.event(AnyCodable.from([
                     "room_id": roomID,
                     "seq": 1,
-                    "event_id": eventID,
+                    // Hermes files a user message under its client id's digest.
+                    "event_id": GroupRoomOutbox.serverEventID(forClientEventID: eventID),
                     "kind": "message.user",
                     "actor": ["kind": "user", "id": "human"],
                     "payload": ["text": "", "thread_id": "main"],
@@ -361,6 +365,26 @@ extension GroupChatModelsTests {
         XCTAssertEqual(withPictures?.roomFileReads.reads(pluginPicture), true)
         XCTAssertEqual(withPictures?.roomFileReads.reads(pluginFile), false)
         XCTAssertTrue(appState.roomFileReadsResolver === withPictures)
+        appState.closeGroupRoom()
+    }
+
+    /// A file in a message still sending reads by the event Hermes files
+    /// that message under, not its client id.
+    @MainActor
+    func testAStillSendingMessagesFileReadsByItsServerEvent() async throws {
+        let hermes = AttachmentsHermes()
+        hermes.sendsFail = true
+        let appState = attachmentsAppState(hermes)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(attachmentsRoom())
+        let pdf = GroupRoomAttachment(attachmentID: "a1", kind: "pdf", name: "plan.pdf", size: 9, mime: "application/pdf")
+        _ = await appState.sendGroupRoomMessage("", attachments: [pdf])
+        let pending = try XCTUnwrap(appState.pendingRoomMessage, "an unknown outcome keeps the message pending")
+
+        let read = await appState.roomFileRead(for: pdf.path(roomID: "room-1"))
+        XCTAssertNotEqual(read, .gone)
+        XCTAssertEqual(hermes.downloads.first?.eventID, GroupRoomOutbox.serverEventID(forClientEventID: pending.eventID))
+        XCTAssertEqual(hermes.downloads.first?.attachmentID, "a1")
         appState.closeGroupRoom()
     }
 
