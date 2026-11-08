@@ -222,11 +222,16 @@ extension AppState {
     func roomMessageText(_ text: String, attachments: [Attachment]) async throws -> String {
         guard !attachments.isEmpty else { return text }
         let client = GroupRoomFilesClient(request: { [weak self] path, body in
+            let timeout = GroupRoomFilesClient.timeoutMilliseconds(forBodyBytes: body.count)
+            if let self, self.roomRouteIsStubbed {
+                let fields = try JSONSerialization.jsonObject(with: body) as? [String: Any]
+                return try await self.roomRouteJSON(path: path, method: "POST", body: fields, timeoutMilliseconds: timeout)
+            }
             guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
             return try await bridge.requestEncodedJSON(
                 path: path,
                 encodedBody: body,
-                timeoutMilliseconds: GroupRoomFilesClient.timeoutMilliseconds(forBodyBytes: body.count)
+                timeoutMilliseconds: timeout
             )
         })
         let references = try await client.upload(attachments)

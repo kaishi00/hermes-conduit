@@ -13190,6 +13190,9 @@ final class AppState: ObservableObject {
     /// The same for the bot roster's "Could not refresh bots".
     private var botRosterRetry = TransientReadRetry()
 
+    /// Tests stand in for the plugin's rooms routes.
+    var roomRouteIsStubbed: Bool { groupChatOperations.roomRoute != nil }
+
     /// A rooms route of the plugin (the drafts, the Links): the injectable
     /// seam first (tests), then the dashboard bridge.
     func roomRouteJSON(path: String, method: String, body: [String: Any]?, timeoutMilliseconds: Int?)

@@ -52,6 +52,10 @@ extension GroupChatModelsTests {
         var sentAttachments: [[GroupRoomAttachment]] = []
         var downloads: [(eventID: String, attachmentID: String)] = []
         var refuseUploads = false
+        /// Files Hermes turns down by name.
+        var refusedNames: Set<String> = []
+        /// What the plugin's `/room-files` stored, by name.
+        var pluginStored: [String] = []
         var downloadError: Error?
         var logEvents: [GroupEvent] = []
     }
@@ -92,9 +96,17 @@ extension GroupChatModelsTests {
                 return GroupSendResult(event: event, accepted: true, driverStarted: false)
             }
         )
+        operations.roomRoute = { path, _, body, _ in
+            guard path == GroupRoomFilesClient.path else { return ["ok": false] }
+            let name = body?["name"] as? String ?? ""
+            hermes.pluginStored.append(name)
+            return ["ok": true, "path": "/h/conduit/room-files/u\(hermes.pluginStored.count)/\(name)"]
+        }
         operations.sendAttachments = { hermes.sentAttachments.append($0) }
         operations.uploadAttachment = { _, _, uploadID, kind, name, mime, base64 in
-            if hermes.refuseUploads { throw RpcError(code: 4002, message: "attachment refused") }
+            if hermes.refuseUploads || hermes.refusedNames.contains(name) {
+                throw RpcError(code: 4002, message: "attachment refused")
+            }
             hermes.uploads.append((uploadID, kind, name, mime, Data(base64Encoded: base64) ?? Data()))
             return GroupRoomAttachment(attachmentID: "att-\(hermes.uploads.count)", kind: kind, name: name,
                                        size: Data(base64Encoded: base64)?.count ?? 0, mime: mime)
@@ -245,6 +257,29 @@ extension GroupChatModelsTests {
         } catch {
             XCTAssertTrue(error is RpcError, "\(error)")
         }
+        appState.closeGroupRoom()
+    }
+
+    /// With the plugin, what Hermes won't take goes to its room files: a
+    /// refused file, and a ninth past Hermes' eight a message.
+    @MainActor
+    func testWhatHermesWontTakeGoesToThePlugin() async throws {
+        let hermes = AttachmentsHermes()
+        hermes.refusedNames = ["odd.png"]
+        let appState = attachmentsAppState(hermes)
+        appState.applyNotifierPluginReport(["ok": true, "version": "0.143.0", "capabilities": [GroupRoomFilesClient.capability]])
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(attachmentsRoom())
+        var files = [try attachmentsStaged("odd.png", data: Self.pngBytes, mimeType: "image/png", kind: .image)]
+        for index in 1...9 {
+            files.append(try attachmentsStaged("p\(index).png", data: Self.pngBytes, mimeType: "image/png", kind: .image))
+        }
+
+        let message = try await appState.roomMessage("look", attachments: files)
+
+        XCTAssertEqual(message.attachments.map(\.name), (1...8).map { "p\($0).png" })
+        XCTAssertEqual(hermes.pluginStored, ["odd.png", "p9.png"])
+        XCTAssertEqual(message.text, "@file:/h/conduit/room-files/u1/odd.png\n@file:/h/conduit/room-files/u2/p9.png\n\nlook")
         appState.closeGroupRoom()
     }
 

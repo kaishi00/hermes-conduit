@@ -5068,8 +5068,9 @@ final class HermesClient: ObservableObject {
                 "mime": mime,
                 "data_base64": dataBase64,
             ],
-            // Up to 15 MB goes up as base64.
-            timeout: Self.roomAttachmentTimeout,
+            // Up to 15 MB goes up as base64: at least 64 KB a second, as
+            // the plugin's room files allow.
+            timeout: max(Self.roomAttachmentTimeout, TimeInterval(dataBase64.utf8.count) / 65_536),
             scoped: false
         )
         guard let saved = GroupRoomAttachment(wire: result) else { throw HermesError.invalidResponse }
