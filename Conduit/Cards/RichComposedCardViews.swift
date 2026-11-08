@@ -255,7 +255,10 @@ private struct RichFieldView: View {
             // The host keeps this much of a field, so the card holds no more
             // than reaches Hermes.
             .onChange(of: value) { _, new in
-                if new.count > RichField.maxTextCharacters { value = String(new.prefix(RichField.maxTextCharacters)) }
+                // Counted as the host counts it, in Unicode scalars.
+                if new.unicodeScalars.count > RichField.maxTextCharacters {
+                    value = String(String.UnicodeScalarView(new.unicodeScalars.prefix(RichField.maxTextCharacters)))
+                }
             }
         case .number:
             VStack(alignment: .leading, spacing: 2) {

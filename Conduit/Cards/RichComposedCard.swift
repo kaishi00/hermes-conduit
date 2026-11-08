@@ -121,14 +121,14 @@ struct RichField: Equatable, Hashable {
         }
     }
 
-    /// What it starts filled in with: a toggle starts off, a date today
-    /// (what its picker shows).
+    /// What it starts filled in with: a toggle starts off; a date with no
+    /// day holds none, and shows Not set until one is picked, so a tap
+    /// never sends a day the user didn't choose.
     var startingValue: String {
         if let value { return value }
         switch input {
         case .toggle: return "off"
-        case .date: return RichFieldDates.text(.now, timed: false)
-        case .text, .choice, .number: return ""
+        case .date, .text, .choice, .number: return ""
         }
     }
 }

@@ -218,6 +218,14 @@ extension AppStateVoiceCapabilityTests {
                        "a slow tap keeps its spinner until it's answered")
     }
 
+    func testAnUnsetDateFieldStartsWithNoDay() throws {
+        let field = try XCTUnwrap(RichField(json: ["id": "day", "input": "date"]))
+        XCTAssertEqual(field.startingValue, "", "a tap never sends a day the user didn't pick")
+        XCTAssertNil(RichFieldDates.date(field.startingValue))
+        XCTAssertEqual(try XCTUnwrap(RichField(json: ["id": "day", "input": "date", "value": "2026-11-08"])).startingValue,
+                       "2026-11-08")
+    }
+
     func testADateFieldKeepsOnlyARealDay() {
         for (value, real) in [("2026-02-31", false), ("2026-02-29", false), ("2028-02-29", true), ("2100-02-29", false),
                               ("2000-02-29", true), ("2026-13-01", false), ("0000-01-01", false),
