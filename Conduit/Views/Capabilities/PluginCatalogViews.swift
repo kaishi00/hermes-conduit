@@ -500,6 +500,8 @@ struct PluginCatalogDetailPage: View {
         Task {
             do {
                 let outcome = try await store.installPlugin(entry)
+                // Said only on the page's own dashboard and profile.
+                guard appState.currentCapabilitiesOwner == owner, store.serves(owner) else { return }
                 if !outcome.missingEnv.isEmpty {
                     message = AppLocalization.string("\(outcome.name) is installed but needs a key before it works: \(outcome.missingEnv.joined(separator: ", ")).")
                 } else if outcome.restartRequired {
@@ -509,6 +511,7 @@ struct PluginCatalogDetailPage: View {
                     message = AppLocalization.string("\(outcome.name) is installed and loaded.")
                 }
             } catch {
+                guard appState.currentCapabilitiesOwner == owner, store.serves(owner) else { return }
                 message = UserFacingError.message(for: error)
             }
         }
