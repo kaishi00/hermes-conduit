@@ -5758,7 +5758,7 @@ model-facing text (none describe the glow)
 
 **Code**
 - Colors: `Conduit/Services/ProfileGlowColors.swift`, `Conduit/Services/AppState+V2Shell.swift` (profileGlowTint), `Conduit/Services/AppState.swift` (profileGlowColors, setProfileGlowColor, conversationIdentityProfile), `Conduit/Services/ProfileAppearanceStore.swift` (picks)
-- Backdrop: `Conduit/Theme.swift` (ConduitBackdrop), `Conduit/Views/V2/V2TopBar.swift` (V2Backdrop, glowProfile)
+- Backdrop: `Conduit/Theme.swift` (ConduitBackdrop; its drift, see Backdrop drift), `Conduit/Views/V2/V2TopBar.swift` (V2Backdrop, glowProfile)
 - Open chat: `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Views/ChatRowState.swift` (agentGlowTint), `Conduit/Views/ModelPickerView.swift`, `Conduit/Views/AuxiliaryViews.swift` (ContextSheet, SettingsBackdrop)
 - Elsewhere: `Conduit/Views/V2/V2SettingsTab.swift`, `Conduit/Views/ProfilePickerSheet.swift`, `Conduit/Views/V2/V2AllProfilesSheet.swift`
 - Tests: `ConduitTests/ProfileGlowColorTests.swift`, `ConduitTests/BotModeTests.swift` (conversationIdentityProfile, the bot's glow)
@@ -5771,7 +5771,37 @@ model-facing text (none describe the glow)
 - The drawer shell (Appearance, V2 off) draws every chat on the gold backdrop, a Bot Chat included, though the Model and Context sheets over it take the chat's glow.
 - The chat's other sheets (gateway diagnostics, workspace browser, delegate agents, pinned replies) never took a profile glow and stay gold.
 
-**Checked:** 2026-11-06, #1874 (group room names and bubbles take the glow).
+**Checked:** 2026-11-08, #1994 (the backdrop's drift has an entry of its own, Backdrop drift; the glow color is unchanged); 2026-11-06, #1874 (group room names and bubbles take the glow).
+
+## Backdrop drift
+
+The backdrop's two glows (the warm one in the glow color at the top, the blue
+one at the bottom) drift slowly out and back over 26 seconds, ten frames a
+second, on the app's main surfaces, and hold still where they are when the
+drift pauses.
+
+**Siblings:** the open chat (chats, project chats, Bot Chat, group rooms) ·
+the Chats, Bots and Tasks tab roots · the persistent iPad sidebar column · sign-in ·
+the copy behind a bar's fade before iOS 26 and on a Mac (`V2LegacyEdgeBar`,
+the same view) · the working line's breathing (same pause rules) · the Settings tab root, the iPad chat placeholder,
+sheets, pushed pages and the iPhone drawer (still by design) · the Apple Watch (no
+backdrop drift; its call bars run their own timeline) · Settings captions and
+model-facing text (none describe it)
+
+**Code**
+- `Conduit/Theme.swift` (ConduitBackdrop, ConduitBackdropGlows, ConduitBackdropMotionPolicy, ConduitBackdropMotionClock), `Conduit/Views/V2/V2TopBar.swift` (V2Backdrop, V2LegacyEdgeBar), `Conduit/Views/ChatView.swift` (ConduitBreathing)
+- Tests: `ConduitTests/AppStateVoiceCapabilityTests.swift` (the policy, the clock, ConduitBackdropGlows); UI tests' launch: `ConduitUITests/V2NavigationHelpers.swift` (XCUIApplication.conduit), `ConduitScreenshots/AppStoreScreenshotTests.swift`
+
+**Rulings**
+- Only main surfaces drift (`drifts: true`); sheets and pushed screens keep the still composition (#474).
+- The drift pauses with the app inactive, Reduce Motion, Low Power Mode, a hot device (serious or critical), or Conduit idle for a couple of minutes with no turn running, and resumes from the phase it showed, never jumping (#465, #474).
+- UI tests and the App Store screenshots launch with `CONDUIT_STILL_BACKDROP=1` (`XCUIApplication.conduit()`), which holds the drift still: XCUITest waits for the app to settle before each step, and a drifting backdrop never settles (about two minutes a tap, #1994).
+- The glows are drawn from the timeline's tick, so they move on every frame. Drawn from a closure that only ran when something else redrew the backdrop, they sat still and then jumped across the screen in one frame whenever an input changed (the drift pausing or resuming, a color, a size), which looked like the backdrop going dark and coming back (issue 1980).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-08, #1994 (added; the glows move with the timeline, issue 1980; the Tasks root drifts like Chats and Bots, Settings and the iPad chat placeholder hold still; UI tests and screenshots hold it still; on the iPad simulator the drift ran its full cycle and held its phase through an idle pause and resume).
 
 ## Profile names
 

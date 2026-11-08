@@ -192,7 +192,7 @@ final class ProfilePickerUITests: XCTestCase {
     /// `profiles` stays optional rather than defaulted to a `Self.` constant: a
     /// covariant `Self` is not allowed in a default-argument expression.
     private func launchWithSeededProfiles(profiles: [String]? = nil) -> XCUIApplication {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launchArguments += [Identity.connectedDashboard, "https://conduit-ui-test.invalid"]
         app.launchArguments += [Identity.seededProfiles, (profiles ?? Self.seededProfiles).joined(separator: ",")]
         app.launch()
