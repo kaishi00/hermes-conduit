@@ -122,6 +122,8 @@ struct CronJobEditorSheet: View {
         .task { await seed() }
         .onAppear { if providers.isEmpty { providers = appState.keptModelProviders() } }
         .task(id: appState.activeProfile) {
+            // A job that runs no agent shows no Model row to read for.
+            guard editedJob?.noAgent != true else { return }
             await loadModels()
             // Hermes fetches a stale provider list in the background
             // meanwhile (issue 1807).
