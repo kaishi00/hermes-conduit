@@ -6889,7 +6889,7 @@ queue) · the notifier's CHANGELOG
 - When the receipt check's chat isn't the open one when the queue read comes back, the bubble isn't held, so the message shows in the transcript and the dock until its turn starts.
 - An off-screen send into a chat this connection never read the queue of (live already, resumed by another client after the restart) reads as started when a cut-off turn holds it, since only a resume or a `session.info` marks the chat held.
 
-**Checked:** 2026-11-07, #1978 with notifier #612 (added: the queue dock, the lost-turn card, the receipt check and the plugin's own lost turns).
+**Checked:** 2026-11-08, #2007 (a send docked behind a cut-off turn reads idle, Resend drops file lines, settled rows forget their submission id); 2026-11-07, #1978 with notifier #612 (added: the queue dock, the lost-turn card, the receipt check and the plugin's own lost turns).
 
 ## Where a message was sent (turn surface)
 
