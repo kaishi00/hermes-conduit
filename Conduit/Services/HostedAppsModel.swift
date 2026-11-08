@@ -233,7 +233,10 @@ final class HostedAppsModel {
         } catch is CancellationError {
             // Left the page: give it up there, never on a Hermes switched to.
             // A task of its own, since this one's calls are cancelled.
-            if hermes == self.hermes, let operation {
+            // Not while a newer try at the same app runs: Hermes hands a
+            // matching start the operation still open, so it may be theirs.
+            if hermes == self.hermes, let operation,
+               isLatest || signingIn != slug {
                 Task { try? await appState.stopHostedAppSignIn(operation) }
             }
         } catch {
