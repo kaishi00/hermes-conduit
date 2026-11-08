@@ -263,7 +263,9 @@ struct PresentedConfirm: Identifiable, Equatable {
         // A wait holds; it doesn't refuse ("hold on"). "Not now" does, and
         // a not yet with a change in it ("wait, make it Wednesday") asks
         // for that change, not a no.
-        case .notYet(let change): return change == nil && VoiceThreadRouting.containsNegation(words)
+        case .notYet(let change):
+            return change == nil
+                && (VoiceThreadRouting.containsNegation(words) || Self.cjkNotYet.contains(where: { words.contains($0) }))
         case .yes: return false
         case .other: return VoiceThreadRouting.containsRefusalVerb(words)
         }
@@ -278,6 +280,8 @@ struct PresentedConfirm: Identifiable, Equatable {
         "nessuna idea", "nie wiem", "не знаю", "понятия не имею", "bilmiyorum", "emin değilim", "tidak tahu",
         "tak tahu", "nggak tahu", "gak tahu", "tidak yakin",
     ].map { words(in: $0) }
+    /// A not yet whose not sits inside it ("先不", "还没", "先别", "まだ", "아직").
+    private static let cjkNotYet = ["不", "没", "沒", "别", "別", "まだ", "아직"]
     private static let cjkUnsure = ["不知道", "不确定", "不確定", "わからない", "分からない", "わかりません", "分かりません", "모르겠", "몰라"]
 
     private static func words(in text: String) -> [String] {
