@@ -810,10 +810,11 @@ struct RichReviewSheet: View {
             let ready = marks.values.contains(where: \.isComplete)
             Button {
                 guard let context else { return }
+                // The sheet stays up until the marks land, so a failed send keeps them.
                 RichReviewSender.send(card: card, review: review, marks: marks, note: note, context: context) {
                     onSent()
+                    dismiss()
                 }
-                dismiss()
             } label: {
                 Text("Send")
                     .scaledFont(.headline)

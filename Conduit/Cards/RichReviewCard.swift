@@ -258,6 +258,8 @@ final class RichReviewLoader {
 
     /// Forgets a round, after the user sent marks on it.
     func forget(_ id: String, _ number: Int) {
-        rounds["\(id)#\(number)"] = nil
+        let key = "\(id)#\(number)"
+        rounds[key] = nil
+        order.removeAll { $0 == key }
     }
 }
