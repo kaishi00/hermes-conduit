@@ -68,7 +68,8 @@ struct RichReviewCard: View {
                     RichReviewOptionTile(option: option, html: round?.page(decision: decision.id, option: option.id),
                                          selected: shownPick(review, decision) == option.id,
                                          onSelect: {
-                                             guard !isSent(review) else { return }
+                                             // The saved copy can't send, so nothing is picked there.
+                                             guard !isSent(review), context?.tap != nil else { return }
                                              Haptics.light()
                                              picked = option.id
                                          },
@@ -157,7 +158,8 @@ struct RichReviewCard: View {
                     .foregroundStyle(.secondary)
                 }
                 Spacer(minLength: 0)
-                if !review.isQuickPick {
+                // The saved copy can't read the host's pages or send marks.
+                if !review.isQuickPick, context != nil {
                     Button {
                         Haptics.light()
                         reviewing = true
@@ -396,6 +398,8 @@ struct RichReviewOptionTile: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityAddTraits(selected ? .isSelected : [])
         .accessibilityAction(.default, onSelect)
+        // The combined tile swallows the expand button, so it's an action of its own.
+        .accessibilityAction(named: Text("Open full screen"), onExpand)
     }
 }
 
@@ -748,15 +752,18 @@ struct RichReviewSheet: View {
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
-            TextField("Add a note (optional)", text: Binding(
-                get: { marks[decision.id]?.note ?? "" },
-                set: { text in
-                    var mark = marks[decision.id] ?? RichReviewMark(kind: .change, option: choice(decision))
-                    mark.note = text
-                    marks[decision.id] = mark
-                }), axis: .vertical)
-                .lineLimit(1...4)
-                .textFieldStyle(.roundedBorder)
+            // A note goes with a mark: typing one never marks the decision.
+            if marks[decision.id] != nil {
+                TextField("Add a note (optional)", text: Binding(
+                    get: { marks[decision.id]?.note ?? "" },
+                    set: { text in
+                        guard var mark = marks[decision.id] else { return }
+                        mark.note = text
+                        marks[decision.id] = mark
+                    }), axis: .vertical)
+                    .lineLimit(1...4)
+                    .textFieldStyle(.roundedBorder)
+            }
         }
     }
 
