@@ -20589,6 +20589,10 @@ final class AppState: ObservableObject {
         } else {
             turnState = TurnState.fromGatewayRunning(result.snapshot.running)
         }
+        // A resume that says the turn is over settles it, as setRunning(false)
+        // does: its notes are no longer running (a forced idle that only
+        // unsticks a sync keeps them; their ids are unique to this turn).
+        if result.snapshot.running == false { runningTurnNoteIDs = [] }
         // The resume snapshot is authoritative about the turn state.
         turnLifecycleEvidence = TurnLifecycleEvidence(
             revision: turnLifecycleEvidence.revision &+ 1,
