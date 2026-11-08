@@ -178,13 +178,23 @@ struct HostedAppPolicy: Codable, Equatable, Sendable {
         self.others = others
     }
 
+    /// Nil when a layer can't be read (a mode Conduit doesn't know): the
+    /// rules then count as not read, never as a layer that isn't there,
+    /// which would show an app the organization turned off as on (issue
+    /// 1998).
     init?(object: [String: AnyCodable]) {
         guard let layers = object["layers"]?.arrayValue?.compactMap(\.objectValue) else { return nil }
-        let member = layers.first { $0["kind"]?.stringValue == "member" }
-        self.init(
-            member: member.flatMap(Rules.init(layer:)),
-            others: layers.filter { $0["kind"]?.stringValue != "member" }.compactMap(Rules.init(layer:))
-        )
+        var member: Rules?
+        var others: [Rules] = []
+        for layer in layers {
+            guard let rules = Rules(layer: layer) else { return nil }
+            if layer["kind"]?.stringValue == "member" {
+                member = member ?? rules
+            } else {
+                others.append(rules)
+            }
+        }
+        self.init(member: member, others: others)
     }
 
     /// The revision a change is sent against; nil when the member has no
@@ -323,6 +333,10 @@ struct HostedAppsSnapshot: Codable, Equatable, Sendable {
     var accounts: [HostedAppAccount]
     /// Nil until the rules could be read (no Nous account yet).
     var policy: HostedAppPolicy?
+    /// Hermes couldn't give the rules: the switches only read, and the
+    /// section says so and offers to read them again, as Desktop does.
+    /// Nil when they were read, or there are none yet.
+    var rulesFailed: Bool?
 
     static let unavailable = HostedAppsSnapshot(available: false, catalog: [], statuses: [], accounts: [], policy: nil)
 

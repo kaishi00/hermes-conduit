@@ -105,7 +105,7 @@ struct CapabilityConnectorsTab: View {
             }
         }
         .task(id: appState.hostedAppsScope) {
-            hostedApps.show(scope: appState.hostedAppsScope, kept: appState.keptHostedApps())
+            hostedApps.show(appState)
             guard appState.isConnected else { return }
             await hostedApps.reload(appState)
         }

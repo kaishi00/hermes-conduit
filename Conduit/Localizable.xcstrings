@@ -151793,6 +151793,88 @@
         }
       }
     },
+    "Hermes couldn't read the rules just now, so these switches can't change." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes konnte die Regeln gerade nicht lesen, daher lassen sich diese Schalter nicht ändern."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes no pudo leer las reglas ahora, así que estos interruptores no se pueden cambiar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes n’a pas pu lire les règles pour l’instant, ces interrupteurs ne peuvent donc pas changer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes tidak bisa membaca aturannya saat ini, jadi sakelar ini tidak bisa diubah."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes non è riuscito a leggere le regole in questo momento, quindi questi interruttori non si possono cambiare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes が今ルールを読み取れなかったため、これらのスイッチは変更できません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 지금 규칙을 읽지 못해 이 스위치를 바꿀 수 없습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes nie mógł teraz odczytać reguł, więc tych przełączników nie można zmienić."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes não conseguiu ler as regras agora, então esses interruptores não podem ser alterados."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes не смог прочитать правила, поэтому эти переключатели сейчас нельзя изменить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes kuralları şu anda okuyamadı, bu yüzden bu anahtarlar değiştirilemez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 暂时无法读取规则，因此这些开关无法更改。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 暫時無法讀取規則，因此這些開關無法更改。"
+          }
+        }
+      }
+    },
     "Hermes couldn't renew the Watch lookups." : {
       "localizations" : {
         "de" : {

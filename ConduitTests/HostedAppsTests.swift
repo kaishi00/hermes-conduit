@@ -106,6 +106,45 @@ final class HostedAppsTests: XCTestCase {
         XCTAssertEqual(HostedAppsSnapshot.unavailable.apps, [])
     }
 
+    /// A layer Conduit can't read makes the rules unread, never a layer
+    /// that isn't there: an organization's lock would show as on (issue
+    /// 1998). The section then says the rules couldn't be read.
+    func testRulesWithALayerConduitCantReadAreNotRead() throws {
+        XCTAssertNil(HostedAppPolicy(object: try object(#"""
+        {"layers": [
+          {"kind": "org", "revision": "r1", "body": {"mode": "blocklist", "disabled_connectors": ["gmail"]}},
+          {"kind": "member", "revision": "r2", "body": {"mode": "unrestricted"}}
+        ]}
+        """#)))
+        XCTAssertNil(HostedAppPolicy(object: try object(#"""
+        {"layers": [{"kind": "role", "revision": "r1", "body": {}}]}
+        """#)), "A layer without a mode")
+
+        let failed = HostedAppsSnapshot(available: true, catalog: [], statuses: [], accounts: [], policy: nil, rulesFailed: true)
+        let kept = try JSONDecoder().decode(HostedAppsSnapshot.self, from: JSONEncoder().encode(failed))
+        XCTAssertEqual(kept.rulesFailed, true)
+        // Apps kept before rulesFailed came along still open.
+        let older = try JSONDecoder().decode(HostedAppsSnapshot.self, from: Data(#"""
+        {"available": true, "catalog": [], "statuses": [], "accounts": []}
+        """#.utf8))
+        XCTAssertNil(older.rulesFailed)
+    }
+
+    /// A connection that drops and comes back is the same Hermes: what the
+    /// section said stays, as does a sign-in, which goes on asking it
+    /// (issue 1997). Another dashboard or profile is another Hermes.
+    @MainActor
+    func testAReconnectKeepsTheSectionsHermes() {
+        let model = HostedAppsModel()
+        model.show(scope: "mac|default|client1|true", hermes: "mac|default", kept: nil)
+        model.note("gmail", "Waiting")
+        model.show(scope: "mac|default||false", hermes: "mac|default", kept: nil)
+        model.show(scope: "mac|default|client2|true", hermes: "mac|default", kept: nil)
+        XCTAssertEqual(model.notes["gmail"], "Waiting", "Kept over the reconnect")
+        model.show(scope: "mac|work|client3|true", hermes: "mac|work", kept: nil)
+        XCTAssertNil(model.notes["gmail"], "Another profile's section starts afresh")
+    }
+
     func testAllowAndDenyAllRules() {
         let allow = HostedAppPolicy.Rules(revision: "r", allowed: ["gmail"])
         XCTAssertTrue(allow.allows("gmail"))
