@@ -261,17 +261,19 @@ struct PresentedConfirm: Identifiable, Equatable {
         // Asked not to refuse ("don't decline it") isn't a no.
         guard !VoiceThreadRouting.negatesRefusalVerb(words) else { return false }
         switch VoiceThreadRouting.heldRequestAnswer(words) {
-        // A bare no with a change after it ("no, make it for Alex") asks for
-        // the change, which the panel's edit takes. A no on its own, or one
-        // said with its action ("don't share", "cancel the email"), declines.
+        // A no with a change after it ("no, make it for Alex", "never mind,
+        // make it Wednesday") asks for the change, which the panel's edit
+        // takes. A no on its own, or one said with its action ("don't
+        // share", "cancel the email"), declines.
         case .no(let change):
-            return change == nil || !Self.ledByBareNo(said)
-        // A wait holds; it doesn't refuse ("hold on"). "Not now" does, and
-        // a not yet with a change in it ("wait, make it Wednesday") asks
-        // for that change, not a no.
+            return change == nil || Self.opens(said, with: Self.actionNos)
+        // A wait holds; it doesn't refuse ("hold on", "wait, I'm not
+        // ready"). "Not now" does, and a not yet with a change in it ("wait,
+        // make it Wednesday") asks for that change, not a no.
         case .notYet(let change):
             return change == nil
                 && (VoiceThreadRouting.containsNegation(words) || Self.cjkNotYet.contains(where: { words.contains($0) }))
+                && !Self.opens(said, with: Self.neutralWaits)
         case .yes: return false
         case .other: return VoiceThreadRouting.containsRefusalVerb(words)
         }
@@ -287,9 +289,9 @@ struct PresentedConfirm: Identifiable, Equatable {
         "tak tahu", "nggak tahu", "gak tahu", "tidak yakin",
     ].map { words(in: $0) }
     /// Whether the answer, past the words the handset skips before its lead
-    /// ("well", "oh", "um"), opens with a no that says only no, so what
-    /// follows it is the answer.
-    private static func ledByBareNo(_ said: [String]) -> Bool {
+    /// ("well", "oh", "um"), opens with one of the phrases. A Chinese,
+    /// Japanese or Korean phrase may run into the next words.
+    private static func opens(_ said: [String], with phrases: [[String]]) -> Bool {
         let skipped = VoiceThreadRouting.answerJoiners.map { words(in: $0) }
         var rest = said[...]
         while let first = rest.first {
@@ -301,14 +303,27 @@ struct PresentedConfirm: Identifiable, Equatable {
                 break
             }
         }
-        return bareNos.contains { rest.starts(with: $0) }
+        return phrases.contains { phrase in
+            guard let lead = phrase.first else { return false }
+            if phrase.count == 1, let scalar = lead.unicodeScalars.first, scalar.value >= 0x2E80 {
+                return rest.first?.hasPrefix(lead) == true
+            }
+            return rest.starts(with: phrase)
+        }
     }
 
-    /// A no that says only no.
-    private static let bareNos: [[String]] = [
-        "no", "nope", "nah", "nein", "nee", "nö", "non", "não", "nao", "нет", "не надо", "не нужно", "не стоит",
-        "nie", "hayır", "hayir", "tidak", "nggak", "gak", "いいえ", "いや", "不", "不是", "不对", "아니", "아니요", "아뇨",
+    /// A no that names its action: what follows it is what's turned down.
+    private static let actionNos: [[String]] = [
+        "cancel", "stop", "abort", "drop", "scrap", "skip", "ditch", "abbrechen", "storniere", "cancela", "cancelar",
+        "annule", "annuler", "annulez", "anula", "anular", "annulla", "отмени", "отменить", "anuluj", "iptal",
+        "batalkan", "batal", "取消", "キャンセル", "취소",
     ].map { words(in: $0) }
+
+    /// The handset's not-yet leads with no not in them: a wait.
+    private static let neutralWaits: [[String]] = (VoiceThreadRouting.answerNotYetLeads + VoiceThreadRouting.cjkAnswerNotYetLeads)
+        .filter { lead in !VoiceThreadRouting.containsNegation(lead) && !cjkNotYet.contains(where: { lead.contains($0) }) }
+        .map { words(in: $0) }
+
     /// A not yet whose not sits inside it ("先不", "还没", "先别", "まだ", "아직").
     private static let cjkNotYet = ["不", "没", "沒", "别", "別", "まだ", "아직"]
     private static let cjkUnsure = ["不知道", "不确定", "不確定", "わからない", "分からない", "わかりません", "分かりません", "모르겠", "몰라"]
