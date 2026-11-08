@@ -97,6 +97,10 @@ struct V2AllProfilesSheet: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
+        // The row writes the shared All-chats preference, so it waits for a
+        // profile switch to end, as the picker's rows do, rather than
+        // applying it to a dashboard already on its way out.
+        .disabled(appState.isProfileSwitching)
         .settingsCard()
     }
 
