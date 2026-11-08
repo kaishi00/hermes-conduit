@@ -183,11 +183,11 @@ struct HostedAppPolicy: Codable, Equatable, Sendable {
     /// which would show an app the organization turned off as on (issue
     /// 1998).
     init?(object: [String: AnyCodable]) {
-        guard let layers = object["layers"]?.arrayValue?.compactMap(\.objectValue) else { return nil }
+        guard let layers = object["layers"]?.arrayValue else { return nil }
         var member: Rules?
         var others: [Rules] = []
-        for layer in layers {
-            guard let rules = Rules(layer: layer) else { return nil }
+        for entry in layers {
+            guard let layer = entry.objectValue, let rules = Rules(layer: layer) else { return nil }
             if layer["kind"]?.stringValue == "member" {
                 member = member ?? rules
             } else {

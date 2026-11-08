@@ -119,6 +119,9 @@ final class HostedAppsTests: XCTestCase {
         XCTAssertNil(HostedAppPolicy(object: try object(#"""
         {"layers": [{"kind": "role", "revision": "r1", "body": {}}]}
         """#)), "A layer without a mode")
+        XCTAssertNil(HostedAppPolicy(object: try object(#"""
+        {"layers": [{"kind": "member", "revision": "r2", "body": {"mode": "unrestricted"}}, "org"]}
+        """#)), "A layer that isn't one")
 
         let failed = HostedAppsSnapshot(available: true, catalog: [], statuses: [], accounts: [], policy: nil, rulesFailed: true)
         let kept = try JSONDecoder().decode(HostedAppsSnapshot.self, from: JSONEncoder().encode(failed))
@@ -143,6 +146,21 @@ final class HostedAppsTests: XCTestCase {
         XCTAssertEqual(model.notes["gmail"], "Waiting", "Kept over the reconnect")
         model.show(scope: "mac|work|client3|true", hermes: "mac|work", kept: nil)
         XCTAssertNil(model.notes["gmail"], "Another profile's section starts afresh")
+    }
+
+    /// What counts as the connection failing a sign-in's ask, which the
+    /// sign-in waits out, rather than Hermes failing it.
+    @MainActor
+    func testASignInWaitsOutTheConnectionNotHermes() {
+        let appState = AppState(defaults: makeScratchDefaults("HostedAppsTests"), loadSavedConnection: false)
+        XCTAssertTrue(HostedAppsModel.isConnectionBlip(RpcError(code: -32000, message: "x"), appState: appState), "Not connected: anything waits")
+        appState.isConnected = true
+        for blip: Error in [HostedAppsError.notConnected, HostedAppsError.superseded, HermesError.notConnected, HermesError.connectionClosed, URLError(.networkConnectionLost)] {
+            XCTAssertTrue(HostedAppsModel.isConnectionBlip(blip, appState: appState), "\(blip)")
+        }
+        for failure: Error in [HermesError.timeout("x"), HermesError.invalidResponse, HostedAppsError.unsupported, RpcError(code: -32000, message: "x")] {
+            XCTAssertFalse(HostedAppsModel.isConnectionBlip(failure, appState: appState), "\(failure)")
+        }
     }
 
     func testAllowAndDenyAllRules() {
