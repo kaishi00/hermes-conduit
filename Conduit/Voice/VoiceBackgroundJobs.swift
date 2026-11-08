@@ -315,8 +315,10 @@ struct VoiceBackgroundJobBackend {
                                     _ instructions: String, _ fromWatch: Bool, _ callChat: String?,
                                     _ endedWith: String?, _ call: String?) -> Void = { _, _, _, _, _, _, _, _ in }
     /// A call kept with one of a bot's workstreams' chats stays in that
-    /// session (Eric 2026-11-02): its requests go to the workstream, as an
-    /// interrupt while it works, and never make a job of their own. What to
+    /// session (Eric 2026-11-02): its requests go to the workstream, as the
+    /// answer to a question it waits on, behind an approval it waits on, as
+    /// an interrupt while it works, or as its next turn otherwise, and never
+    /// make a job of their own. What to
     /// tell the call, or nil when the chat isn't a workstream's.
     var sendToCallWorkstream: @MainActor (_ thread: VoiceThreadTarget, _ request: String) async -> String? = { _, _ in nil }
     /// A call that kept a job with its chat (`callChat`) left it: when the
@@ -1718,6 +1720,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// job whose chat the call took (#1250).
     private func runsInCallChat(_ job: VoiceBackgroundJob) -> Bool {
         job.isThreadTurn || (job.id == callChatJobID && liveThread != nil)
+    }
+
+    /// A workstream's call: a request the live model sends as the chat's
+    /// turn goes to the workstream too (see startJob).
+    func sendToWorkstream(_ request: String) async -> String? {
+        guard let thread = liveThread else { return nil }
+        return await backend.sendToCallWorkstream(thread, request)
     }
 
     // MARK: Follow-ups (#451)
