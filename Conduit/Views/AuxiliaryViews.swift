@@ -1827,7 +1827,6 @@ struct ChatSettingsDetail: View {
             load: load,
             keptValues: keptValues,
             save: save,
-            showsNavigationTitle: false,
             optionOverrides: ["display.personality": ["", "helpful", "concise", "technical", "creative", "teacher", "kawaii", "catgirl", "pirate", "shakespeare", "surfer", "noir", "uwu", "philosopher", "hype"] + shownOptions.personalities],
             fieldsHeader: AppLocalization.string("Hermes"),
             leadingSection: AnyView(
@@ -1857,7 +1856,6 @@ struct ChatSettingsDetail: View {
             loadSchema: loadSchema,
             keptSchema: keptSchema
         )
-        .navigationTitle("Chat")
         .task { options = await loadOptions() }
     }
 
@@ -3392,7 +3390,6 @@ struct ProfileConfigSettingsPage: View {
     /// on them while it asks again (#1533). Nil when none are kept.
     var keptValues: (([String]) -> [String: ProfileSettingValue]?)? = nil
     let save: (String, ProfileSettingValue) async -> Bool
-    var showsNavigationTitle = true
     var optionOverrides: [String: [String]] = [:]
     /// Names the fields' card when other sections share the page.
     var fieldsHeader: String? = nil
@@ -3447,7 +3444,7 @@ struct ProfileConfigSettingsPage: View {
             }
             if let trailingSection { trailingSection }
         }
-        .navigationTitle(showsNavigationTitle ? title : "")
+        .navigationTitle(title)
         // What it showed last time, before the first frame; Hermes'
         // answer follows.
         .onAppear(perform: showKept)
@@ -3854,10 +3851,9 @@ private struct GatewaySettingsDetail: View {
                     GatewayDiagnosticsSheet(placement: .settings)
                         .v2TabBarClearance()
                 } label: {
-                    Label(AppLocalization.string("Diagnostics & logs"), systemImage: "doc.text.magnifyingglass")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .frame(minHeight: 44)
+                    SettingsLinkRow(title: AppLocalization.string("Diagnostics & logs"))
                 }
+                .buttonStyle(.plain)
                 .accessibilityIdentifier("settings.gateway.diagnostics")
             }
             ConduitSettingsSection(title: "Cloudflare Access", symbol: "shield.lefthalf.filled", tint: .conduitAccent) {
@@ -4035,19 +4031,18 @@ private struct AppearanceSettingsDetail: View {
                     Text("Choose what the round button beside a chat's message box does. A live call stays in the chat's top bar and in the button's touch-and-hold menu. Each profile can choose its own in Voice settings.")
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
-                    Picker("Chat voice button", selection: Binding(
-                        get: { ChatVoiceButtonAction.resolved(profile: nil, app: chatVoiceButton) },
-                        set: {
+                    // Three choices whose names run long in some languages:
+                    // Settings' dropdown field, not a segmented control.
+                    ConduitMenuPicker(
+                        value: ChatVoiceButtonAction.resolved(profile: nil, app: chatVoiceButton),
+                        choices: ChatVoiceButtonAction.offered.map { (id: $0, title: $0.title) },
+                        onSelect: {
                             Haptics.selection()
                             chatVoiceButton = $0.rawValue
                         }
-                    )) {
-                        ForEach(ChatVoiceButtonAction.offered, id: \.self) { action in
-                            Text(action.title).tag(action)
-                        }
+                    ) {
+                        Text("Tap").foregroundStyle(.secondary)
                     }
-                    // Three choices whose names run long in some languages.
-                    .pickerStyle(.menu)
                 }
 
                 // A project's chats otherwise show only on its page.

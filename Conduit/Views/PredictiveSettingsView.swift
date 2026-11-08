@@ -33,14 +33,9 @@ struct PredictiveSettingsSection: View {
                 PredictiveSettingsPage()
                     .v2TabBarClearance()
             } label: {
-                HStack {
-                    Text("Predictive")
-                    Spacer(minLength: 8)
-                    Text(summary).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(minHeight: 44)
+                SettingsLinkRow(title: AppLocalization.string("Predictive"), value: summary)
             }
+            .buttonStyle(.plain)
             .accessibilityIdentifier("settings.chat.predictive")
         }
     }
@@ -64,29 +59,25 @@ struct PredictiveSettingsPage: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                Text("Each guess is a short extra request to your agent's model, on a copy of the chat that can't use tools. Nothing is saved to the chat, and only this device sees the guesses.")
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if !appState.predictiveIsServed {
-                    Label {
-                        Text("Needs a newer Conduit plugin on your Hermes host (\(Predictive.minimumPlugin) or later).")
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    }
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        SettingsDetailContainer {
+            Text("Each guess is a short extra request to your agent's model, on a copy of the chat that can't use tools. Nothing is saved to the chat, and only this device sees the guesses.")
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if !appState.predictiveIsServed {
+                Label {
+                    Text("Needs a newer Conduit plugin on your Hermes host (\(Predictive.minimumPlugin) or later).")
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 }
-                repliesSection
-                pauseSection
-                followUpSection
-                modelSection
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 20)
+            repliesSection
+            pauseSection
+            followUpSection
+            modelSection
         }
         // Each switch's pickers slide in on the page-wide ease (Settings rows
         // a toggle reveals).

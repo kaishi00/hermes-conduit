@@ -461,6 +461,9 @@ enum StreamEvent {
     /// `request.cancel` for one of those: the gateway withdrew it, with its
     /// `reason` (`timeout`, `interrupted`, `shutdown`, `session_closed`).
     case inputPromptExpire(sessionId: String, requestId: String, reason: String? = nil)
+    /// `connection.request` or `connection.update`: the connect card Hermes
+    /// waits on, with the operation's whole snapshot (settled included).
+    case connection(sessionId: String, activity: ConnectionActivity)
     /// `request.cancel` for an approval server request, translated to the
     /// approval queue id the card is keyed by. `resolved` means a choice was
     /// committed — by this device or another surface.
@@ -545,6 +548,10 @@ struct SessionRuntimeSnapshot {
     /// `session.resume` (`open_requests`), oldest first. Upstream never puts
     /// `open_requests` in `session.info`, so a live snapshot parses none.
     let pendingInputPrompts: [InputPromptActivity]
+    /// The open connect card `session.resume` restores
+    /// (`pending_connection`), as its `connection.request` payload.
+    /// AppState adds the resumed session's id.
+    let pendingConnectionPayload: [String: AnyCodable]?
     /// The agent's plan (Hermes 0.21+ `todo_state`), worked out by the
     /// gateway from the whole stored history; nil when the chat has none.
     let todoState: AgentPlan?
@@ -612,6 +619,7 @@ struct SessionRuntimeSnapshot {
         }
         pendingApprovalPayload = object["pending_approval"]?.objectValue
         pendingInputPrompts = InputPromptActivity.pending(inOpenRequests: object["open_requests"])
+        pendingConnectionPayload = object["pending_connection"]?.objectValue
         todoState = (object["todo_state"]?.anyValue as? [String: Any]).flatMap { AgentPlan(snapshot: $0) }
         self.inflight = inflight
         self.queued = queued
@@ -3081,7 +3089,7 @@ final class HermesClient: ObservableObject {
         // Pending decisions and the plan ride the resume response top level.
         // Hoist them so the snapshot parser sees the same contract as
         // session.info.
-        for key in ["pending_clarify", "pending_approval", "todo_state"] {
+        for key in ["pending_clarify", "pending_approval", "pending_connection", "todo_state"] {
             if let value = object[key] {
                 snapshotObject[key] = value
             }
@@ -4272,6 +4280,38 @@ final class HermesClient: ObservableObject {
     /// Disconnects an account (`connectors.accounts.remove`).
     func removeHostedAppAccount(_ connectionID: String) async throws {
         _ = try await rpc("connectors.accounts.remove", params: ["connection_id": connectionID], timeout: Self.hostedAppsTimeout)
+    }
+
+    // MARK: Connect cards
+
+    /// A chat's connect card names its session as the owner.
+    private static func connectionOwner(_ sessionId: String) -> [String: Any] {
+        ["type": "session", "session_id": sessionId]
+    }
+
+    /// The connect card's answer (`connection.respond`): rows approved
+    /// (with the keys typed for them) or skipped, or Continue. Hermes
+    /// answers with the next `connection.update`.
+    func respondToConnection(opID: String, sessionId: String, targets: [[String: Any]] = [], continues: Bool = false) async throws {
+        var result: [String: Any] = ["targets": targets]
+        if continues { result["settled_by"] = "continue" }
+        _ = try await rpc("connection.respond", params: [
+            "owner": Self.connectionOwner(sessionId), "op_id": opID, "result": result
+        ], timeout: Self.hostedAppsTimeout)
+    }
+
+    /// Try Again on an app whose sign-in page went dead: Hermes mints a
+    /// new one on the open operation (`connectors.connect`, `reconnect`).
+    func reissueConnection(sessionId: String, name: String) async throws {
+        _ = try await rpc("connectors.connect", params: [
+            "owner": Self.connectionOwner(sessionId), "connectors": [name], "reconnect": true
+        ], timeout: Self.hostedAppsTimeout)
+    }
+
+    /// The sign-in page closed: Hermes reads the account now rather than
+    /// at its next tick (`connectors.operation.wake`).
+    func wakeConnection(opID: String, sessionId: String) async throws {
+        _ = try await rpc("connectors.operation.wake", params: ["owner": Self.connectionOwner(sessionId), "op_id": opID])
     }
 
     /// Hermes' models (`model.options`), for the model pickers, as the

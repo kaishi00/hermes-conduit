@@ -278,6 +278,11 @@ extension AppState {
         guard turnState.isRunning, let sessionId = activeSessionId, !sessionId.isEmpty else { return [] }
         let open = chatOwnSessionIDs(for: sessionId)
         return messages.filter { message in
+            if let connection = message.connection {
+                // A connect card: opened, set up or skipped by tapping
+                // only, as an input card is.
+                return connection.isOpen && open.contains(connection.sessionId)
+            }
             guard let prompt = message.inputPrompt else { return false }
             return (prompt.isAnswerable || prompt.status == .submitting) && open.contains(prompt.sessionId)
         }
