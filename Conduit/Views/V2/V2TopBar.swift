@@ -528,7 +528,7 @@ struct V2ProfileStrip: View {
                 }
                 .frame(width: pictureSize, height: pictureSize, alignment: .leading)
                 .opacity(isSelected ? 1 : 0.62)
-                .overlay(alignment: .topTrailing) {
+                .overlay(alignment: .bottomTrailing) {
                     if currentOnly && !unread.isEmpty {
                         Circle()
                             .fill(Color.conduitAccent)
