@@ -299,10 +299,19 @@ extension AppState {
     /// 30 s, one after another. One that fails keeps what was read.
     func readHomeRoomLooks() async {
         guard canShareRoomLooks, isConnected, let dashboard = activeDashboardID else { return }
-        for roomID in homeLinkedRoomIDs {
+        let roomIDs = homeLinkedRoomIDs
+        // A room that no longer shows keeps no faces.
+        let shown = Set(roomIDs.map { Self.homeRoomLooksKey(dashboard, $0) })
+        let prefix = "\(dashboard.uuidString)|"
+        for key in homeRoomLooksByKey.keys where key.hasPrefix(prefix) && !shown.contains(key) {
+            homeRoomLooksByKey[key] = nil
+            homeRoomLooksReadAt[key] = nil
+        }
+        for roomID in roomIDs {
             let key = Self.homeRoomLooksKey(dashboard, roomID)
             if let at = homeRoomLooksReadAt[key], Date().timeIntervalSince(at) < Self.roomLooksReadInterval { continue }
-            guard let room = DashboardPath.encodedQueryComponent(roomID), !Task.isCancelled else { return }
+            guard !Task.isCancelled else { return }
+            guard let room = DashboardPath.encodedQueryComponent(roomID) else { continue }
             homeRoomLooksReadAt[key] = Date()
             let response = try? await roomRouteJSON(
                 path: "\(RoomLooksUpload.path)?room_id=\(room)", method: "GET", body: nil, timeoutMilliseconds: nil)

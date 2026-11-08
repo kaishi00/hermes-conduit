@@ -13251,6 +13251,9 @@ final class AppState: ObservableObject {
         groupRoomsListed = false
         groupRoomsComplete = false
         groupRooms = []
+        // Faces read from the outgoing server aren't this one's.
+        homeRoomLooksByKey = [:]
+        homeRoomLooksReadAt = [:]
         linkedRoomDrafts = nil
         linkedRoomInvites = nil
         linkedRoomInviteFollow?.cancel()

@@ -1338,7 +1338,9 @@ struct GroupRosterRow: View {
         .buttonStyle(.plain)
         .rosterListRow(selection: .room(room.roomID, beside: openBeside))
         .accessibilityLabel(Text(room.name))
-        .accessibilityValue(Text(subtitleText))
+        .accessibilityValue(Text(room.isLinked
+            ? [AppLocalization.string("With linked people"), subtitleText].joined(separator: ", ")
+            : subtitleText))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
         .v2SelectedTrait(.room(room.roomID, beside: openBeside))
     }

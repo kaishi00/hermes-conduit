@@ -229,6 +229,7 @@ struct GroupRoomPortrait: View {
             // Drawn outside the view's environment, as a bot's preview.
             GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: 56)
                 .environment(\.groupRoomLooks, appState.homeRoomLooks(roomID: room.roomID))
+                .modifier(RoomTileBadge(systemImage: RoomTileBadge.linked, shown: room.isLinked))
                 .environmentObject(appState)
         })
         // A move, not a copy, so the tile in hand shows no + over it. Held

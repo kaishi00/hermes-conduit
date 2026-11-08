@@ -34,7 +34,7 @@ struct RoomCopyRosterRow: View {
         .buttonStyle(.plain)
         .rosterListRow()
         .accessibilityLabel(Text(verbatim: copy.name))
-        .accessibilityValue(Text(verbatim: line))
+        .accessibilityValue(Text(verbatim: [AppLocalization.string("With linked people"), line].joined(separator: ", ")))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
         .swipeActions(edge: .trailing, allowsFullSwipe: false) {
             if canDelete {
@@ -67,13 +67,14 @@ struct RoomCopyPortrait: View {
     private var canDelete: Bool { copy.isOver && appState.canDeleteRoomCopies }
     private var selection: V2RowSelection { .room(copy.roomID, beside: openBeside) }
 
+    private var zoomKey: String { BotZoomArm.roomKey(copy.roomID) }
+
     var body: some View {
         let line = RoomCopyText.line(for: copy)
         Button {
-            Haptics.light()
-            Task { await appState.openRoomCopy(copy) }
+            open()
         } label: {
-            BotRoomPortraitLabel(title: copy.name, highlighted: selection == .open) { size in
+            BotRoomPortraitLabel(title: copy.name, highlighted: selection == .open, zoomSource: zoomKey) { size in
                 RoomCopyIcon(copy: copy, size: size)
             }
             // One that's over reads as over at a glance.
@@ -91,10 +92,23 @@ struct RoomCopyPortrait: View {
         }
         .modifier(RoomCopyDelete(copy: copy, confirming: $confirmingDelete))
         .accessibilityLabel(Text(verbatim: copy.name))
-        .accessibilityValue(Text(verbatim: line))
+        .accessibilityValue(Text(verbatim: [AppLocalization.string("With linked people"), line].joined(separator: ", ")))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
         .accessibilityIdentifier("bots.roomCopy.\(copy.roomID)")
         .v2SelectedTrait(selection)
+    }
+
+    /// Opens in Bots and grows out of this portrait, as a hosted room's
+    /// tile does (GroupRoomPortrait), unless it opens beside the list.
+    private func open() {
+        Haptics.light()
+        appState.beginOpeningBotChat(zoomKey)
+        if openBeside == nil { appState.botZoom.tap(zoomKey) }
+        Task {
+            await appState.openRoomCopy(copy)
+            if appState.activeRoomSurface?.room.roomID != copy.roomID { appState.botZoom.openFailed(zoomKey) }
+            appState.endOpeningBotChat(zoomKey)
+        }
     }
 }
 

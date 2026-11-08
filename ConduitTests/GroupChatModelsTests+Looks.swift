@@ -192,9 +192,16 @@ extension GroupChatModelsTests {
         await appState.readHomeRoomLooks()
         XCTAssertEqual(routes.looksReads, before, "read again only 30 s on")
         appState.homeRoomLooksReadAt = [:]
+        let dashboard = try XCTUnwrap(appState.activeDashboardID)
+        let gone = AppState.homeRoomLooksKey(dashboard, "conduit-gone")
+        let elsewhere = AppState.homeRoomLooksKey(UUID(), "conduit-gone")
+        appState.homeRoomLooksByKey[gone] = appState.homeRoomLooks(roomID: "conduit-5")
+        appState.homeRoomLooksByKey[elsewhere] = appState.homeRoomLooks(roomID: "conduit-5")
         await appState.readHomeRoomLooks()
         XCTAssertEqual(routes.looksReads, before + 1)
         XCTAssertEqual(appState.homeRoomLooks(roomID: "conduit-5").members["m-laifu"]?.color, "#0033AA")
+        XCTAssertNil(appState.homeRoomLooksByKey[gone], "a room no longer shown keeps no faces")
+        XCTAssertNotNil(appState.homeRoomLooksByKey[elsewhere], "another dashboard's are its own")
     }
 
     // MARK: - Giving yours
