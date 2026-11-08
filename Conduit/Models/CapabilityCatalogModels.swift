@@ -88,9 +88,10 @@ enum CapabilitySkillOrdering {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    /// The categories the skills to install fall in, by their shown name.
-    static func categories(_ skills: [OfficialSkill]) -> [String] {
-        Array(Set(skills.map(\.category)))
+    /// The categories the skills to install fall in, by their shown name,
+    /// and `keeping` while it's picked even if none of them is in it.
+    static func categories(_ skills: [OfficialSkill], keeping: String? = nil) -> [String] {
+        Array(Set(skills.map(\.category) + [keeping].compactMap { $0 }))
             .sorted { prettyCategory($0).localizedCaseInsensitiveCompare(prettyCategory($1)) == .orderedAscending }
     }
 

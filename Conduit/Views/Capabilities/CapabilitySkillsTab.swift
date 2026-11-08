@@ -114,8 +114,11 @@ struct CapabilitySkillsTab: View {
                 }
             }
             if !available.isEmpty {
-                let categories = CapabilitySkillOrdering.categories(available)
-                let chosen = availableCategory.flatMap { categories.contains($0) ? $0 : nil }
+                // A picked category stays in the menu after a search or an
+                // install empties it, as the plugin catalog's does, so the
+                // menu and the list always agree.
+                let categories = CapabilitySkillOrdering.categories(available, keeping: availableCategory)
+                let chosen = availableCategory
                 let groups = CapabilitySkillOrdering.grouped(available, category: chosen)
                 CapabilitySection(
                     title: AppLocalization.string("Available to install"),
@@ -123,10 +126,17 @@ struct CapabilitySkillsTab: View {
                     tint: .conduitAura,
                     footer: AppLocalization.string("From Hermes' official skills catalog. Hermes scans each skill before it installs.")
                 ) {
-                    if categories.count > 1 {
+                    if categories.count > 1 || chosen != nil {
                         categoryMenu(categories, chosen: chosen)
                     }
                 } content: {
+                    if groups.isEmpty {
+                        Text("No matching skills")
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 12)
+                    }
                     ForEach(groups) { group in
                         if groups.count > 1 {
                             Text(verbatim: CapabilitySkillOrdering.prettyCategory(group.category))

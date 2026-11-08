@@ -52,6 +52,7 @@ extension KanbanTests {
             "Categories A-Z by their shown name, each one's skills A-Z"
         )
         XCTAssertEqual(CapabilitySkillOrdering.grouped(available, category: "research").map(\.category), ["research"])
+        XCTAssertEqual(CapabilitySkillOrdering.categories([], keeping: "research"), ["research"], "a picked category stays in the menu")
     }
 
     func testCapabilitySkillFrontmatterKeepsTopLevelFields() {
