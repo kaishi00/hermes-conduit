@@ -2548,69 +2548,59 @@ private struct ProfileModelSettingsDetail: View {
     /// under the picks, not the picks.
     @State private var edited = false
 
-    private var models: [ModelInfo] { defaults?.providers.first(where: { $0.name == provider })?.models ?? [] }
-    /// Keeps a saved model the catalog no longer lists visible instead of
-    /// silently showing a different one.
-    private var modelChoices: [(id: String, title: String)] {
-        let listed = models.map { (id: $0.id, title: $0.label ?? $0.id) }
-        return model.isEmpty || models.contains(where: { $0.id == model }) ? listed : [(id: model, title: model)] + listed
+    /// What the Model page lists: the catalog kept or Hermes', picked from
+    /// once Hermes answers. A saved model the catalog no longer lists shows
+    /// on top as the pick, never as a different one.
+    private var chooserCatalog: ModelChooserCatalog {
+        ModelChooserCatalog(providers: defaults?.providers ?? [], loaded: defaults != nil, answered: answered, failed: loadFailed)
     }
 
-    /// Keeps a saved provider the catalog does not list (e.g. `auto`)
-    /// visible instead of showing the first provider. Exact `name` equality
-    /// is enough: `provider` only ever holds a row's `name` (from `selection`
-    /// or a menu pick) or a saved value no row matched.
-    private func providerChoices(_ providers: [ProviderInfo]) -> [(id: String, title: String)] {
-        let listed = providers.map { (id: $0.name, title: $0.title) }
-        return provider.isEmpty || providers.contains(where: { $0.name == provider }) ? listed : [(id: provider, title: provider)] + listed
+    private func chooseReasoning(_ next: String) {
+        guard next != reasoning else { return }
+        reasoning = next
+        edited = true
     }
 
     /// The top of the Model page; the page around it scrolls and titles it.
     var body: some View {
         VStack(alignment: .leading, spacing: 24) {
             ConduitSettingsSection(title: AppLocalization.string("Default model"), symbol: "cpu", tint: .conduitAccent) {
-                Text("Select a provider first, then one of its available models. These defaults apply to new sessions in this profile.")
+                Text("These defaults apply to new sessions in this profile.")
                     .scaledFont(.footnote).foregroundStyle(.secondary)
                 let catalog = ModelCatalogState.of(providers: defaults?.providers, failed: loadFailed)
-                if catalog == .ready, let defaults {
-                    ConduitMenuPicker(
-                        value: provider,
-                        choices: providerChoices(defaults.providers),
-                        onSelect: chooseProvider
-                    ) {
-                        Text("Provider").foregroundStyle(.secondary)
+                if catalog == .ready || (defaults != nil && loadFailed) {
+                    NavigationLink {
+                        ModelChooserPage(
+                            title: AppLocalization.string("Default model"),
+                            catalog: chooserCatalog,
+                            retry: { Task { await reload() } },
+                            pick: provider.isEmpty && model.isEmpty ? nil : ModelChooserPick(provider: provider, model: model),
+                            reasoning: ModelChooserReasoning(effort: reasoning, set: chooseReasoning),
+                            onDefault: {},
+                            onPick: { option, item in
+                                guard option.name != provider || item.id != model else { return }
+                                provider = option.name
+                                model = item.id
+                                edited = true
+                            }
+                        )
+                    } label: {
+                        let lines = ModelChooserLinkRow.lines(
+                            pick: provider.isEmpty && model.isEmpty ? nil : ModelChooserPick(provider: provider, model: model),
+                            providers: defaults?.providers ?? [],
+                            defaultTitle: AppLocalization.string("Not set"),
+                            reasoning: ReasoningEffortLevel.displayTitle(for: reasoning)
+                        )
+                        ModelChooserLinkRow(title: AppLocalization.string("Model"), value: lines.value, detail: lines.detail)
                     }
-                    ConduitMenuPicker(
-                        value: model,
-                        choices: modelChoices,
-                        onSelect: { next in
-                            guard next != model else { return }
-                            model = next
-                            edited = true
-                        }
-                    ) {
-                        Text("Model").foregroundStyle(.secondary)
-                    }
-                    .disabled(modelChoices.isEmpty)
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.defaultModel")
                     if loadFailed && !answered {
                         // The kept catalog stays up; Save waits for Hermes.
                         ModelCatalogPlaceholder(state: .failed) { Task { await reload() } }
                     }
                 } else {
                     ModelCatalogPlaceholder(state: catalog) { Task { await reload() } }
-                }
-            }
-            ConduitSettingsSection(title: AppLocalization.string("Reasoning"), symbol: "brain.head.profile", tint: .conduitAura) {
-                ConduitMenuPicker(
-                    value: reasoning,
-                    choices: ["none", "minimal", "low", "medium", "high", "xhigh", "max", "ultra"].map { (id: $0, title: $0.capitalized) },
-                    onSelect: { next in
-                        guard next != reasoning else { return }
-                        reasoning = next
-                        edited = true
-                    }
-                ) {
-                    Text("Default reasoning").foregroundStyle(.secondary)
                 }
             }
             Button { persist() } label: { Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save model defaults"), systemImage: "checkmark").frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 46) }
@@ -2674,20 +2664,6 @@ private struct ProfileModelSettingsDetail: View {
         reasoning = loaded.reasoning
     }
 
-    /// Menus fire on the current item too; re-picking it must not swap out
-    /// a saved model.
-    private func chooseProvider(_ next: String) {
-        guard next != provider else { return }
-        edited = true
-        provider = next
-        // The unlisted saved entry has no model list, so keep the model.
-        // Otherwise keep a model the new provider also lists (e.g. one saved
-        // with no provider) rather than swapping it for the row's first model.
-        guard let models = defaults?.providers.first(where: { $0.name == next })?.models else { return }
-        if !models.contains(where: { $0.id == model }) {
-            model = models.first?.id ?? ""
-        }
-    }
     private func persist() {
         Task {
             guard defaults != nil else { return }
@@ -2739,64 +2715,68 @@ private struct DelegationModelSettings: View {
     @State private var edited = false
 
     private static let settingKeys = ["delegation.provider", "delegation.model", "delegation.reasoning_effort"]
-    /// An inherited provider offers the chat row's models, since that is the
-    /// provider the delegate will run on.
-    private var models: [ModelInfo] {
-        let row = provider.isEmpty
-            ? defaults?.providers.first(where: \.isCurrent)
-            : defaults?.providers.first(where: { $0.name == provider })
-        return row?.models ?? []
-    }
-    /// A saved provider or model the catalog does not list stays visible
-    /// instead of the picker silently showing a different one.
-    private var providerChoices: [(id: String, title: String)] {
-        let listed = (defaults?.providers ?? []).map { (id: $0.name, title: $0.title) }
-        let unlisted = provider.isEmpty || listed.contains(where: { $0.id == provider }) ? [] : [(id: provider, title: provider)]
-        return [(id: "", title: AppLocalization.string("Inherit chat provider"))] + unlisted + listed
-    }
-    private var modelChoices: [(id: String, title: String)] {
-        let listed = models.map { (id: $0.id, title: $0.label ?? $0.id) }
-        let unlisted = model.isEmpty || models.contains(where: { $0.id == model }) ? [] : [(id: model, title: model)]
-        return [(id: "", title: AppLocalization.string("Inherit chat model"))] + unlisted + listed
+    /// The delegate's own pick; nil inherits the chat model. A model saved
+    /// without a provider runs on the chat's provider.
+    private var chooserPick: ModelChooserPick? {
+        guard !provider.isEmpty || !model.isEmpty else { return nil }
+        let chatProvider = provider.isEmpty ? defaults?.providers.first(where: \.isCurrent)?.name ?? "" : provider
+        return ModelChooserPick(provider: chatProvider, model: model)
     }
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Delegate model"), symbol: "point.3.connected.trianglepath.dotted", tint: .conduitAccent) {
-            Text("Leave both selections empty to inherit the chat model. Set a provider and model to route delegate agents separately.")
+            Text("Delegate agents run on the chat model unless you pick one of their own.")
                 .scaledFont(.footnote).foregroundStyle(.secondary)
             let catalog = ModelCatalogState.of(providers: defaults?.providers, failed: loadFailed)
-            if catalog == .ready {
-                ConduitMenuPicker(
-                    value: provider,
-                    choices: providerChoices,
-                    onSelect: chooseProvider
-                ) {
-                    Text("Delegate provider").foregroundStyle(.secondary)
-                }
-                if !provider.isEmpty || !model.isEmpty {
-                    ConduitMenuPicker(
-                        value: model,
-                        choices: modelChoices,
-                        onSelect: { next in
-                            guard next != model else { return }
-                            model = next
+            if catalog == .ready || (defaults != nil && loadFailed) {
+                NavigationLink {
+                    ModelChooserPage(
+                        title: AppLocalization.string("Delegate model"),
+                        catalog: ModelChooserCatalog(providers: defaults?.providers ?? [], loaded: defaults != nil, answered: answered, failed: loadFailed),
+                        retry: { Task { await reload() } },
+                        defaultChoice: ModelChooserDefault(title: AppLocalization.string("Inherit chat model")),
+                        pick: chooserPick,
+                        isPicked: { option, item in
+                            // An inherited provider is the chat row's.
+                            (provider.isEmpty ? option.isCurrent : option.name == provider) && item.id == model
+                        },
+                        reasoning: ModelChooserReasoning(
+                            effort: reasoning,
+                            inheritTitle: AppLocalization.string("Inherit chat reasoning"),
+                            levels: ReasoningEffortLevel.allCases.filter { $0 != .off },
+                            set: { next in
+                                guard next != reasoning else { return }
+                                reasoning = next
+                                edited = true
+                            }
+                        ),
+                        onDefault: {
+                            guard !provider.isEmpty || !model.isEmpty else { return }
+                            provider = ""
+                            model = ""
+                            edited = true
+                        },
+                        onPick: { option, item in
+                            // The row already picked keeps how it's saved.
+                            guard !((provider.isEmpty ? option.isCurrent : option.name == provider) && item.id == model) else { return }
+                            // A model on the chat's provider leaves the
+                            // provider inherited, so it follows the chats'.
+                            if !(provider.isEmpty && option.isCurrent) { provider = option.name }
+                            model = item.id
                             edited = true
                         }
-                    ) {
-                        Text("Delegate model").foregroundStyle(.secondary)
-                    }
+                    )
+                } label: {
+                    let lines = ModelChooserLinkRow.lines(
+                        pick: chooserPick,
+                        providers: defaults?.providers ?? [],
+                        defaultTitle: AppLocalization.string("Inherit chat model"),
+                        reasoning: reasoning.isEmpty ? nil : ReasoningEffortLevel.displayTitle(for: reasoning)
+                    )
+                    ModelChooserLinkRow(title: AppLocalization.string("Delegate model"), value: lines.value, detail: lines.detail)
                 }
-                ConduitMenuPicker(
-                    value: reasoning,
-                    choices: [(id: "", title: AppLocalization.string("Inherit chat reasoning"))] + ["minimal", "low", "medium", "high", "xhigh", "max", "ultra"].map { (id: $0, title: $0.capitalized) },
-                    onSelect: { next in
-                        guard next != reasoning else { return }
-                        reasoning = next
-                        edited = true
-                    }
-                ) {
-                    Text("Delegate reasoning").foregroundStyle(.secondary)
-                }
+                .buttonStyle(.plain)
+                .accessibilityIdentifier("settings.delegateModel")
                 if loadFailed && !answered {
                     // The kept catalog stays up; Save waits for Hermes.
                     ModelCatalogPlaceholder(state: .failed) { Task { await reload() } }
@@ -2869,19 +2849,6 @@ private struct DelegationModelSettings: View {
         reasoning = settings["delegation.reasoning_effort"]?.textValue ?? ""
     }
 
-    private func chooseProvider(_ next: String) {
-        guard next != provider else { return }
-        edited = true
-        provider = next
-        guard !next.isEmpty else {
-            model = ""
-            return
-        }
-        guard let models = defaults?.providers.first(where: { $0.name == next })?.models else { return }
-        if !models.contains(where: { $0.id == model }) {
-            model = models.first?.id ?? ""
-        }
-    }
     private func persist() {
         Task {
             saving = true
@@ -3022,6 +2989,10 @@ private struct FallbackModelsSettings: View {
     @State private var savesLanded = 0
     @State private var saving = false
     @State private var error: String?
+    /// Add fallback's Model page is open.
+    @State private var addingFallback = false
+    /// The last read of the models failed (not a save).
+    @State private var catalogFailed = false
 
     private var providers: [ProviderInfo] { defaults?.providers ?? [] }
 
@@ -3072,7 +3043,7 @@ private struct FallbackModelsSettings: View {
                 }
                 AdaptiveStack(spacing: 8) {
                     if !(offersInherit && inherits) {
-                        Button { addEntry() } label: { Label(AppLocalization.string("Add fallback"), systemImage: "plus") }
+                        Button { addingFallback = true } label: { Label(AppLocalization.string("Add fallback"), systemImage: "plus") }
                             .buttonStyle(.settings)
                             .disabled(!KeptAnswerGate.canSave(answered: answered, saving: saving, ready: !providers.isEmpty))
                     }
@@ -3092,6 +3063,7 @@ private struct FallbackModelsSettings: View {
             }
             if let error { Text(error).scaledFont(.caption).foregroundStyle(.red) }
         }
+        .navigationDestination(isPresented: $addingFallback) { addChooser }
         // What it showed last time, before the first frame; Hermes'
         // answer follows.
         .onAppear {
@@ -3146,51 +3118,64 @@ private struct FallbackModelsSettings: View {
                 .accessibilityLabel(Text(AppLocalization.string("More")))
                 .accessibilityValue(Text(verbatim: entry.model))
             }
-            ConduitMenuPicker(value: entry.provider, choices: providerChoices(entry), onSelect: { chooseProvider($0, for: entry.id) }) {
-                Text("Provider").foregroundStyle(.secondary)
+            NavigationLink {
+                chooser(for: entry.id)
+            } label: {
+                let lines = ModelChooserLinkRow.lines(
+                    pick: ModelChooserPick(provider: entry.provider, model: entry.model),
+                    providers: providers,
+                    defaultTitle: AppLocalization.string("Not set")
+                )
+                ModelChooserLinkRow(title: AppLocalization.string("Model"), value: lines.value, detail: lines.detail)
             }
-            ConduitMenuPicker(value: entry.model, choices: modelChoices(entry), onSelect: { chooseModel($0, for: entry.id) }) {
-                Text("Model").foregroundStyle(.secondary)
-            }
-            .disabled(modelChoices(entry).isEmpty)
+            .buttonStyle(.plain)
         }
     }
 
-    /// A provider or model the catalog doesn't list stays visible, so a
-    /// hand-written entry is never shown as a different one.
-    private func providerChoices(_ entry: ProfileFallbackModel) -> [(id: String, title: String)] {
-        let listed = providers.map { (id: $0.name, title: $0.title) }
-        return entry.provider.isEmpty || listed.contains(where: { $0.id == entry.provider }) ? listed : [(id: entry.provider, title: entry.provider)] + listed
+    /// The Model page for a fallback, found again by id: the row may have
+    /// moved or gone while the page was open. A model the catalog doesn't
+    /// list stays shown as the pick, never as a different one.
+    private func chooser(for id: UUID) -> some View {
+        let entry = entries.first { $0.id == id }
+        return ModelChooserPage(
+            title: AppLocalization.string("Fallback model"),
+            catalog: chooserCatalog,
+            retry: { Task { await reload() } },
+            pick: entry.map { ModelChooserPick(provider: $0.provider, model: $0.model) },
+            disabled: !answered || saving,
+            onDefault: {},
+            onPick: { option, item in choose(option, item, for: id) }
+        )
     }
 
-    private func modelChoices(_ entry: ProfileFallbackModel) -> [(id: String, title: String)] {
-        let models = providers.first(where: { $0.name == entry.provider })?.models ?? []
-        let listed = models.map { (id: $0.id, title: $0.label ?? $0.id) }
-        return entry.model.isEmpty || listed.contains(where: { $0.id == entry.model }) ? listed : [(id: entry.model, title: entry.model)] + listed
+    /// Add fallback's page: the model picked is added at the end.
+    private var addChooser: some View {
+        ModelChooserPage(
+            title: AppLocalization.string("Add fallback"),
+            catalog: chooserCatalog,
+            retry: { Task { await reload() } },
+            pick: nil,
+            disabled: !answered || saving,
+            onDefault: {},
+            onPick: { option, item in
+                entries.append(ProfileFallbackModel(provider: option.name, model: item.id))
+            }
+        )
     }
 
-    /// Menus act on the entry they were drawn for, found again by id: the
-    /// row may have moved or gone while the menu was open.
-    private func chooseModel(_ next: String, for id: UUID) {
+    private var chooserCatalog: ModelChooserCatalog {
+        ModelChooserCatalog(providers: providers, loaded: defaults != nil, answered: answered, failed: catalogFailed)
+    }
+
+    private func choose(_ option: ProviderInfo, _ item: ModelInfo, for id: UUID) {
         guard let index = entries.firstIndex(where: { $0.id == id }) else { return }
-        entries[index].model = next
-    }
-
-    private func chooseProvider(_ next: String, for id: UUID) {
-        guard let index = entries.firstIndex(where: { $0.id == id }), next != entries[index].provider else { return }
-        entries[index].provider = next
-        let models = providers.first(where: { $0.name == next })?.models ?? []
-        if !models.contains(where: { $0.id == entries[index].model }) {
-            entries[index].model = models.first?.id ?? ""
+        if option.name != entries[index].provider {
+            // Routing written for the old provider would send the new one to
+            // the wrong endpoint.
+            entries[index].extras = [:]
         }
-        // Routing written for the old provider would send the new one to
-        // the wrong endpoint.
-        entries[index].extras = [:]
-    }
-
-    private func addEntry() {
-        guard let row = providers.first(where: { !$0.isCurrent }) ?? providers.first else { return }
-        entries.append(ProfileFallbackModel(provider: row.name, model: row.models.first?.id ?? ""))
+        entries[index].provider = option.name
+        entries[index].model = item.id
     }
 
     private func move(_ id: UUID, by offset: Int) {
@@ -3205,6 +3190,7 @@ private struct FallbackModelsSettings: View {
         pageRead += 1
         let read = (catalog: catalogRead, page: pageRead, saves: savesLanded)
         error = nil
+        catalogFailed = false
         async let modelRequest = loadModels()
         async let entryRequest = load()
         let (models, loadedChain) = await (modelRequest, entryRequest)
@@ -3217,6 +3203,7 @@ private struct FallbackModelsSettings: View {
         // the catalog and rows it already had: only the error is new.
         guard let loadedEntries, let models else {
             error = AppLocalization.string("Could not load fallback models.")
+            catalogFailed = true
             return
         }
         // A read again that landed since has the newer models.
