@@ -10235,7 +10235,14 @@ final class AppState: ObservableObject {
                 let sent = await submitComposerForCall(text: text, onBusy: { foundBusy = true }, stillWanted: stillWanted)
                 // The id captured before the send: the user may have moved to
                 // another chat while it was in flight.
-                if sent { return sessionID }
+                if sent {
+                    // Admitted behind a turn a restart cut off: nothing runs
+                    // until it's discarded in the chat.
+                    if client.chatIsHeldByLostTurn(sessionID) {
+                        throw VoiceThreadNotStartedError(message: AppLocalization.string("Hermes queued this in the chat. Its reply will appear there."))
+                    }
+                    return sessionID
+                }
             }
             if foundBusy { throw VoiceThreadBusyError() }
             noteCallChatIfGone(thread)

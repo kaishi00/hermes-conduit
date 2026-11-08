@@ -6753,8 +6753,10 @@ queue) · the notifier's CHANGELOG
 - The plugin discards only its own cut-off turns (sent with a `conduit-plugin-` submission id), before its next send into that chat; a person's is left for them to choose in Conduit. A refused discard is logged and the send still goes (2026-11-07, #1978, notifier #612).
 - A refused action says what became of the message (still queued, already started, runs next, no longer waiting), never a bare refusal token (2026-11-07, #1978).
 
-**Open gaps**
-- None known.
+**Open gaps** (a follow-up PR after #1978 closes them)
+- A `message.start` that lands while a resume is in flight restores the held bubble, and the resume's rows then drop it until the next resume.
+- Over a chat picked from the saved list, the dock shows the previous chat's rows until the new chat's open finishes.
+- When the receipt check's chat isn't the open one when the queue read comes back, the bubble isn't held, so the message shows in the transcript and the dock until its turn starts.
 
 **Checked:** 2026-11-07, #1978 with notifier #612 (added: the queue dock, the lost-turn card, the receipt check and the plugin's own lost turns).
 
