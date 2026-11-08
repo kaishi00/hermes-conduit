@@ -3555,8 +3555,8 @@ all (`/update`).
 
 **Siblings:** the Skills tab's official catalog (done: the same install, and
 both mark a skill installed) · a skill's page (done: Remove for one from the
-hub) · Skill and tool switches (the installed list, read again after an
-install or a removal) · Screens that open on their last answer (done: the
+hub) · Skill and tool switches (done: the installed list, read again after
+an install or a removal) · Screens that open on their last answer (done: the
 sources and featured skills; a search and a scan are never kept) · Hermes
 Desktop's skill catalog (upstream, the reference; it reads the public
 catalog feed, here Hermes searches its sources) · the chat card Hermes opens
@@ -3571,7 +3571,7 @@ marketplace) · Text: the page's captions and README.md's Capabilities line
 
 **Code**
 - Models: `Conduit/Models/SkillHub.swift` (HubSkill and repoURL, SkillHubSource, SkillHubSnapshot, SkillHubResults, SkillHubScan)
-- Store: `Conduit/Services/CapabilitiesStore.swift` (loadSkillHub, searchSkillHub, scanHubSkill, installSkill(identifier:), removeHubSkill, updateHubSkills, isMissingRoute, KeptRoute.skillHub)
+- Store: `Conduit/Services/CapabilitiesStore.swift` (loadSkillHub, searchSkillHub, scanHubSkill, installSkill(identifier:name:), which keeps the catalog's name so Remove clears the badge, removeHubSkill, updateHubSkills, isMissingRoute, KeptRoute.skillHub)
 - Views: `Conduit/Views/Capabilities/SkillHubViews.swift` (SkillHubEntryRow, SkillHubBrowsePage, HubSkillDetailPage, SkillHubStyle), `Conduit/Views/Capabilities/CapabilitySkillsTab.swift` (the Skill Hub section, Update Hub Skills, CapabilitySkillDetailPage's Remove Skill)
 - Tests: `ConduitTests/SkillHubTests.swift`
 
@@ -3585,7 +3585,7 @@ marketplace) · Text: the page's captions and README.md's Capabilities line
 - The hub's taps (adding a GitHub repository as a source, Desktop's Sources) aren't on the page.
 - A skill the scan would have Hermes ask about installs with Hermes' `--yes`, as Desktop's Install does; the page shows the findings first.
 
-**Checked:** 2026-11-08, #1999 (the page, the scan, install, remove and update)
+**Checked:** 2026-11-08, #NUM (the plugin catalog named as a sibling; wording); 2026-11-08, #1999 (the page, the scan, install, remove and update)
 
 ## Plugin catalog: browse and install
 
@@ -3606,8 +3606,8 @@ answer (done: the kept catalog already holds every field) · Hermes Desktop's
 plugin catalog (upstream, the reference: its featured picks from
 catalog-curation.json, its tiers and pictures) · the chat card Hermes opens
 to install a catalog plugin (not needed: Hermes runs that install itself,
-see Things Hermes connects from a chat) · Skill Hub: browse and install (the
-skills half of the marketplace) · Watch, CarPlay and group rooms (not
+see Things Hermes connects from a chat) · Skill Hub: browse and install (done:
+the skills half of the marketplace, named here and there) · Watch, CarPlay and group rooms (not
 needed: no settings) · the notifier (not needed: Hermes' own routes) · Text:
 the pages' captions and README.md's Capabilities line (done)
 
