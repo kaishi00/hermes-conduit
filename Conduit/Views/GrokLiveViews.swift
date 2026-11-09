@@ -164,7 +164,7 @@ struct GrokLiveSettingsSection: View {
                     line = AppLocalization.string("Available (\(modelName), via \(via))")
                 }
             default:
-                line = availability.userFacingReason
+                line = PluginUpdateAsk.reason(availability.userFacingReason)
             }
             status = line
             isAvailable = availability.isAvailable

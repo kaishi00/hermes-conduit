@@ -503,7 +503,7 @@ struct GroupRoomComposer: View {
                 }
             } else {
                 // Older plugins can't store a room's files; say what fixes it.
-                Text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats."))
+                Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.")))
             }
         } label: {
             Image(systemName: "plus")
@@ -1035,7 +1035,7 @@ struct GroupRoomComposer: View {
         // A disbanded room sends nothing, whichever target took the drop.
         guard !providers.isEmpty, surface?.room.isDisbanded == false else { return }
         guard appState.canAttachRoomFiles else {
-            composerError = AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.")
+            composerError = PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats."))
             Haptics.error()
             return
         }

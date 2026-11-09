@@ -47,7 +47,7 @@ struct HealthSettingsPage: View {
                 } else if preferences.isOn {
                     statusRows
                 } else if !pluginServesHealth {
-                    Text("Update the Conduit plugin on your Hermes host to share health data.")
+                    Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to share health data.")))
                         .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 }
@@ -122,7 +122,7 @@ struct HealthSettingsPage: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         } else if let pause = engine.state.pause {
-            Text(pause.message)
+            Text(pause.message(managedBy: appState.pluginManagedBy(forDashboard: preferences.destination?.dashboardID)))
                 .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else if let last = engine.state.lastSync {

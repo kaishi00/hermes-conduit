@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// What the host's Conduit notifier plugin serves, from its capabilities
 /// route (plugin 0.4+). Conduit uses it to nudge an update when a feature it
@@ -100,7 +101,7 @@ struct NotifierPluginStatus: Equatable {
     /// False: nothing asks for an update unprompted, only for the restart
     /// of one already on the host (NotifierPluginNoticeChannel.never).
     var asksToUpdate = true
-    /// The host installs and upgrades the plugin itself (plugin 0.141.5+,
+    /// The host installs and upgrades the plugin itself (plugin 0.146.0+,
     /// `CONDUIT_PUSH_MANAGED`): nil when it doesn't say so, "" when it says
     /// nothing more, or who keeps it up to date. Then nothing offers an
     /// update, here or unprompted, and the host refuses one; a restart
@@ -438,5 +439,84 @@ extension NotifierPluginStatus {
             return AppLocalization.string("This dashboard's host keeps the plugin up to date.")
         }
         return AppLocalization.string("\(managedBy) keeps the plugin up to date.")
+    }
+}
+
+/// Screens that ask to update the plugin for a feature it lacks (a 404, a
+/// missing capability) read who manages the active dashboard's plugin here,
+/// most without AppState at hand. On a host that manages it, an update from
+/// Conduit isn't possible, so they say who keeps it up to date instead.
+enum PluginUpdateAsk {
+    /// Nil on a host that doesn't manage the plugin; "" when it does without a name.
+    private static let activeManagedBy = OSAllocatedUnfairLock<String?>(initialState: nil)
+
+    /// Set with AppState's `notifierPlugin`, for the active dashboard.
+    static func setActive(managedBy: String?) {
+        activeManagedBy.withLock { $0 = managedBy }
+    }
+
+    static var isManaged: Bool { activeManagedBy.withLock { $0 } != nil }
+
+    /// Who keeps the active host's plugin up to date, as it said: nil when
+    /// it doesn't manage the plugin, "" when it does without a name.
+    static var managedBy: String? { activeManagedBy.withLock { $0 } }
+
+    /// `ask`, which asks to update (or install) the plugin, unless the active
+    /// host manages it: then that the host's plugin lacks it, and who keeps it
+    /// up to date.
+    static func text(_ ask: String) -> String {
+        managedAsk ?? ask
+    }
+
+    /// What a host that manages the plugin says in place of the ask (the
+    /// Watch's too, through WatchPhoneContext), or nil when it doesn't.
+    static var managedAsk: String? {
+        activeManagedBy.withLock({ $0 }).map { managedAsk(by: $0) }
+    }
+
+    /// What a host managed by `managedBy` says in place of the ask.
+    static func managedAsk(by managedBy: String) -> String {
+        AppLocalization.string("The Conduit plugin on this host doesn't have this yet.")
+            + " " + NotifierPluginStatus.managedText(managedBy)
+    }
+
+    /// A reason shared with the Watch (Shared/, which can't see this) that
+    /// asks to install or update the plugin, reworded on a host that manages it.
+    static func reason(_ reason: String?) -> String? {
+        guard let reason else { return nil }
+        return [AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server."),
+                LocalLiveProtocol.pluginMissingReason].contains(reason)
+            ? text(reason) : reason
+    }
+
+    /// `ask` followed by `outcome`, which says what became of the user's
+    /// action and stays on a host that manages the plugin too.
+    static func text(_ ask: String, then outcome: String) -> String {
+        isManaged ? text(ask) + " " + outcome : ask
+    }
+
+    /// `ask`, or on a host that manages the plugin `lead` (what the ask
+    /// also said: that sharing is paused, why a call was refused, the
+    /// version a feature needs) followed by the managed text.
+    static func text(_ ask: String, lead: String) -> String {
+        text(ask, lead: lead, managedBy: managedBy)
+    }
+
+    /// `ask`, or on a host that manages the plugin `instead` (what went
+    /// wrong when the plugin has the feature, such as an answer that
+    /// couldn't be read) followed by who keeps the plugin up to date.
+    static func text(_ ask: String, instead: String) -> String {
+        managedBy.map { instead + " " + NotifierPluginStatus.managedText($0) } ?? ask
+    }
+
+    /// `text(_:lead:)` for a host other than the active one (a sharing
+    /// destination that isn't the active dashboard), managed by `managedBy`.
+    static func text(_ ask: String, lead: String, managedBy: String?) -> String {
+        managedBy.map { lead + " " + managedAsk(by: $0) } ?? ask
+    }
+
+    /// A short title asking for the update, or "Not on this host" on a host that manages it.
+    static func title(_ ask: String) -> String {
+        isManaged ? AppLocalization.string("Not on this host") : ask
     }
 }

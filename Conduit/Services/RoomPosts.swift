@@ -145,7 +145,8 @@ enum RoomPostText {
             // A refusal's reason stands, whatever the plugin says now.
             if case .refused(let error)? = post?.status { return .closed(refusal(error)) }
             guard canAsk else {
-                return .closed(AppLocalization.string("Can't check this post: update the Conduit plugin on your Hermes."))
+                return .closed(PluginUpdateAsk.text(AppLocalization.string("Can't check this post: update the Conduit plugin on your Hermes."),
+                                                    lead: AppLocalization.string("Can't check this post.")))
             }
             if settling { return .sending }
             return .closed(refusal(roomOver ? "ended" : "not_in"))

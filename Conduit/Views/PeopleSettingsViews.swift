@@ -135,7 +135,7 @@ struct PeopleSettingsPage: View {
                 RoomSetupSection(profile: profile, profileName: appState.profileDisplayName(profile))
             } else {
                 ConduitSettingsSection(title: AppLocalization.string("This Hermes"), symbol: "server.rack", tint: .conduitAura) {
-                    Text(AppLocalization.string("Update the Conduit plugin on your Hermes host to set it up for rooms from here."))
+                    Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to set it up for rooms from here.")))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
