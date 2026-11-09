@@ -1667,7 +1667,10 @@ extension AppStateMultiDashboardTests {
         appState.setNotifierPluginStateForTesting(.reported(
             version: "0.143.0", capabilities: [GroupRoomFilesClient.pictureCapability, GroupRoomFilesClient.readCapability]
         ))
-        XCTAssertTrue(appState.roomFileReadsResolver === resolver, "other files read through the same room reader")
+        let reads = try XCTUnwrap(appState.roomFileReadsResolver)
+        XCTAssertFalse(reads === resolver, "what the room reads changed, so its rows draw again")
+        XCTAssertTrue(appState.roomFilePicturesResolver === reads, "pictures and other files read through one room reader")
+        XCTAssertTrue(reads.roomFileReads.pluginPictures && reads.roomFileReads.pluginFiles)
         XCTAssertTrue(GroupRoomFilesClient.isStoredFile(Attachment(
             id: "d", name: "report.pdf", uri: "/h/conduit/room-files/20261108-c/report.pdf", mimeType: "application/pdf", kind: .document
         )))
@@ -1686,7 +1689,7 @@ extension AppStateMultiDashboardTests {
         try await held.answer(["dataUrl": "data:image/jpeg;base64,/9j/"], toPathEnding: "/room-files/data-url")
         let answered = await read.value
         XCTAssertEqual(answered, .dataURL("data:image/jpeg;base64,/9j/"))
-        XCTAssertEqual(held.sent.last?.path, GroupRoomFilesClient.picturePath)
+        XCTAssertEqual(held.sent.last?.path, GroupRoomFilesClient.readPath)
         XCTAssertEqual(held.sent.last?.query?.removingPercentEncoding, "path=\(path)")
 
         let refused = Task { await resolver.read(for: "/elsewhere/x.jpg") }

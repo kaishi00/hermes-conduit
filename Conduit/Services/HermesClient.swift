@@ -5015,14 +5015,21 @@ final class HermesClient: ObservableObject {
     /// same id; the gateway maps it to the server-owned `user:<sha256>` id,
     /// so the second send deduplicates instead of posting a twin. The actor
     /// is server-owned; the payload is exactly `{text, thread_id}`.
-    func groupsSend(roomID: String, eventID: String, text: String, threadID: String)
-        async throws -> GroupSendResult {
+    func groupsSend(
+        roomID: String,
+        eventID: String,
+        text: String,
+        threadID: String,
+        attachments: [GroupRoomAttachment] = []
+    ) async throws -> GroupSendResult {
+        var payload: [String: Any] = ["text": text, "thread_id": threadID]
+        if !attachments.isEmpty { payload["attachments"] = attachments.map(\.manifest) }
         let result = try await rpc(
             "groups.send",
             params: [
                 "room_id": roomID,
                 "event_id": eventID,
-                "payload": ["text": text, "thread_id": threadID],
+                "payload": payload,
             ],
             scoped: false
         )
@@ -5035,6 +5042,57 @@ final class HermesClient: ObservableObject {
             accepted: object["accepted"]?.boolValue ?? true,
             driverStarted: object["driver_started"]?.boolValue ?? false
         )
+    }
+
+    /// A room file's way up or down: up to 15 MB over a slow link.
+    static let roomAttachmentTimeout: TimeInterval = 180
+
+    /// Keep one file for a later `groups.send` manifest
+    /// (`groups.attachment.upload`). Idempotent per `uploadID`: a retry
+    /// with the same file returns the same attachment.
+    func groupsAttachmentUpload(
+        roomID: String,
+        uploadID: String,
+        kind: String,
+        name: String,
+        mime: String,
+        dataBase64: String
+    ) async throws -> GroupRoomAttachment {
+        let result = try await rpc(
+            "groups.attachment.upload",
+            params: [
+                "room_id": roomID,
+                "upload_id": uploadID,
+                "kind": kind,
+                "name": name,
+                "mime": mime,
+                "data_base64": dataBase64,
+            ],
+            // Up to 15 MB goes up as base64: at least 64 KB a second, as
+            // the plugin's room files allow.
+            timeout: max(Self.roomAttachmentTimeout, TimeInterval(dataBase64.utf8.count) / 65_536),
+            scoped: false
+        )
+        guard let saved = GroupRoomAttachment(wire: result) else { throw HermesError.invalidResponse }
+        return saved
+    }
+
+    /// One sent room file's bytes as a data URL (`groups.attachment.download`).
+    func groupsAttachmentDownload(roomID: String, eventID: String, attachmentID: String, size: Int = 0)
+        async throws -> String {
+        let result = try await rpc(
+            "groups.attachment.download",
+            params: ["room_id": roomID, "event_id": eventID, "attachment_id": attachmentID],
+            // Its base64 at 64 KB a second, as the upload.
+            timeout: max(Self.roomAttachmentTimeout, TimeInterval(min(max(size, 0), GroupRoomAttachment.maxBytes)) * 4 / 3 / 65_536),
+            scoped: false
+        )
+        guard let object = result.objectValue,
+              let data = object["data_base64"]?.stringValue, !data.isEmpty else {
+            throw HermesError.invalidResponse
+        }
+        let mime = object["mime"]?.stringValue ?? "application/octet-stream"
+        return "data:\(mime);base64,\(data)"
     }
 
     /// One monotonic room-log delta after `sinceSeq`, bounded by the page

@@ -122,10 +122,36 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(round.decisions.map(\.id), ["d1"])
         _ = try await loader.round(id, 1)
         XCTAssertEqual(asked.paths, ["/api/plugins/conduit_push/boards/reviews?id=\(id)&round=1"], "read once")
+        XCTAssertNotNil(loader.kept(id, 1))
+        loader.forget(id, 1)
+        XCTAssertNil(loader.kept(id, 1), "a forgotten round isn't kept")
+        _ = try await loader.round(id, 1)
+        XCTAssertEqual(asked.paths.count, 2, "a forgotten round is read again")
+        _ = try await loader.round(id, 1, fresh: true)
+        XCTAssertEqual(asked.paths.count, 3, "fresh asks again")
         do {
             _ = try await loader.round("../etc", 1)
             XCTFail("only a kept review's id is read")
         } catch {}
+    }
+
+    func testANoteIsCappedInUnicodeScalarsAsTheHostCounts() throws {
+        let max = RichReviewMark.maxNote
+        let below = String(repeating: "a", count: max - 1)
+        XCTAssertEqual(RichReviewMark.capped(below), below)
+        let at = String(repeating: "a", count: max)
+        XCTAssertEqual(RichReviewMark.capped(at), at)
+        XCTAssertEqual(RichReviewMark.capped(at + "b").unicodeScalars.count, max)
+        // A flag is one Character but two scalars: the cap counts scalars.
+        let flags = String(repeating: "\u{1F1EF}\u{1F1F5}", count: max / 2 + 5)
+        XCTAssertEqual(RichReviewMark.capped(flags).unicodeScalars.count, max)
+        let mark = RichReviewMark(kind: .change, option: "A", note: flags)
+        XCTAssertEqual((mark.json["note"] as? String)?.unicodeScalars.count, max)
+        let card = try reviewCard()
+        let body = RichReviewTap.body(card: card, review: try XCTUnwrap(card.review), marks: ["d1": mark], note: flags,
+                                      label: "Sent review")
+        let given = try XCTUnwrap(body["review"] as? [String: Any])
+        XCTAssertEqual((given["note"] as? String)?.unicodeScalars.count, max, "the round's note too")
     }
 
     func testLiveModelsAreNotOfferedReviews() throws {

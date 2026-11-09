@@ -300,6 +300,12 @@ struct GroupChatLifecycleOperations {
     var state: (@MainActor (HermesClient, String) async throws -> (GroupRoom, GroupDriverStatus?))?
     var log: (@MainActor (HermesClient, String, Int, Int?) async throws -> GroupLogPage)?
     var send: (@MainActor (HermesClient, String, String, String, String) async throws -> GroupSendResult)?
+    /// A send's Hermes attachments, seen before `send` runs.
+    var sendAttachments: (@MainActor ([GroupRoomAttachment]) -> Void)?
+    /// Room, upload id, kind, name, mime, base64.
+    var uploadAttachment: (@MainActor (HermesClient, String, String, String, String, String, String) async throws -> GroupRoomAttachment)?
+    /// Room, event id, attachment id, size; answers a data URL.
+    var downloadAttachment: (@MainActor (HermesClient, String, String, String, Int) async throws -> String)?
     var create: (@MainActor (HermesClient, String, String, [[String: Any]]) async throws -> GroupRoom)?
     var stop: (@MainActor (HermesClient, String) async throws -> Int)?
     var approve: (@MainActor (HermesClient, String, GroupPendingApproval, String) async throws -> Bool)?
@@ -769,7 +775,7 @@ final class AppState: ObservableObject {
 
     private var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
     /// See `roomFilePicturesResolver` (GroupRoomFiles.swift).
-    var cachedRoomFilePicturesResolver: GatewayMediaDataURLResolver?
+    var cachedRoomFilesResolver: GatewayMediaDataURLResolver?
 
     /// The open chat's pictures, which a tapped one pages through in the
     /// viewer: the saved copy's while it stands in for the chat. One
@@ -13188,6 +13194,9 @@ final class AppState: ObservableObject {
     /// The same for the bot roster's "Could not refresh bots".
     private var botRosterRetry = TransientReadRetry()
 
+    /// Tests stand in for the plugin's rooms routes.
+    var roomRouteIsStubbed: Bool { groupChatOperations.roomRoute != nil }
+
     /// A rooms route of the plugin (the drafts, the Links): the injectable
     /// seam first (tests), then the dashboard bridge.
     func roomRouteJSON(path: String, method: String, body: [String: Any]?, timeoutMilliseconds: Int?)
@@ -13224,12 +13233,43 @@ final class AppState: ObservableObject {
         return try await client.groupsLog(roomID: roomID, sinceSeq: sinceSeq, limit: limit, includeDisbanded: true)
     }
 
-    private func groupsSend(_ client: HermesClient, roomID: String, eventID: String, text: String, threadID: String)
-        async throws -> GroupSendResult {
+    private func groupsSend(
+        _ client: HermesClient,
+        roomID: String,
+        eventID: String,
+        text: String,
+        threadID: String,
+        attachments: [GroupRoomAttachment] = []
+    ) async throws -> GroupSendResult {
         if let operation = groupChatOperations.send {
+            groupChatOperations.sendAttachments?(attachments)
             return try await operation(client, roomID, eventID, text, threadID)
         }
-        return try await client.groupsSend(roomID: roomID, eventID: eventID, text: text, threadID: threadID)
+        return try await client.groupsSend(
+            roomID: roomID, eventID: eventID, text: text, threadID: threadID, attachments: attachments
+        )
+    }
+
+    func groupsAttachmentUpload(
+        _ client: HermesClient, roomID: String, uploadID: String, kind: String, name: String, mime: String, dataBase64: String
+    ) async throws -> GroupRoomAttachment {
+        if let operation = groupChatOperations.uploadAttachment {
+            return try await operation(client, roomID, uploadID, kind, name, mime, dataBase64)
+        }
+        return try await client.groupsAttachmentUpload(
+            roomID: roomID, uploadID: uploadID, kind: kind, name: name, mime: mime, dataBase64: dataBase64
+        )
+    }
+
+    func groupsAttachmentDownload(
+        _ client: HermesClient, roomID: String, eventID: String, attachmentID: String, size: Int = 0
+    ) async throws -> String {
+        if let operation = groupChatOperations.downloadAttachment {
+            return try await operation(client, roomID, eventID, attachmentID, size)
+        }
+        return try await client.groupsAttachmentDownload(
+            roomID: roomID, eventID: eventID, attachmentID: attachmentID, size: size
+        )
     }
 
     private func groupsCreate(_ client: HermesClient, roomID: String, name: String, members: [[String: Any]])
@@ -14096,9 +14136,14 @@ final class AppState: ObservableObject {
     /// `threadID` is a reply's: the message goes in the thread it answers.
     /// Otherwise it opens a thread of its own, so the host can route it.
     @discardableResult
-    func sendGroupRoomMessage(_ rawText: String, threadID: String? = nil) async -> Bool {
+    func sendGroupRoomMessage(
+        _ rawText: String,
+        threadID: String? = nil,
+        attachments: [GroupRoomAttachment] = []
+    ) async -> Bool {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return false }
+        // Files alone are a message too; a retry brings the pending ones.
+        guard !text.isEmpty || !attachments.isEmpty || groupRoomOutbox.pending?.text == text else { return false }
         if activeRoomSurface?.copy != nil { return await postInActiveRoomCopy(text) }
         guard let surface = activeRoomSurface, surface.copy == nil, let client, isConnected,
               groupCapabilities?.supports("groups.send") == true,
@@ -14114,7 +14159,7 @@ final class AppState: ObservableObject {
             return false
         }
         let epoch = groupRoomEpoch
-        let logical = groupRoomOutbox.beginSend(text: text, threadID: threadID) {
+        let logical = groupRoomOutbox.beginSend(text: text, threadID: threadID, attachments: attachments) {
             "conduit-\(UUID().uuidString.lowercased())"
         }
         pendingRoomMessage = groupRoomOutbox.pending
@@ -14141,7 +14186,8 @@ final class AppState: ObservableObject {
                 roomID: surface.room.roomID,
                 eventID: logical.eventID,
                 text: logical.text,
-                threadID: logical.threadID ?? GroupRoomSurface.threadID(forEventID: logical.eventID)
+                threadID: logical.threadID ?? GroupRoomSurface.threadID(forEventID: logical.eventID),
+                attachments: logical.attachments
             )
             // A non-throwing groups.send is a delivered event: upstream
             // `methods_groups.py` answers `accepted: true` for a fresh or an
@@ -16989,6 +17035,9 @@ final class AppState: ObservableObject {
         SavedDashboardRegistryStore.save(registry)
         // The old address's host reported them; the new one reports its own.
         forgetRelayGatewayIDs(of: id)
+        // Who manages the plugin goes with the host: a moved entry's new host
+        // says for itself. Signing out keeps it (same host).
+        NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
         return registry.dashboards[index]
     }
 
@@ -17363,6 +17412,9 @@ final class AppState: ObservableObject {
         SavedDashboardRegistryStore.save(registry)
         removeDashboardScopedPresentation(id)
         forgetRelayGatewayIDs(of: id)
+        // Who manages the plugin goes with the host: a moved entry's new host
+        // says for itself. Signing out keeps it (same host).
+        NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
         // Log to Hermes events waiting for it, and its inbox keys.
         ShortcutInboxQueue.forgetDashboard(id)
         // Location, health and phone sharing bound to it.
@@ -29760,10 +29812,12 @@ final class AppState: ObservableObject {
         let generation = notifierPluginStatusGeneration
         let state: NotifierPluginStatus.State
         var runtime: NotifierPluginStatus.Runtime?
+        var managedBy: String?
         do {
             let response = try await bridge.requestJSON(path: NotifierPluginStatus.path)
             state = NotifierPluginStatus.state(from: response)
             runtime = NotifierPluginStatus.runtime(from: response)
+            managedBy = NotifierPluginStatus.managedBy(from: response)
         } catch {
             state = NotifierPluginStatus.state(from: error)
         }
@@ -29787,6 +29841,11 @@ final class AppState: ObservableObject {
             : nil
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
+        notifierPlugin.managedBy = NotifierPluginStatus.managedBy(
+            after: state, reported: managedBy,
+            before: notifierPlugin.managedBy ?? NotifierPluginStatus.Remembered.managedBy(for: activeDashboardID, in: defaults)
+        )
+        NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         Task { await refreshLatestNotifierPluginVersion() }
         clearSettledNotifierPluginUpdateOutcome()
@@ -29827,6 +29886,8 @@ final class AppState: ObservableObject {
         notifierPlugin.hostCopy = nil
         notifierPlugin.state = state
         notifierPlugin.runtime = NotifierPluginStatus.runtime(from: json)
+        notifierPlugin.managedBy = NotifierPluginStatus.managedBy(from: json)
+        NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         clearSettledNotifierPluginUpdateOutcome()
     }
