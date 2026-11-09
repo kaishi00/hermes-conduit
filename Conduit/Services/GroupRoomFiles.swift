@@ -200,7 +200,7 @@ extension AppState {
         let pluginStores = notifierPlugin.reports(GroupRoomFilesClient.capability)
         // Both legs of one send go to the dashboard it started on.
         let pluginBridge = dashboardTicketBridge
-        if roomTakesHermesAttachments, client == nil, !pluginStores {
+        if roomTakesHermesAttachments, !isConnected || client == nil, !pluginStores {
             throw GroupRoomFilesClient.Failure.notConnected
         }
         if roomTakesHermesAttachments, let client, let roomID = activeRoomSurface?.room.roomID {

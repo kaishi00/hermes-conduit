@@ -409,6 +409,19 @@ extension GroupChatModelsTests {
         } catch {
             XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .notConnected)
         }
+        // Dropped with the client kept, as a lost connection leaves it.
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://groups.example", ticket: "groups-test"),
+            profile: "default"
+        )
+        appState.isConnected = false
+        do {
+            _ = try await appState.roomMessage("", attachments: [png])
+            XCTFail("expected the message to fail")
+        } catch {
+            XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .notConnected)
+        }
+        XCTAssertTrue(hermes.uploads.isEmpty)
         appState.closeGroupRoom()
     }
 
