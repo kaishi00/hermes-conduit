@@ -22,7 +22,7 @@
 //  writing it. From 0.98.0 an event or reminder Pulse would add is a
 //  suggestion on its own card, with Add and Not now, then how it went, and
 //  Undo once it's on the phone; this phone applies what it tapped without
-//  its own change card. From 0.149.0 a card draws its pick under its words
+//  its own change card. From 0.150.0 a card draws its pick under its words
 //  (PulseLookViews), Ask leaves the pick's words in the composer, and the
 //  morning brief is laid out from its parts.
 //  Pulse's own chat, where its hidden turns run, isn't shown: the cards are
@@ -644,7 +644,7 @@ struct V2PulsePage: View {
                 .accessibilityLabel(AppLocalization.string("Fold the morning brief"))
                 .accessibilityIdentifier("pulse.brief.fold")
             }
-            // In its parts when the plugin sends them (0.149.0), else as Hermes wrote it.
+            // In its parts when the plugin sends them (0.150.0), else as Hermes wrote it.
             if let parts = brief.card.look?.briefParts,
                !(parts.summary.isEmpty && parts.today.isEmpty && parts.open.isEmpty && parts.held == 0) {
                 PulseBriefParts(summary: parts.summary, today: parts.today, open: parts.open, heldCount: parts.held)
@@ -931,7 +931,7 @@ struct V2PulsePage: View {
         .opacity(card.isCleared ? 0.7 : 1)
     }
 
-    /// What the card's pick draws under its words (0.149.0): a date, the
+    /// What the card's pick draws under its words (0.150.0): a date, the
     /// days left, a job's runs, a promise, a status, steps or a card body.
     @ViewBuilder private func lookBody(_ card: PulseCard) -> some View {
         if let look = card.look, look.drawsBody {
@@ -952,7 +952,7 @@ struct V2PulsePage: View {
                 .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(tint)
                 .accessibilityAddTraits(.isHeader)
-            // Rewritten since because the thing it follows changed (0.149.0): when, last.
+            // Rewritten since because the thing it follows changed (0.150.0): when, last.
             if card.wasUpdated, let updated = card.updatedAt {
                 Text(verbatim: "· " + AppLocalization.string("Updated \(PulseTopicTint.stamp(updated))"))
                     .scaledFont(.caption)
@@ -1081,7 +1081,7 @@ struct V2PulsePage: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 HStack(spacing: 8) {
-                    // A pick's Ask takes Do it's place, with its own words (0.149.0).
+                    // A pick's Ask takes Do it's place, with its own words (0.150.0).
                     if !untold, let ask = card.look?.ask, appState.canAskFromPulseCard(card) {
                         doItButton(card, ask: ask)
                     } else if !untold, appState.canActOnPulseCard(card) {
@@ -1258,7 +1258,7 @@ struct V2PulsePage: View {
         }
     }
 
-    /// Do it, or a pick's Ask (`ask`, 0.149.0): the same chat, with the
+    /// Do it, or a pick's Ask (`ask`, 0.150.0): the same chat, with the
     /// pick's words in the composer to change before sending.
     private func doItButton(_ card: PulseCard, ask: PulseLook.Action? = nil) -> some View {
         Button {

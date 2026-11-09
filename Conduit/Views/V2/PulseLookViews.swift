@@ -3,7 +3,7 @@
 //  Conduit
 //
 //  A Pulse card's body, drawn from the pick it was made from (PulseLook,
-//  plugin 0.149.0): the Pulse screen keeps one frame for every card (what
+//  plugin 0.150.0): the Pulse screen keeps one frame for every card (what
 //  it's about and when, its words, its buttons) and draws what's inside by
 //  its shape. A date as a calendar tile, something due as the days left on
 //  a bar from when it was noticed, a job's runs as dots, a promise in the
@@ -202,7 +202,7 @@ struct PulseLookBody: View {
     }
 }
 
-/// The morning brief in its parts (0.149.0): its summary, then what's on
+/// The morning brief in its parts (0.150.0): its summary, then what's on
 /// today and what's still open, each counted, and how many held cards it
 /// brought.
 struct PulseBriefParts: View {

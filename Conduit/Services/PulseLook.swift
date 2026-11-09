@@ -2,7 +2,7 @@
 //  PulseLook.swift
 //  Conduit
 //
-//  What a Pulse card shows besides its words (plugin 0.149.0,
+//  What a Pulse card shows besides its words (plugin 0.150.0,
 //  `pulse_looks`): the pick it was made from, checked by the plugin
 //  (pulse_picks.py). A shape with its facts (a date, something due, a
 //  job's recent runs, a promise in the words it was made, a status, the

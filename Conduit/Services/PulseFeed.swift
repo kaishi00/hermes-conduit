@@ -32,7 +32,7 @@
 //  Pulse learned. From 0.107.0 a card whose Do it stalled comes back once,
 //  and its Why? says when Do it was tapped. From 0.117.1 a card from a
 //  Kanban task's worker names the task: it links the task, and Do it
-//  starts a new chat. From 0.149.0 (`pulse_looks`) a card carries the pick
+//  starts a new chat. From 0.150.0 (`pulse_looks`) a card carries the pick
 //  it was made from (PulseLook): the app draws its shape and its actions,
 //  Ask leaves its words in the chat's composer, and the morning brief comes
 //  in parts. An update to the thing a card follows rewrites that card.
@@ -111,11 +111,11 @@ struct PulseCard: Equatable, Identifiable {
     /// A suggestion's (kind "proposal", 0.98.0): what Add puts on the phone,
     /// and where it stands.
     var proposal: PulseProposal?
-    /// What it shows besides its words, and its actions (0.149.0); nil from
+    /// What it shows besides its words, and its actions (0.150.0); nil from
     /// an older plugin, or for a card made before picks.
     let look: PulseLook?
     /// What it's about, as Pulse keys it ("item:41", "job:default:3"), and
-    /// when Pulse last rewrote it because that thing changed (0.149.0).
+    /// when Pulse last rewrote it because that thing changed (0.150.0).
     let subject: String
     let updatedAt: Date?
 
@@ -1012,7 +1012,7 @@ struct PulseLeftOut: Equatable, Identifiable {
 extension PulseClient {
     /// `proposals`: the screen shows suggestion cards (0.98.0); without it
     /// the plugin leaves them out and doesn't count them unseen.
-    /// `looks`: each card brings its look (0.149.0).
+    /// `looks`: each card brings its look (0.150.0).
     func feed(proposals: Bool = false, looks: Bool = false) async throws -> PulseFeedPage {
         let response = try await request("\(Self.path)/feed" + Self.feedQuery(proposals: proposals, looks: looks),
                                          "GET", nil)
@@ -1284,7 +1284,7 @@ extension AppState {
             || card.isFound && card.hasReminder && notifierPlugin.reports(PulseClient.foundActionsCapability)
     }
 
-    /// Ask on this card (0.149.0): its chat, or a new one in Pulse's
+    /// Ask on this card (0.150.0): its chat, or a new one in Pulse's
     /// profile for a card from no chat, gets the pick's words.
     func canAskFromPulseCard(_ card: PulseCard) -> Bool {
         card.look?.ask != nil && !card.isCleared && !card.isProposal
@@ -1317,7 +1317,7 @@ extension AppState {
     /// card with Add (0.98.0): the feed brings them to an app that asks.
     var pulseSuggests: Bool { notifierPlugin.reports(PulseClient.proposalsCapability) }
 
-    /// Pulse cards carry the pick they were made from (0.149.0): the feed
+    /// Pulse cards carry the pick they were made from (0.150.0): the feed
     /// brings their looks to an app that asks.
     var pulseLooks: Bool { notifierPlugin.reports(PulseClient.looksCapability) }
 
@@ -1385,7 +1385,7 @@ extension AppState {
     /// profile, where Pulse reads what came of it, and only the chat that
     /// New Chat made gets the reminder (startPulseNewChat). False when no
     /// chat opened.
-    /// `words`: an Ask's (0.149.0), left in the composer in place of the
+    /// `words`: an Ask's (0.150.0), left in the composer in place of the
     /// card's reminder, for the user to change before sending.
     func actOnPulseCard(_ card: PulseCard, words: String? = nil) async -> Bool {
         guard words != nil ? canAskFromPulseCard(card) : canActOnPulseCard(card),
@@ -1524,7 +1524,7 @@ extension PulseClient {
     /// and a private push's body in the app's language (0.104.0).
     static let privateCapability = "pulse_private"
     /// Cards drawn from their picks: a shape with its facts, Ask and the
-    /// pick's other actions, the morning brief in parts (0.149.0).
+    /// pick's other actions, the morning brief in parts (0.150.0).
     static let looksCapability = "pulse_looks"
 }
 

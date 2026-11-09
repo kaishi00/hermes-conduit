@@ -872,7 +872,7 @@ final class PulseFeedTests: XCTestCase {
           {"id": 3, "kind": "noticed", "topic": "other", "level": "screen", "news": "No buttons", "chat_id": "work"}
         ]}
         """)))
-        state.setNotifierPluginStateForTesting(.reported(version: "0.149.0", capabilities: [
+        state.setNotifierPluginStateForTesting(.reported(version: "0.150.0", capabilities: [
             PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
             PulseClient.foundActionsCapability
         ]))
@@ -1811,7 +1811,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(PulseCardKind.lookedSource("location"), AppLocalization.string("where you are"))
     }
 
-    // MARK: Looks (0.149.0)
+    // MARK: Looks (0.150.0)
 
     func testACardBringsItsLookAndAnOlderOneHasNone() throws {
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
@@ -1919,7 +1919,7 @@ final class PulseFeedTests: XCTestCase {
         let state = try appState()
         state.setNotifierPluginStateForTesting(.reported(version: "0.148.0", capabilities: [PulseClient.feedCapability]))
         XCTAssertFalse(state.pulseLooks)
-        state.setNotifierPluginStateForTesting(.reported(version: "0.149.0", capabilities: [
+        state.setNotifierPluginStateForTesting(.reported(version: "0.150.0", capabilities: [
             PulseClient.feedCapability, PulseClient.looksCapability
         ]))
         XCTAssertTrue(state.pulseLooks)
