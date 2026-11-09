@@ -473,7 +473,8 @@ final class WatchDirectBroker {
             ])
             return .directSession(callID: id, session: session)
         } catch {
-            let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
+            // A token mint that 404s says who keeps the plugin up to date on a managed host.
+            let reason = (error as? WatchDirectPrepareError)?.reason ?? PluginUpdateAsk.reason(UserFacingError.message(for: error)) ?? ""
             link.log.note("watchDirectPrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -597,7 +598,8 @@ final class WatchDirectBroker {
             endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return reply
         } catch {
-            let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
+            // A token mint that 404s says who keeps the plugin up to date on a managed host.
+            let reason = (error as? WatchDirectPrepareError)?.reason ?? PluginUpdateAsk.reason(UserFacingError.message(for: error)) ?? ""
             link.log.note("watchBridgePrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -729,7 +731,8 @@ final class WatchDirectBroker {
             endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return reply
         } catch {
-            let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
+            // A token mint that 404s says who keeps the plugin up to date on a managed host.
+            let reason = (error as? WatchDirectPrepareError)?.reason ?? PluginUpdateAsk.reason(UserFacingError.message(for: error)) ?? ""
             link.log.note("watchGrokPrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -817,7 +820,8 @@ final class WatchDirectBroker {
             endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return reply
         } catch {
-            let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
+            // A token mint that 404s says who keeps the plugin up to date on a managed host.
+            let reason = (error as? WatchDirectPrepareError)?.reason ?? PluginUpdateAsk.reason(UserFacingError.message(for: error)) ?? ""
             link.log.note("watchLocalLivePrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
