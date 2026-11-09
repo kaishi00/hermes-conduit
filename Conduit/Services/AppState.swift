@@ -26763,7 +26763,12 @@ final class AppState: ObservableObject {
                   chatViewportTransitionIsCurrent(generation: viewportTransitionGeneration),
                   isConnected, client === self.client,
                   botChatOpenFlights[flightKey] == nil else {
-                if joined { return .opened }
+                // A tap that joined: its chat opened, but a newer navigation
+                // since then owns the screen, so the tap doesn't act on it.
+                if joined {
+                    return viewportTransitionGeneration != nil || chatViewportTransitionIsCurrent(flight.transition)
+                        ? .opened : .superseded
+                }
                 return chatViewportTransitionIsCurrent(flight.transition) ? .failed : .superseded
             }
         }
@@ -26854,10 +26859,14 @@ final class AppState: ObservableObject {
                 rows = try await client.findBotChatSession(profile: bot.name)
             }
         } catch {
-            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
+            guard botOpenFenceIsCurrent(epoch: epoch, client: client),
+                  chatViewportTransitionIsCurrent(viewportTransitionGeneration) else { return false }
             return failBotChatOpen(bot, error: error, stage: .lookup)
         }
-        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
+        // A newer navigation took over while the lookup was out (another
+        // bot tapped): this open says nothing and makes nothing.
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client),
+              chatViewportTransitionIsCurrent(viewportTransitionGeneration) else { return false }
         switch BotChatResolver.resolve(rows: rows, rosterCanonicalID: bot.canonicalSessionID) {
         case .failure(.unconfirmedAbsence):
             refuseBotChatConfirmation(bot)

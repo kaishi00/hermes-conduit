@@ -1970,6 +1970,54 @@ final class BotModeTests: XCTestCase {
         XCTAssertNil(harness.appState.errorMessage, "a superseded open is no failure")
     }
 
+    /// An earlier tap whose lookup fails after a newer tap took over says
+    /// nothing and doesn't go back to the list: the newer chat stays.
+    func testASupersededTapsFailedLookupStaysSilent() async {
+        let atlasLookup = ControlledSuspension()
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, _, _, profile in
+                let bot = profile ?? "default"
+                return SessionResumeResult(
+                    sessionId: "\(bot)-runtime",
+                    storedSessionId: "\(bot)-chat",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, profile in
+                if profile == "atlas" {
+                    await atlasLookup.suspend()
+                    throw URLError(.timedOut)
+                }
+                return [BotChatLookupRow(id: "\(profile)-chat", title: "Bot Chat")]
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        let atlas = makeBot(name: "atlas")
+        let scout = makeBot(name: "scout")
+
+        harness.appState.showSidebar = true
+        harness.appState.beginOpeningBotChat(atlas.name)
+        let atlasOpen = Task { @MainActor [appState = harness.appState] in
+            await appState.openBotChatFromList(atlas)
+        }
+        await atlasLookup.waitUntilSuspended()
+        let scoutOpened = await harness.appState.openBotChat(for: scout)
+        atlasLookup.resume()
+        let atlasOpened = await atlasOpen.value
+
+        XCTAssertTrue(scoutOpened)
+        XCTAssertFalse(atlasOpened)
+        XCTAssertEqual(harness.appState.activeBotChatProfile, "scout")
+        XCTAssertFalse(harness.appState.showSidebar, "the newer chat stays on screen")
+        XCTAssertNil(harness.appState.errorMessage, "the superseded lookup's failure says nothing")
+        XCTAssertNil(harness.appState.botsListNotice)
+    }
+
     /// A Bot Chat whose open fails after Bots pushed its screen goes back to
     /// the list, rather than leave the chat open before under the tapped
     /// bot; beside a chat on a wide window, nothing was pushed and the chat
