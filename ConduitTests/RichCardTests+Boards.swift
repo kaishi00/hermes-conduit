@@ -152,6 +152,29 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(ChatRowState(appState, facts: facts).followUpBoardRowID, "b1")
     }
 
+    @MainActor
+    func testALineBoardIsReadOnceAndAFailedReadIsAskedAgain() async throws {
+        let suite = "LineBoardReadTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        var reads: [String] = []
+        appState.lineBoardsReadOverride = { path in
+            reads.append(path)
+            if path.contains("cb-00000000bad0") { throw URLError(.timedOut) }
+            return ["board": ["cards": [["type": "callout", "callout": ["text": "Book early", "tone": "tip"]]]]]
+        }
+        appState.loadLineBoards(["cb-0000000000a1", "cb-00000000bad0", "cb-0000000000a1"])
+        for _ in 0..<100 where appState.lineBoards["cb-0000000000a1"] == nil || appState.lineBoardsAsked.contains("cb-00000000bad0") {
+            await Task.yield()
+        }
+        XCTAssertEqual(appState.lineBoards["cb-0000000000a1"]?.cards.count, 1)
+        XCTAssertEqual(reads.count, 2, "a board two replies name is read once")
+        XCTAssertFalse(appState.lineBoardsAsked.contains("cb-00000000bad0"), "a failed read is asked again")
+        appState.loadLineBoards(["cb-0000000000a1"])
+        XCTAssertEqual(reads.count, 2, "a read board isn't read again")
+    }
+
     func testATableSortsNumbersByValueWithBlanksLast() throws {
         let table = RichTable(columns: ["Company", "Revenue"], rows: [
             ["Acme", "$1.2M"], ["Globex", RichCardSchema.blankCell], ["Initech", "$950K"], ["Umbrella", "$3B"],
@@ -439,5 +462,48 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(placed["e3"]?.count, 1)
         XCTAssertEqual(placed.values.map(\.count).reduce(0, +), 3, "a board whose message never came lands on none")
         XCTAssertTrue(RoomBoard.readPath(profile: "work", roomID: "room 1").hasSuffix("?profile=work&room_id=room%201"))
+    }
+
+    @MainActor
+    func testAReplysBoardLineIsReadUnlessAConduitShowRowDrewIt() throws {
+        // A conduit_show the model wrote out as text: the plugin showed it and
+        // the reply holds the board's line (notifier leaked_calls.py).
+        let written = ChatMessage(id: "a1", role: .assistant,
+                                  content: "Here are the concepts.\n\n::conduit-board{id=\"cb-0000000000a1\"}",
+                                  timestamp: "2026-11-09T16:00:00Z")
+        XCTAssertEqual(LineBoards.ids(in: written.content), ["cb-0000000000a1"])
+        XCTAssertEqual(LineBoards.ids(in: "::conduit-board{id=\"nope\"} and plain text"), [])
+        // One in code, a quote or a table is an example, shown as written.
+        let examples = "Like this:\n```\n::conduit-board{id=\"cb-0000000000c1\"}\n```\n"
+            + "`::conduit-board{id=\"cb-0000000000c2\"}`\n> ::conduit-board{id=\"cb-0000000000c3\"}\n"
+            + "| a | b |\n| --- | --- |\n| ::conduit-board{id=\"cb-0000000000c4\"} | x |"
+        XCTAssertEqual(LineBoards.ids(in: examples), [])
+        // Hermes Desktop's turn: its conduit_show row drew the board the line names.
+        let desktopRow = ChatMessage(id: "t2", role: .tool, content: "", timestamp: "2026-11-09T16:01:00Z", tool: try boardTool(
+            ["ok": true, "directive": "::conduit-board{id=\"cb-0000000000b2\"}", "cards": [["type": "callout",
+             "callout": ["text": "Book early", "tone": "tip"]]], "markdown": "Book early"], id: "t2"))
+        let desktopReply = ChatMessage(id: "a2", role: .assistant, content: "Done. ::conduit-board{id=\"cb-0000000000b2\"}",
+                                       timestamp: "2026-11-09T16:01:01Z")
+        XCTAssertEqual(LineBoards.waiting(in: [written, desktopRow, desktopReply]), ["a1": ["cb-0000000000a1"]])
+        let board = try XCTUnwrap(LineBoards.board(["board": ["cards": [["type": "callout",
+            "callout": ["text": "Book early", "tone": "tip"]]], "markdown": "Book early"]], id: "cb-0000000000a1"))
+        XCTAssertEqual(board.cards.count, 1)
+        XCTAssertNil(LineBoards.board(["board": ["cards": [["type": "hologram"]]]], id: "cb-0000000000a1"))
+        XCTAssertTrue(LineBoards.readPath(profile: "work", id: "cb-0000000000a1")
+            .hasSuffix("/boards/desktop?profile=work&id=cb-0000000000a1"))
+        // A live card a later reply's board brought up to date shows there,
+        // not on the row that drew it first.
+        let liveRow = ChatMessage(id: "t0", role: .tool, content: "", timestamp: "2026-11-09T15:59:00Z", tool: try boardTool(
+            ["ok": true, "cards": [["type": "callout", "live": "plan", "callout": ["text": "Draft", "tone": "tip"]]]], id: "t0"))
+        let facts = ChatRowFacts(rows: [liveRow, written], isBusy: false)
+        XCTAssertEqual(facts.latestLiveRows, ["plan": "t0"])
+        let liveBoard = try XCTUnwrap(LineBoards.board(["board": ["cards": [["type": "callout", "live": "plan",
+            "callout": ["text": "Final", "tone": "tip"]]]]], id: "cb-0000000000a1"))
+        XCTAssertEqual(LineBoards.latestLiveRows(facts.latestLiveRows, order: facts.rowOrder, waiting: facts.lineBoardIDs,
+                                                 boards: ["cb-0000000000a1": liveBoard]), ["plan": "a1"])
+        // An earlier reply's board doesn't take it from a later row.
+        let early = ChatRowFacts(rows: [written, liveRow], isBusy: false)
+        XCTAssertEqual(LineBoards.latestLiveRows(early.latestLiveRows, order: early.rowOrder, waiting: early.lineBoardIDs,
+                                                 boards: ["cb-0000000000a1": liveBoard]), ["plan": "t0"])
     }
 }
