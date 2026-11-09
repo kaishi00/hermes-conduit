@@ -126,4 +126,15 @@ extension AppState {
             return try await bridge.requestJSON(path: path)
         }
     }
+
+    /// A review card reads its rounds' pages from the connected Hermes,
+    /// the one whose plugin kept them; an id from another Hermes is
+    /// answered as gone there.
+    func installRichReviewReader() {
+        RichReviewLoader.shared.read = { [weak self] path in
+            guard let self, self.notifierPlugin.reports(RichReviewLoader.capability),
+                  let bridge = self.dashboardTicketBridge else { throw RichReviewLoader.LoadError.notConnected }
+            return try await bridge.requestJSON(path: path)
+        }
+    }
 }
