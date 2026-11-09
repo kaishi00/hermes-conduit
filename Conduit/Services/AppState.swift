@@ -15755,9 +15755,6 @@ final class AppState: ObservableObject {
     }
 
     func forgetRelayGatewayIDs(of dashboardID: UUID) {
-        // Who managed the old host's plugin goes with its pairings: a moved
-        // entry's new host says for itself.
-        NotifierPluginStatus.Remembered.remember(nil, for: dashboardID, in: defaults)
         var stored = storedRelayGatewayIDs()
         guard stored.removeValue(forKey: dashboardID.uuidString) != nil else { return }
         saveRelayGatewayIDs(stored)
@@ -16988,6 +16985,9 @@ final class AppState: ObservableObject {
         SavedDashboardRegistryStore.save(registry)
         // The old address's host reported them; the new one reports its own.
         forgetRelayGatewayIDs(of: id)
+        // Who manages the plugin goes with the host: a moved entry's new host
+        // says for itself. Signing out keeps it (same host).
+        NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
         return registry.dashboards[index]
     }
 
@@ -17362,6 +17362,9 @@ final class AppState: ObservableObject {
         SavedDashboardRegistryStore.save(registry)
         removeDashboardScopedPresentation(id)
         forgetRelayGatewayIDs(of: id)
+        // Who manages the plugin goes with the host: a moved entry's new host
+        // says for itself. Signing out keeps it (same host).
+        NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
         // Log to Hermes events waiting for it, and its inbox keys.
         ShortcutInboxQueue.forgetDashboard(id)
         // Location, health and phone sharing bound to it.
