@@ -90,9 +90,13 @@ extension AppState {
             // any profile, since rooms are the dashboard's) with its card.
             dismissSidebarDrawer()
             guard !isOpenChat(item) else { return }
+            let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch, dashboardID = activeDashboardID
             Task { @MainActor [weak self] in
-                // Offline, or Hermes' rooms not read yet: say so, as a chat's open does.
-                guard let self, await self.openNotificationRoom(roomID) == .retry else { return }
+                // Offline, or Hermes' rooms not read yet: say so, as a chat's
+                // open does, unless a chat, room or dashboard opened meanwhile.
+                guard let self, await self.openNotificationRoom(roomID) == .retry,
+                      self.chatViewportTransitionGeneration == viewport, self.groupRoomEpoch == roomEpoch,
+                      self.activeDashboardID == dashboardID else { return }
                 self.errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
             }
             return

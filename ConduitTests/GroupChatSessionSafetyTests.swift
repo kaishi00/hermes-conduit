@@ -1476,6 +1476,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             var page: ([GroupRoom], Int?) = ([], nil)
             var listFails = false
             var state: Result<GroupRoom, Error> = .failure(TestError())
+            var whileReading: (() -> Void)?
         }
         let box = Box()
         let room = self.room()
@@ -1485,7 +1486,10 @@ final class GroupChatSessionSafetyTests: XCTestCase {
                 if box.listFails { throw TestError() }
                 return box.page
             },
-            state: { _, _ in (try box.state.get(), nil) },
+            state: { _, _ in
+                box.whileReading?()
+                return (try box.state.get(), nil)
+            },
             log: { _, _, sinceSeq, _ in
                 GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
                              authorityGatewayID: "gw-a", authorityEpoch: 1)
@@ -1517,6 +1521,14 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         outcome = await appState.openNotificationRoom("room-1")
         XCTAssertEqual(outcome, .failed)
         XCTAssertEqual(appState.errorMessage, AppLocalization.string("That chat is no longer available."))
+
+        // A room opened or closed while Hermes is asked owns the screen:
+        // the old tap's answer says nothing over it.
+        appState.errorMessage = nil
+        box.whileReading = { appState.closeGroupRoom() }
+        outcome = await appState.openNotificationRoom("room-1")
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertNil(appState.errorMessage)
     }
 
     /// A room's notifications are read once its messages come from Hermes,

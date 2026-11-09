@@ -13946,8 +13946,10 @@ final class AppState: ObservableObject {
                 if superseded { return .failed }
                 listed = state
             } catch {
-                guard !Task.isCancelled, activeDashboardID == dashboardID,
-                      HermesClient.isRoomNotFoundError(error) else { return .retry }
+                guard !Task.isCancelled, activeDashboardID == dashboardID else { return .retry }
+                // Not the old tap's error over what opened since.
+                if superseded { return .failed }
+                guard HermesClient.isRoomNotFoundError(error) else { return .retry }
             }
         }
         guard let room = listed, !room.isDisbanded else {

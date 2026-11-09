@@ -129,6 +129,16 @@ final class ChatOnScreenTests: XCTestCase {
         XCTAssertEqual(ReadChatHint.roomThread(ReadChatHint.note(NotificationE2E.plaintextRouting(relayed))),
                        "room:\(dashboard.uuidString):conduit-1", "the extension keeps one per room for it too")
         XCTAssertNil(NotificationE2E.plaintextRouting(["conduit": stub])["room"], "a stub alone has none")
+        // The relay builds body.conduit from the stub it checked: a nested
+        // copy naming another pairing, dashboard or chat isn't taken.
+        for (field, value) in [("gateway_id", "another-pairing"), ("dashboard_id", UUID().uuidString), ("session_id", "hidden-2")] {
+            var elsewhere = rich
+            elsewhere[field] = value
+            let mixed: [AnyHashable: Any] = ["conduit": stub, "body": ["conduit": elsewhere]]
+            XCTAssertNil(NotificationE2E.plaintextRouting(mixed)["room"], field)
+            XCTAssertNil(PushNotificationService.parseNotificationTarget(from: mixed, records: [], knownGatewayIDs: [],
+                                                                         keysProvisioned: false)?.roomID, field)
+        }
 
         // The extension's note keeps the room, so reading it clears the push after it stops verifying.
         let note = ReadChatHint.note(["session_id": "hidden-1", "type": "response.ready", "dashboard_id": dashboard.uuidString,
@@ -181,14 +191,19 @@ final class ChatOnScreenTests: XCTestCase {
         XCTAssertEqual(handoffs.record("a", thread: "room:d:r1", now: start), [])
         XCTAssertEqual(handoffs.record("x", thread: "room:d:r2", now: start), [], "Another room's is its own")
         XCTAssertEqual(handoffs.record("b", thread: "room:d:r1", now: start.addingTimeInterval(0.2)), ["a"])
-        XCTAssertEqual(handoffs.record("c", thread: "room:d:r1", now: start.addingTimeInterval(1)), ["a", "b"])
-        XCTAssertEqual(handoffs.record("c", thread: "room:d:r1", now: start.addingTimeInterval(1.1)), ["a", "b"],
+        XCTAssertEqual(handoffs.record("c", thread: "room:d:r1", now: start.addingTimeInterval(1)), ["b"],
+                       "Only the last: b waits on and replaces a")
+        XCTAssertEqual(handoffs.record("c", thread: "room:d:r1", now: start.addingTimeInterval(1.1)), ["b"],
                        "The same notification again doesn't wait on itself")
         XCTAssertEqual(
             handoffs.record("d", thread: "room:d:r1", now: start.addingTimeInterval(RoomHandoffs.window + 0.5)),
             ["c"], "Ones handed over before the window have shown, or never will"
         )
         XCTAssertEqual(handoffs.entries.map(\.id), ["c", "d"])
+        XCTAssertEqual(handoffs.record("e", thread: "room:d:r1", now: start.addingTimeInterval(2)), ["d"],
+                       "A clock set back keeps the one in flight")
+        XCTAssertEqual(handoffs.record("f", thread: "room:d:r1", now: start.addingTimeInterval(-60)), [],
+                       "One far off either way is gone")
         XCTAssertLessThan(RoomHandoffs.wait, RoomHandoffs.window)
 
         // Kept in the app group between the extension's runs.

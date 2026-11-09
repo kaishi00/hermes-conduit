@@ -184,18 +184,27 @@ enum NotificationE2E {
     /// details (#449) and a turn's group room (issue 2064) ONLY in
     /// body.conduit, with the top-level conduit copy reduced to a routing
     /// stub for raw-APNs readers, so whichever copy carries one wins, nested
-    /// first. Payloads with none fall back to plain routing, preferring the
-    /// legacy top-level copy.
+    /// first. The relay builds body.conduit from that same stub, so a nested
+    /// copy naming another chat, type or pairing than the stub `evaluate`
+    /// checked is not taken. Payloads with none fall back to plain routing,
+    /// preferring the legacy top-level copy.
     static func plaintextRouting(_ userInfo: [AnyHashable: Any]) -> [String: Any] {
         let direct = userInfo["conduit"] as? [String: Any]
         let nested = (userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any]
         func carriesMore(_ copy: [String: Any]?) -> Bool {
             copy?["decision"] is [String: Any] || copy?["call"] is [String: Any] || copy?["room"] is [String: Any]
         }
-        if carriesMore(nested) { return nested ?? [:] }
+        func agreesWithStub(_ copy: [String: Any]) -> Bool {
+            guard let direct else { return true }
+            return routingIdentity.allSatisfy { (copy[$0] as? String) == (direct[$0] as? String) }
+        }
+        if carriesMore(nested), let nested, agreesWithStub(nested) { return nested }
         if carriesMore(direct) { return direct ?? [:] }
         return direct ?? nested ?? [:]
     }
+
+    /// The stub's fields that say which push this is and where it's from.
+    private static let routingIdentity = ["type", "session_id", "profile", "gateway", "gateway_id", "dashboard_id"]
 
     /// `knownGatewayIDs` are the keyless relay pairings this iPhone may still
     /// trust plaintext from (see `knownGatewayIDs(listed:previous:holdsKeys:)`),
@@ -725,11 +734,14 @@ struct RoomHandoffs: Codable, Equatable {
 
     private(set) var entries: [Entry] = []
 
-    /// Notes `id` handed over in `thread`, and answers the room's earlier
-    /// handoffs still within the window, oldest first.
+    /// Notes `id` handed over in `thread`, and answers the room's last
+    /// handoff still within the window. Only the last: it waited on (and
+    /// replaced) the one before it, so a third bot in a burst doesn't wait
+    /// out the deadline on a notification already gone. A clock that moved
+    /// back keeps what's in flight, and still drops what's long past.
     mutating func record(_ id: String, thread: String, now: Date) -> [String] {
-        entries.removeAll { $0.id == id || $0.at > now || now.timeIntervalSince($0.at) >= Self.window }
-        let earlier = entries.filter { $0.thread == thread }.map(\.id)
+        entries.removeAll { $0.id == id || abs(now.timeIntervalSince($0.at)) >= Self.window }
+        let earlier = entries.last { $0.thread == thread }.map { [$0.id] } ?? []
         entries.append(Entry(id: id, thread: thread, at: now))
         return earlier
     }

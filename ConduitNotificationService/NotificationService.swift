@@ -34,8 +34,8 @@ final class NotificationService: UNNotificationServiceExtension {
         content.userInfo.removeValue(forKey: ReadChatHint.userInfoKey)
         let userInfo = content.userInfo
         let type = (NotificationE2E.routingStub(userInfo)?["type"] as? String)
-        // Prepared up front so a timeout can only ever deliver generic text.
-        // It takes the chat note once the push verifies.
+        // Prepared up front so a timeout delivers generic text. It takes the
+        // chat note once the push verifies; a keyless room push replaces it.
         let prepared = Self.generic(content.mutableCopy() as? UNMutableNotificationContent ?? content, type: type)
         lock.withLock { fallback = prepared }
 
@@ -51,6 +51,9 @@ final class NotificationService: UNNotificationServiceExtension {
             let note = ReadChatHint.note(NotificationE2E.plaintextRouting(userInfo))
             if let thread = ReadChatHint.roomThread(note) {
                 content.userInfo[ReadChatHint.userInfoKey] = note
+                // A lookup that stalls still delivers it as a keyless push
+                // always went out: routable, and replaced by the room's next.
+                lock.withLock { fallback = content }
                 deliverInRoom(content, note: note, thread: thread, request: request)
                 return
             }
