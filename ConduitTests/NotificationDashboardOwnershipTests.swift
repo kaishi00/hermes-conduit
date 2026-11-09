@@ -646,11 +646,14 @@ extension NotificationDashboardOwnershipTests {
         moving.pendingURL = "https://other.tailnet.ts.net"
         let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [moving]))
         appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
+        NotifierPluginStatus.Remembered.remember("Family farm", for: dashboardA, in: defaults)
 
         appState.settlePendingDashboardMove(dashboardA)
 
         XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: dashboardA)?.normalizedURL, "https://other.tailnet.ts.net")
         XCTAssertTrue(appState.relayGatewayIDs(of: dashboardA).isEmpty)
+        // So is who managed the old host's plugin.
+        XCTAssertNil(NotifierPluginStatus.Remembered.managedBy(for: dashboardA, in: defaults))
     }
 }
 

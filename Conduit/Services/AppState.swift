@@ -15755,6 +15755,9 @@ final class AppState: ObservableObject {
     }
 
     func forgetRelayGatewayIDs(of dashboardID: UUID) {
+        // Who managed the old host's plugin goes with its pairings: a moved
+        // entry's new host says for itself.
+        NotifierPluginStatus.Remembered.remember(nil, for: dashboardID, in: defaults)
         var stored = storedRelayGatewayIDs()
         guard stored.removeValue(forKey: dashboardID.uuidString) != nil else { return }
         saveRelayGatewayIDs(stored)
