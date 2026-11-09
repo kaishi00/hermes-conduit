@@ -396,8 +396,8 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// it"), not someone else's ("no, Alex declined it").
     private static let refusalLeads: [[String]] = [
         "decline", "refuse", "reject", "deny", "veto", "i refuse", "i decline", "i reject", "i deny",
-        "ablehnen", "lehne", "ich lehne", "rechaza", "rechazo", "recházalo", "je refuse", "rejette", "refusez",
-        "rifiuta", "rifiuto", "rejeita", "recuso", "recusa", "отклони", "отклоните", "отказываюсь", "я отказываюсь",
+        "ablehnen", "lehne", "ich lehne", "rechaza", "rechazo", "recházalo", "lo rechazo", "la rechazo", "je refuse", "je le refuse", "je la refuse", "rejette", "refusez",
+        "rifiuta", "rifiuto", "lo rifiuto", "la rifiuto", "rejeita", "recuso", "eu recuso", "recusa", "отклони", "отклоните", "отказываюсь", "я отказываюсь",
         "odrzuć", "odmawiam", "reddet", "reddediyorum", "tolak", "saya menolak", "拒绝", "拒絕", "拒否", "断る", "断って", "お断り",
     ].map { words(in: $0) }
 
