@@ -347,6 +347,28 @@ final class TranscriptLayoutTests: XCTestCase {
             guess(event("message.user", long)),
             "the message on its way is guessed as its event"
         )
+        let picture = GroupRoomAttachment(attachmentID: "a1", kind: "image", name: "cat.png", size: 12, mime: "image/png")
+        XCTAssertGreaterThan(
+            guess(.pending(text: "Hi", members: [], isSending: true, files: [picture.attachment(roomID: "room-1")])),
+            guess(.pending(text: "Hi", members: [], isSending: true)),
+            "the message on its way guesses its files"
+        )
+        let withFiles = GroupEvent(
+            roomID: "room-1", seq: 1, eventID: "e1", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "human", profile: nil, displayName: nil, connectionID: nil),
+            authorityEpoch: nil,
+            payload: ["text": .string("Hi"), "attachments": .array([.object([
+                "attachment_id": .string("a1"), "kind": .string("image"), "name": .string("cat.png"),
+                "size": .number(12), "mime": .string("image/png"),
+            ])])],
+            createdAt: 1
+        )
+        XCTAssertEqual(withFiles.attachments.count, 1)
+        XCTAssertGreaterThan(
+            guess(.event(withFiles, members: [], continuesRun: false, boards: [])),
+            guess(event("message.user", "Hi", actor: GroupActor(kind: "user", id: "human", profile: nil, displayName: nil, connectionID: nil))),
+            "a sent message guesses its files"
+        )
         func job(_ id: String) -> GroupActor {
             GroupActor(kind: "user", id: id, profile: nil, displayName: "Nightly", connectionID: nil)
         }

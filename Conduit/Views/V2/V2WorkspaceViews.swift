@@ -379,7 +379,7 @@ struct WorkspaceFolderView: View {
             // Not while the plugin hasn't said (offline, just connected).
             if !explorer.canChange, !appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
                 Label {
-                    Text("Update the Conduit plugin on your Hermes host to search this folder and make, move or delete files here. Settings › Conduit plugin can update it.")
+                    Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to search this folder and make, move or delete files here. Settings › Conduit plugin can update it.")))
                 } icon: {
                     Image(systemName: "arrow.down.circle")
                 }

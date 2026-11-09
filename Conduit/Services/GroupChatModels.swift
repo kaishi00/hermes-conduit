@@ -179,6 +179,82 @@ struct GroupEvent: Equatable, Identifiable {
 
     /// The thread a chat/turn event belongs to (`thread_id` payload key).
     var threadID: String? { payload["thread_id"]?.stringValue }
+
+    /// The files a user message carries as Hermes' own room attachments
+    /// (`payload.attachments`, Hermes 0.22.6+): Conduit's and Desktop's.
+    var attachments: [GroupRoomAttachment] {
+        guard isUserMessage else { return [] }
+        return (payload["attachments"]?.arrayValue ?? []).compactMap(GroupRoomAttachment.init(wire:))
+    }
+}
+
+/// A file Hermes keeps for a room message (`groups.attachment.upload`,
+/// named in `groups.send`'s manifest, read with `groups.attachment.download`).
+/// Hermes hands its pictures to each bot as a chat's are, so a bot without
+/// vision reads them through the auxiliary vision model.
+struct GroupRoomAttachment: Equatable, Hashable {
+    let attachmentID: String
+    /// `image`, `pdf` or `file`.
+    let kind: String
+    let name: String
+    let size: Int
+    let mime: String
+
+    init(attachmentID: String, kind: String, name: String, size: Int, mime: String) {
+        self.attachmentID = attachmentID
+        self.kind = kind
+        self.name = name
+        self.size = size
+        self.mime = mime
+    }
+
+    init?(wire value: AnyCodable) {
+        guard let object = value.objectValue,
+              let id = object["attachment_id"]?.stringValue, !id.isEmpty,
+              let kind = object["kind"]?.stringValue,
+              let name = object["name"]?.stringValue,
+              let size = HermesClient.exactIntValue(object["size"]),
+              let mime = object["mime"]?.stringValue else { return nil }
+        self.init(attachmentID: id, kind: kind, name: name, size: size, mime: mime)
+    }
+
+    /// Its line in `groups.send`'s manifest: exactly the fields Hermes takes.
+    var manifest: [String: Any] {
+        ["attachment_id": attachmentID, "kind": kind, "name": name, "size": size, "mime": mime]
+    }
+
+    /// Hermes' limits (gateway/hosted_room_attachments.py).
+    static let maxPerMessage = 8
+    static let maxBytes = 15_000_000
+    static let maxMessageBytes = 25_000_000
+
+    /// Where the room's rows find it: a path of its own under the room, so
+    /// it reads through the room's resolver and keeps on the phone as a
+    /// chat's pictures do.
+    static let pathPrefix = "/conduit-room-attachments/"
+
+    func path(roomID: String) -> String {
+        Self.pathPrefix + roomID + "/" + attachmentID + "/" + name
+    }
+
+    /// The room and attachment a path names, or nil for any other path.
+    static func parse(path: String) -> (roomID: String, attachmentID: String)? {
+        guard path.hasPrefix(pathPrefix) else { return nil }
+        let parts = path.dropFirst(pathPrefix.count).split(separator: "/", maxSplits: 2, omittingEmptySubsequences: false)
+        guard parts.count == 3, !parts[0].isEmpty, !parts[1].isEmpty else { return nil }
+        return (String(parts[0]), String(parts[1]))
+    }
+
+    /// As the room's rows draw it.
+    func attachment(roomID: String) -> Attachment {
+        Attachment(
+            id: attachmentID,
+            name: name,
+            uri: path(roomID: roomID),
+            mimeType: mime,
+            kind: kind == "image" ? .image : .document
+        )
+    }
 }
 
 /// Who a room's home posted a message for: a person by the name its Link
@@ -771,6 +847,8 @@ struct GroupRoomOutbox: Equatable {
         let eventID: String
         /// A reply's thread, kept for its retry; nil opens its own.
         var threadID: String? = nil
+        /// Its Hermes attachments, sent again with a retry.
+        var attachments: [GroupRoomAttachment] = []
     }
 
     private(set) var pending: Pending?
@@ -786,12 +864,17 @@ struct GroupRoomOutbox: Equatable {
     /// message returns the SAME pending row untouched; the caller MUST have
     /// consulted `accepts(text:)` first — a different text is a new logical
     /// message and is refused there, never silently replaced here.
-    mutating func beginSend(text: String, threadID: String? = nil, mintEventID: () -> String) -> Pending {
+    mutating func beginSend(
+        text: String,
+        threadID: String? = nil,
+        attachments: [GroupRoomAttachment] = [],
+        mintEventID: () -> String
+    ) -> Pending {
         if let pending {
             assert(pending.text == text, "Different text while a send is pending — refuse via accepts(text:), never replace")
             return pending
         }
-        let created = Pending(text: text, eventID: mintEventID(), threadID: threadID)
+        let created = Pending(text: text, eventID: mintEventID(), threadID: threadID, attachments: attachments)
         pending = created
         return created
     }

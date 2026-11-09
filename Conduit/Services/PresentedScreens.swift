@@ -241,6 +241,280 @@ struct PresentedConfirm: Identifiable, Equatable {
         }
     }
 
+    /// Whether the user's own words turn it down: an answer led by a no, a
+    /// cancel, a don't or a wait, as the handset reads one in any shipped
+    /// language ("no", "don't send it", "not now", "我不想发"), or a
+    /// refusal said with its verb ("decline it"). Never a question, a yes
+    /// with more words ("yes, no problem"), not knowing, or a no somewhere
+    /// inside other words ("I have no problem with that"): the model's
+    /// judgment, or something it read, can't answer for the user, and
+    /// anything unclear leaves the panel for their tap.
+    func isDeclined(by words: String) -> Bool {
+        // A question ("can't we wait?") asks; it doesn't answer.
+        guard !words.contains("?"), !words.contains("？"), !VoiceCallDecisionOutcome.isYes(words) else { return false }
+        // A no in its own clause before a refusal ("不，拒绝", "いや、断る")
+        // isn't the refusal's not.
+        if let rest = Self.afterCJKNo(words), isDeclined(by: rest) { return true }
+        // A Chinese or Japanese question ends a clause in its marker
+        // ("取消吗", "取消吗，谢谢").
+        let clauseEnds = words.components(separatedBy: CharacterSet(charactersIn: ",;:—–，；：、.!。！\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters)) }
+        guard !clauseEnds.contains(where: { clause in Self.cjkQuestionEnds.contains { clause.hasSuffix($0) } }),
+              !Self.cjkAskPairs.contains(where: { words.contains($0) }) else { return false }
+        // Not knowing isn't a no ("no idea", "not sure").
+        let folded = words.lowercased().replacingOccurrences(of: "’", with: "'")
+        guard !Self.unsure.contains(where: { folded.contains($0) }) else { return false }
+        let said = Self.words(in: words)
+        guard !Self.unsureWords.contains(where: { Self.range(of: $0, in: said) != nil }),
+              !Self.cjkUnsure.contains(where: { words.contains($0) }) else { return false }
+        // Asked not to refuse ("don't decline it", "don't cancel the
+        // email", "不要取消") isn't a no.
+        guard !VoiceThreadRouting.negatesRefusalVerb(words), !Self.negatesActionNo(said, in: words),
+              !Self.cjkNegatedCancels.contains(where: { words.contains($0) }) else { return false }
+        switch VoiceThreadRouting.heldRequestAnswer(words) {
+        // A no with a change after it ("no, make it for Alex", "never mind,
+        // make it Wednesday") asks for the change, which the panel's edit
+        // takes. A no on its own, or one said with its action ("don't
+        // share", "cancel the email"), declines.
+        case .no(let change):
+            // A yes after the no ("no, send it", "no, go ahead") contradicts
+            // it: the tap decides.
+            guard !Self.laterClauseSaysYes(words) else { return false }
+            return change == nil
+                || (Self.isCJKSendRefusal(words) && Self.isOneClause(words))
+                || (((Self.opens(said, with: Self.actionNos) && (!Self.ledByBareNo(said) || Self.saysOneBareNo(said, words)))
+                    || (Self.opens(said, with: Self.refusalLeads) && Self.saysOneBareNo(said, words)
+                        && VoiceThreadRouting.containsRefusalVerb(words)))
+                    && Self.isOneClause(words))
+        // A wait holds; it doesn't refuse ("hold on", "wait, I'm not
+        // ready"). "Not now" does, and a not yet with a change in it ("wait,
+        // make it Wednesday") asks for that change, not a no.
+        case .notYet(let change):
+            return change == nil
+                && !Self.laterClauseSaysYes(words)
+                && (VoiceThreadRouting.containsNegation(words) || Self.cjkNotYet.contains(where: { words.contains($0) }))
+                && !Self.opens(said, with: Self.neutralWaits)
+        case .yes: return false
+        // A refusal verb ("decline it") or a not on the send itself
+        // ("我不想发", "送らないで") declines, unless a change follows it
+        // ("I refuse, send it to Bob instead").
+        case .other:
+            return (VoiceThreadRouting.containsRefusalVerb(words) || Self.isCJKSendRefusal(words)) && Self.isOneClause(words)
+        }
+    }
+
+    /// A not on the send and no other not: "我没有说不发" (I didn't say
+    /// not to send) denies the refusal.
+    private static func isCJKSendRefusal(_ words: String) -> Bool {
+        guard let phrase = cjkSendRefusals.first(where: { words.contains($0) }),
+              let range = words.range(of: phrase) else { return false }
+        // A Chinese send verb ends its word: "不用发愁" (no need to worry)
+        // isn't about sending.
+        if let last = phrase.last, "发發送".contains(last), let next = words[range.upperBound...].first,
+           next.isLetter, !cjkSendFollowers.contains(next) {
+            return false
+        }
+        let rest = words.replacingOccurrences(of: phrase, with: " ")
+        return !cjkNots.contains(where: { rest.contains($0) })
+    }
+
+    /// What may follow a Chinese send verb and keep it about sending
+    /// ("不要发了", "别发给他", "不要发短信").
+    private static let cjkSendFollowers: Set<Character> = ["了", "吧", "啊", "呀", "啦", "嘛", "给", "給", "到", "出", "过", "過", "这", "這", "那", "邮", "郵", "消", "信", "送", "短", "微", "电", "電", "文", "照", "图", "圖", "链", "鏈", "语", "語", "它", "个", "個", "条", "條", "封", "帖"]
+
+    /// Chinese, Japanese and Korean nots.
+    private static let cjkNots = ["不", "没", "沒", "别", "別", "ない", "ません", "않", "못", "마", "말"]
+
+    /// The marks that end a Chinese, Japanese or Korean question.
+    private static let cjkQuestionEnds = ["吗", "嗎", "么", "麼", "呢", "か", "かな", "까", "까요", "나요"]
+    /// A Chinese question asked by saying both ("要不要发", "是不是取消").
+    private static let cjkAskPairs = [
+        "要不要", "是不是", "发不发", "發不發", "送不送", "可不可以", "能不能", "行不行", "好不好", "用不用", "需不需要",
+    ]
+    /// A not on sending, in Chinese, Japanese or Korean.
+    private static let cjkSendRefusals = [
+        "不想发", "不想發", "不想送", "不用发", "不用發", "不用送", "不要发", "不要發", "不要送", "别发", "別發", "别送", "別送", "不发", "不發",
+        "送らないで", "送信しないで", "보내지 마", "보내지마", "보내지 말",
+    ]
+
+    /// Led by a no but not one: a hit only keeps the panel up for the tap.
+    private static let unsure = ["not sure", "no idea", "no clue", "no problem", "no worries", "no rush",
+        "don't know", "dont know", "do not know", "don't remember", "dont remember", "do not remember", "can't remember",
+        "can't say", "cannot say"]
+    /// Not knowing in the other shipped languages, as whole words.
+    private static let unsureWords: [[String]] = [
+        "no sé", "no lo sé", "ni idea", "não sei", "nao sei", "não faço ideia", "je ne sais pas", "je sais pas",
+        "aucune idée", "ich weiß nicht", "weiß nicht", "weiss nicht", "keine ahnung", "non lo so", "non so",
+        "nessuna idea", "nie wiem", "не знаю", "понятия не имею", "bilmiyorum", "emin değilim", "tidak tahu",
+        "tak tahu", "nggak tahu", "gak tahu", "tidak yakin",
+    ].map { words(in: $0) }
+    /// Whether the answer, past the words the handset skips before its lead
+    /// ("well", "oh", "um"), opens with one of the phrases. A Chinese,
+    /// Japanese or Korean phrase may run into the next words.
+    private static func opens(_ said: [String], with phrases: [[String]]) -> Bool {
+        let skipped = VoiceThreadRouting.answerJoiners.map { words(in: $0) }
+        var rest = said[...]
+        while let first = rest.first {
+            if VoiceThreadRouting.fillers.contains(first) || leadingSkips.contains(first) || politeWords.contains(first) {
+                rest = rest.dropFirst()
+            } else if let joiner = skipped.first(where: { !$0.isEmpty && rest.starts(with: $0) }) {
+                rest = rest.dropFirst(joiner.count)
+            } else {
+                break
+            }
+        }
+        return phrases.contains { phrase in
+            guard let lead = phrase.first else { return false }
+            if phrase.count == 1, let scalar = lead.unicodeScalars.first, scalar.value >= 0x2E80 {
+                return rest.first?.hasPrefix(lead) == true
+            }
+            return rest.starts(with: phrase)
+        }
+    }
+
+    /// Whether the words say one thing: a second clause after a no that
+    /// names its action ("don't send it to Alex; send it to Bob") is a
+    /// change, not a no.
+    private static func isOneClause(_ text: String) -> Bool {
+        let breaks = CharacterSet(charactersIn: ",;:—–，；：、.!。！\n")
+        // A polite ending ("…, please", "…, thanks") or a bare no before
+        // the action ("no, cancel the email") isn't a second clause, but
+        // any other is, short ones too ("don't send it, send it to Bob").
+        // A joiner said without the comma ("… and send it to Bob") starts
+        // one too.
+        let clauses = text.unicodeScalars.split(whereSeparator: { breaks.contains($0) })
+            .map { words(in: String(String.UnicodeScalarView($0))) }
+            .flatMap { $0.split(whereSeparator: { clauseJoiners.contains($0) }).map(Array.init) }
+            .filter { clause in !clause.isEmpty && !clause.allSatisfy { politeWords.contains($0) || leadingSkips.contains($0) } }
+        return clauses.count <= 1
+    }
+
+    /// Thanks and please in the shipped languages: a clause of only these
+    /// adds nothing.
+    private static let politeWords: Set<String> = [
+        "please", "pls", "thanks", "thank", "you", "thx", "cheers", "bitte", "danke", "schön", "por", "favor", "gracias",
+        "s", "il", "vous", "plaît", "merci", "per", "favore", "grazie", "obrigado", "obrigada", "пожалуйста", "спасибо",
+        "proszę", "dziękuję", "dzięki", "lütfen", "teşekkürler", "sağol", "tolong", "terima", "kasih", "makasih",
+        "谢谢", "謝謝", "请", "請", "お願いします", "ありがとう", "부탁해요", "감사합니다", "고마워",
+    ]
+
+    /// Said before a no that names its action, and skipped to find it
+    /// ("please cancel the email", "no, cancel the email").
+    private static let leadingSkips: Set<String> = [
+        "please", "pls", "bitte", "no", "nope", "nah", "nein", "non", "não", "nao", "nie", "нет", "hayır", "tidak",
+    ]
+
+    private static let clauseJoiners: Set<String> = [
+        "and", "then", "but", "instead", "und", "dann", "aber", "stattdessen", "y", "pero", "luego", "et", "mais", "puis",
+        "e", "ma", "poi", "и", "а", "но", "потом", "ale", "potem", "ve", "ama", "sonra", "dan", "tapi", "lalu",
+    ]
+
+    /// A no that names its action: what follows it is what's turned down.
+    private static let actionNos: [[String]] = [
+        "don't", "dont", "do not", "nicht", "cancel", "stop", "abort", "drop", "scrap", "skip", "ditch", "abbrechen", "storniere", "cancela", "cancelar",
+        "annule", "annuler", "annulez", "anula", "anular", "annulla", "отмени", "отменить", "anuluj", "iptal",
+        "batalkan", "batal", "取消", "キャンセル", "취소",
+    ].map { words(in: $0) }
+
+    /// Whether a clause after the first says yes ("no, send it"), or the
+    /// words after a no do when the transcript dropped the comma ("no send
+    /// it", "no wait go ahead").
+    private static func laterClauseSaysYes(_ text: String) -> Bool {
+        let clauses = text.components(separatedBy: CharacterSet(charactersIn: ",;:—–，；：、.!。！\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        // A thanks or please isn't a yes here ("no, thanks").
+        func saysYes(_ clause: String) -> Bool {
+            !words(in: clause).allSatisfy { politeWords.contains($0) } && VoiceCallDecisionOutcome.isYes(clause)
+        }
+        if let first = clauses.first {
+            let said = words(in: first)
+            let rest = said.drop(while: { bareNos.contains($0) || VoiceThreadRouting.fillers.contains($0) || noTurnArounds.contains($0) })
+            if bareNos.contains(said.first ?? ""), let next = rest.first, !["don", "dont", "do", "not", "never", "nicht"].contains(next),
+               saysYes(rest.joined(separator: " ")) { return true }
+        }
+        return clauses.dropFirst().contains(where: saysYes)
+    }
+
+    /// Words between a no and the yes that takes it back ("no wait, send it").
+    private static let noTurnArounds: Set<String> = ["wait", "actually", "oh", "sorry", "warte", "espera", "attends", "aspetta", "espere", "подожди", "czekaj", "bekle", "tunggu"]
+
+    /// The answer after a Chinese, Japanese or Korean no in its own clause
+    /// ("不，拒绝", "いや、断る"), where that no isn't the not of the verb.
+    private static func afterCJKNo(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        // Only a mark sets the no apart: "不要 拒绝" is one "don't refuse".
+        for no in ["不", "不不", "いや", "いいえ", "아니", "아니요", "아뇨"] {
+            for mark in ["，", ",", "、", "。"] where trimmed.hasPrefix(no + mark) {
+                let rest = String(trimmed.dropFirst(no.count + mark.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                return rest.isEmpty ? nil : rest
+            }
+        }
+        return nil
+    }
+
+    /// Whether a not comes right before a cancel ("don't cancel", "nicht
+    /// abbrechen"), or a German nicht after it in the same clause
+    /// ("Storniere es nicht"): the user turned the cancel down, not the
+    /// request.
+    private static func negatesActionNo(_ said: [String], in text: String) -> Bool {
+        let nots: Set<String> = ["t", "not", "dont", "nicht", "never"]
+        let cancels = Set(actionNos.filter { $0.count == 1 }.map { $0[0] }).subtracting(nots)
+        if zip(said, said.dropFirst()).contains(where: { nots.contains($0) && cancels.contains($1) }) { return true }
+        return text.components(separatedBy: CharacterSet(charactersIn: ",;:—–，；：、.!。！\n")).contains { clause in
+            let clauseWords = words(in: clause)
+            guard let cancel = clauseWords.firstIndex(where: { cancels.contains($0) }) else { return false }
+            return clauseWords[(cancel + 1)...].contains("nicht")
+        }
+    }
+
+    private static let cjkNegatedCancels = [
+        "不要取消", "别取消", "別取消", "不取消", "不用取消", "キャンセルしないで", "キャンセルしない", "취소하지",
+    ]
+
+    /// Whether the answer opens with a bare no, which may be the next
+    /// verb's not ("no cancelar el envío") rather than an answer.
+    private static func ledByBareNo(_ said: [String]) -> Bool {
+        guard let first = said.first(where: { !VoiceThreadRouting.fillers.contains($0) }) else { return false }
+        return bareNos.contains(first)
+    }
+
+    /// A no said on its own and only once: a second one is the verb's not
+    /// ("no, no lo rechazo", I don't reject it).
+    private static func saysOneBareNo(_ said: [String], _ text: String) -> Bool {
+        noStandsAlone(text) && said.filter { bareNos.contains($0) }.count <= 1
+    }
+
+    private static let bareNos: Set<String> = ["no", "nope", "nah", "nein", "non", "não", "nao", "nie", "нет", "hayır", "tidak"]
+
+    /// Whether the no before a refusal is a clause of its own ("no, lo
+    /// rechazo"), not the verb's not ("no lo rechazo", I don't reject it).
+    private static func noStandsAlone(_ text: String) -> Bool {
+        let breaks = CharacterSet(charactersIn: ",;:—–，；：、.!。！\n")
+        guard let first = text.unicodeScalars.split(whereSeparator: { breaks.contains($0) })
+            .map({ words(in: String(String.UnicodeScalarView($0))) })
+            .first(where: { !$0.isEmpty }) else { return false }
+        return first.allSatisfy { leadingSkips.contains($0) || politeWords.contains($0) || VoiceThreadRouting.fillers.contains($0) }
+    }
+
+    /// The user's own refusal after a no ("no, I refuse", "no, decline
+    /// it"), not someone else's ("no, Alex declined it").
+    private static let refusalLeads: [[String]] = [
+        "decline", "refuse", "reject", "deny", "veto", "i refuse", "i decline", "i reject", "i deny",
+        "ablehnen", "lehne", "ich lehne", "rechaza", "rechazo", "recházalo", "lo rechazo", "la rechazo", "je refuse", "je le refuse", "je la refuse", "rejette", "refusez",
+        "rifiuta", "rifiuto", "lo rifiuto", "la rifiuto", "rejeita", "recuso", "eu recuso", "recusa", "отклони", "отклоните", "отказываюсь", "я отказываюсь",
+        "odrzuć", "odmawiam", "reddet", "reddediyorum", "tolak", "saya menolak", "拒绝", "拒絕", "拒否", "断る", "断って", "お断り",
+    ].map { words(in: $0) }
+
+    /// The handset's not-yet leads with no not in them: a wait.
+    private static let neutralWaits: [[String]] = (VoiceThreadRouting.answerNotYetLeads + VoiceThreadRouting.cjkAnswerNotYetLeads)
+        .filter { lead in !VoiceThreadRouting.containsNegation(lead) && !cjkNotYet.contains(where: { lead.contains($0) }) }
+        .map { words(in: $0) }
+
+    /// A not yet whose not sits inside it ("先不", "还没", "先别", "まだ", "아직").
+    private static let cjkNotYet = ["不", "没", "沒", "别", "別", "まだ", "아직"]
+    private static let cjkUnsure = ["不知道", "不确定", "不確定", "わからない", "分からない", "わかりません", "分かりません", "모르겠", "몰라"]
+
     private static func words(in text: String) -> [String] {
         text.lowercased().split(whereSeparator: { !$0.isLetter && !$0.isNumber }).map(String.init)
     }
@@ -290,7 +564,8 @@ final class PresentedScreensSync: ObservableObject {
     /// group room's boards under its agents' messages (plugin 0.129+);
     /// "diff-cards": changes line by line (plugin 0.133+); "composed-cards":
     /// cards Hermes builds itself, and buttons and fields on any card
-    /// (plugin 0.140+). "room-asks": a
+    /// (plugin 0.140+). "review-cards": options to look at and mark, a
+    /// quick pick or a review in rounds (plugin 0.147+). "room-asks": a
     /// room's asks, answered with Share, Say instead (with the words) or
     /// Don't share (plugin 0.118+, Linked Rooms). "link-asks": a linked
     /// person's Hermes' asks, the same way, with Share only when there's an
@@ -298,7 +573,7 @@ final class PresentedScreensSync: ObservableObject {
     /// work for it (Run work), answered Start, Change it (with what to do
     /// instead) or Don't start (plugin 0.137+).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
-                           "text-drafts", "board-cards", "room-boards", "diff-cards", "composed-cards", "room-asks", "link-asks",
+                           "text-drafts", "board-cards", "room-boards", "diff-cards", "composed-cards", "review-cards", "room-asks", "link-asks",
                            "room-work"]
     /// The longest Say instead the host keeps.
     static let maxEditText = 2_000
@@ -451,6 +726,25 @@ final class PresentedScreensSync: ObservableObject {
         seenCardIDs = nil
     }
 
+    /// Answers still waiting to reach a dashboard's host, a Say instead's
+    /// words included, go with its saved chats when it's signed out of or
+    /// removed (issue 2041): the next sign-in may be another account. Nil
+    /// forgets every dashboard's.
+    func forgetAnswers(dashboardID: UUID?) {
+        guard let dashboardID else {
+            defaults.removeObject(forKey: Self.resultsKey)
+            return
+        }
+        guard var all = defaults.dictionary(forKey: Self.resultsKey) as? [String: [[String: Any]]] else { return }
+        let prefix = "\(dashboardID.uuidString)|"
+        all = all.filter { !$0.key.hasPrefix(prefix) }
+        if all.isEmpty {
+            defaults.removeObject(forKey: Self.resultsKey)
+        } else {
+            defaults.set(all, forKey: Self.resultsKey)
+        }
+    }
+
     private func results(for scope: String) -> [[String: Any]] {
         let all = defaults.dictionary(forKey: Self.resultsKey) as? [String: [[String: Any]]] ?? [:]
         return all[scope] ?? []
@@ -475,7 +769,8 @@ enum PresentVoiceTool {
         name: name,
         description: "Confirmations Hermes is waiting on, shown on the user's screen as a panel. list: what's waiting. "
             + "confirm: only right after the user said yes or the confirming phrase out loud in this call; Conduit "
-            + "checks their words and refuses otherwise. decline: when the user says no or not now. Before asking, "
+            + "checks their words and refuses otherwise. decline: only right after the user said no or not now out "
+            + "loud in this call; Conduit checks their words too and refuses otherwise. Before asking, "
             + "tell the user in a sentence what it will do (from its title and preview).",
         parameters: [
             "type": "object",
@@ -516,7 +811,7 @@ enum PresentVoiceTool {
         let data = (try? JSONSerialization.data(withJSONObject: describe(prompt), options: [.sortedKeys])) ?? Data()
         let details = String(data: data, encoding: .utf8) ?? ""
         if !prompt.canConfirm {
-            return "[A linked person's Hermes asked the user something on their screen: \(details). At the next natural pause, tell the user in a sentence; they type their answer on the panel, or call \(name) with decline and its id if they say they won't answer. Don't interrupt the user for it.]"
+            return "[A linked person's Hermes asked the user something on their screen: \(details). At the next natural pause, tell the user in a sentence; they type their answer on the panel, or call \(name) with decline and its id if they say no, they won't answer. Don't interrupt the user for it.]"
         }
         return "[Hermes put a confirmation on the user's screen: \(details). At the next natural pause, tell the user in a sentence what it will do and ask whether to go ahead; then call \(name) with confirm or decline and its id. Don't interrupt the user for it.]"
     }
@@ -543,42 +838,65 @@ enum PresentVoiceTool {
             guard prompt.canConfirm else {
                 return ["error": "Nothing to confirm: it's their question. The user answers it on the panel with Say instead, or decline it if they don't want to."]
             }
-            // Their words reach Conduit a moment after the model heard them.
-            let shownAfter = sync.userTurnWhenShown[prompt.id]
-            let deadline = ContinuousClock.now + .seconds(2)
-            func stillWaiting() -> Bool { sync.prompts.contains { $0.id == prompt.id && !$0.isExpired() } }
-            func saidYes() -> Bool {
-                let turn = lastUserTurn()
-                // A turn from before the panel appeared answers something else.
-                if let shownAfter, turn.id == shownAfter { return false }
-                // Room work takes only its phrase ("start it"), never a bare yes.
-                return prompt.isConfirmed(by: turn.text, bareYes: prompt.room?.work != true)
-            }
-            while !saidYes() {
-                guard stillWaiting() else { return alreadyAnswered }
-                guard ContinuousClock.now < deadline else {
-                    // Room work takes only its phrase, so asking for a yes wouldn't do.
-                    if prompt.room?.work == true {
-                        guard let phrase = prompt.spokenYes.first else {
-                            return ["error": "Not confirmed. Ask the user to answer it on the screen."]
-                        }
-                        let what = prompt.actionLabel == "Send" ? "send to work" : "start work"
-                        return ["error": "Not confirmed: a plain yes doesn't \(what). Ask the user to say \"\(phrase)\", and confirm only after they do."]
+            // Room work takes only its phrase ("start it"), never a bare yes.
+            let bareYes = prompt.room?.work != true
+            guard await userSaid({ prompt.isConfirmed(by: $0, bareYes: bareYes) }, to: prompt, sync: sync,
+                                 lastUserTurn: lastUserTurn) else {
+                guard stillWaiting(prompt, sync: sync) else { return alreadyAnswered }
+                // Room work takes only its phrase, so asking for a yes wouldn't do.
+                if prompt.room?.work == true {
+                    guard let phrase = prompt.spokenYes.first else {
+                        return ["error": "Not confirmed. Ask the user to answer it on the screen."]
                     }
-                    return ["error": "Not confirmed: the user's own words weren't a yes. Ask them, and confirm only after they say yes."]
+                    let what = prompt.actionLabel == "Send" ? "send to work" : "start work"
+                    return ["error": "Not confirmed: a plain yes doesn't \(what). Ask the user to say \"\(phrase)\", and confirm only after they do."]
                 }
-                do { try await Task.sleep(for: .milliseconds(250)) } catch { return ["error": "Not confirmed."] }
+                return ["error": "Not confirmed: the user's own words weren't a yes. Ask them, and confirm only after they say yes."]
             }
             // Tapped while their words arrived: the tap stands.
-            guard stillWaiting() else { return alreadyAnswered }
+            guard stillWaiting(prompt, sync: sync) else { return alreadyAnswered }
             await answer(prompt, .confirmed)
             return ["result": "Confirmed. Hermes goes ahead."]
         case "decline":
-            guard sync.prompts.contains(where: { $0.id == prompt.id && !$0.isExpired() }) else { return alreadyAnswered }
+            // Like a confirm, a decline is the user's: their own no, said
+            // after it appeared. Else the panel stays for their tap.
+            guard await userSaid({ prompt.isDeclined(by: $0) }, to: prompt, sync: sync, lastUserTurn: lastUserTurn) else {
+                guard stillWaiting(prompt, sync: sync) else { return alreadyAnswered }
+                return ["error": "Not declined: the user's own words weren't a no. It stays on their screen for them to answer; ask them, and decline only after they say no."]
+            }
+            // Tapped while their words arrived: the tap stands.
+            guard stillWaiting(prompt, sync: sync) else { return alreadyAnswered }
             await answer(prompt, .declined)
             return ["result": "Declined. Hermes won't do it."]
         default:
             return ["error": "Unknown action."]
         }
+    }
+
+    private static func stillWaiting(_ prompt: PresentedConfirm, sync: PresentedScreensSync) -> Bool {
+        sync.prompts.contains { $0.id == prompt.id && !$0.isExpired() }
+    }
+
+    /// Whether the user's last turn, said after `prompt` appeared, answers
+    /// it as `answers` reads it. Their words reach Conduit a moment after
+    /// the model heard them, so they're waited for, up to 2 seconds, while
+    /// it still waits.
+    private static func userSaid(
+        _ answers: @escaping @MainActor (String) -> Bool, to prompt: PresentedConfirm, sync: PresentedScreensSync,
+        lastUserTurn: @escaping @MainActor () -> (id: UUID?, text: String)
+    ) async -> Bool {
+        let shownAfter = sync.userTurnWhenShown[prompt.id]
+        let deadline = ContinuousClock.now + .seconds(2)
+        func said() -> Bool {
+            let turn = lastUserTurn()
+            // A turn from before the panel appeared answers something else.
+            if let shownAfter, turn.id == shownAfter { return false }
+            return answers(turn.text)
+        }
+        while !said() {
+            guard stillWaiting(prompt, sync: sync), ContinuousClock.now < deadline else { return false }
+            do { try await Task.sleep(for: .milliseconds(250)) } catch { return false }
+        }
+        return true
     }
 }

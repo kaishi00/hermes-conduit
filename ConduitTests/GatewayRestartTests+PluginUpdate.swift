@@ -293,6 +293,86 @@ extension GatewayRestartTests {
         XCTAssertTrue(status.needsAttention)
     }
 
+    func testAManagedHostIsAskedForNoUpdate() {
+        var status = NotifierPluginStatus()
+        status.state = .reported(version: "9.0.0", capabilities: [])
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "9.0.0", restartNeeded: false, bootID: nil)
+        status.latestVersion = "9.2.0"
+        XCTAssertTrue(status.updateRecommended)
+        status.managedBy = NotifierPluginStatus.managedBy(from: ["ok": true, "managed": true, "managed_by": " Family farm\u{7}\n"])
+        XCTAssertEqual(status.managedBy, "Family farm")
+        // Nothing asks, Settings offers no update, whatever the channel,
+        // even with features missing and a plugin below this build's floor.
+        XCTAssertFalse(status.updateRecommended)
+        XCTAssertFalse(status.updateAvailable)
+        XCTAssertFalse(status.needsAttention)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .done)
+        XCTAssertEqual(FinishSetupStatus.pluginDoneNote(status), .managed)
+        XCTAssertEqual(NotifierPluginStatus.managedText(status.managedBy), "Family farm keeps the plugin up to date.")
+        XCTAssertEqual(NotifierPluginSummary.detail(status, update: .idle), "9.0.0 · Managed by the host")
+        // Finish Update runs only the restarts there; an install still installs.
+        XCTAssertTrue(status.updateRunsOnlyRestarts(install: false))
+        XCTAssertFalse(status.updateRunsOnlyRestarts(install: true))
+        status.state = .reported(version: "0.1.0", capabilities: [])
+        XCTAssertFalse(status.updateRecommended)
+        XCTAssertFalse(status.updateAvailable)
+        // A restart already waiting on the host is still offered.
+        status.runtime = NotifierPluginStatus.Runtime(loadedVersion: "0.0.9", restartNeeded: true, bootID: nil)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .restart)
+        XCTAssertTrue(status.needsAttention)
+        // The restart it waits on wins over "managed" in the Settings row.
+        XCTAssertEqual(NotifierPluginSummary.detail(status, update: .idle), "0.0.9 · Restart to finish updating")
+    }
+
+    func testAManagedHostWhoseRouteGoesMissingIsOfferedNoInstall() {
+        // The capabilities route 404s (the plugin off, or not loaded) on a
+        // host that said it manages the plugin: it still does.
+        XCTAssertEqual(NotifierPluginStatus.managedBy(after: .predatesCapabilities, reported: nil, before: "Family farm"),
+                       "Family farm")
+        XCTAssertNil(NotifierPluginStatus.managedBy(after: .reported(version: "0.147.1", capabilities: []),
+                                                    reported: nil, before: "Family farm"))
+        var status = NotifierPluginStatus(state: .predatesCapabilities)
+        XCTAssertTrue(status.offersInstall)
+        status.managedBy = "Family farm"
+        XCTAssertFalse(status.offersInstall)
+        XCTAssertFalse(status.updateRecommended)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .notRunning)
+        XCTAssertEqual(NotifierPluginSummary.detail(status, update: .idle), "Installed but not running")
+        status.hostCopy = .old
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+    }
+
+    func testWhoManagesEachHostIsRememberedAcrossLaunches() throws {
+        let suite = "GatewayRestartTests.managedRemembered.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let farm = UUID(), other = UUID()
+        typealias Remembered = NotifierPluginStatus.Remembered
+        Remembered.remember("Family farm", for: farm, in: defaults)
+        Remembered.remember("", for: other, in: defaults)
+        XCTAssertEqual(Remembered.managedBy(for: farm, in: defaults), "Family farm")
+        XCTAssertEqual(Remembered.managedBy(for: other, in: defaults), "")
+        XCTAssertNil(Remembered.managedBy(for: UUID(), in: defaults))
+        XCTAssertNil(Remembered.managedBy(for: nil, in: defaults))
+        // A report without it forgets it for that host only.
+        Remembered.remember(nil, for: farm, in: defaults)
+        XCTAssertNil(Remembered.managedBy(for: farm, in: defaults))
+        XCTAssertEqual(Remembered.managedBy(for: other, in: defaults), "")
+    }
+
+    func testOnlyAHostThatSaysSoIsManaged() {
+        XCTAssertFalse(NotifierPluginStatus().updateRunsOnlyRestarts(install: false))
+        XCTAssertNil(NotifierPluginStatus.managedBy(from: ["ok": true, "version": "0.140.3"]))
+        XCTAssertNil(NotifierPluginStatus.managedBy(from: ["ok": true, "managed": false]))
+        XCTAssertNil(NotifierPluginStatus.managedBy(from: ["ok": false, "managed": true]))
+        XCTAssertEqual(NotifierPluginStatus.managedBy(from: ["ok": true, "managed": true]), "")
+        XCTAssertEqual(NotifierPluginStatus.managedText(""), "This dashboard's host keeps the plugin up to date.")
+        XCTAssertEqual(NotifierPluginStatus.managedBy(from: ["ok": true, "managed": true,
+                                                             "managed_by": String(repeating: "x", count: 200)])?.count, 80)
+    }
+
     func testNotNowKeepsOtherDashboardsDismissals() throws {
         let suite = "GatewayRestartTests.dismissals.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -330,6 +410,108 @@ extension GatewayRestartTests {
         // The next update's restart asks again.
         appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.65.0", boot: "a"))
         XCTAssertTrue(appState.showsNotifierPluginUpdateNotice)
+    }
+
+    func testEachReportSaysWhetherTheHostManagesThePlugin() throws {
+        let suite = "GatewayRestartTests.managed.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        var managed = Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a")
+        managed["managed"] = true
+        managed["managed_by"] = "Family farm"
+        addTeardownBlock { PluginUpdateAsk.setActive(managedBy: nil) }
+        appState.applyNotifierPluginReport(managed)
+        XCTAssertEqual(appState.notifierPlugin.managedBy, "Family farm")
+        XCTAssertFalse(appState.notifierPlugin.updateAvailable)
+        XCTAssertFalse(appState.showsNotifierPluginUpdateNotice)
+        // A screen that would ask for the update for a missing feature says
+        // who keeps the plugin up to date instead.
+        let ask = "Update the Conduit plugin on your Hermes host to use this."
+        XCTAssertEqual(PluginUpdateAsk.text(ask),
+                       "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
+        XCTAssertEqual(PluginUpdateAsk.title("Plugin update needed"), "Not on this host")
+        // What became of the user's action stays.
+        XCTAssertEqual(PluginUpdateAsk.text(ask, then: "This one wasn't kept."),
+                       "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date. This one wasn't kept.")
+        // A live voice's reason from Shared/ (the Watch's code too) is reworded here.
+        let missing = "Install or update the Hermes notifier plugin on your Hermes server."
+        XCTAssertEqual(PluginUpdateAsk.reason(missing),
+                       "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
+        XCTAssertEqual(PluginUpdateAsk.reason("Grok isn't signed in."), "Grok isn't signed in.")
+        // Local Live's session words, and a call watch's note for the live model.
+        XCTAssertEqual(PluginUpdateAsk.reason(LocalLiveProtocol.pluginMissingReason),
+                       "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
+        XCTAssertEqual(VoiceCallbackAvailability.unsupported.refusal,
+                       "Hermes can't call the user yet: the Conduit plugin on their Hermes host doesn't have this, and Family farm keeps the plugin up to date, so there's nothing for them to update.")
+        // The Watch says the same, from the context the iPhone shares.
+        let context = WatchPhoneContext(pluginAsk: PluginUpdateAsk.managedAsk)
+        XCTAssertEqual(WatchPhoneContext.decode(context.encoded())?.pluginAsk,
+                       "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
+        // What else the ask said (sharing paused, the version needed) leads.
+        XCTAssertEqual(PluginUpdateAsk.text(ask, lead: "Sharing is paused."),
+                       "Sharing is paused. The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
+        // So does an answer a room's files or reply sources couldn't read, and a Watch broker line keeps what failed.
+        XCTAssertEqual(GroupRoomFilesClient.Failure.malformed.errorDescription,
+                       "The host's answer couldn't be read. Try again in a moment. Family farm keeps the plugin up to date.")
+        XCTAssertEqual(ReplySourcesClient.Failure.malformed.errorDescription,
+                       "The host's answer couldn't be read. Try again in a moment. Family farm keeps the plugin up to date.")
+        XCTAssertEqual(GPTLiveSession.voiceNote(requested: "marin", applied: nil),
+                       "The Conduit plugin on your Hermes server didn't confirm the voice you chose. The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
+        // Location sharing bound to another dashboard is worded with that host's manager.
+        XCTAssertEqual(LocationSyncPause.pluginMissing.message(managedBy: nil),
+                       "Paused: update the Conduit plugin on this host to share your location.")
+        XCTAssertEqual(LocationSyncPause.pluginMissing.message(managedBy: "Barn"),
+                       "Sharing is paused. The Conduit plugin on this host doesn't have this yet. Barn keeps the plugin up to date.")
+        // Health and phone pauses too, and AppState answers for the bound dashboard.
+        XCTAssertEqual(HealthSyncPause.pluginMissing.message(managedBy: "Barn"),
+                       "Sharing is paused. The Conduit plugin on this host doesn't have this yet. Barn keeps the plugin up to date.")
+        XCTAssertEqual(appState.pluginManagedBy(forDashboard: appState.activeDashboardID), "Family farm")
+        let other = UUID()
+        XCTAssertNil(appState.pluginManagedBy(forDashboard: other))
+        NotifierPluginStatus.Remembered.remember("Barn", for: other, in: defaults)
+        XCTAssertEqual(appState.pluginManagedBy(forDashboard: other), "Barn")
+        // A takeover's unexpected answer keeps the retry and names who updates the plugin.
+        XCTAssertEqual(AppState.chatTakeoverFailureMessage(ChatTakeoverError.malformed),
+                       "The Conduit notifier plugin gave an unexpected answer. Try again in a moment. Family farm keeps the plugin up to date.")
+        // A report without it: the host no longer manages the plugin.
+        appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a"))
+        XCTAssertNil(appState.notifierPlugin.managedBy)
+        XCTAssertEqual(PluginUpdateAsk.text(ask), ask)
+        XCTAssertEqual(PluginUpdateAsk.text(ask, then: "This one wasn't kept."), ask)
+        XCTAssertEqual(PluginUpdateAsk.text(ask, lead: "Sharing is paused."), ask)
+        XCTAssertTrue(VoiceCallbackAvailability.unsupported.refusal.contains("needs an update"))
+        XCTAssertNil(PluginUpdateAsk.managedAsk)
+        XCTAssertEqual(AppState.chatTakeoverFailureMessage(ChatTakeoverError.malformed),
+                       "The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again.")
+        XCTAssertEqual(GroupRoomFilesClient.Failure.malformed.errorDescription,
+                       "The host's answer couldn't be read. Update the Conduit plugin and try again.")
+        XCTAssertEqual(PluginUpdateAsk.title("Plugin update needed"), "Plugin update needed")
+    }
+
+    /// From launch, before the host's status is read, screens word the ask
+    /// for the manager the active host last reported.
+    func testTheRememberedManagerWordsTheAskFromLaunch() throws {
+        let suite = "GatewayRestartTests.managedLaunch.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        addTeardownBlock { PluginUpdateAsk.setActive(managedBy: nil) }
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        NotifierPluginStatus.Remembered.remember("Family farm", for: dashboard.id, in: defaults)
+        PluginUpdateAsk.setActive(managedBy: nil)
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard])
+        )
+        XCTAssertEqual(appState.notifierPlugin.state, .unknown)
+        XCTAssertTrue(PluginUpdateAsk.isManaged)
+        XCTAssertEqual(PluginUpdateAsk.title("Plugin update needed"), "Not on this host")
     }
 
     func testTheSavedNoticeChoiceHoldsFromLaunch() throws {
@@ -876,6 +1058,153 @@ extension GatewayRestartTests {
         let outcome = await updater.run { _ in }
         XCTAssertEqual(outcome, .updated(version: "0.63.0"))
         XCTAssertTrue(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+    }
+
+    func testAManagedHostsRefusalNeverFallsBackToHermesPull() async {
+        let refusal = "The host manages the Conduit plugin, so it updates with the host, not from Conduit"
+        let host = PluginHost()
+        host.selfUpdateStartError = DashboardTicketBridgeError.http(status: 409, detail: refusal)
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .failed(detail: refusal))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
+    }
+
+    func testALostStartOnAHostNowManagedNeverFallsBackToHermesPull() async {
+        // The status this ran from predates the host's CONDUIT_PUSH_MANAGED,
+        // and the start's answer was lost with nothing running there: a
+        // timeout, or the bridge's fetch failure (HTTP status 0).
+        let lost: [Error] = [URLError(.timedOut), DashboardTicketBridgeError.http(status: 0, detail: "Failed to fetch")]
+        for error in lost {
+            let host = PluginHost()
+            host.selfUpdateStartError = error
+            var managed = Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a")
+            managed["managed"] = true
+            managed["managed_by"] = "Family farm"
+            host.capabilities = [managed]
+            var updater = host.updater()
+            updater.onHost = true
+            let outcome = await updater.run { _ in }
+            XCTAssertEqual(outcome, .failed(detail: "Family farm keeps the plugin up to date."), "\(error)")
+            XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+            XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
+        }
+    }
+
+    func testALostStartOnAHostThatCantSayWhoManagesItNeverFallsBackToHermesPull() async {
+        // The start's answer was lost, nothing runs there, and the
+        // capabilities read fails too: it may be a host that manages the plugin.
+        let host = PluginHost()
+        host.selfUpdateStartError = URLError(.timedOut)
+        host.capabilities = []
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        guard case .failed = outcome else { return XCTFail("expected a failure, got \(outcome)") }
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
+    }
+
+    func testAManagedHostsOwnJobRunsItsWaitingRestarts() async {
+        // Plugin 0.147.2+: the host's job runs only the restarts (its
+        // gateway drain and root-unit fallback), never Hermes' pull here.
+        let host = PluginHost()
+        host.selfUpdateJobs = [
+            ["id": "j1", "step": "downloading"],
+            ["id": "j1", "step": "restarting_gateway"],
+            ["id": "j1", "step": "done", "loaded_version": "0.63.0"],
+        ]
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        var updater = host.updater()
+        updater.onHost = true
+        updater.restartOnly = true
+        var steps: [NotifierPluginUpdateState] = []
+        let outcome = await updater.run { steps.append($0) }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        // Nothing downloads, so the progress never says it does.
+        XCTAssertFalse(steps.contains(.updating(.downloading)))
+        XCTAssertTrue(host.calls.contains("POST \(NotifierPluginUpdater.selfUpdatePath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+        XCTAssertFalse(host.calls.contains("POST \(GatewayRestarter.restartPath)"))
+    }
+
+    func testAManagedHostThatRefusesItsJobGetsTheRestartsFromHere() async {
+        // Plugin 0.146.0-0.147.1 refuses every job on a managed host.
+        let host = PluginHost()
+        host.selfUpdateStartError = DashboardTicketBridgeError.http(status: 409, detail: "The host manages the Conduit plugin")
+        host.capabilities = [
+            // Read before the run, after the refusal (the copy still waits),
+            // before the restarts, then before the dashboard's.
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        var updater = host.updater()
+        updater.onHost = true
+        updater.restartOnly = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+        XCTAssertTrue(host.calls.contains("POST \(GatewayRestarter.restartPath)"))
+        XCTAssertTrue(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
+    }
+
+    func testAManagedHostsRefusalWithNothingWaitingRestartsNothing() async {
+        // Plugin 0.147.2+ answers 409 once nothing waits: another phone
+        // finished the restart between this run's first read and its start.
+        let host = PluginHost()
+        host.selfUpdateStartError = DashboardTicketBridgeError.http(status: 409, detail: "The host manages the Conduit plugin")
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        var updater = host.updater()
+        updater.onHost = true
+        updater.restartOnly = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertFalse(host.calls.contains("POST \(GatewayRestarter.restartPath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+    }
+
+    func testAManagedHostsWaitingRestartRunsOnlyTheRestarts() async {
+        let host = PluginHost()
+        host.capabilities = [
+            // Read before the restarts (still waiting), then before the dashboard's.
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        // A plugin without the host-run update: the restarts run from here.
+        var updater = host.updater()
+        updater.restartOnly = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        // No pull of any kind: the host put the plugin there.
+        XCTAssertTrue(host.selfUpdatePaths.isEmpty)
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
+        XCTAssertTrue(host.calls.contains("POST \(GatewayRestarter.restartPath)"))
+        XCTAssertTrue(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
+    }
+
+    func testAManagedHostsRestartAlreadyDoneRestartsNothing() async {
+        // The offer came from a stale status: the host already runs the new plugin.
+        let host = PluginHost()
+        host.capabilities = [Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new")]
+        var updater = host.updater()
+        updater.restartOnly = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertFalse(host.calls.contains("POST \(GatewayRestarter.restartPath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
     }
 
     func testAHostThatCantPullThisPluginLeavesTheReinstallToConduit() async {

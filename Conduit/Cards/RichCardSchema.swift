@@ -282,7 +282,8 @@ struct RichCardSchema {
         "chart": ["chart"], "weather": ["weather"], "comparison": ["options"], "steps": ["steps", "needs"],
         "media": ["media"], "contact": ["people"], "status": ["status"], "table": ["table"],
         "timeline": ["timeline"], "checklist": ["checklist"], "list": ["list", "ranked"],
-        "progress": ["progress"], "callout": ["callout"], "diff": ["diff"], "composed": ["sections"],
+        "progress": ["progress"], "callout": ["callout"], "diff": ["diff"], "review": ["review"],
+        "composed": ["sections"],
     ]
 
     /// The cards about places; every other type can name a source.
@@ -408,6 +409,9 @@ struct RichCardSchema {
             card["progress"] = items
         case "diff":
             card["diff"] = diffRules(card["diff"] as? [String: Any] ?? [:])
+        case "review":
+            guard let review = reviewRules(card["review"] as? [String: Any] ?? [:]) else { return nil }
+            card["review"] = review
         default:
             break
         }
@@ -656,6 +660,60 @@ struct RichCardSchema {
         return diff
     }
 
+    // MARK: Reviews
+
+    private static let reviewID = try! NSRegularExpression(pattern: #"^rv-[0-9a-f]{16}$"#)
+    private static let workRef = try! NSRegularExpression(pattern: #"^W[0-9]{1,6}$"#)
+
+    /// Whether an id names a review the host keeps.
+    static func isReviewID(_ text: String) -> Bool {
+        matches(reviewID, text)
+    }
+
+    /// Whether text is a workstream's ref, like W3.
+    static func isWorkRef(_ text: String) -> Bool {
+        matches(workRef, text)
+    }
+
+    /// A review the host keeps (its id), what it's for, and decisions each
+    /// with two or more options of their own ids, a picture's url https
+    /// (the plugin's _review_rules).
+    private static func reviewRules(_ review: [String: Any]) -> [String: Any]? {
+        guard let id = review["id"] as? String, isReviewID(id) else { return nil }
+        var review = review
+        if let ref = review["for"] as? String, !isWorkRef(ref) { review["for"] = nil }
+        var decisions: [[String: Any]] = []
+        var seenDecisions: Set<String> = []
+        for var decision in review["decisions"] as? [[String: Any]] ?? [] {
+            guard let decisionID = decision["id"] as? String, !seenDecisions.contains(decisionID) else { continue }
+            var options: [[String: Any]] = []
+            var seenOptions: Set<String> = []
+            var recommended = false
+            for var option in decision["options"] as? [[String: Any]] ?? [] {
+                guard let optionID = option["id"] as? String, !seenOptions.contains(optionID) else { continue }
+                if option["kind"] as? String == "image" {
+                    guard isHTTPS(option["url"]) else { continue }
+                } else {
+                    option["url"] = nil
+                }
+                if (option["recommended"] as? Bool) == true {
+                    if recommended { option["recommended"] = nil }
+                    recommended = true
+                }
+                seenOptions.insert(optionID)
+                options.append(option)
+            }
+            guard options.count >= 2 else { continue }
+            // Only a decision kept holds its id: a later one may still use it.
+            seenDecisions.insert(decisionID)
+            decision["options"] = options
+            decisions.append(decision)
+        }
+        guard !decisions.isEmpty else { return nil }
+        review["decisions"] = decisions
+        return review
+    }
+
     /// A whole diff the host kept (GET /boards/diffs), checked as a diff
     /// card's is; nil when it isn't one.
     func normalizeDiff(_ value: Any?) -> [String: Any]? {
@@ -731,7 +789,9 @@ struct RichCardSchema {
     /// again). Formats are left out: Gemini knows none of them.
     /// The kinds a live model isn't offered: a diff comes from a patch
     /// Hermes read on its host, which a call's model has none of.
-    static let notLiveTypes: Set<String> = ["diff"]
+    /// Nor a review, whose options the host keeps and which the user marks
+    /// in a chat.
+    static let notLiveTypes: Set<String> = ["diff", "review"]
 
     func liveToolParameter(description: String) -> [String: Any] {
         var live = card
