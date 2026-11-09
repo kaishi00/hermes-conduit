@@ -1,5 +1,5 @@
 {
-  "version": 6,
+  "version": 7,
   "about": "Shared examples for card-schema.json: normalize_cards(input) must equal output, in the plugin (tests/test_cards.py) and in Conduit (RichCardSchemaTests). Regenerate only when the schema changes, and copy both files to Conduit together.",
   "cases": [
     {
@@ -4493,6 +4493,369 @@
               ]
             }
           ]
+        }
+      ]
+    },
+    {
+      "name": "A review keeps its decisions, each option's id, label and kind, and one recommended",
+      "input": [
+        {
+          "type": "review",
+          "title": "Recipe app home",
+          "review": {
+            "id": "rv-0123456789abcdef",
+            "round": 2,
+            "for": "W3",
+            "decisions": [
+              {
+                "id": "layout",
+                "title": "Home layout",
+                "text": "How the first screen reads",
+                "layout": "switch",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "Cards",
+                    "kind": "page",
+                    "recommended": true
+                  },
+                  {
+                    "id": "B",
+                    "label": "List",
+                    "kind": "page",
+                    "text": "Denser",
+                    "recommended": true
+                  },
+                  {
+                    "id": "C",
+                    "label": "Photo",
+                    "kind": "image",
+                    "url": "https://img.test/c.png"
+                  }
+                ]
+              }
+            ],
+            "settled": [
+              {
+                "title": "Save button colour",
+                "mark": "approve",
+                "choice": "Amber",
+                "round": 1
+              },
+              {
+                "title": "Icons",
+                "mark": "change",
+                "round": 1
+              }
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "review",
+          "title": "Recipe app home",
+          "review": {
+            "id": "rv-0123456789abcdef",
+            "round": 2,
+            "for": "W3",
+            "decisions": [
+              {
+                "id": "layout",
+                "title": "Home layout",
+                "text": "How the first screen reads",
+                "layout": "switch",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "Cards",
+                    "recommended": true,
+                    "kind": "page"
+                  },
+                  {
+                    "id": "B",
+                    "label": "List",
+                    "text": "Denser",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "C",
+                    "label": "Photo",
+                    "kind": "image",
+                    "url": "https://img.test/c.png"
+                  }
+                ]
+              }
+            ],
+            "settled": [
+              {
+                "title": "Save button colour",
+                "mark": "approve",
+                "choice": "Amber",
+                "round": 1
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "A review drops a picture without https, a page's url, a repeated id and a decision left with one option",
+      "input": [
+        {
+          "type": "review",
+          "review": {
+            "id": "rv-0123456789abcdef",
+            "round": 1,
+            "decisions": [
+              {
+                "id": "d1",
+                "title": "Chart",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "Bars",
+                    "kind": "page",
+                    "url": "https://x.test/a"
+                  },
+                  {
+                    "id": "A",
+                    "label": "Again",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "B",
+                    "label": "Line",
+                    "kind": "image",
+                    "url": "http://x.test/b.png"
+                  },
+                  {
+                    "id": "C",
+                    "label": "Donut",
+                    "kind": "image",
+                    "url": "https://x.test/c.png"
+                  }
+                ]
+              },
+              {
+                "id": "d1",
+                "title": "Twice",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "One",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "B",
+                    "label": "Two",
+                    "kind": "page"
+                  }
+                ]
+              },
+              {
+                "id": "d2",
+                "title": "Lonely",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "Only",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "B",
+                    "label": "Gone",
+                    "kind": "image"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "review",
+          "review": {
+            "id": "rv-0123456789abcdef",
+            "round": 1,
+            "decisions": [
+              {
+                "id": "d1",
+                "title": "Chart",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "Bars",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "C",
+                    "label": "Donut",
+                    "kind": "image",
+                    "url": "https://x.test/c.png"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "A review without the host's id, or for something that isn't a workstream, is dropped or loses its for",
+      "input": [
+        {
+          "type": "review",
+          "review": {
+            "id": "review-1",
+            "round": 1,
+            "decisions": [
+              {
+                "id": "d1",
+                "title": "X",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "a",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "B",
+                    "label": "b",
+                    "kind": "page"
+                  }
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "type": "review",
+          "review": {
+            "id": "rv-fedcba9876543210",
+            "round": 1,
+            "for": "room",
+            "decisions": [
+              {
+                "id": "d1",
+                "title": "X",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "a",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "B",
+                    "label": "b",
+                    "kind": "page"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "review",
+          "review": {
+            "id": "rv-fedcba9876543210",
+            "round": 1,
+            "decisions": [
+              {
+                "id": "d1",
+                "title": "X",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "a",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "B",
+                    "label": "b",
+                    "kind": "page"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "A decision left out for too few options doesn't keep its id from a later one",
+      "input": [
+        {
+          "type": "review",
+          "review": {
+            "id": "rv-0123456789abcdef",
+            "round": 1,
+            "decisions": [
+              {
+                "id": "d1",
+                "title": "First",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "a",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "B",
+                    "label": "b",
+                    "kind": "image",
+                    "url": "http://a.test/b.png"
+                  }
+                ]
+              },
+              {
+                "id": "d1",
+                "title": "Second",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "a",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "B",
+                    "label": "b",
+                    "kind": "page"
+                  }
+                ]
+              }
+            ]
+          }
+        }
+      ],
+      "output": [
+        {
+          "type": "review",
+          "review": {
+            "id": "rv-0123456789abcdef",
+            "round": 1,
+            "decisions": [
+              {
+                "id": "d1",
+                "title": "Second",
+                "options": [
+                  {
+                    "id": "A",
+                    "label": "a",
+                    "kind": "page"
+                  },
+                  {
+                    "id": "B",
+                    "label": "b",
+                    "kind": "page"
+                  }
+                ]
+              }
+            ]
+          }
         }
       ]
     }
