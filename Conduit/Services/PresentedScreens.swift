@@ -443,8 +443,9 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// ("不，拒绝", "いや、断る"), where that no isn't the not of the verb.
     private static func afterCJKNo(_ text: String) -> String? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        for no in ["不", "不不", "不要", "いや", "いいえ", "아니", "아니요", "아뇨"] {
-            for mark in ["，", ",", "、", "。", " "] where trimmed.hasPrefix(no + mark) {
+        // Only a mark sets the no apart: "不要 拒绝" is one "don't refuse".
+        for no in ["不", "不不", "いや", "いいえ", "아니", "아니요", "아뇨"] {
+            for mark in ["，", ",", "、", "。"] where trimmed.hasPrefix(no + mark) {
                 let rest = String(trimmed.dropFirst(no.count + mark.count)).trimmingCharacters(in: .whitespacesAndNewlines)
                 return rest.isEmpty ? nil : rest
             }
