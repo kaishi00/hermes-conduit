@@ -24,12 +24,12 @@ path = next(a for a in args if a.startswith("repos/"))[len("repos/o/r/"):]
 name = os.path.join(os.environ["FAKE"], path.replace("/", "_").replace("?", "_"))
 if os.path.exists(os.path.join(os.environ["FAKE"], "fail")) or not os.path.exists(name):
     sys.exit("gh: not found")
-data = open(name).read()
+data = open(name, "rb").read()
 if "--paginate" in args:
     for item in json.loads(data):
         print(json.dumps(item))
 else:
-    sys.stdout.write(data)
+    sys.stdout.buffer.write(data)
 """
 
 GLM = "zai-custom/glm-5.3-flash"
@@ -76,7 +76,7 @@ def commit(sha, message, parents=1):
 
 class EarlierRoundsTests(unittest.TestCase):
     def gather(self, chain=SECOND_CHAIN, comments=COMMENTS, reviewed=REVIEWED, fail=False, merge_only=False,
-               event="pull_request_target"):
+               event="pull_request_target", pr_user={"login": "contributor"}, diff=DIFF):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         bin_dir = os.path.join(tmp, "bin")
@@ -87,7 +87,7 @@ class EarlierRoundsTests(unittest.TestCase):
         os.chmod(gh, os.stat(gh).st_mode | stat.S_IEXEC)
         fixtures = {
             "issues_7_comments_per_page=100": json.dumps(comments),
-            "pulls_7": json.dumps({"head": {"sha": HEAD}, "user": {"login": "contributor"}}),
+            "pulls_7": json.dumps({"head": {"sha": HEAD}, "user": pr_user}),
             "actions_runs_100": json.dumps({"head_sha": reviewed, "event": event}),
             "actions_runs_90": json.dumps({"head_sha": "0" * 40, "event": "pull_request_target"}),
             f"compare_{'0' * 40}...{HEAD}": DIFF,
@@ -97,11 +97,11 @@ class EarlierRoundsTests(unittest.TestCase):
                 if not merge_only else [commit(REVIEWED, "Second"),
                                         commit(HEAD, "Merge remote-tracking branch 'origin/main'", parents=2)]),
             "pulls_7_files_per_page=100": json.dumps([{"filename": "a.swift"}]),
-            f"compare_{reviewed}...{HEAD}": DIFF,
+            f"compare_{reviewed}...{HEAD}": diff,
         }
         for name, text in fixtures.items():
-            with open(os.path.join(tmp, name), "w", encoding="utf-8") as fh:
-                fh.write(text)
+            with open(os.path.join(tmp, name), "wb") as fh:
+                fh.write(text if isinstance(text, bytes) else text.encode("utf-8"))
         if fail:
             open(os.path.join(tmp, "fail"), "w").close()
         env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ["PATH"], FAKE=tmp,
@@ -123,12 +123,13 @@ class EarlierRoundsTests(unittest.TestCase):
         self.assertNotIn("main's own", out, "the base branch's own change came in through a merge")
         self.assertIn("Review the change since your last review in full", out)
         # The latest review from each reviewer, without opencode's footer.
-        self.assertIn("GLM finding A", out)
         self.assertIn("DeepSeek finding B", out)
         self.assertNotIn("old DeepSeek finding", out)
         self.assertNotIn("opencode.ai/s/", out)
-        # This run's own gate review is the other job's, not an earlier round.
-        self.assertNotIn("this run's own", out)
+        # The gate reviewed this head in this same run: that's the second
+        # reviewer's latest other review.
+        self.assertIn("this run's own GLM finding", out)
+        self.assertNotIn("GLM finding A", out)
         # People's replies since the earlier of those reviews; bots' are left out.
         self.assertIn("B is by design: Eric ruled it.", out)
         # A run a finding links isn't the review's: the footer's is.
@@ -170,8 +171,27 @@ class EarlierRoundsTests(unittest.TestCase):
         out = self.gather(chain=[{"name": "Other", "model": "x/other", "key": "K"}])
         self.assertIn("You haven't reviewed this PR before: review all of it.", out)
         self.assertNotIn("```diff", out)
-        self.assertIn("DeepSeek finding B", out)
+        self.assertIn("this run's own GLM finding", out)
         self.assertIn("Don't raise again a finding", out)
+
+    def test_the_gate_leaves_out_its_own_review_from_this_run(self):
+        # A rerun's earlier attempt posted under the same run id: the gate
+        # continues from its review of an earlier run instead.
+        out = self.gather(chain=[{"name": "GLM-5.3-Flash", "model": GLM, "key": "K"}])
+        self.assertNotIn("this run's own GLM finding", out)
+        self.assertIn("GLM finding A", out)
+        self.assertIn("DeepSeek finding B", out)
+
+    def test_a_deleted_author_still_gets_the_earlier_rounds(self):
+        out = self.gather(pr_user=None)
+        self.assertIn("DeepSeek finding B", out)
+        self.assertIn("B is by design", out)
+        self.assertNotIn("> Fixed A in d", out)
+
+    def test_a_diff_that_isnt_utf8_still_gets_the_earlier_rounds(self):
+        out = self.gather(diff=DIFF.encode("utf-8") + b"diff --git a/a.swift b/a.swift\n+caf\xe9\n")
+        self.assertIn("+fixed B", out)
+        self.assertIn("+caf\ufffd", out)
 
     def test_a_rewritten_branch_is_reviewed_whole(self):
         out = self.gather(reviewed="e" * 40)

@@ -376,9 +376,11 @@ jobs:
                     cmd += ["-H", f"Accept: {accept}"]
                 if items:
                     cmd += ["--paginate", "--jq", ".[]"]
-                out = subprocess.run(cmd, capture_output=True, text=True, check=True).stdout
+                raw = subprocess.run(cmd, capture_output=True, check=True).stdout
                 if accept:
-                    return out
+                    # A diff may hold a file that isn't UTF-8.
+                    return raw.decode("utf-8", "replace")
+                out = raw.decode("utf-8")
                 if items:
                     # Only "\n" ends an item: splitlines would also split at a U+0085 in a body.
                     return [json.loads(l) for l in out.split("\n") if l.strip()]
@@ -407,7 +409,10 @@ jobs:
                     # From opencode's footer, the last of each: a finding may link a run too.
                     models = re.findall(r"model=([^&\"]+)&", c["body"])
                     runs = re.findall(r"\[github run\]\([^)]*actions/runs/(\d+)\)", c["body"])
-                    if models and runs and runs[-1] != RUN_ID:
+                    # The gate's review from this same run is the second
+                    # reviewer's latest other review; only this reviewer's
+                    # own from this run (an earlier attempt's) is left out.
+                    if models and runs and (runs[-1] != RUN_ID or models[-1] not in OWN_MODELS):
                         found.append(dict(c, model=models[-1], run=runs[-1],
                                           text=FOOTER.sub("", c["body"])))
                 return found
@@ -424,7 +429,7 @@ jobs:
                 out = ["## Earlier rounds", "",
                        "This PR was reviewed before, and your review continues those rounds rather than starting over."]
                 pr = gh(f"pulls/{PR}")
-                head, author = pr["head"]["sha"], pr["user"]["login"]
+                head, author = pr["head"]["sha"], (pr.get("user") or {}).get("login")
                 delta = None
                 if own:
                     # A manual run's head is the branch it ran from, not the
