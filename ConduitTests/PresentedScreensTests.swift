@@ -222,6 +222,8 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(prompt.isDeclined(by: "不要取消"))
         XCTAssertFalse(prompt.isDeclined(by: "No, send it"))
         XCTAssertFalse(prompt.isDeclined(by: "不用发愁"))
+        XCTAssertFalse(prompt.isDeclined(by: "Not now, send it"))
+        XCTAssertFalse(prompt.isDeclined(by: "Not yet, go ahead"))
         XCTAssertFalse(prompt.isDeclined(by: "No, go ahead"))
         XCTAssertFalse(prompt.isDeclined(by: "No rechazo la oferta"))
         XCTAssertFalse(prompt.isDeclined(by: "Don't send it to Alex\nsend it to Bob"))
@@ -249,7 +251,7 @@ extension AppStateVoiceCapabilityTests {
                    "Don't share", "Don't answer", "Don't start", "Don't send the email", "Cancel the email", "No, forget it",
                    "Cancel the email, please", "Cancel the email.", "我不想发", "送らないで",
                    "Please cancel the email", "No, cancel the email", "Don't send it, thanks", "Decline it, please",
-                   "No, I refuse", "No, thanks, cancel the email", "No, lo rechazo", "不要发", "不用发", "不要发短信", "别发微信", "不用发个消息", "Storniere es"] {
+                   "No, I refuse", "No, thanks, cancel the email", "No, lo rechazo", "不要发", "不用发", "不要发短信", "别发微信", "不用发个消息", "Storniere es", "Anula el envío"] {
             XCTAssertTrue(prompt.isDeclined(by: no), no)
         }
     }

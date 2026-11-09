@@ -288,6 +288,7 @@ struct PresentedConfirm: Identifiable, Equatable {
         // make it Wednesday") asks for that change, not a no.
         case .notYet(let change):
             return change == nil
+                && !Self.laterClauseSaysYes(words)
                 && (VoiceThreadRouting.containsNegation(words) || Self.cjkNotYet.contains(where: { words.contains($0) }))
                 && !Self.opens(said, with: Self.neutralWaits)
         case .yes: return false
