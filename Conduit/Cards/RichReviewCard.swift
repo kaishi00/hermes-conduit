@@ -135,12 +135,18 @@ struct RichReviewMark: Equatable, Hashable {
         var json: [String: Any] = ["mark": kind.rawValue]
         if kind != .skip, let option { json["option"] = option }
         let note = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !note.isEmpty { json["note"] = String(note.prefix(RichReviewMark.maxNote)) }
+        if !note.isEmpty { json["note"] = RichReviewMark.capped(note) }
         return json
     }
 
     /// The plugin's cap on a note (card_actions cuts a note at MAX_VALUE_CHARS).
     static let maxNote = 2_000
+
+    /// A note as the host keeps it, counted as it counts: in Unicode scalars.
+    static func capped(_ note: String) -> String {
+        guard note.unicodeScalars.count > maxNote else { return note }
+        return String(String.UnicodeScalarView(note.unicodeScalars.prefix(maxNote)))
+    }
 }
 
 /// A round as the host keeps it: the pages its options open, by decision
@@ -199,7 +205,7 @@ enum RichReviewTap {
         }
         var given: [String: Any] = ["round": review.round, "marks": entries, "label": label]
         let note = note.trimmingCharacters(in: .whitespacesAndNewlines)
-        if !note.isEmpty { given["note"] = String(note.prefix(RichReviewMark.maxNote)) }
+        if !note.isEmpty { given["note"] = RichReviewMark.capped(note) }
         let cardJSON = card.normalizedJSON.data(using: .utf8)
             .flatMap { try? JSONSerialization.jsonObject(with: $0) } as? [String: Any] ?? [:]
         return ["card": cardJSON, "action": action, "review": given]
