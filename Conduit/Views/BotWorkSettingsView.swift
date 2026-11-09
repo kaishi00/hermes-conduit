@@ -173,7 +173,7 @@ struct BotWorkSettingsView: View {
         case .open:
             return AppLocalization.string("\(botName) does everything in its Bot Chat, and runs work in the background only when you ask or it’s clearly long. The chat is busy while it works.")
         case .strict:
-            return AppLocalization.string("Everything but cards, maps and its questions to you runs in the background, so its Bot Chat is always free to talk.")
+            return AppLocalization.string("Everything but cards, maps, notifications, memories and its questions to you runs in the background, so its Bot Chat is always free to talk.")
         case .lookups, .off:
             return AppLocalization.string("\(botName) answers and does quick things in its Bot Chat. Anything that takes longer runs in the background, and you’re told there when it’s done.")
         }
