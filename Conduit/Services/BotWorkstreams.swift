@@ -243,7 +243,7 @@ struct BotWorkItem: Identifiable, Equatable {
 struct BotWorkSnapshot: Equatable {
     /// The bot's profile the list was read for.
     let profile: String
-    /// "off" while the bot's workstreams are off; "strict" or "lookups".
+    /// "off" while the bot's workstreams are off; "strict", "lookups" or "open".
     let policy: String
     let botName: String
     var items: [BotWorkItem]
