@@ -1200,7 +1200,9 @@ extension AppState {
             return
         }
         let dashboard = activeDashboardID
-        guard let page = try? await pulseClient.feed(proposals: pulseSuggests, looks: pulseLooks),
+        // Looks off: this read keeps only the counts and sources; the Pulse
+        // screen's own load asks for them.
+        guard let page = try? await pulseClient.feed(proposals: pulseSuggests, looks: false),
               activeDashboardID == dashboard else {
             return
         }
