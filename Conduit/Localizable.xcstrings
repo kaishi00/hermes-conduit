@@ -1,6 +1,416 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Unread in another profile" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ungelesen in einem anderen Profil"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin leer en otro perfil"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non lues dans un autre profil"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum dibaca di profil lain"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non letti in un altro profilo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ほかのプロファイルに未読あり"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "다른 프로필에 읽지 않은 대화 있음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nieprzeczytane w innym profilu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não lido em outro perfil"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Непрочитанные в другом профиле"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Başka bir profilde okunmamış"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他配置中有未读"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "其他設定檔中有未讀"
+          }
+        }
+      }
+    },
+    "Show only %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur %@ anzeigen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar solo %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afficher seulement %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hanya tampilkan %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra solo %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@のみ表示"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@만 표시"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pokaż tylko %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar somente %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Показать только %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yalnızca %@ göster"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅显示%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "僅顯示%@"
+          }
+        }
+      }
+    },
+    "Sessions bar" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sitzungsleiste"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barra de sesiones"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barre des sessions"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bilah sesi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barra delle sessioni"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "セッションバー"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "세션 막대"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pasek sesji"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Barra de sessões"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Панель сеансов"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oturum çubuğu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "会话栏"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作階段列"
+          }
+        }
+      }
+    },
+    "Current only" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur aktuelles"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo el actual"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Actuel uniquement"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hanya yang aktif"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo attuale"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "現在のみ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "현재 프로필만"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tylko bieżący"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Somente o atual"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Только текущий"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yalnızca geçerli"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅当前配置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "僅目前設定檔"
+          }
+        }
+      }
+    },
+    "Choose what the bar above Chats, Tasks and Settings shows. Current only keeps the active profile's name, so switching takes one more tap; tapping it still opens the profiles list. Applies on iPhone, iPad and Mac." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wähle, was die Leiste über Chats, Aufgaben und Einstellungen anzeigt. „Nur aktuelles“ zeigt den Namen des aktiven Profils. Der Profilwechsel braucht dadurch einen weiteren Tipp; ein Tipp auf den Namen öffnet weiterhin die Profilliste. Gilt auf iPhone, iPad und Mac."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Elige qué muestra la barra sobre Chats, Tareas y Ajustes. «Solo el actual» mantiene el nombre del perfil activo, por lo que cambiar de perfil requiere un toque más; al tocarlo se sigue abriendo la lista de perfiles. Se aplica en iPhone, iPad y Mac."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Choisissez ce que la barre au-dessus de Discussions, Tâches et Réglages affiche. « Actuel uniquement » conserve le nom du profil actif : changer de profil demande donc un toucher de plus. Toucher ce nom ouvre toujours la liste des profils. Ce réglage s’applique sur iPhone, iPad et Mac."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pilih apa yang ditampilkan bilah di atas Chat, Tugas, dan Pengaturan. Hanya yang aktif mempertahankan nama profil aktif, sehingga berganti profil perlu satu ketukan lagi; mengetuknya tetap membuka daftar profil. Berlaku di iPhone, iPad, dan Mac."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Scegli cosa mostra la barra sopra Chat, Attività e Impostazioni. «Solo attuale» mantiene il nome del profilo attivo, quindi per cambiare profilo serve un tocco in più; toccando il nome si apre comunque l’elenco dei profili. Vale su iPhone, iPad e Mac."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャット、タスク、設定の上部にあるバーの表示内容を選びます。「現在のみ」では使用中のプロファイル名だけが表示されるため、切り替えにはもう1回タップが必要です。名前をタップすると、これまでどおりプロファイル一覧が開きます。iPhone、iPad、Macに適用されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "채팅, 작업, 설정 위의 막대에 표시할 항목을 선택하세요. 현재 프로필만 선택하면 활성 프로필의 이름만 표시되므로 프로필을 전환하려면 한 번 더 탭해야 합니다. 이름을 탭하면 이전과 같이 프로필 목록이 열립니다. iPhone, iPad 및 Mac에 적용됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wybierz, co pokazuje pasek nad czatami, zadaniami i ustawieniami. Opcja „Tylko bieżący” zachowuje nazwę aktywnego profilu, więc zmiana profilu wymaga jednego stuknięcia więcej. Stuknięcie nazwy nadal otwiera listę profili. Dotyczy iPhone’a, iPada i Maca."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escolha o que a barra acima de Chats, Tarefas e Ajustes mostra. Somente o atual mantém o nome do perfil ativo, então mudar de perfil exige um toque a mais; tocar no nome continua abrindo a lista de perfis. Vale para iPhone, iPad e Mac."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Выберите, что отображается на панели над чатами, задачами и настройками. В режиме «Только текущий» остаётся имя активного профиля, поэтому для переключения нужно ещё одно нажатие. Нажатие на имя по-прежнему открывает список профилей. Действует на iPhone, iPad и Mac."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sohbetler, Görevler ve Ayarlar üzerindeki çubukta nelerin gösterileceğini seçin. Yalnızca geçerli seçeneği etkin profilin adını korur; bu nedenle profil değiştirmek için bir kez daha dokunmanız gerekir. Ada dokunmak yine profil listesini açar. iPhone, iPad ve Mac için geçerlidir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "选择聊天、任务和设置上方栏中显示的内容。“仅当前配置”保留当前配置的名称，因此切换时需要多点按一次；点按名称仍会打开配置列表。适用于 iPhone、iPad 和 Mac。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "選擇聊天、任務和設定上方列中顯示的內容。「僅目前設定檔」會保留目前設定檔的名稱，因此切換時需要多點一下；點一下名稱仍會開啟設定檔列表。適用於 iPhone、iPad 和 Mac。"
+          }
+        }
+      }
+    },
     "%@ isn’t on the server. It may have been deleted, or it’s on another computer." : {
       "localizations" : {
         "de" : {
@@ -494892,6 +495302,182 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "無法載入目錄。"
+          }
+        }
+      }
+    },
+    "Each run uses this model and reasoning. Profile default follows the profile's, so a change there reaches this job too." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeder Lauf nutzt dieses Modell und diese Denkstufe. Profilstandard folgt dem Profil, eine Änderung dort gilt also auch für diesen Job."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each run uses this model and reasoning. Profile default follows the profile's, so a change there reaches this job too."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada ejecución usa este modelo y este razonamiento. Predeterminado del perfil sigue al perfil, así que un cambio allí también llega a este trabajo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque exécution utilise ce modèle et ce raisonnement. Par défaut du profil suit le profil : un changement là-bas s’applique aussi à cette tâche."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setiap jalannya memakai model dan penalaran ini. Default profil mengikuti profil, jadi perubahan di sana juga berlaku untuk tugas ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni esecuzione usa questo modello e questo ragionamento. Predefinito del profilo segue il profilo, quindi una modifica lì vale anche per questo job."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "各実行でこのモデルと推論レベルを使います。「プロファイルのデフォルト」はプロファイルの設定に従うため、そちらの変更はこのジョブにも反映されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행할 때마다 이 모델과 추론 수준을 사용합니다. 프로필 기본값은 프로필 설정을 따르므로 그곳의 변경이 이 작업에도 적용됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Każde uruchomienie używa tego modelu i poziomu rozumowania. „Według profilu” podąża za profilem, więc zmiana tam dotyczy też tego zadania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada execução usa este modelo e este raciocínio. Padrão do perfil segue o perfil, então uma mudança lá também vale para esta tarefa."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждый запуск использует эту модель и уровень рассуждений. «Как в профиле» следует профилю, поэтому изменение там применится и к этому заданию."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her çalıştırma bu modeli ve akıl yürütme düzeyini kullanır. Profil varsayılanı profili izler, yani oradaki bir değişiklik bu işe de yansır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次运行都使用此模型和推理级别。“配置默认”跟随配置，因此那里的更改也会应用到此任务。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每次執行都使用此模型和推理等級。「設定檔預設」跟隨設定檔，因此那裡的變更也會套用到此任務。"
+          }
+        }
+      }
+    },
+    "The job is saved, but not its reasoning: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Job ist gespeichert, aber nicht seine Denkstufe: %@"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "The job is saved, but not its reasoning: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El trabajo está guardado, pero no su razonamiento: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La tâche est enregistrée, mais pas son raisonnement : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tugas tersimpan, tapi penalarannya belum: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il job è salvato, ma non il suo ragionamento: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ジョブは保存されましたが、推論レベルは保存されていません: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업은 저장됐지만 추론 수준은 저장되지 않았습니다: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zadanie zapisano, ale nie jego poziom rozumowania: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A tarefa foi salva, mas não o raciocínio: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Задание сохранено, но не уровень рассуждений: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İş kaydedildi ama akıl yürütme düzeyi kaydedilmedi: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任务已保存，但未保存推理级别：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "任務已儲存，但未儲存推理等級：%@"
           }
         }
       }

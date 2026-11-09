@@ -565,6 +565,11 @@ final class NativeOAuthSession {
                 if KeychainHelper.saveNativeOAuthTokens(refreshed, dashboardID: self.dashboardID)
                     || KeychainHelper.saveNativeOAuthTokens(refreshed, dashboardID: self.dashboardID) {
                     self.unsavedOver = nil
+                    // Copies of the access token kept elsewhere (location's
+                    // host pass) are taken again from the Keychain.
+                    NotificationCenter.default.post(
+                        name: .nativeOAuthTokensRotated, object: nil, userInfo: ["dashboardID": self.dashboardID]
+                    )
                 } else {
                     self.unsavedOver = self.unsavedOver ?? current
                     nativeOAuthLogger.error("OAuth refresh: rotated tokens not saved; kept for this run")
@@ -582,6 +587,12 @@ final class NativeOAuthSession {
         _ = try await task.value
         guard !isInvalidated else { throw CancellationError() }
     }
+}
+
+extension Notification.Name {
+    /// A native sign-in's refresh rotated its tokens and saved them; the
+    /// userInfo's "dashboardID" is the dashboard's UUID.
+    static let nativeOAuthTokensRotated = Notification.Name("conduit.nativeOAuth.tokensRotated")
 }
 
 final class NativeOAuthLoopbackServer: @unchecked Sendable {

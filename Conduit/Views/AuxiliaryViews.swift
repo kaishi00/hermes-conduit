@@ -3909,6 +3909,10 @@ private struct AppearanceSettingsDetail: View {
     @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
     @AppStorage(V2ChatListPreference.key) private var chatListBeside = V2ChatListPreference.defaultValue
+    @AppStorage(V2SessionsBarPreferences.Profiles.key) private var sessionsBarProfiles = V2SessionsBarPreferences.Profiles.defaultValue
+    @AppStorage(V2SessionsBarPreferences.showsProjectsKey) private var sessionsBarProjects = V2SessionsBarPreferences.showsProjectsDefault
+    @AppStorage(V2SessionsBarPreferences.showsPulseKey) private var sessionsBarPulse = V2SessionsBarPreferences.showsPulseDefault
+    @AppStorage(V2SessionsBarPreferences.showsArtifactsKey) private var sessionsBarArtifacts = V2SessionsBarPreferences.showsArtifactsDefault
     @AppStorage(ChatVoiceButtonAction.key) private var chatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
     @AppStorage(ProjectChatsInChats.key) private var projectChats = ProjectChatsInChats.defaultValue
     @AppStorage(ConduitAccent.storageKey) private var accentChoice = ConduitAccent.defaultValue
@@ -4025,6 +4029,32 @@ private struct AppearanceSettingsDetail: View {
                         Text("New Chat").tag(true)
                     }
                     .pickerStyle(.segmented)
+                }
+
+                ConduitSettingsSection(title: AppLocalization.string("Sessions bar"), symbol: "rectangle.topthird.inset.filled", tint: .conduitAccent) {
+                    Text("Choose what the bar above Chats, Tasks and Settings shows. Current only keeps the active profile's name, so switching takes one more tap; tapping it still opens the profiles list. Applies on iPhone, iPad and Mac.")
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                    Picker("Profiles", selection: $sessionsBarProfiles) {
+                        Text("All").tag(V2SessionsBarPreferences.Profiles.all)
+                        Text("Current only").tag(V2SessionsBarPreferences.Profiles.currentOnly)
+                    }
+                    .pickerStyle(.segmented)
+                    Toggle("Projects", isOn: Binding(
+                        get: { sessionsBarProjects },
+                        set: { on in
+                            sessionsBarProjects = on
+                            // Turning it off takes a stored Projects page with
+                            // it here too, so turning it back on while the
+                            // list isn't drawing still starts on Sessions.
+                            if !on { V2SessionsBarControls.clearStoredProjectsPage() }
+                        }
+                    ))
+                        .tint(.conduitAccent)
+                    Toggle("Pulse", isOn: $sessionsBarPulse)
+                        .tint(.conduitAccent)
+                    Toggle("Artifacts", isOn: $sessionsBarArtifacts)
+                        .tint(.conduitAccent)
                 }
 
                 // The big button beside a chat's composer. A profile can
