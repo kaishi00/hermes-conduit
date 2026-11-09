@@ -220,6 +220,8 @@ extension AppStateVoiceCapabilityTests {
         // A Chinese or Japanese question, and one in another language.
         XCTAssertFalse(prompt.isDeclined(by: "取消吗"))
         XCTAssertFalse(prompt.isDeclined(by: "不发吗"))
+        XCTAssertFalse(prompt.isDeclined(by: "要不要发"))
+        XCTAssertFalse(prompt.isDeclined(by: "取消呢"))
         XCTAssertFalse(prompt.isDeclined(by: "Soll ich es ablehnen"))
         XCTAssertFalse(prompt.isDeclined(by: "Czy mam odrzucić"))
         XCTAssertFalse(prompt.isDeclined(by: "hold on, I'm not ready"))
@@ -233,7 +235,8 @@ extension AppStateVoiceCapabilityTests {
         for no in ["no", "Not now.", "don't send it", "cancel", "decline", "decline it", "I refuse", "not yet", "nein", "不要", "拒绝", "先不",
                    "Don't share", "Don't answer", "Don't start", "Don't send the email", "Cancel the email", "No, forget it",
                    "Cancel the email, please", "Cancel the email.", "我不想发", "送らないで",
-                   "Please cancel the email", "No, cancel the email", "Don't send it, thanks", "Decline it, please"] {
+                   "Please cancel the email", "No, cancel the email", "Don't send it, thanks", "Decline it, please",
+                   "No, I refuse", "No, thanks, cancel the email"] {
             XCTAssertTrue(prompt.isDeclined(by: no), no)
         }
     }

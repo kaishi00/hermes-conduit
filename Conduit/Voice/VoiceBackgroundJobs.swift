@@ -3919,7 +3919,7 @@ enum VoiceThreadRouting {
               !cjkVerbNegations.contains(where: { answer.contains($0) }) else { return false }
         // A Chinese or Japanese question ends in its marker, not a "?".
         let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-        guard !["吗", "嗎", "么", "麼", "か", "かな"].contains(where: { trimmed.hasSuffix($0) }) else { return false }
+        guard !["吗", "嗎", "么", "麼", "呢", "か", "かな"].contains(where: { trimmed.hasSuffix($0) }) else { return false }
         return words.contains { answerRefusalVerbs.contains($0) || $0.hasPrefix("거절") || $0.hasPrefix("거부") }
             || cjkRefusalVerbs.contains { answer.contains($0) }
     }

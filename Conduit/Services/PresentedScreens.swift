@@ -254,7 +254,8 @@ struct PresentedConfirm: Identifiable, Equatable {
         guard !words.contains("?"), !words.contains("？"), !VoiceCallDecisionOutcome.isYes(words) else { return false }
         // A Chinese or Japanese question ends in its marker ("取消吗").
         let ending = words.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-        guard !Self.cjkQuestionEnds.contains(where: { ending.hasSuffix($0) }) else { return false }
+        guard !Self.cjkQuestionEnds.contains(where: { ending.hasSuffix($0) }),
+              !Self.cjkAskPairs.contains(where: { words.contains($0) }) else { return false }
         // Not knowing isn't a no ("no idea", "not sure").
         let folded = words.lowercased().replacingOccurrences(of: "’", with: "'")
         guard !Self.unsure.contains(where: { folded.contains($0) }) else { return false }
@@ -269,7 +270,8 @@ struct PresentedConfirm: Identifiable, Equatable {
         // takes. A no on its own, or one said with its action ("don't
         // share", "cancel the email"), declines.
         case .no(let change):
-            return change == nil || (Self.opens(said, with: Self.actionNos) && Self.isOneClause(words))
+            return change == nil
+                || ((Self.opens(said, with: Self.actionNos) || VoiceThreadRouting.containsRefusalVerb(words)) && Self.isOneClause(words))
         // A wait holds; it doesn't refuse ("hold on", "wait, I'm not
         // ready"). "Not now" does, and a not yet with a change in it ("wait,
         // make it Wednesday") asks for that change, not a no.
@@ -298,7 +300,11 @@ struct PresentedConfirm: Identifiable, Equatable {
     private static let cjkNots = ["不", "没", "沒", "别", "別", "ない", "ません", "않", "못", "마", "말"]
 
     /// The marks that end a Chinese or Japanese question.
-    private static let cjkQuestionEnds = ["吗", "嗎", "么", "麼", "か", "かな"]
+    private static let cjkQuestionEnds = ["吗", "嗎", "么", "麼", "呢", "か", "かな"]
+    /// A Chinese question asked by saying both ("要不要发", "是不是取消").
+    private static let cjkAskPairs = [
+        "要不要", "是不是", "发不发", "發不發", "送不送", "可不可以", "能不能", "行不行", "好不好", "用不用", "需不需要",
+    ]
     /// A not on sending, in Chinese, Japanese or Korean.
     private static let cjkSendRefusals = [
         "不想发", "不想發", "不想送", "不要发", "不要發", "不要送", "别发", "別發", "别送", "別送", "不发", "不發",
@@ -323,7 +329,7 @@ struct PresentedConfirm: Identifiable, Equatable {
         let skipped = VoiceThreadRouting.answerJoiners.map { words(in: $0) }
         var rest = said[...]
         while let first = rest.first {
-            if VoiceThreadRouting.fillers.contains(first) || leadingSkips.contains(first) {
+            if VoiceThreadRouting.fillers.contains(first) || leadingSkips.contains(first) || politeWords.contains(first) {
                 rest = rest.dropFirst()
             } else if let joiner = skipped.first(where: { !$0.isEmpty && rest.starts(with: $0) }) {
                 rest = rest.dropFirst(joiner.count)
