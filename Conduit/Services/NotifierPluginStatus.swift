@@ -466,6 +466,20 @@ enum PluginUpdateAsk {
             + " " + NotifierPluginStatus.managedText(managedBy)
     }
 
+    /// A reason shared with the Watch (Shared/, which can't see this) that
+    /// asks to install or update the plugin, reworded on a host that manages it.
+    static func reason(_ reason: String?) -> String? {
+        guard let reason else { return nil }
+        return reason == AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
+            ? text(reason) : reason
+    }
+
+    /// `ask` followed by `outcome`, which says what became of the user's
+    /// action and stays on a host that manages the plugin too.
+    static func text(_ ask: String, then outcome: String) -> String {
+        isManaged ? text(ask) + " " + outcome : ask
+    }
+
     /// A short title asking for the update, or "Not on this host" on a host that manages it.
     static func title(_ ask: String) -> String {
         isManaged ? AppLocalization.string("Not on this host") : ask

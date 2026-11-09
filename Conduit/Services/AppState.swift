@@ -42137,7 +42137,7 @@ final class AppState: ObservableObject {
         let status = try await tokens.availability()
         noteWatchCallVoice(qwen ? .qwenLive : .geminiLive, ready: status.isAvailable, profile: profile)
         guard status.isAvailable else {
-            throw WatchDirectPrepareError(status.userFacingReason(for: provider) ?? GeminiLiveAvailability.notAvailable(for: provider))
+            throw WatchDirectPrepareError(PluginUpdateAsk.reason(status.userFacingReason(for: provider)) ?? GeminiLiveAvailability.notAvailable(for: provider))
         }
         let search = await searchLookup
         let memory = await memoryLookup
@@ -42340,7 +42340,7 @@ final class AppState: ObservableObject {
         let status = try await makeGrokLiveClient { profile }.availability()
         noteWatchCallVoice(.grokLive, ready: status.isAvailable, profile: profile)
         guard case .available(_, let voice, _) = status else {
-            throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
+            throw WatchDirectPrepareError(PluginUpdateAsk.reason(status.userFacingReason) ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
         }
         // xAI's own search (#598), as on the phone.
         let search = GeminiLiveSearchSource.grok

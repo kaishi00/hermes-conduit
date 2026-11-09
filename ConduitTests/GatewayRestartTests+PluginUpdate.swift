@@ -436,10 +436,19 @@ extension GatewayRestartTests {
         XCTAssertEqual(PluginUpdateAsk.text(ask),
                        "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
         XCTAssertEqual(PluginUpdateAsk.title("Plugin update needed"), "Not on this host")
+        // What became of the user's action stays.
+        XCTAssertEqual(PluginUpdateAsk.text(ask, then: "This one wasn't kept."),
+                       "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date. This one wasn't kept.")
+        // A live voice's reason from Shared/ (the Watch's code too) is reworded here.
+        let missing = "Install or update the Hermes notifier plugin on your Hermes server."
+        XCTAssertEqual(PluginUpdateAsk.reason(missing),
+                       "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
+        XCTAssertEqual(PluginUpdateAsk.reason("Grok isn't signed in."), "Grok isn't signed in.")
         // A report without it: the host no longer manages the plugin.
         appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a"))
         XCTAssertNil(appState.notifierPlugin.managedBy)
         XCTAssertEqual(PluginUpdateAsk.text(ask), ask)
+        XCTAssertEqual(PluginUpdateAsk.text(ask, then: "This one wasn't kept."), ask)
         XCTAssertEqual(PluginUpdateAsk.title("Plugin update needed"), "Plugin update needed")
     }
 
