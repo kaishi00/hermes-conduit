@@ -161,6 +161,12 @@ struct BotRosterView: View {
             ConnectionRepairSetupSheet(context: context)
                 .environmentObject(appState)
         }
+        // A Bot Chat opened from here that didn't open says why here.
+        .onChange(of: appState.botsListNotice, initial: true) { _, notice in
+            guard let notice else { return }
+            managementNotice = notice
+            appState.botsListNotice = nil
+        }
         .sheet(item: $overviewBot, onDismiss: {
             if let bot = editAfterOverview {
                 editAfterOverview = nil

@@ -1899,6 +1899,9 @@ final class AppState: ObservableObject {
         let transition: UInt64
     }
     @Published private(set) var botChatOnItsWay: BotChatOnItsWay?
+    /// Why a Bot Chat opened from a list of bots didn't open, for that list
+    /// to show (`openBotChatFromList`); the list takes it.
+    @Published var botsListNotice: String?
 
     /// The coming bot's name while the screen still holds another chat
     /// (`botChatOnItsWay`): its chat screen shows this bot's name over a
@@ -26818,6 +26821,10 @@ final class AppState: ObservableObject {
         endOpeningBotChat(bot.name)
         if outcome == .failed, pushed, !showSidebar {
             showSidebar = true
+            // The error shows with the chat's composer, which just went: the
+            // list it went back to says it instead.
+            botsListNotice = errorMessage
+            errorMessage = nil
         }
         return outcome == .opened
     }

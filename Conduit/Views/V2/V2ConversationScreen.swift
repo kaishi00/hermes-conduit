@@ -151,7 +151,9 @@ struct V2ConversationScreen: View {
     private var workProfile: String? {
         appState.activeRoomSurface == nil && appState.servesBotWorkstreams ? appState.activeBotChatProfile : nil
     }
-    private var showsWorkPanel: Bool { workPanelOpen && fitsSidePanel && workProfile != nil }
+    private var showsWorkPanel: Bool {
+        workPanelOpen && fitsSidePanel && workProfile != nil && appState.botChatComingOverAnother == nil
+    }
 
     private var fitsSidePanel: Bool { ChatSidePanel.fits(width: screenWidth) }
     /// As wide as the user dragged it, less on a window without the room.
@@ -161,6 +163,8 @@ struct V2ConversationScreen: View {
     }
     private var showsSidePanel: Bool {
         sidePanelOpen && fitsSidePanel && appState.activeRoomSurface == nil && !showsWorkPanel
+            // The chat open before keeps its panels until the coming one lands.
+            && appState.botChatComingOverAnother == nil
     }
 
     private var parent: SessionSummary? {
@@ -181,7 +185,11 @@ struct V2ConversationScreen: View {
     }
 
     @ViewBuilder private var conversation: some View {
-        if appState.activeRoomSurface != nil {
+        if appState.activeRoomSurface != nil, appState.botChatComingOverAnother != nil {
+            // A Bot Chat tapped beside an open room: the room closes as the
+            // chat opens, and its screen, title and all, gives way now.
+            Color.clear
+        } else if appState.activeRoomSurface != nil {
             // Keyed by room: another room starts with its own draft.
             GroupChatView()
                 .id(appState.activeRoomSurface?.room.roomID)
@@ -435,6 +443,8 @@ struct V2ConversationScreen: View {
                 // widens with the window, its text a size or more larger as
                 // it does; the backdrop still fills it.
                 .readableChatColumn()
+                // Under the cover, VoiceOver doesn't reach it either.
+                .accessibilityHidden(appState.botChatComingOverAnother != nil)
             // A Bot Chat tapped in Bots is pushed before its open lands:
             // the chat open before, another bot's, stays under a cover
             // until then, and is never shown as the tapped bot's.
@@ -565,7 +575,7 @@ struct V2ConversationScreen: View {
         }
         // A Bot Chat on its way names its bot; the chat under the cover
         // keeps its title and actions to itself.
-        if appState.activeRoomSurface == nil, let coming = appState.botChatComingOverAnother {
+        if let coming = appState.botChatComingOverAnother {
             ToolbarItem(placement: .principal) {
                 Text(coming)
                     .scaledFont(.headline)

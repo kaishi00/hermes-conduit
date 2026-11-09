@@ -1991,16 +1991,19 @@ final class BotModeTests: XCTestCase {
         let opened = await harness.appState.openBotChatFromList(atlas)
         XCTAssertFalse(opened)
         XCTAssertTrue(harness.appState.showSidebar, "back on the list it was tapped in")
-        XCTAssertNotNil(harness.appState.errorMessage, "and the failure says why")
+        XCTAssertNotNil(harness.appState.botsListNotice, "and the list says why")
+        XCTAssertNil(harness.appState.errorMessage, "not the composer that went")
         XCTAssertNil(harness.appState.botChatOpening)
         XCTAssertNil(harness.appState.botChatOnItsWay)
 
-        harness.appState.errorMessage = nil
+        harness.appState.botsListNotice = nil
         harness.appState.showSidebar = false
         harness.appState.beginOpeningBotChat(atlas.name)
         let openedBeside = await harness.appState.openBotChatFromList(atlas)
         XCTAssertFalse(openedBeside)
         XCTAssertFalse(harness.appState.showSidebar, "a chat shown beside the list before stays")
+        XCTAssertNotNil(harness.appState.errorMessage, "and its composer says why")
+        XCTAssertNil(harness.appState.botsListNotice)
     }
 
     /// #442: going atlas → scout → atlas used to leave scout's chat as the
