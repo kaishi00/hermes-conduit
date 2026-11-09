@@ -29785,7 +29785,11 @@ final class AppState: ObservableObject {
             : nil
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
-        notifierPlugin.managedBy = NotifierPluginStatus.managedBy(after: state, reported: managedBy, before: notifierPlugin.managedBy)
+        notifierPlugin.managedBy = NotifierPluginStatus.managedBy(
+            after: state, reported: managedBy,
+            before: notifierPlugin.managedBy ?? NotifierPluginStatus.Remembered.managedBy(for: activeDashboardID, in: defaults)
+        )
+        NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         Task { await refreshLatestNotifierPluginVersion() }
         clearSettledNotifierPluginUpdateOutcome()
@@ -29827,6 +29831,7 @@ final class AppState: ObservableObject {
         notifierPlugin.state = state
         notifierPlugin.runtime = NotifierPluginStatus.runtime(from: json)
         notifierPlugin.managedBy = NotifierPluginStatus.managedBy(from: json)
+        NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         clearSettledNotifierPluginUpdateOutcome()
     }

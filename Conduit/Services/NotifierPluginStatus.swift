@@ -333,6 +333,26 @@ struct NotifierPluginStatus: Equatable {
         )
     }
 
+    /// Who manages the plugin on each saved dashboard's host, as it last
+    /// said, kept across launches: a first read that finds the route missing
+    /// still knows the host manages it.
+    enum Remembered {
+        static let key = "notifierPluginManagedBy"
+
+        static func managedBy(for dashboardID: UUID?, in defaults: UserDefaults) -> String? {
+            guard let dashboardID else { return nil }
+            return (defaults.dictionary(forKey: key) as? [String: String])?[dashboardID.uuidString]
+        }
+
+        static func remember(_ managedBy: String?, for dashboardID: UUID?, in defaults: UserDefaults) {
+            guard let dashboardID else { return }
+            var all = defaults.dictionary(forKey: key) as? [String: String] ?? [:]
+            guard all[dashboardID.uuidString] != managedBy else { return }
+            all[dashboardID.uuidString] = managedBy
+            defaults.set(all, forKey: key)
+        }
+    }
+
     /// Who manages the plugin after a status read: what the capabilities
     /// route said, or, when it no longer answers (the plugin off or not
     /// loaded on the host), what it said last, so nothing installs over a

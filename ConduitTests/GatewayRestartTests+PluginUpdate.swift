@@ -339,8 +339,27 @@ extension GatewayRestartTests {
         XCTAssertFalse(status.updateRecommended)
         XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
         XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .notRunning)
+        XCTAssertEqual(NotifierPluginSummary.detail(status, update: .idle), "Installed but not running")
         status.hostCopy = .old
         XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+    }
+
+    func testWhoManagesEachHostIsRememberedAcrossLaunches() throws {
+        let suite = "GatewayRestartTests.managedRemembered.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let farm = UUID(), other = UUID()
+        typealias Remembered = NotifierPluginStatus.Remembered
+        Remembered.remember("Family farm", for: farm, in: defaults)
+        Remembered.remember("", for: other, in: defaults)
+        XCTAssertEqual(Remembered.managedBy(for: farm, in: defaults), "Family farm")
+        XCTAssertEqual(Remembered.managedBy(for: other, in: defaults), "")
+        XCTAssertNil(Remembered.managedBy(for: UUID(), in: defaults))
+        XCTAssertNil(Remembered.managedBy(for: nil, in: defaults))
+        // A report without it forgets it for that host only.
+        Remembered.remember(nil, for: farm, in: defaults)
+        XCTAssertNil(Remembered.managedBy(for: farm, in: defaults))
+        XCTAssertEqual(Remembered.managedBy(for: other, in: defaults), "")
     }
 
     func testOnlyAHostThatSaysSoIsManaged() {

@@ -20,7 +20,8 @@ enum NotifierPluginSummary {
         case .unknown:
             return AppLocalization.string("Not checked yet")
         case .predatesCapabilities:
-            if status.isNotServed { return AppLocalization.string("Installed but not running") }
+            // A managed host has the plugin; this dashboard doesn't run it.
+            if status.isNotServed || status.isManaged { return AppLocalization.string("Installed but not running") }
             return AppLocalization.string("Not installed or out of date")
         case .reported:
             let version = status.runningVersion ?? status.version ?? "?"
@@ -269,7 +270,7 @@ struct ConduitPluginSettingsDetail: View {
                     ? AppLocalization.string("Couldn't reach this dashboard's notifier. Open this page again to retry.")
                     : AppLocalization.string("Connect to this dashboard to check its notifier.")
         case .predatesCapabilities:
-            if status.isNotServed {
+            if status.isNotServed || status.isManaged {
                 return AppLocalization.string("Installed on this dashboard's host, but the dashboard doesn't run it. Turn it on in Hermes, then restart the gateway and the dashboard.")
             }
             return AppLocalization.string("Missing or out of date on this dashboard's host, so features like taking chats over from Hermes Desktop won't work.")
