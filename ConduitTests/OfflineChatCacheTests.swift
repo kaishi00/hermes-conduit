@@ -2738,6 +2738,31 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(store.loadPendingSends(dashboardID: dashboard).map(\.id), [newer.id])
     }
 
+    func testACardsChatIsTheSameUnderItsOtherIds() throws {
+        let (appState, _, _) = makeAppState()
+        var row = session("stored-a")
+        row.storedSessionId = "stored-a"
+        row.alternateIds = ["runtime-a"]
+        appState.sessions = [row]
+        func chat(_ dashboard: String, _ profile: String, _ id: String) throws -> String {
+            try XCTUnwrap(RichCardActionContext.chat(dashboard: dashboard, profile: profile, sessionID: id))
+        }
+        XCTAssertTrue(appState.richCardChatsAreSame(try chat("d", "default", "runtime-a"), try chat("d", "default", "stored-a")),
+                      "a new chat's durable id is the same chat, so its card keeps what was typed")
+        XCTAssertFalse(appState.richCardChatsAreSame(try chat("d", "default", "runtime-a"), try chat("e", "default", "stored-a")))
+        XCTAssertFalse(appState.richCardChatsAreSame(try chat("d", "default", "stored-a"), try chat("d", "work", "stored-a")))
+        XCTAssertFalse(appState.richCardChatsAreSame(try chat("d", "default", "stored-a"), try chat("d", "default", "stored-b")))
+        XCTAssertFalse(RichCardActionContext.mayFollowUp(tappedIn: try chat("d", "default", "runtime-a"),
+                                                         openChat: try chat("d", "default", "stored-b"),
+                                                         composerIsEnabled: true, draft: "",
+                                                         sameChat: appState.richCardChatsAreSame))
+        XCTAssertTrue(RichCardActionContext.mayFollowUp(tappedIn: try chat("d", "default", "runtime-a"),
+                                                        openChat: try chat("d", "default", "stored-a"),
+                                                        composerIsEnabled: true, draft: "",
+                                                        sameChat: appState.richCardChatsAreSame),
+                      "a tap's message still goes once the chat gets its durable id")
+    }
+
     func testAWaitingSendCannotFollowAReattributedRuntimeAlias() throws {
         let (appState, _, dashboard) = makeAppState()
         let pending = PendingComposerSend(
@@ -2767,6 +2792,25 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(appState.pendingComposerSend)
         XCTAssertEqual(appState.composerRestoreRequests.first?.key.sessionID, "stored-a")
         XCTAssertTrue(appState.messages.isEmpty)
+    }
+
+    func testACardTapKeepsToItsChatAcrossARotationButNotAReattribution() throws {
+        let (appState, _, _) = makeAppState()
+        var original = session("stored-a")
+        original.storedSessionId = "stored-a"
+        original.alternateIds = ["runtime-old", "runtime-new"]
+        appState.sessions = [original]
+        appState.activeSessionId = "runtime-old"
+        let tapped = try XCTUnwrap(appState.richCardChat)
+        appState.activeSessionId = "runtime-new"
+        XCTAssertEqual(appState.richCardChat, tapped, "the same chat under its next runtime id")
+        var other = session("stored-b")
+        other.storedSessionId = "stored-b"
+        other.alternateIds = ["runtime-new"]
+        appState.sessions = [other]
+        XCTAssertNotEqual(appState.richCardChat, tapped, "the runtime id now belongs to B")
+        XCTAssertFalse(RichCardActionContext.mayFollowUp(
+            tappedIn: tapped, openChat: appState.richCardChat, composerIsEnabled: true, draft: ""))
     }
 
     func testANewChatsWaitingMessageCannotFollowAReattributedCreatedRuntime() throws {

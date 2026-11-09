@@ -81,17 +81,12 @@ struct BotWorkSettingsView: View {
             if settings.isOn {
                 ConduitMenuPicker(
                     value: settings.policy,
-                    choices: [
-                        (id: BotWorkSettings.Policy.strict, title: AppLocalization.string("Only Coordinates")),
-                        (id: BotWorkSettings.Policy.lookups, title: AppLocalization.string("Also Looks Things Up")),
-                    ],
+                    choices: Self.policyChoices(settings),
                     onSelect: { binding(\.policy).wrappedValue = $0 }
                 ) {
                     Text(AppLocalization.string("What It Does Itself")).foregroundStyle(.secondary)
                 }
-                caption(settings.policy == .lookups
-                    ? AppLocalization.string("It can also search the web, past chats and skills itself before starting work. Quicker for simple questions, but small models pick the wrong way more often.")
-                    : AppLocalization.string("Anything that needs a tool goes to a workstream, so its Bot Chat stays free to talk."))
+                caption(Self.policyCaption(settings.policy, botName: botName))
                 Stepper(value: binding(\.maxRunning), in: 1...settings.maxRunningLimit) {
                     LabeledContent(AppLocalization.string("Running at Once")) {
                         Text(verbatim: "\(settings.maxRunning)")
@@ -103,26 +98,31 @@ struct BotWorkSettingsView: View {
         if settings.isOn {
             ConduitSettingsSection(title: AppLocalization.string("Workstream Model"), symbol: "cpu", tint: .purple) {
                 NavigationLink {
-                    BotModelPicker(provider: providerBinding, model: modelBinding, allowsInherit: true,
-                                   inheritTitle: AppLocalization.string("Same as Bot Chat"))
-                } label: {
-                    SettingsLinkRow(
-                        title: AppLocalization.string("Model"),
-                        value: settings.workstreamModel?.model ?? AppLocalization.string("Same as Bot Chat")
+                    // Hermes' per-session reasoning, as the Model sheet offers
+                    // it, beside the model it runs with.
+                    BotModelPicker(
+                        provider: providerBinding, model: modelBinding, allowsInherit: true,
+                        inheritTitle: AppLocalization.string("Same as Bot Chat"),
+                        // Shown from the start, so the first pick keeps the
+                        // page open for its reasoning; it waits for a model.
+                        reasoning: ModelChooserReasoning(
+                            effort: effortBinding.wrappedValue ?? "",
+                            inheritTitle: AppLocalization.string("Default"),
+                            disabled: settings.workstreamModel == nil,
+                            set: { effortBinding.wrappedValue = $0.isEmpty ? nil : $0 }
+                        )
                     )
+                } label: {
+                    // The model and provider as the catalog names them.
+                    let lines = ModelChooserLinkRow.lines(
+                        pick: settings.workstreamModel.map { ModelChooserPick(provider: $0.provider, model: $0.model) },
+                        providers: appState.keptModelProviders(),
+                        defaultTitle: AppLocalization.string("Same as Bot Chat"),
+                        reasoning: settings.workstreamModel == nil ? nil : effortBinding.wrappedValue.flatMap { $0.isEmpty ? nil : ReasoningEffortLevel.displayTitle(for: $0) }
+                    )
+                    ModelChooserLinkRow(title: AppLocalization.string("Model"), value: lines.value, detail: lines.detail)
                 }
                 .buttonStyle(.plain)
-                if settings.workstreamModel != nil {
-                    // Hermes' per-session reasoning, as the Model sheet offers it.
-                    ConduitMenuPicker(
-                        value: effortBinding.wrappedValue ?? "",
-                        choices: [(id: "", title: AppLocalization.string("Default"))]
-                            + ReasoningEffortLevel.allCases.map { (id: $0.rawValue, title: $0.title) },
-                        onSelect: { effortBinding.wrappedValue = $0.isEmpty ? nil : $0 }
-                    ) {
-                        Text(AppLocalization.string("Reasoning")).foregroundStyle(.secondary)
-                    }
-                }
                 caption(AppLocalization.string("New workstreams start on this model. Work that’s already running keeps its own."))
             }
             ConduitSettingsSection(title: AppLocalization.string("Safety"), symbol: "checkmark.shield", tint: .green) {
@@ -150,6 +150,32 @@ struct BotWorkSettingsView: View {
                 }
                 caption(Self.approvalsCaption(settings, botName: botName))
             }
+        }
+    }
+
+    /// What the Bot Chat may do itself, by what the user notices rather than
+    /// by tools (Eric 2026-11-08, notifier issue 619). Everything Here only
+    /// where the plugin takes it.
+    static func policyChoices(_ settings: BotWorkSettings) -> [(id: BotWorkSettings.Policy, title: String)] {
+        var choices: [(id: BotWorkSettings.Policy, title: String)] = [
+            (id: .lookups, title: AppLocalization.string("Quick Things Here"))
+        ]
+        if settings.policies.contains(.open) || settings.policy == .open {
+            choices.append((id: .open, title: AppLocalization.string("Everything Here")))
+        }
+        choices.append((id: .strict, title: AppLocalization.string("Only Coordinates")))
+        return choices
+    }
+
+    /// What the chosen setting means, in what the user will notice.
+    static func policyCaption(_ policy: BotWorkSettings.Policy, botName: String) -> String {
+        switch policy {
+        case .open:
+            return AppLocalization.string("\(botName) does everything in its Bot Chat, and runs work in the background only when you ask or it’s clearly long. The chat is busy while it works.")
+        case .strict:
+            return AppLocalization.string("Everything but cards, maps, notifications, memories and its questions to you runs in the background, so its Bot Chat is always free to talk.")
+        case .lookups, .off:
+            return AppLocalization.string("\(botName) answers and does quick things in its Bot Chat. Anything that takes longer runs in the background, and you’re told there when it’s done.")
         }
     }
 

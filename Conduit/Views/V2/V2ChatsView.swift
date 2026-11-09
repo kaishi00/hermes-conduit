@@ -435,6 +435,8 @@ struct V2ChatsView: View, Equatable {
         _updates = StateObject(wrappedValue: V2ShownUpdates(appState, defaultsKeys: [
             Self.presentationKey, Self.filterKey, Self.expandedNestsKey, V2MainButtonPreference.key,
             ProjectChatsInChats.key, HiddenChatProjects.key,
+            V2SessionsBarPreferences.Profiles.key, V2SessionsBarPreferences.showsProjectsKey,
+            V2SessionsBarPreferences.showsPulseKey, V2SessionsBarPreferences.showsArtifactsKey,
         ]))
     }
 
@@ -455,8 +457,16 @@ struct V2ChatsView: View, Equatable {
     /// registry. Split, a project's page stays beside the open chat.
     private var showsLiveRows: Bool { shell.isTabActive && shell.showsChatRows && listInView }
 
-    /// Projects belong to one profile, so All shows chats only.
-    private var showingProjects: Bool { sessionPresentationRaw == "projects" && !appState.isAllProfilesChatsOn }
+    private var sessionsBar: V2SessionsBarControls {
+        V2SessionsBarControls.resolve(
+            defaults: updates.defaults,
+            pulseAvailable: appState.showsPulseScreen,
+            allProfilesChatsOn: appState.isAllProfilesChatsOn
+        )
+    }
+
+    /// Hidden Projects and All profiles both keep the list on Sessions.
+    private var showingProjects: Bool { sessionsBar.presentation == .projects }
 
     /// All's rows carry their profile's picture, unless the list groups by
     /// profile and the section says it.
@@ -550,11 +560,23 @@ struct V2ChatsView: View, Equatable {
             MinimisedLiveVoiceBar()
         }
         .environmentObject(updates)
+        // The feed's every-minute read, drawn by the tab so hiding the bar's
+        // Pulse button doesn't stop it (Sessions bar, #2020).
+        .background(PulseFeedReader())
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.chats.title)
         .background { searchCommand }
         .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
             updates.coalesces = beside
+        }
+        // Projects hidden, from the Settings tap or from a preference another
+        // device or window wrote: clear the stored page once it's seen, so
+        // showing Projects again doesn't resurrect a page the user was moved
+        // off. The resolve step already keeps the list on Sessions until then.
+        .onChange(of: sessionsBar.showsProjects, initial: true) { _, shows in
+            if V2SessionsBarControls.hidesStoredProjectsPage(sessionPresentationRaw, showsProjects: shows) {
+                sessionPresentationRaw = "sessions"
+            }
         }
         .onChange(of: isShown, initial: true) { _, shown in
             updates.isShown = shown
@@ -713,29 +735,33 @@ struct V2ChatsView: View, Equatable {
                 .macTooltip(AppLocalization.string("Search"))
             }
 
-            Button {
-                Haptics.selection()
-                sessionPresentationRaw = showingProjects ? "sessions" : "projects"
-            } label: {
-                V2CapsuleIcon(systemImage: "folder", tint: showingProjects ? Color.conduitAccent : nil)
-                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showingProjects)
+            if sessionsBar.showsProjects {
+                Button {
+                    Haptics.selection()
+                    sessionPresentationRaw = showingProjects ? "sessions" : "projects"
+                } label: {
+                    V2CapsuleIcon(systemImage: "folder", tint: showingProjects ? Color.conduitAccent : nil)
+                        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showingProjects)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .disabled(appState.isAllProfilesChatsOn)
+                .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
+                .macTooltip(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
             }
-            .buttonStyle(PressableButtonStyle())
-            .disabled(appState.isAllProfilesChatsOn)
-            .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
-            .macTooltip(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
 
-            if appState.showsPulseScreen {
+            if sessionsBar.showsPulse {
                 V2PulseButton()
             }
 
-            NavigationLink(value: V2Route.artifacts) {
-                V2CapsuleIcon(systemImage: "square.grid.2x2")
+            if sessionsBar.showsArtifacts {
+                NavigationLink(value: V2Route.artifacts) {
+                    V2CapsuleIcon(systemImage: "square.grid.2x2")
+                }
+                .buttonStyle(PressableButtonStyle())
+                .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
+                .accessibilityLabel(AppLocalization.string("Artifacts"))
+                .macTooltip(AppLocalization.string("Artifacts"))
             }
-            .buttonStyle(PressableButtonStyle())
-            .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
-            .accessibilityLabel(AppLocalization.string("Artifacts"))
-            .macTooltip(AppLocalization.string("Artifacts"))
 
             if !stacked {
                 filterMenu(waitingApprovalCount: waitingApprovalCount) { filterIcon(waitingApprovalCount: waitingApprovalCount) }

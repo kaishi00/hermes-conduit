@@ -216,7 +216,7 @@ extension AppState {
                 || session.alternateIds.contains(pin.sessionID)
         }
         if listed {
-            requestOpenSession(pin.sessionID) { [weak self] in
+            requestOpenSession(pin.sessionID) { [weak self] _ in
                 guard let self, self.pendingPinnedReplyReveal?.pin.id == pin.id else { return }
                 self.pendingPinnedReplyReveal = nil
             }

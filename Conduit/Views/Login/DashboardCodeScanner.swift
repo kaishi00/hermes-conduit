@@ -5,6 +5,8 @@
 //  Scan Code on the address step: the camera reads a sign-in code Hermes
 //  showed as a QR code, or a dashboard address shown as text (a tap picks
 //  it). Under the camera, the prompt that asks Hermes for a code.
+//  Settings > Multiplayer's Scan reads a Link invite's QR code with the same
+//  sheet (CodeScanPurpose.linkInvite).
 //
 
 import AVFoundation
@@ -13,9 +15,42 @@ import SwiftUI
 import Vision
 import VisionKit
 
+/// What the scanner sheet looks for, and the words around the camera.
+struct CodeScanPurpose {
+    let title: String
+    let hint: String
+    let unreadable: String
+    let unsupported: String
+    /// Under the camera, the prompt that asks Hermes for a sign-in code.
+    let asksHermesForCode: Bool
+
+    /// A dashboard's sign-in code, or its address shown as text.
+    static var signIn: CodeScanPurpose {
+        CodeScanPurpose(
+            title: AppLocalization.string("Scan Code"),
+            hint: AppLocalization.string("Point the camera at the code Hermes shows. For an address shown as text, tap it."),
+            unreadable: AppLocalization.string("That code isn't a dashboard address."),
+            unsupported: AppLocalization.string("This device can't scan codes. Type or paste the address instead."),
+            asksHermesForCode: true
+        )
+    }
+
+    /// A Link invite's QR code, on the other person's phone.
+    static var linkInvite: CodeScanPurpose {
+        CodeScanPurpose(
+            title: AppLocalization.string("Scan Invite"),
+            hint: AppLocalization.string("Point the camera at the invite's QR code on the other person's phone."),
+            unreadable: AppLocalization.string("That code isn't a Link invite."),
+            unsupported: AppLocalization.string("This device can't scan codes. Paste the invite instead."),
+            asksHermesForCode: false
+        )
+    }
+}
+
 struct DashboardCodeScannerSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @Environment(\.dismiss) private var dismiss
+    var purpose: CodeScanPurpose = .signIn
     /// Takes what was read; false keeps the camera looking.
     let onScan: (String) -> Bool
 
@@ -38,21 +73,23 @@ struct DashboardCodeScannerSheet: View {
                 ScrollView {
                     VStack(spacing: 16) {
                         camera
-                        Text("Point the camera at the code Hermes shows. For an address shown as text, tap it.")
+                        Text(verbatim: purpose.hint)
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                             .fixedSize(horizontal: false, vertical: true)
                             .padding(.horizontal, 8)
-                        AskHermesPromptView(
-                            title: ConnectionSetupPrompt.signInCode.title,
-                            prompt: ConnectionSetupPrompt.signInCode.text
-                        )
+                        if purpose.asksHermesForCode {
+                            AskHermesPromptView(
+                                title: ConnectionSetupPrompt.signInCode.title,
+                                prompt: ConnectionSetupPrompt.signInCode.text
+                            )
+                        }
                     }
                     .padding(16)
                 }
             }
-            .navigationTitle(Text("Scan Code"))
+            .navigationTitle(Text(verbatim: purpose.title))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -85,26 +122,26 @@ struct DashboardCodeScannerSheet: View {
                     unreadableCount += 1
                     UIAccessibility.post(
                         notification: .announcement,
-                        argument: AppLocalization.string("That code isn't a dashboard address.")
+                        argument: purpose.unreadable
                     )
                 }
                 .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                .accessibilityLabel(AppLocalization.string("Scan Code"))
-                .accessibilityHint(AppLocalization.string("Point the camera at the code Hermes shows. For an address shown as text, tap it."))
+                .accessibilityLabel(purpose.title)
+                .accessibilityHint(purpose.hint)
             case .denied:
                 cameraNotice(
                     AppLocalization.string("Scanning a code needs camera access. You can allow it in Settings."),
                     opensSettings: true
                 )
             case .unsupported:
-                cameraNotice(AppLocalization.string("This device can't scan codes. Type or paste the address instead."), opensSettings: false)
+                cameraNotice(purpose.unsupported, opensSettings: false)
             }
         }
         .frame(maxWidth: .infinity)
         .frame(height: 320)
         .overlay(alignment: .bottom) {
             if showsUnreadable {
-                Text("That code isn't a dashboard address.")
+                Text(verbatim: purpose.unreadable)
                     .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.white)
                     .padding(.horizontal, 14)

@@ -3,9 +3,10 @@
 //  Conduit
 //
 //  Settings > Capabilities > Connectors, as Hermes Desktop's Connectors
-//  tab for the MCP servers on the host: the ones that are on (tested live,
-//  broken ones first), the catalog's servers to install, and the ones that
-//  are off. Each server's page tests it, signs it in, lists its tools and
+//  tab: the apps signed in through Nous Portal at the top
+//  (HostedAppsViews.swift), then the MCP servers on the host: the ones
+//  that are on (tested live, broken ones first), the catalog's servers to
+//  install, and the ones that are off. Each server's page tests it, signs it in, lists its tools and
 //  removes it.
 //
 
@@ -15,8 +16,10 @@ struct CapabilityConnectorsTab: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let store: CapabilitiesStore
     let query: String
+    @EnvironmentObject private var appState: AppState
     @State private var installing: ConnectorCatalogEntry?
     @State private var actionError: String?
+    @State private var hostedApps = HostedAppsModel()
 
     private var states: [String: ConnectorState] {
         Dictionary(store.servers.map { server in
@@ -33,6 +36,7 @@ struct CapabilityConnectorsTab: View {
             query: query
         )
         CapabilityTabScroll(refresh: { await reload(force: true) }) {
+            HostedAppsSection(model: hostedApps, query: query)
             if !store.connectorsLoaded && !store.showsKept.contains(.connectors) {
                 ProgressView()
                     .frame(maxWidth: .infinity)
@@ -100,6 +104,11 @@ struct CapabilityConnectorsTab: View {
                 }
             }
         }
+        .task(id: appState.hostedAppsScope) {
+            hostedApps.show(appState)
+            guard appState.isConnected else { return }
+            await hostedApps.reload(appState)
+        }
         .task(id: store.profile) {
             if !store.connectorsLoaded || !store.showsKept.isDisjoint(with: [.connectors, .connectorCatalog]) { await store.loadConnectors() }
             await store.probeServers()
@@ -129,7 +138,9 @@ struct CapabilityConnectorsTab: View {
     /// Reads the servers again, then tests them: all of them on a pull to
     /// refresh, the ones not tested lately otherwise.
     private func reload(force: Bool) async {
+        async let apps: Void = hostedApps.reload(appState)
         await store.loadConnectors()
+        await apps
         await store.probeServers(force: force)
     }
 

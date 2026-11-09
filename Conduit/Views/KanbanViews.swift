@@ -743,6 +743,7 @@ struct KanbanView: View {
         .sheet(item: $selectedTask) { task in
             KanbanTaskDetailView(task: task)
                 .environment(store)
+                .environmentObject(appState)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
         }

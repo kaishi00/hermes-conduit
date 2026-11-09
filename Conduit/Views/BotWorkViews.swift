@@ -615,6 +615,9 @@ private struct BotWorkRow: View {
                 if item.kind == .workstream, !item.sessionID.isEmpty {
                     openChatButton
                 }
+                if listedRoom != nil {
+                    openRoomButton
+                }
                 if !item.branch.isEmpty {
                     branchLine
                 }
@@ -723,6 +726,9 @@ private struct BotWorkRow: View {
                 if !item.call.isEmpty {
                     fromCallLine
                 }
+                if !item.room.isEmpty {
+                    fromRoomLine
+                }
                 if !item.result.isEmpty {
                     Text(BotWorkLook.rendered(item.result))
                         .scaledFont(.footnote)
@@ -752,6 +758,45 @@ private struct BotWorkRow: View {
             .scaledFont(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Work a bot started from a group room: what it reports is posted
+    /// back there, so the line names the room, by its name when Hermes
+    /// lists it.
+    private var fromRoomLine: some View {
+        Label(roomName.map { AppLocalization.string("From the group chat “\($0)”") }
+                  ?? AppLocalization.string("From a group chat"),
+              systemImage: "person.3")
+            .scaledFont(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var roomName: String? {
+        let name = listedRoom?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? nil : name
+    }
+
+    /// The room as the rooms list shows it (kept from last time until Hermes
+    /// lists them); a disbanded one never opens, so it's left out.
+    private var listedRoom: GroupRoom? {
+        guard !item.room.isEmpty else { return nil }
+        return appState.shownGroupRooms.first(where: { $0.roomID == item.room && $0.disbandedAt == nil })
+    }
+
+    /// Opens the room it reports to, which Hermes still lists.
+    private var openRoomButton: some View {
+        Button {
+            guard let room = listedRoom else { return }
+            Haptics.light()
+            willOpen?()
+            Task { await appState.openGroupRoom(room) }
+        } label: {
+            Label(AppLocalization.string("Open the group chat"), systemImage: "person.3")
+                .frame(maxWidth: .infinity, minHeight: 36)
+        }
+        .buttonStyle(.settings)
+        .accessibilityIdentifier("botWork.openRoom.\(item.ref)")
     }
 
     /// The branch its own worktree is on, to merge once it's done. The

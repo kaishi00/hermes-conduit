@@ -113,6 +113,8 @@ final class LocalLiveTurnRunner {
     private var showedCard = false
     /// What the open turn said so far ends a line (or nothing was said).
     private var endedLine = true
+    /// Connect cards the call already said wait in the chat.
+    private var saidConnections: Set<String> = []
     private var task: Task<Void, Never>?
     /// Bumped by every new turn and reset, so older work stops at its next step.
     private var generation = 0
@@ -360,6 +362,12 @@ final class LocalLiveTurnRunner {
             guard id == current.runtimeID, let turn else { return }
             // Hermes waits on the user: the call says where to answer, and
             // the reply is still followed for the turn after.
+            say(Self.needsInputLine, to: turn.id, generation: generation)
+        case .connection(let id, let card):
+            // A connect card: said once, when it opens (its updates come
+            // every few seconds).
+            guard id == current.runtimeID, card.isOpen, let turn,
+                  saidConnections.insert(card.opID).inserted else { return }
             say(Self.needsInputLine, to: turn.id, generation: generation)
         default:
             return

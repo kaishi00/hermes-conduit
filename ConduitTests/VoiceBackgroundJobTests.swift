@@ -92,6 +92,7 @@ final class FakeVoiceJobBackend {
     private(set) var keptEndings: [String?] = []
     /// Chats that are workstreams', and what their calls sent there.
     var workstreamChats: Set<String> = []
+    var workstreamReply = AppState.workstreamCallSent
     private(set) var workstreamSends: [(String, String)] = []
     private(set) var leftChats: [(String?, String)] = []
     var activeProfile: String? = "default"
@@ -167,7 +168,7 @@ final class FakeVoiceJobBackend {
             sendToCallWorkstream: { [self] thread, request in
                 guard self.workstreamChats.contains(thread.runtimeSessionID) else { return nil }
                 self.workstreamSends.append((thread.runtimeSessionID, request))
-                return "sent to the workstream"
+                return self.workstreamReply
             },
             callLeftChat: { [self] profile, chat, _ in self.leftChats.append((profile, chat)) },
             activeProfile: { [self] in self.activeProfile },
@@ -399,7 +400,57 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(fake.createdProfiles.isEmpty, "no job session")
         XCTAssertEqual(fake.workstreamSends.map(\.1), ["use the staging database instead", "and check the logs"])
         XCTAssertTrue(supervisor.backgroundJobs.isEmpty)
-        XCTAssertEqual(said, "sent to the workstream")
+        XCTAssertEqual(said, AppState.workstreamCallSent)
+    }
+
+    /// A live model's chat turn in a workstream's chat (ask_thread, or a
+    /// start_job kept in the chat) goes to the workstream too, so it answers
+    /// the question the workstream waits on (notifier #618).
+    func testAWorkstreamsCallSendsItsChatTurnsToItsSession() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.workstreamChats = ["rt-work"]
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-work", storedSessionID: nil, title: "W3"))
+        let bridge = GeminiLiveToolBridge(supervisor: supervisor)
+        let asked = await bridge.handle(.init(id: "c1", name: "ask_thread", arguments: ["request": "the second one"]))
+        let started = await bridge.handle(.init(id: "c2", name: "start_job", arguments: ["instructions": "and check the logs"]))
+        XCTAssertEqual(asked, [.toolResponse(id: "c1", name: "ask_thread", result: ["status": "workstream", "message": AppState.workstreamCallSent], scheduling: .whenIdle)])
+        XCTAssertEqual(started, [.toolResponse(id: "c2", name: "start_job", result: ["status": "workstream", "message": AppState.workstreamCallSent], scheduling: .whenIdle)])
+        // GPT-Live's delegation in the chat goes the same way.
+        let gpt = GPTLiveDelegationBridge(supervisor: supervisor)
+        let delegated = await gpt.handleDelegation(id: "del_1", request: "use the first option")
+        guard case .delegationReply(let delegationID, _, let channel)? = delegated.first, delegated.count == 1 else {
+            return XCTFail("Expected the workstream's answer, got \(delegated)")
+        }
+        XCTAssertEqual(delegationID, "del_1")
+        XCTAssertEqual(channel, .speakable)
+        XCTAssertEqual(fake.workstreamSends.map(\.1), ["the second one", "and check the logs", "use the first option"])
+        XCTAssertTrue(fake.submissions.isEmpty, "no chat turn queued behind its question")
+        XCTAssertTrue(supervisor.backgroundJobs.isEmpty)
+        XCTAssertTrue(supervisor.jobs.isEmpty)
+        // Another chat's turns are its own.
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: nil, title: "Build"))
+        let elsewhere = await supervisor.sendToWorkstream("check the build")
+        XCTAssertNil(elsewhere)
+    }
+
+    func testAWorkstreamsRefusalIsToldToGPTLiveAsItCame() async {
+        let (supervisor, fake) = makeSupervisor()
+        fake.workstreamChats = ["rt-work"]
+        fake.workstreamReply = "W3 is busy with another action. Try again in a moment."
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "rt-work", storedSessionID: nil, title: "W3"))
+        let gpt = GPTLiveDelegationBridge(supervisor: supervisor)
+        let refused = await gpt.handleDelegation(id: "del_1", request: "use the first option")
+        guard case .delegationReply(let delegationID, let text, let channel)? = refused.first, refused.count == 1 else {
+            return XCTFail("Expected the workstream's refusal, got \(refused)")
+        }
+        XCTAssertEqual(delegationID, "del_1")
+        XCTAssertEqual(channel, .speakable)
+        XCTAssertTrue(text.contains("W3 is busy with another action."), text)
+        // Not taken, so the same words asked again go to the workstream again.
+        fake.workstreamReply = AppState.workstreamCallSent
+        _ = await gpt.handleDelegation(id: "del_2", request: "use the first option")
+        XCTAssertEqual(fake.workstreamSends.map(\.1), ["use the first option", "use the first option"])
+        XCTAssertTrue(fake.submissions.isEmpty)
     }
 
     func testJobsStartedInALiveCallAreAnchoredToItsTranscript() async {

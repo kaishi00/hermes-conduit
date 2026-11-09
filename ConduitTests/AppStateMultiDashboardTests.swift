@@ -1654,6 +1654,75 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(explorer.entries.isEmpty, "nor its listing")
     }
 
+    /// A picture sent into a room is read back through the plugin's room
+    /// files (issue 2035), only from a plugin that serves it, and a refusal
+    /// says the file is gone rather than that the host was out of reach.
+    func testRoomPicturesReadThroughThePluginsRoomFiles() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        XCTAssertNil(appState.roomFilePicturesResolver, "an older plugin's pictures stay by name")
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.142.0", capabilities: [GroupRoomFilesClient.pictureCapability]))
+        let resolver = try XCTUnwrap(appState.roomFilePicturesResolver)
+        XCTAssertTrue(appState.roomFilePicturesResolver === resolver, "one resolver, so the rows holding it compare equal")
+        XCTAssertNil(appState.roomFileReadsResolver, "a 0.142 plugin reads pictures only; other files stay names")
+        appState.setNotifierPluginStateForTesting(.reported(
+            version: "0.143.0", capabilities: [GroupRoomFilesClient.pictureCapability, GroupRoomFilesClient.readCapability]
+        ))
+        let reads = try XCTUnwrap(appState.roomFileReadsResolver)
+        XCTAssertFalse(reads === resolver, "what the room reads changed, so its rows draw again")
+        XCTAssertTrue(appState.roomFilePicturesResolver === reads, "pictures and other files read through one room reader")
+        XCTAssertTrue(reads.roomFileReads.pluginPictures && reads.roomFileReads.pluginFiles)
+        XCTAssertTrue(GroupRoomFilesClient.isStoredFile(Attachment(
+            id: "d", name: "report.pdf", uri: "/h/conduit/room-files/20261108-c/report.pdf", mimeType: "application/pdf", kind: .document
+        )))
+        XCTAssertFalse(GroupRoomFilesClient.isStoredFile(Attachment(
+            id: "e", name: "report.pdf", uri: "/h/projects/report.pdf", mimeType: "application/pdf", kind: .document
+        )), "a file the room didn't store keeps its name")
+        XCTAssertFalse(GroupRoomFilesClient.isStoredFile(Attachment(
+            id: "f", name: "photo.jpg", uri: "/w/conduit/room-files/photo.jpg", mimeType: "image/jpeg", kind: .image
+        )), "a path outside an upload's folder keeps its name")
+        let inline = await resolver.inlineImageDataURL(InlineImageRef(sessionId: "s", profile: "default", rowId: 1, index: 0))
+        XCTAssertNil(inline, "room files hold no pictures inside messages")
+
+        let path = "/h/conduit/room-files/20261108-a/my photo.jpg"
+        let read = Task { await resolver.read(for: path) }
+        try await held.waitForRequests(1)
+        try await held.answer(["dataUrl": "data:image/jpeg;base64,/9j/"], toPathEnding: "/room-files/data-url")
+        let answered = await read.value
+        XCTAssertEqual(answered, .dataURL("data:image/jpeg;base64,/9j/"))
+        XCTAssertEqual(held.sent.last?.path, GroupRoomFilesClient.readPath)
+        XCTAssertEqual(held.sent.last?.query?.removingPercentEncoding, "path=\(path)")
+
+        let refused = Task { await resolver.read(for: "/elsewhere/x.jpg") }
+        try await held.waitForRequests(2)
+        try await held.answer(["detail": "Not a room file"], status: 404)
+        let gone = await refused.value
+        XCTAssertEqual(gone, .gone)
+
+        // The sender's own picture is kept under the key its message's
+        // preview and the viewer look it up by, so it shows without a read.
+        let cache = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let staged = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-photo.jpg")
+        try Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]).write(to: staged)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: cache)
+            try? FileManager.default.removeItem(at: staged)
+        }
+        let photo = Attachment(id: "p", name: "my photo.jpg", uri: staged.absoluteString, mimeType: "image/jpeg", kind: .image)
+        let notes = Attachment(id: "n", name: "notes.txt", uri: staged.absoluteString, mimeType: "text/plain", kind: .document)
+        await appState.keepSentRoomPictures(
+            [photo, notes],
+            references: ["@file:`\(path)`", "@file:/h/conduit/room-files/20261108-b/notes.txt"],
+            resolver: resolver,
+            in: cache
+        )
+        let shown = MessageNormalizer.splitLeadingFileReferences("@file:`\(path)`", messageId: "room").attachments
+        let key = try XCTUnwrap(resolver.imageCacheKey(for: try XCTUnwrap(shown.first)))
+        let kept = try XCTUnwrap(TranscriptImageCache.cachedFile(for: key, in: cache))
+        XCTAssertEqual(kept.pathExtension, "jpg")
+        XCTAssertEqual(try Data(contentsOf: kept), Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: cache.path).count, 1, "only the picture is kept")
+    }
+
     /// A folder opens on its listing and recent files as the plugin gave
     /// them last time, before Hermes answers, and a read that fails keeps
     /// them up (#1533).
@@ -1663,12 +1732,13 @@ extension AppStateMultiDashboardTests {
         let first = WorkspaceExplorer()
         first.attach(appState)
         let open = Task { await first.open(root: "/w/app", profile: appState.activeProfile) }
-        try await held.waitForRequests(1)
-        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]])
+        // The listing and the recent files are read together (issue 1964),
+        // so either can go first: each is answered by its path.
         try await held.waitForRequests(2)
-        try await held.answer(["ok": true, "entries": [["name": "notes.md", "path": "/w/app/notes.md"]]])
+        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [["name": "notes.md", "path": "/w/app/notes.md"]]], toPathEnding: "/workspace/recent")
         await open.value
-        XCTAssertEqual(held.sent.map(\.path), [
+        XCTAssertEqual(Set(held.sent.map(\.path)), [
             "/api/plugins/conduit_push/workspace/list", "/api/plugins/conduit_push/workspace/recent",
         ])
 
@@ -1678,8 +1748,8 @@ extension AppStateMultiDashboardTests {
         try await held.waitForRequests(3)
         XCTAssertEqual(next.rows().map { $0.entry.name }, ["src"], "Shown before Hermes answers")
         XCTAssertEqual(next.recent.map(\.name), ["notes.md"])
-        try await held.answer(["error": "boom"], status: 500)
         try await held.waitForRequests(4)
+        try await held.answer(["error": "boom"], status: 500)
         try await held.answer(["error": "boom"], status: 500)
         await reopen.value
 
@@ -2080,6 +2150,31 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(appState.keptDelegationPaused(), true, "Another profile's page opens on it")
         await appState.switchDashboard(to: vps.id)
         XCTAssertNil(appState.keptDelegationPaused(), "Another dashboard's page doesn't")
+    }
+
+    /// Settings > Passwords & logins opens on the list kept for the
+    /// dashboard and profile: never another profile's vault, or another
+    /// dashboard's.
+    func testThePasswordsPageOpensOnTheProfilesKeptVault() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let snapshot = CredentialVaultSnapshot(
+            items: [VaultItem(id: "a1", kind: "login", label: "GitHub", origin: "https://github.com", identifier: "me@example.com", identifierType: "email", hasOTP: true)],
+            sources: [VaultSource(name: "bitwarden", displayName: "Bitwarden", enabled: true, needsUnlock: true, unlocked: false, installed: true)]
+        )
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+        appState.offlineChatCacheForTesting.recordAnswer(
+            json, route: AppState.credentialVaultRoute, dashboardID: mac, profile: appState.activeProfile
+        )
+
+        XCTAssertEqual(appState.keptCredentialVault(), snapshot)
+        let profile = appState.activeProfile
+        appState.setActiveProfileForTesting("work")
+        XCTAssertNil(appState.keptCredentialVault(), "Another profile has a vault of its own")
+        appState.setActiveProfileForTesting(profile)
+        XCTAssertEqual(appState.keptCredentialVault(), snapshot)
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.keptCredentialVault(), "Another dashboard's page doesn't")
     }
 
     /// A config save is what the settings pages open on next, without

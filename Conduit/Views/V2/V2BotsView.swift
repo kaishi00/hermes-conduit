@@ -51,6 +51,9 @@ struct V2BotsView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) {
             MinimisedLiveVoiceBar()
         }
+        // The feed's every-minute read, as the Chats tab draws it; this tab
+        // keeps its own reader so Pulse's dot and marks stay fresh here too.
+        .background(PulseFeedReader())
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.bots.title)
     }

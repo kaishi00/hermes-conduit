@@ -595,11 +595,20 @@ final class GroupChatModelsTests: XCTestCase {
             ["user:d1", "dmessage:2", "dmessage:3", "dmessage:4", landedID, GroupRoomTranscript.respondingID]
         )
         // A member's run shows its picture and name once.
-        guard case .room(.event(_, _, let runContinues, _)) = rows[2].kind,
-              case .room(.event(_, _, let otherContinues, _)) = rows[3].kind else { return XCTFail("\(rows)") }
+        guard case .room(.event(_, _, let runContinues, _, _)) = rows[2].kind,
+              case .room(.event(_, _, let otherContinues, _, _)) = rows[3].kind else { return XCTFail("\(rows)") }
         XCTAssertTrue(runContinues)
         XCTAssertFalse(otherContinues)
         XCTAssertEqual(rows[4].kind, .room(.pending(text: "Plan the trip", members: members, isSending: true)))
+        // A message with files carries them on its row, in its room.
+        let picture = GroupRoomAttachment(attachmentID: "a1", kind: "image", name: "cat.png", size: 12, mime: "image/png")
+        let withFiles = GroupRoomTranscript.rows(
+            events: [], roomID: "room-1", members: members,
+            pending: GroupRoomOutbox.Pending(text: "", eventID: "conduit-f", attachments: [picture]),
+            isSending: true, responder: nil
+        )
+        guard case .room(.pending(_, _, _, _, let files)) = withFiles.last?.kind else { return XCTFail("\(withFiles)") }
+        XCTAssertEqual(files, [picture.attachment(roomID: "room-1")])
 
         // The send landed while its row still shows: the event's row, once.
         let landed = GroupRoomTranscript.rows(
@@ -607,7 +616,7 @@ final class GroupChatModelsTests: XCTestCase {
             members: members, pending: pending, isSending: false, responder: nil
         )
         XCTAssertEqual(landed.map(\.id), ["user:d1", "dmessage:2", "dmessage:3", "dmessage:4", landedID])
-        guard case .room(.event(_, _, _, _)) = landed[4].kind else { return XCTFail("the event's row, not the pending one") }
+        guard case .room(.event(_, _, _, _, _)) = landed[4].kind else { return XCTFail("the event's row, not the pending one") }
 
         // Nothing in the room yet: its welcome.
         let empty = GroupRoomTranscript.rows(
@@ -837,6 +846,47 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(GroupRoomTurns.members([furina], namedBy: []), [furina])
     }
 
+    func testAMembersFilesAreReadFromItsOwnLocalProfile() {
+        let local = GroupDecoders.member(any(["member_id": "m1", "profile": " furina ", "handle": "furina"]))
+        let explicit = GroupDecoders.member(any(["member_id": "m2", "profile": "nahida", "target": ["kind": "local"]]))
+        let peer = GroupDecoders.member(any(["member_id": "m3", "profile": "furina", "target": ["kind": "peer"]]))
+        let noProfile = GroupDecoders.member(any(["member_id": "m4", "handle": "raiden"]))
+        XCTAssertEqual(GroupRoomTurns.localProfile(of: local), "furina")
+        XCTAssertEqual(GroupRoomTurns.localProfile(of: explicit), "nahida")
+        XCTAssertNil(GroupRoomTurns.localProfile(of: peer), "another gateway's bot names files on its own host")
+        XCTAssertNil(GroupRoomTurns.localProfile(of: noProfile))
+        XCTAssertNil(GroupRoomTurns.localProfile(of: nil))
+    }
+
+    func testAMessagesSpeakerIsFoundByItsActorWithoutAMemberID() throws {
+        let furina = try XCTUnwrap(GroupDecoders.member(any(["member_id": "m1", "profile": "furina", "handle": "furina"])))
+        let message = GroupEvent(
+            roomID: "room", seq: 1, eventID: "e1", kind: "message.member",
+            actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: "Furina", connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("Hi")], createdAt: 0
+        )
+        XCTAssertEqual(GroupRoomTurns.speaker(of: message, members: [furina])?.memberID, "m1")
+        let user = GroupEvent(
+            roomID: "room", seq: 2, eventID: "e2", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "furina", profile: nil, displayName: nil, connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("Hi")], createdAt: 0
+        )
+        XCTAssertNil(GroupRoomTurns.speaker(of: user, members: [furina]), "only a member's actor names a member")
+        let peer = try XCTUnwrap(GroupDecoders.member(any(["member_id": "m2", "profile": "furina", "target": ["kind": "peer"]])))
+        XCTAssertNil(GroupRoomTurns.speaker(of: message, members: [furina, peer]),
+                     "a profile two members share names neither")
+        let unnamed = try XCTUnwrap(GroupDecoders.member(any(["profile": "furina", "handle": "furina"])))
+        XCTAssertNil(GroupRoomTurns.speaker(of: message, members: [unnamed, peer]),
+                     "a member without a member id doesn't take a shared profile as its own id")
+        let named = GroupEvent(
+            roomID: "room", seq: 3, eventID: "e3", kind: "message.member",
+            actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: "Furina", connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("Hi"), "member_id": .string("gone")], createdAt: 0
+        )
+        XCTAssertNil(GroupRoomTurns.speaker(of: named, members: [furina]),
+                     "a payload naming a member the room no longer lists isn't matched by its actor instead")
+    }
+
     func testRecipientsLeadTheMessageOnce() {
         let scout = GroupDecoders.member(any(["member_id": "scout", "profile": "scout", "handle": "scout"]))!
         let atlas = GroupDecoders.member(any(["member_id": "atlas", "profile": "atlas", "handle": "atlas"]))!
@@ -945,6 +995,28 @@ final class GroupChatModelsTests: XCTestCase {
                 "member_id": "zhongli", "profile": "zhongli", "handle": "zhongli", "display_name": "Zhongli",
             ]))!,
         ]
+    }
+
+    /// A scheduled job's post is never the user's own message, and a bot's
+    /// work update posted back into its room shows only its lines.
+    func testAScheduledPostIsNotTheUsersAndAWorkUpdateShowsItsLines() {
+        let work = turnEvent(eventJSON(
+            seq: 4, kind: "message.user",
+            actor: ["kind": "user", "id": "cron:conduit-work-default-W1-ab12", "display_name": "Furina's work"],
+            payload: ["text": "@Furina Work update from your workstreams, for this room.\n- W1 “Wallpaper” finished.\nTell the room in a line or two.",
+                      "thread_id": "cron-1"]))
+        XCTAssertTrue(work.isScheduledPost)
+        XCTAssertEqual(work.workUpdateText, "W1 “Wallpaper” finished.")
+        let nightly = turnEvent(eventJSON(
+            seq: 5, kind: "message.user", actor: ["kind": "user", "id": "cron:job42", "display_name": "Nightly"],
+            payload: ["text": "All backups OK", "thread_id": "cron-2"]))
+        XCTAssertTrue(nightly.isScheduledPost)
+        XCTAssertNil(nightly.workUpdateText)
+        let mine = userMessage(seq: 6, text: "- not a work update")
+        XCTAssertFalse(mine.isScheduledPost)
+        XCTAssertNil(mine.workUpdateText)
+        XCTAssertFalse(GroupEventRow.sameSpeaker(mine, work))
+        XCTAssertFalse(GroupEventRow.sameSpeaker(work, nightly))
     }
 
     private func turnEvent(_ json: [String: Any]) -> GroupEvent {

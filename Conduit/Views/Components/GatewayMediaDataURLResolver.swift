@@ -24,17 +24,63 @@
 
 import SwiftUI
 
+/// A gateway file read: its data URL, or why there's none.
+enum GatewayMediaRead: Equatable, Sendable {
+    case dataURL(String)
+    /// Hermes answered and can't give it: gone, unreadable or too large.
+    case gone
+    /// Hermes couldn't be asked just now; a later ask may read it.
+    case failed
+
+    /// An HTTP status saying the file itself can't be given, rather than
+    /// that the gateway is in trouble (408, 429 and 5xx).
+    static func isRefusal(status: Int) -> Bool {
+        (400..<500).contains(status) && status != 408 && status != 429
+    }
+}
+
 @MainActor
 final class GatewayMediaDataURLResolver {
+    /// Where the files are read.
+    enum Source: Equatable {
+        /// Hermes' own file routes, as the profile.
+        case hermes
+        /// Files sent into a group room, which the plugin stored
+        /// (`/room-files/data-url`): pictures since plugin 0.142, any type
+        /// since 0.143. Nothing else the host holds.
+        case roomFiles
+    }
+
+    /// Which of a room's files a `.roomFiles` resolver reads: Hermes'
+    /// own attachments, and the plugin's stored pictures and other files,
+    /// each only where the host takes that read. A file it can't read
+    /// stays a name, as on an older plugin.
+    struct RoomFileReads: Equatable {
+        var hermesAttachments = false
+        var pluginPictures = false
+        var pluginFiles = false
+
+        func reads(_ file: Attachment) -> Bool {
+            if GroupRoomFilesClient.isHermesAttachment(file) { return hermesAttachments }
+            guard GroupRoomFilesClient.isStoredFile(file) else { return false }
+            return file.kind == .image ? pluginPictures : pluginFiles
+        }
+    }
+
     private weak var appState: AppState?
     let profile: String
+    let source: Source
+    /// For `.roomFiles`: which files it reads.
+    let roomFileReads: RoomFileReads
     /// Dashboard this resolver was built for: a retained resolver must never
     /// start a request against a different server after a switch.
     let dashboardID: UUID?
 
-    init(appState: AppState, profile: String) {
+    init(appState: AppState, profile: String, source: Source = .hermes, roomFileReads: RoomFileReads = RoomFileReads()) {
         self.appState = appState
         self.profile = profile
+        self.source = source
+        self.roomFileReads = roomFileReads
         self.dashboardID = appState.activeDashboardID
     }
 
@@ -50,14 +96,24 @@ final class GatewayMediaDataURLResolver {
     }
 
     func dataURL(for path: String) async -> String? {
-        guard let appState = currentAppState else { return nil }
-        let result = await appState.gatewayMediaDataURL(for: path, profile: profile)
-        return appState.activeDashboardID == dashboardID ? result : nil
+        if case .dataURL(let dataURL) = await read(for: path) { return dataURL }
+        return nil
+    }
+
+    /// As `dataURL(for:)`, saying why there's none (issue 2015).
+    func read(for path: String) async -> GatewayMediaRead {
+        guard let appState = currentAppState else { return .failed }
+        let result: GatewayMediaRead
+        switch source {
+        case .hermes: result = await appState.gatewayMediaRead(for: path, profile: profile)
+        case .roomFiles: result = await appState.roomFileRead(for: path)
+        }
+        return appState.activeDashboardID == dashboardID ? result : .failed
     }
 
     /// The file itself on disk, for media too large for a data URL (#569).
     func file(for path: String, maxBytes: Int = DashboardFileDownloadLimits.maxBytes) async -> GatewayMediaFileResult {
-        guard let appState = currentAppState else { return .unavailable }
+        guard source == .hermes, let appState = currentAppState else { return .unavailable }
         let result = await appState.gatewayMediaFile(for: path, profile: profile, maxBytes: maxBytes)
         guard appState.activeDashboardID == dashboardID else {
             if case .downloaded(let download) = result {
@@ -71,7 +127,7 @@ final class GatewayMediaDataURLResolver {
     /// A picture stored inside a persisted message, for when its file is
     /// gone from the server (#652).
     func inlineImageDataURL(_ ref: InlineImageRef) async -> String? {
-        guard let appState = currentAppState else { return nil }
+        guard source == .hermes, let appState = currentAppState else { return nil }
         let result = await appState.transcriptInlineImageDataURL(ref)
         return appState.activeDashboardID == dashboardID ? result : nil
     }
