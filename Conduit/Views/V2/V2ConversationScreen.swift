@@ -234,6 +234,12 @@ struct V2ConversationScreen: View {
                 Color.clear
                     .onAppear { screenWidth = proxy.size.width }
                     .onChange(of: proxy.size.width) { _, width in screenWidth = width }
+                    // The chat open before's Work closes under a Bot Chat
+                    // on its way, and doesn't come back over the one that
+                    // lands. (Here, off the screen's long modifier chain.)
+                    .onChange(of: appState.botChatComingOverAnother) { _, coming in
+                        if coming != nil { workPanelOpen = false }
+                    }
             }
         }
         // A file path tapped in a reply: the Folder tab beside the chat, or
