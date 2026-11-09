@@ -101,7 +101,7 @@ struct NotifierPluginStatus: Equatable {
     /// False: nothing asks for an update unprompted, only for the restart
     /// of one already on the host (NotifierPluginNoticeChannel.never).
     var asksToUpdate = true
-    /// The host installs and upgrades the plugin itself (plugin 0.141.5+,
+    /// The host installs and upgrades the plugin itself (plugin 0.146.0+,
     /// `CONDUIT_PUSH_MANAGED`): nil when it doesn't say so, "" when it says
     /// nothing more, or who keeps it up to date. Then nothing offers an
     /// update, here or unprompted, and the host refuses one; a restart
