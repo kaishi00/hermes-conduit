@@ -1,6 +1,170 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "Together these files are over the %@ MB a group room message takes. Send some in another message." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zusammen sind diese Dateien größer als die %@ MB, die eine Nachricht in einem Raum nimmt. Schick einige in einer weiteren Nachricht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Juntos, estos archivos superan los %@ MB que admite un mensaje de sala. Envía algunos en otro mensaje."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ensemble, ces fichiers dépassent les %@ Mo qu'accepte un message de salon. Envoie-en certains dans un autre message."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bersama-sama, file ini melebihi %@ MB yang diterima satu pesan ruang. Kirim sebagian di pesan lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Insieme questi file superano i %@ MB che accetta un messaggio di una stanza. Inviane alcuni in un altro messaggio."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これらのファイルは合計で、グループの1件のメッセージで送れる%@ MBを超えています。一部を別のメッセージで送ってください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 파일들은 합쳐서 방 메시지 하나가 받는 %@MB를 넘어요. 일부는 다른 메시지로 보내세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Razem te pliki przekraczają %@ MB, które przyjmuje wiadomość w pokoju. Część wyślij w kolejnej wiadomości."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Juntos, estes arquivos passam dos %@ MB que uma mensagem de sala aceita. Envie alguns em outra mensagem."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вместе эти файлы больше %@ МБ, которые принимает одно сообщение комнаты. Часть отправьте другим сообщением."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu dosyalar birlikte bir oda mesajının aldığı %@ MB'ı aşıyor. Bazılarını başka bir mesajla gönder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些文件合计超过了群聊一条消息可带的 %@ MB。请把一部分用另一条消息发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這些檔案合計超過了群組一則訊息可帶的 %@ MB。請把一部分用另一則訊息傳送。"
+          }
+        }
+      }
+    },
+    "Connect to Hermes to send files to this room." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Verbinde dich mit Hermes, um Dateien in diesen Raum zu senden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conéctate a Hermes para enviar archivos a esta sala."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connecte-toi à Hermes pour envoyer des fichiers dans ce salon."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hubungkan ke Hermes untuk mengirim file ke ruang ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connettiti a Hermes per inviare file in questa stanza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このグループにファイルを送るにはHermesに接続してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 방에 파일을 보내려면 Hermes에 연결하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połącz się z Hermes, aby wysyłać pliki do tego pokoju."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conecte-se ao Hermes para enviar arquivos a esta sala."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Подключитесь к Hermes, чтобы отправлять файлы в эту комнату."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu odaya dosya göndermek için Hermes'e bağlan."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "连接 Hermes 才能向这个群聊发送文件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連線 Hermes 才能向這個群組傳送檔案。"
+          }
+        }
+      }
+    },
     "A group room message takes up to %@ files. Send the rest in another message." : {
       "localizations" : {
         "de" : {

@@ -84,10 +84,13 @@ final class GroupRoomFilesClient {
         case malformed
         /// Together past what Hermes takes in one message (25 MB), with no
         /// plugin to take the rest.
-        case overMessageLimit([String])
+        case overMessageLimit
         /// More files than Hermes takes in one message (8), with no plugin
         /// to take the rest.
         case tooManyFiles
+        /// Files for Hermes with no connection to send them on, and no
+        /// plugin to take them.
+        case notConnected
 
         var errorDescription: String? {
             switch self {
@@ -95,13 +98,14 @@ final class GroupRoomFilesClient {
                 return AppLocalization.string("Could not prepare \(name) for upload.")
             case .malformed:
                 return AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again.")
-            case .overMessageLimit(let names):
+            case .overMessageLimit:
                 let limit = String(GroupRoomAttachment.maxMessageBytes / 1_000_000)
-                let list = names.joined(separator: ", ")
-                return AppLocalization.string("These files are larger than the \(limit) MB a group room takes: \(list).")
+                return AppLocalization.string("Together these files are over the \(limit) MB a group room message takes. Send some in another message.")
             case .tooManyFiles:
                 let limit = String(GroupRoomAttachment.maxPerMessage)
                 return AppLocalization.string("A group room message takes up to \(limit) files. Send the rest in another message.")
+            case .notConnected:
+                return AppLocalization.string("Connect to Hermes to send files to this room.")
             }
         }
     }
@@ -186,7 +190,9 @@ extension AppState {
     /// another file, within its 8 files, 15 MB each, 25 MB a message);
     /// the rest go to the plugin's room files as `@file:` lines above what
     /// was typed.
-    func roomMessage(_ text: String, attachments: [Attachment]) async throws -> RoomMessage {
+    func roomMessage(
+        _ text: String, attachments: [Attachment], pictureCache: URL = TranscriptImageCache.defaultDirectory
+    ) async throws -> RoomMessage {
         let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !attachments.isEmpty else { return RoomMessage(text: text) }
         var sent: [(Attachment, GroupRoomAttachment)] = []
@@ -194,11 +200,20 @@ extension AppState {
         let pluginStores = notifierPlugin.reports(GroupRoomFilesClient.capability)
         // Both legs of one send go to the dashboard it started on.
         let pluginBridge = dashboardTicketBridge
+        if roomTakesHermesAttachments, client == nil, !pluginStores {
+            throw GroupRoomFilesClient.Failure.notConnected
+        }
         if roomTakesHermesAttachments, let client, let roomID = activeRoomSurface?.room.roomID {
-            // Past Hermes' count with nowhere for the rest: say so before
-            // anything goes up.
-            if !pluginStores, attachments.count > GroupRoomAttachment.maxPerMessage {
-                throw GroupRoomFilesClient.Failure.tooManyFiles
+            // Past Hermes' count or message total with nowhere for the
+            // rest: say so before anything goes up, so no upload is left
+            // stored on the host for a message that never sends.
+            if !pluginStores {
+                if attachments.count > GroupRoomAttachment.maxPerMessage {
+                    throw GroupRoomFilesClient.Failure.tooManyFiles
+                }
+                if Self.roomFilesBytes(attachments) > GroupRoomAttachment.maxMessageBytes {
+                    throw GroupRoomFilesClient.Failure.overMessageLimit
+                }
             }
             var total = 0
             for attachment in attachments {
@@ -212,7 +227,7 @@ extension AppState {
                     if upload != nil, !pluginStores {
                         // Each fits, together they don't: say so, not that a
                         // file couldn't be prepared.
-                        throw GroupRoomFilesClient.Failure.overMessageLimit(attachments.map(\.name))
+                        throw GroupRoomFilesClient.Failure.overMessageLimit
                     }
                     forPlugin.append(attachment)
                     continue
@@ -234,7 +249,8 @@ extension AppState {
             }
             if let resolver = roomFilePicturesResolver {
                 await keepSentRoomPictures(
-                    sent.filter { $0.1.kind == "image" }.map { ($0.0, $0.1.path(roomID: roomID)) }, resolver: resolver
+                    sent.filter { $0.1.kind == "image" }.map { ($0.0, $0.1.path(roomID: roomID)) },
+                    resolver: resolver, in: pictureCache
                 )
             }
         } else {
@@ -246,6 +262,17 @@ extension AppState {
         guard pluginStores else { throw GroupRoomFilesClient.Failure.unreadable(forPlugin[0].name) }
         let pluginText = try await roomMessageText(typed, attachments: forPlugin, bridge: pluginBridge)
         return RoomMessage(text: pluginText, attachments: sent.map(\.1))
+    }
+
+    /// The staged files' sizes added up, read from the files without
+    /// loading them. A file that can't be read counts as nothing here and
+    /// fails when it's prepared.
+    nonisolated static func roomFilesBytes(_ attachments: [Attachment]) -> Int {
+        attachments.reduce(0) { total, attachment in
+            guard let url = URL(string: attachment.uri), url.isFileURL,
+                  let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return total }
+            return total + size
+        }
     }
 
     /// Uploads a room message's files to the plugin and returns the text
