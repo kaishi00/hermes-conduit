@@ -684,14 +684,14 @@ struct V2Shell: View {
             // A page tapped while a room waits takes the reader elsewhere too.
             .onChange(of: chatsPath) { old, new in
                 giveUpRoomIfLeft()
-                if old.last == .conversation { standDownIfChatLeft() }
+                if old.contains(.conversation) { standDownIfChatLeft() }
             }
             // Back from a chat's screen while a Bot Chat is on its way (the
             // edge swipe, Close beside the list): that open stands down
             // rather than land behind the list.
             .onChange(of: botsPath) { old, new in
                 giveUpRoomIfLeft()
-                if old.last == .conversation { standDownIfChatLeft() }
+                if old.contains(.conversation) { standDownIfChatLeft() }
             }
             .onChange(of: appState.isModalSheetPresented) { _, presented in
                 // A sheet's dismissal shows the chat again: what came in under
