@@ -371,7 +371,18 @@ struct NotifierPluginUpdater {
             // the update. Never fall back to Hermes' own pull, which would
             // replace the copy the host pinned.
             // A restart-only run pulls nothing either way: the restarts run from here.
-            if Self.httpStatus(of: error) == 409 { return restartOnly ? nil : .failed(detail: Self.detail(of: error)) }
+            if Self.httpStatus(of: error) == 409 {
+                guard restartOnly else { return .failed(detail: Self.detail(of: error)) }
+                // 0.147.2+ also answers 409 when nothing waits any more (another
+                // phone finished it): restart nothing. Older plugins refuse every
+                // job, and their copy still waits, so the restarts run from here.
+                if let current = try? await request(NotifierPluginStatus.path, "GET", nil),
+                   let runtime = NotifierPluginStatus.runtime(from: current), !runtime.restartNeeded {
+                    report?(current)
+                    return .updated(version: runtime.loadedVersion)
+                }
+                return nil
+            }
             // No answer at all (a timeout, a dropped connection, the bridge's
             // fetch failure, which reads as status 0) may still have started
             // the job: follow one that runs rather than start a second

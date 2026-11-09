@@ -1067,6 +1067,9 @@ extension GatewayRestartTests {
         let host = PluginHost()
         host.selfUpdateStartError = DashboardTicketBridgeError.http(status: 409, detail: "The host manages the Conduit plugin")
         host.capabilities = [
+            // Read before the run, after the refusal (the copy still waits),
+            // before the restarts, then before the dashboard's.
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
             Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
             Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
             Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
@@ -1079,6 +1082,25 @@ extension GatewayRestartTests {
         XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
         XCTAssertTrue(host.calls.contains("POST \(GatewayRestarter.restartPath)"))
         XCTAssertTrue(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
+    }
+
+    func testAManagedHostsRefusalWithNothingWaitingRestartsNothing() async {
+        // Plugin 0.147.2+ answers 409 once nothing waits: another phone
+        // finished the restart between this run's first read and its start.
+        let host = PluginHost()
+        host.selfUpdateStartError = DashboardTicketBridgeError.http(status: 409, detail: "The host manages the Conduit plugin")
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        var updater = host.updater()
+        updater.onHost = true
+        updater.restartOnly = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertFalse(host.calls.contains("POST \(GatewayRestarter.restartPath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
     }
 
     func testAManagedHostsWaitingRestartRunsOnlyTheRestarts() async {
