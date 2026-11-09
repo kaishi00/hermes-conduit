@@ -122,27 +122,28 @@ final class NotificationService: UNNotificationServiceExtension {
         content.threadIdentifier = thread
         let pending = RoomHandoffs.record(request.identifier, thread: thread, defaults: NotificationSharedSettings.defaults)
         Self.replaceEarlier(
-            in: note, pending: Set(pending), until: Date().addingTimeInterval(RoomHandoffs.wait)
+            in: note, own: request.identifier, pending: Set(pending), until: Date().addingTimeInterval(RoomHandoffs.wait)
         ) { [weak self] in self?.deliver(content) }
     }
 
     /// Removes the room's notifications already shown, and those `pending`
     /// once they show (two bots finishing together), until `deadline`.
+    /// Never this push's own (`own`), which a timeout may already have shown.
     private static func replaceEarlier(
-        in note: [String: String], pending: Set<String>, until deadline: Date, then: @escaping () -> Void
+        in note: [String: String], own: String, pending: Set<String>, until deadline: Date, then: @escaping () -> Void
     ) {
         let center = UNUserNotificationCenter.current()
         center.getDeliveredNotifications { delivered in
             let shown = Set(delivered.map(\.request.identifier))
             let earlier = delivered
-                .filter { ReadChatHint.replaces(note, delivered: $0.request.content.userInfo) }
+                .filter { $0.request.identifier != own && ReadChatHint.replaces(note, delivered: $0.request.content.userInfo) }
                 .map(\.request.identifier)
             let gone = Set(earlier).union(pending.intersection(shown))
             if !gone.isEmpty { center.removeDeliveredNotifications(withIdentifiers: Array(gone)) }
             let waiting = pending.subtracting(shown)
             guard !waiting.isEmpty, Date() < deadline else { return then() }
             DispatchQueue.global().asyncAfter(deadline: .now() + 0.15) {
-                Self.replaceEarlier(in: note, pending: waiting, until: deadline, then: then)
+                Self.replaceEarlier(in: note, own: own, pending: waiting, until: deadline, then: then)
             }
         }
     }
