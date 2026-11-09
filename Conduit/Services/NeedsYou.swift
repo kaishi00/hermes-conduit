@@ -33,6 +33,10 @@ struct NeedsYouItem: Identifiable, Equatable {
     /// How many questions a batch holds; 0 for an approval.
     let questions: Int
     let since: Date
+    /// The group room this Hermes hosts that the wait is in (notifier
+    /// 0.150.1+): its row opens the room, whose card answers it, not the
+    /// bot's hidden chat there (issue 2064). Nil for a chat's wait.
+    let roomID: String?
 
     var id: String { "\(profile)\u{1F}\(waitID)" }
 
@@ -44,7 +48,8 @@ struct NeedsYouItem: Identifiable, Equatable {
         title: String = "",
         summary: String = "",
         questions: Int = 0,
-        since: Date = Date()
+        since: Date = Date(),
+        roomID: String? = nil
     ) {
         self.waitID = waitID
         self.profile = profile
@@ -54,6 +59,7 @@ struct NeedsYouItem: Identifiable, Equatable {
         self.summary = summary
         self.questions = questions
         self.since = since
+        self.roomID = roomID
     }
 
     /// One row of the plugin's `waiting` list; nil when it names no chat.
@@ -75,7 +81,10 @@ struct NeedsYouItem: Identifiable, Equatable {
             questions: (host["questions"] as? NSNumber)?.intValue ?? 0,
             // A host that sends no time: one fixed date, so the row neither
             // reads "now" forever nor changes on every read.
-            since: at.map { Date(timeIntervalSince1970: $0) } ?? .distantPast
+            since: at.map { Date(timeIntervalSince1970: $0) } ?? .distantPast,
+            roomID: (host["room"] as? String)
+                .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+                .flatMap { $0.isEmpty ? nil : $0 }
         )
     }
 

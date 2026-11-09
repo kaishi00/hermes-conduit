@@ -283,10 +283,13 @@ struct V2ConversationScreen: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
-        // The bot's overview and Edit Bot cover the chat too.
+        // The bot's overview and Edit Bot cover the chat too, and a room's
+        // settings, info, picture picker and disband prompt cover the room
+        // (issue 2064).
         .onChange(of: screenTarget != nil || artifactSessionIDs != nil || chatTitlePendingRename != nil
                   || chatTitlePendingDeletion != nil || editedBot != nil
-                  || (workPanelOpen && !fitsSidePanel && workProfile != nil)) { _, covered in
+                  || (workPanelOpen && !fitsSidePanel && workProfile != nil)
+                  || showsRoomSettings || showsRoomInfo || confirmsRoomDisband || choosesRoomPicture != nil) { _, covered in
             appState.chatCoveredBySheet = covered
             // What came in under the sheet is read once it closes (#1579).
             if !covered { appState.clearShownChatNotifications() }

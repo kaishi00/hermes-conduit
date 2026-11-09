@@ -57,6 +57,12 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
     /// call: a chat link says to end it, as it can be tapped again then, and
     /// a notification, gone once tapped, opens when the call ends.
     let isChatLink: Bool
+    /// The group room this Hermes hosts that a turn's reply, failure,
+    /// background task or approval came from (`room.id`, notifier 0.150.1+):
+    /// the tap opens the room, not the bot's hidden chat there that
+    /// `sessionId` names (issue 2064). Nil for every other notification,
+    /// and from an older notifier.
+    let roomID: String?
     var id: String { "\(dashboardID?.uuidString ?? "none"):\(relayGatewayID ?? "nogw"):\(profile ?? "default"):\(sessionId):\(type ?? "")" }
 
     init(
@@ -70,7 +76,8 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
         type: String?,
         decision: PendingDecisionPayload? = nil,
         call: HermesCallRequest? = nil,
-        isChatLink: Bool = false
+        isChatLink: Bool = false,
+        roomID: String? = nil
     ) {
         self.profile = profile
         self.profileName = profileName
@@ -83,6 +90,21 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
         self.decision = decision
         self.call = call
         self.isChatLink = isChatLink
+        self.roomID = roomID
+    }
+
+    /// The pushes that carry the room they open (the plugin's
+    /// events.ROOM_KINDS). A room invite's room is another host's, and
+    /// opens its join card instead.
+    static let roomTypes: Set<String> = ["response.ready", "turn.failed", "background_task.finished", "approval.needed"]
+
+    /// The room a routing payload names for one of `roomTypes`: its
+    /// `room.id`, or the extension's flat `room_id` note (ReadChatHint).
+    static func roomID(in payload: [String: Any], type: String?) -> String? {
+        guard let type, roomTypes.contains(type) else { return nil }
+        let raw = ((payload["room"] as? [String: Any])?["id"] as? String) ?? (payload["room_id"] as? String)
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
@@ -181,6 +203,8 @@ private struct WaitingTap: Codable {
     let relayGatewayID: String?
     let type: String?
     let decision: PendingDecisionPayload?
+    /// Absent from a tap kept by an older build.
+    let roomID: String?
     let waitingSince: Date
 }
 
@@ -2261,7 +2285,8 @@ final class PushNotificationService: ObservableObject {
                 relayGatewayID: target.relayGatewayID,
                 type: target.type,
                 decision: nil,
-                call: target.call
+                call: target.call,
+                roomID: target.roomID
             )
         }
         retainRelayGatewayID(for: target)
@@ -2712,6 +2737,7 @@ final class PushNotificationService: ObservableObject {
             relayGatewayID: target.relayGatewayID,
             type: target.type,
             decision: target.decision,
+            roomID: target.roomID,
             waitingSince: date()
         )
         keptTaps.set(try? JSONEncoder().encode(tap), forKey: Self.waitingTapKey)
@@ -2740,7 +2766,8 @@ final class PushNotificationService: ObservableObject {
             dashboardID: tap.dashboardID,
             relayGatewayID: tap.relayGatewayID,
             type: tap.type,
-            decision: tap.decision
+            decision: tap.decision,
+            roomID: tap.roomID
         )
         retainRelayGatewayID(for: target)
         pendingTarget = target
@@ -2872,24 +2899,8 @@ final class PushNotificationService: ObservableObject {
     }
 
     private static func parsePlaintextNotificationTarget(from userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
-        let direct = userInfo["conduit"] as? [String: Any]
-        let nested = (userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any]
-        // The relay's optimized APNs layout keeps the structured decision
-        // ONLY in body.conduit, with the top-level conduit copy reduced to a
-        // routing stub for raw-APNs readers — so whichever copy actually
-        // carries a decision must win, nested first (that is where the
-        // optimized layout puts it). Payloads without a decision anywhere
-        // fall back to plain routing, preferring the legacy top-level copy.
-        // A call's details travel the same way (#449).
-        let payload: [String: Any]
-        if nested?["decision"] is [String: Any] || nested?["call"] is [String: Any] {
-            payload = nested ?? [:]
-        } else if direct?["decision"] is [String: Any] || direct?["call"] is [String: Any] {
-            payload = direct ?? [:]
-        } else {
-            payload = direct ?? nested ?? [:]
-        }
-        return target(from: payload)
+        // A decision, a call or a group room rides only in body.conduit.
+        target(from: NotificationE2E.plaintextRouting(userInfo))
     }
 
     private static func target(from payload: [String: Any]) -> ConduitNotificationTarget? {
@@ -2933,7 +2944,8 @@ final class PushNotificationService: ObservableObject {
             relayGatewayID: rawRelayGatewayID?.isEmpty == false ? rawRelayGatewayID : nil,
             type: type?.isEmpty == false ? type : nil,
             decision: pendingDecision(from: payload),
-            call: HermesCallRequest.parse(payload["call"], type: type)
+            call: HermesCallRequest.parse(payload["call"], type: type),
+            roomID: ConduitNotificationTarget.roomID(in: payload, type: type?.isEmpty == false ? type : nil)
         )
     }
 
