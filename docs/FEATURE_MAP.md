@@ -7142,7 +7142,7 @@ caption or doc gives this cadence)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-09, #1921 (Scheduled's opening read narrowed to the jobs it draws; a notification read that lands before the capability is repeated when it arrives, and one asked for during a save is repeated after it; Show runs in Chats forces the newest page and the cron rows on the tap; pull to refresh keeps the full repair #1972 gave it; Chats' Scheduled filter and the job detail sheet recorded as siblings; the drawer's Cron tab keeps its catalogue read and its own re-read; Code)
+**Checked:** 2026-11-09, #1921 (Scheduled's opening read narrowed to the jobs it draws; a notification read that lands before the capability is repeated when it arrives, and one asked for during a save is repeated after it; Show runs in Chats forces the newest page and the cron rows on the tap; pull to refresh keeps the full repair #1972 gave it; Chats' Scheduled filter and the job detail sheet recorded as siblings; the drawer's Cron tab keeps its catalogue read and its own re-read; the deferred retry is device-only and unverified: no test drives it, the source-contract test only pins the calls around it; Code)
 
 ## Two Hermes servers
 
