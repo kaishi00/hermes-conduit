@@ -456,6 +456,11 @@ extension GatewayRestartTests {
         // What else the ask said (sharing paused, the version needed) leads.
         XCTAssertEqual(PluginUpdateAsk.text(ask, lead: "Sharing is paused."),
                        "Sharing is paused. The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
+        // Location sharing bound to another dashboard is worded with that host's manager.
+        XCTAssertEqual(LocationSyncPause.pluginMissing.message(managedBy: nil),
+                       "Paused: update the Conduit plugin on this host to share your location.")
+        XCTAssertEqual(LocationSyncPause.pluginMissing.message(managedBy: "Barn"),
+                       "Sharing is paused. The Conduit plugin on this host doesn't have this yet. Barn keeps the plugin up to date.")
         // A takeover's unexpected answer keeps the retry and names who updates the plugin.
         XCTAssertEqual(AppState.chatTakeoverFailureMessage(ChatTakeoverError.malformed),
                        "The Conduit notifier plugin gave an unexpected answer. Try again in a moment. Family farm keeps the plugin up to date.")

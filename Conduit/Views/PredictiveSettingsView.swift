@@ -176,12 +176,14 @@ struct PredictiveSettingsPage: View {
                         if predictionsSlotListed {
                             Text("Fast model on your host: \(fast). Change it in Models & providers under Helper models.")
                         } else {
-                            Text(PluginUpdateAsk.text(AppLocalization.string("Fast model on your host: \(fast). Update the Conduit plugin to change it here.")))
+                            Text(PluginUpdateAsk.text(AppLocalization.string("Fast model on your host: \(fast). Update the Conduit plugin to change it here."),
+                                                      lead: AppLocalization.string("Fast model on your host: \(fast).")))
                         }
                     } else if predictionsSlotListed {
                         Text("Your host has no fast model set, so the chat's own model answers. Pick one in Models & providers under Helper models, as Conduit predictions.")
                     } else {
-                        Text(PluginUpdateAsk.text(AppLocalization.string("Your host has no fast model set, so the chat's own model answers. Update the Conduit plugin to pick one here.")))
+                        Text(PluginUpdateAsk.text(AppLocalization.string("Your host has no fast model set, so the chat's own model answers. Update the Conduit plugin to pick one here."),
+                                                      lead: AppLocalization.string("Your host has no fast model set, so the chat's own model answers.")))
                     }
                 }
                 .scaledFont(.footnote)

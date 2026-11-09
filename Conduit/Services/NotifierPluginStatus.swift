@@ -471,8 +471,12 @@ enum PluginUpdateAsk {
     /// What a host that manages the plugin says in place of the ask (the
     /// Watch's too, through WatchPhoneContext), or nil when it doesn't.
     static var managedAsk: String? {
-        guard let managedBy = activeManagedBy.withLock({ $0 }) else { return nil }
-        return AppLocalization.string("The Conduit plugin on this host doesn't have this yet.")
+        activeManagedBy.withLock({ $0 }).map { managedAsk(by: $0) }
+    }
+
+    /// What a host managed by `managedBy` says in place of the ask.
+    static func managedAsk(by managedBy: String) -> String {
+        AppLocalization.string("The Conduit plugin on this host doesn't have this yet.")
             + " " + NotifierPluginStatus.managedText(managedBy)
     }
 
@@ -495,7 +499,13 @@ enum PluginUpdateAsk {
     /// also said: that sharing is paused, why a call was refused, the
     /// version a feature needs) followed by the managed text.
     static func text(_ ask: String, lead: String) -> String {
-        isManaged ? lead + " " + text(ask) : ask
+        text(ask, lead: lead, managedBy: managedBy)
+    }
+
+    /// `text(_:lead:)` for a host other than the active one (a sharing
+    /// destination that isn't the active dashboard), managed by `managedBy`.
+    static func text(_ ask: String, lead: String, managedBy: String?) -> String {
+        managedBy.map { lead + " " + managedAsk(by: $0) } ?? ask
     }
 
     /// A short title asking for the update, or "Not on this host" on a host that manages it.
