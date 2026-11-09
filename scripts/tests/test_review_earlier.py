@@ -64,6 +64,7 @@ COMMENTS = [
     review(GLM, "200", "2026-11-09T11:00:00Z", "this run's own GLM finding"),
 ]
 DIFF = ("diff --git a/a.swift b/a.swift\n--- a/a.swift\n+++ b/a.swift\n@@ -1 +1 @@\n-old\n+fixed B\n"
+        'diff --git "a/caf\\303\\251.swift" "b/caf\\303\\251.swift"\n@@ -1 +1 @@\n-x\n+quoted name\n'
         "diff --git a/z.swift b/z.swift\n--- a/z.swift\n+++ b/z.swift\n@@ -1 +1 @@\n-main\n+main's own\n")
 
 
@@ -72,7 +73,8 @@ def commit(sha, message, parents=1):
 
 
 class EarlierRoundsTests(unittest.TestCase):
-    def gather(self, chain=SECOND_CHAIN, comments=COMMENTS, reviewed=REVIEWED, fail=False, merge_only=False):
+    def gather(self, chain=SECOND_CHAIN, comments=COMMENTS, reviewed=REVIEWED, fail=False, merge_only=False,
+               event="pull_request_target"):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         bin_dir = os.path.join(tmp, "bin")
@@ -84,8 +86,9 @@ class EarlierRoundsTests(unittest.TestCase):
         fixtures = {
             "issues_7_comments_per_page=100": json.dumps(comments),
             "pulls_7": json.dumps({"head": {"sha": HEAD}, "user": {"login": "contributor"}}),
-            "actions_runs_100": json.dumps({"head_sha": reviewed}),
-            "actions_runs_90": json.dumps({"head_sha": "0" * 40}),
+            "actions_runs_100": json.dumps({"head_sha": reviewed, "event": event}),
+            "actions_runs_90": json.dumps({"head_sha": "0" * 40, "event": "pull_request_target"}),
+            f"compare_{'0' * 40}...{HEAD}": DIFF,
             "pulls_7_commits_per_page=100": json.dumps([
                 commit("0" * 40, "First"), commit(REVIEWED, "Second"), commit(LATER, "Fix B's edge case"),
                 commit(MERGE, "Merge remote-tracking branch 'origin/main'", parents=2), commit(HEAD, "Fix A")]
@@ -112,6 +115,7 @@ class EarlierRoundsTests(unittest.TestCase):
         self.assertIn(f"- {HEAD[:7]} Fix A", out)
         self.assertNotIn("Merge remote-tracking", out)
         self.assertIn("+fixed B", out)
+        self.assertIn("+quoted name", out, "a name git quotes is kept")
         self.assertNotIn("main's own", out, "the base branch's own change came in through a merge")
         self.assertIn("Review the change since your last review in full", out)
         # The latest review from each reviewer, without opencode's footer.
@@ -140,6 +144,18 @@ class EarlierRoundsTests(unittest.TestCase):
         self.assertIn("+fixed B", out)
         self.assertIn("Review the change since your last review in full", out)
         self.assertNotIn("nothing changed", out.lower())
+
+    def test_a_manual_run_reads_from_the_last_pull_request_run(self):
+        # A manual run's head is the branch it ran from, so the commit read
+        # comes from the newest review a PR event ran.
+        out = self.gather(event="workflow_dispatch")
+        self.assertIn("was of commit 0000000.", out)
+        self.assertIn("+fixed B", out)
+
+        out = self.gather(event="workflow_dispatch",
+                          comments=[c for c in COMMENTS if "actions/runs/90)" not in c["body"]])
+        self.assertIn("run by hand", out)
+        self.assertNotIn("```diff", out)
 
     def test_the_first_review_gets_nothing(self):
         self.assertEqual(self.gather(comments=[person("kaishi00", "2026-11-09T10:20:00Z", "hi")]), "")

@@ -415,10 +415,19 @@ jobs:
                 head, author = pr["head"]["sha"], pr["user"]["login"]
                 delta = None
                 if own:
-                    reviewed = gh(f"actions/runs/{own[-1]['run']}")["head_sha"]
+                    # A manual run's head is the branch it ran from, not the
+                    # PR's: the commit is the newest a PR event's run read.
+                    reviewed = None
+                    for r in reversed(own[-5:]):
+                        run = gh(f"actions/runs/{r['run']}")
+                        if run.get("event") == "pull_request_target":
+                            reviewed = run["head_sha"]
+                            break
                     commits = gh(f"pulls/{PR}/commits?per_page=100", items=True)
                     shas = [c["sha"] for c in commits]
-                    if reviewed == head:
+                    if reviewed is None:
+                        out += ["", "Your last reviews were run by hand, so the commit they read isn't known: review all of it."]
+                    elif reviewed == head:
                         out += ["", f"Your last review (as {', '.join(OWN_NAMES)}) was of this same commit, {head[:7]}: nothing changed since."]
                         delta = []
                     elif reviewed in shas:
@@ -429,7 +438,9 @@ jobs:
                         for line in diff.split("\n"):
                             if line.startswith("diff --git "):
                                 m = re.match(r"diff --git a/(.+) b/(.+)$", line)
-                                keep = bool(m) and (m.group(1) in files or m.group(2) in files)
+                                # A name git quotes (one with characters it escapes)
+                                # is kept rather than decoded.
+                                keep = '"' in line or (bool(m) and (m.group(1) in files or m.group(2) in files))
                             if keep:
                                 kept.append(line)
                         # A merge that resolved a conflict in the PR's own
