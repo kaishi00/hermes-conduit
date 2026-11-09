@@ -233,7 +233,18 @@ struct V2ScheduledList: View {
         // A hidden Tasks tab stays mounted; it loads when shown, like Chats.
         .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(shell.isTabActive)") {
             guard shell.isTabActive else { return }
-            await appState.refreshCronContent()
+            await appState.refreshScheduledContent()
+        }
+        // The capability report can land after this tab's first read, and the
+        // notification read returns early until it does
+        // (AppState+CronNotifications.swift:33), which would draw a muted job
+        // as unmuted. The drawer's Cron tab re-reads on the same signal
+        // (SidebarView.swift:2284); this one does too, and only on the
+        // transition, so an open that already knew the capability is not read
+        // twice.
+        .onChange(of: appState.supportsCronNotifications) { _, supported in
+            guard supported, shell.isTabActive else { return }
+            Task { await appState.refreshCronNotifications() }
         }
         .refreshable { await appState.refreshCronContent(repairingCatalog: true) }
         .sheet(item: $selectedJob) {
