@@ -66,7 +66,10 @@ struct PredictiveSettingsPage: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
             if !appState.predictiveIsServed {
                 Label {
-                    Text(PluginUpdateAsk.text(AppLocalization.string("Needs a newer Conduit plugin on your Hermes host (\(Predictive.minimumPlugin) or later).")))
+                    Text(PluginUpdateAsk.text(
+                        AppLocalization.string("Needs a newer Conduit plugin on your Hermes host (\(Predictive.minimumPlugin) or later)."),
+                        lead: AppLocalization.string("Needs Conduit plugin \(Predictive.minimumPlugin) or later.")
+                    )))
                 } icon: {
                     Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 }

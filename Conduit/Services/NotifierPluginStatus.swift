@@ -480,6 +480,13 @@ enum PluginUpdateAsk {
         isManaged ? text(ask) + " " + outcome : ask
     }
 
+    /// `ask`, or on a host that manages the plugin `lead` (what the ask
+    /// also said: that sharing is paused, why a call was refused, the
+    /// version a feature needs) followed by the managed text.
+    static func text(_ ask: String, lead: String) -> String {
+        isManaged ? lead + " " + text(ask) : ask
+    }
+
     /// A short title asking for the update, or "Not on this host" on a host that manages it.
     static func title(_ ask: String) -> String {
         isManaged ? AppLocalization.string("Not on this host") : ask

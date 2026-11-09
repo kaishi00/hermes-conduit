@@ -325,7 +325,7 @@ enum HealthSyncPause: Codable, Equatable {
         case .signInRequired:
             return AppLocalization.string("Paused: sign in to this dashboard again. Sharing catches up when you open Conduit.")
         case .pluginMissing:
-            return PluginUpdateAsk.text(AppLocalization.string("Paused: update the Conduit plugin on this host to share health data."))
+            return PluginUpdateAsk.text(AppLocalization.string("Paused: update the Conduit plugin on this host to share health data."), lead: AppLocalization.string("Sharing is paused."))
         case .otherDashboard:
             return AppLocalization.string("Waiting: health data goes only to the dashboard it was turned on for. Switch back to it to sync.")
         case .pluginOff(let remedy):

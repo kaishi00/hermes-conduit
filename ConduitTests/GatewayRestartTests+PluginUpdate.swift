@@ -444,12 +444,36 @@ extension GatewayRestartTests {
         XCTAssertEqual(PluginUpdateAsk.reason(missing),
                        "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
         XCTAssertEqual(PluginUpdateAsk.reason("Grok isn't signed in."), "Grok isn't signed in.")
+        // What else the ask said (sharing paused, the version needed) leads.
+        XCTAssertEqual(PluginUpdateAsk.text(ask, lead: "Sharing is paused."),
+                       "Sharing is paused. The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
         // A report without it: the host no longer manages the plugin.
         appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a"))
         XCTAssertNil(appState.notifierPlugin.managedBy)
         XCTAssertEqual(PluginUpdateAsk.text(ask), ask)
         XCTAssertEqual(PluginUpdateAsk.text(ask, then: "This one wasn't kept."), ask)
+        XCTAssertEqual(PluginUpdateAsk.text(ask, lead: "Sharing is paused."), ask)
         XCTAssertEqual(PluginUpdateAsk.title("Plugin update needed"), "Plugin update needed")
+    }
+
+    /// From launch, before the host's status is read, screens word the ask
+    /// for the manager the active host last reported.
+    func testTheRememberedManagerWordsTheAskFromLaunch() throws {
+        let suite = "GatewayRestartTests.managedLaunch.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        addTeardownBlock { PluginUpdateAsk.setActive(managedBy: nil) }
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "http://127.0.0.1:1")
+        NotifierPluginStatus.Remembered.remember("Family farm", for: dashboard.id, in: defaults)
+        PluginUpdateAsk.setActive(managedBy: nil)
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard])
+        )
+        XCTAssertEqual(appState.notifierPlugin.state, .unknown)
+        XCTAssertTrue(PluginUpdateAsk.isManaged)
+        XCTAssertEqual(PluginUpdateAsk.title("Plugin update needed"), "Not on this host")
     }
 
     func testTheSavedNoticeChoiceHoldsFromLaunch() throws {

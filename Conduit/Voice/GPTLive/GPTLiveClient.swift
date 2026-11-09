@@ -104,7 +104,10 @@ enum GPTLiveClientError: LocalizedError, Equatable {
         case .notSubscription:
             return AppLocalization.string("Hermes did not start GPT-Live on the ChatGPT subscription, so Conduit did not connect.")
         case .notAPIKey:
-            return PluginUpdateAsk.text(AppLocalization.string("Hermes did not start GPT-Live on the API key, so Conduit did not connect. Update the Hermes notifier plugin."))
+            return PluginUpdateAsk.text(
+                AppLocalization.string("Hermes did not start GPT-Live on the API key, so Conduit did not connect. Update the Hermes notifier plugin."),
+                lead: AppLocalization.string("Hermes did not start GPT-Live on the API key, so Conduit did not connect.")
+            )
         }
     }
 }
@@ -224,7 +227,10 @@ final class GPTLiveClient: GPTLiveSessionProviding {
             return .unavailable(reason: response["reason"] as? String ?? response["detail"] as? String ?? response["error"] as? String)
         }
         guard let api = response["api"] as? [String: Any] else {
-            return .unavailable(reason: PluginUpdateAsk.text(AppLocalization.string("GPT-Live on an API key needs the Hermes notifier plugin 0.22 or newer.")))
+            return .unavailable(reason: PluginUpdateAsk.text(
+                AppLocalization.string("GPT-Live on an API key needs the Hermes notifier plugin 0.22 or newer."),
+                lead: AppLocalization.string("Needs Conduit plugin \("0.22") or later.")
+            ))
         }
         guard api["available"] as? Bool == true, api["auth"] as? String == GPTLiveBilling.api.rawValue else {
             return .unavailable(reason: api["reason"] as? String)

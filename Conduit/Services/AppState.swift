@@ -7829,6 +7829,9 @@ final class AppState: ObservableObject {
         let initialRegistry = preloadedRegistry
             ?? SavedDashboardMigrator.loadRegistry(defaults: defaults)
         self.savedDashboardRegistry = initialRegistry
+        // Screens that ask for a plugin update word it for a host that
+        // manages the plugin from launch, before its status is read.
+        PluginUpdateAsk.setActive(managedBy: NotifierPluginStatus.Remembered.managedBy(for: initialRegistry.activeDashboardID, in: defaults))
         // #1317 kept Off for older installs; Recent holds for every install
         // that hasn't picked one now (issue 1583).
         defaults.removeObject(forKey: ProjectChatsInChats.retiredDeviceDefaultKey)
@@ -29713,7 +29716,9 @@ final class AppState: ObservableObject {
         // already running; one that answered without Pulse ends the Pulse
         // this dashboard remembered.
         didSet {
-            PluginUpdateAsk.setActive(managedBy: notifierPlugin.managedBy)
+            // Before the host has answered, the manager it last reported.
+            PluginUpdateAsk.setActive(managedBy: notifierPlugin.managedBy ?? (notifierPlugin.state == .unknown
+                ? NotifierPluginStatus.Remembered.managedBy(for: activeDashboardID, in: defaults) : nil))
             if oldValue.state != notifierPlugin.state {
                 updateChatOnScreen()
                 forgetPulseHomeIfGone()
@@ -42137,6 +42142,10 @@ final class AppState: ObservableObject {
         let status = try await tokens.availability()
         noteWatchCallVoice(qwen ? .qwenLive : .geminiLive, ready: status.isAvailable, profile: profile)
         guard status.isAvailable else {
+            // The reason is worded for the active host's plugin.
+            guard watchConnectionIsCurrent(connection) else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
             throw WatchDirectPrepareError(PluginUpdateAsk.reason(status.userFacingReason(for: provider)) ?? GeminiLiveAvailability.notAvailable(for: provider))
         }
         let search = await searchLookup
@@ -42340,6 +42349,10 @@ final class AppState: ObservableObject {
         let status = try await makeGrokLiveClient { profile }.availability()
         noteWatchCallVoice(.grokLive, ready: status.isAvailable, profile: profile)
         guard case .available(_, let voice, _) = status else {
+            // The reason is worded for the active host's plugin.
+            guard watchConnectionIsCurrent(connection) else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
             throw WatchDirectPrepareError(PluginUpdateAsk.reason(status.userFacingReason) ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
         }
         // xAI's own search (#598), as on the phone.
