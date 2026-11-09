@@ -1878,6 +1878,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(try look(#"{"shape": "due", "facts": {"due": "next week"}}"#)?.body, .plain)
         XCTAssertEqual(try look(#"{"shape": "steps", "facts": {"names": ["a", "b"], "at": 5}}"#)?.body, .plain)
         XCTAssertEqual(try look(#"{"shape": "sparkle", "facts": {}}"#)?.body, .plain)
+        XCTAssertEqual(try look(#"{"shape": "runs", "facts": {"job": "a", "results": ["ok", null, "fail"]}}"#)?.body, .plain)
         // An empty name would shift "at" onto the wrong step.
         XCTAssertEqual(try look(#"{"shape": "steps", "facts": {"names": ["", "Shipped", "Delivered"], "at": 1}}"#)?.body, .plain)
         // A day with no time reads in whole days, never hours.

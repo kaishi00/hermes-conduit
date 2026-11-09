@@ -122,8 +122,9 @@ struct PulseLook: Equatable {
             return .due(due: found.date, hasTime: found.hasTime,
                         noticed: Self.day(text("noticed"), calendar: calendar)?.date)
         case "runs":
-            let results = (facts["results"] as? [Any] ?? []).compactMap { $0 as? String }
-            guard !results.isEmpty, results.allSatisfy({ $0 == "ok" || $0 == "fail" }) else { return nil }
+            let rawResults = facts["results"] as? [Any] ?? []
+            let results = rawResults.compactMap { $0 as? String }
+            guard !results.isEmpty, results.count == rawResults.count, results.allSatisfy({ $0 == "ok" || $0 == "fail" }) else { return nil }
             return .runs(job: text("job"), results: results.suffix(10).map { $0 == "ok" })
         case "promise":
             guard !text("said").isEmpty else { return nil }

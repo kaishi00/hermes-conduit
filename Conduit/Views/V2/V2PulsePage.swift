@@ -1080,27 +1080,50 @@ struct V2PulsePage: View {
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                HStack(spacing: 8) {
-                    // A pick's Ask takes Do it's place, with its own words (0.150.0).
-                    if !untold, let ask = card.look?.ask, appState.canAskFromPulseCard(card) {
-                        doItButton(card, ask: ask)
-                    } else if !untold, appState.canActOnPulseCard(card) {
-                        doItButton(card)
+                // One row when it fits; a pick's extra buttons can crowd a
+                // narrow phone or large text, so the thumbs then go below
+                // and the buttons scroll sideways.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        cardButtons(card, untold: untold)
+                        Spacer(minLength: 0)
+                        cardThumbs(card)
                     }
-                    if appState.canMarkPulseCardDone(card) { doneButton(card) }
-                    ForEach(Array((card.look?.extraActions ?? []).enumerated()), id: \.offset) { _, action in
-                        pickActionButton(action)
-                    }
-                    if card.look?.offersLater == true, card.dismissedAt == nil, card.doneAt == nil, canDismiss {
-                        laterButton(card)
-                    }
-                    Spacer(minLength: 0)
-                    if card.isRatable {
-                        thumb(card, up: true)
-                        thumb(card, up: false)
+                    VStack(alignment: .leading, spacing: 8) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) { cardButtons(card, untold: untold) }
+                        }
+                        if card.isRatable {
+                            HStack(spacing: 8) { cardThumbs(card) }
+                        }
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func cardButtons(_ card: PulseCard, untold: Bool) -> some View {
+        // A pick's Ask takes Do it's place, with its own words (0.150.0).
+        if !untold, let ask = card.look?.ask, appState.canAskFromPulseCard(card) {
+            doItButton(card, ask: ask)
+        } else if !untold, appState.canActOnPulseCard(card) {
+            doItButton(card)
+        }
+        if appState.canMarkPulseCardDone(card) { doneButton(card) }
+        ForEach(Array((card.look?.extraActions ?? []).enumerated()), id: \.offset) { _, action in
+            pickActionButton(action)
+        }
+        if card.look?.offersLater == true, card.dismissedAt == nil, card.doneAt == nil, canDismiss {
+            laterButton(card)
+        }
+    }
+
+    @ViewBuilder
+    private func cardThumbs(_ card: PulseCard) -> some View {
+        if card.isRatable {
+            thumb(card, up: true)
+            thumb(card, up: false)
         }
     }
 
