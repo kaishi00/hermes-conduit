@@ -340,6 +340,28 @@ extension GroupChatModelsTests {
         withoutPlugin.closeGroupRoom()
     }
 
+    /// More than Hermes' eight a message with no plugin: the count is named,
+    /// before anything goes up.
+    @MainActor
+    func testANinthFileWithoutThePluginNamesTheCount() async throws {
+        let hermes = AttachmentsHermes()
+        let appState = attachmentsAppState(hermes)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(attachmentsRoom())
+        var files: [Attachment] = []
+        for index in 1...9 {
+            files.append(try attachmentsStaged("p\(index).png", data: Self.pngBytes, mimeType: "image/png", kind: .image))
+        }
+        do {
+            _ = try await appState.roomMessage("", attachments: files)
+            XCTFail("expected the message to fail")
+        } catch {
+            XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .tooManyFiles)
+        }
+        XCTAssertTrue(hermes.uploads.isEmpty)
+        appState.closeGroupRoom()
+    }
+
     /// A room reads only what its host takes: Hermes' attachments where it
     /// downloads them, the plugin's pictures and other files by its own
     /// capabilities. An older plugin's file stays a name.

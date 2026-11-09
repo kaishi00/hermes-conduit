@@ -85,6 +85,9 @@ final class GroupRoomFilesClient {
         /// Together past what Hermes takes in one message (25 MB), with no
         /// plugin to take the rest.
         case overMessageLimit([String])
+        /// More files than Hermes takes in one message (8), with no plugin
+        /// to take the rest.
+        case tooManyFiles
 
         var errorDescription: String? {
             switch self {
@@ -96,6 +99,9 @@ final class GroupRoomFilesClient {
                 let limit = String(GroupRoomAttachment.maxMessageBytes / 1_000_000)
                 let list = names.joined(separator: ", ")
                 return AppLocalization.string("These files are larger than the \(limit) MB a group room takes: \(list).")
+            case .tooManyFiles:
+                let limit = String(GroupRoomAttachment.maxPerMessage)
+                return AppLocalization.string("A group room message takes up to \(limit) files. Send the rest in another message.")
             }
         }
     }
@@ -189,6 +195,11 @@ extension AppState {
         // Both legs of one send go to the dashboard it started on.
         let pluginBridge = dashboardTicketBridge
         if roomTakesHermesAttachments, let client, let roomID = activeRoomSurface?.room.roomID {
+            // Past Hermes' count with nowhere for the rest: say so before
+            // anything goes up.
+            if !pluginStores, attachments.count > GroupRoomAttachment.maxPerMessage {
+                throw GroupRoomFilesClient.Failure.tooManyFiles
+            }
             var total = 0
             for attachment in attachments {
                 try Task.checkCancellation()
