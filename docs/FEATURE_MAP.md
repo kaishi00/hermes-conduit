@@ -6254,16 +6254,17 @@ reads, already gated on what shows) · text: none (no Settings caption or doc
 gives this cadence)
 
 **Code**
-- The read: `Conduit/Services/AppState.swift` (refreshScheduledContent: loadCronJobs, refreshCronNotifications), `Conduit/Views/V2/V2TasksView.swift` (the tab's task and its refreshable)
-- The drawer's fuller read: `Conduit/Services/AppState.swift` (refreshCronContent, which also refreshes the sessions catalogue), `Conduit/Views/SidebarView.swift` (its Cron tab)
+- The read: `Conduit/Services/AppState.swift` (refreshScheduledContent: loadCronJobs, refreshCronNotifications), `Conduit/Views/V2/V2TasksView.swift` (the tab's task, its refreshable, and the notification read repeated when the capability lands)
+- The drawer's fuller read: `Conduit/Services/AppState.swift` (refreshCronContent, which also refreshes the sessions catalogue), `Conduit/Views/SidebarView.swift` (its Cron tab and its own capability re-read)
 
 **Rulings**
 - Opening Scheduled reads the jobs and their notifications, never the sessions catalogue: the tab draws no sessions, and the catalogue read was a full list read and cache bypass on every switch to it (2026-11-07, #1921).
+- A notification read that arrives before the host reports the capability is repeated when it arrives, so a muted job is not drawn as unmuted in the meantime (2026-11-09, #1921; the same signal the drawer's Cron tab uses).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-07, #1921 (Scheduled's opening read narrowed to the jobs it draws; the drawer's Cron tab keeps its catalogue read; Code)
+**Checked:** 2026-11-09, #1921 (Scheduled's opening read narrowed to the jobs it draws; a notification read that lands before the capability is repeated when it arrives; the drawer's Cron tab keeps its catalogue read and its own re-read; Code)
 
 ## Two Hermes servers
 
