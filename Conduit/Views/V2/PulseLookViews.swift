@@ -42,12 +42,12 @@ struct PulseLookBody: View {
     private func dateTile(_ day: Date, what: String, whose: String) -> some View {
         HStack(spacing: 12) {
             VStack(spacing: 0) {
-                Text(verbatim: day.formatted(.dateTime.weekday(.abbreviated)).uppercased())
+                Text(verbatim: day.formatted(.dateTime.weekday(.abbreviated).locale(AppLocalization.formattingLocale)).uppercased())
                     .scaledFont(.caption2.weight(.semibold))
                     .foregroundStyle(Color.conduitAccent)
-                Text(verbatim: day.formatted(.dateTime.day()))
+                Text(verbatim: day.formatted(.dateTime.day().locale(AppLocalization.formattingLocale)))
                     .scaledFont(.title2.weight(.semibold))
-                Text(verbatim: day.formatted(.dateTime.month(.abbreviated)))
+                Text(verbatim: day.formatted(.dateTime.month(.abbreviated).locale(AppLocalization.formattingLocale)))
                     .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
             }
@@ -55,14 +55,14 @@ struct PulseLookBody: View {
             .padding(.vertical, 6)
             .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary))
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(verbatim: day.formatted(date: .complete, time: .omitted)))
+            .accessibilityLabel(Text(verbatim: day.formatted(Date.FormatStyle(date: .complete, time: .omitted).locale(AppLocalization.formattingLocale))))
             VStack(alignment: .leading, spacing: 2) {
                 let title = [whose, what].filter { !$0.isEmpty }.joined(separator: " · ")
                 if !title.isEmpty {
                     Text(verbatim: title)
                         .scaledFont(.subheadline.weight(.medium))
                 }
-                Text(verbatim: day.formatted(.relative(presentation: .named)))
+                Text(verbatim: PulseLook.relativeDay(day))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -79,10 +79,10 @@ struct PulseLookBody: View {
             guard let noticed, by > noticed else { return late ? 1 : 0.5 }
             return min(1, max(0, now.timeIntervalSince(noticed) / by.timeIntervalSince(noticed)))
         }()
-        let dueText = hasTime ? due.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute())
-            : due.formatted(.dateTime.weekday(.abbreviated).day().month())
+        let dueText = hasTime ? due.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute().locale(AppLocalization.formattingLocale))
+            : due.formatted(.dateTime.weekday(.abbreviated).day().month().locale(AppLocalization.formattingLocale))
         return VStack(alignment: .leading, spacing: 6) {
-            Text(verbatim: due.formatted(.relative(presentation: .named)))
+            Text(verbatim: hasTime ? due.formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale)) : PulseLook.relativeDay(due))
                 .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(late ? Color.red : progress > 0.75 ? Color.orange : Color.primary)
             ProgressView(value: progress)
@@ -90,7 +90,7 @@ struct PulseLookBody: View {
                 .accessibilityHidden(true)
             HStack {
                 if let noticed {
-                    Text(verbatim: noticed.formatted(.dateTime.day().month()))
+                    Text(verbatim: noticed.formatted(.dateTime.day().month().locale(AppLocalization.formattingLocale)))
                 }
                 Spacer(minLength: 0)
                 Text(verbatim: dueText)

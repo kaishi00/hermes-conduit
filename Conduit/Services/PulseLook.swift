@@ -132,8 +132,10 @@ struct PulseLook: Equatable {
             guard !text("label").isEmpty, let state = State(rawValue: text("state")) else { return nil }
             return .status(label: text("label"), state: state)
         case "steps":
-            let names = (facts["names"] as? [Any] ?? []).compactMap { $0 as? String }.filter { !$0.isEmpty }
-            guard names.count >= 2, let at = PulseJSON.int(facts["at"]), names.indices.contains(at) else { return nil }
+            // Every name kept in place: "at" counts the plugin's list as sent.
+            let raw = facts["names"] as? [Any] ?? []
+            let names = raw.compactMap { $0 as? String }
+            guard names.count == raw.count, !names.contains(where: \.isEmpty), names.count >= 2, let at = PulseJSON.int(facts["at"]), names.indices.contains(at) else { return nil }
             return .steps(names: names, at: at)
         case "drawn":
             guard let body = facts["body"], let card = RichCard.cards(raw: [body]).first else { return nil }
@@ -150,6 +152,17 @@ struct PulseLook: Equatable {
     /// "2026-11-20" (the start of that day) or "2026-11-20T15:00", in the
     /// phone's time zone, which is the user's.
     /// The last moment of `date`'s day, by which a due with no time is due.
+    /// A day with no time said in whole days ("today", "tomorrow", "in 3
+    /// days"), so a date due today never reads "8 hours ago".
+    static func relativeDay(_ day: Date, now: Date = Date(), calendar: Calendar = PulseLook.wireCalendar) -> String {
+        let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
+                                           to: calendar.startOfDay(for: day)).day ?? 0
+        let formatter = RelativeDateTimeFormatter()
+        formatter.dateTimeStyle = .named
+        formatter.locale = AppLocalization.formattingLocale
+        return formatter.localizedString(from: DateComponents(day: days))
+    }
+
     static func endOfDay(_ date: Date, calendar: Calendar = PulseLook.wireCalendar) -> Date {
         let start = calendar.startOfDay(for: date)
         return calendar.date(byAdding: .day, value: 1, to: start)?.addingTimeInterval(-1) ?? date

@@ -1838,7 +1838,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertTrue(runs.wasUpdated)
         let date = try XCTUnwrap(page.cards[1].look)
         guard case let .date(day, what, whose) = date.body else { return XCTFail("not a date") }
-        XCTAssertEqual(Calendar.current.dateComponents([.year, .month, .day], from: day),
+        XCTAssertEqual(PulseLook.wireCalendar.dateComponents([.year, .month, .day], from: day),
                        DateComponents(year: 2026, month: 11, day: 13))
         XCTAssertEqual([what, whose], ["birthday", "Kwan"])
         XCTAssertTrue(date.actions.isEmpty)  // only https links open
@@ -1878,6 +1878,15 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(try look(#"{"shape": "due", "facts": {"due": "next week"}}"#)?.body, .plain)
         XCTAssertEqual(try look(#"{"shape": "steps", "facts": {"names": ["a", "b"], "at": 5}}"#)?.body, .plain)
         XCTAssertEqual(try look(#"{"shape": "sparkle", "facts": {}}"#)?.body, .plain)
+        // An empty name would shift "at" onto the wrong step.
+        XCTAssertEqual(try look(#"{"shape": "steps", "facts": {"names": ["", "Shipped", "Delivered"], "at": 1}}"#)?.body, .plain)
+        // A day with no time reads in whole days, never hours.
+        let calendar = PulseLook.wireCalendar
+        let noon = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 9, hour: 12)))
+        let today = calendar.startOfDay(for: noon)
+        XCTAssertEqual(PulseLook.relativeDay(today, now: noon), PulseLook.relativeDay(noon, now: noon))
+        XCTAssertNotEqual(PulseLook.relativeDay(today, now: noon),
+                          PulseLook.relativeDay(today.addingTimeInterval(86_400), now: noon))
         XCTAssertEqual(try look(#"{"shape": "status", "facts": {"label": "Relay", "state": "ok"}}"#)?.body,
                        .status(label: "Relay", state: .ok))
         XCTAssertEqual(try look(#"{"shape": "steps", "facts": {"names": ["Ordered", "Shipped", "Delivered"], "at": 1}}"#)?.body,
