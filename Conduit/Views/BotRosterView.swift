@@ -167,6 +167,9 @@ struct BotRosterView: View {
             managementNotice = notice
             appState.botsListNotice = nil
         }
+        // Another dashboard's or profile's list: this one's notice isn't about it.
+        .onChange(of: appState.activeDashboardID) { _, _ in managementNotice = nil }
+        .onChange(of: appState.activeProfile) { _, _ in managementNotice = nil }
         .sheet(item: $overviewBot, onDismiss: {
             if let bot = editAfterOverview {
                 editAfterOverview = nil

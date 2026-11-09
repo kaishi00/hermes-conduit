@@ -300,7 +300,8 @@ struct V2ConversationScreen: View {
         }
         .onDisappear { appState.chatCoveredBySheet = false }
         .sheet(isPresented: Binding(
-            get: { workPanelOpen && !fitsSidePanel && workProfile != nil },
+            // The chat open before's Work closes under a Bot Chat on its way.
+            get: { workPanelOpen && !fitsSidePanel && workProfile != nil && appState.botChatComingOverAnother == nil },
             set: { if !$0 { workPanelOpen = false } }
         ), onDismiss: {
             if let bot = editAfterOverview {
@@ -459,7 +460,10 @@ struct V2ConversationScreen: View {
     /// other chat, a room shown over the workstream (its Back leaves the
     /// room), or beside the list on a wide window, which has no Back.
     private var workstreamGoesBack: String? {
-        guard !shell.isSplit, appState.activeRoomSurface == nil else { return nil }
+        // Under a Bot Chat on its way, Back is the list's: it stands that
+        // open down, rather than open the hidden workstream's Bot Chat.
+        guard !shell.isSplit, appState.activeRoomSurface == nil,
+              appState.botChatComingOverAnother == nil else { return nil }
         return appState.activeWorkstream?.profile
     }
 
@@ -665,7 +669,8 @@ struct V2ConversationScreen: View {
                         .modifier(V2PreGlassToolbarControl())
                 }
                 .keyboardShortcut("a", modifiers: [.command, .option])
-                .disabled(!shell.isTabActive)
+                // The cover hides the panel: it waits for the coming chat.
+                .disabled(!shell.isTabActive || appState.botChatComingOverAnother != nil)
                 .accessibilityLabel(showsSidePanel ? AppLocalization.string("Hide artifacts") : AppLocalization.string("Show artifacts"))
                 .accessibilityIdentifier("conversation.sidePanelToggle")
             }

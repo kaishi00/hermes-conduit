@@ -24,7 +24,12 @@ struct GroupChatView: View {
     private var roomShows: Bool {
         shell.isTabActive && (shell.hasChatBeside || !appState.showSidebar) && scenePhase == .active
             // Under a Bot Chat on its way it's covered: what comes in isn't seen.
-            && appState.botChatComingOverAnother == nil
+            && !coveredByBotChatComing
+    }
+    /// V2's screen covers the room while a Bot Chat comes over it; the
+    /// legacy shell has no cover, so its room shows and keeps its controls.
+    private var coveredByBotChatComing: Bool {
+        isV2 && appState.botChatComingOverAnother != nil
     }
     @State private var showingDisbandConfirmation = false
     @State private var showingInfo = false
@@ -97,7 +102,7 @@ struct GroupChatView: View {
         // the coming bot's name is the title; the room stays mounted, its
         // picks kept should that open fail.
         .toolbar {
-            if appState.botChatComingOverAnother == nil { toolbarContent }
+            if !coveredByBotChatComing { toolbarContent }
         }
         // V2's screen hosts this view and owns the room menu and picker.
         .modifier(GroupRoomPicturePicker(request: $choosingPicture, isEnabled: !isV2))
