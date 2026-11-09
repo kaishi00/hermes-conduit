@@ -95,11 +95,16 @@ extension AppState {
             guard !isOpenChat(item) else { return }
             let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch, dashboardID = activeDashboardID
             Task { @MainActor [weak self] in
+                guard let self else { return }
+                // A chat, room or dashboard opened since the tap owns the screen.
+                let owned = {
+                    self.chatViewportTransitionGeneration == viewport && self.groupRoomEpoch == roomEpoch
+                        && self.activeDashboardID == dashboardID
+                }
+                guard owned() else { return }
                 // Offline, or Hermes' rooms not read yet: say so, as a chat's
-                // open does, unless a chat, room or dashboard opened meanwhile.
-                guard let self, await self.openNotificationRoom(roomID) == .retry,
-                      self.chatViewportTransitionGeneration == viewport, self.groupRoomEpoch == roomEpoch,
-                      self.activeDashboardID == dashboardID else { return }
+                // open does, unless something opened meanwhile.
+                guard await self.openNotificationRoom(roomID) == .retry, owned() else { return }
                 self.errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
             }
             return

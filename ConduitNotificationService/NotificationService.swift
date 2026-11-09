@@ -47,8 +47,9 @@ final class NotificationService: UNNotificationServiceExtension {
         ) {
         case .legacy:
             // A keyless pairing's room push keeps one per room too (issue
-            // 2064), noted like a verified one: the note only clears.
-            let note = ReadChatHint.note(NotificationE2E.plaintextRouting(userInfo))
+            // 2064), noted like a verified one: the note only clears, and
+            // replaces only another keyless push of the room.
+            let note = ReadChatHint.note(NotificationE2E.plaintextRouting(userInfo), plaintext: true)
             if let thread = ReadChatHint.roomThread(note) {
                 content.userInfo[ReadChatHint.userInfoKey] = note
                 // A lookup that stalls still delivers it as a keyless push

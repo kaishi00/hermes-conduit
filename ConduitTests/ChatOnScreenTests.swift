@@ -126,8 +126,14 @@ final class ChatOnScreenTests: XCTestCase {
         let relayed: [AnyHashable: Any] = ["conduit": stub, "body": ["conduit": rich]]
         XCTAssertEqual(PushNotificationService.parseNotificationTarget(from: relayed, records: [], knownGatewayIDs: [],
                                                                       keysProvisioned: false)?.roomID, "conduit-1")
-        XCTAssertEqual(ReadChatHint.roomThread(ReadChatHint.note(NotificationE2E.plaintextRouting(relayed))),
-                       "room:\(dashboard.uuidString):conduit-1", "the extension keeps one per room for it too")
+        let plain = ReadChatHint.note(NotificationE2E.plaintextRouting(relayed), plaintext: true)
+        XCTAssertEqual(ReadChatHint.roomThread(plain), "room:plain:\(dashboard.uuidString):conduit-1",
+                       "the extension keeps one per room for it too")
+        // Trusted unverified, it never takes a verified push's place, nor gives way to one.
+        let verified = ReadChatHint.note(NotificationE2E.plaintextRouting(relayed))
+        XCTAssertFalse(ReadChatHint.replaces(plain, delivered: [ReadChatHint.userInfoKey: verified]))
+        XCTAssertFalse(ReadChatHint.replaces(verified, delivered: [ReadChatHint.userInfoKey: plain]))
+        XCTAssertTrue(ReadChatHint.replaces(plain, delivered: [ReadChatHint.userInfoKey: plain]))
         XCTAssertNil(NotificationE2E.plaintextRouting(["conduit": stub])["room"], "a stub alone has none")
         // The relay builds body.conduit from the stub it checked: a nested
         // copy naming another pairing, dashboard or chat isn't taken.

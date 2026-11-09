@@ -671,7 +671,9 @@ enum ReadChatHint {
 
     /// The routing fields that name the chat (or the room), its dashboard
     /// and the kind of push (one that waits on the user isn't cleared).
-    static func note(_ routing: [String: Any]) -> [String: String] {
+    /// `plaintext` marks a keyless pairing's push, trusted unverified, so
+    /// it replaces only another such push of its room, never a verified one.
+    static func note(_ routing: [String: Any], plaintext: Bool = false) -> [String: String] {
         var note: [String: String] = [:]
         for field in ["session_id", "stored_session_id", "session_key", "dashboard_id", "gateway_id", "type"] {
             if let value = routing[field] as? String, !value.isEmpty { note[field] = value }
@@ -680,6 +682,7 @@ enum ReadChatHint {
         // room clears it and the room's next reply replaces it.
         if let room = ((routing["room"] as? [String: Any])?["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
            !room.isEmpty { note["room_id"] = room }
+        if plaintext { note["plaintext"] = "1" }
         return note
     }
 
@@ -692,10 +695,12 @@ enum ReadChatHint {
     static let roomReplacingTypes: Set<String> = ["response.ready", "turn.failed", "background_task.finished"]
 
     /// The Notification Center stack a room's pushes share, or nil for a
-    /// push that keeps its own.
+    /// push that keeps its own. A keyless pairing's plaintext pushes stack
+    /// apart from verified ones, so one can't take a verified one's place.
     static func roomThread(_ note: [String: String]) -> String? {
         guard let room = note["room_id"], let type = note["type"], roomReplacingTypes.contains(type) else { return nil }
-        return "room:\(note["dashboard_id"] ?? note["gateway_id"] ?? "-"):\(room)"
+        let trust = note["plaintext"] == "1" ? "plain:" : ""
+        return "room:\(trust)\(note["dashboard_id"] ?? note["gateway_id"] ?? "-"):\(room)"
     }
 
     /// Whether a delivered notification's note is an earlier push of the
