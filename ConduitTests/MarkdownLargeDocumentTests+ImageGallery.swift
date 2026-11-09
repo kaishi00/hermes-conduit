@@ -131,7 +131,10 @@ extension MarkdownLargeDocumentTests {
     @MainActor
     func testRoomGalleryListsAMessagesSentPicturesFirst() throws {
         let appState = try galleryAppState()
-        let files = GatewayMediaDataURLResolver(appState: appState, profile: "room-files", source: .roomFiles)
+        let files = GatewayMediaDataURLResolver(
+            appState: appState, profile: "room-files", source: .roomFiles,
+            roomFileReads: .init(pluginPictures: true, pluginFiles: true)
+        )
         let sent = GroupEvent(
             roomID: "room", seq: 1, eventID: "e1", kind: "message.user",
             actor: GroupActor(kind: "user", id: "user", profile: nil, displayName: nil, connectionID: nil),
@@ -152,6 +155,36 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(GroupRoomImageGallery.items(in: [sent]).map(\.id), [
             ImageGalleryItem.webID("https://example.com/w.png"),
         ], "where the room's files can't be read, its pictures stay names")
+
+        // Hermes' own attachments page first too, where Hermes downloads
+        // them; a scheduled post's don't, as its bubble draws none.
+        let hermesFiles = GatewayMediaDataURLResolver(
+            appState: appState, profile: "room-files", source: .roomFiles,
+            roomFileReads: .init(hermesAttachments: true)
+        )
+        let manifest: AnyCodable = .array([.object([
+            "attachment_id": .string("a1"), "kind": .string("image"), "name": .string("cat.png"),
+            "size": .number(12), "mime": .string("image/png"),
+        ])])
+        let attached = GroupEvent(
+            roomID: "room", seq: 2, eventID: "e2", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "user", profile: nil, displayName: nil, connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("Look"), "attachments": manifest], createdAt: 0
+        )
+        let picture = GroupRoomAttachment(attachmentID: "a1", kind: "image", name: "cat.png", size: 12, mime: "image/png")
+        XCTAssertEqual(GroupRoomImageGallery.items(in: [attached], files: hermesFiles).map(\.id), [
+            ImageGalleryItem.mediaID(path: picture.path(roomID: "room")),
+        ])
+        XCTAssertTrue(GroupRoomImageGallery.items(in: [attached], files: files).isEmpty,
+                      "a room whose Hermes doesn't download them keeps them names")
+        let scheduled = GroupEvent(
+            roomID: "room", seq: 3, eventID: "e3", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "cron:nightly", profile: nil, displayName: "Nightly", connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("Report"), "attachments": manifest], createdAt: 0
+        )
+        XCTAssertTrue(scheduled.isScheduledPost)
+        XCTAssertTrue(GroupRoomImageGallery.items(in: [scheduled], files: hermesFiles).isEmpty,
+                      "a scheduled post's bubble draws no attachments, so its viewer lists none")
     }
 
     @MainActor
