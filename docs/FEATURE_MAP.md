@@ -1301,12 +1301,12 @@ table marks agent mode)
 **Rulings**
 - The readiness check is always the phone's own turn, never the fast model's, on both paths (notifier 0.49.0, 0.153.0).
 - With no fast model set up, each utterance is a Hermes turn, with no line first. One that's set up but fails before saying anything says its one first-person line, then hands the words to a Hermes turn. Both hold on both paths (notifier #586, 0.153.0).
-- On a read-back server the fast model's words go back sentence by sentence like Hermes', and talking over them, Interrupt or the call's response.cancel stop the fast model and the read-back of any Hermes turn it fell back to: the phone is told to cancel that turn (conduit.turn.cancel) and stops following it (LocalLiveTurnRunner.cancel), while Hermes' reply goes on in the chat, as for any Local Live Hermes turn talked over; what the fast model already said stays in its conversation (0.153.0; proposed with this PR, for Eric to confirm).
+- On a read-back server the fast model's words go back sentence by sentence like Hermes', and talking over them, Interrupt or the call's response.cancel stop the fast model and the read-back of any Hermes turn it fell back to: the phone is told to cancel that turn (conduit.turn.cancel) and stops following it (LocalLiveTurnRunner.cancel), while Hermes' reply goes on in the chat, as for any Local Live Hermes turn talked over; what the fast model already said stays in its conversation (0.153.0; Eric confirmed 2026-11-09 in #2090, to match talking over any Local Live Hermes turn).
 
 **Open gaps**
 - The Watch's bridge keeps one Hermes turn per utterance on a read-back server: its call sends no conduit.agent, so there is no fast model to ask (0.153.0).
 
-**Checked:** 2026-11-09, #2089 (carries #2067, notifier 0.153.0 after main took 0.151.0 and 0.152.0; added: agent mode on a read-back speech server, notifier 0.153.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model; talking over the fallback stops its read-back, Hermes' reply goes on in the chat).
+**Checked:** 2026-11-09, #2090 (Eric confirmed the talking-over ruling: the fallback Hermes turn stops being read back and finishes in the chat, as everywhere in Local Live); 2026-11-09, #2089 (carries #2067, notifier 0.153.0 after main took 0.151.0 and 0.152.0; added: agent mode on a read-back speech server, notifier 0.153.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model; talking over the fallback stops its read-back, Hermes' reply goes on in the chat).
 
 ## Talking over Hermes
 
