@@ -1270,7 +1270,7 @@ model address for replies, and one that only reads text aloud, where the
 plugin's read-back relay runs the turns.
 
 **Siblings:** the model address (`/local-live/v1/chat/completions`) · the
-read-back relay on the phone's socket (notifier 0.151.0) · the Watch's
+read-back relay on the phone's socket (notifier 0.153.0) · the Watch's
 bridge (a gap: its call has no agent, so it keeps Hermes turns) · CarPlay
 and calls from Hermes (the phone's call: not needed) · Talking over Hermes
 (done: talking over the fast model's reply, or new words, stops it like
@@ -1283,7 +1283,7 @@ never named a server type) · the notifier's README, both sections (done in the 
 docs/VOICE_SETTINGS.md (not needed: it doesn't describe agent mode's
 paths) · docs/OWN_VOICE_SERVER.md (done: its Agent mode section says the
 fast model answers on a server that only reads text aloud from plugin
-0.151.0, its reachability note says such a server needn't reach the
+0.153.0, its reachability note says such a server needn't reach the
 dashboard, since the plugin runs its turns, step 3 says such a server never
 asks the model address and when its call is ready, and the comparison
 table marks agent mode)
@@ -1299,14 +1299,14 @@ table marks agent mode)
 - Tests: `notifier/tests/test_local_live.py` (the agent mode tests, and those named on_a_read_back_server)
 
 **Rulings**
-- The readiness check is always the phone's own turn, never the fast model's, on both paths (notifier 0.49.0, 0.151.0).
-- With no fast model set up, each utterance is a Hermes turn, with no line first. One that's set up but fails before saying anything says its one first-person line, then hands the words to a Hermes turn. Both hold on both paths (notifier #586, 0.151.0).
-- On a read-back server the fast model's words go back sentence by sentence like Hermes', and talking over them, Interrupt or the call's response.cancel stop the fast model and the read-back of any Hermes turn it fell back to: the phone is told to cancel that turn (conduit.turn.cancel) and stops following it (LocalLiveTurnRunner.cancel), while Hermes' reply goes on in the chat, as for any Local Live Hermes turn talked over; what the fast model already said stays in its conversation (0.151.0; proposed with this PR, for Eric to confirm).
+- The readiness check is always the phone's own turn, never the fast model's, on both paths (notifier 0.49.0, 0.153.0).
+- With no fast model set up, each utterance is a Hermes turn, with no line first. One that's set up but fails before saying anything says its one first-person line, then hands the words to a Hermes turn. Both hold on both paths (notifier #586, 0.153.0).
+- On a read-back server the fast model's words go back sentence by sentence like Hermes', and talking over them, Interrupt or the call's response.cancel stop the fast model and the read-back of any Hermes turn it fell back to: the phone is told to cancel that turn (conduit.turn.cancel) and stops following it (LocalLiveTurnRunner.cancel), while Hermes' reply goes on in the chat, as for any Local Live Hermes turn talked over; what the fast model already said stays in its conversation (0.153.0; proposed with this PR, for Eric to confirm).
 
 **Open gaps**
-- The Watch's bridge keeps one Hermes turn per utterance on a read-back server: its call sends no conduit.agent, so there is no fast model to ask (0.151.0).
+- The Watch's bridge keeps one Hermes turn per utterance on a read-back server: its call sends no conduit.agent, so there is no fast model to ask (0.153.0).
 
-**Checked:** 2026-11-09, #2067 (added: agent mode on a read-back speech server, notifier 0.151.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model; talking over the fallback stops its read-back, Hermes' reply goes on in the chat).
+**Checked:** 2026-11-09, #2067 (added: agent mode on a read-back speech server, notifier 0.153.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model; talking over the fallback stops its read-back, Hermes' reply goes on in the chat).
 
 ## Talking over Hermes
 

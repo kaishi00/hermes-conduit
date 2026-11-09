@@ -112,7 +112,7 @@ right away, and real work goes to Hermes as jobs with their cards in the
 call's chat, the same way GPT-Live works. Set the fast model's address,
 model and key in step 3 of that screen. Without a fast model, Hermes answers
 each turn itself, which is slower to start talking. On a server that only
-reads text aloud the fast model answers too, from plugin 0.151.0, and its
+reads text aloud the fast model answers too, from plugin 0.153.0, and its
 replies are read back a sentence at a time like Hermes'. On the Apple
 Watch, Hermes still answers each turn itself.
 
