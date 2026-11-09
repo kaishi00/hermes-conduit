@@ -3951,7 +3951,7 @@ enum VoiceThreadRouting {
         "debo", "debería", "puedo", "podría", "quizás",
         "dois", "devrais", "peux", "pourquoi", "peut", "faut",
         "devo", "dovrei", "posso", "perché", "forse",
-        "deveria", "talvez", "porque",
+        "deveria", "talvez",
         "ли", "может", "стоит", "почему", "если",
         "czy", "może", "jeśli", "dlaczego",
         "mı", "mu", "mü", "neden", "belki",

@@ -278,11 +278,11 @@ struct PresentedConfirm: Identifiable, Equatable {
                 && (VoiceThreadRouting.containsNegation(words) || Self.cjkNotYet.contains(where: { words.contains($0) }))
                 && !Self.opens(said, with: Self.neutralWaits)
         case .yes: return false
-        // A not on the send itself ("我不想发", "送らないで") declines
-        // like a don't does.
+        // A refusal verb ("decline it") or a not on the send itself
+        // ("我不想发", "送らないで") declines, unless a change follows it
+        // ("I refuse, send it to Bob instead").
         case .other:
-            return VoiceThreadRouting.containsRefusalVerb(words)
-                || (Self.isCJKSendRefusal(words) && Self.isOneClause(words))
+            return (VoiceThreadRouting.containsRefusalVerb(words) || Self.isCJKSendRefusal(words)) && Self.isOneClause(words)
         }
     }
 
