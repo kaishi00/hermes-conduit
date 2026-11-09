@@ -5871,7 +5871,8 @@ and notes are capped at the host's 2,000 scalars.
 copy · the call screen (Gemini, Grok, Qwen and Local Live show_on_screen;
 Classic and GPT-Live through Hermes) · saved call transcripts · group rooms ·
 Hermes Desktop (the plugin's Desktop half draws the board) and messaging apps
-(the Markdown) · the Watch and CarPlay ·
+(the Markdown) · the Watch and CarPlay · the Pulse screen (a card's look
+can be a drawn body, with the `pulse-looks` feature) ·
 Predictions' reply chips (the follow-ups are the same chip) · what models read:
 conduit_show's description and answers, the drawing rule, the
 `conduit_push:drawing-boards` skill (its Showing changes recipe), show_on_screen's description · the

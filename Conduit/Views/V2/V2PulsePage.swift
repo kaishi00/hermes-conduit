@@ -935,7 +935,8 @@ struct V2PulsePage: View {
     /// days left, a job's runs, a promise, a status, steps or a card body.
     @ViewBuilder private func lookBody(_ card: PulseCard) -> some View {
         if let look = card.look, look.drawsBody {
-            PulseLookBody(look: look, dimmed: card.isCleared)
+            // The whole card already steps back when cleared.
+            PulseLookBody(look: look)
         }
     }
 
