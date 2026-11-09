@@ -180,7 +180,7 @@ final class WatchGPTLiveSetup: ObservableObject {
         } catch {
             // A profile that turned the plugin off says how to turn it on.
             state = .unavailable(DashboardTicketBridgeError.pluginOffDetail(of: error)
-                ?? AppLocalization.string("Your Hermes host doesn't offer GPT-Live for the Watch. Update the Conduit notifier plugin."))
+                ?? PluginUpdateAsk.text(AppLocalization.string("Your Hermes host doesn't offer GPT-Live for the Watch. Update the Conduit notifier plugin.")))
         }
     }
 

@@ -41,7 +41,7 @@ enum LocationSyncPause: Codable, Equatable {
         case .signInRequired:
             return AppLocalization.string("Paused: sign in to this dashboard again. Location is sent again once you open Conduit.")
         case .pluginMissing:
-            return AppLocalization.string("Paused: update the Conduit plugin on this host to share your location.")
+            return PluginUpdateAsk.text(AppLocalization.string("Paused: update the Conduit plugin on this host to share your location."))
         case .pluginOff(let remedy):
             return AppLocalization.string("Paused: \(remedy)")
         case .refused(let detail):

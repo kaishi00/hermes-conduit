@@ -165,6 +165,88 @@
         }
       }
     },
+    "The Conduit plugin on this host doesn't have this yet." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Conduit-Plugin auf diesem Host kann das noch nicht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El plugin de Conduit de este host todavía no tiene esto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin Conduit de cet hôte ne prend pas encore cela en charge."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin Conduit di host ini belum mendukung ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin Conduit su questo host non lo supporta ancora."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストの Conduit プラグインはまだこれに対応していません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 호스트의 Conduit 플러그인은 아직 이 기능을 지원하지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wtyczka Conduit na tym hoście jeszcze tego nie obsługuje."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin do Conduit neste host ainda não tem isso."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагин Conduit на этом хосте пока этого не поддерживает."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu ana bilgisayardaki Conduit eklentisi bunu henüz desteklemiyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机上的 Conduit 插件尚不支持此功能。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機上的 Conduit 外掛尚不支援此功能。"
+          }
+        }
+      }
+    },
     "This dashboard's host keeps the plugin up to date, so Conduit doesn't ask to update it here. This choice is for your other dashboards." : {
       "localizations" : {
         "de" : {

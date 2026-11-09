@@ -94,7 +94,7 @@ final class GroupRoomFilesClient {
             case .unreadable(let name):
                 return AppLocalization.string("Could not prepare \(name) for upload.")
             case .malformed:
-                return AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again.")
+                return PluginUpdateAsk.text(AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again."))
             case .overMessageLimit(let names):
                 let limit = String(GroupRoomAttachment.maxMessageBytes / 1_000_000)
                 let list = names.joined(separator: ", ")

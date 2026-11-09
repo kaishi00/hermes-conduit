@@ -224,7 +224,7 @@ struct LocationSettingsPage: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if !pluginServesLocation, !settings.isOn {
-                Text("Update the Conduit plugin on your Hermes host to share your location.")
+                Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to share your location.")))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
             }

@@ -24,7 +24,7 @@ struct ShortcutLogError: LocalizedError, Equatable {
     /// Kept on the phone: the host keeps events, but this plugin answered
     /// without its inbox.
     static var pluginTooOld: ShortcutLogError {
-        ShortcutLogError(message: AppLocalization.string("Update the Conduit plugin on your Hermes host to log events. This one was kept on the phone and goes after the update."))
+        ShortcutLogError(message: PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to log events. This one was kept on the phone and goes after the update.")))
     }
 
     /// Kept on the phone: the profile turned the plugin off. `remedy` says
@@ -36,7 +36,7 @@ struct ShortcutLogError: LocalizedError, Equatable {
     /// Not kept: the plugin doesn't keep events, so nothing on the phone
     /// would show or delete it.
     static var pluginMissing: ShortcutLogError {
-        ShortcutLogError(message: AppLocalization.string("Update the Conduit plugin on your Hermes host to log events. This one wasn't kept."))
+        ShortcutLogError(message: PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to log events. This one wasn't kept.")))
     }
 
     /// Kept on the phone: it goes with the next event, or when Conduit

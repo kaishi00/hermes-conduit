@@ -29713,6 +29713,7 @@ final class AppState: ObservableObject {
         // already running; one that answered without Pulse ends the Pulse
         // this dashboard remembered.
         didSet {
+            PluginUpdateAsk.setActive(managedBy: notifierPlugin.managedBy)
             if oldValue.state != notifierPlugin.state {
                 updateChatOnScreen()
                 forgetPulseHomeIfGone()
@@ -30324,13 +30325,13 @@ final class AppState: ObservableObject {
     static func chatTakeoverFailureMessage(_ error: Error) -> String {
         switch error {
         case ChatTakeoverError.pluginMissing:
-            return AppLocalization.string("Update the Conduit notifier plugin on your Hermes host to take chats over.")
+            return PluginUpdateAsk.text(AppLocalization.string("Update the Conduit notifier plugin on your Hermes host to take chats over."))
         case ChatTakeoverError.pluginOff(let remedy):
             return remedy
         case ChatTakeoverError.unsupported:
             return AppLocalization.string("This Hermes version can't hand a chat over.")
         case ChatTakeoverError.malformed:
-            return AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again.")
+            return PluginUpdateAsk.text(AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again."))
         default:
             let detail = UserFacingError.message(for: error).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !detail.isEmpty, !(error is DashboardTicketBridgeError) else {

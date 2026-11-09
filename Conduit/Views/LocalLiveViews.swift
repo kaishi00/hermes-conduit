@@ -123,7 +123,7 @@ struct LocalLiveFrontModelSettingsView: View {
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if loaded && status == nil {
-                Text(pluginOffReason ?? AppLocalization.string("Update the Conduit plugin on your Hermes host to use a fast model."))
+                Text(pluginOffReason ?? PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to use a fast model.")))
                     .scaledFont(.footnote)
                     .foregroundStyle(.orange)
             } else {

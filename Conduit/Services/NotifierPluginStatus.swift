@@ -1,4 +1,5 @@
 import Foundation
+import os
 
 /// What the host's Conduit notifier plugin serves, from its capabilities
 /// route (plugin 0.4+). Conduit uses it to nudge an update when a feature it
@@ -438,5 +439,35 @@ extension NotifierPluginStatus {
             return AppLocalization.string("This dashboard's host keeps the plugin up to date.")
         }
         return AppLocalization.string("\(managedBy) keeps the plugin up to date.")
+    }
+}
+
+/// Screens that ask to update the plugin for a feature it lacks (a 404, a
+/// missing capability) read who manages the active dashboard's plugin here,
+/// most without AppState at hand. On a host that manages it, an update from
+/// Conduit isn't possible, so they say who keeps it up to date instead.
+enum PluginUpdateAsk {
+    /// Nil on a host that doesn't manage the plugin; "" when it does without a name.
+    private static let activeManagedBy = OSAllocatedUnfairLock<String?>(initialState: nil)
+
+    /// Set with AppState's `notifierPlugin`, for the active dashboard.
+    static func setActive(managedBy: String?) {
+        activeManagedBy.withLock { $0 = managedBy }
+    }
+
+    static var isManaged: Bool { activeManagedBy.withLock { $0 } != nil }
+
+    /// `ask`, which asks to update (or install) the plugin, unless the active
+    /// host manages it: then that the host's plugin lacks it, and who keeps it
+    /// up to date.
+    static func text(_ ask: String) -> String {
+        guard let managedBy = activeManagedBy.withLock({ $0 }) else { return ask }
+        return AppLocalization.string("The Conduit plugin on this host doesn't have this yet.")
+            + " " + NotifierPluginStatus.managedText(managedBy)
+    }
+
+    /// A short title asking for the update, or "Not on this host" on a host that manages it.
+    static func title(_ ask: String) -> String {
+        isManaged ? AppLocalization.string("Not on this host") : ask
     }
 }

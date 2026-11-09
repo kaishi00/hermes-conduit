@@ -425,13 +425,22 @@ extension GatewayRestartTests {
         var managed = Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a")
         managed["managed"] = true
         managed["managed_by"] = "Family farm"
+        addTeardownBlock { PluginUpdateAsk.setActive(managedBy: nil) }
         appState.applyNotifierPluginReport(managed)
         XCTAssertEqual(appState.notifierPlugin.managedBy, "Family farm")
         XCTAssertFalse(appState.notifierPlugin.updateAvailable)
         XCTAssertFalse(appState.showsNotifierPluginUpdateNotice)
+        // A screen that would ask for the update for a missing feature says
+        // who keeps the plugin up to date instead.
+        let ask = "Update the Conduit plugin on your Hermes host to use this."
+        XCTAssertEqual(PluginUpdateAsk.text(ask),
+                       "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
+        XCTAssertEqual(PluginUpdateAsk.title("Plugin update needed"), "Not on this host")
         // A report without it: the host no longer manages the plugin.
         appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a"))
         XCTAssertNil(appState.notifierPlugin.managedBy)
+        XCTAssertEqual(PluginUpdateAsk.text(ask), ask)
+        XCTAssertEqual(PluginUpdateAsk.title("Plugin update needed"), "Plugin update needed")
     }
 
     func testTheSavedNoticeChoiceHoldsFromLaunch() throws {

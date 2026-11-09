@@ -47,7 +47,7 @@ struct HealthSettingsPage: View {
                 } else if preferences.isOn {
                     statusRows
                 } else if !pluginServesHealth {
-                    Text("Update the Conduit plugin on your Hermes host to share health data.")
+                    Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to share health data.")))
                         .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 }
