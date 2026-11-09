@@ -1269,7 +1269,7 @@ model address for replies, and one that only reads text aloud, where the
 plugin's read-back relay runs the turns.
 
 **Siblings:** the model address (`/local-live/v1/chat/completions`) · the
-read-back relay on the phone's socket (notifier 0.149.0) · the Watch's
+read-back relay on the phone's socket (notifier 0.151.0) · the Watch's
 bridge (a gap: its call has no agent, so it keeps Hermes turns) · CarPlay
 and calls from Hermes (the phone's call: not needed) · Talking over Hermes
 (talking over the fast model's reply stops it like Hermes', on both paths)
@@ -1289,14 +1289,14 @@ paths)
 - Tests: `notifier/tests/test_local_live.py` (the agent mode tests, and those named on_a_read_back_server)
 
 **Rulings**
-- The readiness check is always the phone's own turn, never the fast model's, on both paths (notifier 0.49.0, 0.149.0).
-- A fast model that isn't set up, or fails before saying anything, hands the words to a Hermes turn after its one first-person line, on both paths (notifier #586, 0.149.0).
-- On a read-back server the fast model's words go back sentence by sentence like Hermes', and talking over them, Interrupt or the call's response.cancel stop the fast model and any Hermes turn it fell back to; what it already said stays in its conversation (0.149.0; proposed with this PR, for Eric to confirm).
+- The readiness check is always the phone's own turn, never the fast model's, on both paths (notifier 0.49.0, 0.151.0).
+- A fast model that isn't set up, or fails before saying anything, hands the words to a Hermes turn after its one first-person line, on both paths (notifier #586, 0.151.0).
+- On a read-back server the fast model's words go back sentence by sentence like Hermes', and talking over them, Interrupt or the call's response.cancel stop the fast model and any Hermes turn it fell back to; what it already said stays in its conversation (0.151.0; proposed with this PR, for Eric to confirm).
 
 **Open gaps**
-- The Watch's bridge keeps one Hermes turn per utterance on a read-back server: its call sends no conduit.agent, so there is no fast model to ask (0.149.0).
+- The Watch's bridge keeps one Hermes turn per utterance on a read-back server: its call sends no conduit.agent, so there is no fast model to ask (0.151.0).
 
-**Checked:** 2026-11-09, #2058 (added: agent mode on a read-back speech server, notifier 0.149.0).
+**Checked:** 2026-11-09, #2067 (added: agent mode on a read-back speech server, notifier 0.151.0).
 
 ## Talking over Hermes
 
