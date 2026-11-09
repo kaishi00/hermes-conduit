@@ -170,7 +170,7 @@ struct PulseLook: Equatable {
     }
 
     static func day(_ value: String, calendar: Calendar = PulseLook.wireCalendar) -> (date: Date, hasTime: Bool)? {
-        let parts = value.split(separator: "T", maxSplits: 1).map(String.init)
+        let parts = value.split(separator: "T", maxSplits: 1, omittingEmptySubsequences: false).map(String.init)
         // Every part a number: a junk part reads as no date, never a shifted one.
         let dayParts = parts.first?.split(separator: "-", omittingEmptySubsequences: false) ?? []
         let day = dayParts.compactMap { Int($0) }
