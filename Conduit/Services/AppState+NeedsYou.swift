@@ -73,7 +73,10 @@ extension AppState {
     /// Whether a wait is in the chat on screen, whose card is there, or in
     /// the group room on screen, whose card answers it (issue 2064).
     func isOpenChat(_ item: NeedsYouItem) -> Bool {
-        if let roomID = item.roomID { return activeRoomSurface?.room.roomID == roomID }
+        if let roomID = item.roomID {
+            // A linked room's copy is another host's room, whatever its id.
+            return activeRoomSurface?.copy == nil && activeRoomSurface?.room.roomID == roomID
+        }
         // A Bot Chat's own profile, not the strip's selected one.
         guard profilesMatch(item.profile, conversationIdentityProfile),
               let active = activeSessionId, !active.isEmpty else { return false }

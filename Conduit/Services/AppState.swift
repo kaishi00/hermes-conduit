@@ -13212,6 +13212,10 @@ final class AppState: ObservableObject {
     /// the server-identity boundary (with the rest of Bot Mode teardown), on
     /// a dashboard switch, and when a session open takes the viewport back.
     private(set) var groupRoomEpoch = 0
+    /// The room the last open found gone (disbanded, or not found) as it
+    /// read it, which closes back to the roster with nothing said: a
+    /// notification's open says why (issue 2064).
+    private var roomFoundGoneOnOpen: String?
     private var groupRoomPollTask: Task<Void, Never>?
     /// The Group Chats probe asked again after a transient failure, so its
     /// notice clears on its own once Hermes answers (Eric 2026-11-04: it
@@ -13957,9 +13961,16 @@ final class AppState: ObservableObject {
             return .failed
         }
         showSidebar = false
+        roomFoundGoneOnOpen = nil
         await openGroupRoom(room)
         guard !Task.isCancelled else { return .retry }
-        return activeRoomSurface?.room.roomID == roomID ? .opened : .failed
+        if activeRoomSurface?.room.roomID == roomID { return .opened }
+        // Gone between the lookup and the open's own read, which closes with
+        // nothing said; unless something else opened since.
+        if roomFoundGoneOnOpen == roomID, activeRoomSurface == nil, errorMessage == nil {
+            errorMessage = AppLocalization.string("That chat is no longer available.")
+        }
+        return .failed
     }
 
     /// Open a hosted room. Loads the room's authoritative state, replays a
@@ -14004,6 +14015,7 @@ final class AppState: ObservableObject {
 
         groupRoomEpoch &+= 1
         let epoch = groupRoomEpoch
+        roomFoundGoneOnOpen = nil
         groupRoomPollTask?.cancel()
         // The room banner renders the shared errorMessage: a stale session
         // error must not greet the user inside the room.
@@ -14052,6 +14064,7 @@ final class AppState: ObservableObject {
             let (state, driver) = try await groupsState(client, roomID: room.roomID)
             guard groupRoomEpoch == epoch else { return }
             if state.isDisbanded {
+                roomFoundGoneOnOpen = room.roomID
                 closeGoneRoomSurface()
                 await refreshGroupRooms()
                 return
@@ -14083,6 +14096,7 @@ final class AppState: ObservableObject {
             if HermesClient.isRoomNotFoundError(error) {
                 // The room vanished between the roster and the open: no
                 // poller, no haunted surface — back to the roster.
+                roomFoundGoneOnOpen = room.roomID
                 closeGoneRoomSurface()
                 await refreshGroupRooms()
                 return

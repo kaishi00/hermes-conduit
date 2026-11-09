@@ -1477,6 +1477,7 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             var listFails = false
             var state: Result<GroupRoom, Error> = .failure(TestError())
             var whileReading: (() -> Void)?
+            var afterRead: Result<GroupRoom, Error>?
         }
         let box = Box()
         let room = self.room()
@@ -1488,7 +1489,9 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             },
             state: { _, _ in
                 box.whileReading?()
-                return (try box.state.get(), nil)
+                let read = box.state
+                if let next = box.afterRead { box.state = next; box.afterRead = nil }
+                return (try read.get(), nil)
             },
             log: { _, _, sinceSeq, _ in
                 GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
@@ -1529,6 +1532,15 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         outcome = await appState.openNotificationRoom("room-1")
         XCTAssertEqual(outcome, .failed)
         XCTAssertNil(appState.errorMessage)
+
+        // Gone between the lookup and the open's own read: said, not silent.
+        box.whileReading = nil
+        box.state = .success(room)
+        box.afterRead = .failure(RpcError(code: 4112, message: "hosted room not found"))
+        outcome = await appState.openNotificationRoom("room-1")
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertNil(appState.activeRoomSurface)
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("That chat is no longer available."))
     }
 
     /// A room's notifications are read once its messages come from Hermes,
