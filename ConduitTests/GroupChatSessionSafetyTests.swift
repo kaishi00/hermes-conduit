@@ -1478,12 +1478,14 @@ final class GroupChatSessionSafetyTests: XCTestCase {
             var state: Result<GroupRoom, Error> = .failure(TestError())
             var whileReading: (() -> Void)?
             var afterRead: Result<GroupRoom, Error>?
+            var whileListing: (() -> Void)?
         }
         let box = Box()
         let room = self.room()
         let operations = GroupChatLifecycleOperations(
             capabilities: { _ in self.capabilities(supported: true) },
             list: { _ in
+                box.whileListing?()
                 if box.listFails { throw TestError() }
                 return box.page
             },
@@ -1541,6 +1543,26 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         XCTAssertEqual(outcome, .failed)
         XCTAssertNil(appState.activeRoomSurface)
         XCTAssertEqual(appState.errorMessage, AppLocalization.string("That chat is no longer available."))
+
+        // A chat opened while the roster is read again after that close owns
+        // the screen: the gone room's tap says nothing over it.
+        appState.errorMessage = nil
+        box.state = .success(room)
+        box.afterRead = .failure(RpcError(code: 4112, message: "hosted room not found"))
+        var reads = 0
+        box.whileReading = {
+            reads += 1
+            guard reads == 2 else { return }
+            box.whileListing = {
+                box.whileListing = nil
+                appState.beginExplicitChatViewportTransition()
+            }
+        }
+        outcome = await appState.openNotificationRoom("room-1")
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertNil(appState.activeRoomSurface)
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertNil(box.whileListing, "The roster was read after the close")
     }
 
     /// A room's notifications are read once its messages come from Hermes,
