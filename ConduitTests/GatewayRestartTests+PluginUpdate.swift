@@ -1024,7 +1024,7 @@ extension GatewayRestartTests {
     }
 
     func testAManagedHostsOwnJobRunsItsWaitingRestarts() async {
-        // Plugin 0.147.1+: the host's job runs only the restarts (its
+        // Plugin 0.147.2+: the host's job runs only the restarts (its
         // gateway drain and root-unit fallback), never Hermes' pull here.
         let host = PluginHost()
         host.selfUpdateJobs = [
@@ -1046,7 +1046,7 @@ extension GatewayRestartTests {
     }
 
     func testAManagedHostThatRefusesItsJobGetsTheRestartsFromHere() async {
-        // Plugin 0.146.0-0.147.0 refuses every job on a managed host.
+        // Plugin 0.146.0-0.147.1 refuses every job on a managed host.
         let host = PluginHost()
         host.selfUpdateStartError = DashboardTicketBridgeError.http(status: 409, detail: "The host manages the Conduit plugin")
         host.capabilities = [

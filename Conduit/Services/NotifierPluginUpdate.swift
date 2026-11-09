@@ -187,8 +187,8 @@ struct NotifierPluginUpdater {
             return .updated(version: runtime.loadedVersion)
         }
         // A managed host's own job runs only the restarts there (plugin
-        // 0.147.1+), with the gateway's drain and its root-unit fallback;
-        // one that refuses (0.146.0-0.147.0) gets the restarts from here.
+        // 0.147.2+), with the gateway's drain and its root-unit fallback;
+        // one that refuses (0.146.0-0.147.1) gets the restarts from here.
         if onHost, !install,
            let outcome = await runOnHost(request: request, progress: progress, restartedForHermes: restartedForHermes) {
             return outcome
