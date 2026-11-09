@@ -274,7 +274,11 @@ struct PresentedConfirm: Identifiable, Equatable {
         // takes. A no on its own, or one said with its action ("don't
         // share", "cancel the email"), declines.
         case .no(let change):
+            // A yes after the no ("no, send it", "no, go ahead") contradicts
+            // it: the tap decides.
+            guard !Self.laterClauseSaysYes(words) else { return false }
             return change == nil
+                || (Self.isCJKSendRefusal(words) && Self.isOneClause(words))
                 || (((Self.opens(said, with: Self.actionNos) && (!Self.ledByBareNo(said) || Self.saysOneBareNo(said, words)))
                     || (Self.opens(said, with: Self.refusalLeads) && Self.saysOneBareNo(said, words)
                         && VoiceThreadRouting.containsRefusalVerb(words)))
@@ -314,7 +318,7 @@ struct PresentedConfirm: Identifiable, Equatable {
     ]
     /// A not on sending, in Chinese, Japanese or Korean.
     private static let cjkSendRefusals = [
-        "不想发", "不想發", "不想送", "不要发", "不要發", "不要送", "别发", "別發", "别送", "別送", "不发", "不發",
+        "不想发", "不想發", "不想送", "不用发", "不用發", "不用送", "不要发", "不要發", "不要送", "别发", "別發", "别送", "別送", "不发", "不發",
         "送らないで", "送信しないで", "보내지 마", "보내지마", "보내지 말",
     ]
 
@@ -396,6 +400,17 @@ struct PresentedConfirm: Identifiable, Equatable {
         "annule", "annuler", "annulez", "anula", "anular", "annulla", "отмени", "отменить", "anuluj", "iptal",
         "batalkan", "batal", "取消", "キャンセル", "취소",
     ].map { words(in: $0) }
+
+    /// Whether a clause after the first says yes ("no, send it").
+    private static func laterClauseSaysYes(_ text: String) -> Bool {
+        let clauses = text.components(separatedBy: CharacterSet(charactersIn: ",;:—–，；：、.!。！\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .filter { !$0.isEmpty }
+        // A thanks or please isn't a yes here ("no, thanks").
+        return clauses.dropFirst().contains { clause in
+            !words(in: clause).allSatisfy { politeWords.contains($0) } && VoiceCallDecisionOutcome.isYes(clause)
+        }
+    }
 
     /// Whether a not comes right before a cancel ("don't cancel", "nicht
     /// abbrechen"): the user turned the cancel down, not the request.
