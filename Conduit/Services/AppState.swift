@@ -11942,8 +11942,11 @@ final class AppState: ObservableObject {
         if let transition = chatViewportTransition {
             finishChatViewportTransition(generation: transition.generation)
         }
-        // A newer navigation: the Bot Chat on its way stands down.
+        // A newer navigation: the Bot Chat on its way stands down, and so
+        // does a list tap's mark, joined or not yet open: what shows next
+        // isn't covered by it. (A tap's own open sets its cover next.)
         botChatOnItsWay = nil
+        botChatLatestMark = nil
         let renderedViewport = chatViewportSnapshotProvider?.capture()
         chatResumeCoordinator.captureViewportAndFreeze(
             renderedViewport?.snapshot,
@@ -26833,10 +26836,6 @@ final class AppState: ObservableObject {
         let transition = viewportTransitionGeneration ?? beginExplicitChatViewportTransition()
         if beganTransition {
             botChatOnItsWay = BotChatOnItsWay(bot: bot.name, label: bot.displayLabel, transition: transition)
-            // The cover's own now: the mark covered only until the open
-            // began, so a navigation that takes over from it (a
-            // notification, a widget, a row) leaves its chat uncovered.
-            botChatLatestMark = nil
         }
         // The closure captures the box WEAKLY: a strong capture would form
         // a flight<->task retain cycle that outlives the map entry.
