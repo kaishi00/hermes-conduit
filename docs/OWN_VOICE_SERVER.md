@@ -21,7 +21,9 @@ network.
   on your network before you run it. It can run on the Hermes machine or another
   one on your network (an LXC, a GPU box, a Mac).
 - For Local Live, the speech server must be able to reach your Hermes
-  dashboard the way your phone does (LAN, Tailscale or a public domain).
+  dashboard the way your phone does (LAN, Tailscale or a public domain),
+  unless it only reads text aloud: then the plugin runs each turn and the
+  server never asks the dashboard.
 
 ## Two ways to use it
 
@@ -103,7 +105,10 @@ or LM Studio, or a hosted fast model). It holds the conversation and answers
 right away, and real work goes to Hermes as jobs with their cards in the
 call's chat, the same way GPT-Live works. Set the fast model's address,
 model and key in step 3 of that screen. Without a fast model, Hermes answers
-each turn itself, which is slower to start talking.
+each turn itself, which is slower to start talking. On a server that only
+reads text aloud the fast model answers too, from plugin 0.151.0, and its
+replies are read back a sentence at a time like Hermes'. On the Apple
+Watch, Hermes still answers each turn itself.
 
 Without agent mode (step 3 above), Local Live keeps every utterance a
 full Hermes turn. In CarPlay it is listed as Classic, and a call from Hermes

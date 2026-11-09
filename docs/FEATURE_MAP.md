@@ -1275,17 +1275,22 @@ and calls from Hermes (the phone's call: not needed) · Talking over Hermes
 (done: talking over the fast model's reply, or new words, stops it like
 Hermes', on both paths; that entry needs no change)
 · Job results during calls and Acknowledging work handed to Hermes (not
-needed: the phone runs the tools and says results whichever path asked the
-fast model) · Local > 3. Your fast model and its caption (not needed: they
+needed: on the phone's call the phone runs the tools and says results
+whichever path asked the fast model; the Watch's bridge has no fast model,
+so it hands nothing off and its Hermes turns keep their own wording) · Local > 3. Your fast model and its caption (not needed: they
 never named a server type) · the notifier's README, both sections (done in the notifier PR) ·
 docs/VOICE_SETTINGS.md (not needed: it doesn't describe agent mode's
-paths)
+paths) · docs/OWN_VOICE_SERVER.md (done: its Agent mode section says the
+fast model answers on a server that only reads text aloud from plugin
+0.151.0, and its reachability note says such a server needn't reach the
+dashboard, since the plugin runs its turns)
 
 **Code**
 - The fast model and its tools: `notifier/dashboard/api/local_live_agent.py` (_LocalLiveAgent.reply, _local_live_front_target, LOCAL_LIVE_READY_PREFIX, LOCAL_LIVE_FRONT_UNREACHABLE_REPLY)
 - The model address: `notifier/dashboard/api/local_live.py` (post_local_live_chat_completions)
 - The read-back relay: `notifier/dashboard/api/local_live_read_back.py` (_ReadBackFrontTurn, _LocalLiveReadBack._open_turn and _let_go)
 - The Watch's bridge: `notifier/dashboard/api/watch_local_live.py` (_LocalLiveWatchCall)
+- The Watch's call: `ConduitWatch/WatchDirectCallModel.swift` (begin(_:) for a LocalLiveCall, whose LocalLiveSession has no agentSetup)
 - What the phone sends: `Shared/LocalLive/LocalLiveProtocol.swift` (agentConfigure), `Conduit/Services/AppState.swift` (localLiveAgentSetup)
 - Tests: `notifier/tests/test_local_live.py` (the agent mode tests, and those named on_a_read_back_server)
 
@@ -1297,7 +1302,7 @@ paths)
 **Open gaps**
 - The Watch's bridge keeps one Hermes turn per utterance on a read-back server: its call sends no conduit.agent, so there is no fast model to ask (0.151.0).
 
-**Checked:** 2026-11-09, #2067 (added: agent mode on a read-back speech server, notifier 0.151.0).
+**Checked:** 2026-11-09, #2067 (added: agent mode on a read-back speech server, notifier 0.151.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed).
 
 ## Talking over Hermes
 
