@@ -264,8 +264,10 @@ struct PresentedConfirm: Identifiable, Equatable {
         let said = Self.words(in: words)
         guard !Self.unsureWords.contains(where: { Self.range(of: $0, in: said) != nil }),
               !Self.cjkUnsure.contains(where: { words.contains($0) }) else { return false }
-        // Asked not to refuse ("don't decline it") isn't a no.
-        guard !VoiceThreadRouting.negatesRefusalVerb(words) else { return false }
+        // Asked not to refuse ("don't decline it", "don't cancel the
+        // email", "不要取消") isn't a no.
+        guard !VoiceThreadRouting.negatesRefusalVerb(words), !Self.negatesActionNo(said),
+              !Self.cjkNegatedCancels.contains(where: { words.contains($0) }) else { return false }
         switch VoiceThreadRouting.heldRequestAnswer(words) {
         // A no with a change after it ("no, make it for Alex", "never mind,
         // make it Wednesday") asks for the change, which the panel's edit
@@ -394,6 +396,18 @@ struct PresentedConfirm: Identifiable, Equatable {
         "annule", "annuler", "annulez", "anula", "anular", "annulla", "отмени", "отменить", "anuluj", "iptal",
         "batalkan", "batal", "取消", "キャンセル", "취소",
     ].map { words(in: $0) }
+
+    /// Whether a not comes right before a cancel ("don't cancel", "nicht
+    /// abbrechen"): the user turned the cancel down, not the request.
+    private static func negatesActionNo(_ said: [String]) -> Bool {
+        let nots: Set<String> = ["t", "not", "dont", "nicht", "never"]
+        let cancels = Set(actionNos.filter { $0.count == 1 }.map { $0[0] }).subtracting(nots)
+        return zip(said, said.dropFirst()).contains { nots.contains($0) && cancels.contains($1) }
+    }
+
+    private static let cjkNegatedCancels = [
+        "不要取消", "别取消", "別取消", "不取消", "不用取消", "キャンセルしないで", "キャンセルしない", "취소하지",
+    ]
 
     /// Whether the answer opens with a bare no, which may be the next
     /// verb's not ("no cancelar el envío") rather than an answer.
