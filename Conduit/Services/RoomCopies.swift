@@ -150,8 +150,10 @@ enum RoomCopyText {
                 : AppLocalization.string("Hosted by \(host). You can read it here.")
         }
         return host.isEmpty
-            ? PluginUpdateAsk.text(AppLocalization.string("Hosted elsewhere. Update the Conduit plugin on your Hermes to post in it."))
-            : PluginUpdateAsk.text(AppLocalization.string("Hosted by \(host). Update the Conduit plugin on your Hermes to post in it."))
+            ? PluginUpdateAsk.text(AppLocalization.string("Hosted elsewhere. Update the Conduit plugin on your Hermes to post in it."),
+                                   lead: AppLocalization.string("Hosted elsewhere."))
+            : PluginUpdateAsk.text(AppLocalization.string("Hosted by \(host). Update the Conduit plugin on your Hermes to post in it."),
+                                   lead: AppLocalization.string("Hosted by \(host)."))
     }
 
     static var deleteTitle: String { AppLocalization.string("Delete this room?") }
