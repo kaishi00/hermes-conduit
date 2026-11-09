@@ -561,7 +561,13 @@ struct V2ChatsView: View, Equatable {
             // Anything over the list (a chat, a page, another tab) puts the
             // keyboard away and keeps the search: SwiftUI otherwise hands
             // focus back to the field on the way back, over the results.
-            if !shown { searchFocused = false }
+            // A pending ⌘F request goes with it, or the bar's field would
+            // take focus on the way back without the key being pressed
+            // there.
+            if !shown {
+                searchFocused = false
+                barSearchFocusPending = false
+            }
         }
         // Here rather than on the chats list, so an activation that arrives
         // while Projects is shown still opens its section on the way back.
