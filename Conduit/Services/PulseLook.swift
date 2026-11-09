@@ -64,7 +64,9 @@ struct PulseLook: Equatable {
             case .done, .later: value = ""
             }
             let needsValue = does == .ask || does == .draft || does == .open
-            guard !label.isEmpty, !needsValue || !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            // Done and Later draw the app's own words, so they need no label.
+            guard !label.isEmpty || !needsValue,
+                  !needsValue || !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             else { return nil }
             if does == .open {
                 guard let url = URL(string: value), url.scheme == "https" else { return nil }

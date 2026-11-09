@@ -1847,6 +1847,20 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(page.cards[2].subject, "")
     }
 
+    func testAPromiseAndDraftLaterAndDoneActionsDecode() throws {
+        let look = try XCTUnwrap(PulseLook(json: try JSONSerialization.jsonObject(with: Data("""
+        {"shape": "promise", "facts": {"person": "Mara", "said": "I'll send the deck", "where": "Work", "when": "Fri"},
+         "actions": [{"label": "Draft a note", "does": "draft", "text": "Here's the deck"}, {"does": "later"}]}
+        """.utf8))))
+        XCTAssertEqual(look.body, .promise(said: "I'll send the deck", person: "Mara", place: "Work", when: "Fri"))
+        XCTAssertEqual(look.actions.map(\.does), [.draft, .later])
+        XCTAssertEqual(look.actions.first?.value, "Here's the deck")
+        XCTAssertTrue(look.offersLater)  // a Later with no label still offers Not now
+        XCTAssertNotNil(PulseLook.Action(json: ["does": "done"]))
+        XCTAssertNil(PulseLook.Action(json: ["does": "draft", "label": "Draft"]))  // a draft needs its words
+        XCTAssertNil(PulseLook.Action(json: ["does": "ask", "say": "x"]))  // an ask needs its label
+    }
+
     func testFactsThatDontHoldUpDrawPlain() throws {
         func look(_ text: String) throws -> PulseLook? {
             PulseLook(json: try JSONSerialization.jsonObject(with: Data(text.utf8)))
