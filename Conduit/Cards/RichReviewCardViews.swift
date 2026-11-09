@@ -19,6 +19,11 @@ struct RichReviewCard: View {
     @ObservedObject private var taps = RichCardTapMemory.shared
     @State private var round: RichReviewRound?
     @State private var failed = false
+    /// The host has said whether the round was answered (on another device,
+    /// say), or the round draws from its pictures alone without it.
+    @State private var known = false
+    /// A kept round shows, but asking the host again failed.
+    @State private var stale = false
     @State private var picked: String?
     @State private var note = ""
     @State private var reviewing = false
@@ -43,6 +48,9 @@ struct RichReviewCard: View {
                             Button("Try again") { Task { await load(review) } }
                                 .scaledFont(.footnote.weight(.semibold))
                         }
+                    } else if stale {
+                        Button("Try again") { Task { await load(review) } }
+                            .scaledFont(.footnote.weight(.semibold))
                     }
                     footer(review)
                 }
@@ -83,11 +91,12 @@ struct RichReviewCard: View {
                                          })
                 }
             }
-            if !isSent(review), context?.tap != nil {
+            if !isSent(review), known, context?.tap != nil {
                 HStack(spacing: 8) {
                     TextField("Add a note (optional)", text: $note, axis: .vertical)
                         .lineLimit(1...4)
                         .textFieldStyle(.roundedBorder)
+                        .onChange(of: note) { _, new in note = RichReviewMark.capped(new) }
                     sendPickButton(review, decision)
                 }
             }
@@ -201,17 +210,24 @@ struct RichReviewCard: View {
         if let kept {
             round = kept
             failed = false
-            if kept.wasSent { return }
+            if kept.wasSent {
+                known = true
+                return
+            }
         }
         do {
             let loaded = try await RichReviewLoader.shared.round(review.id, review.round, fresh: kept != nil)
             guard !Task.isCancelled else { return }
             round = loaded
             failed = false
+            known = true
+            stale = false
         } catch {
-            guard !Task.isCancelled, kept == nil else { return }
+            guard !Task.isCancelled else { return }
             // Pictures draw without the host; pages need it.
-            failed = review.hasPages
+            failed = kept == nil && review.hasPages
+            known = kept == nil && !review.hasPages
+            stale = kept != nil
         }
     }
 
@@ -542,6 +558,10 @@ struct RichReviewSheet: View {
     @State private var failed = false
     /// The card's round couldn't be read but draws from its pictures alone.
     @State private var offline = false
+    /// The host answered for the card's round this time the sheet opened.
+    @State private var answered = false
+    /// A round read before shows, but asking the host again failed.
+    @State private var stale = false
     @State private var decisionIndex = 0
     /// The option each decision shows, by decision id.
     @State private var choices: [String: String] = [:]
@@ -562,7 +582,7 @@ struct RichReviewSheet: View {
     /// Marks go only on the card's own round, once, and only once the host
     /// has said whether it was already answered (on another device, say).
     private var editable: Bool {
-        roundNumber == review.round && (loaded?.round == review.round || offline) && loaded?.wasSent != true
+        roundNumber == review.round && (answered || offline) && loaded?.wasSent != true
             && tapState == nil && context?.tap != nil
     }
 
@@ -584,6 +604,9 @@ struct RichReviewSheet: View {
                                 Button("Try again") { Task { await load() } }
                                     .scaledFont(.footnote.weight(.semibold))
                             }
+                        } else if stale {
+                            Button("Try again") { Task { await load() } }
+                                .scaledFont(.footnote.weight(.semibold))
                         }
                         if roundNumber == review.round {
                             RichReviewSettledLines(settled: review.settled)
@@ -592,6 +615,7 @@ struct RichReviewSheet: View {
                             TextField("Note on this round (optional)", text: $note, axis: .vertical)
                                 .lineLimit(1...5)
                                 .textFieldStyle(.roundedBorder)
+                                .onChange(of: note) { _, new in note = RichReviewMark.capped(new) }
                         } else if let sentNote = loaded?.note {
                             Text(verbatim: sentNote)
                                 .scaledFont(.footnote)
@@ -790,7 +814,7 @@ struct RichReviewSheet: View {
                     get: { marks[decision.id]?.note ?? "" },
                     set: { text in
                         guard var mark = marks[decision.id] else { return }
-                        mark.note = text
+                        mark.note = RichReviewMark.capped(text)
                         marks[decision.id] = mark
                     }), axis: .vertical)
                     .lineLimit(1...4)
@@ -923,11 +947,16 @@ struct RichReviewSheet: View {
             loaded = round
             failed = false
             offline = false
+            answered = number == review.round
+            stale = false
         } catch {
             guard number == roundNumber, !Task.isCancelled else { return }
-            loaded = nil
-            failed = review.hasPages || number != review.round
-            offline = !failed
+            // A round read before still shows, to look at; marking waits for the host.
+            loaded = RichReviewLoader.shared.kept(review.id, number)
+            failed = loaded == nil && (review.hasPages || number != review.round)
+            offline = loaded == nil && !failed
+            answered = false
+            stale = loaded != nil
         }
     }
 }
