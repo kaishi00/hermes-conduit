@@ -23,6 +23,8 @@ struct GroupChatView: View {
     /// (Pulse, say); otherwise Back to the list or Settings covers it.
     private var roomShows: Bool {
         shell.isTabActive && (shell.hasChatBeside || !appState.showSidebar) && scenePhase == .active
+            // Under a Bot Chat on its way it's covered: what comes in isn't seen.
+            && appState.botChatComingOverAnother == nil
     }
     @State private var showingDisbandConfirmation = false
     @State private var showingInfo = false
