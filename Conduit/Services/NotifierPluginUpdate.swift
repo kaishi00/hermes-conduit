@@ -372,10 +372,12 @@ struct NotifierPluginUpdater {
             // replace the copy the host pinned.
             // A restart-only run pulls nothing either way: the restarts run from here.
             if Self.httpStatus(of: error) == 409 { return restartOnly ? nil : .failed(detail: Self.detail(of: error)) }
-            // No answer at all (a timeout, a dropped connection) may still
-            // have started the job: follow one that runs rather than start
-            // a second update from here.
-            guard Self.httpStatus(of: error) == nil else { return nil }
+            // No answer at all (a timeout, a dropped connection, the bridge's
+            // fetch failure, which reads as status 0) may still have started
+            // the job: follow one that runs rather than start a second
+            // update from here.
+            let status = Self.httpStatus(of: error)
+            guard status == nil || status == 0 else { return nil }
             if let probe = try? await request(path, "GET", nil),
                let running = probe["job"] as? [String: Any], Self.hostStep(running) != nil {
                 job = running

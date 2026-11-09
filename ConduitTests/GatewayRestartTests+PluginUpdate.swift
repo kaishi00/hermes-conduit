@@ -994,19 +994,23 @@ extension GatewayRestartTests {
 
     func testALostStartOnAHostNowManagedNeverFallsBackToHermesPull() async {
         // The status this ran from predates the host's CONDUIT_PUSH_MANAGED,
-        // and the start's answer was lost with nothing running there.
-        let host = PluginHost()
-        host.selfUpdateStartError = URLError(.timedOut)
-        var managed = Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a")
-        managed["managed"] = true
-        managed["managed_by"] = "Family farm"
-        host.capabilities = [managed]
-        var updater = host.updater()
-        updater.onHost = true
-        let outcome = await updater.run { _ in }
-        XCTAssertEqual(outcome, .failed(detail: "Family farm keeps the plugin up to date."))
-        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
-        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
+        // and the start's answer was lost with nothing running there: a
+        // timeout, or the bridge's fetch failure (HTTP status 0).
+        let lost: [Error] = [URLError(.timedOut), DashboardTicketBridgeError.http(status: 0, detail: "Failed to fetch")]
+        for error in lost {
+            let host = PluginHost()
+            host.selfUpdateStartError = error
+            var managed = Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a")
+            managed["managed"] = true
+            managed["managed_by"] = "Family farm"
+            host.capabilities = [managed]
+            var updater = host.updater()
+            updater.onHost = true
+            let outcome = await updater.run { _ in }
+            XCTAssertEqual(outcome, .failed(detail: "Family farm keeps the plugin up to date."), "\(error)")
+            XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+            XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
+        }
     }
 
     func testALostStartOnAHostThatCantSayWhoManagesItNeverFallsBackToHermesPull() async {
