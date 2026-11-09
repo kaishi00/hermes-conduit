@@ -1175,9 +1175,19 @@ struct CronJob: Codable, Identifiable {
     var scheduleDisplay: String?
     var script: String?
     var state: String?
+    /// The job's own model and provider; empty, it runs on the profile's.
+    var model: String?
+    var provider: String?
+    /// An endpoint of the job's own, which Hermes keeps beside its provider.
+    var baseURL: String?
+    /// The job's own reasoning level (`none` … `ultra`); empty, it follows
+    /// the profile's.
+    var reasoningEffort: String?
 
     enum CodingKeys: String, CodingKey {
-        case deliver, enabled, id, name, prompt, script, state
+        case deliver, enabled, id, name, prompt, script, state, model, provider
+        case baseURL = "base_url"
+        case reasoningEffort = "reasoning_effort"
         case lastError = "last_error"
         case lastRunAt = "last_run_at"
         case nextRunAt = "next_run_at"
