@@ -243,7 +243,7 @@ struct BotWorkItem: Identifiable, Equatable {
 struct BotWorkSnapshot: Equatable {
     /// The bot's profile the list was read for.
     let profile: String
-    /// "off" while the bot's workstreams are off; "strict" or "lookups".
+    /// "off" while the bot's workstreams are off; "strict", "lookups" or "open".
     let policy: String
     let botName: String
     var items: [BotWorkItem]
@@ -469,8 +469,13 @@ final class BotWorkstreamsClient {
 /// workstreams run at once, what a restart does, and what its workstreams
 /// ask approval for. Kept by the plugin, so every device shows the same.
 struct BotWorkSettings: Equatable {
+    /// What the Bot Chat does itself (notifier issue 619, Eric 2026-11-08):
+    /// strict only coordinates; lookups ("Quick Things Here") does quick
+    /// things, any tool for a few steps of a turn; open ("Everything Here")
+    /// does everything. Under each, what shows or asks the user stays in the
+    /// Bot Chat.
     enum Policy: String, CaseIterable {
-        case off, strict, lookups
+        case off, strict, lookups, open
     }
 
     enum AfterRestart: String, CaseIterable {
@@ -487,6 +492,9 @@ struct BotWorkSettings: Equatable {
     }
 
     var policy: Policy
+    /// The settings this plugin takes: one from before Everything Here
+    /// doesn't list them, and takes off, strict and lookups.
+    var policies: [Policy]
     var maxRunning: Int
     var maxRunningLimit: Int
     var afterRestart: AfterRestart
@@ -527,6 +535,9 @@ struct BotWorkSettings: Equatable {
         }
     }
 
+    /// What a plugin from before Everything Here takes.
+    static let olderPolicies: [Policy] = [.off, .strict, .lookups]
+
     var isOn: Bool { policy != .off }
 
     /// Edit Bot > Work's Coordinate Work toggle: turning it on comes back
@@ -537,10 +548,11 @@ struct BotWorkSettings: Equatable {
         set { policy = newValue ? (policy == .off ? .lookups : policy) : .off }
     }
 
-    init(policy: Policy = .lookups, maxRunning: Int = 2, maxRunningLimit: Int = 6,
+    init(policy: Policy = .lookups, policies: [Policy] = Self.olderPolicies, maxRunning: Int = 2, maxRunningLimit: Int = 6,
          afterRestart: AfterRestart = .continue, approvals: Approvals = .chats,
          chatApprovals: String = "manual", workstreamModel: Model? = nil, unavailable: String? = nil) {
         self.policy = policy
+        self.policies = policies
         self.maxRunning = maxRunning
         self.maxRunningLimit = maxRunningLimit
         self.afterRestart = afterRestart
@@ -555,8 +567,10 @@ struct BotWorkSettings: Equatable {
               let policy = (response["policy"] as? String).flatMap(Policy.init(rawValue:)),
               let maxRunning = response["max_running"] as? Int else { return nil }
         let limit = max(response["max_running_limit"] as? Int ?? maxRunning, 1)
+        let listed = (response["policies"] as? [String])?.compactMap(Policy.init(rawValue:))
         self.init(
             policy: policy,
+            policies: listed.map { $0.isEmpty ? Self.olderPolicies : $0 } ?? Self.olderPolicies,
             maxRunning: min(max(maxRunning, 1), limit),
             maxRunningLimit: limit,
             afterRestart: (response["after_restart"] as? String).flatMap(AfterRestart.init(rawValue:)) ?? .continue,

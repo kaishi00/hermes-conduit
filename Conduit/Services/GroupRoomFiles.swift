@@ -84,10 +84,13 @@ final class GroupRoomFilesClient {
         case malformed
         /// Together past what Hermes takes in one message (25 MB), with no
         /// plugin to take the rest.
-        case overMessageLimit([String])
+        case overMessageLimit
         /// More files than Hermes takes in one message (8), with no plugin
         /// to take the rest.
         case tooManyFiles
+        /// Files for Hermes with no connection to send them on, and no
+        /// plugin to take them.
+        case notConnected
 
         var errorDescription: String? {
             switch self {
@@ -96,13 +99,14 @@ final class GroupRoomFilesClient {
             case .malformed:
                 return PluginUpdateAsk.text(AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again."),
                                     instead: AppLocalization.string("The host's answer couldn't be read. Try again in a moment."))
-            case .overMessageLimit(let names):
+            case .overMessageLimit:
                 let limit = String(GroupRoomAttachment.maxMessageBytes / 1_000_000)
-                let list = names.joined(separator: ", ")
-                return AppLocalization.string("These files are larger than the \(limit) MB a group room takes: \(list).")
+                return AppLocalization.string("Together these files are over the \(limit) MB a group room message takes. Send some in another message.")
             case .tooManyFiles:
                 let limit = String(GroupRoomAttachment.maxPerMessage)
                 return AppLocalization.string("A group room message takes up to \(limit) files. Send the rest in another message.")
+            case .notConnected:
+                return AppLocalization.string("Connect to Hermes to send files to this room.")
             }
         }
     }
@@ -187,7 +191,9 @@ extension AppState {
     /// another file, within its 8 files, 15 MB each, 25 MB a message);
     /// the rest go to the plugin's room files as `@file:` lines above what
     /// was typed.
-    func roomMessage(_ text: String, attachments: [Attachment]) async throws -> RoomMessage {
+    func roomMessage(
+        _ text: String, attachments: [Attachment], pictureCache: URL = TranscriptImageCache.defaultDirectory
+    ) async throws -> RoomMessage {
         let typed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !attachments.isEmpty else { return RoomMessage(text: text) }
         var sent: [(Attachment, GroupRoomAttachment)] = []
@@ -195,11 +201,25 @@ extension AppState {
         let pluginStores = notifierPlugin.reports(GroupRoomFilesClient.capability)
         // Both legs of one send go to the dashboard it started on.
         let pluginBridge = dashboardTicketBridge
+        if roomTakesHermesAttachments, !isConnected || client == nil, !pluginStores {
+            throw GroupRoomFilesClient.Failure.notConnected
+        }
         if roomTakesHermesAttachments, let client, let roomID = activeRoomSurface?.room.roomID {
-            // Past Hermes' count with nowhere for the rest: say so before
-            // anything goes up.
-            if !pluginStores, attachments.count > GroupRoomAttachment.maxPerMessage {
-                throw GroupRoomFilesClient.Failure.tooManyFiles
+            // With nowhere for the rest, say what stops the message before
+            // anything goes up, so no upload is left stored on the host for
+            // a message that never sends. A file Hermes never takes comes
+            // first: no split of the message would send it.
+            if !pluginStores {
+                let refused = await Task.detached(priority: .userInitiated) {
+                    attachments.first { !GroupRoomHermesUpload.takes($0) }
+                }.value
+                if let refused { throw GroupRoomFilesClient.Failure.unreadable(refused.name) }
+                if attachments.count > GroupRoomAttachment.maxPerMessage {
+                    throw GroupRoomFilesClient.Failure.tooManyFiles
+                }
+                if Self.roomFilesBytes(attachments) > GroupRoomAttachment.maxMessageBytes {
+                    throw GroupRoomFilesClient.Failure.overMessageLimit
+                }
             }
             var total = 0
             for attachment in attachments {
@@ -213,7 +233,7 @@ extension AppState {
                     if upload != nil, !pluginStores {
                         // Each fits, together they don't: say so, not that a
                         // file couldn't be prepared.
-                        throw GroupRoomFilesClient.Failure.overMessageLimit(attachments.map(\.name))
+                        throw GroupRoomFilesClient.Failure.overMessageLimit
                     }
                     forPlugin.append(attachment)
                     continue
@@ -235,7 +255,8 @@ extension AppState {
             }
             if let resolver = roomFilePicturesResolver {
                 await keepSentRoomPictures(
-                    sent.filter { $0.1.kind == "image" }.map { ($0.0, $0.1.path(roomID: roomID)) }, resolver: resolver
+                    sent.filter { $0.1.kind == "image" }.map { ($0.0, $0.1.path(roomID: roomID)) },
+                    resolver: resolver, in: pictureCache
                 )
             }
         } else {
@@ -247,6 +268,17 @@ extension AppState {
         guard pluginStores else { throw GroupRoomFilesClient.Failure.unreadable(forPlugin[0].name) }
         let pluginText = try await roomMessageText(typed, attachments: forPlugin, bridge: pluginBridge)
         return RoomMessage(text: pluginText, attachments: sent.map(\.1))
+    }
+
+    /// The staged files' sizes added up, read from the files without
+    /// loading them. A file that can't be read counts as nothing here and
+    /// fails when it's prepared.
+    nonisolated static func roomFilesBytes(_ attachments: [Attachment]) -> Int {
+        attachments.reduce(0) { total, attachment in
+            guard let url = URL(string: attachment.uri), url.isFileURL,
+                  let size = try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize else { return total }
+            return total + size
+        }
     }
 
     /// Uploads a room message's files to the plugin and returns the text
@@ -413,28 +445,37 @@ struct GroupRoomHermesUpload {
     let digest: String
 
     init?(_ attachment: Attachment) {
-        guard let data = AttachmentHelper.data(for: attachment), !data.isEmpty,
-              data.count <= GroupRoomAttachment.maxBytes else { return nil }
-        let declared = (attachment.mimeType ?? "").lowercased()
-        if let picture = Self.pictureType(data) {
-            (kind, mime) = ("image", picture)
-        } else if data.starts(with: Array("%PDF-".utf8)) {
-            (kind, mime) = ("pdf", "application/pdf")
-        } else if declared.hasPrefix("image/") || declared == "application/pdf" {
-            // A picture or PDF Hermes doesn't recognize (HEIC, a damaged
-            // file): Hermes takes neither as a plain file.
-            return nil
-        } else if declared.hasPrefix("text/") || declared.isEmpty {
-            // Hermes takes text only as plain text.
-            guard String(data: data, encoding: .utf8) != nil, !data.contains(0) else { return nil }
-            (kind, mime) = ("file", "text/plain")
-        } else {
-            (kind, mime) = ("file", declared)
-        }
+        guard let data = AttachmentHelper.data(for: attachment),
+              let accepted = Self.accepted(data, declared: attachment.mimeType) else { return nil }
+        (kind, mime) = accepted
         name = attachment.name
         size = data.count
         base64 = data.base64EncodedString()
         digest = SHA256.hash(data: data).prefix(12).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Whether Hermes takes this file at all, read without encoding it.
+    static func takes(_ attachment: Attachment) -> Bool {
+        guard let data = AttachmentHelper.data(for: attachment) else { return false }
+        return accepted(data, declared: attachment.mimeType) != nil
+    }
+
+    /// The kind and type Hermes takes these bytes as, or nil where it
+    /// takes them as nothing.
+    private static func accepted(_ data: Data, declared mimeType: String?) -> (kind: String, mime: String)? {
+        guard !data.isEmpty, data.count <= GroupRoomAttachment.maxBytes else { return nil }
+        let declared = (mimeType ?? "").lowercased()
+        if let picture = pictureType(data) { return ("image", picture) }
+        if data.starts(with: Array("%PDF-".utf8)) { return ("pdf", "application/pdf") }
+        // A picture or PDF Hermes doesn't recognize (HEIC, a damaged
+        // file): Hermes takes neither as a plain file.
+        if declared.hasPrefix("image/") || declared == "application/pdf" { return nil }
+        if declared.hasPrefix("text/") || declared.isEmpty {
+            // Hermes takes text only as plain text.
+            guard String(data: data, encoding: .utf8) != nil, !data.contains(0) else { return nil }
+            return ("file", "text/plain")
+        }
+        return ("file", declared)
     }
 
     /// The staged file and its bytes: a retry of the same file reuses the

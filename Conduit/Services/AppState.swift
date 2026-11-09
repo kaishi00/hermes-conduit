@@ -7185,6 +7185,9 @@ final class AppState: ObservableObject {
         // So do the open dashboard's pinned replies (#918): they keep reply
         // text, and the next sign-in may be another account.
         if dashboardID == nil || dashboardID == activeDashboardID { clearPinnedReplies() }
+        // So do its confirmations' answers still waiting to reach the host:
+        // a Say instead keeps the user's words (issue 2041).
+        presentedScreens.forgetAnswers(dashboardID: dashboardID)
         // So do the summaries describing its runs of steps.
         forgetStepSummaries(scopePrefix: dashboardID.map { "\(Self.dashboardPreferenceBucket($0))." })
         // And the open dashboard's predictions: guesses, the draft they

@@ -236,11 +236,19 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.roomFileCapMegabytes, GroupRoomFilesClient.hermesMaximumMegabytes)
 
         let png = try attachmentsStaged("cat.png", data: Self.pngBytes, mimeType: "image/png", kind: .image)
-        let message = try await appState.roomMessage("look", attachments: [png])
+        let cache = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        addTeardownBlock { try? FileManager.default.removeItem(at: cache) }
+        let message = try await appState.roomMessage("look", attachments: [png], pictureCache: cache)
         XCTAssertEqual(message.text, "look")
         XCTAssertEqual(hermes.uploads.map(\.kind), ["image"])
         XCTAssertEqual(hermes.uploads.first?.data, Self.pngBytes)
         XCTAssertEqual(message.attachments.map(\.attachmentID), ["att-1"])
+        // The sender's own picture is kept under its Hermes path, so it
+        // shows without a read.
+        let resolver = try XCTUnwrap(appState.roomFilePicturesResolver)
+        let key = try XCTUnwrap(resolver.imageCacheKey(forMediaPath: message.attachments[0].path(roomID: "room-1")))
+        let kept = try XCTUnwrap(TranscriptImageCache.cachedFile(for: key, in: cache))
+        XCTAssertEqual(try Data(contentsOf: kept), Self.pngBytes)
 
         let sent = await appState.sendGroupRoomMessage(message.text, attachments: message.attachments)
         XCTAssertTrue(sent)
@@ -334,9 +342,32 @@ extension GroupChatModelsTests {
             _ = try await withoutPlugin.roomMessage("", attachments: [first, second])
             XCTFail("expected the message to fail")
         } catch {
-            XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .overMessageLimit(["a.png", "b.png"]),
+            XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .overMessageLimit,
                            "the message's total is named, not a file that prepared fine")
         }
+        XCTAssertTrue(alone.uploads.isEmpty, "the total is checked before anything goes up")
+
+        // Over the total with a file Hermes never takes: that file is named,
+        // as no split of the message would send it.
+        let heic = try attachmentsStaged("cat.heic", data: Data("ftypheic....".utf8), mimeType: "image/heic", kind: .image)
+        do {
+            _ = try await withoutPlugin.roomMessage("", attachments: [first, second, heic])
+            XCTFail("expected the message to fail")
+        } catch {
+            XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .unreadable("cat.heic"))
+        }
+        XCTAssertTrue(alone.uploads.isEmpty)
+
+        // Under both limits, the file Hermes never takes is still found
+        // before the picture beside it goes up.
+        let small = try attachmentsStaged("small.png", data: Self.pngBytes, mimeType: "image/png", kind: .image)
+        do {
+            _ = try await withoutPlugin.roomMessage("", attachments: [small, heic])
+            XCTFail("expected the message to fail")
+        } catch {
+            XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .unreadable("cat.heic"))
+        }
+        XCTAssertTrue(alone.uploads.isEmpty, "nothing is left on the host for a message that never sends")
         withoutPlugin.closeGroupRoom()
     }
 
@@ -357,6 +388,38 @@ extension GroupChatModelsTests {
             XCTFail("expected the message to fail")
         } catch {
             XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .tooManyFiles)
+        }
+        XCTAssertTrue(hermes.uploads.isEmpty)
+        appState.closeGroupRoom()
+    }
+
+    /// Files for Hermes with no connection and no plugin: the message says
+    /// to connect, not that a file couldn't be prepared.
+    @MainActor
+    func testRoomFilesWithoutAConnectionSayToConnect() async throws {
+        let hermes = AttachmentsHermes()
+        let appState = attachmentsAppState(hermes)
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(attachmentsRoom())
+        appState.client = nil
+        let png = try attachmentsStaged("cat.png", data: Self.pngBytes, mimeType: "image/png", kind: .image)
+        do {
+            _ = try await appState.roomMessage("", attachments: [png])
+            XCTFail("expected the message to fail")
+        } catch {
+            XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .notConnected)
+        }
+        // Dropped with the client kept, as a lost connection leaves it.
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://groups.example", ticket: "groups-test"),
+            profile: "default"
+        )
+        appState.isConnected = false
+        do {
+            _ = try await appState.roomMessage("", attachments: [png])
+            XCTFail("expected the message to fail")
+        } catch {
+            XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .notConnected)
         }
         XCTAssertTrue(hermes.uploads.isEmpty)
         appState.closeGroupRoom()
