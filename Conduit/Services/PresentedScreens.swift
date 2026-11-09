@@ -273,8 +273,8 @@ struct PresentedConfirm: Identifiable, Equatable {
         // share", "cancel the email"), declines.
         case .no(let change):
             return change == nil
-                || (((Self.opens(said, with: Self.actionNos) && (!Self.ledByBareNo(said) || Self.noStandsAlone(words)))
-                    || (Self.opens(said, with: Self.refusalLeads) && Self.noStandsAlone(words)
+                || (((Self.opens(said, with: Self.actionNos) && (!Self.ledByBareNo(said) || Self.saysOneBareNo(said, words)))
+                    || (Self.opens(said, with: Self.refusalLeads) && Self.saysOneBareNo(said, words)
                         && VoiceThreadRouting.containsRefusalVerb(words)))
                     && Self.isOneClause(words))
         // A wait holds; it doesn't refuse ("hold on", "wait, I'm not
@@ -400,6 +400,12 @@ struct PresentedConfirm: Identifiable, Equatable {
     private static func ledByBareNo(_ said: [String]) -> Bool {
         guard let first = said.first(where: { !VoiceThreadRouting.fillers.contains($0) }) else { return false }
         return bareNos.contains(first)
+    }
+
+    /// A no said on its own and only once: a second one is the verb's not
+    /// ("no, no lo rechazo", I don't reject it).
+    private static func saysOneBareNo(_ said: [String], _ text: String) -> Bool {
+        noStandsAlone(text) && said.filter { bareNos.contains($0) }.count <= 1
     }
 
     private static let bareNos: Set<String> = ["no", "nope", "nah", "nein", "non", "não", "nao", "nie", "нет", "hayır", "tidak"]

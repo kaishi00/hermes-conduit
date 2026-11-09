@@ -215,6 +215,8 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(prompt.isDeclined(by: "No, Alex declined it"))
         XCTAssertFalse(prompt.isDeclined(by: "No lo rechazo"))
         XCTAssertFalse(prompt.isDeclined(by: "No cancelar el envío"))
+        XCTAssertFalse(prompt.isDeclined(by: "No, no lo rechazo"))
+        XCTAssertFalse(prompt.isDeclined(by: "No, no cancelar el envío"))
         XCTAssertFalse(prompt.isDeclined(by: "No rechazo la oferta"))
         XCTAssertFalse(prompt.isDeclined(by: "Don't send it to Alex\nsend it to Bob"))
         XCTAssertFalse(prompt.isDeclined(by: "不要，改到周三"))
