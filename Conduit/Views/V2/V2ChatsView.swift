@@ -565,6 +565,7 @@ struct V2ChatsView: View, Equatable {
         .background(PulseFeedReader())
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.chats.title)
+        .background { searchCommand }
         .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
             updates.coalesces = beside
         }
@@ -582,7 +583,13 @@ struct V2ChatsView: View, Equatable {
             // Anything over the list (a chat, a page, another tab) puts the
             // keyboard away and keeps the search: SwiftUI otherwise hands
             // focus back to the field on the way back, over the results.
-            if !shown { searchFocused = false }
+            // A pending ⌘F request goes with it, or the bar's field would
+            // take focus on the way back without the key being pressed
+            // there.
+            if !shown {
+                searchFocused = false
+                barSearchFocusPending = false
+            }
         }
         // Here rather than on the chats list, so an activation that arrives
         // while Projects is shown still opens its section on the way back.
@@ -850,6 +857,14 @@ struct V2ChatsView: View, Equatable {
     private func barUnstacked() {
         setBarStacked(false)
         barSearchOpen = false
+        // A pending focus was meant for the stacked field, which is going.
+        // The list's field is the one on screen now, so hand the request to
+        // it: dropping it loses a ⌘F the user pressed, and leaving it set
+        // focused the bar's field on some later stack nobody asked for.
+        if barSearchFocusPending {
+            barSearchFocusPending = false
+            searchFocused = true
+        }
     }
 
     /// A change (rotation, a profile added) fades the list's search row in
@@ -889,6 +904,35 @@ struct V2ChatsView: View, Equatable {
                 searchFocused = true
             }
         }
+    }
+
+    /// ⌘F, on an iPad keyboard or a Mac: open the list's search and put the
+    /// cursor in it, whichever way the bar is laid out. A hidden tab's list
+    /// stays mounted, so the action checks that the list is the screen before
+    /// it does anything; a chat pushed over it keeps the key to itself.
+    private var searchCommand: some View {
+        Button(AppLocalization.string("Search")) { focusSearchFromKeyboard() }
+            .keyboardShortcut("f", modifiers: .command)
+            .frame(width: 1, height: 1)
+            .opacity(0.001)
+            .accessibilityHidden(true)
+    }
+
+    private func focusSearchFromKeyboard() {
+        guard isShown else { return }
+        // Only the stacked bar has a field of its own to open and focus. In
+        // the one-row layout the visible field belongs to the list, so a
+        // pending focus set here would miss it and then be consumed by some
+        // later stack, putting the cursor in the bar's field without the key
+        // being pressed there. Focus the on-screen field directly instead.
+        if barStacked == true, !showsBarSearch {
+            barSearchFocusPending = true
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { barSearchOpen = true }
+        } else {
+            barSearchFocusPending = false
+            searchFocused = true
+        }
+        appState.noteChatListInteraction()
     }
 
     /// The filter menu's button where the bar stacks: what the list shows,
