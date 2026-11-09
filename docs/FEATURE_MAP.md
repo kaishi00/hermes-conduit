@@ -1306,7 +1306,7 @@ table marks agent mode)
 **Open gaps**
 - The Watch's bridge keeps one Hermes turn per utterance on a read-back server: its call sends no conduit.agent, so there is no fast model to ask (0.153.0).
 
-**Checked:** 2026-11-09, #2067 (added: agent mode on a read-back speech server, notifier 0.153.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model; talking over the fallback stops its read-back, Hermes' reply goes on in the chat).
+**Checked:** 2026-11-09, #2089 (carries #2067, notifier 0.153.0 after main took 0.151.0 and 0.152.0; added: agent mode on a read-back speech server, notifier 0.153.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model; talking over the fallback stops its read-back, Hermes' reply goes on in the chat).
 
 ## Talking over Hermes
 
