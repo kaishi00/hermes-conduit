@@ -322,8 +322,8 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// Chinese, Japanese and Korean nots.
     private static let cjkNots = ["不", "没", "沒", "别", "別", "ない", "ません", "않", "못", "마", "말"]
 
-    /// The marks that end a Chinese or Japanese question.
-    private static let cjkQuestionEnds = ["吗", "嗎", "么", "麼", "呢", "か", "かな"]
+    /// The marks that end a Chinese, Japanese or Korean question.
+    private static let cjkQuestionEnds = ["吗", "嗎", "么", "麼", "呢", "か", "かな", "까", "까요", "나요"]
     /// A Chinese question asked by saying both ("要不要发", "是不是取消").
     private static let cjkAskPairs = [
         "要不要", "是不是", "发不发", "發不發", "送不送", "可不可以", "能不能", "行不行", "好不好", "用不用", "需不需要",

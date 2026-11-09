@@ -3638,7 +3638,7 @@ enum VoiceThreadRouting {
     /// start a new request ("envoie", "manda", "отправь") are only leads
     /// with their object, as "send it" is.
     static let answerNoLeads = [
-        "no", "nope", "nah", "don't", "dont", "do not", "never mind", "nevermind",
+        "no way", "no chance", "not a chance", "no", "nope", "nah", "don't", "dont", "do not", "never mind", "nevermind",
         "cancel", "forget", "drop", "scrap", "skip", "ditch", "abort", "stop", "leave it", "leave that",
         "nein", "nee", "nö", "auf keinen fall", "lieber nicht", "bloß nicht", "nicht nötig", "nicht senden",
         "nicht schicken", "nicht abschicken", "vergiss es", "vergiss das", "vergiss", "lass es", "lass das",
@@ -3917,9 +3917,10 @@ enum VoiceThreadRouting {
             .map(String.init)
         guard !negates(words), !words.contains(where: { refusalVerbAskers.contains($0) }),
               !cjkVerbNegations.contains(where: { answer.contains($0) }) else { return false }
-        // A Chinese or Japanese question ends in its marker, not a "?".
+        // A Chinese, Japanese or Korean question ends in its marker, not a
+        // "?" ("거절할까요").
         let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-        guard !["吗", "嗎", "么", "麼", "呢", "か", "かな"].contains(where: { trimmed.hasSuffix($0) }) else { return false }
+        guard !["吗", "嗎", "么", "麼", "呢", "か", "かな", "까", "까요", "나요"].contains(where: { trimmed.hasSuffix($0) }) else { return false }
         return words.contains { answerRefusalVerbs.contains($0) || $0.hasPrefix("거절") || $0.hasPrefix("거부") }
             || cjkRefusalVerbs.contains { answer.contains($0) }
     }
