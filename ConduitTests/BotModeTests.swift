@@ -2151,8 +2151,8 @@ final class BotModeTests: XCTestCase {
         XCTAssertNil(harness.appState.botsListNotice)
     }
 
-    /// A newer tap that opened first leaves its chat uncovered while the
-    /// earlier tap's lookup is still out: only the latest tap covers.
+    /// A newer navigation, a tap or not, leaves its chat uncovered while an
+    /// earlier tap's lookup is still out: only the latest open covers.
     func testAnEarlierTapStillOutDoesNotCoverTheNewerChat() async {
         let atlasLookup = ControlledSuspension()
         let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
@@ -2184,6 +2184,11 @@ final class BotModeTests: XCTestCase {
             await appState.openBotChatFromList(atlas)
         }
         await atlasLookup.waitUntilSuspended()
+        XCTAssertTrue(harness.appState.botChatCoversOpenChat)
+        // A navigation that isn't a tap (a notification, a widget) takes
+        // over and uncovers what shows: Atlas's mark covers nothing now.
+        _ = harness.appState.beginExplicitChatViewportTransition()
+        XCTAssertFalse(harness.appState.botChatCoversOpenChat)
         harness.appState.beginOpeningBotChat(scout.name)
         let scoutOpened = await harness.appState.openBotChatFromList(scout)
 
@@ -2231,7 +2236,11 @@ final class BotModeTests: XCTestCase {
         }
         await lookup.waitUntilSuspended()
         XCTAssertNotNil(harness.appState.botChatOnItsWay)
+        // Only hiding the screen (a tab switch) leaves the open to land.
         harness.appState.showSidebar = true
+        XCTAssertNotNil(harness.appState.botChatOnItsWay)
+        // The shell's pop of the chat's screen.
+        harness.appState.standDownBotChatOnItsWay()
         XCTAssertNil(harness.appState.botChatOnItsWay, "Back took the cover away")
         lookup.resume()
         let opened = await open.value

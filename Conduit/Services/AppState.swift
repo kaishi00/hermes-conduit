@@ -2433,9 +2433,6 @@ final class AppState: ObservableObject {
             // reads the catalog again (refreshCatalogAfterLeavingChat, from
             // RootView, whenever the chat is covered).
             if !oldValue, showSidebar, !botChatCoversOpenChat { noteChatLeft(activeSessionId) }
-            // Back to the list over a Bot Chat on its way: that open stands
-            // down rather than land behind the list.
-            if !oldValue, showSidebar, let coming = botChatOnItsWay { standDownBotChatOnItsWay(coming) }
             if oldValue != showSidebar { updateChatOnScreen() }
             // The drawer covers the chat, so its live rows need not redraw at
             // streaming cadence while it is up or animating (liveRowsHidden).
@@ -11980,11 +11977,14 @@ final class AppState: ObservableObject {
         generation.map { chatViewportTransitionIsCurrent(generation: $0) } ?? true
     }
 
-    /// The user went back to the list while `coming` was on its way: its
-    /// open no longer owns the screen, so it stands down as a newer tap's
-    /// would make it, and the chat open before keeps its viewport.
-    private func standDownBotChatOnItsWay(_ coming: BotChatOnItsWay) {
-        guard chatViewportTransitionIsCurrent(generation: coming.transition) else { return }
+    /// The chat's screen was popped (Back, the edge swipe, Close beside the
+    /// list: V2Shell) while a Bot Chat was on its way: its open no longer
+    /// owns the screen, so it stands down as a newer tap's would make it,
+    /// and the chat open before keeps its viewport. A tab switch that only
+    /// hides the screen leaves the open to land.
+    func standDownBotChatOnItsWay() {
+        guard let coming = botChatOnItsWay,
+              chatViewportTransitionIsCurrent(generation: coming.transition) else { return }
         finishChatViewportTransition(generation: coming.transition)
         chatViewportTransitionGeneration &+= 1
         botChatOnItsWay = nil
@@ -26833,6 +26833,10 @@ final class AppState: ObservableObject {
         let transition = viewportTransitionGeneration ?? beginExplicitChatViewportTransition()
         if beganTransition {
             botChatOnItsWay = BotChatOnItsWay(bot: bot.name, label: bot.displayLabel, transition: transition)
+            // The cover's own now: the mark covered only until the open
+            // began, so a navigation that takes over from it (a
+            // notification, a widget, a row) leaves its chat uncovered.
+            botChatLatestMark = nil
         }
         // The closure captures the box WEAKLY: a strong capture would form
         // a flight<->task retain cycle that outlives the map entry.
@@ -26967,6 +26971,7 @@ final class AppState: ObservableObject {
         presentationMigrationSessionIDs: Set<String> = [],
         viewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
+        let shownError = errorMessage
         noteBotChatOpen([resumeID, registryID], bot: bot)
         let outcome = await performSessionOpen(
             resumeID,
@@ -26981,7 +26986,8 @@ final class AppState: ObservableObject {
         // not an error.
         if outcome == .failed, !Task.isCancelled,
            botOpenFenceIsCurrent(epoch: epoch, client: client),
-           errorMessage == nil {
+           // The open's own failure says more; an error from before it doesn't.
+           errorMessage == nil || errorMessage == shownError {
             errorMessage = AppLocalization.string(
                 "Could not open \(bot.displayLabel)'s Bot Chat."
             )
