@@ -3642,7 +3642,7 @@ enum VoiceThreadRouting {
         "cancel", "forget", "drop", "scrap", "skip", "ditch", "abort", "stop", "leave it", "leave that",
         "nein", "nee", "nö", "auf keinen fall", "lieber nicht", "bloß nicht", "nicht nötig", "nicht senden",
         "nicht schicken", "nicht abschicken", "vergiss es", "vergiss das", "vergiss", "lass es", "lass das",
-        "lass mal", "abbrechen", "brich ab", "stopp",
+        "lass mal", "abbrechen", "brich ab", "stopp", "stornieren", "storniere",
         "nop", "mejor no", "cancela", "cancélalo", "cancelalo", "cancelar", "olvídalo", "olvidalo", "olvida",
         "déjalo", "dejalo", "ni hablar",
         "non", "pas besoin", "pas la peine", "surtout pas", "laisse tomber", "laissez tomber", "oublie",

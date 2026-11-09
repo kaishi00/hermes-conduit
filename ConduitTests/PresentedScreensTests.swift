@@ -249,7 +249,7 @@ extension AppStateVoiceCapabilityTests {
                    "Don't share", "Don't answer", "Don't start", "Don't send the email", "Cancel the email", "No, forget it",
                    "Cancel the email, please", "Cancel the email.", "我不想发", "送らないで",
                    "Please cancel the email", "No, cancel the email", "Don't send it, thanks", "Decline it, please",
-                   "No, I refuse", "No, thanks, cancel the email", "No, lo rechazo", "不要发", "不用发", "不要发短信", "别发微信", "不用发个消息"] {
+                   "No, I refuse", "No, thanks, cancel the email", "No, lo rechazo", "不要发", "不用发", "不要发短信", "别发微信", "不用发个消息", "Storniere es"] {
             XCTAssertTrue(prompt.isDeclined(by: no), no)
         }
     }
