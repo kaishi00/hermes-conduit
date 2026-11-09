@@ -271,7 +271,9 @@ struct PresentedConfirm: Identifiable, Equatable {
         // share", "cancel the email"), declines.
         case .no(let change):
             return change == nil
-                || ((Self.opens(said, with: Self.actionNos) || VoiceThreadRouting.containsRefusalVerb(words)) && Self.isOneClause(words))
+                || ((Self.opens(said, with: Self.actionNos)
+                    || (Self.opens(said, with: Self.refusalLeads) && VoiceThreadRouting.containsRefusalVerb(words)))
+                    && Self.isOneClause(words))
         // A wait holds; it doesn't refuse ("hold on", "wait, I'm not
         // ready"). "Not now" does, and a not yet with a change in it ("wait,
         // make it Wednesday") asks for that change, not a no.
@@ -388,6 +390,15 @@ struct PresentedConfirm: Identifiable, Equatable {
         "don't", "dont", "do not", "nicht", "cancel", "stop", "abort", "drop", "scrap", "skip", "ditch", "abbrechen", "storniere", "cancela", "cancelar",
         "annule", "annuler", "annulez", "anula", "anular", "annulla", "отмени", "отменить", "anuluj", "iptal",
         "batalkan", "batal", "取消", "キャンセル", "취소",
+    ].map { words(in: $0) }
+
+    /// The user's own refusal after a no ("no, I refuse", "no, decline
+    /// it"), not someone else's ("no, Alex declined it").
+    private static let refusalLeads: [[String]] = [
+        "decline", "refuse", "reject", "deny", "veto", "i refuse", "i decline", "i reject", "i deny",
+        "ablehnen", "lehne", "ich lehne", "rechaza", "rechazo", "recházalo", "je refuse", "rejette", "refusez",
+        "rifiuta", "rifiuto", "rejeita", "recuso", "recusa", "отклони", "отклоните", "отказываюсь", "я отказываюсь",
+        "odrzuć", "odmawiam", "reddet", "reddediyorum", "tolak", "saya menolak", "拒绝", "拒絕", "拒否", "断る", "断って", "お断り",
     ].map { words(in: $0) }
 
     /// The handset's not-yet leads with no not in them: a wait.
