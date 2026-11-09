@@ -147,6 +147,11 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(RichReviewMark.capped(flags).unicodeScalars.count, max)
         let mark = RichReviewMark(kind: .change, option: "A", note: flags)
         XCTAssertEqual((mark.json["note"] as? String)?.unicodeScalars.count, max)
+        let card = try reviewCard()
+        let body = RichReviewTap.body(card: card, review: try XCTUnwrap(card.review), marks: ["d1": mark], note: flags,
+                                      label: "Sent review")
+        let given = try XCTUnwrap(body["review"] as? [String: Any])
+        XCTAssertEqual((given["note"] as? String)?.unicodeScalars.count, max, "the round's note too")
     }
 
     func testLiveModelsAreNotOfferedReviews() throws {

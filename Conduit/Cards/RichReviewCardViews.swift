@@ -20,7 +20,7 @@ struct RichReviewCard: View {
     @State private var round: RichReviewRound?
     @State private var failed = false
     /// The host has said whether the round was answered (on another device,
-    /// say), or the round draws from its pictures alone without it.
+    /// say): the pick waits for it, as sending needs the host anyway.
     @State private var known = false
     /// The round shows (kept, or from its pictures), but the host couldn't
     /// be asked.
@@ -208,11 +208,13 @@ struct RichReviewCard: View {
         // A kept round draws at once; one not yet answered is asked again,
         // since another device may have answered it since.
         let kept = RichReviewLoader.shared.kept(review.id, review.round)
+        known = false
         if let kept {
             round = kept
             failed = false
             if kept.wasSent {
                 known = true
+                stale = false
                 return
             }
         }
@@ -227,7 +229,7 @@ struct RichReviewCard: View {
             guard !Task.isCancelled else { return }
             // Pictures draw without the host; pages need it.
             failed = kept == nil && review.hasPages
-            known = kept == nil && !review.hasPages
+            known = false
             // A shown round the host couldn't answer for can be asked again.
             stale = !failed
         }
@@ -558,8 +560,6 @@ struct RichReviewSheet: View {
     @State private var shownRound: Int?
     @State private var loaded: RichReviewRound?
     @State private var failed = false
-    /// The card's round couldn't be read but draws from its pictures alone.
-    @State private var offline = false
     /// The host answered for the card's round this time the sheet opened.
     @State private var answered = false
     /// The round shows (read before, or from its pictures), but the host
@@ -585,7 +585,7 @@ struct RichReviewSheet: View {
     /// Marks go only on the card's own round, once, and only once the host
     /// has said whether it was already answered (on another device, say).
     private var editable: Bool {
-        roundNumber == review.round && (answered || offline) && loaded?.wasSent != true
+        roundNumber == review.round && answered && loaded?.wasSent != true
             && tapState == nil && context?.tap != nil
     }
 
@@ -944,12 +944,12 @@ struct RichReviewSheet: View {
     private func load() async {
         // A round the user has since left doesn't answer for the one shown.
         let number = roundNumber
+        answered = false
         do {
             let round = try await RichReviewLoader.shared.round(review.id, number, fresh: number == review.round)
             guard number == roundNumber, !Task.isCancelled else { return }
             loaded = round
             failed = false
-            offline = false
             answered = number == review.round
             stale = false
         } catch {
@@ -957,7 +957,6 @@ struct RichReviewSheet: View {
             // A round read before still shows, to look at; marking waits for the host.
             loaded = RichReviewLoader.shared.kept(review.id, number)
             failed = loaded == nil && (review.hasPages || number != review.round)
-            offline = loaded == nil && !failed
             answered = false
             stale = !failed
         }

@@ -5845,8 +5845,8 @@ shows the next round under the same review id, listing what earlier rounds
 settled. In Bot Mode a workstream makes the options and the Bot Chat shows
 them with `for: W3`; the plugin sends the marks on to that workstream.
 Marking waits until the host has said whether the round was already
-answered (a pictures-only review can be answered without it); a failed
-read offers Try again, and notes are capped at the host's 2,000 scalars.
+answered (sending needs the host anyway); a failed read offers Try again,
+and notes are capped at the host's 2,000 scalars.
 
 **Siblings:** chats, project chats and Bot Chat (the tool row) · the saved-chat
 copy · the call screen (Gemini, Grok, Qwen and Local Live show_on_screen;
