@@ -389,7 +389,8 @@ enum GroupRoomRow: Equatable {
     /// The user's message on its way, under the id its event will have:
     /// "Sending…" while its send is out, else Retry. In a room someone else
     /// hosts, where its post through your Hermes stands (RoomPosts.swift).
-    case pending(text: String, members: [GroupMember], isSending: Bool, copyPost: RoomPostText.RowState? = nil)
+    case pending(text: String, members: [GroupMember], isSending: Bool, copyPost: RoomPostText.RowState? = nil,
+                 files: [Attachment] = [])
     /// The member whose turn is running, or whose route to its Hermes is
     /// cut off or unreachable (Linked Rooms).
     case responding(GroupMember, state: GroupResponderState = .responding)
@@ -448,7 +449,8 @@ enum GroupRoomTranscript {
         if let pending {
             add(
                 GroupRoomOutbox.serverEventID(forClientEventID: pending.eventID),
-                .pending(text: pending.text, members: members, isSending: isSending, copyPost: copyPost)
+                .pending(text: pending.text, members: members, isSending: isSending, copyPost: copyPost,
+                         files: pending.attachments.map { $0.attachment(roomID: roomID) })
             )
         }
         if let responder {

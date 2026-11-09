@@ -575,6 +575,88 @@
         }
       }
     },
+    "A group room message takes up to %@ files. Send the rest in another message." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Nachricht in einem Raum nimmt bis zu %@ Dateien. Schick den Rest in einer weiteren Nachricht."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un mensaje de sala admite hasta %@ archivos. Envía el resto en otro mensaje."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un message de salon accepte jusqu'à %@ fichiers. Envoie le reste dans un autre message."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satu pesan ruang menerima hingga %@ file. Kirim sisanya di pesan lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un messaggio di una stanza accetta fino a %@ file. Invia il resto in un altro messaggio."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "グループの1件のメッセージで送れるファイルは%@個までです。残りは別のメッセージで送ってください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "방 메시지 하나에는 파일을 %@개까지 보낼 수 있어요. 나머지는 다른 메시지로 보내세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiadomość w pokoju przyjmuje do %@ plików. Resztę wyślij w kolejnej wiadomości."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uma mensagem de sala aceita até %@ arquivos. Envie o restante em outra mensagem."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В одном сообщении комнаты можно отправить до %@ файлов. Остальные отправьте другим сообщением."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir oda mesajı en fazla %@ dosya alır. Kalanları başka bir mesajla gönder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊的一条消息最多可带 %@ 个文件。其余的请用另一条消息发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群組的一則訊息最多可帶 %@ 個檔案。其餘的請用另一則訊息傳送。"
+          }
+        }
+      }
+    },
     "Unread in another profile" : {
       "localizations" : {
         "de" : {
