@@ -52,6 +52,15 @@ class ChatsSearchCommandSourceContractTests(unittest.TestCase):
         self.assertLess(guard, cleared)
         self.assertLess(cleared, handed)
 
+    def test_a_cover_clears_the_pending_focus_as_well_as_the_field(self):
+        # A chat pushed over the list puts the keyboard away; a request set
+        # in the same transaction must not be waiting when the list returns.
+        shown = self.source[self.source.index(".onChange(of: isShown, initial: true)"):]
+        shown = shown[:shown.index(".onChange(of: appState.activeSessionId)")]
+        self.assertIn("if !shown {", shown)
+        self.assertIn("searchFocused = false", shown)
+        self.assertIn("barSearchFocusPending = false", shown)
+
     def test_the_one_row_layout_reuses_the_same_focus_state(self):
         # Both fields bind one @FocusState, which is what lets a request move
         # between them at a layout change.
