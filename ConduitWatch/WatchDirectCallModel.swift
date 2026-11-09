@@ -1161,7 +1161,8 @@ final class WatchDirectCallModel: ObservableObject {
                 "screen": "\(scenePhase)",
                 "reachable": link.isReachable,
             ])
-        case .failed(let message):
+        case .failed(let failure):
+            let message = Self.worded(failure, pluginAsk: link.phoneContext?.pluginAsk)
             WatchCallLog.shared.note("directFailed", ["message": message, "screen": "\(scenePhase)", "rejoins": rejoins])
             // Once the call has been live, a fresh session carries it on;
             // not on the bridge once its grant is over, which its bridge was.
@@ -1176,6 +1177,14 @@ final class WatchDirectCallModel: ObservableObject {
         case .idle, .connecting, .stopped:
             break
         }
+    }
+
+    /// A session's ask to update the plugin (Grok or Local Live's socket
+    /// missing), in the iPhone's words when its host manages the plugin.
+    nonisolated static func worded(_ failure: String, pluginAsk: String?) -> String {
+        guard let pluginAsk else { return failure }
+        let asks = [GrokLiveAvailability.pluginMissing.userFacingReason, LocalLiveProtocol.pluginMissingReason]
+        return asks.contains(failure) ? pluginAsk : failure
     }
 
     /// The connection a tool call is answered on (see generationOffset).

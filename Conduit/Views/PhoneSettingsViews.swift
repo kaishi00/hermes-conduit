@@ -54,7 +54,7 @@ struct PhoneSettingsPage: View {
                 if preferences.isOn {
                     statusRows
                 } else if !pluginServes {
-                    Text("Update the Conduit plugin on your Hermes host to share your calendar and phone status.")
+                    Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to share your calendar and phone status.")))
                         .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 }
@@ -120,7 +120,7 @@ struct PhoneSettingsPage: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         } else if let pause = engine.state.pause {
-            Text(pause.message)
+            Text(pause.message(managedBy: appState.pluginManagedBy(forDashboard: preferences.destination?.dashboardID)))
                 .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else if let last = engine.state.lastSync {

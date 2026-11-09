@@ -228,12 +228,18 @@ enum PhoneSyncPause: Codable, Equatable {
     case pluginOff(String)
     case refused(String)
 
-    var message: String {
+    var message: String { message(managedBy: PluginUpdateAsk.managedBy) }
+
+    /// The words for a destination whose host's plugin is kept up to date
+    /// by `managedBy` (nil when the host doesn't manage it), which may not
+    /// be the active dashboard's.
+    func message(managedBy: String?) -> String {
         switch self {
         case .signInRequired:
             return AppLocalization.string("Paused: sign in to this dashboard again. Sharing catches up when you open Conduit.")
         case .pluginMissing:
-            return AppLocalization.string("Paused: update the Conduit plugin on this host to share your calendar and phone status.")
+            return PluginUpdateAsk.text(AppLocalization.string("Paused: update the Conduit plugin on this host to share your calendar and phone status."),
+                                        lead: AppLocalization.string("Sharing is paused."), managedBy: managedBy)
         case .otherDashboard:
             return AppLocalization.string("Waiting: this goes only to the dashboard it was turned on for. Switch back to it to sync.")
         case .pluginOff(let remedy):

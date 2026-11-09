@@ -81,6 +81,11 @@ struct WatchPhoneContext: Codable, Equatable {
     /// on the iPhone shows. Nil when they aren't, or from an older iPhone
     /// app; a value the Watch doesn't know reads as nil.
     var notificationsEncryption: String? = nil
+    /// What the Watch says in place of asking for a plugin update when the
+    /// active host manages the Conduit plugin (PluginUpdateAsk on the
+    /// iPhone): that this host's plugin doesn't have it, and who keeps it
+    /// up to date. Nil when the host doesn't, or from an older iPhone app.
+    var pluginAsk: String? = nil
 
     /// What the Watch's Settings show for the notifications it mirrors.
     enum NotificationsEncryption: String {
