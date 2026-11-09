@@ -212,6 +212,12 @@ extension AppState {
                     throw GroupRoomFilesClient.Failure.tooManyFiles
                 }
                 if Self.roomFilesBytes(attachments) > GroupRoomAttachment.maxMessageBytes {
+                    // A file Hermes can never take is the error to name:
+                    // no split of the message would send it.
+                    let refused = await Task.detached(priority: .userInitiated) {
+                        attachments.first { GroupRoomHermesUpload($0) == nil }
+                    }.value
+                    if let refused { throw GroupRoomFilesClient.Failure.unreadable(refused.name) }
                     throw GroupRoomFilesClient.Failure.overMessageLimit
                 }
             }

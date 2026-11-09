@@ -346,6 +346,17 @@ extension GroupChatModelsTests {
                            "the message's total is named, not a file that prepared fine")
         }
         XCTAssertTrue(alone.uploads.isEmpty, "the total is checked before anything goes up")
+
+        // Over the total with a file Hermes never takes: that file is named,
+        // as no split of the message would send it.
+        let heic = try attachmentsStaged("cat.heic", data: Data("ftypheic....".utf8), mimeType: "image/heic", kind: .image)
+        do {
+            _ = try await withoutPlugin.roomMessage("", attachments: [first, second, heic])
+            XCTFail("expected the message to fail")
+        } catch {
+            XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .unreadable("cat.heic"))
+        }
+        XCTAssertTrue(alone.uploads.isEmpty)
         withoutPlugin.closeGroupRoom()
     }
 
