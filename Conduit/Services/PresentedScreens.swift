@@ -252,9 +252,11 @@ struct PresentedConfirm: Identifiable, Equatable {
     func isDeclined(by words: String) -> Bool {
         // A question ("can't we wait?") asks; it doesn't answer.
         guard !words.contains("?"), !words.contains("？"), !VoiceCallDecisionOutcome.isYes(words) else { return false }
-        // A Chinese or Japanese question ends in its marker ("取消吗").
-        let ending = words.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
-        guard !Self.cjkQuestionEnds.contains(where: { ending.hasSuffix($0) }),
+        // A Chinese or Japanese question ends a clause in its marker
+        // ("取消吗", "取消吗，谢谢").
+        let clauseEnds = words.components(separatedBy: CharacterSet(charactersIn: ",;:—–，；：、.!。！\n"))
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters)) }
+        guard !clauseEnds.contains(where: { clause in Self.cjkQuestionEnds.contains { clause.hasSuffix($0) } }),
               !Self.cjkAskPairs.contains(where: { words.contains($0) }) else { return false }
         // Not knowing isn't a no ("no idea", "not sure").
         let folded = words.lowercased().replacingOccurrences(of: "’", with: "'")
@@ -271,7 +273,7 @@ struct PresentedConfirm: Identifiable, Equatable {
         // share", "cancel the email"), declines.
         case .no(let change):
             return change == nil
-                || ((Self.opens(said, with: Self.actionNos)
+                || (((Self.opens(said, with: Self.actionNos) && (!Self.ledByBareNo(said) || Self.noStandsAlone(words)))
                     || (Self.opens(said, with: Self.refusalLeads) && Self.noStandsAlone(words)
                         && VoiceThreadRouting.containsRefusalVerb(words)))
                     && Self.isOneClause(words))
@@ -392,6 +394,15 @@ struct PresentedConfirm: Identifiable, Equatable {
         "annule", "annuler", "annulez", "anula", "anular", "annulla", "отмени", "отменить", "anuluj", "iptal",
         "batalkan", "batal", "取消", "キャンセル", "취소",
     ].map { words(in: $0) }
+
+    /// Whether the answer opens with a bare no, which may be the next
+    /// verb's not ("no cancelar el envío") rather than an answer.
+    private static func ledByBareNo(_ said: [String]) -> Bool {
+        guard let first = said.first(where: { !VoiceThreadRouting.fillers.contains($0) }) else { return false }
+        return bareNos.contains(first)
+    }
+
+    private static let bareNos: Set<String> = ["no", "nope", "nah", "nein", "non", "não", "nao", "nie", "нет", "hayır", "tidak"]
 
     /// Whether the no before a refusal is a clause of its own ("no, lo
     /// rechazo"), not the verb's not ("no lo rechazo", I don't reject it).
