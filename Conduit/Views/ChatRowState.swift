@@ -110,6 +110,11 @@ struct ChatRowState: Equatable {
         followUpReasons = appState.predictive.followUpReasons
         lineBoardIDs = facts.lineBoardIDs
         lineBoards = lineBoardIDs.isEmpty ? [:] : appState.lineBoards
+        if !lineBoards.isEmpty {
+            // A board read for a reply can bring a live card up to date too.
+            latestLiveRows = LineBoards.latestLiveRows(latestLiveRows, order: facts.rowOrder, waiting: lineBoardIDs,
+                                                       boards: lineBoards)
+        }
     }
 
     /// `AppState.canReact(to:)`, from these values alone.
@@ -137,6 +142,9 @@ struct ChatRowFacts: Equatable {
     var teammateReplies: [String: String] = [:]
     /// Each reply's ::conduit-board lines no conduit_show row drew (LineBoards).
     var lineBoardIDs: [String: [String]] = [:]
+    /// Where those replies and each live card's last row are in the chat,
+    /// to tell which of them brought a live card up to date last.
+    var rowOrder: [String: Int] = [:]
 
     init() {}
 
@@ -153,6 +161,10 @@ struct ChatRowFacts: Equatable {
             streamingMessageID: isBusy ? BotTeammateMessages.runningReplyID(in: rows) : nil
         )
         lineBoardIDs = LineBoards.waiting(in: rows)
+        if !lineBoardIDs.isEmpty {
+            let placed = Set(lineBoardIDs.keys).union(latestLiveRows.values)
+            for (index, row) in rows.enumerated() where placed.contains(row.id) { rowOrder[row.id] = index }
+        }
     }
 }
 

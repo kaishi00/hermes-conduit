@@ -18,24 +18,19 @@ enum LineBoards {
     static let capability = "desktop-boards"
     static let path = "/api/plugins/conduit_push/boards/desktop"
 
-    private static let lineExpression = try! NSRegularExpression(
-        pattern: #"::conduit-board\{\s*id=["'](cb-[0-9a-f]{12})["']\s*\}"#
-    )
-
     static func readPath(profile: String, id: String) -> String {
         var components = URLComponents()
         components.queryItems = [URLQueryItem(name: "profile", value: profile), URLQueryItem(name: "id", value: id)]
         return path + "?" + (components.percentEncodedQuery ?? "")
     }
 
-    /// The board ids `text`'s lines name, in order, each once.
+    /// The board ids `text`'s lines name, in order, each once: only lines
+    /// the chat takes as boards (TranscriptDirectives), so one in code, a
+    /// quote or a table is an example and draws nothing.
     static func ids(in text: String) -> [String] {
-        guard text.contains("::conduit-board{") else { return [] }
-        let nsText = text as NSString
         var seen: Set<String> = []
-        return lineExpression.matches(in: text, range: NSRange(location: 0, length: nsText.length)).compactMap { match in
-            let id = nsText.substring(with: match.range(at: 1))
-            return seen.insert(id).inserted ? id : nil
+        return TranscriptDirectives.boardIDs(in: text).filter { id in
+            id.range(of: #"^cb-[0-9a-f]{12}$"#, options: .regularExpression) != nil && seen.insert(id).inserted
         }
     }
 
@@ -62,6 +57,24 @@ enum LineBoards {
             let left = named.filter { !drawn.contains($0) }
             return left.isEmpty ? nil : left
         }
+    }
+
+    /// `latest` (each live card's last row, RichCard.latestLiveRows) with
+    /// the replies whose read boards bring a live card up to date later in
+    /// the chat; `order`: the rows' places in it.
+    static func latestLiveRows(_ latest: [String: String], order: [String: Int], waiting: [String: [String]],
+                               boards: [String: RichBoard]) -> [String: String] {
+        var latest = latest
+        let replies = waiting.keys.compactMap { id in order[id].map { (id, $0) } }.sorted { $0.1 < $1.1 }
+        for (reply, place) in replies {
+            for id in waiting[reply] ?? [] {
+                for name in (boards[id]?.cards ?? []).compactMap(\.live)
+                where latest[name].flatMap({ order[$0] }).map({ $0 < place }) ?? true {
+                    latest[name] = reply
+                }
+            }
+        }
+        return latest
     }
 
     private static func jsonObject(_ text: String) -> [String: Any]? {

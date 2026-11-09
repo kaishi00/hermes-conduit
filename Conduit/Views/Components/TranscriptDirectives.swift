@@ -150,6 +150,27 @@ enum TranscriptDirectives {
         }
     }
 
+    /// The `id` of each board line the chat takes as one (hides), in order:
+    /// not in code, a quote or a table, where it's shown as written.
+    static func boardIDs(in text: String) -> [String] {
+        guard text.contains("::\(conduitBoardName){") else { return [] }
+        var ids: [String] = []
+        _ = rewritingLines(text) { line in
+            guard segments(in: line) != nil else { return line }
+            let nsLine = line as NSString
+            let codeSpans = inlineCodeSpans(in: line)
+            for match in directiveExpression.matches(in: line, range: NSRange(location: 0, length: nsLine.length)) {
+                let body = nsLine.substring(with: match.range(at: 2))
+                guard nsLine.substring(with: match.range(at: 1)) == conduitBoardName, isAttributesOnly(body),
+                      !codeSpans.contains(where: { $0.location < match.range.location && match.range.location < NSMaxRange($0) }),
+                      let id = attributes(in: body)["id"] else { continue }
+                ids.append(id.trimmingCharacters(in: .whitespaces))
+            }
+            return line
+        }
+        return ids
+    }
+
     /// `text` with `rewrite` applied to each line the chat would read
     /// directives in. A fenced code block is code, a quoted directive an
     /// example, and a table's lines (header, rule and rows) table text: the
