@@ -367,7 +367,7 @@ jobs:
             CHAIN = json.loads(os.environ.get("CHAIN") or "[]")
             OWN_MODELS = {c["model"] for c in CHAIN}
             OWN_NAMES = list(dict.fromkeys(c["name"] for c in CHAIN))
-            REVIEW_CAP, REPLY_CAP, REPLIES_CAP, DIFF_CAP = 6000, 1500, 6000, 40000
+            REVIEW_CAP, REPLY_CAP, REPLIES_CAP, DIFF_CAP, COMMITS_CAP = 6000, 1500, 6000, 40000, 4000
             TRUSTED = {"OWNER", "MEMBER", "COLLABORATOR"}
 
             def gh(path, accept=None, items=False):
@@ -465,7 +465,8 @@ jobs:
                         delta = since or (["a merge"] if kept else [])
                         out += ["", f"Your last review (as {', '.join(OWN_NAMES)}) was of commit {reviewed[:7]}. "
                                     "The PR's commits since then (merges of the base branch left out):", ""]
-                        out += [f"- {c['sha'][:7]} {(c['commit']['message'].splitlines() or ['(no message)'])[0]}" for c in since] or ["- none but merges"]
+                        bullets = [f"- {c['sha'][:7]} {(c['commit']['message'].splitlines() or ['(no message)'])[0]}" for c in since]
+                        out += [clip("\n".join(bullets), COMMITS_CAP) if bullets else "- none but merges"]
                         out += ["", "The change since that review, in the PR's own files:", "", "```diff",
                                 clip("\n".join(kept), DIFF_CAP) or "(no change in the PR's files)", "```"]
                     else:
@@ -488,7 +489,8 @@ jobs:
                     out += ["", f"### Earlier review ({r['created_at']})", "", quote(clip(r["text"], REVIEW_CAP))]
                 since = latest[0]["created_at"]
                 replies, used = [], 0
-                for c in comments:
+                # Newest first, so the latest answers fit when the replies run long.
+                for c in reversed(comments):
                     # The replies of people who can push here, or the PR's author.
                     if not c.get("user"):
                         continue
@@ -496,25 +498,32 @@ jobs:
                             or c["user"]["login"].endswith("[bot]")
                             or (c.get("author_association") not in TRUSTED and c["user"]["login"] != author)):
                         continue
-                    text = clip(c["body"], REPLY_CAP)
-                    if used + len(text) > REPLIES_CAP:
-                        replies.append("[later replies left out: too long]")
+                    reply = f"#### {c['user']['login']} ({c['created_at']})\n\n{quote(clip(c['body'], REPLY_CAP))}"
+                    size = len(reply.encode("utf-8"))
+                    if used + size > REPLIES_CAP:
+                        replies.append("[earlier replies left out: too long]")
                         break
-                    used += len(text)
-                    replies.append(f"#### {c['user']['login']} ({c['created_at']})\n\n{quote(text)}")
+                    used += size
+                    replies.append(reply)
                 if replies:
-                    out += ["", "### Replies since", ""] + replies
+                    out += ["", "### Replies since", ""] + replies[::-1]
                 print("\n".join(out))
 
             try:
                 main()
             except Exception as e:  # The review goes on without its earlier rounds.
-                print(f"Couldn't gather the earlier rounds: {e}", file=sys.stderr)
+                why = (getattr(e, "stderr", None) or b"")
+                why = why.decode("utf-8", "replace") if isinstance(why, bytes) else why
+                print(f"Couldn't gather the earlier rounds: {e} {why.strip()[:2000]}", file=sys.stderr)
+                sys.exit(3)
         run: |
           path="$RUNNER_TEMP/earlier-rounds.md"
-          python3 -I -c "$EARLIER_PY" > "$path" || : > "$path"
+          failed=
+          python3 -I -c "$EARLIER_PY" > "$path" || { : > "$path"; failed=1; }
           echo "path=$path" >> "$GITHUB_OUTPUT"
-          if [ -s "$path" ]; then
+          if [ -n "$failed" ]; then
+            echo "Couldn't gather the earlier rounds (the step's log says why): the review reads the whole PR." | tee -a "$GITHUB_STEP_SUMMARY"
+          elif [ -s "$path" ]; then
             echo "The review gets the earlier rounds ($(wc -c < "$path") bytes)." | tee -a "$GITHUB_STEP_SUMMARY"
           else
             echo "No earlier rounds: the review reads the whole PR." | tee -a "$GITHUB_STEP_SUMMARY"
