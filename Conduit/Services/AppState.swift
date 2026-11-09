@@ -42273,6 +42273,10 @@ final class AppState: ObservableObject {
         let status = try await makeGPTLiveClient { profile }.availability(billing: .subscription)
         noteWatchCallVoice(.gptLive, ready: status.isAvailable, profile: profile)
         guard status.isAvailable else {
+            // The reason is worded for the active host's plugin.
+            guard watchConnectionIsCurrent(connection) else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("GPT-Live is not available on this Hermes server."))
         }
         let memory = await memoryLookup
