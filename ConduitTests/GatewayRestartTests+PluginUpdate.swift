@@ -1028,6 +1028,7 @@ extension GatewayRestartTests {
         // gateway drain and root-unit fallback), never Hermes' pull here.
         let host = PluginHost()
         host.selfUpdateJobs = [
+            ["id": "j1", "step": "downloading"],
             ["id": "j1", "step": "restarting_gateway"],
             ["id": "j1", "step": "done", "loaded_version": "0.63.0"],
         ]
@@ -1038,8 +1039,11 @@ extension GatewayRestartTests {
         var updater = host.updater()
         updater.onHost = true
         updater.restartOnly = true
-        let outcome = await updater.run { _ in }
+        var steps: [NotifierPluginUpdateState] = []
+        let outcome = await updater.run { steps.append($0) }
         XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        // Nothing downloads, so the progress never says it does.
+        XCTAssertFalse(steps.contains(.updating(.downloading)))
         XCTAssertTrue(host.calls.contains("POST \(NotifierPluginUpdater.selfUpdatePath)"))
         XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
         XCTAssertFalse(host.calls.contains("POST \(GatewayRestarter.restartPath)"))

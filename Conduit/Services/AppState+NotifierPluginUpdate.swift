@@ -36,7 +36,8 @@ extension AppState {
         guard canUpdateNotifierPlugin else { return }
         notifierPluginUpdateTask?.cancel()
         let dashboardID = activeDashboardID
-        let runID = notifierPluginUpdate.start(on: dashboardID)
+        let restartOnly = notifierPlugin.updateRunsOnlyRestarts(install: install)
+        let runID = notifierPluginUpdate.start(on: dashboardID, first: restartOnly ? .restartingGateway(nil) : .downloading)
         let updater = NotifierPluginUpdater(request: { [weak self] path, method, body in
             guard let self, self.activeDashboardID == dashboardID, let bridge = self.dashboardTicketBridge else {
                 throw DashboardTicketBridgeError.notReady
@@ -48,7 +49,7 @@ extension AppState {
             guard let self, let dashboardID, self.activeDashboardID == dashboardID else { return false }
             return await self.renewDashboardSignIn(dashboardID: dashboardID)
         }, onHost: notifierPlugin.reports(NotifierPluginUpdater.selfUpdateCapability),
-           restartOnly: notifierPlugin.updateRunsOnlyRestarts(install: install),
+           restartOnly: restartOnly,
            profile: activeProfile, report: { [weak self] json in
             guard let self, self.activeDashboardID == dashboardID else { return }
             self.applyNotifierPluginReport(json)

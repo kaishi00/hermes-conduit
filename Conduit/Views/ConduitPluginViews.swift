@@ -185,12 +185,13 @@ struct ConduitPluginSettingsDetail: View {
             }
 
             // A managed host's plugin is the host's to update: no commands
-            // that would replace the copy it pinned.
-            if !status.isManaged {
+            // that would replace the copy it pinned. Turning on a copy the
+            // dashboard doesn't run replaces nothing, so those steps stay.
+            if !status.isManaged || status.state == .predatesCapabilities {
                 ConduitSettingsSection(title: AppLocalization.string("Do it manually"), symbol: "terminal", tint: .conduitAura) {
                     DisclosureGroup(isExpanded: $showsCommands) {
                         VStack(alignment: .leading, spacing: 12) {
-                            if status.isNotServed {
+                            if status.isNotServed || status.isManaged {
                                 NotificationSetupCommand(step: 1, title: AppLocalization.string("Turn on the notifier"), command: "hermes plugins enable conduit_push")
                             } else if status.offersInstall {
                                 NotificationSetupCommand(step: 1, title: AppLocalization.string("Install the notifier"), command: "hermes plugins install \(NotifierPluginStatus.repository) --enable")
@@ -215,7 +216,8 @@ struct ConduitPluginSettingsDetail: View {
         .notifierPluginUpdateConfirmation(isPresented: $confirming, install: isInstall(status))
         // The one-time manual update, and turning on an unserved copy: their
         // steps open by themselves.
-        .onChange(of: status.needsManualUpdate(after: update) || status.isNotServed, initial: true) { _, needed in
+        .onChange(of: status.needsManualUpdate(after: update) || status.isNotServed
+                   || (status.isManaged && status.state == .predatesCapabilities), initial: true) { _, needed in
             if needed { showsCommands = true }
         }
         // Asked again on every visit and dashboard switch.

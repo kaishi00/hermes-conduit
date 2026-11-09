@@ -4555,8 +4555,9 @@ private struct NotificationsSettingsDetail: View {
                     if appState.notifierPlugin.reports("pairing") {
                         oneTapPairing
                     } else {
-                        // Installed but not running: installing again can't help.
-                        if appState.notifierPlugin.isNotServed {
+                        // Installed but not running: installing again can't
+                        // help, nor on a managed host, whose copy is the host's.
+                        if appState.notifierPlugin.isNotServed || appState.notifierPlugin.isManaged {
                             Text("Installed on this dashboard's host, but the dashboard doesn't run it. Turn it on in Hermes, then restart the gateway and the dashboard.")
                                 .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)

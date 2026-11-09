@@ -78,12 +78,13 @@ struct NotifierPluginUpdateSlot: Equatable {
         dashboardID == activeDashboardID ? state : .idle
     }
 
-    mutating func start(on dashboardID: UUID?) -> UUID {
+    /// A restart-only run starts at the gateway restart: nothing downloads.
+    mutating func start(on dashboardID: UUID?, first: NotifierPluginUpdateStep = .downloading) -> UUID {
         let id = UUID()
         runID = id
         self.dashboardID = dashboardID
         startedAt = Date()
-        state = .updating(.downloading)
+        state = .updating(first)
         return id
     }
 
@@ -161,6 +162,8 @@ struct NotifierPluginUpdater {
     /// Only the restarts: a host that manages the plugin (`managedBy`) has
     /// put the new plugin on disk itself, and refuses a pull from Conduit.
     var restartOnly = false
+    /// The run's first step: a restart-only run downloads nothing.
+    private var firstStep: NotifierPluginUpdateStep { restartOnly ? .restartingGateway(nil) : .downloading }
     var profile: String?
     /// Each capabilities answer read after the update: the new plugin's
     /// report, so the screen doesn't wait for another status refresh.
@@ -353,7 +356,7 @@ struct NotifierPluginUpdater {
     /// then run from here.
     private func runOnHost(request: Request, progress: (NotifierPluginUpdateState) -> Void,
                            restartedForHermes: Bool = false) async -> NotifierPluginUpdateState? {
-        progress(.updating(.downloading))
+        progress(.updating(firstStep))
         let path = profile.map { DashboardPath.withProfile(Self.selfUpdatePath, profile: $0) } ?? Self.selfUpdatePath
         var job: [String: Any]
         do {
@@ -400,7 +403,8 @@ struct NotifierPluginUpdater {
         let started = now()
         while true {
             if let step = Self.hostStep(job) {
-                progress(.updating(step))
+                // A restart-only job opens on "downloading" for its no-op pull.
+                progress(.updating(restartOnly && step == .downloading ? firstStep : step))
             } else if let outcome = Self.hostOutcome(job) {
                 let pullFailed = job["failed_step"] as? String == "downloading"
                 if pullFailed, case .failed(let detail) = outcome, Self.ranMixedHermes(detail) {
@@ -414,7 +418,7 @@ struct NotifierPluginUpdater {
                 return await finishHostUpdate(outcome, pullFailed: pullFailed, request: request)
             } else {
                 // A step this Conduit doesn't know (a newer plugin's).
-                progress(.updating(.downloading))
+                progress(.updating(firstStep))
             }
             guard now().timeIntervalSince(started) < Self.hostFollowLimit else {
                 return .runningOnHost
