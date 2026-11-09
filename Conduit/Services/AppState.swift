@@ -7954,6 +7954,7 @@ final class AppState: ObservableObject {
         // After init's own defaults reads, so they don't queue behind it.
         sessionPresentationCache.prewarm()
         installRichDiffReader()
+        installRichReviewReader()
     }
 
     func deviceConditionsChanged(_ conditions: DeviceConditions) {

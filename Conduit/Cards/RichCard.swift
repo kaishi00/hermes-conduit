@@ -39,6 +39,7 @@ struct RichCard: Identifiable, Equatable, Hashable {
         case progress
         case callout
         case diff
+        case review
         case composed
     }
 
@@ -85,6 +86,8 @@ struct RichCard: Identifiable, Equatable, Hashable {
     let callout: RichCallout?
     /// Changes line by line (RichDiffCard.swift).
     let diff: RichDiff?
+    /// Options to look at and mark (RichReviewCard.swift).
+    let review: RichReview?
     /// A card Hermes built (RichComposedCard.swift).
     let sections: [RichSection]
     /// Buttons at any card's foot.
@@ -128,6 +131,7 @@ struct RichCard: Identifiable, Equatable, Hashable {
         progress = (json["progress"] as? [[String: Any]] ?? []).compactMap(RichProgress.init(json:))
         callout = RichCallout(json: json["callout"])
         diff = RichDiff(json: json["diff"])
+        review = RichReview(json: json["review"])
         sections = (json["sections"] as? [[String: Any]] ?? []).compactMap(RichSection.init(json:))
         actions = (json["actions"] as? [[String: Any]] ?? []).compactMap(RichButton.init(json:))
         normalizedJSON = (try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]))
@@ -149,6 +153,7 @@ struct RichCard: Identifiable, Equatable, Hashable {
         case .progress: guard !progress.isEmpty else { return nil }
         case .callout: guard callout != nil else { return nil }
         case .diff: guard diff != nil else { return nil }
+        case .review: guard review != nil else { return nil }
         case .composed: guard !sections.isEmpty else { return nil }
         }
     }
