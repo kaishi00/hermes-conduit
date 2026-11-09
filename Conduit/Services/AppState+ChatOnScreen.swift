@@ -25,22 +25,23 @@ extension AppState {
     }
 
     /// The open chat's id while it's on screen: Conduit active, the chat
-    /// live, and neither the list nor a group room covering it.
+    /// live, and neither the list, a group room nor another bot's chat on
+    /// its way (`botChatCoversOpenChat`) covering it.
     var chatShownOnScreen: String? {
-        guard isSceneActive, !showSidebar, activeRoomSurface == nil,
+        guard isSceneActive, !showSidebar, activeRoomSurface == nil, !botChatCoversOpenChat,
               let sessionID = activeSessionId, !sessionID.isEmpty,
               composerChatOnScreen == .live(sessionID) else { return nil }
         return sessionID
     }
 
     /// The open group room's id while it's on screen: Conduit active, the
-    /// list not covering it, a screen of it showing (not a hidden tab or a
+    /// list (or a Bot Chat on its way) not covering it, a screen of it showing (not a hidden tab or a
     /// page pushed over it), and its messages read from Hermes since it
     /// opened (a failed read leaves an old or empty transcript). Its bots'
     /// replies and failed turns name the room (issue 2064), so reading it
     /// clears them.
     var roomShownOnScreen: String? {
-        guard isSceneActive, !showSidebar, roomSurfaceShows, let roomID = activeRoomSurface?.room.roomID,
+        guard isSceneActive, !showSidebar, roomSurfaceShows, !botChatCoversOpenChat, let roomID = activeRoomSurface?.room.roomID,
               activeRoomSurface?.copy == nil, activeRoomLogRead == roomID else { return nil }
         return roomID
     }

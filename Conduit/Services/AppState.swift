@@ -806,6 +806,7 @@ final class AppState: ObservableObject {
                 // Its own saved voice jobs, if no boundary already took them.
                 if voiceJobLedgerRestoredKey != nil { scheduleVoiceJobLedgerRestore() }
                 composerNotice = nil
+                botsListNotice = nil
                 restoreDisplayPreferences()
                 restoreBusyInputMode()
                 dismissChatTakeover()
@@ -825,6 +826,7 @@ final class AppState: ObservableObject {
         didSet {
             if oldValue.activeDashboardID != savedDashboardRegistry.activeDashboardID {
                 composerNotice = nil
+                botsListNotice = nil
                 widgetSettledCatalogOwner = nil
                 let selectedDashboard = savedDashboardRegistry.activeDashboardID
                 let selectedProfile = selectedDashboard.flatMap { rememberedActiveProfile(for: $0) } ?? "default"
@@ -1898,7 +1900,16 @@ final class AppState: ObservableObject {
         let label: String
         let transition: UInt64
     }
-    @Published private(set) var botChatOnItsWay: BotChatOnItsWay?
+    @Published private(set) var botChatOnItsWay: BotChatOnItsWay? {
+        didSet {
+            guard oldValue != botChatOnItsWay else { return }
+            updateChatOnScreen()
+            // The cover went, and with it nothing covers the chat it showed.
+            if oldValue != nil, botChatOnItsWay == nil, !botChatCoversOpenChat {
+                noteActiveChatSeen(respectingMarks: true)
+            }
+        }
+    }
     /// Why a Bot Chat opened from a list of bots didn't open, for that list
     /// to show (`openBotChatFromList`); the list takes it.
     @Published var botsListNotice: String?
@@ -2416,12 +2427,17 @@ final class AppState: ObservableObject {
     @Published var showSidebar = false {
         didSet {
             // Closing the drawer uncovers the open chat (#454).
-            if oldValue, !showSidebar { noteActiveChatSeen(respectingMarks: true) }
+            // A list of bots closing for another bot's chat uncovers nothing:
+            // that chat's cover shows (botChatCoversOpenChat).
+            if oldValue, !showSidebar, !botChatCoversOpenChat { noteActiveChatSeen(respectingMarks: true) }
             // Covering it (Back to the list, the drawer opening) leaves it:
             // what it showed until now was seen. The list it returns to
             // reads the catalog again (refreshCatalogAfterLeavingChat, from
             // RootView, whenever the chat is covered).
-            if !oldValue, showSidebar { noteChatLeft(activeSessionId) }
+            if !oldValue, showSidebar, !botChatCoversOpenChat { noteChatLeft(activeSessionId) }
+            // Back to the list over a Bot Chat on its way: that open stands
+            // down rather than land behind the list.
+            if !oldValue, showSidebar, let coming = botChatOnItsWay { standDownBotChatOnItsWay(coming) }
             if oldValue != showSidebar { updateChatOnScreen() }
             // The drawer covers the chat, so its live rows need not redraw at
             // streaming cadence while it is up or animating (liveRowsHidden).
@@ -2486,20 +2502,47 @@ final class AppState: ObservableObject {
     /// the chat then, before it lands, so this tells it a Bot Chat or a room
     /// is coming (it stays in Bots) whatever was open before.
     private(set) var botChatOpening: String?
-    /// The list was showing, with no chat beside it, as the last mark was
-    /// made: closing it pushed the chat's screen (`openBotChatFromList`).
-    private var botChatOpeningPushed = false
+    /// Each open a list of bots marked and hasn't ended, by name: how many
+    /// taps, and whether the chat's screen they open on was pushed as the
+    /// list closed (`openBotChatFromList`). A tap made while the list is
+    /// still closing over an earlier tap's push opens on that screen too.
+    private var botChatMarks: [String: (taps: Int, pushed: Bool)] = [:]
 
     /// Closes the list for `name`'s Bot Chat; `endOpeningBotChat` once the
     /// open has finished, opened or not.
     func beginOpeningBotChat(_ name: String) {
         botChatOpening = name
-        botChatOpeningPushed = showSidebar
+        let pushed = showSidebar || botChatMarks.values.contains { $0.pushed }
+        let mark = botChatMarks[name]
+        botChatMarks[name] = ((mark?.taps ?? 0) + 1, (mark?.pushed ?? false) || pushed)
         dismissSidebarDrawer()
     }
 
     func endOpeningBotChat(_ name: String) {
         if botChatOpening == name { botChatOpening = nil }
+        guard let mark = botChatMarks[name] else { return }
+        if mark.taps > 1 {
+            botChatMarks[name] = (mark.taps - 1, mark.pushed)
+            return
+        }
+        botChatMarks[name] = nil
+        // What the chat shows from now on is seen: the cover is gone.
+        guard !botChatCoversOpenChat else { return }
+        noteActiveChatSeen(respectingMarks: true)
+        updateChatOnScreen()
+    }
+
+    /// The open chat (or room) is hidden behind a bot a list of bots is
+    /// opening: its cover shows, or a mark for another bot or a room is
+    /// out, from the moment the list closes. What arrives meanwhile isn't
+    /// seen, so it's not marked read and its notifications stay.
+    var botChatCoversOpenChat: Bool {
+        if botChatComingOverAnother != nil { return true }
+        let open = activeRoomSurface == nil ? activeBotChatProfile : nil
+        return botChatMarks.keys.contains { name in
+            guard let open else { return true }
+            return !profilesMatch(open, name)
+        }
     }
 
     /// The shell placed the conversation for the marked Bot Chat: the mark
@@ -11935,6 +11978,16 @@ final class AppState: ObservableObject {
         generation.map { chatViewportTransitionIsCurrent(generation: $0) } ?? true
     }
 
+    /// The user went back to the list while `coming` was on its way: its
+    /// open no longer owns the screen, so it stands down as a newer tap's
+    /// would make it, and the chat open before keeps its viewport.
+    private func standDownBotChatOnItsWay(_ coming: BotChatOnItsWay) {
+        guard chatViewportTransitionIsCurrent(generation: coming.transition) else { return }
+        finishChatViewportTransition(generation: coming.transition)
+        chatViewportTransitionGeneration &+= 1
+        botChatOnItsWay = nil
+    }
+
     private func markChatViewportReplacement() {
         guard var transition = chatViewportTransition else { return }
         transition.hasReplacement = true
@@ -12770,6 +12823,8 @@ final class AppState: ObservableObject {
         botChatSessionProfiles.removeAll()
         botChatSessionLabels.removeAll()
         botChatOpenFlights.removeAll()
+        // Another server's list: an earlier one's failed open isn't its.
+        botsListNotice = nil
         botRoster = []
         botAvatarImages = [:]
         botAvatarFetchedGeneration.removeAll()
@@ -26766,7 +26821,7 @@ final class AppState: ObservableObject {
                 // A tap that joined: its chat opened, but a newer navigation
                 // since then owns the screen, so the tap doesn't act on it.
                 if joined {
-                    return viewportTransitionGeneration != nil || chatViewportTransitionIsCurrent(flight.transition)
+                    return chatViewportTransitionIsCurrent(viewportTransitionGeneration ?? flight.transition)
                         ? .opened : .superseded
                 }
                 return chatViewportTransitionIsCurrent(flight.transition) ? .failed : .superseded
@@ -26821,16 +26876,22 @@ final class AppState: ObservableObject {
     /// under this bot's tap. True when it opened.
     @discardableResult
     func openBotChatFromList(_ bot: BotProfile) async -> Bool {
-        let pushed = botChatOpeningPushed
+        let shownError = errorMessage
         let outcome = await openBotChatOutcome(for: bot)
-        endOpeningBotChat(bot.name)
-        if outcome == .failed, pushed, !showSidebar {
+        let pushed = botChatMarks[bot.name]?.pushed ?? false
+        // The list shows (it went back, or it never closed): the error
+        // shows with a chat's composer, which isn't there, so the list
+        // says it instead.
+        if outcome == .failed, pushed || showSidebar {
             showSidebar = true
-            // The error shows with the chat's composer, which just went: the
-            // list it went back to says it instead.
-            botsListNotice = errorMessage
-            errorMessage = nil
+            if let error = errorMessage, error != shownError {
+                botsListNotice = error
+                errorMessage = nil
+            } else {
+                botsListNotice = AppLocalization.string("Could not open \(bot.displayLabel)'s Bot Chat.")
+            }
         }
+        endOpeningBotChat(bot.name)
         return outcome == .opened
     }
 
@@ -26859,9 +26920,8 @@ final class AppState: ObservableObject {
                 rows = try await client.findBotChatSession(profile: bot.name)
             }
         } catch {
-            guard botOpenFenceIsCurrent(epoch: epoch, client: client),
-                  chatViewportTransitionIsCurrent(viewportTransitionGeneration) else { return false }
-            return failBotChatOpen(bot, error: error, stage: .lookup)
+            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
+            return failBotChatOpen(bot, error: error, stage: .lookup, transition: viewportTransitionGeneration)
         }
         // A newer navigation took over while the lookup was out (another
         // bot tapped): this open says nothing and makes nothing.
@@ -26869,7 +26929,7 @@ final class AppState: ObservableObject {
               chatViewportTransitionIsCurrent(viewportTransitionGeneration) else { return false }
         switch BotChatResolver.resolve(rows: rows, rosterCanonicalID: bot.canonicalSessionID) {
         case .failure(.unconfirmedAbsence):
-            refuseBotChatConfirmation(bot)
+            refuseBotChatConfirmation(bot, transition: viewportTransitionGeneration)
             return false
         case .success(.openExisting(let registryID, let resumeID)):
             return await openCanonicalBotChat(
@@ -27027,7 +27087,7 @@ final class AppState: ObservableObject {
                 )
             }
             guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
-            return failBotChatOpen(bot, error: error, stage: .create)
+            return failBotChatOpen(bot, error: error, stage: .create, transition: viewportTransitionGeneration)
         }
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
         do {
@@ -27051,7 +27111,7 @@ final class AppState: ObservableObject {
                 )
             }
             guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
-            return failBotChatOpen(bot, error: error, stage: .title)
+            return failBotChatOpen(bot, error: error, stage: .title, transition: viewportTransitionGeneration)
         }
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
         noteBotChatOpen([created.sessionId], bot: bot)
@@ -27106,7 +27166,7 @@ final class AppState: ObservableObject {
             // A cancelled or server-switched flight abandons silently, like
             // every other stage; only a current flight speaks.
             guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
-            refuseBotChatConfirmation(bot)
+            refuseBotChatConfirmation(bot, transition: viewportTransitionGeneration)
             return false
         }
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
@@ -27122,7 +27182,7 @@ final class AppState: ObservableObject {
                 viewportTransitionGeneration: viewportTransitionGeneration
             )
         }
-        refuseBotChatConfirmation(bot)
+        refuseBotChatConfirmation(bot, transition: viewportTransitionGeneration)
         return false
     }
 
@@ -27132,15 +27192,21 @@ final class AppState: ObservableObject {
         case title
     }
 
+    /// Publishes a failed open's reason, unless a newer navigation took
+    /// over from `transition` (another bot tapped): that one owns the
+    /// screen, and this open says nothing over it.
     private func failBotChatOpen(
         _ bot: BotProfile,
         error: Error,
-        stage: BotChatOpenStage
+        stage: BotChatOpenStage,
+        transition: UInt64?
     ) -> Bool {
         if HermesClient.isMissingRPCMethod(error) {
+            // True of the gateway whoever owns the screen.
             botModePhase = .gatewayUnsupported
+            guard chatViewportTransitionIsCurrent(transition) else { return false }
             errorMessage = AppLocalization.string("Update Hermes to use Bot Mode.")
-        } else if !Task.isCancelled {
+        } else if !Task.isCancelled, chatViewportTransitionIsCurrent(transition) {
             switch stage {
             case .lookup:
                 errorMessage = AppLocalization.string(
@@ -27159,7 +27225,8 @@ final class AppState: ObservableObject {
         return false
     }
 
-    private func refuseBotChatConfirmation(_ bot: BotProfile) {
+    private func refuseBotChatConfirmation(_ bot: BotProfile, transition: UInt64?) {
+        guard chatViewportTransitionIsCurrent(transition) else { return }
         errorMessage = AppLocalization.string(
             "Could not confirm \(bot.displayLabel)'s Bot Chat — not starting a new chat."
         )
