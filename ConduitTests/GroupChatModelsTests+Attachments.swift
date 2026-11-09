@@ -405,7 +405,7 @@ extension GroupChatModelsTests {
         let pending = try XCTUnwrap(appState.pendingRoomMessage, "an unknown outcome keeps the message pending")
 
         let read = await appState.roomFileRead(for: pdf.path(roomID: "room-1"))
-        XCTAssertNotEqual(read, .gone)
+        XCTAssertEqual(read, .dataURL("data:image/png;base64,\(Self.pngBytes.base64EncodedString())"))
         XCTAssertEqual(hermes.downloads.first?.eventID, GroupRoomOutbox.serverEventID(forClientEventID: pending.eventID))
         XCTAssertEqual(hermes.downloads.first?.attachmentID, "a1")
         XCTAssertEqual(hermes.downloads.first?.size, 9, "the manifest's size reaches the download, for its timeout")
