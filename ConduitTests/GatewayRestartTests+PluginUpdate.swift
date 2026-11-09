@@ -325,6 +325,24 @@ extension GatewayRestartTests {
         XCTAssertEqual(NotifierPluginSummary.detail(status, update: .idle), "0.0.9 · Restart to finish updating")
     }
 
+    func testAManagedHostWhoseRouteGoesMissingIsOfferedNoInstall() {
+        // The capabilities route 404s (the plugin off, or not loaded) on a
+        // host that said it manages the plugin: it still does.
+        XCTAssertEqual(NotifierPluginStatus.managedBy(after: .predatesCapabilities, reported: nil, before: "Family farm"),
+                       "Family farm")
+        XCTAssertNil(NotifierPluginStatus.managedBy(after: .reported(version: "0.147.1", capabilities: []),
+                                                    reported: nil, before: "Family farm"))
+        var status = NotifierPluginStatus(state: .predatesCapabilities)
+        XCTAssertTrue(status.offersInstall)
+        status.managedBy = "Family farm"
+        XCTAssertFalse(status.offersInstall)
+        XCTAssertFalse(status.updateRecommended)
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+        XCTAssertEqual(FinishSetupStatus.plugin(status, updating: false), .notRunning)
+        status.hostCopy = .old
+        XCTAssertEqual(status.noticeOffer(finishSetupOffersInstall: false), .none)
+    }
+
     func testOnlyAHostThatSaysSoIsManaged() {
         XCTAssertFalse(NotifierPluginStatus().updateRunsOnlyRestarts(install: false))
         XCTAssertNil(NotifierPluginStatus.managedBy(from: ["ok": true, "version": "0.140.3"]))
@@ -984,6 +1002,47 @@ extension GatewayRestartTests {
         guard case .failed = outcome else { return XCTFail("expected a failure, got \(outcome)") }
         XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
         XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
+    }
+
+    func testAManagedHostsOwnJobRunsItsWaitingRestarts() async {
+        // Plugin 0.147.1+: the host's job runs only the restarts (its
+        // gateway drain and root-unit fallback), never Hermes' pull here.
+        let host = PluginHost()
+        host.selfUpdateJobs = [
+            ["id": "j1", "step": "restarting_gateway"],
+            ["id": "j1", "step": "done", "loaded_version": "0.63.0"],
+        ]
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        var updater = host.updater()
+        updater.onHost = true
+        updater.restartOnly = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertTrue(host.calls.contains("POST \(NotifierPluginUpdater.selfUpdatePath)"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+        XCTAssertFalse(host.calls.contains("POST \(GatewayRestarter.restartPath)"))
+    }
+
+    func testAManagedHostThatRefusesItsJobGetsTheRestartsFromHere() async {
+        // Plugin 0.146.0-0.147.0 refuses every job on a managed host.
+        let host = PluginHost()
+        host.selfUpdateStartError = DashboardTicketBridgeError.http(status: 409, detail: "The host manages the Conduit plugin")
+        host.capabilities = [
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
+            Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
+        ]
+        var updater = host.updater()
+        updater.onHost = true
+        updater.restartOnly = true
+        let outcome = await updater.run { _ in }
+        XCTAssertEqual(outcome, .updated(version: "0.63.0"))
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
+        XCTAssertTrue(host.calls.contains("POST \(GatewayRestarter.restartPath)"))
+        XCTAssertTrue(host.calls.contains("POST \(NotifierPluginUpdater.selfRestartPath)"))
     }
 
     func testAManagedHostsWaitingRestartRunsOnlyTheRestarts() async {

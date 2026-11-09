@@ -179,16 +179,19 @@ struct NotifierPluginUpdater {
     /// updated under it, so a pull that meets mixed Hermes again isn't retried.
     private func run(request: @escaping Request, progress: (NotifierPluginUpdateState) -> Void,
                      restartedForHermes: Bool) async -> NotifierPluginUpdateState {
-        if onHost, !install, !restartOnly,
-           let outcome = await runOnHost(request: request, progress: progress, restartedForHermes: restartedForHermes) {
-            return outcome
-        }
         // A restart only when the host still waits on one: the status this
         // was offered from can be stale (another phone finished it).
         if restartOnly, let current = try? await request(NotifierPluginStatus.path, "GET", nil),
            let runtime = NotifierPluginStatus.runtime(from: current), !runtime.restartNeeded {
             report?(current)
             return .updated(version: runtime.loadedVersion)
+        }
+        // A managed host's own job runs only the restarts there (plugin
+        // 0.147.1+), with the gateway's drain and its root-unit fallback;
+        // one that refuses (0.146.0-0.147.0) gets the restarts from here.
+        if onHost, !install,
+           let outcome = await runOnHost(request: request, progress: progress, restartedForHermes: restartedForHermes) {
+            return outcome
         }
         // 1. The new plugin onto the host, unless the host put it there.
         if !restartOnly {
@@ -364,7 +367,8 @@ struct NotifierPluginUpdater {
             // 409: the host manages the plugin (plugin 0.146.0+) and refuses
             // the update. Never fall back to Hermes' own pull, which would
             // replace the copy the host pinned.
-            if Self.httpStatus(of: error) == 409 { return .failed(detail: Self.detail(of: error)) }
+            // A restart-only run pulls nothing either way: the restarts run from here.
+            if Self.httpStatus(of: error) == 409 { return restartOnly ? nil : .failed(detail: Self.detail(of: error)) }
             // No answer at all (a timeout, a dropped connection) may still
             // have started the job: follow one that runs rather than start
             // a second update from here.
@@ -376,6 +380,8 @@ struct NotifierPluginUpdater {
                 // Nothing runs there: a host that manages the plugin now, unknown
                 // to the status this started from, never gets Hermes' own pull.
                 // Nor does one that can't say: the pull would replace a pinned copy.
+                // A restart-only run pulls nothing: its restarts run from here.
+                if restartOnly { return nil }
                 let current: [String: Any]
                 do {
                     current = try await request(NotifierPluginStatus.path, "GET", nil)

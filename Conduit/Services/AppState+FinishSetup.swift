@@ -46,7 +46,8 @@ struct FinishSetupStatus: Equatable {
         switch status.state {
         case .unknown: return .unknown
         case .predatesCapabilities:
-            if status.isNotServed { return .notRunning }
+            // A host that manages the plugin has it; this dashboard doesn't run it.
+            if status.isNotServed || status.isManaged { return .notRunning }
             return status.offersInstall ? .install : .update
         case .reported:
             if status.updateRecommended { return .update }

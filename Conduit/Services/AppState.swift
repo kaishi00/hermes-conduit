@@ -29785,7 +29785,7 @@ final class AppState: ObservableObject {
             : nil
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
-        notifierPlugin.managedBy = managedBy
+        notifierPlugin.managedBy = NotifierPluginStatus.managedBy(after: state, reported: managedBy, before: notifierPlugin.managedBy)
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         Task { await refreshLatestNotifierPluginVersion() }
         clearSettledNotifierPluginUpdateOutcome()

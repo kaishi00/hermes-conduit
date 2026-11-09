@@ -283,20 +283,6 @@ struct NotificationDashboardPairings: Equatable {
     /// to switch to.
     private(set) var unrecognizedCount = 0
 
-    /// A pairing known to be the active dashboard's own: the dashboard
-    /// recorded its relay id, or it is bound to the dashboard by id. A
-    /// legacy pairing with no binding may be another host's.
-    static func isKnownToBeActiveDashboards(
-        _ gateway: RelayMetaInfo.Gateway,
-        activeDashboardID: UUID?,
-        activeDashboardGatewayIDs: Set<String>
-    ) -> Bool {
-        if activeDashboardGatewayIDs.contains(gateway.id) { return true }
-        let raw = gateway.dashboardID?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        guard let activeDashboardID, let dashboardID = UUID(uuidString: raw) else { return false }
-        return dashboardID == activeDashboardID
-    }
-
     /// Pairings are judged against the selected dashboard. With none
     /// selected (it was just removed) there is nothing to judge them
     /// against: routing's one-dashboard fallback would otherwise list a

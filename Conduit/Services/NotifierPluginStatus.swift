@@ -153,8 +153,9 @@ struct NotifierPluginStatus: Equatable {
 
     /// Installing it is the step: the capabilities route is missing and
     /// the host's list has no copy of it, or couldn't be read.
+    /// Never on a host that manages the plugin: it installs it itself.
     var offersInstall: Bool {
-        state == .predatesCapabilities && (hostCopy == .missing || hostCopy == nil)
+        !isManaged && state == .predatesCapabilities && (hostCopy == .missing || hostCopy == nil)
     }
 
     /// The host has a 0.4+ copy that this dashboard doesn't run: Conduit
@@ -332,6 +333,14 @@ struct NotifierPluginStatus: Equatable {
         )
     }
 
+    /// Who manages the plugin after a status read: what the capabilities
+    /// route said, or, when it no longer answers (the plugin off or not
+    /// loaded on the host), what it said last, so nothing installs over a
+    /// copy the host pinned.
+    static func managedBy(after state: State, reported: String?, before: String?) -> String? {
+        state == .predatesCapabilities ? before : reported
+    }
+
     /// Who manages the plugin, from the capabilities answer (`managedBy`).
     static func managedBy(from response: [String: Any]) -> String? {
         guard response["ok"] as? Bool == true, response["managed"] as? Bool == true else { return nil }
@@ -384,6 +393,8 @@ extension NotifierPluginStatus {
         case .unknown:
             return .none
         case .predatesCapabilities:
+            // The host manages the plugin: nothing to install or update from here.
+            guard !isManaged else { return .none }
             switch hostCopy {
             case .old: return asksToUpdate ? .update : .none
             // Nothing one tap fixes; Settings > Conduit plugin has the steps.
