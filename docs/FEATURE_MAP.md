@@ -1297,13 +1297,13 @@ dashboard, since the plugin runs its turns)
 
 **Rulings**
 - The readiness check is always the phone's own turn, never the fast model's, on both paths (notifier 0.49.0, 0.151.0).
-- A fast model that isn't set up, or fails before saying anything, hands the words to a Hermes turn after its one first-person line, on both paths (notifier #586, 0.151.0).
-- On a read-back server the fast model's words go back sentence by sentence like Hermes', and talking over them, Interrupt or the call's response.cancel stop the fast model and any Hermes turn it fell back to; what it already said stays in its conversation (0.151.0; proposed with this PR, for Eric to confirm).
+- With no fast model set up, each utterance is a Hermes turn, with no line first. One that's set up but fails before saying anything says its one first-person line, then hands the words to a Hermes turn. Both hold on both paths (notifier #586, 0.151.0).
+- On a read-back server the fast model's words go back sentence by sentence like Hermes', and talking over them, Interrupt or the call's response.cancel stop the fast model and any Hermes turn it fell back to, which the phone is told to cancel (conduit.turn.cancel), so Hermes stops working on it too; what it already said stays in its conversation (0.151.0; proposed with this PR, for Eric to confirm).
 
 **Open gaps**
 - The Watch's bridge keeps one Hermes turn per utterance on a read-back server: its call sends no conduit.agent, so there is no fast model to ask (0.151.0).
 
-**Checked:** 2026-11-09, #2067 (added: agent mode on a read-back speech server, notifier 0.151.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed).
+**Checked:** 2026-11-09, #2067 (added: agent mode on a read-back speech server, notifier 0.151.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model).
 
 ## Talking over Hermes
 

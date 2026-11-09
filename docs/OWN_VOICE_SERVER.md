@@ -29,8 +29,8 @@ network.
 
 | | Classic on your server | Local Live |
 |---|---|---|
-| What happens | Every time you finish speaking, Hermes answers with its full agent: model, tools and memory. | The same, but as one continuous call instead of separate turns. |
-| Feels like | Talking to Hermes, turn by turn. First words take as long as a typed message would. | The same timing as Classic. |
+| What happens | Every time you finish speaking, Hermes answers with its full agent: model, tools and memory. | The same, but as one continuous call instead of separate turns. In agent mode a fast model answers instead and hands real work to Hermes (see Agent mode). |
+| Feels like | Talking to Hermes, turn by turn. First words take as long as a typed message would. | The same timing as Classic. In agent mode replies start sooner. |
 | Server setup | Steps 1 and 2 | Steps 1 to 3 |
 
 ## Step 1: tell Hermes where the server is
@@ -92,6 +92,12 @@ and key as step 2, so there's nothing more to set on the server. A call
 starts when you tap the voice button. The status screen stays on
 "Connecting" until the server has asked Hermes once, so a wrong address
 shows up right away.
+
+A server that only reads text aloud (it won't answer on its own) never asks
+the model address: the plugin asks Hermes, or the fast model in agent mode,
+for each reply and sends the server the words to read. There the call is
+ready once the plugin's first exchange with Hermes is done, and "Hasn't
+asked yet" in step 2 is expected.
 
 Local Live also works on the Apple Watch with plugin 0.48 or later and
 watchOS 11 or later, and in CarPlay.
