@@ -2899,24 +2899,8 @@ final class PushNotificationService: ObservableObject {
     }
 
     private static func parsePlaintextNotificationTarget(from userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
-        let direct = userInfo["conduit"] as? [String: Any]
-        let nested = (userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any]
-        // The relay's optimized APNs layout keeps the structured decision
-        // ONLY in body.conduit, with the top-level conduit copy reduced to a
-        // routing stub for raw-APNs readers — so whichever copy actually
-        // carries a decision must win, nested first (that is where the
-        // optimized layout puts it). Payloads without a decision anywhere
-        // fall back to plain routing, preferring the legacy top-level copy.
-        // A call's details travel the same way (#449).
-        let payload: [String: Any]
-        if nested?["decision"] is [String: Any] || nested?["call"] is [String: Any] {
-            payload = nested ?? [:]
-        } else if direct?["decision"] is [String: Any] || direct?["call"] is [String: Any] {
-            payload = direct ?? [:]
-        } else {
-            payload = direct ?? nested ?? [:]
-        }
-        return target(from: payload)
+        // A decision, a call or a group room rides only in body.conduit.
+        target(from: NotificationE2E.plaintextRouting(userInfo))
     }
 
     private static func target(from payload: [String: Any]) -> ConduitNotificationTarget? {

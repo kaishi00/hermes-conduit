@@ -282,10 +282,22 @@ struct GroupChatView: View {
         .onChange(of: roomShows) { _, shows in
             appState.noteRoomView(roomViewID, shows: shows)
         }
+        // Its info, settings, picture picker or disband prompt covers it:
+        // what comes in meanwhile isn't read until it closes (issue 2064).
+        .onChange(of: coveredBySheet) { _, covered in
+            appState.chatCoveredBySheet = covered
+            if !covered { appState.clearShownChatNotifications() }
+        }
         .onDisappear {
             scroller.viewDisappeared()
             appState.noteRoomView(roomViewID, shows: nil)
+            if coveredBySheet { appState.chatCoveredBySheet = false }
         }
+    }
+
+    /// One of the room's own sheets or prompts is up (V2's screen keeps its own).
+    private var coveredBySheet: Bool {
+        showingInfo || showingSettings || showingDisbandConfirmation || choosingPicture != nil
     }
 
     /// Where a member's `MEDIA:` files are read: its own profile on the

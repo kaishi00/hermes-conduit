@@ -179,6 +179,24 @@ enum NotificationE2E {
         (userInfo["conduit"] as? [String: Any]) ?? ((userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any])
     }
 
+    /// A plaintext push's routing, from the copy that carries the most. The
+    /// relay's optimized APNs layout keeps a structured decision, a call's
+    /// details (#449) and a turn's group room (issue 2064) ONLY in
+    /// body.conduit, with the top-level conduit copy reduced to a routing
+    /// stub for raw-APNs readers, so whichever copy carries one wins, nested
+    /// first. Payloads with none fall back to plain routing, preferring the
+    /// legacy top-level copy.
+    static func plaintextRouting(_ userInfo: [AnyHashable: Any]) -> [String: Any] {
+        let direct = userInfo["conduit"] as? [String: Any]
+        let nested = (userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any]
+        func carriesMore(_ copy: [String: Any]?) -> Bool {
+            copy?["decision"] is [String: Any] || copy?["call"] is [String: Any] || copy?["room"] is [String: Any]
+        }
+        if carriesMore(nested) { return nested ?? [:] }
+        if carriesMore(direct) { return direct ?? [:] }
+        return direct ?? nested ?? [:]
+    }
+
     /// `knownGatewayIDs` are the keyless relay pairings this iPhone may still
     /// trust plaintext from (see `knownGatewayIDs(listed:previous:holdsKeys:)`),
     /// shared through the App Group so the extension applies the same rule.
@@ -679,7 +697,8 @@ enum ReadChatHint {
     }
 
     /// Trusted as the extension's own: it drops any note a push arrives
-    /// with and writes one only on a push it verified. A push that skipped
+    /// with and writes one only on a push it verified, or a keyless
+    /// pairing's group room push it trusts as plaintext. A push that skipped
     /// the extension could carry one, which only clears; taps verify.
     static func read(_ userInfo: [AnyHashable: Any]) -> [String: Any]? {
         guard let note = userInfo[userInfoKey] as? [String: Any], note["session_id"] is String else { return nil }

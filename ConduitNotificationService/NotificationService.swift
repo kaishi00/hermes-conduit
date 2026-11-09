@@ -28,8 +28,9 @@ final class NotificationService: UNNotificationServiceExtension {
             deliver(Self.generic(UNMutableNotificationContent(), type: nil))
             return
         }
-        // Only this extension writes the chat note, on a push it verified:
-        // one the push arrived with is dropped on every path.
+        // Only this extension writes the chat note, on a push it verified
+        // (or a keyless pairing's room push): one the push arrived with is
+        // dropped on every path.
         content.userInfo.removeValue(forKey: ReadChatHint.userInfoKey)
         let userInfo = content.userInfo
         let type = (NotificationE2E.routingStub(userInfo)?["type"] as? String)
@@ -45,6 +46,14 @@ final class NotificationService: UNNotificationServiceExtension {
             keysProvisioned: NotificationSharedSettings.keysProvisioned
         ) {
         case .legacy:
+            // A keyless pairing's room push keeps one per room too (issue
+            // 2064), noted like a verified one: the note only clears.
+            let note = ReadChatHint.note(NotificationE2E.plaintextRouting(userInfo))
+            if let thread = ReadChatHint.roomThread(note) {
+                content.userInfo[ReadChatHint.userInfoKey] = note
+                deliverInRoom(content, note: note, thread: thread, request: request)
+                return
+            }
             deliver(content)
         case .untrusted(let type):
             deliver(Self.generic(content, type: type))
@@ -93,21 +102,25 @@ final class NotificationService: UNNotificationServiceExtension {
             ) {
                 content.categoryIdentifier = PulseNotifications.categoryIdentifier
             }
-            // A group room keeps one notification: this one replaces the
-            // room's last, whichever bot sent it (issue 2064), and waits
-            // for one handed over just before it to show first.
             if let thread = ReadChatHint.roomThread(note) {
-                content.threadIdentifier = thread
-                let pending = RoomHandoffs.record(
-                    request.identifier, thread: thread, defaults: NotificationSharedSettings.defaults
-                )
-                Self.replaceEarlier(
-                    in: note, pending: Set(pending), until: Date().addingTimeInterval(RoomHandoffs.wait)
-                ) { [weak self] in self?.deliver(content) }
+                deliverInRoom(content, note: note, thread: thread, request: request)
                 return
             }
             deliver(content)
         }
+    }
+
+    /// A group room keeps one notification: this one replaces the room's
+    /// last, whichever bot sent it (issue 2064), and waits for one handed
+    /// over just before it to show first.
+    private func deliverInRoom(
+        _ content: UNMutableNotificationContent, note: [String: String], thread: String, request: UNNotificationRequest
+    ) {
+        content.threadIdentifier = thread
+        let pending = RoomHandoffs.record(request.identifier, thread: thread, defaults: NotificationSharedSettings.defaults)
+        Self.replaceEarlier(
+            in: note, pending: Set(pending), until: Date().addingTimeInterval(RoomHandoffs.wait)
+        ) { [weak self] in self?.deliver(content) }
     }
 
     /// Removes the room's notifications already shown, and those `pending`

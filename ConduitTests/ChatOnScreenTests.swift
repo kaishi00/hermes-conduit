@@ -118,6 +118,17 @@ final class ChatOnScreenTests: XCTestCase {
         XCTAssertNil(parsed("room.invite")?.roomID, "an invite's room is another host's")
         XCTAssertNil(parsed("response.ready", room: ["id": "  "])?.roomID)
         XCTAssertNil(parsed("response.ready", room: nil)?.roomID, "an older notifier's")
+        // The relay's own layout for a keyless pairing: a routing stub on
+        // top, the room only in body.conduit.
+        let stub: [String: Any] = ["session_id": "hidden-1", "type": "response.ready", "dashboard_id": dashboard.uuidString]
+        var rich = stub
+        rich["room"] = ["id": "conduit-1"]
+        let relayed: [AnyHashable: Any] = ["conduit": stub, "body": ["conduit": rich]]
+        XCTAssertEqual(PushNotificationService.parseNotificationTarget(from: relayed, records: [], knownGatewayIDs: [],
+                                                                      keysProvisioned: false)?.roomID, "conduit-1")
+        XCTAssertEqual(ReadChatHint.roomThread(ReadChatHint.note(NotificationE2E.plaintextRouting(relayed))),
+                       "room:\(dashboard.uuidString):conduit-1", "the extension keeps one per room for it too")
+        XCTAssertNil(NotificationE2E.plaintextRouting(["conduit": stub])["room"], "a stub alone has none")
 
         // The extension's note keeps the room, so reading it clears the push after it stops verifying.
         let note = ReadChatHint.note(["session_id": "hidden-1", "type": "response.ready", "dashboard_id": dashboard.uuidString,

@@ -12903,8 +12903,10 @@ final class AppState: ObservableObject {
     /// room; a room drops out once all of them have settled.
     var groupRoomPicturesChanging: [String: Int] = [:]
     /// Whether the open chat's own sheet or prompt (Artifacts, Rename,
-    /// Delete) covers it, so reading it doesn't clear its notifications yet
-    /// (#1579). Set by V2ConversationScreen and RootView; nothing redraws on it.
+    /// Delete), or the open room's (its settings, info, picture, disband;
+    /// issue 2064), covers it, so reading it doesn't clear its notifications
+    /// yet (#1579). Set by V2ConversationScreen, RootView and GroupChatView;
+    /// nothing redraws on it.
     var chatCoveredBySheet = false
     /// Bot Screen sheets open now, from any surface: one covers the open
     /// chat like `chatCoveredBySheet` (#1832). Nothing redraws on it.
@@ -12913,12 +12915,12 @@ final class AppState: ObservableObject {
     @Published private(set) var activeRoomSurface: GroupRoomSurface? {
         // A room takes the chat's place without changing the open chat.
         didSet {
+            // Another room (or none): no screen of it has left yet.
+            if oldValue?.room.roomID != activeRoomSurface?.room.roomID { roomScreenLeft = false }
             // Another room straight from one: its notifications are read too (issue 2064).
             if (oldValue == nil) != (activeRoomSurface == nil) || oldValue?.room.roomID != activeRoomSurface?.room.roomID {
                 updateChatOnScreen()
             }
-            // Another room (or none): no screen of it has left yet.
-            if oldValue?.room.roomID != activeRoomSurface?.room.roomID { roomScreenLeft = false }
         }
     }
     /// The open hosted room once Hermes has given its messages since it
@@ -13916,6 +13918,11 @@ final class AppState: ObservableObject {
     func openNotificationRoom(_ roomID: String) async -> NotificationOpenOutcome {
         guard let client, isConnected else { return .retry }
         let dashboardID = activeDashboardID
+        // A chat or room opened while Hermes is asked owns the screen: the
+        // tap is dropped, not opened over it.
+        let viewport = chatViewportTransitionGeneration
+        let roomEpoch = groupRoomEpoch
+        var superseded: Bool { chatViewportTransitionGeneration != viewport || groupRoomEpoch != roomEpoch }
         if !groupRoomsListed || !groupRooms.contains(where: { $0.roomID == roomID }) {
             if groupCapabilities == nil {
                 await refreshGroupChatSupport()
@@ -13923,6 +13930,7 @@ final class AppState: ObservableObject {
                 await refreshGroupRooms()
             }
             guard !Task.isCancelled, activeDashboardID == dashboardID else { return .retry }
+            if superseded { return .failed }
         }
         var listed = groupRooms.first(where: { $0.roomID == roomID })
         if listed == nil {
@@ -13935,6 +13943,7 @@ final class AppState: ObservableObject {
             do {
                 let (state, _) = try await groupsState(client, roomID: roomID)
                 guard !Task.isCancelled, activeDashboardID == dashboardID else { return .retry }
+                if superseded { return .failed }
                 listed = state
             } catch {
                 guard !Task.isCancelled, activeDashboardID == dashboardID,
@@ -14118,6 +14127,8 @@ final class AppState: ObservableObject {
         let before = roomSurfaceShows
         roomViewsShowing[id] = shows
         if shows != nil { roomScreenLeft = false } else if roomViewsShowing.isEmpty { roomScreenLeft = true }
+        // Whether its notifications are read goes with it (issue 2064).
+        if before != roomSurfaceShows { updateChatOnScreen() }
         guard !before, roomSurfaceShows, activeRoomSurface != nil else { return }
         let epoch = groupRoomEpoch
         Task { @MainActor [weak self] in await self?.pollActiveRoomOnce(epoch: epoch) }
