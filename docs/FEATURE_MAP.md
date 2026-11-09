@@ -6249,22 +6249,31 @@ fills is not read: the tab shows no cron-session rows.
 **Siblings:** the board beside it (its own polls, see How often Tasks reads
 Hermes) · the legacy drawer's Cron tab, which keeps the fuller read because it
 shows the cron-session history · pull to refresh on Scheduled (the same two
-reads) · not needed: Project pages, Pulse, Bots Home and Needs you (their own
-reads, already gated on what shows) · text: none (no Settings caption or doc
-gives this cadence)
+reads) · Chats' Scheduled filter, which draws cron sessions: it loads and polls
+its own catalogue (`loadSessionCatalogIfNeeded`, `runChatListPolling`), so this
+tab's read never fed it, and Show runs in Chats reads the catalogue again on
+the tap because the list's routine poll reuses a cached cron read for up to
+five minutes (`SessionCatalogCache.fullHistoryRefreshInterval`) and the run
+that just finished is what the tap is for · a job's run history in its detail
+sheet: unchanged, and it reads its own runs and notifications (its own entry, A
+cron job's Run history) · not needed: Project pages, Pulse, Bots Home and Needs
+you (their own reads, already gated on what shows) · text: none (no Settings
+caption or doc gives this cadence)
 
 **Code**
 - The read: `Conduit/Services/AppState.swift` (refreshScheduledContent: loadCronJobs, refreshCronNotifications), `Conduit/Views/V2/V2TasksView.swift` (the tab's task, its refreshable, and the notification read repeated when the capability lands)
+- Show runs in Chats: `Conduit/Views/V2/V2Shell.swift` (showScheduledRuns: the filter it selects, and the catalogue read on the tap)
 - The drawer's fuller read: `Conduit/Services/AppState.swift` (refreshCronContent, which also refreshes the sessions catalogue), `Conduit/Views/SidebarView.swift` (its Cron tab and its own capability re-read)
 
 **Rulings**
 - Opening Scheduled reads the jobs and their notifications, never the sessions catalogue: the tab draws no sessions, and the catalogue read was a full list read and cache bypass on every switch to it (2026-11-07, #1921).
-- A notification read that arrives before the host reports the capability is repeated when it arrives, so a muted job is not drawn as unmuted in the meantime (2026-11-09, #1921; the same signal the drawer's Cron tab uses).
+- A notification read that lands before the host reports the capability is repeated when it arrives, so the mute state is corrected then; until that read lands a job can still be drawn unmuted (2026-11-09, #1921; the same signal the drawer's Cron tab uses). A read asked for while a job's notification save is in flight is repeated when the save ends rather than dropped.
+- Show runs in Chats reads the catalogue on the tap: the list's own poll reuses a cached cron read for up to five minutes (`SessionCatalogCache.fullHistoryRefreshInterval`), so a run that finished since Chats last read would be missing from the filter the button opens (2026-11-09, #1921).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-09, #1921 (Scheduled's opening read narrowed to the jobs it draws; a notification read that lands before the capability is repeated when it arrives; the drawer's Cron tab keeps its catalogue read and its own re-read; Code)
+**Checked:** 2026-11-09, #1921 (Scheduled's opening read narrowed to the jobs it draws; a notification read that lands before the capability is repeated when it arrives, and one asked for during a save is repeated after it; Show runs in Chats reads the catalogue on the tap; Chats' Scheduled filter and the job detail sheet recorded as siblings; the drawer's Cron tab keeps its catalogue read and its own re-read; Code)
 
 ## Two Hermes servers
 
