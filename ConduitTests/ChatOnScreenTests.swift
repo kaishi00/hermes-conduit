@@ -144,6 +144,9 @@ final class ChatOnScreenTests: XCTestCase {
         let note = ReadChatHint.note(["session_id": "hidden-1", "type": "response.ready", "dashboard_id": dashboard.uuidString,
                                       "room": ["id": "conduit-1"]])
         XCTAssertEqual(note["room_id"], "conduit-1")
+        XCTAssertEqual(ReadChatHint.note(["session_id": "hidden-1", "room": ["id": " conduit-1 "]])["room_id"], "conduit-1",
+                       "the room as the tap reads it, so it replaces the same room's")
+        XCTAssertNil(ReadChatHint.note(["session_id": "hidden-1", "room": ["id": "  "]])["room_id"])
         XCTAssertEqual(PushNotificationService.readChatTarget(from: [ReadChatHint.userInfoKey: note], records: [])?.roomID,
                        "conduit-1")
 

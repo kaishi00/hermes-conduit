@@ -678,7 +678,8 @@ enum ReadChatHint {
         }
         // The group room a turn's push opens (issue 2064), so reading that
         // room clears it and the room's next reply replaces it.
-        if let room = (routing["room"] as? [String: Any])?["id"] as? String, !room.isEmpty { note["room_id"] = room }
+        if let room = ((routing["room"] as? [String: Any])?["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !room.isEmpty { note["room_id"] = room }
         return note
     }
 
