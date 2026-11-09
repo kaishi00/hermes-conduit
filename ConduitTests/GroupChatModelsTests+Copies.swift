@@ -207,6 +207,31 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.activeRoomDraft(), "half a thought and the rest")
     }
 
+    /// A room someone else hosts draws its pictures and files only once
+    /// your own host keeps them (plugin 0.149+, `room-files-linked`): its
+    /// messages name the home's paths, which your host reads from its copy.
+    @MainActor
+    func testACopysRoomFilesReadOnlyWhereYourHostKeepsThem() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 1)])
+        routes.events = [copiesEvent(1)]
+        let appState = try copiesAppState(routes)
+        copiesConnect(appState)
+        var report = copiesPluginReport
+        let reads = [GroupRoomFilesClient.pictureCapability, GroupRoomFilesClient.readCapability]
+        report["capabilities"] = (report["capabilities"] as? [String] ?? []) + reads
+        appState.applyNotifierPluginReport(report)
+        await appState.refreshGroupChatSupport()
+        await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
+        XCTAssertNotNil(appState.activeRoomSurface?.copy)
+        XCTAssertNil(appState.roomFilePicturesResolver, "a 0.143 host doesn't keep another host's files")
+        XCTAssertNil(appState.roomFileReadsResolver)
+
+        report["capabilities"] = (report["capabilities"] as? [String] ?? []) + [GroupRoomFilesClient.linkedCapability]
+        appState.applyNotifierPluginReport(report)
+        let pictures = try XCTUnwrap(appState.roomFilePicturesResolver, "your host reads the home's paths from its copy")
+        XCTAssertTrue(appState.roomFileReadsResolver === pictures)
+    }
+
     @MainActor
     func testACopyOpensFromItsLogAndPollsAfterTheCursor() async throws {
         let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 2)])
