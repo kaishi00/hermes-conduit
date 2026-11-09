@@ -1,6 +1,580 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "%@ · Managed by the host" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Vom Host verwaltet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Gestionado por el host"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Géré par l'hôte"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Dikelola oleh host"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Gestito dall'host"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · ホストが管理"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 호스트에서 관리"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Zarządzana przez hosta"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Gerenciado pelo host"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Управляется хостом"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · Sunucu tarafından yönetiliyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 由主机管理"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ · 由主機管理"
+          }
+        }
+      }
+    },
+    "Not on this host" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht auf diesem Host"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No está en este host"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pas sur cet hôte"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak ada di host ini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non su questo host"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このホストにはありません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 호스트에 없음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak na tym hoście"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não está neste host"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нет на этом хосте"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sunucuda yok"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主机上没有"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此主機上沒有"
+          }
+        }
+      }
+    },
+    "This dashboard's host keeps the plugin up to date, so Conduit doesn't ask to update it here. This choice is for your other dashboards." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Host dieses Dashboards hält das Plugin aktuell, daher fragt Conduit hier nicht nach einem Update. Diese Auswahl gilt für deine anderen Dashboards."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El host de este panel mantiene el plugin al día, así que Conduit no pide actualizarlo aquí. Esta opción es para tus otros paneles."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'hôte de ce tableau de bord garde le plugin à jour, donc Conduit ne demande pas de le mettre à jour ici. Ce choix vaut pour vos autres tableaux de bord."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Host dasbor ini menjaga plugin tetap terbaru, jadi Conduit tidak meminta pembaruan di sini. Pilihan ini untuk dasbor Anda yang lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'host di questa dashboard mantiene il plugin aggiornato, quindi qui Conduit non chiede di aggiornarlo. Questa scelta vale per le tue altre dashboard."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このダッシュボードのホストがプラグインを最新に保つため、ここでは Conduit はアップデートを求めません。この設定はほかのダッシュボード用です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 대시보드의 호스트가 플러그인을 최신 상태로 유지하므로 Conduit는 여기서 업데이트를 요청하지 않습니다. 이 선택은 다른 대시보드에 적용됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Host tego pulpitu dba o aktualność wtyczki, więc Conduit nie prosi tutaj o aktualizację. Ten wybór dotyczy Twoich innych pulpitów."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O host deste painel mantém o plugin atualizado, então o Conduit não pede para atualizá-lo aqui. Esta opção vale para seus outros painéis."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Хост этой панели сам обновляет плагин, поэтому здесь Conduit не просит его обновить. Этот выбор действует для других ваших панелей."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu panonun sunucusu eklentiyi güncel tutar, bu yüzden Conduit burada güncelleme istemez. Bu seçim diğer panolarınız içindir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仪表板的主机会保持插件为最新版本，因此 Conduit 不会在这里请你更新。此选项适用于你的其他仪表板。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此儀表板的主機會讓外掛保持最新版本，因此 Conduit 不會在這裡請你更新。此選項適用於你的其他儀表板。"
+          }
+        }
+      }
+    },
+    "Finish the update?" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Update abschließen?"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "¿Terminar la actualización?"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Terminer la mise à jour ?"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Selesaikan pembaruan?"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Completare l'aggiornamento?"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アップデートを完了しますか?"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "업데이트를 마칠까요?"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dokończyć aktualizację?"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Concluir a atualização?"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Завершить обновление?"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Güncelleme tamamlansın mı?"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要完成更新吗？"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "要完成更新嗎？"
+          }
+        }
+      }
+    },
+    "Restart Hermes" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes neu starten"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reiniciar Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Redémarrer Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mulai Ulang Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Riavvia Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesを再起動"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 다시 시작"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uruchom ponownie Hermesa"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reiniciar o Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Перезапустить Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes’i Yeniden Başlat"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重启 Hermes"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "重新啟動 Hermes"
+          }
+        }
+      }
+    },
+    "The new plugin is already on the host. Hermes restarts its gateway and dashboard to run it, once running chats finish." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das neue Plugin ist bereits auf dem Host. Hermes startet Gateway und Dashboard neu, um es zu verwenden, sobald laufende Chats fertig sind."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El nuevo plugin ya está en el host. Hermes reinicia su pasarela y su panel para usarlo cuando terminan los chats en curso."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le nouveau plugin est déjà sur l'hôte. Hermes redémarre sa passerelle et son tableau de bord pour l'utiliser, une fois les discussions en cours terminées."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin baru sudah ada di host. Hermes memulai ulang gateway dan dasbornya untuk menjalankannya setelah chat yang berjalan selesai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il nuovo plugin è già sull'host. Hermes riavvia il gateway e la dashboard per usarlo, al termine delle chat in corso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しいプラグインはすでにホストにあります。実行中のチャットが終わってから、Hermesがゲートウェイとダッシュボードを再起動して読み込みます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 플러그인이 이미 호스트에 있습니다. 실행 중인 채팅이 끝나면 Hermes가 게이트웨이와 대시보드를 다시 시작해 적용합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nowa wtyczka jest już na hoście. Hermes po zakończeniu trwających czatów uruchomi ponownie bramę i panel, aby jej użyć."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O novo plugin já está no host. O Hermes reinicia o gateway e o painel para usá-lo quando os chats em andamento terminarem."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Новый плагин уже на хосте. Hermes перезапустит шлюз и дашборд, чтобы его загрузить, когда завершатся текущие чаты."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni eklenti zaten sunucuda. Hermes, çalışan sohbetler bitince onu kullanmak için ağ geçidini ve paneli yeniden başlatır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新插件已在主机上。进行中的聊天结束后，Hermes 会重启网关和仪表板来加载它。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新外掛程式已在主機上。進行中的聊天結束後，Hermes 會重新啟動閘道和儀表板來載入它。"
+          }
+        }
+      }
+    },
+    "Approval and clarify cards need a newer plugin. This dashboard's host keeps the plugin up to date." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Freigabe- und Rückfragekarten erfordern ein neueres Plug-in. Der Host dieses Dashboards hält das Plugin aktuell."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las tarjetas de aprobación y aclaración necesitan un plugin más reciente. El host de este panel mantiene el plugin al día."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les cartes d'approbation et de précision nécessitent un plugin plus récent. L'hôte de ce tableau de bord garde le plugin à jour."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kartu persetujuan dan klarifikasi memerlukan plugin yang lebih baru. Host dasbor ini menjaga plugin tetap terbaru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le schede di approvazione e di chiarimento richiedono un plugin più recente. L'host di questa dashboard mantiene il plugin aggiornato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "承認カードと質問カードには新しいプラグインが必要です。このダッシュボードのホストがプラグインを最新に保ちます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "승인 및 질문 카드를 사용하려면 최신 플러그인이 필요해요. 이 대시보드의 호스트가 플러그인을 최신 상태로 유지합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Karty zatwierdzeń i pytań wymagają nowszej wtyczki. Host tego pulpitu dba o aktualność wtyczki."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os cartões de aprovação e esclarecimento precisam de um plugin mais recente. O host deste painel mantém o plugin atualizado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Для карточек разрешений и уточнений нужна более новая версия плагина. Хост этой панели сам обновляет плагин."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Onay ve netleştirme kartları için daha yeni bir eklenti gerekir. Bu panonun sunucusu eklentiyi güncel tutar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "审批与澄清卡片需要更新的插件。此仪表板的主机会保持插件为最新版本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "核准與釐清卡片需要較新的外掛程式。此儀表板的主機會讓外掛保持最新版本。"
+          }
+        }
+      }
+    },
     "A group room message takes up to %@ files. Send the rest in another message." : {
       "localizations" : {
         "de" : {
@@ -571,6 +1145,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "伺服器上沒有 %@。它可能已被刪除，或在另一台電腦上。"
+          }
+        }
+      }
+    },
+    "%@ keeps the plugin up to date." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hält das Plugin aktuell."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ mantiene el plugin al día."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ garde le plugin à jour."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ menjaga plugin tetap terbaru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ mantiene il plugin aggiornato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ がプラグインを最新に保ちます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에서 플러그인을 최신 상태로 유지합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ dba o aktualność wtyczki."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ mantém o plugin atualizado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ сам обновляет плагин."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ eklentiyi güncel tutar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 会保持插件为最新版本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 會讓外掛保持最新版本。"
           }
         }
       }
@@ -2183,6 +2839,94 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "依此欄排序表格"
+          }
+        }
+      }
+    },
+    "This dashboard's host keeps the plugin up to date." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Host dieses Dashboards hält das Plugin aktuell."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This dashboard's host keeps the plugin up to date."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El host de este panel mantiene el plugin al día."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'hôte de ce tableau de bord garde le plugin à jour."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Host dasbor ini menjaga plugin tetap terbaru."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'host di questa dashboard mantiene il plugin aggiornato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このダッシュボードのホストがプラグインを最新に保ちます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 대시보드의 호스트가 플러그인을 최신 상태로 유지합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Host tego pulpitu dba o aktualność wtyczki."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O host deste painel mantém o plugin atualizado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Хост этой панели сам обновляет плагин."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu panonun sunucusu eklentiyi güncel tutar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此仪表板的主机会保持插件为最新版本。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此儀表板的主機會讓外掛保持最新版本。"
           }
         }
       }
