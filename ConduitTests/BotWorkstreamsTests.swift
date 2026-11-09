@@ -628,6 +628,26 @@ extension BotModeTests {
         XCTAssertNil(BotWorkSettings(response: ["ok": false, "policy": "strict", "max_running": 2]))
     }
 
+    func testEverythingHereIsOfferedOnlyWhereThePluginTakesIt() throws {
+        // Notifier issue 619 (Eric 2026-11-08): three choices by what the user notices.
+        let older = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "lookups", "max_running": 2]))
+        XCTAssertEqual(older.policies, BotWorkSettings.olderPolicies)
+        XCTAssertEqual(BotWorkSettingsView.policyChoices(older).map(\.id), [.lookups, .strict])
+        let newer = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "open", "policies": ["off", "strict", "lookups", "open", "later"], "max_running": 2,
+        ]))
+        XCTAssertEqual(newer.policy, .open)
+        XCTAssertTrue(newer.isOn)
+        XCTAssertEqual(newer.policies, [.off, .strict, .lookups, .open])
+        XCTAssertEqual(BotWorkSettingsView.policyChoices(newer).map(\.id), [.lookups, .open, .strict])
+        var picked = newer
+        picked.policy = .lookups
+        XCTAssertEqual(picked.change(from: newer)["policy"] as? String, "lookups")
+        for policy in BotWorkSettings.Policy.allCases {
+            XCTAssertFalse(BotWorkSettingsView.policyCaption(policy, botName: "Furina").isEmpty)
+        }
+    }
+
     func testAWorkSettingsChangeSendsOnlyWhatChanged() {
         let old = BotWorkSettings()
         XCTAssertEqual(old.policy, .lookups)  // the plugin's default (Eric 2026-11-03)

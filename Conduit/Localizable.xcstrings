@@ -425466,270 +425466,6 @@
         }
       }
     },
-    "Also Looks Things Up" : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Schlägt auch selbst nach"
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Also Looks Things Up"
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "También busca cosas"
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fait aussi des recherches"
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Juga Mencari Informasi"
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Fa anche ricerche"
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "調べものも自分で行う"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "직접 찾아보기도 하기"
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Sam też sprawdza informacje"
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Também faz pesquisas"
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Также сам ищет"
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bilgi de Arar"
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "也会自己查资料"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "也會自己查資料"
-          }
-        }
-      }
-    },
-    "It can also search the web, past chats and skills itself before starting work. Quicker for simple questions, but small models pick the wrong way more often." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Er kann vorher auch selbst im Web, in früheren Chats und in Skills suchen. Schneller bei einfachen Fragen, aber kleine Modelle wählen öfter den falschen Weg."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "It can also search the web, past chats and skills itself before starting work. Quicker for simple questions, but small models pick the wrong way more often."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "También puede buscar en la web, en chats anteriores y en habilidades antes de empezar el trabajo. Es más rápido para preguntas sencillas, pero los modelos pequeños eligen mal más a menudo."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Il peut aussi chercher sur le web, dans les discussions passées et dans les compétences avant de lancer le travail. Plus rapide pour les questions simples, mais les petits modèles se trompent plus souvent de voie."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ia juga bisa mencari di web, obrolan lama, dan keterampilan sendiri sebelum memulai pekerjaan. Lebih cepat untuk pertanyaan sederhana, tetapi model kecil lebih sering salah memilih jalan."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Può anche cercare sul web, nelle chat passate e nelle competenze prima di avviare il lavoro. Più rapido per le domande semplici, ma i modelli piccoli sbagliano strada più spesso."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "作業を始める前に、Web、過去のチャット、スキルを自分で検索することもできます。簡単な質問には速くなりますが、小さなモデルは判断を誤りやすくなります。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "작업을 시작하기 전에 웹, 지난 채팅, 스킬을 직접 검색할 수도 있어요. 간단한 질문엔 더 빠르지만, 작은 모델은 잘못된 방법을 더 자주 골라요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Może też sam przeszukać sieć, wcześniejsze czaty i umiejętności, zanim zacznie pracę. Szybciej przy prostych pytaniach, ale małe modele częściej wybierają złą drogę."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Também pode pesquisar na web, em chats anteriores e em habilidades antes de começar o trabalho. É mais rápido para perguntas simples, mas modelos pequenos escolhem o caminho errado com mais frequência."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Он также может сам искать в интернете, в прошлых чатах и навыках, прежде чем начать работу. Быстрее для простых вопросов, но маленькие модели чаще выбирают не тот путь."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "İşe başlamadan önce web’de, eski sohbetlerde ve becerilerde kendisi de arama yapabilir. Basit sorularda daha hızlıdır ama küçük modeller daha sık yanlış yolu seçer."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "开始工作前，它也能自己搜索网页、以往聊天和技能。简单问题更快，但小模型更常选错方式。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "開始工作前，它也能自己搜尋網頁、過去的聊天和技能。簡單問題會比較快，但小型模型較常選錯方式。"
-          }
-        }
-      }
-    },
-    "Anything that needs a tool goes to a workstream, so its Bot Chat stays free to talk." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Alles, was ein Tool braucht, geht an einen Workstream, damit der Bot-Chat frei zum Reden bleibt."
-          }
-        },
-        "en" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Anything that needs a tool goes to a workstream, so its Bot Chat stays free to talk."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Todo lo que necesita una herramienta va a un flujo de trabajo, así su chat de bot queda libre para conversar."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tout ce qui demande un outil part dans un flux de travail, pour que sa discussion de bot reste libre."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Apa pun yang butuh alat dikirim ke alur kerja, jadi Obrolan Bot-nya tetap bebas untuk mengobrol."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tutto ciò che richiede uno strumento va a un flusso di lavoro, così la chat del bot resta libera per parlare."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ツールが必要なことはすべてワークストリームに回すので、ボットチャットは会話のために空いたままです。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "도구가 필요한 일은 모두 작업 스트림으로 보내서, 봇 채팅은 대화할 수 있게 비워 둬요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Wszystko, co wymaga narzędzia, trafia do wątku pracy, więc czat z botem zostaje wolny do rozmowy."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tudo o que precisa de uma ferramenta vai para um fluxo de trabalho, então o Chat de Bot fica livre para conversar."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Всё, что требует инструмента, уходит в рабочий поток, поэтому чат с ботом остаётся свободным для разговора."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Araç gerektiren her şey bir iş akışına gider, böylece Bot Sohbeti konuşmak için boş kalır."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要工具的事都会交给工作流，让 Bot Chat 保持空闲，方便聊天。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "需要工具的事都會交給工作流程，讓機器人聊天保持空閒，方便對話。"
-          }
-        }
-      }
-    },
     "Running at Once" : {
       "localizations" : {
         "de" : {
@@ -497800,6 +497536,446 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "桌面"
+          }
+        }
+      }
+    },
+    "Quick Things Here" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schnelles hier"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quick Things Here"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo rápido aquí"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le rapide ici"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yang cepat di sini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le cose rapide qui"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "簡単なことはここで"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "간단한 일은 여기서"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Szybkie sprawy tutaj"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O rápido aqui"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Быстрое здесь"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hızlı işler burada"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "简单的事在这里做"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "簡單的事在這裡做"
+          }
+        }
+      }
+    },
+    "Everything Here" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles hier"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Everything Here"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todo aquí"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tout ici"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Semuanya di sini"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tutto qui"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "すべてここで"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "모두 여기서"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wszystko tutaj"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tudo aqui"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Всё здесь"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her şey burada"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部在这里做"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "全部在這裡做"
+          }
+        }
+      }
+    },
+    "%@ answers and does quick things in its Bot Chat. Anything that takes longer runs in the background, and you’re told there when it’s done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ beantwortet und erledigt Schnelles im Bot-Chat. Alles, was länger dauert, läuft im Hintergrund, und du erfährst dort, wenn es fertig ist."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ answers and does quick things in its Bot Chat. Anything that takes longer runs in the background, and you’re told there when it’s done."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ responde y hace las cosas rápidas en su chat del bot. Lo que lleva más tiempo se ejecuta en segundo plano, y allí te avisa cuando termina."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ répond et fait les choses rapides dans sa discussion du bot. Ce qui prend plus de temps s’exécute en arrière-plan, et tu y es prévenu quand c’est fini."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ menjawab dan mengerjakan hal-hal cepat di Obrolan Bot-nya. Apa pun yang lebih lama berjalan di latar belakang, dan kamu diberi tahu di sana saat selesai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ risponde e fa le cose rapide nella sua chat del bot. Ciò che richiede più tempo va in background, e lì ti avvisa quando è finito."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ は簡単な質問や作業をボットチャットでそのまま行います。時間がかかるものはバックグラウンドで進み、終わるとそこで知らせます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@은(는) 간단한 질문과 작업을 봇 채팅에서 바로 처리합니다. 오래 걸리는 일은 백그라운드에서 실행되고, 끝나면 그곳에서 알려 드립니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ odpowiada i załatwia szybkie sprawy w swoim czacie bota. Wszystko, co trwa dłużej, działa w tle, a gdy się skończy, dowiesz się o tym tam."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ responde e faz as coisas rápidas no chat do bot. O que leva mais tempo roda em segundo plano, e você fica sabendo ali quando terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ отвечает и делает быстрые дела прямо в чате бота. Всё, что дольше, выполняется в фоне, а когда будет готово, вам скажут там же."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hızlı işleri bot sohbetinde kendisi yapar ve yanıtlar. Daha uzun sürenler arka planda çalışır ve bittiğinde orada haber verilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 会在机器人聊天里直接回答并做完简单的事。耗时更久的事在后台进行，完成后会在那里告诉你。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 會在機器人聊天裡直接回答並做完簡單的事。耗時更久的事在背景進行，完成後會在那裡告訴你。"
+          }
+        }
+      }
+    },
+    "%@ does everything in its Bot Chat, and runs work in the background only when you ask or it’s clearly long. The chat is busy while it works." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ erledigt alles im Bot-Chat und lässt Arbeit nur im Hintergrund laufen, wenn du darum bittest oder sie eindeutig lange dauert. Während es arbeitet, ist der Chat beschäftigt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ does everything in its Bot Chat, and runs work in the background only when you ask or it’s clearly long. The chat is busy while it works."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ lo hace todo en su chat del bot y solo ejecuta trabajo en segundo plano cuando se lo pides o cuando claramente va para largo. El chat está ocupado mientras trabaja."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ fait tout dans sa discussion du bot et ne lance du travail en arrière-plan que si tu le demandes ou s’il est clairement long. La discussion est occupée pendant qu’il travaille."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ mengerjakan semuanya di Obrolan Bot-nya, dan menjalankan pekerjaan di latar belakang hanya jika kamu memintanya atau jelas akan lama. Obrolan sibuk selama ia bekerja."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ fa tutto nella sua chat del bot e manda il lavoro in background solo quando lo chiedi o quando è chiaramente lungo. La chat resta occupata mentre lavora."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ はすべてをボットチャットで行い、頼まれたときや明らかに時間がかかるときだけバックグラウンドで作業します。作業中はチャットがふさがります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@은(는) 모든 일을 봇 채팅에서 하고, 요청하거나 분명히 오래 걸릴 때만 백그라운드에서 작업합니다. 작업하는 동안 채팅은 사용 중입니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ robi wszystko w swoim czacie bota, a pracę w tle uruchamia tylko na twoją prośbę albo gdy wyraźnie potrwa długo. Czat jest zajęty, gdy pracuje."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ faz tudo no chat do bot e só roda trabalho em segundo plano quando você pede ou quando claramente vai demorar. O chat fica ocupado enquanto trabalha."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ делает всё в чате бота и запускает работу в фоне, только если вы попросите или она явно надолго. Пока идёт работа, чат занят."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ her şeyi bot sohbetinde yapar; işi yalnızca sen istediğinde ya da açıkça uzun sürecekse arka planda çalıştırır. Çalışırken sohbet meşgul olur."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 会在机器人聊天里做完所有事，只有在你要求或明显耗时很久时才放到后台。它工作时聊天会被占用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 會在機器人聊天裡做完所有事，只有在你要求或明顯耗時很久時才放到背景。它工作時聊天會被佔用。"
+          }
+        }
+      }
+    },
+    "Everything but cards, maps, notifications, memories and its questions to you runs in the background, so its Bot Chat is always free to talk." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Alles außer Karten, Landkarten, Mitteilungen, Erinnerungen und seinen Fragen an dich läuft im Hintergrund, damit der Bot-Chat immer frei zum Reden bleibt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Everything but cards, maps, notifications, memories and its questions to you runs in the background, so its Bot Chat is always free to talk."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todo salvo las tarjetas, los mapas, las notificaciones, los recuerdos y sus preguntas para ti se ejecuta en segundo plano, así su chat del bot siempre está libre para hablar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tout sauf les cartes, les plans, les notifications, les souvenirs et ses questions pour toi s’exécute en arrière-plan, pour que sa discussion du bot reste toujours libre pour parler."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Semua kecuali kartu, peta, notifikasi, ingatan, dan pertanyaannya untukmu berjalan di latar belakang, jadi Obrolan Bot-nya selalu bebas untuk mengobrol."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tutto tranne le schede, le mappe, le notifiche, i ricordi e le sue domande per te va in background, così la sua chat del bot è sempre libera per parlare."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カード、地図、通知、記憶、あなたへの質問以外はすべてバックグラウンドで行うので、ボットチャットはいつでも話せる状態のままです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "카드, 지도, 알림, 기억, 사용자에게 하는 질문을 뺀 모든 일은 백그라운드에서 실행되므로 봇 채팅은 언제나 대화할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wszystko poza kartami, mapami, powiadomieniami, wspomnieniami i pytaniami do ciebie działa w tle, więc czat bota jest zawsze wolny do rozmowy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tudo, menos cartões, mapas, notificações, memórias e as perguntas para você, roda em segundo plano, então o chat do bot fica sempre livre para conversar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Всё, кроме карточек, карт, уведомлений, воспоминаний и вопросов к вам, выполняется в фоне, поэтому чат бота всегда свободен для разговора."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kartlar, haritalar, bildirimler, anılar ve sana soruları dışında her şey arka planda çalışır, böylece bot sohbeti konuşmak için hep boş kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "除了卡片、地图、通知、记忆和问你的问题，其余都在后台进行，所以机器人聊天始终可以随时交谈。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "除了卡片、地圖、通知、記憶和問你的問題，其餘都在背景進行，所以機器人聊天始終可以隨時交談。"
           }
         }
       }
