@@ -1918,6 +1918,142 @@ final class BotModeTests: XCTestCase {
         )
     }
 
+    /// The bot tapped last opens, even when an earlier tap's lookup comes
+    /// back after its own: each tap begins its navigation before the
+    /// lookup, so the earlier open stands down. Meanwhile the screen names
+    /// the coming bot over the chat open before (Eric 2026-11-09: a bot
+    /// opened from Bots Home was sometimes the wrong one).
+    func testTheBotTappedLastOpensWhicheverLookupLandsLast() async {
+        let atlasLookup = ControlledSuspension()
+        var resumedProfiles: [String?] = []
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, _, _, profile in
+                resumedProfiles.append(profile)
+                let bot = profile ?? "default"
+                return SessionResumeResult(
+                    sessionId: "\(bot)-runtime",
+                    storedSessionId: "\(bot)-chat",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, profile in
+                if profile == "atlas" { await atlasLookup.suspend() }
+                return [BotChatLookupRow(id: "\(profile)-chat", title: "Bot Chat")]
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        let atlas = makeBot(name: "atlas")
+        let scout = makeBot(name: "scout")
+
+        let atlasOpen = Task { @MainActor [appState = harness.appState] in
+            await appState.openBotChatOutcome(for: atlas)
+        }
+        await atlasLookup.waitUntilSuspended()
+        XCTAssertEqual(harness.appState.botChatComingOverAnother, "Atlas",
+                       "the screen names the tapped bot, not the chat open before")
+
+        let scoutOpened = await harness.appState.openBotChat(for: scout)
+        atlasLookup.resume()
+        let atlasOutcome = await atlasOpen.value
+
+        XCTAssertTrue(scoutOpened)
+        XCTAssertEqual(atlasOutcome, .superseded, "the earlier tap's late lookup opens nothing")
+        XCTAssertEqual(resumedProfiles, ["scout"])
+        XCTAssertEqual(harness.appState.activeBotChatProfile, "scout")
+        XCTAssertNil(harness.appState.botChatOnItsWay)
+        XCTAssertNil(harness.appState.botChatComingOverAnother)
+        XCTAssertNil(harness.appState.errorMessage, "a superseded open is no failure")
+    }
+
+    /// An earlier tap whose lookup fails after a newer tap took over says
+    /// nothing and doesn't go back to the list: the newer chat stays.
+    func testASupersededTapsFailedLookupStaysSilent() async {
+        let atlasLookup = ControlledSuspension()
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, _, _, profile in
+                let bot = profile ?? "default"
+                return SessionResumeResult(
+                    sessionId: "\(bot)-runtime",
+                    storedSessionId: "\(bot)-chat",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, profile in
+                if profile == "atlas" {
+                    await atlasLookup.suspend()
+                    throw URLError(.timedOut)
+                }
+                return [BotChatLookupRow(id: "\(profile)-chat", title: "Bot Chat")]
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        let atlas = makeBot(name: "atlas")
+        let scout = makeBot(name: "scout")
+
+        harness.appState.showSidebar = true
+        harness.appState.beginOpeningBotChat(atlas.name)
+        let atlasOpen = Task { @MainActor [appState = harness.appState] in
+            await appState.openBotChatFromList(atlas)
+        }
+        await atlasLookup.waitUntilSuspended()
+        let scoutOpened = await harness.appState.openBotChat(for: scout)
+        atlasLookup.resume()
+        let atlasOpened = await atlasOpen.value
+
+        XCTAssertTrue(scoutOpened)
+        XCTAssertFalse(atlasOpened)
+        XCTAssertEqual(harness.appState.activeBotChatProfile, "scout")
+        XCTAssertFalse(harness.appState.showSidebar, "the newer chat stays on screen")
+        XCTAssertNil(harness.appState.errorMessage, "the superseded lookup's failure says nothing")
+        XCTAssertNil(harness.appState.botsListNotice)
+    }
+
+    /// A Bot Chat whose open fails after Bots pushed its screen goes back to
+    /// the list, rather than leave the chat open before under the tapped
+    /// bot; beside a chat on a wide window, nothing was pushed and the chat
+    /// there stays.
+    func testAFailedOpenFromBotsGoesBackToTheList() async {
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            refreshContext: { _, _ in },
+            findBotChat: { _, _ in throw URLError(.timedOut) }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        let atlas = makeBot(name: "atlas")
+
+        harness.appState.showSidebar = true
+        harness.appState.beginOpeningBotChat(atlas.name)
+        XCTAssertFalse(harness.appState.showSidebar, "the list closes and the shell pushes the chat")
+        let opened = await harness.appState.openBotChatFromList(atlas)
+        XCTAssertFalse(opened)
+        XCTAssertTrue(harness.appState.showSidebar, "back on the list it was tapped in")
+        XCTAssertNotNil(harness.appState.botsListNotice, "and the list says why")
+        XCTAssertNil(harness.appState.errorMessage, "not the composer that went")
+        XCTAssertNil(harness.appState.botChatOpening)
+        XCTAssertNil(harness.appState.botChatOnItsWay)
+
+        harness.appState.botsListNotice = nil
+        harness.appState.showSidebar = false
+        harness.appState.beginOpeningBotChat(atlas.name)
+        let openedBeside = await harness.appState.openBotChatFromList(atlas)
+        XCTAssertFalse(openedBeside)
+        XCTAssertFalse(harness.appState.showSidebar, "a chat shown beside the list before stays")
+        XCTAssertNotNil(harness.appState.errorMessage, "and its composer says why")
+        XCTAssertNil(harness.appState.botsListNotice)
+    }
+
     /// #442: going atlas → scout → atlas used to leave scout's chat as the
     /// open atlas chat's durable identity (Bot Chats have no catalog row to
     /// correct it). The next preserve-current sync — the one a follow-up send

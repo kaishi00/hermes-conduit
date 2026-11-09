@@ -23,6 +23,8 @@ struct GroupChatView: View {
     /// (Pulse, say); otherwise Back to the list or Settings covers it.
     private var roomShows: Bool {
         shell.isTabActive && (shell.hasChatBeside || !appState.showSidebar) && scenePhase == .active
+            // Under a Bot Chat on its way it's covered: what comes in isn't seen.
+            && appState.botChatComingOverAnother == nil
     }
     @State private var showingDisbandConfirmation = false
     @State private var showingInfo = false
@@ -91,7 +93,12 @@ struct GroupChatView: View {
         .attachmentDropTarget(isEnabled: surface.map { !$0.room.isDisbanded } ?? false) { providers in
             appState.dropIntoRoomComposer(providers)
         }
-        .toolbar { toolbarContent }
+        // Under a Bot Chat on its way (a portrait tapped beside the room),
+        // the coming bot's name is the title; the room stays mounted, its
+        // picks kept should that open fail.
+        .toolbar {
+            if appState.botChatComingOverAnother == nil { toolbarContent }
+        }
         // V2's screen hosts this view and owns the room menu and picker.
         .modifier(GroupRoomPicturePicker(request: $choosingPicture, isEnabled: !isV2))
         // On the screen, not the menu: a sheet raised as a menu closes may

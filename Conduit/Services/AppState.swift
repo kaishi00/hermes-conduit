@@ -1880,8 +1880,37 @@ final class AppState: ObservableObject {
     /// the underlying task.
     private final class BotChatOpenFlight {
         var task: Task<Bool, Never>?
+        /// The navigation the flight's open owns (`chatViewportTransition`):
+        /// once a newer one has begun, a tap on the same bot opens on its
+        /// own rather than join a flight that will stand down.
+        var transition: UInt64?
     }
     private var botChatOpenFlights: [String: BotChatOpenFlight] = [:]
+
+    /// A Bot Chat a tap, a link or a new bot is opening, with the navigation
+    /// its open began. Bots pushes the chat's screen as its list closes,
+    /// before Hermes' lookup lands (#1700), so until then the active chat is
+    /// still the one open before: another bot's, a session or a room. The
+    /// screen covers that chat meanwhile (`botChatComingOverAnother`); a newer
+    /// navigation, or the open's end, takes it away.
+    struct BotChatOnItsWay: Equatable {
+        let bot: String
+        let label: String
+        let transition: UInt64
+    }
+    @Published private(set) var botChatOnItsWay: BotChatOnItsWay?
+    /// Why a Bot Chat opened from a list of bots didn't open, for that list
+    /// to show (`openBotChatFromList`); the list takes it.
+    @Published var botsListNotice: String?
+
+    /// The coming bot's name while the screen still holds another chat
+    /// (`botChatOnItsWay`): its chat screen shows this bot's name over a
+    /// cover, never the chat open before. Nil once its own chat is open.
+    var botChatComingOverAnother: String? {
+        guard let coming = botChatOnItsWay else { return nil }
+        if activeRoomSurface == nil, let open = activeBotChatProfile, profilesMatch(open, coming.bot) { return nil }
+        return coming.label
+    }
 
     /// Every id the client can POSITIVELY attribute to Bot Mode right now: the
     /// roster's canonical registry (id + lineage tip) and the runtime
@@ -2457,11 +2486,15 @@ final class AppState: ObservableObject {
     /// the chat then, before it lands, so this tells it a Bot Chat or a room
     /// is coming (it stays in Bots) whatever was open before.
     private(set) var botChatOpening: String?
+    /// The list was showing, with no chat beside it, as the last mark was
+    /// made: closing it pushed the chat's screen (`openBotChatFromList`).
+    private var botChatOpeningPushed = false
 
     /// Closes the list for `name`'s Bot Chat; `endOpeningBotChat` once the
     /// open has finished, opened or not.
     func beginOpeningBotChat(_ name: String) {
         botChatOpening = name
+        botChatOpeningPushed = showSidebar
         dismissSidebarDrawer()
     }
 
@@ -11867,6 +11900,8 @@ final class AppState: ObservableObject {
         if let transition = chatViewportTransition {
             finishChatViewportTransition(generation: transition.generation)
         }
+        // A newer navigation: the Bot Chat on its way stands down.
+        botChatOnItsWay = nil
         let renderedViewport = chatViewportSnapshotProvider?.capture()
         chatResumeCoordinator.captureViewportAndFreeze(
             renderedViewport?.snapshot,
@@ -25907,11 +25942,12 @@ final class AppState: ObservableObject {
         return .saved(warning: warnings.isEmpty ? nil : warnings.joined(separator: " "), needsModel: needsModel)
     }
 
-    /// A just-created bot's Bot Chat, opened, and with `introduces` its
-    /// first turn: Desktop's kickoff ("Hey, tell me about yourself!"), sent
-    /// only into the new bot's own empty chat.
+    /// A just-created bot's Bot Chat, opened as from the list that marked
+    /// it (`openBotChatFromList`), and with `introduces` its first turn:
+    /// Desktop's kickoff ("Hey, tell me about yourself!"), sent only into
+    /// the new bot's own empty chat.
     func openNewBotChat(for bot: BotProfile, introduces: Bool) async {
-        guard await openBotChat(for: bot), introduces,
+        guard await openBotChatFromList(bot), introduces,
               let sessionId = activeSessionId,
               botChatSessionProfiles[sessionId]?.caseInsensitiveCompare(bot.name) == .orderedSame,
               messages.isEmpty, !turnState.isRunning else { return }
@@ -26683,12 +26719,39 @@ final class AppState: ObservableObject {
         presentationMigrationSessionIDs: Set<String> = [],
         viewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
+        await openBotChatOutcome(
+            for: bot,
+            presentationMigrationSessionIDs: presentationMigrationSessionIDs,
+            viewportTransitionGeneration: viewportTransitionGeneration
+        ) == .opened
+    }
+
+    /// How a Bot Chat's open ended: `.failed` only when it didn't open and
+    /// nothing newer took over, so the chat on screen is still the one open
+    /// before this open began.
+    enum BotChatOpenOutcome: Equatable {
+        case opened, superseded, failed
+    }
+
+    /// `openBotChat`, saying whether a failed open was superseded. An open
+    /// that brings no navigation of its own (a tap, a link, a new bot)
+    /// begins one before Hermes' lookup, not after it: a newer tap then
+    /// supersedes this open even while its lookup is out, so the bot tapped
+    /// last is the one that opens, never the one whose lookup came back last.
+    func openBotChatOutcome(
+        for bot: BotProfile,
+        presentationMigrationSessionIDs: Set<String> = [],
+        viewportTransitionGeneration: UInt64? = nil
+    ) async -> BotChatOpenOutcome {
         guard let client, isConnected else {
             errorMessage = AppLocalization.string("Connect to Hermes to chat with bots.")
-            return false
+            return .failed
         }
         let flightKey = bot.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if let flight = botChatOpenFlights[flightKey] {
+        // A flight whose navigation a newer one took over will stand down:
+        // a tap on its bot now opens on its own.
+        if let flight = botChatOpenFlights[flightKey],
+           viewportTransitionGeneration != nil || chatViewportTransitionIsCurrent(flight.transition) {
             let joined = await flight.task?.value ?? false
             // A notification that joined a flight its own newer transition
             // superseded would otherwise inherit that stand-down and do
@@ -26700,12 +26763,24 @@ final class AppState: ObservableObject {
                   chatViewportTransitionIsCurrent(generation: viewportTransitionGeneration),
                   isConnected, client === self.client,
                   botChatOpenFlights[flightKey] == nil else {
-                return joined
+                // A tap that joined: its chat opened, but a newer navigation
+                // since then owns the screen, so the tap doesn't act on it.
+                if joined {
+                    return viewportTransitionGeneration != nil || chatViewportTransitionIsCurrent(flight.transition)
+                        ? .opened : .superseded
+                }
+                return chatViewportTransitionIsCurrent(flight.transition) ? .failed : .superseded
             }
+        }
+        let beganTransition = viewportTransitionGeneration == nil
+        let transition = viewportTransitionGeneration ?? beginExplicitChatViewportTransition()
+        if beganTransition {
+            botChatOnItsWay = BotChatOnItsWay(bot: bot.name, label: bot.displayLabel, transition: transition)
         }
         // The closure captures the box WEAKLY: a strong capture would form
         // a flight<->task retain cycle that outlives the map entry.
         let flight = BotChatOpenFlight()
+        flight.transition = transition
         let task = Task { @MainActor [weak self, weak flight] () -> Bool in
             // `flight` is retained strongly by the creating scope across
             // `await task.value`, so the weak capture only breaks the
@@ -26723,12 +26798,40 @@ final class AppState: ObservableObject {
                 bot,
                 client: client,
                 presentationMigrationSessionIDs: presentationMigrationSessionIDs,
-                viewportTransitionGeneration: viewportTransitionGeneration
+                viewportTransitionGeneration: transition
             )
         }
         flight.task = task
         botChatOpenFlights[flightKey] = flight
-        return await task.value
+        let opened = await task.value
+        if botChatOnItsWay?.transition == transition { botChatOnItsWay = nil }
+        if opened { return .opened }
+        guard chatViewportTransitionIsCurrent(generation: transition) else { return .superseded }
+        // Nothing replaced the chat on screen: its viewport goes on as it was.
+        if beganTransition { finishChatViewportTransition(generation: transition) }
+        return .failed
+    }
+
+    /// Opens `bot`'s Bot Chat for a list of bots (a Bots Home portrait or
+    /// its overview's Chat, a Bots list row, a new bot, Bots Home's voice
+    /// menu), which marked it with `beginOpeningBotChat` first; ends the
+    /// mark. The shell pushed the chat's screen as the list closed, over the
+    /// chat open before: an open that fails, while still the latest
+    /// navigation, goes back to the list rather than leave another chat
+    /// under this bot's tap. True when it opened.
+    @discardableResult
+    func openBotChatFromList(_ bot: BotProfile) async -> Bool {
+        let pushed = botChatOpeningPushed
+        let outcome = await openBotChatOutcome(for: bot)
+        endOpeningBotChat(bot.name)
+        if outcome == .failed, pushed, !showSidebar {
+            showSidebar = true
+            // The error shows with the chat's composer, which just went: the
+            // list it went back to says it instead.
+            botsListNotice = errorMessage
+            errorMessage = nil
+        }
+        return outcome == .opened
     }
 
     /// A bot open spans several awaited RPCs. Every step re-validates that
@@ -26756,10 +26859,14 @@ final class AppState: ObservableObject {
                 rows = try await client.findBotChatSession(profile: bot.name)
             }
         } catch {
-            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
+            guard botOpenFenceIsCurrent(epoch: epoch, client: client),
+                  chatViewportTransitionIsCurrent(viewportTransitionGeneration) else { return false }
             return failBotChatOpen(bot, error: error, stage: .lookup)
         }
-        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
+        // A newer navigation took over while the lookup was out (another
+        // bot tapped): this open says nothing and makes nothing.
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client),
+              chatViewportTransitionIsCurrent(viewportTransitionGeneration) else { return false }
         switch BotChatResolver.resolve(rows: rows, rosterCanonicalID: bot.canonicalSessionID) {
         case .failure(.unconfirmedAbsence):
             refuseBotChatConfirmation(bot)
