@@ -22,7 +22,8 @@ final class ReplySourcesClient {
         case malformed
 
         var errorDescription: String? {
-            PluginUpdateAsk.text(AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again."))
+            PluginUpdateAsk.text(AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again."),
+                                    instead: AppLocalization.string("The host's answer couldn't be read. Try again in a moment."))
         }
     }
 

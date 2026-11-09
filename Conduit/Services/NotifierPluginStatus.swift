@@ -502,6 +502,13 @@ enum PluginUpdateAsk {
         text(ask, lead: lead, managedBy: managedBy)
     }
 
+    /// `ask`, or on a host that manages the plugin `instead` (what went
+    /// wrong when the plugin has the feature, such as an answer that
+    /// couldn't be read) followed by who keeps the plugin up to date.
+    static func text(_ ask: String, instead: String) -> String {
+        managedBy.map { instead + " " + NotifierPluginStatus.managedText($0) } ?? ask
+    }
+
     /// `text(_:lead:)` for a host other than the active one (a sharing
     /// destination that isn't the active dashboard), managed by `managedBy`.
     static func text(_ ask: String, lead: String, managedBy: String?) -> String {

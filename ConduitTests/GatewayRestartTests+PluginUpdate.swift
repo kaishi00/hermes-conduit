@@ -456,6 +456,13 @@ extension GatewayRestartTests {
         // What else the ask said (sharing paused, the version needed) leads.
         XCTAssertEqual(PluginUpdateAsk.text(ask, lead: "Sharing is paused."),
                        "Sharing is paused. The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
+        // So does an answer a room's files or reply sources couldn't read, and a Watch broker line keeps what failed.
+        XCTAssertEqual(GroupRoomFilesClient.Failure.malformed.errorDescription,
+                       "The host's answer couldn't be read. Try again in a moment. Family farm keeps the plugin up to date.")
+        XCTAssertEqual(ReplySourcesClient.Failure.malformed.errorDescription,
+                       "The host's answer couldn't be read. Try again in a moment. Family farm keeps the plugin up to date.")
+        XCTAssertEqual(GPTLiveSession.voiceNote(requested: "marin", applied: nil),
+                       "The Conduit plugin on your Hermes server didn't confirm the voice you chose. The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
         // Location sharing bound to another dashboard is worded with that host's manager.
         XCTAssertEqual(LocationSyncPause.pluginMissing.message(managedBy: nil),
                        "Paused: update the Conduit plugin on this host to share your location.")
@@ -474,6 +481,8 @@ extension GatewayRestartTests {
         XCTAssertNil(PluginUpdateAsk.managedAsk)
         XCTAssertEqual(AppState.chatTakeoverFailureMessage(ChatTakeoverError.malformed),
                        "The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again.")
+        XCTAssertEqual(GroupRoomFilesClient.Failure.malformed.errorDescription,
+                       "The host's answer couldn't be read. Update the Conduit plugin and try again.")
         XCTAssertEqual(PluginUpdateAsk.title("Plugin update needed"), "Plugin update needed")
     }
 
