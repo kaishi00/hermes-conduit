@@ -704,9 +704,15 @@ struct V2PulsePage: View {
                 sourceLink(card)
             } else {
                 topicLine(card)
-                Text(card.formattedNews)
-                    .scaledFont(.body)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let look = card.look {
+                    // Held in the brief, a pick keeps the frame's headline and
+                    // sentence; its buttons stay the block's row.
+                    lookWords(card, look: look)
+                } else {
+                    Text(card.formattedNews)
+                        .scaledFont(.body)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
                 lookBody(card)
                 sourceLink(card)
                 whyNote(card)
@@ -948,23 +954,7 @@ struct V2PulsePage: View {
         VStack(alignment: .leading, spacing: 0) {
             VStack(alignment: .leading, spacing: 8) {
                 topicLine(card)
-                Group {
-                    if look.line.isEmpty {
-                        Text(card.formattedNews)
-                    } else {
-                        Text(PulseCard.formatted(look.line, markdown: card.kind != "followup"))
-                    }
-                }
-                .scaledFont(.headline)
-                .strikethrough(card.doneAt != nil)
-                .foregroundStyle(card.isCleared ? Color.secondary : Color.primary)
-                .fixedSize(horizontal: false, vertical: true)
-                if !look.line.isEmpty, !look.detail.isEmpty {
-                    Text(PulseCard.formatted(look.detail, markdown: card.kind != "followup"))
-                        .scaledFont(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
+                lookWords(card, look: look)
                 lookBody(card)
                 if !card.quote.isEmpty, !card.isCleared, !card.drawsPromise {
                     Text(verbatim: "“\(card.quote)”")
@@ -995,7 +985,7 @@ struct V2PulsePage: View {
                 }
             }
             .padding(EdgeInsets(top: 12, leading: 14, bottom: 14, trailing: 14))
-            if !card.isCleared {
+            if !card.isCleared, hasBarActions(card) {
                 actionBar(card)
             }
         }
@@ -1010,6 +1000,39 @@ struct V2PulsePage: View {
                               lineWidth: focusedCard == card.id ? 1.5 : 1)
         )
         .opacity(card.isCleared ? 0.7 : 1)
+    }
+
+    /// The pick's headline in bold and its one more sentence under it (the
+    /// card's news when the pick has no headline).
+    @ViewBuilder private func lookWords(_ card: PulseCard, look: PulseLook) -> some View {
+        Group {
+            if look.line.isEmpty {
+                Text(card.formattedNews)
+            } else {
+                Text(PulseCard.formatted(look.line, markdown: card.kind != "followup"))
+            }
+        }
+        .scaledFont(.headline)
+        .strikethrough(card.doneAt != nil)
+        .foregroundStyle(card.isCleared ? Color.secondary : Color.primary)
+        .fixedSize(horizontal: false, vertical: true)
+        if !look.detail.isEmpty {
+            Text(PulseCard.formatted(look.detail, markdown: card.kind != "followup"))
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Whether the bar has anything in it: a lone hairline otherwise.
+    private func hasBarActions(_ card: PulseCard) -> Bool {
+        let untold = untoldCards.contains(card.id)
+        return card.isRatable
+            || (!untold && (appState.canActOnPulseCard(card)
+                || (card.look?.ask != nil && appState.canAskFromPulseCard(card))))
+            || appState.canMarkPulseCardDone(card)
+            || card.look?.extraActions.isEmpty == false
+            || (card.look?.offersLater == true && card.dismissedAt == nil && card.doneAt == nil && canDismiss)
     }
 
     /// The frame's actions: each a full-width segment split by hairlines,
@@ -2277,9 +2300,11 @@ struct PulseBarButtonStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .lineLimit(1)
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
             .foregroundStyle(prominent ? tint : (tint == .gray ? Color.secondary : Color.primary.opacity(0.85)))
             .padding(.horizontal, 12)
+            .padding(.vertical, 6)
             .frame(maxWidth: .infinity, minHeight: 44)
             .contentShape(Rectangle())
             .background(configuration.isPressed ? Color.primary.opacity(0.08) : Color.clear)
