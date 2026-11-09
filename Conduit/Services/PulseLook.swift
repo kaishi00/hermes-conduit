@@ -139,6 +139,12 @@ struct PulseLook: Equatable {
 
     /// "2026-11-20" (the start of that day) or "2026-11-20T15:00", in the
     /// phone's time zone, which is the user's.
+    /// The last moment of `date`'s day, by which a due with no time is due.
+    static func endOfDay(_ date: Date, calendar: Calendar = .current) -> Date {
+        let start = calendar.startOfDay(for: date)
+        return calendar.date(byAdding: .day, value: 1, to: start)?.addingTimeInterval(-1) ?? date
+    }
+
     static func day(_ value: String, calendar: Calendar = .current) -> (date: Date, hasTime: Bool)? {
         let parts = value.split(separator: "T", maxSplits: 1).map(String.init)
         let day = parts.first?.split(separator: "-").compactMap { Int($0) } ?? []

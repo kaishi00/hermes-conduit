@@ -852,6 +852,16 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default"))
     }
 
+    func testADueWithNoTimeIsDueByTheEndOfItsDay() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Europe/Paris"))
+        let found = try XCTUnwrap(PulseLook.day("2026-11-20", calendar: calendar))
+        XCTAssertFalse(found.hasTime)
+        let end = PulseLook.endOfDay(found.date, calendar: calendar)
+        XCTAssertEqual(calendar.startOfDay(for: end), found.date)
+        XCTAssertEqual(end.timeIntervalSince(found.date), 86_399)
+    }
+
     func testAskFillsTheChatWithItsWordsAndNeedsAnAsk() async throws {
         let state = try appState()
         let page = try XCTUnwrap(PulseFeedPage(json: json("""

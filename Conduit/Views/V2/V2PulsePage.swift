@@ -22,7 +22,9 @@
 //  writing it. From 0.98.0 an event or reminder Pulse would add is a
 //  suggestion on its own card, with Add and Not now, then how it went, and
 //  Undo once it's on the phone; this phone applies what it tapped without
-//  its own change card.
+//  its own change card. From 0.149.0 a card draws its pick under its words
+//  (PulseLookViews), Ask leaves the pick's words in the composer, and the
+//  morning brief is laid out from its parts.
 //  Pulse's own chat, where its hidden turns run, isn't shown: the cards are
 //  the way to answer it.
 //

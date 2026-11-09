@@ -74,10 +74,12 @@ struct PulseLookBody: View {
 
     private func dueBar(_ due: Date, hasTime: Bool, noticed: Date?) -> some View {
         let now = Date()
-        let late = due < now
+        // A day with no time is due by that day's end: not late on the day.
+        let by = hasTime ? due : PulseLook.endOfDay(due)
+        let late = by < now
         let progress: Double = {
-            guard let noticed, due > noticed else { return late ? 1 : 0.5 }
-            return min(1, max(0, now.timeIntervalSince(noticed) / due.timeIntervalSince(noticed)))
+            guard let noticed, by > noticed else { return late ? 1 : 0.5 }
+            return min(1, max(0, now.timeIntervalSince(noticed) / by.timeIntervalSince(noticed)))
         }()
         let dueText = hasTime ? due.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute())
             : due.formatted(.dateTime.weekday(.abbreviated).day().month())
