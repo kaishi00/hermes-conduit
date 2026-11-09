@@ -17032,6 +17032,9 @@ final class AppState: ObservableObject {
         SavedDashboardRegistryStore.save(registry)
         // The old address's host reported them; the new one reports its own.
         forgetRelayGatewayIDs(of: id)
+        // Who manages the plugin goes with the host: a moved entry's new host
+        // says for itself. Signing out keeps it (same host).
+        NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
         return registry.dashboards[index]
     }
 
@@ -17406,6 +17409,9 @@ final class AppState: ObservableObject {
         SavedDashboardRegistryStore.save(registry)
         removeDashboardScopedPresentation(id)
         forgetRelayGatewayIDs(of: id)
+        // Who manages the plugin goes with the host: a moved entry's new host
+        // says for itself. Signing out keeps it (same host).
+        NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
         // Log to Hermes events waiting for it, and its inbox keys.
         ShortcutInboxQueue.forgetDashboard(id)
         // Location, health and phone sharing bound to it.
@@ -29803,10 +29809,12 @@ final class AppState: ObservableObject {
         let generation = notifierPluginStatusGeneration
         let state: NotifierPluginStatus.State
         var runtime: NotifierPluginStatus.Runtime?
+        var managedBy: String?
         do {
             let response = try await bridge.requestJSON(path: NotifierPluginStatus.path)
             state = NotifierPluginStatus.state(from: response)
             runtime = NotifierPluginStatus.runtime(from: response)
+            managedBy = NotifierPluginStatus.managedBy(from: response)
         } catch {
             state = NotifierPluginStatus.state(from: error)
         }
@@ -29830,6 +29838,11 @@ final class AppState: ObservableObject {
             : nil
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
+        notifierPlugin.managedBy = NotifierPluginStatus.managedBy(
+            after: state, reported: managedBy,
+            before: notifierPlugin.managedBy ?? NotifierPluginStatus.Remembered.managedBy(for: activeDashboardID, in: defaults)
+        )
+        NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         Task { await refreshLatestNotifierPluginVersion() }
         clearSettledNotifierPluginUpdateOutcome()
@@ -29870,6 +29883,8 @@ final class AppState: ObservableObject {
         notifierPlugin.hostCopy = nil
         notifierPlugin.state = state
         notifierPlugin.runtime = NotifierPluginStatus.runtime(from: json)
+        notifierPlugin.managedBy = NotifierPluginStatus.managedBy(from: json)
+        NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         clearSettledNotifierPluginUpdateOutcome()
     }

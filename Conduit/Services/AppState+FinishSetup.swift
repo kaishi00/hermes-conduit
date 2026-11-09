@@ -46,7 +46,8 @@ struct FinishSetupStatus: Equatable {
         switch status.state {
         case .unknown: return .unknown
         case .predatesCapabilities:
-            if status.isNotServed { return .notRunning }
+            // A host that manages the plugin has it; this dashboard doesn't run it.
+            if status.isNotServed || status.isManaged { return .notRunning }
             return status.offersInstall ? .install : .update
         case .reported:
             if status.updateRecommended { return .update }
@@ -63,9 +64,12 @@ struct FinishSetupStatus: Equatable {
         /// Never: the plugin lacks a feature Conduit uses, and
         /// Settings has the update that brings it.
         case featuresWait
+        /// The host keeps the plugin up to date (`managedBy`).
+        case managed
     }
 
     static func pluginDoneNote(_ status: NotifierPluginStatus) -> PluginDoneNote {
+        if status.isManaged { return .managed }
         guard !status.asksToUpdate, status.updateAvailable else { return .upToDate }
         return status.needsUpdate ? .featuresWait : .newerVersionWaits
     }

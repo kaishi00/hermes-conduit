@@ -2155,8 +2155,9 @@ private struct NotifierPluginUpdateNotice: View {
 
     var body: some View {
         ConduitSettingsSection(
-            // Missing, or on the host but not running: there's nothing to update.
-            title: status.offersInstall || status.isNotServed
+            // Missing, on the host but not running, or managed by the host:
+            // there's nothing to update.
+            title: status.offersInstall || status.isNotServed || status.isManaged
                 ? AppLocalization.string("Conduit plugin")
                 : AppLocalization.string("Update the Conduit plugin"),
             symbol: "arrow.down.circle",
@@ -4444,7 +4445,9 @@ private struct NotificationsSettingsDetail: View {
                     // when it needs attention.
                     if appState.notifierPlugin.needsAttention {
                         // Missing, or on the host but not running: nothing to update.
+                        // A managed host's only offer is its restart: nothing to update.
                         pluginPageLink(appState.notifierPlugin.offersInstall || appState.notifierPlugin.isNotServed
+                            || appState.notifierPlugin.isManaged
                             ? AppLocalization.string("Open Conduit plugin")
                             : AppLocalization.string("Update the Conduit plugin"))
                     }
@@ -4502,8 +4505,10 @@ private struct NotificationsSettingsDetail: View {
                         // pairings are behind. The host row above already
                         // offers them when the plugin itself reports it is
                         // behind.
+                        // Not on a host that manages the plugin: it isn't
+                        // Conduit's to update there.
                         if !appState.notifierPlugin.needsAttention,
-                           pairings.thisDashboard.contains(where: Self.isOutdated) {
+                           pairings.thisDashboard.contains(where: { Self.isOutdated($0) && !managesPairing($0) }) {
                             pluginPageLink(AppLocalization.string("Update the Conduit plugin"))
                         }
                         ForEach(pairings.unscoped) { gateway in
@@ -4550,8 +4555,9 @@ private struct NotificationsSettingsDetail: View {
                     if appState.notifierPlugin.reports("pairing") {
                         oneTapPairing
                     } else {
-                        // Installed but not running: installing again can't help.
-                        if appState.notifierPlugin.isNotServed {
+                        // Installed but not running: installing again can't
+                        // help, nor on a managed host, whose copy is the host's.
+                        if appState.notifierPlugin.isNotServed || appState.notifierPlugin.isManaged {
                             Text("Installed on this dashboard's host, but the dashboard doesn't run it. Turn it on in Hermes, then restart the gateway and the dashboard.")
                                 .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
@@ -4770,18 +4776,34 @@ private struct NotificationsSettingsDetail: View {
             || (gateway.pluginVersion != nil && !(gateway.supportsApprovalCards && gateway.supportsClarifyCards))
     }
 
+    /// A pairing known to be this dashboard's, on a host that manages the
+    /// plugin: nothing for Conduit to update there.
+    private func managesPairing(_ gateway: RelayMetaInfo.Gateway) -> Bool {
+        // By the relay id this dashboard recorded, not a `dashboard_id`
+        // binding: an entry moved to another host keeps its id, and the old
+        // host's pairing isn't the new host's to keep up to date.
+        appState.notifierPlugin.isManaged && appState.activeDashboardRelayGatewayIDs.contains(gateway.id)
+    }
+
     /// One relay pairing of the active dashboard: whether its notifier
     /// sends decision cards, from the plugin version its last push carried.
     @ViewBuilder
     private func gatewayRow(_ gateway: RelayMetaInfo.Gateway) -> some View {
         let isSupported = gateway.supportsApprovalCards && gateway.supportsClarifyCards
         let isOutdated = Self.isOutdated(gateway)
+        // A host that manages the plugin updates it itself: say what's
+        // missing without asking for an update. Only for a pairing known to
+        // be this dashboard's (`managesPairing`): a legacy one may belong to
+        // another host.
+        let managed = isOutdated && managesPairing(gateway)
         compatibilityRow(
             title: gateway.name,
             version: gateway.pluginVersion,
-            mark: isSupported ? .supported : (isOutdated ? .updateNeeded : .unknown),
+            mark: isSupported ? .supported : (managed ? .notOnHost : isOutdated ? .updateNeeded : .unknown),
             detail: isSupported
                 ? AppLocalization.string("Notifier supports approval and clarify cards")
+                : managed
+                ? AppLocalization.string("Approval and clarify cards need a newer plugin. This dashboard's host keeps the plugin up to date.")
                 : gateway.hasSentEventsButNeverReported
                     ? AppLocalization.string("This profile's notifier predates decision cards — update it to receive them")
                     : gateway.pluginVersion == nil
@@ -4854,6 +4876,8 @@ private struct NotificationsSettingsDetail: View {
     private enum CompatibilityMark {
         case supported
         case updateNeeded
+        /// Missing on a host that manages the plugin: nothing to do here.
+        case notOnHost
         case actionNeeded
         case unknown
     }
@@ -4876,6 +4900,10 @@ private struct NotificationsSettingsDetail: View {
                     Image(systemName: "exclamationmark.circle")
                         .foregroundStyle(.orange)
                         .accessibilityLabel(AppLocalization.string("Update needed"))
+                case .notOnHost:
+                    Image(systemName: "minus.circle")
+                        .foregroundStyle(.secondary)
+                        .accessibilityLabel(AppLocalization.string("Not on this host"))
                 case .actionNeeded:
                     Image(systemName: "exclamationmark.triangle")
                         .foregroundStyle(.orange)
