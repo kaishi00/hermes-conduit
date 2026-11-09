@@ -833,6 +833,11 @@ final class AppState: ObservableObject {
                 schedulePendingComposerSendCheck()
                 // The takeover belongs to the other host's chat.
                 dismissChatTakeover()
+                // Until the newly selected host answers, the manager it last
+                // reported words the plugin asks, not the old host's.
+                let askedBefore = PluginUpdateAsk.managedAsk
+                PluginUpdateAsk.setActive(managedBy: NotifierPluginStatus.Remembered.managedBy(for: selectedDashboard, in: defaults))
+                if PluginUpdateAsk.managedAsk != askedBefore { shareWatchCallVoices() }
             }
         }
     }

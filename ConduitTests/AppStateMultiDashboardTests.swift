@@ -411,6 +411,19 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertEqual(relaunched.lastDashboardURL, "https://hermes.example.test/new")
     }
 
+    func testSelectingADashboardWordsPluginAsksWithItsLastReportedManager() {
+        let home = dashboard("Home", "https://home.example.test")
+        let farm = dashboard("Farm", "https://farm.example.test")
+        NotifierPluginStatus.Remembered.remember("Family farm", for: farm.id, in: defaults)
+        addTeardownBlock { PluginUpdateAsk.setActive(managedBy: nil) }
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home, farm]))
+        XCTAssertNil(PluginUpdateAsk.managedBy)
+        appState.selectDashboardTarget(farm.id)
+        XCTAssertEqual(PluginUpdateAsk.managedBy, "Family farm")
+        appState.selectDashboardTarget(home.id)
+        XCTAssertNil(PluginUpdateAsk.managedBy)
+    }
+
     func testSwitchingBackMovesTheDashboardAndForgetsThePasswordForTheOldAddress() async {
         let home = dashboard("Home", "http://127.0.0.1:1")
         let work = dashboard("Work", "https://work.example.test")
