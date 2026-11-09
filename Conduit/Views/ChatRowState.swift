@@ -66,6 +66,10 @@ struct ChatRowState: Equatable {
     var canExplainStepRuns = false
     /// Replies Hermes wrote on its own, with why (Predictive follow-ups).
     var followUpReasons: [String: String] = [:]
+    /// Each reply's ::conduit-board lines no conduit_show row drew, and the
+    /// boards read for them (LineBoards).
+    var lineBoardIDs: [String: [String]] = [:]
+    var lineBoards: [String: RichBoard] = [:]
 
     init() {}
 
@@ -104,6 +108,8 @@ struct ChatRowState: Equatable {
         stepSummariesAsked = Set(appState.stepSummaryRequested.keys.lazy.filter { $0.scope == scope }.map(\.toolID))
         canExplainStepRuns = appState.client != nil && !(appState.activeSessionId ?? "").isEmpty && !isOffline
         followUpReasons = appState.predictive.followUpReasons
+        lineBoardIDs = facts.lineBoardIDs
+        lineBoards = lineBoardIDs.isEmpty ? [:] : appState.lineBoards
     }
 
     /// `AppState.canReact(to:)`, from these values alone.
@@ -129,6 +135,8 @@ struct ChatRowFacts: Equatable {
     var latestLiveRows: [String: String] = [:]
     var followUpBoardRowID: String?
     var teammateReplies: [String: String] = [:]
+    /// Each reply's ::conduit-board lines no conduit_show row drew (LineBoards).
+    var lineBoardIDs: [String: [String]] = [:]
 
     init() {}
 
@@ -144,6 +152,7 @@ struct ChatRowFacts: Equatable {
             in: rows,
             streamingMessageID: isBusy ? BotTeammateMessages.runningReplyID(in: rows) : nil
         )
+        lineBoardIDs = LineBoards.waiting(in: rows)
     }
 }
 

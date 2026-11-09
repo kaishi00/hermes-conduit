@@ -13037,6 +13037,10 @@ final class AppState: ObservableObject {
     private var roomReplayRevision = 0
     /// The open room's boards on the host, oldest first (AppState+RoomBoards).
     @Published var activeRoomBoards: [RoomBoard] = []
+    /// Boards replies name by line, by id, once read (LineBoards).
+    @Published var lineBoards: [String: RichBoard] = [:]
+    var lineBoardsAsked: Set<String> = []
+    var lineBoardsReadOverride: ((String) async throws -> [String: Any])?
     var roomBoardsTask: Task<Void, Never>?
     /// Tests read a room's boards here in place of the dashboard.
     var roomBoardsReadOverride: ((String) async throws -> [String: Any])?

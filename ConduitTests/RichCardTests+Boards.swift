@@ -440,4 +440,27 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(placed.values.map(\.count).reduce(0, +), 3, "a board whose message never came lands on none")
         XCTAssertTrue(RoomBoard.readPath(profile: "work", roomID: "room 1").hasSuffix("?profile=work&room_id=room%201"))
     }
+
+    func testAReplysBoardLineIsReadUnlessAConduitShowRowDrewIt() throws {
+        // A conduit_show the model wrote out as text: the plugin showed it and
+        // the reply holds the board's line (notifier leaked_calls.py).
+        let written = ChatMessage(id: "a1", role: .assistant,
+                                  content: "Here are the concepts.\n\n::conduit-board{id=\"cb-0000000000a1\"}",
+                                  timestamp: "2026-11-09T16:00:00Z")
+        XCTAssertEqual(LineBoards.ids(in: written.content), ["cb-0000000000a1"])
+        XCTAssertEqual(LineBoards.ids(in: "::conduit-board{id=\"nope\"} and plain text"), [])
+        // Hermes Desktop's turn: its conduit_show row drew the board the line names.
+        let desktopRow = ChatMessage(id: "t2", role: .tool, content: "", timestamp: "2026-11-09T16:01:00Z", tool: try boardTool(
+            ["ok": true, "directive": "::conduit-board{id=\"cb-0000000000b2\"}", "cards": [["type": "callout",
+             "callout": ["text": "Book early", "tone": "tip"]]], "markdown": "Book early"], id: "t2"))
+        let desktopReply = ChatMessage(id: "a2", role: .assistant, content: "Done. ::conduit-board{id=\"cb-0000000000b2\"}",
+                                       timestamp: "2026-11-09T16:01:01Z")
+        XCTAssertEqual(LineBoards.waiting(in: [written, desktopRow, desktopReply]), ["a1": ["cb-0000000000a1"]])
+        let board = try XCTUnwrap(LineBoards.board(["board": ["cards": [["type": "callout",
+            "callout": ["text": "Book early", "tone": "tip"]]], "markdown": "Book early"]], id: "cb-0000000000a1"))
+        XCTAssertEqual(board.cards.count, 1)
+        XCTAssertNil(LineBoards.board(["board": ["cards": [["type": "hologram"]]]], id: "cb-0000000000a1"))
+        XCTAssertTrue(LineBoards.readPath(profile: "work", id: "cb-0000000000a1")
+            .hasSuffix("/boards/desktop?profile=work&id=cb-0000000000a1"))
+    }
 }

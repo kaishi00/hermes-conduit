@@ -457,6 +457,11 @@ struct ChatView: View {
         .environment(\.quotedReplyJump, quotedReplyJump)
         // The rows show AppState through this, not by observing it.
         .chatRows(facts: transcript.facts)
+        // A reply's ::conduit-board line: its board is read to draw under it.
+        .task(id: transcript.facts.lineBoardIDs) {
+            let ids = transcript.facts.lineBoardIDs.values.flatMap { $0 }
+            if !ids.isEmpty { appState.loadLineBoards(ids) }
+        }
         .sheet(isPresented: $showsPinnedReplies) {
             PinnedRepliesSheet(fromOpenChat: true)
                 .environmentObject(appState)
@@ -1236,6 +1241,96 @@ struct MessageBubble: View, Equatable {
         }
     }
 
+    /// The boards this reply's ::conduit-board lines name that the plugin
+    /// kept and Conduit read (LineBoards), in the lines' order; nil for none.
+    private var lineBoards: [RichBoard]? {
+        guard let ids = rowState.lineBoardIDs[message.id] else { return nil }
+        let boards = ids.compactMap { rowState.lineBoards[$0] }
+        return boards.isEmpty ? nil : boards
+    }
+
+    /// A board as the chat draws it. A live card shows only where it was
+    /// last brought up to date. A board this Conduit can't draw every card
+    /// of shows as its Markdown. `followUps`: the row's own conduit_show,
+    /// whose follow-ups show while nothing was sent after it.
+    @ViewBuilder
+    private func boardView(_ board: RichBoard, rowID: String, followUps: Bool) -> some View {
+        let current = RichCard.current(board.cards, row: rowID, latestLiveRows: rowState.latestLiveRows)
+        VStack(alignment: .leading, spacing: 10) {
+            if board.cards.isEmpty, let markdown = board.markdown {
+                RichBoardMarkdown(markdown: markdown)
+            } else if current.isEmpty {
+                RichLiveUpdatedLine(title: board.cards.first?.title)
+            } else {
+                RichCardsView(cards: current, tabs: board.tabs && current.count > 1)
+            }
+            if followUps, rowID == rowState.followUpBoardRowID, !board.followUps.isEmpty {
+                RichBoardFollowUps(followUps: board.followUps, composer: appState.predictive,
+                                   send: { appState.requestBoardFollowUp(.send, text: $0) },
+                                   edit: { appState.requestBoardFollowUp(.edit, text: $0) })
+            }
+        }
+        .environment(\.richChecklistContext, appState.richChecklistContext)
+        .environment(\.richChecklistInChat, true)
+        // The row state carries cardTaps, so a card-taps report redraws this row.
+        .environment(\.richCardActions, appState.richCardActionContext(canSend: rowState.cardsCanSend))
+        .frame(maxWidth: 560, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    /// A reply as it draws, without the boards its lines name.
+    @ViewBuilder
+    private var assistantRow: some View {
+        if let note = VoiceJobLinkNote(text: message.content) {
+            // A saved call's job or chat line: a card that opens it. Not a
+            // reply, so it has no read-aloud or reaction controls.
+            VoiceJobLinkCard(note: note, timestamp: message.timestamp) {
+                openURL(note.link.url)
+            }
+            .frame(maxWidth: 560, alignment: .leading)
+            .frame(maxWidth: .infinity, alignment: .leading)
+        } else if let sender = rowState.teammateReplies[message.id] {
+            // The bot answering a teammate, not the user: folded, as on
+            // Desktop ("Replied to Atlas", the reply a tap away).
+            TeammateReplyNote(
+                name: BotTeammateMessages.displayName(for: sender, in: appState.shownBotRoster),
+                disclosureID: message.id
+            ) {
+                AssistantBubble(
+                    message: message,
+                    readAloudController: appState.messageReadAloudController,
+                    gatewayResolver: gatewayResolver
+                )
+            }
+        } else if let split = BotWorkLinks.split(message.content) {
+            // A Bot Chat reply's links to its work: cards under the
+            // reply, not plain links among its words.
+            VStack(alignment: .leading, spacing: 8) {
+                if let why = rowState.followUpReasons[message.id] {
+                    PredictiveFollowUpTag(why: why)
+                }
+                if !split.text.isEmpty {
+                    botChatReply(message.withContent(split.text))
+                }
+                ForEach(split.links, id: \.ref) { link in
+                    BotWorkLinkCard(work: appState.botWork, link: link,
+                                    profile: link.profile ?? appState.activeProfile) {
+                        openURL(link.url)
+                    }
+                    .frame(maxWidth: 560, alignment: .leading)
+                }
+            }
+        } else if let why = rowState.followUpReasons[message.id] {
+            // A reply Hermes wrote on its own (Predictive follow-ups).
+            VStack(alignment: .leading, spacing: 4) {
+                PredictiveFollowUpTag(why: why)
+                botChatReply(message)
+            }
+        } else {
+            botChatReply(message)
+        }
+    }
+
     var body: some View {
         let _ = TranscriptPerf.note(.settledBubbleBody)
         switch message.role {
@@ -1272,53 +1367,17 @@ struct MessageBubble: View, Equatable {
                 )
             }
         case .assistant:
-            if let note = VoiceJobLinkNote(text: message.content) {
-                // A saved call's job or chat line: a card that opens it. Not a
-                // reply, so it has no read-aloud or reaction controls.
-                VoiceJobLinkCard(note: note, timestamp: message.timestamp) {
-                    openURL(note.link.url)
-                }
-                .frame(maxWidth: 560, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
-            } else if let sender = rowState.teammateReplies[message.id] {
-                // The bot answering a teammate, not the user: folded, as on
-                // Desktop ("Replied to Atlas", the reply a tap away).
-                TeammateReplyNote(
-                    name: BotTeammateMessages.displayName(for: sender, in: appState.shownBotRoster),
-                    disclosureID: message.id
-                ) {
-                    AssistantBubble(
-                        message: message,
-                        readAloudController: appState.messageReadAloudController,
-                        gatewayResolver: gatewayResolver
-                    )
-                }
-            } else if let split = BotWorkLinks.split(message.content) {
-                // A Bot Chat reply's links to its work: cards under the
-                // reply, not plain links among its words.
-                VStack(alignment: .leading, spacing: 8) {
-                    if let why = rowState.followUpReasons[message.id] {
-                        PredictiveFollowUpTag(why: why)
+            if let boards = lineBoards, !boards.isEmpty {
+                // The boards its ::conduit-board lines name, under it: a card
+                // the plugin showed for a call the model wrote out as text.
+                VStack(alignment: .leading, spacing: 10) {
+                    assistantRow
+                    ForEach(Array(boards.enumerated()), id: \.offset) { _, board in
+                        boardView(board, rowID: message.id, followUps: false)
                     }
-                    if !split.text.isEmpty {
-                        botChatReply(message.withContent(split.text))
-                    }
-                    ForEach(split.links, id: \.ref) { link in
-                        BotWorkLinkCard(work: appState.botWork, link: link,
-                                        profile: link.profile ?? appState.activeProfile) {
-                            openURL(link.url)
-                        }
-                        .frame(maxWidth: 560, alignment: .leading)
-                    }
-                }
-            } else if let why = rowState.followUpReasons[message.id] {
-                // A reply Hermes wrote on its own (Predictive follow-ups).
-                VStack(alignment: .leading, spacing: 4) {
-                    PredictiveFollowUpTag(why: why)
-                    botChatReply(message)
                 }
             } else {
-                botChatReply(message)
+                assistantRow
             }
         case .reasoning:
             if let step {
@@ -1337,30 +1396,8 @@ struct MessageBubble: View, Equatable {
             } else if let tool = message.tool, let board = RichBoard.board(for: tool) {
                 // The board Hermes showed (conduit_show): drawn from the
                 // call's saved answer, so it comes back with the chat,
-                // whatever the tool-progress setting. A live card shows
-                // only where it was last brought up to date. A board this
-                // Conduit can't draw every card of shows as its Markdown.
-                let current = RichCard.current(board.cards, row: message.id, latestLiveRows: rowState.latestLiveRows)
-                VStack(alignment: .leading, spacing: 10) {
-                    if board.cards.isEmpty, let markdown = board.markdown {
-                        RichBoardMarkdown(markdown: markdown)
-                    } else if current.isEmpty {
-                        RichLiveUpdatedLine(title: board.cards.first?.title)
-                    } else {
-                        RichCardsView(cards: current, tabs: board.tabs && current.count > 1)
-                    }
-                    if message.id == rowState.followUpBoardRowID, !board.followUps.isEmpty {
-                        RichBoardFollowUps(followUps: board.followUps, composer: appState.predictive,
-                                           send: { appState.requestBoardFollowUp(.send, text: $0) },
-                                           edit: { appState.requestBoardFollowUp(.edit, text: $0) })
-                    }
-                }
-                .environment(\.richChecklistContext, appState.richChecklistContext)
-                .environment(\.richChecklistInChat, true)
-                // The row state carries cardTaps, so a card-taps report redraws this row.
-                .environment(\.richCardActions, appState.richCardActionContext(canSend: rowState.cardsCanSend))
-                .frame(maxWidth: 560, alignment: .leading)
-                .frame(maxWidth: .infinity, alignment: .leading)
+                // whatever the tool-progress setting.
+                boardView(board, rowID: message.id, followUps: true)
             } else if let step {
                 ChatStepRow(message: message, placement: step)
             } else {
