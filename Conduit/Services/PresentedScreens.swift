@@ -252,6 +252,9 @@ struct PresentedConfirm: Identifiable, Equatable {
     func isDeclined(by words: String) -> Bool {
         // A question ("can't we wait?") asks; it doesn't answer.
         guard !words.contains("?"), !words.contains("？"), !VoiceCallDecisionOutcome.isYes(words) else { return false }
+        // A no in its own clause before a refusal ("不，拒绝", "いや、断る")
+        // isn't the refusal's not.
+        if let rest = Self.afterCJKNo(words), isDeclined(by: rest) { return true }
         // A Chinese or Japanese question ends a clause in its marker
         // ("取消吗", "取消吗，谢谢").
         let clauseEnds = words.components(separatedBy: CharacterSet(charactersIn: ",;:—–，；：、.!。！\n"))
@@ -413,15 +416,40 @@ struct PresentedConfirm: Identifiable, Equatable {
         "batalkan", "batal", "取消", "キャンセル", "취소",
     ].map { words(in: $0) }
 
-    /// Whether a clause after the first says yes ("no, send it").
+    /// Whether a clause after the first says yes ("no, send it"), or the
+    /// words after a no do when the transcript dropped the comma ("no send
+    /// it", "no wait go ahead").
     private static func laterClauseSaysYes(_ text: String) -> Bool {
         let clauses = text.components(separatedBy: CharacterSet(charactersIn: ",;:—–，；：、.!。！\n"))
             .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
         // A thanks or please isn't a yes here ("no, thanks").
-        return clauses.dropFirst().contains { clause in
+        func saysYes(_ clause: String) -> Bool {
             !words(in: clause).allSatisfy { politeWords.contains($0) } && VoiceCallDecisionOutcome.isYes(clause)
         }
+        if let first = clauses.first {
+            let said = words(in: first)
+            let rest = said.drop(while: { bareNos.contains($0) || VoiceThreadRouting.fillers.contains($0) || noTurnArounds.contains($0) })
+            if bareNos.contains(said.first ?? ""), let next = rest.first, !["don", "dont", "do", "not", "never", "nicht"].contains(next),
+               saysYes(rest.joined(separator: " ")) { return true }
+        }
+        return clauses.dropFirst().contains(where: saysYes)
+    }
+
+    /// Words between a no and the yes that takes it back ("no wait, send it").
+    private static let noTurnArounds: Set<String> = ["wait", "actually", "oh", "sorry", "warte", "espera", "attends", "aspetta", "espere", "подожди", "czekaj", "bekle", "tunggu"]
+
+    /// The answer after a Chinese, Japanese or Korean no in its own clause
+    /// ("不，拒绝", "いや、断る"), where that no isn't the not of the verb.
+    private static func afterCJKNo(_ text: String) -> String? {
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        for no in ["不", "不不", "不要", "いや", "いいえ", "아니", "아니요", "아뇨"] {
+            for mark in ["，", ",", "、", "。", " "] where trimmed.hasPrefix(no + mark) {
+                let rest = String(trimmed.dropFirst(no.count + mark.count)).trimmingCharacters(in: .whitespacesAndNewlines)
+                return rest.isEmpty ? nil : rest
+            }
+        }
+        return nil
     }
 
     /// Whether a not comes right before a cancel ("don't cancel", "nicht
