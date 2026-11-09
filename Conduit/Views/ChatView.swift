@@ -458,7 +458,8 @@ struct ChatView: View {
         // The rows show AppState through this, not by observing it.
         .chatRows(facts: transcript.facts)
         // A reply's ::conduit-board line: its board is read to draw under it.
-        .task(id: transcript.facts.lineBoardIDs) {
+        .task(id: LineBoardsReadKey(ids: transcript.facts.lineBoardIDs,
+                                    ready: appState.notifierPlugin.reports(LineBoards.capability))) {
             let ids = transcript.facts.lineBoardIDs.values.flatMap { $0 }
             if !ids.isEmpty { appState.loadLineBoards(ids) }
         }
