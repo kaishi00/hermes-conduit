@@ -643,7 +643,8 @@ struct V2PulsePage: View {
                 .accessibilityIdentifier("pulse.brief.fold")
             }
             // In its parts when the plugin sends them (0.149.0), else as Hermes wrote it.
-            if let parts = brief.card.look?.briefParts, !(parts.summary.isEmpty && parts.today.isEmpty && parts.open.isEmpty) {
+            if let parts = brief.card.look?.briefParts,
+               !(parts.summary.isEmpty && parts.today.isEmpty && parts.open.isEmpty && parts.held == 0) {
                 PulseBriefParts(summary: parts.summary, today: parts.today, open: parts.open, heldCount: parts.held)
             } else if !brief.card.news.isEmpty {
                 Text(brief.card.formattedNews)
