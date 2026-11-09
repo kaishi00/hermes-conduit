@@ -825,6 +825,10 @@ struct V2ChatsView: View, Equatable {
     private func barUnstacked() {
         setBarStacked(false)
         barSearchOpen = false
+        // A pending focus was meant for the stacked field, which is going.
+        // Left set, it focused that field on some later stack nobody asked
+        // for.
+        barSearchFocusPending = false
     }
 
     /// A change (rotation, a profile added) fades the list's search row in
@@ -880,11 +884,17 @@ struct V2ChatsView: View, Equatable {
 
     private func focusSearchFromKeyboard() {
         guard isShown else { return }
-        if showsBarSearch {
-            searchFocused = true
-        } else {
+        // Only the stacked bar has a field of its own to open and focus. In
+        // the one-row layout the visible field belongs to the list, so a
+        // pending focus set here would miss it and then be consumed by some
+        // later stack, putting the cursor in the bar's field without the key
+        // being pressed there. Focus the on-screen field directly instead.
+        if barStacked == true, !showsBarSearch {
             barSearchFocusPending = true
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { barSearchOpen = true }
+        } else {
+            barSearchFocusPending = false
+            searchFocused = true
         }
         appState.noteChatListInteraction()
     }
