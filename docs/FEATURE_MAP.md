@@ -1283,8 +1283,10 @@ never named a server type) · the notifier's README, both sections (done in the 
 docs/VOICE_SETTINGS.md (not needed: it doesn't describe agent mode's
 paths) · docs/OWN_VOICE_SERVER.md (done: its Agent mode section says the
 fast model answers on a server that only reads text aloud from plugin
-0.151.0, and its reachability note says such a server needn't reach the
-dashboard, since the plugin runs its turns)
+0.151.0, its reachability note says such a server needn't reach the
+dashboard, since the plugin runs its turns, step 3 says such a server never
+asks the model address and when its call is ready, and the comparison
+table marks agent mode)
 
 **Code**
 - The fast model and its tools: `notifier/dashboard/api/local_live_agent.py` (_LocalLiveAgent.reply, _local_live_front_target, LOCAL_LIVE_READY_PREFIX, LOCAL_LIVE_FRONT_UNREACHABLE_REPLY)
@@ -1293,17 +1295,18 @@ dashboard, since the plugin runs its turns)
 - The Watch's bridge: `notifier/dashboard/api/watch_local_live.py` (_LocalLiveWatchCall)
 - The Watch's call: `ConduitWatch/WatchDirectCallModel.swift` (begin(_:) for a LocalLiveCall, whose LocalLiveSession has no agentSetup)
 - What the phone sends: `Shared/LocalLive/LocalLiveProtocol.swift` (agentConfigure), `Conduit/Services/AppState.swift` (localLiveAgentSetup)
+- A cancelled turn on the phone: `Conduit/Voice/LocalLive/LocalLiveTurnRunner.swift` (cancel(turnID:): it stops following the turn; Hermes' reply goes on in the chat)
 - Tests: `notifier/tests/test_local_live.py` (the agent mode tests, and those named on_a_read_back_server)
 
 **Rulings**
 - The readiness check is always the phone's own turn, never the fast model's, on both paths (notifier 0.49.0, 0.151.0).
 - With no fast model set up, each utterance is a Hermes turn, with no line first. One that's set up but fails before saying anything says its one first-person line, then hands the words to a Hermes turn. Both hold on both paths (notifier #586, 0.151.0).
-- On a read-back server the fast model's words go back sentence by sentence like Hermes', and talking over them, Interrupt or the call's response.cancel stop the fast model and any Hermes turn it fell back to, which the phone is told to cancel (conduit.turn.cancel), so Hermes stops working on it too; what it already said stays in its conversation (0.151.0; proposed with this PR, for Eric to confirm).
+- On a read-back server the fast model's words go back sentence by sentence like Hermes', and talking over them, Interrupt or the call's response.cancel stop the fast model and the read-back of any Hermes turn it fell back to: the phone is told to cancel that turn (conduit.turn.cancel) and stops following it (LocalLiveTurnRunner.cancel), while Hermes' reply goes on in the chat, as for any Local Live Hermes turn talked over; what the fast model already said stays in its conversation (0.151.0; proposed with this PR, for Eric to confirm).
 
 **Open gaps**
 - The Watch's bridge keeps one Hermes turn per utterance on a read-back server: its call sends no conduit.agent, so there is no fast model to ask (0.151.0).
 
-**Checked:** 2026-11-09, #2067 (added: agent mode on a read-back speech server, notifier 0.151.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model).
+**Checked:** 2026-11-09, #2067 (added: agent mode on a read-back speech server, notifier 0.151.0; docs/OWN_VOICE_SERVER.md updated, the Watch's call code listed; the fallback ruling split for an unset fast model; talking over the fallback stops its read-back, Hermes' reply goes on in the chat).
 
 ## Talking over Hermes
 
