@@ -432,7 +432,9 @@ jobs:
                                 keep = bool(m) and (m.group(1) in files or m.group(2) in files)
                             if keep:
                                 kept.append(line)
-                        delta = since
+                        # A merge that resolved a conflict in the PR's own
+                        # code changes it without a commit of its own.
+                        delta = since or (["a merge"] if kept else [])
                         out += ["", f"Your last review (as {', '.join(OWN_NAMES)}) was of commit {reviewed[:7]}. "
                                     "The PR's commits since then (merges of the base branch left out):", ""]
                         out += [f"- {c['sha'][:7]} {c['commit']['message'].splitlines()[0]}" for c in since] or ["- none but merges"]

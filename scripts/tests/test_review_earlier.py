@@ -72,7 +72,7 @@ def commit(sha, message, parents=1):
 
 
 class EarlierRoundsTests(unittest.TestCase):
-    def gather(self, chain=SECOND_CHAIN, comments=COMMENTS, reviewed=REVIEWED, fail=False):
+    def gather(self, chain=SECOND_CHAIN, comments=COMMENTS, reviewed=REVIEWED, fail=False, merge_only=False):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         bin_dir = os.path.join(tmp, "bin")
@@ -88,7 +88,9 @@ class EarlierRoundsTests(unittest.TestCase):
             "actions_runs_90": json.dumps({"head_sha": "0" * 40}),
             "pulls_7_commits_per_page=100": json.dumps([
                 commit("0" * 40, "First"), commit(REVIEWED, "Second"), commit(LATER, "Fix B's edge case"),
-                commit(MERGE, "Merge remote-tracking branch 'origin/main'", parents=2), commit(HEAD, "Fix A")]),
+                commit(MERGE, "Merge remote-tracking branch 'origin/main'", parents=2), commit(HEAD, "Fix A")]
+                if not merge_only else [commit(REVIEWED, "Second"),
+                                        commit(HEAD, "Merge remote-tracking branch 'origin/main'", parents=2)]),
             "pulls_7_files_per_page=100": json.dumps([{"filename": "a.swift"}]),
             f"compare_{reviewed}...{HEAD}": DIFF,
         }
@@ -129,6 +131,15 @@ class EarlierRoundsTests(unittest.TestCase):
         # Quoted, so an earlier review's headings and verdict stay inside it.
         self.assertIn("> ## Verdict", out)
         self.assertNotIn("\n## Verdict", out)
+
+    def test_a_merge_that_changed_the_prs_code_is_reviewed_as_a_change(self):
+        # A conflict resolved in the PR's own files changes its code with no
+        # commit of its own, so that change is reviewed in full.
+        out = self.gather(merge_only=True)
+        self.assertIn("- none but merges", out)
+        self.assertIn("+fixed B", out)
+        self.assertIn("Review the change since your last review in full", out)
+        self.assertNotIn("nothing changed", out.lower())
 
     def test_the_first_review_gets_nothing(self):
         self.assertEqual(self.gather(comments=[person("kaishi00", "2026-11-09T10:20:00Z", "hi")]), "")
