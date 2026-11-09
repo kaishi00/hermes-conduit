@@ -444,6 +444,10 @@ extension GatewayRestartTests {
         XCTAssertEqual(PluginUpdateAsk.reason(missing),
                        "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
         XCTAssertEqual(PluginUpdateAsk.reason("Grok isn't signed in."), "Grok isn't signed in.")
+        // Local Live's session words, and a call watch's note for the live model.
+        XCTAssertEqual(PluginUpdateAsk.reason(LocalLiveProtocol.pluginMissingReason),
+                       "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
+        XCTAssertFalse(VoiceCallbackAvailability.unsupported.refusal.contains("needs an update"))
         // What else the ask said (sharing paused, the version needed) leads.
         XCTAssertEqual(PluginUpdateAsk.text(ask, lead: "Sharing is paused."),
                        "Sharing is paused. The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
@@ -453,6 +457,7 @@ extension GatewayRestartTests {
         XCTAssertEqual(PluginUpdateAsk.text(ask), ask)
         XCTAssertEqual(PluginUpdateAsk.text(ask, then: "This one wasn't kept."), ask)
         XCTAssertEqual(PluginUpdateAsk.text(ask, lead: "Sharing is paused."), ask)
+        XCTAssertTrue(VoiceCallbackAvailability.unsupported.refusal.contains("needs an update"))
         XCTAssertEqual(PluginUpdateAsk.title("Plugin update needed"), "Plugin update needed")
     }
 

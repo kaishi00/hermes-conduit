@@ -470,7 +470,8 @@ enum PluginUpdateAsk {
     /// asks to install or update the plugin, reworded on a host that manages it.
     static func reason(_ reason: String?) -> String? {
         guard let reason else { return nil }
-        return reason == AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
+        return [AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server."),
+                LocalLiveProtocol.pluginMissingReason].contains(reason)
             ? text(reason) : reason
     }
 

@@ -1069,7 +1069,9 @@ final class GeminiLiveConversationController: ObservableObject {
             returnHeldOutcomes()
             // Ending: the goodbye finishes closing instead of offering a
             // retry (the end task closes the conversation).
-            if endRequestedAt == nil { phase = .failed(message) }
+            // A session's plugin-missing words (Shared/) are reworded on a
+            // host that manages the plugin.
+            if endRequestedAt == nil { phase = .failed(PluginUpdateAsk.reason(message) ?? message) }
         case .connecting:
             if endRequestedAt == nil { phase = .connecting }
         case .idle, .stopped:
