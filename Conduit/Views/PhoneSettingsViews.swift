@@ -120,7 +120,7 @@ struct PhoneSettingsPage: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         } else if let pause = engine.state.pause {
-            Text(pause.message)
+            Text(pause.message(managedBy: appState.pluginManagedBy(forDashboard: preferences.destination?.dashboardID)))
                 .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else if let last = engine.state.lastSync {

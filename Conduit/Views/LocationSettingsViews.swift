@@ -247,13 +247,6 @@ struct LocationSettingsPage: View {
         }
     }
 
-    /// Who keeps the sharing destination's plugin up to date: the active
-    /// dashboard's answer, or what another bound dashboard last reported.
-    private var destinationManagedBy: String? {
-        guard let id = controller.binding?.dashboardID, id != appState.activeDashboardID else { return PluginUpdateAsk.managedBy }
-        return NotifierPluginStatus.Remembered.managedBy(for: id, in: appState.appDefaults)
-    }
-
     @ViewBuilder
     private var statusRows: some View {
         if let binding = controller.binding {
@@ -267,7 +260,7 @@ struct LocationSettingsPage: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else if let pause = engine.state.pause {
-            Text(pause.message(managedBy: destinationManagedBy))
+            Text(pause.message(managedBy: appState.pluginManagedBy(forDashboard: controller.binding?.dashboardID)))
                 .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else if let last = engine.state.lastFixSent {

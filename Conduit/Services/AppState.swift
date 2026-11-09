@@ -7302,6 +7302,13 @@ final class AppState: ObservableObject {
     private let defaults: UserDefaults
     /// This AppState's defaults, for its extensions in other files.
     var appDefaults: UserDefaults { defaults }
+
+    /// Who keeps a sharing destination's plugin up to date: the active
+    /// dashboard's answer, or what another saved dashboard last reported.
+    func pluginManagedBy(forDashboard id: UUID?) -> String? {
+        guard let id, id != activeDashboardID else { return PluginUpdateAsk.managedBy }
+        return NotifierPluginStatus.Remembered.managedBy(for: id, in: defaults)
+    }
     /// Kept outside ChatResumeStore on purpose: the return surface is a
     /// presentation preference, not part of the resume schema.
     static let chatReturnSurfaceKey = "conduit.chatReturnSurface.v1"
