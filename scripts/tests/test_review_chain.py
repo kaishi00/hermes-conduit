@@ -49,6 +49,7 @@ FAKE_OPENCODE = r"""#!/usr/bin/env bash
 var=$(jq -r --arg p "${MODEL%%/*}" '.provider[$p].options.apiKey' "$CONFIG" | sed 's/^{env://; s/}$//')
 key=${!var}
 echo "review $MODEL $key ${PROMPT%%$'\n'*}" >> "$FAKE/log"
+printf '%s' "$PROMPT" > "$FAKE/prompt"
 # Each attempt must start with opencode's "fork" remote gone.
 [ -e "$FAKE/no-fork-remote" ] || echo "stale fork remote" >> "$FAKE/stale"
 rm -f "$FAKE/no-fork-remote"
@@ -87,7 +88,7 @@ def chain(name):
 
 @unittest.skipUnless(shutil.which("jq") and shutil.which("timeout"), "jq or timeout isn't installed")
 class ReviewChainTests(unittest.TestCase):
-    def run_chain(self, reviewer="DeepSeek, then Beam", codes=(), runs=(), unset=(), chain_minutes="70"):
+    def run_chain(self, reviewer="DeepSeek, then Beam", codes=(), runs=(), unset=(), chain_minutes="70", earlier=None):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         bin_dir = os.path.join(tmp, "bin")
@@ -108,6 +109,10 @@ class ReviewChainTests(unittest.TestCase):
                    CHAIN=json.dumps(chain(reviewer)), REVIEW_MINUTES="0.03", CHAIN_MINUTES=chain_minutes,
                    PROMPT="Start the review with the label: Review by {reviewer}.\nmore")
         env.pop("GITHUB_STEP_SUMMARY", None)
+        if earlier is not None:
+            env["EARLIER_PATH"] = os.path.join(tmp, "earlier-rounds.md")
+            with open(env["EARLIER_PATH"], "w", encoding="utf-8") as fh:
+                fh.write(earlier)
         for k, v in KEYS.items():
             if k not in unset:
                 env[k] = v
@@ -137,6 +142,20 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(log[0], "probe go1 deepseek-v4.1-flash")
         self.assertIn("Review by DeepSeek V4.1 Flash.", log[1])
         self.assertEqual(out, {"model": "go-custom/deepseek-v4.1-flash", "name": "DeepSeek V4.1 Flash"})
+
+    def test_the_earlier_rounds_follow_the_prompt(self):
+        run, log, out = self.run_chain(earlier="## Earlier rounds\n\nlast review")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        with open(os.path.join(self.fake_dir, "prompt"), encoding="utf-8") as fh:
+            prompt = fh.read()
+        self.assertTrue(prompt.startswith("Start the review with the label: Review by DeepSeek V4.1 Flash."), prompt)
+        self.assertTrue(prompt.endswith("more\n\n## Earlier rounds\n\nlast review"), prompt)
+
+        # A first review, or one whose lookup found nothing, gets the prompt alone.
+        for earlier in (None, ""):
+            run, log, out = self.run_chain(earlier=earlier)
+            with open(os.path.join(self.fake_dir, "prompt"), encoding="utf-8") as fh:
+                self.assertTrue(fh.read().endswith("\nmore"))
 
     def test_each_attempt_drops_the_fork_remote_first(self):
         # opencode adds a "fork" remote on a fork's PR and fails if it's there,
