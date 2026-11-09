@@ -25,6 +25,8 @@ struct RichReviewCard: View {
     /// The round shows (kept, or from its pictures), but the host couldn't
     /// be asked.
     @State private var stale = false
+    /// Counts reads, so a retry's older read can't overwrite a newer one's answer.
+    @State private var reads = 0
     @State private var picked: String?
     @State private var note = ""
     @State private var reviewing = false
@@ -207,6 +209,8 @@ struct RichReviewCard: View {
     private func load(_ review: RichReview) async {
         // A kept round draws at once; one not yet answered is asked again,
         // since another device may have answered it since.
+        reads += 1
+        let read = reads
         let kept = RichReviewLoader.shared.kept(review.id, review.round)
         known = false
         if let kept {
@@ -220,13 +224,13 @@ struct RichReviewCard: View {
         }
         do {
             let loaded = try await RichReviewLoader.shared.round(review.id, review.round, fresh: kept != nil)
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, read == reads else { return }
             round = loaded
             failed = false
             known = true
             stale = false
         } catch {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, read == reads else { return }
             // Pictures draw without the host; pages need it.
             failed = kept == nil && review.hasPages
             known = false
@@ -565,6 +569,8 @@ struct RichReviewSheet: View {
     /// The round shows (read before, or from its pictures), but the host
     /// couldn't be asked.
     @State private var stale = false
+    /// Counts reads, so a retry's older read can't overwrite a newer one's answer.
+    @State private var reads = 0
     @State private var decisionIndex = 0
     /// The option each decision shows, by decision id.
     @State private var choices: [String: String] = [:]
@@ -944,16 +950,18 @@ struct RichReviewSheet: View {
     private func load() async {
         // A round the user has since left doesn't answer for the one shown.
         let number = roundNumber
+        reads += 1
+        let read = reads
         answered = false
         do {
             let round = try await RichReviewLoader.shared.round(review.id, number, fresh: number == review.round)
-            guard number == roundNumber, !Task.isCancelled else { return }
+            guard number == roundNumber, read == reads, !Task.isCancelled else { return }
             loaded = round
             failed = false
             answered = number == review.round
             stale = false
         } catch {
-            guard number == roundNumber, !Task.isCancelled else { return }
+            guard number == roundNumber, read == reads, !Task.isCancelled else { return }
             // A round read before still shows, to look at; marking waits for the host.
             loaded = RichReviewLoader.shared.kept(review.id, number)
             failed = loaded == nil && (review.hasPages || number != review.round)
