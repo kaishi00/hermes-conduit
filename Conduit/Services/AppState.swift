@@ -12921,6 +12921,12 @@ final class AppState: ObservableObject {
             if oldValue?.room.roomID != activeRoomSurface?.room.roomID { roomScreenLeft = false }
         }
     }
+    /// The open hosted room once Hermes has given its messages since it
+    /// opened: until then it shows a kept or empty transcript, so its
+    /// notifications haven't been read (issue 2064). Nothing redraws on it.
+    private(set) var activeRoomLogRead: String? {
+        didSet { if activeRoomLogRead != oldValue { updateChatOnScreen() } }
+    }
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "") {
         // An agent's new message may have a board kept for it (RoomBoards).
         didSet {
@@ -13667,6 +13673,7 @@ final class AppState: ObservableObject {
         groupRoomEpoch &+= 1
         groupRoomPollTask?.cancel()
         groupRoomPollTask = nil
+        activeRoomLogRead = nil
         activeRoomSurface = nil
         chatErrorBehindRoom = nil
         activeRoomReplay = GroupRoomReplay(roomID: "")
@@ -13901,11 +13908,13 @@ final class AppState: ObservableObject {
     }
 
     /// Opens the room a notification names (issue 2064), as Hermes lists
-    /// it: the list on hand when it has the room, else read again first. A
-    /// room Hermes no longer lists says so; one whose list can't be read
-    /// yet (support still being asked, a read that failed) is tried again.
+    /// it: the list on hand when it has the room, else read again first.
+    /// A room the list still lacks is asked about itself, since a list kept
+    /// from before a read that failed, or the first page of a long one,
+    /// doesn't prove it gone. Only Hermes saying so (or hosting no rooms)
+    /// drops the tap; a list or room that can't be read yet is tried again.
     func openNotificationRoom(_ roomID: String) async -> NotificationOpenOutcome {
-        guard client != nil, isConnected else { return .retry }
+        guard let client, isConnected else { return .retry }
         let dashboardID = activeDashboardID
         if !groupRoomsListed || !groupRooms.contains(where: { $0.roomID == roomID }) {
             if groupCapabilities == nil {
@@ -13915,8 +13924,24 @@ final class AppState: ObservableObject {
             }
             guard !Task.isCancelled, activeDashboardID == dashboardID else { return .retry }
         }
-        guard let room = groupRooms.first(where: { $0.roomID == roomID && !$0.isDisbanded }) else {
-            guard groupRoomsListed || groupChatPhase == .gatewayUnsupported else { return .retry }
+        var listed = groupRooms.first(where: { $0.roomID == roomID })
+        if listed == nil {
+            if groupChatPhase == .gatewayUnsupported {
+                errorMessage = AppLocalization.string("That chat is no longer available.")
+                return .failed
+            }
+            // No list read yet: the room opens from it once one is.
+            guard groupRoomsListed, self.client === client, isConnected else { return .retry }
+            do {
+                let (state, _) = try await groupsState(client, roomID: roomID)
+                guard !Task.isCancelled, activeDashboardID == dashboardID else { return .retry }
+                listed = state
+            } catch {
+                guard !Task.isCancelled, activeDashboardID == dashboardID,
+                      HermesClient.isRoomNotFoundError(error) else { return .retry }
+            }
+        }
+        guard let room = listed, !room.isDisbanded else {
             errorMessage = AppLocalization.string("That chat is no longer available.")
             return .failed
         }
@@ -13984,6 +14009,7 @@ final class AppState: ObservableObject {
             roomQuoteRequest = nil
             roomDropRequest = nil
         }
+        activeRoomLogRead = nil
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: room)
         activeRoomReplay = keptRoomReplays[Self.roomKey(dashboardID: dashboardID, roomID: room.roomID)]
             ?? GroupRoomReplay(roomID: room.roomID)
@@ -14036,6 +14062,7 @@ final class AppState: ObservableObject {
             var replay = GroupRoomReplay(roomID: room.roomID)
             replay.adoptInitialTail(page: page)
             activeRoomReplay = replay
+            activeRoomLogRead = room.roomID
             settlePendingRoomSend(from: replay.events)
             startRoomPolling()
         } catch is CancellationError {
@@ -14131,6 +14158,8 @@ final class AppState: ObservableObject {
                 activeRoomReplay.adopt(page: page)
                 settlePendingRoomSend(from: fresh)
             }
+            // A room whose open read failed is read once a poll catches it up.
+            activeRoomLogRead = surface.room.roomID
             rereadActiveRoomPeopleForPosts(fresh)
             readActiveRoomLooksIfDue()
             // Driver status tracks the DRIVER, not the log: refresh even on
@@ -14330,6 +14359,7 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch else { return }
             fresh.adoptInitialTail(page: tail)
             activeRoomReplay = fresh
+            activeRoomLogRead = state.roomID
             settlePendingRoomSend(from: fresh.events)
         } catch {
             // A failed resync keeps the current transcript; the next poll's
@@ -14737,6 +14767,8 @@ final class AppState: ObservableObject {
         parkActiveRoomSend()
         activeRoomSendInFlight = false
         roomQuoteRequest = nil
+        // Someone else hosts it: no notification of yours names it.
+        activeRoomLogRead = nil
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: copy.room, copy: copy)
         activeRoomReplay = GroupRoomReplay(roomID: copy.roomID)
         activeRoomDriverStatus = copy.state

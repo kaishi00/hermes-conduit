@@ -686,3 +686,46 @@ enum ReadChatHint {
         return note
     }
 }
+
+/// The room notifications the extension handed to iOS in the last few
+/// seconds (issue 2064). Two bots finishing together each read Notification
+/// Center before the other's notification is in it, so neither would
+/// replace the other: the later one waits for the earlier to show, then
+/// replaces it.
+struct RoomHandoffs: Codable, Equatable {
+    /// How long ago a handoff may be for the next one in its room to wait on it.
+    static let window: TimeInterval = 3
+    /// The longest a notification waits for an earlier one to show.
+    static let wait: TimeInterval = 1.5
+
+    struct Entry: Codable, Equatable {
+        let id: String
+        let thread: String
+        let at: Date
+    }
+
+    private(set) var entries: [Entry] = []
+
+    /// Notes `id` handed over in `thread`, and answers the room's earlier
+    /// handoffs still within the window, oldest first.
+    mutating func record(_ id: String, thread: String, now: Date) -> [String] {
+        entries.removeAll { $0.id == id || $0.at > now || now.timeIntervalSince($0.at) >= Self.window }
+        let earlier = entries.filter { $0.thread == thread }.map(\.id)
+        entries.append(Entry(id: id, thread: thread, at: now))
+        return earlier
+    }
+
+    private static let key = "conduit.notifications.roomHandoffs"
+    private static let lock = NSLock()
+
+    /// `record` on the list kept in the app group, one handoff at a time.
+    static func record(_ id: String, thread: String, defaults: UserDefaults?, now: Date = Date()) -> [String] {
+        lock.withLock {
+            var handoffs = defaults?.data(forKey: key)
+                .flatMap { try? JSONDecoder().decode(RoomHandoffs.self, from: $0) } ?? RoomHandoffs()
+            let earlier = handoffs.record(id, thread: thread, now: now)
+            if let data = try? JSONEncoder().encode(handoffs) { defaults?.set(data, forKey: key) }
+            return earlier
+        }
+    }
+}

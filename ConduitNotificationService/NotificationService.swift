@@ -94,20 +94,40 @@ final class NotificationService: UNNotificationServiceExtension {
                 content.categoryIdentifier = PulseNotifications.categoryIdentifier
             }
             // A group room keeps one notification: this one replaces the
-            // room's last, whichever bot sent it (issue 2064).
+            // room's last, whichever bot sent it (issue 2064), and waits
+            // for one handed over just before it to show first.
             if let thread = ReadChatHint.roomThread(note) {
                 content.threadIdentifier = thread
-                let center = UNUserNotificationCenter.current()
-                center.getDeliveredNotifications { [weak self] delivered in
-                    let earlier = delivered
-                        .filter { ReadChatHint.replaces(note, delivered: $0.request.content.userInfo) }
-                        .map(\.request.identifier)
-                    if !earlier.isEmpty { center.removeDeliveredNotifications(withIdentifiers: earlier) }
-                    self?.deliver(content)
-                }
+                let pending = RoomHandoffs.record(
+                    request.identifier, thread: thread, defaults: NotificationSharedSettings.defaults
+                )
+                Self.replaceEarlier(
+                    in: note, pending: Set(pending), until: Date().addingTimeInterval(RoomHandoffs.wait)
+                ) { [weak self] in self?.deliver(content) }
                 return
             }
             deliver(content)
+        }
+    }
+
+    /// Removes the room's notifications already shown, and those `pending`
+    /// once they show (two bots finishing together), until `deadline`.
+    private static func replaceEarlier(
+        in note: [String: String], pending: Set<String>, until deadline: Date, then: @escaping () -> Void
+    ) {
+        let center = UNUserNotificationCenter.current()
+        center.getDeliveredNotifications { delivered in
+            let shown = Set(delivered.map(\.request.identifier))
+            let earlier = delivered
+                .filter { ReadChatHint.replaces(note, delivered: $0.request.content.userInfo) }
+                .map(\.request.identifier)
+            let gone = Set(earlier).union(pending.intersection(shown))
+            if !gone.isEmpty { center.removeDeliveredNotifications(withIdentifiers: Array(gone)) }
+            let waiting = pending.subtracting(shown)
+            guard !waiting.isEmpty, Date() < deadline else { return then() }
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.15) {
+                Self.replaceEarlier(in: note, pending: waiting, until: deadline, then: then)
+            }
         }
     }
 

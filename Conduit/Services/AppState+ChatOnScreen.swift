@@ -33,11 +33,14 @@ extension AppState {
         return sessionID
     }
 
-    /// The open group room's id while it's on screen: Conduit active and
-    /// the list not covering it. Its bots' replies and failed turns name
-    /// the room (issue 2064), so reading it clears them.
+    /// The open group room's id while it's on screen: Conduit active, the
+    /// list not covering it, and its messages read from Hermes since it
+    /// opened (a failed read leaves an old or empty transcript). Its bots'
+    /// replies and failed turns name the room (issue 2064), so reading it
+    /// clears them.
     var roomShownOnScreen: String? {
-        guard isSceneActive, !showSidebar, let roomID = activeRoomSurface?.room.roomID else { return nil }
+        guard isSceneActive, !showSidebar, let roomID = activeRoomSurface?.room.roomID,
+              activeRoomSurface?.copy == nil, activeRoomLogRead == roomID else { return nil }
         return roomID
     }
 

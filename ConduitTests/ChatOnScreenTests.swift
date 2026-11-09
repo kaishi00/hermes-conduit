@@ -161,6 +161,33 @@ final class ChatOnScreenTests: XCTestCase {
         XCTAssertNil(NeedsYouItem(host: ["id": "w2", "kind": "approval", "session_ids": ["chat"]], profile: "default")?.roomID)
     }
 
+    /// Issue 2064: two bots finishing together each hand a room
+    /// notification over before the other shows, so the later one waits
+    /// for the earlier one (handed over within the window) to replace it.
+    func testARoomsNotificationWaitsForTheOneHandedOverJustBeforeIt() throws {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var handoffs = RoomHandoffs()
+        XCTAssertEqual(handoffs.record("a", thread: "room:d:r1", now: start), [])
+        XCTAssertEqual(handoffs.record("x", thread: "room:d:r2", now: start), [], "Another room's is its own")
+        XCTAssertEqual(handoffs.record("b", thread: "room:d:r1", now: start.addingTimeInterval(0.2)), ["a"])
+        XCTAssertEqual(handoffs.record("c", thread: "room:d:r1", now: start.addingTimeInterval(1)), ["a", "b"])
+        XCTAssertEqual(handoffs.record("c", thread: "room:d:r1", now: start.addingTimeInterval(1.1)), ["a", "b"],
+                       "The same notification again doesn't wait on itself")
+        XCTAssertEqual(
+            handoffs.record("d", thread: "room:d:r1", now: start.addingTimeInterval(RoomHandoffs.window + 0.5)),
+            ["c"], "Ones handed over before the window have shown, or never will"
+        )
+        XCTAssertEqual(handoffs.entries.map(\.id), ["c", "d"])
+        XCTAssertLessThan(RoomHandoffs.wait, RoomHandoffs.window)
+
+        // Kept in the app group between the extension's runs.
+        let suite = "RoomHandoffs-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(RoomHandoffs.record("a", thread: "room:d:r1", defaults: defaults, now: start), [])
+        XCTAssertEqual(RoomHandoffs.record("b", thread: "room:d:r1", defaults: defaults, now: start.addingTimeInterval(0.1)), ["a"])
+    }
+
     func testARunningTurnDoesNotCountAsSomeoneLooking() {
         let clock = UptimeBox()
         let idle = InteractionIdleState(idleAfter: 120, now: { clock.now }, schedule: { _, _ in {} },
