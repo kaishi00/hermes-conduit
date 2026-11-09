@@ -1,6 +1,88 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "The Conduit notifier plugin gave an unexpected answer. Try again in a moment." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Conduit-Notifier-Plug-in hat unerwartet geantwortet. Versuche es gleich noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El plugin de notificaciones de Conduit dio una respuesta inesperada. Vuelve a intentarlo en un momento."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin de notification Conduit a donné une réponse inattendue. Réessayez dans un instant."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin notifier Conduit memberi jawaban yang tidak terduga. Coba lagi sebentar lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin di notifica di Conduit ha dato una risposta inattesa. Riprova tra un momento."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 通知プラグインから予期しない応答がありました。少ししてからもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 알림 플러그인이 예상치 못한 응답을 보냈습니다. 잠시 후 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wtyczka powiadomień Conduit zwróciła nieoczekiwaną odpowiedź. Spróbuj ponownie za chwilę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin de notificações do Conduit deu uma resposta inesperada. Tente de novo em instantes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагин уведомлений Conduit вернул неожиданный ответ. Повторите попытку через минуту."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bildirim eklentisi beklenmedik bir yanıt verdi. Birazdan tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 通知插件返回了意外的响应。请稍后重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 通知外掛程式傳回了非預期的回應。請稍後再試一次。"
+          }
+        }
+      }
+    },
     "Your Hermes server can't save voice calls yet." : {
       "localizations" : {
         "de" : {

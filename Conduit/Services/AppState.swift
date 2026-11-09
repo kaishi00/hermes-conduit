@@ -30339,7 +30339,11 @@ final class AppState: ObservableObject {
         case ChatTakeoverError.unsupported:
             return AppLocalization.string("This Hermes version can't hand a chat over.")
         case ChatTakeoverError.malformed:
-            return PluginUpdateAsk.text(AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again."))
+            let ask = AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again.")
+            // A managed host's plugin isn't missing the route: keep the retry, name who updates it.
+            guard let managedBy = PluginUpdateAsk.managedBy else { return ask }
+            return AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Try again in a moment.")
+                + " " + NotifierPluginStatus.managedText(managedBy)
         default:
             let detail = UserFacingError.message(for: error).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !detail.isEmpty, !(error is DashboardTicketBridgeError) else {
