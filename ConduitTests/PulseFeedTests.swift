@@ -1898,6 +1898,9 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertNotNil(noticed)
         XCTAssertNil(PulseLook.day("2026-02-30"))
         XCTAssertNil(PulseLook.day("2026-11-20T25:00"))
+        XCTAssertNil(PulseLook.day("2026-11-junk-20"))
+        XCTAssertNil(PulseLook.day("2026-11-20T15:junk:30"))
+        XCTAssertNil(PulseLook.day("2026-11-20T"))
         XCTAssertNil(try look(#"{"facts": {}}"#))
     }
 

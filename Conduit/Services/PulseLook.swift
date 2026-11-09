@@ -171,13 +171,16 @@ struct PulseLook: Equatable {
 
     static func day(_ value: String, calendar: Calendar = PulseLook.wireCalendar) -> (date: Date, hasTime: Bool)? {
         let parts = value.split(separator: "T", maxSplits: 1).map(String.init)
-        let day = parts.first?.split(separator: "-").compactMap { Int($0) } ?? []
-        guard day.count == 3 else { return nil }
+        // Every part a number: a junk part reads as no date, never a shifted one.
+        let dayParts = parts.first?.split(separator: "-", omittingEmptySubsequences: false) ?? []
+        let day = dayParts.compactMap { Int($0) }
+        guard dayParts.count == 3, day.count == 3 else { return nil }
         var components = DateComponents(year: day[0], month: day[1], day: day[2])
         var hasTime = false
         if parts.count == 2 {
-            let clock = parts[1].split(separator: ":").compactMap { Int($0) }
-            guard clock.count == 2, (0..<24).contains(clock[0]), (0..<60).contains(clock[1]) else { return nil }
+            let clockParts = parts[1].split(separator: ":", omittingEmptySubsequences: false)
+            let clock = clockParts.compactMap { Int($0) }
+            guard clockParts.count == 2, clock.count == 2, (0..<24).contains(clock[0]), (0..<60).contains(clock[1]) else { return nil }
             components.hour = clock[0]
             components.minute = clock[1]
             hasTime = true
