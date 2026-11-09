@@ -302,10 +302,21 @@ struct PresentedConfirm: Identifiable, Equatable {
     /// A not on the send and no other not: "我没有说不发" (I didn't say
     /// not to send) denies the refusal.
     private static func isCJKSendRefusal(_ words: String) -> Bool {
-        guard let phrase = cjkSendRefusals.first(where: { words.contains($0) }) else { return false }
+        guard let phrase = cjkSendRefusals.first(where: { words.contains($0) }),
+              let range = words.range(of: phrase) else { return false }
+        // A Chinese send verb ends its word: "不用发愁" (no need to worry)
+        // isn't about sending.
+        if let last = phrase.last, "发發送".contains(last), let next = words[range.upperBound...].first,
+           next.isLetter, !cjkSendFollowers.contains(next) {
+            return false
+        }
         let rest = words.replacingOccurrences(of: phrase, with: " ")
         return !cjkNots.contains(where: { rest.contains($0) })
     }
+
+    /// What may follow a Chinese send verb and keep it about sending
+    /// ("不要发了", "别发给他", "不用发出去").
+    private static let cjkSendFollowers: Set<Character> = ["了", "吧", "啊", "呀", "啦", "嘛", "给", "給", "到", "出", "过", "過", "这", "這", "那", "邮", "郵", "消", "信"]
 
     /// Chinese, Japanese and Korean nots.
     private static let cjkNots = ["不", "没", "沒", "别", "別", "ない", "ません", "않", "못", "마", "말"]
