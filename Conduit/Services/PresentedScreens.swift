@@ -272,7 +272,8 @@ struct PresentedConfirm: Identifiable, Equatable {
         case .no(let change):
             return change == nil
                 || ((Self.opens(said, with: Self.actionNos)
-                    || (Self.opens(said, with: Self.refusalLeads) && VoiceThreadRouting.containsRefusalVerb(words)))
+                    || (Self.opens(said, with: Self.refusalLeads) && Self.noStandsAlone(words)
+                        && VoiceThreadRouting.containsRefusalVerb(words)))
                     && Self.isOneClause(words))
         // A wait holds; it doesn't refuse ("hold on", "wait, I'm not
         // ready"). "Not now" does, and a not yet with a change in it ("wait,
@@ -391,6 +392,16 @@ struct PresentedConfirm: Identifiable, Equatable {
         "annule", "annuler", "annulez", "anula", "anular", "annulla", "отмени", "отменить", "anuluj", "iptal",
         "batalkan", "batal", "取消", "キャンセル", "취소",
     ].map { words(in: $0) }
+
+    /// Whether the no before a refusal is a clause of its own ("no, lo
+    /// rechazo"), not the verb's not ("no lo rechazo", I don't reject it).
+    private static func noStandsAlone(_ text: String) -> Bool {
+        let breaks = CharacterSet(charactersIn: ",;:—–，；：、.!。！\n")
+        guard let first = text.unicodeScalars.split(whereSeparator: { breaks.contains($0) })
+            .map({ words(in: String(String.UnicodeScalarView($0))) })
+            .first(where: { !$0.isEmpty }) else { return false }
+        return first.allSatisfy { leadingSkips.contains($0) || politeWords.contains($0) || VoiceThreadRouting.fillers.contains($0) }
+    }
 
     /// The user's own refusal after a no ("no, I refuse", "no, decline
     /// it"), not someone else's ("no, Alex declined it").
