@@ -1167,6 +1167,12 @@ struct V2Shell: View {
         chatsPath.removeAll()
         visitedTabs.insert(.chats)
         selectTab(.chats)
+        // The filter draws the cron-session rows, and the list's routine poll
+        // reuses a cached cron read for up to five minutes
+        // (SessionCatalogCache.fullHistoryRefreshInterval), so a run that
+        // finished since Chats last read would be missing from the list this
+        // tap asks for. Read the catalogue on the tap.
+        Task { await appState.refreshSessionCatalog() }
     }
 
     private func selectTab(_ tab: V2Tab) {

@@ -5645,6 +5645,10 @@ final class AppState: ObservableObject {
     /// turn (the plugin's `shows_reports`), for `cronMutedJobsKey`.
     @Published var cronShowsBotChatReports = false
     @Published var cronNotificationsChangingJobID: String?
+    /// A notification read asked for while a save was in flight. The
+    /// capability report can land then, so the read is repeated when the
+    /// save ends instead of being dropped.
+    var cronNotificationsReadDeferred = false
     /// Moves with every save, so a refresh that started before one drops its answer.
     var cronNotificationsGeneration = 0
     lazy var cronNotificationsClient = CronNotificationsClient(request: { [weak self] path, method, body in
@@ -23916,9 +23920,6 @@ final class AppState: ObservableObject {
         finishChatViewportTransition(generation: transitionGeneration)
     }
 
-    /// The Cron tab presents two independent server-backed surfaces: the job
-    /// definitions and the cron-session history. Refresh them together so a
-    /// newly completed run is visible without visiting the Sessions tab first.
     /// The V2 Scheduled tab's read: the jobs it draws and their
     /// notifications. The cron-session history `refreshCronContent` also
     /// fills is the legacy drawer's Cron tab, which shows those rows; the
@@ -23930,6 +23931,9 @@ final class AppState: ObservableObject {
         _ = await (jobsRefresh, notificationsRefresh)
     }
 
+    /// The Cron tab presents two independent server-backed surfaces: the job
+    /// definitions and the cron-session history. Refresh them together so a
+    /// newly completed run is visible without visiting the Sessions tab first.
     func refreshCronContent() async {
         async let sessionRefresh: Void = refreshSessionCatalog()
         async let jobsRefresh: Void = loadCronJobs()
