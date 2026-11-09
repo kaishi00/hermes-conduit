@@ -33,13 +33,20 @@ class ScheduledTabReadsSourceContractTests(unittest.TestCase):
         body = function(self.app_state, "func refreshScheduledContent() async {")
         self.assertIn("loadCronJobs()", body)
         self.assertIn("refreshCronNotifications()", body)
-        self.assertNotIn("refreshSessionCatalog", body)
+        # Any catalogue read here would restore the read this PR removed, so
+        # every route to it is refused, not just the pull's full replace.
+        for read in ("refreshSessionCatalog", "refreshNewestSessionCatalogPage",
+                     "refreshCronContent", "loadSessions"):
+            self.assertNotIn(read, body)
 
     def test_show_runs_in_chats_reads_the_catalogue_on_the_tap(self):
         body = function(self.shell, "private func showScheduledRuns() {")
         switched = body.index("selectTab(.chats)")
-        read = body.index("appState.refreshSessionCatalog()")
+        read = body.index("appState.refreshNewestSessionCatalogPage()")
         self.assertLess(switched, read)
+        # Not the pull's full replace: a tap forces the newest page and the
+        # cron rows, and leaves the history walk to its own interval.
+        self.assertNotIn("refreshSessionCatalog()", body)
 
     def test_a_read_asked_for_during_a_save_is_not_dropped(self):
         body = function(self.notifications, "func refreshCronNotifications() async {")
