@@ -2294,7 +2294,10 @@ struct VoiceCallSaveStatusSection: View {
             Text(AppLocalization.string("Voice calls waiting to save: \(model.pendingCount)"))
                 .scaledFont(.subheadline.weight(.semibold))
             Text(model.blocked
-                 ? PluginUpdateAsk.text(AppLocalization.string("Your Hermes server can't save voice calls yet. Install or update the Hermes notifier plugin on your Hermes server, then tap Save Now."))
+                 ? PluginUpdateAsk.text(
+                     AppLocalization.string("Your Hermes server can't save voice calls yet. Install or update the Hermes notifier plugin on your Hermes server, then tap Save Now."),
+                     lead: AppLocalization.string("Your Hermes server can't save voice calls yet.")
+                 )
                  : AppLocalization.string("These calls are kept on this device and Conduit retries them automatically. It keeps up to 20 calls, and a call that still hasn't saved after 7 days is dropped."))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
