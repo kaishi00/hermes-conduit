@@ -102,6 +102,156 @@ extension MarkdownLargeDocumentTests {
         ])
     }
 
+    @MainActor
+    func testRoomGalleryListsOnlyTheWorkUpdatePicturesItsBubbleShows() {
+        let work = GroupEvent(
+            roomID: "room", seq: 1, eventID: "e1", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "cron:conduit-work-default-W1", profile: nil,
+                              displayName: "Furina's work", connectionID: nil),
+            authorityEpoch: nil,
+            payload: ["text": .string("![hidden](https://example.com/hidden.png)\n- W1 finished.\n- ![shown](https://example.com/shown.png)")],
+            createdAt: 0
+        )
+        XCTAssertEqual(GroupRoomImageGallery.items(in: [work]).map(\.id), [
+            ImageGalleryItem.webID("https://example.com/shown.png"),
+        ], "a picture the bubble hides doesn't page")
+        let nightly = GroupEvent(
+            roomID: "room", seq: 2, eventID: "e2", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "cron:job42", profile: nil, displayName: "Nightly", connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("![chart](https://example.com/chart.png)")], createdAt: 0
+        )
+        XCTAssertEqual(GroupRoomImageGallery.items(in: [nightly]).map(\.id), [
+            ImageGalleryItem.webID("https://example.com/chart.png"),
+        ], "any other scheduled post pages its whole post's pictures")
+    }
+
+    /// Pictures sent into the room page first in their message, read from
+    /// the room's files, only where those can be read (issue 2035); a
+    /// picture `/room-files` didn't store, and any other file, don't.
+    @MainActor
+    func testRoomGalleryListsAMessagesSentPicturesFirst() throws {
+        let appState = try galleryAppState()
+        let files = GatewayMediaDataURLResolver(
+            appState: appState, profile: "room-files", source: .roomFiles,
+            roomFileReads: .init(pluginPictures: true, pluginFiles: true)
+        )
+        let sent = GroupEvent(
+            roomID: "room", seq: 1, eventID: "e1", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "user", profile: nil, displayName: nil, connectionID: nil),
+            authorityEpoch: nil,
+            payload: ["text": .string(
+                "@file:/h/conduit/room-files/20261108-a/photo.jpg\n@file:/h/elsewhere/other.jpg\n"
+                    + "@file:/h/conduit/room-files/20261108-b/notes.pdf\n\nLook\n\n![web](https://example.com/w.png)"
+            )],
+            createdAt: 0
+        )
+        XCTAssertEqual(GroupRoomImageGallery.items(in: [sent], files: files).map(\.id), [
+            ImageGalleryItem.mediaID(path: "/h/conduit/room-files/20261108-a/photo.jpg"),
+            ImageGalleryItem.webID("https://example.com/w.png"),
+        ])
+        XCTAssertTrue(GroupRoomFilesClient.isStoredPicture(Attachment(
+            id: "a", name: "photo.jpg", uri: "/h/conduit/room-files/20261108-a/photo.jpg", mimeType: "image/jpeg", kind: .image
+        )))
+        XCTAssertEqual(GroupRoomImageGallery.items(in: [sent]).map(\.id), [
+            ImageGalleryItem.webID("https://example.com/w.png"),
+        ], "where the room's files can't be read, its pictures stay names")
+
+        // Hermes' own attachments page first too, where Hermes downloads
+        // them; a scheduled post's don't, as its bubble draws none.
+        let hermesFiles = GatewayMediaDataURLResolver(
+            appState: appState, profile: "room-files", source: .roomFiles,
+            roomFileReads: .init(hermesAttachments: true)
+        )
+        let manifest: AnyCodable = .array([.object([
+            "attachment_id": .string("a1"), "kind": .string("image"), "name": .string("cat.png"),
+            "size": .number(12), "mime": .string("image/png"),
+        ])])
+        let attached = GroupEvent(
+            roomID: "room", seq: 2, eventID: "e2", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "user", profile: nil, displayName: nil, connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("Look"), "attachments": manifest], createdAt: 0
+        )
+        let picture = GroupRoomAttachment(attachmentID: "a1", kind: "image", name: "cat.png", size: 12, mime: "image/png")
+        XCTAssertEqual(GroupRoomImageGallery.items(in: [attached], files: hermesFiles).map(\.id), [
+            ImageGalleryItem.mediaID(path: picture.path(roomID: "room")),
+        ])
+        XCTAssertTrue(GroupRoomImageGallery.items(in: [attached], files: files).isEmpty,
+                      "a room whose Hermes doesn't download them keeps them names")
+        let scheduled = GroupEvent(
+            roomID: "room", seq: 3, eventID: "e3", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "cron:nightly", profile: nil, displayName: "Nightly", connectionID: nil),
+            authorityEpoch: nil, payload: ["text": .string("Report"), "attachments": manifest], createdAt: 0
+        )
+        XCTAssertTrue(scheduled.isScheduledPost)
+        XCTAssertTrue(GroupRoomImageGallery.items(in: [scheduled], files: hermesFiles).isEmpty,
+                      "a scheduled post's bubble draws no attachments, so its viewer lists none")
+    }
+
+    @MainActor
+    func testRoomGalleryListsAMembersMediaPicturesThroughItsResolver() throws {
+        let appState = try galleryAppState()
+        let resolver = GatewayMediaDataURLResolver(appState: appState, profile: "furina")
+        func event(_ seq: Int, _ kind: String, _ text: String) -> GroupEvent {
+            GroupEvent(
+                roomID: "room",
+                seq: seq,
+                eventID: "e\(seq)",
+                kind: kind,
+                actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: "Furina", connectionID: nil),
+                authorityEpoch: nil,
+                payload: ["text": .string(text)],
+                createdAt: 0
+            )
+        }
+        let events = [
+            event(1, "message.user", "MEDIA:/root/mine.png"),
+            event(2, "message.member", "Here:\n\nMEDIA: /root/.hermes/cache/images/bow.png\n\nMEDIA: /root/.hermes/cache/images/clip.mp4"),
+        ]
+
+        XCTAssertEqual(GroupRoomImageGallery.items(in: events) { _ in resolver }.map(\.id), [
+            ImageGalleryItem.mediaID(path: "/root/.hermes/cache/images/bow.png"),
+        ], "a member's picture pages; the user's own MEDIA: line stays text, and a video isn't a picture")
+        XCTAssertEqual(GroupRoomImageGallery.items(in: events).map(\.id), [],
+                       "a member with no resolver (another gateway's bot) draws no MEDIA: pictures")
+    }
+
+    @MainActor
+    func testRoomGalleryReadsEachMembersPicturesThroughItsOwnResolver() throws {
+        let appState = try galleryAppState()
+        let resolvers = [
+            "furina": GatewayMediaDataURLResolver(appState: appState, profile: "furina"),
+            "nahida": GatewayMediaDataURLResolver(appState: appState, profile: "nahida"),
+        ]
+        func event(_ seq: Int, _ who: String, _ path: String) -> GroupEvent {
+            GroupEvent(
+                roomID: "room",
+                seq: seq,
+                eventID: "e\(seq)",
+                kind: "message.member",
+                actor: GroupActor(kind: "member", id: who, profile: who, displayName: who, connectionID: nil),
+                authorityEpoch: nil,
+                payload: ["text": .string("MEDIA: \(path)")],
+                createdAt: 0
+            )
+        }
+        let events = [
+            event(1, "furina", "/root/.hermes/cache/images/bow.png"),
+            event(2, "nahida", "/root/.hermes/cache/images/leaf.png"),
+            event(3, "wanderer", "/root/.hermes/cache/images/hat.png"),
+        ]
+        var asked: [String] = []
+        let items = GroupRoomImageGallery.items(in: events) { event in
+            asked.append(event.actor.id)
+            return resolvers[event.actor.id]
+        }
+
+        XCTAssertEqual(asked, ["furina", "nahida", "wanderer"], "each member message asks for its own speaker's resolver")
+        XCTAssertEqual(items.map(\.id), [
+            ImageGalleryItem.mediaID(path: "/root/.hermes/cache/images/bow.png"),
+            ImageGalleryItem.mediaID(path: "/root/.hermes/cache/images/leaf.png"),
+        ], "a member with no resolver (another gateway's bot) adds no picture")
+    }
+
     func testGalleryPrefilterKeepsEveryPictureSource() {
         XCTAssertTrue(ChatImageGallery.mayHoldPictures("![a](b.png)"))
         XCTAssertTrue(ChatImageGallery.mayHoldPictures("https://example.com/a.png"))

@@ -166,8 +166,8 @@ extension AppState {
 
     /// The user's answer; reported to the host right away.
     func answerPresentedConfirm(_ prompt: PresentedConfirm, outcome: PresentedConfirmOutcome,
-                                via source: PresentedConfirmAnswerSource) async {
-        presentedScreens.answer(prompt, outcome: outcome, via: source)
+                                via source: PresentedConfirmAnswerSource, editText: String? = nil) async {
+        presentedScreens.answer(prompt, outcome: outcome, via: source, editText: editText)
         await reportPresentedAnswer(prompt, outcome: outcome)
     }
 

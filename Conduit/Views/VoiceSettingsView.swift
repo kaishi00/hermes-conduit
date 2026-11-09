@@ -729,7 +729,9 @@ struct VoiceSettingsView: View {
                     Text("Microphone input")
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
-                    VoiceInputLevelMeter(level: conversationController.microphoneLevel, isActive: true)
+                    VoiceMicrophoneLevelReader(meter: conversationController.microphoneMeter) { level in
+                        VoiceInputLevelMeter(level: level, isActive: true)
+                    }
                         .frame(height: 20)
                 }
                 .accessibilityElement(children: .combine)
@@ -1225,27 +1227,33 @@ struct VoiceSettingsView: View {
     /// The big button beside this profile's chats, or the app's choice.
     private func chatVoiceButtonSection(_ model: ChatVoiceButtonSettingsModel) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Chat voice button"), symbol: "mic.circle", tint: .conduitAccent) {
-            Picker("Chat voice button", selection: Binding(
-                get: { chatVoiceButtonOverride },
-                set: { requested in
+            Text("What the round button beside this profile's chats does. App setting follows Settings > Appearance.")
+                .settingsCaption()
+            ConduitMenuPicker(
+                value: chatVoiceButtonOverride,
+                choices: Self.chatVoiceButtonChoices(appChoice: model.appChoice),
+                onSelect: { requested in
+                    Haptics.selection()
                     let previous = chatVoiceButtonOverride
                     chatVoiceButtonOverride = requested
                     if !model.setChoice(requested) {
                         chatVoiceButtonOverride = previous
                     }
                 }
-            )) {
-                Text(AppLocalization.string("App setting (\(model.appChoice.title))"))
-                    .tag(ChatVoiceButtonAction?.none)
-                ForEach(ChatVoiceButtonAction.offered, id: \.self) { action in
-                    Text(action.title).tag(Optional(action))
-                }
+            ) {
+                Text("Tap").foregroundStyle(.secondary)
             }
             .onChange(of: model.choice) { _, newValue in chatVoiceButtonOverride = newValue }
-            Text("What the round button beside this profile's chats does. App setting follows Settings > Appearance.")
-                .scaledFont(.caption)
-                .foregroundStyle(.secondary)
         }
+    }
+
+    /// The app's choice first, named, then each button action.
+    static func chatVoiceButtonChoices(appChoice: ChatVoiceButtonAction) -> [(id: ChatVoiceButtonAction?, title: String)] {
+        let appSetting: (id: ChatVoiceButtonAction?, title: String) = (
+            id: nil,
+            title: AppLocalization.string("App setting (\(appChoice.title))")
+        )
+        return [appSetting] + ChatVoiceButtonAction.offered.map { (id: Optional($0), title: $0.title) }
     }
 
     private var conversationSection: some View {

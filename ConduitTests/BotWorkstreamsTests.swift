@@ -77,6 +77,16 @@ extension BotModeTests {
         XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W4", "kind": "workstream"])).branch, "")
     }
 
+    /// Work started from a group room names the room it reports back into;
+    /// an ask never does.
+    func testWorkStartedFromAGroupRoomNamesTheRoom() throws {
+        let fromRoom = try XCTUnwrap(BotWorkItem(row: ["ref": "W9", "kind": "workstream", "status": "running",
+                                                        "room": " room-1 "]))
+        XCTAssertEqual(fromRoom.room, "room-1")
+        XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W10", "kind": "workstream"])).room, "")
+        XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "A1", "kind": "ask_out", "room": "room-1"])).room, "")
+    }
+
     /// A voice call's job is marked as the call's; anything else is the bot's own.
     func testACallsJobIsMarkedAsTheCalls() throws {
         let job = try XCTUnwrap(BotWorkItem(row: ["ref": "W5", "kind": "workstream", "status": "running",
@@ -483,6 +493,16 @@ extension BotModeTests {
             "See [an earlier chat](conduit://session/old) @session:old and [Open W3](conduit://session/c) @session:furina/other"))
         XCTAssertEqual(unrelated.text,
                        "See [an earlier chat](conduit://session/old) @session:old and @session:furina/other")
+        // A bot that words the link with its title (Zhongli 2026-11-07) still gets the card, Desktop's reference
+        // going with it; a title that only mentions a ref further in stays a link.
+        let titled = try XCTUnwrap(BotWorkLinks.split(
+            "The build is commissioned — [W7: Provision OmniRoute LXC on seele](conduit://session/20261107_w7?profile=zhongli) "
+                + "@session:zhongli/20261107_w7. The rite as ordered."))
+        XCTAssertEqual(titled.text, "The build is commissioned —. The rite as ordered.")
+        XCTAssertEqual(titled.links.map(\.ref), ["W7"])
+        XCTAssertEqual(titled.links.first?.profile, "zhongli")
+        XCTAssertEqual(try XCTUnwrap(BotWorkLinks.split("Done: [W8 — Rotate keys](conduit://session/w8)")).links.map(\.ref), ["W8"])
+        XCTAssertNil(BotWorkLinks.split("See [the notes from W7](conduit://session/w7)"))
     }
 
     /// A read asked for after an action, while one was under way, makes
@@ -606,6 +626,26 @@ extension BotModeTests {
         XCTAssertEqual(clamped.unavailable, "plugin host")
         XCTAssertNil(BotWorkSettings(response: ["ok": true, "policy": "maybe", "max_running": 2]))
         XCTAssertNil(BotWorkSettings(response: ["ok": false, "policy": "strict", "max_running": 2]))
+    }
+
+    func testEverythingHereIsOfferedOnlyWhereThePluginTakesIt() throws {
+        // Notifier issue 619 (Eric 2026-11-08): three choices by what the user notices.
+        let older = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "lookups", "max_running": 2]))
+        XCTAssertEqual(older.policies, BotWorkSettings.olderPolicies)
+        XCTAssertEqual(BotWorkSettingsView.policyChoices(older).map(\.id), [.lookups, .strict])
+        let newer = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "open", "policies": ["off", "strict", "lookups", "open", "later"], "max_running": 2,
+        ]))
+        XCTAssertEqual(newer.policy, .open)
+        XCTAssertTrue(newer.isOn)
+        XCTAssertEqual(newer.policies, [.off, .strict, .lookups, .open])
+        XCTAssertEqual(BotWorkSettingsView.policyChoices(newer).map(\.id), [.lookups, .open, .strict])
+        var picked = newer
+        picked.policy = .lookups
+        XCTAssertEqual(picked.change(from: newer)["policy"] as? String, "lookups")
+        for policy in BotWorkSettings.Policy.allCases {
+            XCTAssertFalse(BotWorkSettingsView.policyCaption(policy, botName: "Furina").isEmpty)
+        }
     }
 
     func testAWorkSettingsChangeSendsOnlyWhatChanged() {

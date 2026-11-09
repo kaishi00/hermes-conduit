@@ -27,6 +27,19 @@ struct RichCardView: View {
     let card: RichCard
 
     var body: some View {
+        // A composed card draws its own buttons; any other card's sit under it.
+        if card.kind != .composed, !card.actions.isEmpty {
+            VStack(alignment: .leading, spacing: 8) {
+                kindView
+                RichCardButtonRow(card: card, buttons: card.actions, values: [:])
+            }
+        } else {
+            kindView
+        }
+    }
+
+    @ViewBuilder
+    private var kindView: some View {
         switch card.kind {
         case .map:
             RichMapCard(card: card)
@@ -66,6 +79,10 @@ struct RichCardView: View {
             RichCalloutCard(card: card)
         case .diff:
             RichDiffCard(card: card)
+        case .review:
+            RichReviewCard(card: card)
+        case .composed:
+            RichComposedCard(card: card)
         }
     }
 }

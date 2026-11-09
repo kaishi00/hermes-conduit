@@ -157,7 +157,7 @@ struct CronScheduleDraft: Equatable {
 
 /// The editor's whole form: a new job's POST body, or only the fields that
 /// changed for an edit's PUT, so whatever the form doesn't show (skills,
-/// model, script) stays as it is.
+/// script) stays as it is.
 struct CronJobDraft: Equatable {
     var name = ""
     var prompt = ""
@@ -165,6 +165,13 @@ struct CronJobDraft: Equatable {
     var deliver = "local"
     /// A job that runs a script or no agent can do without a prompt.
     var promptOptional = false
+    /// A job that runs no agent has no model to pin.
+    var runsAgent = true
+    /// The job's model as a picker tag (VoiceJobModelSettingsSection.tag),
+    /// empty for the profile's.
+    var modelTag = ""
+    /// The job's reasoning level, empty for the profile's.
+    var reasoning = ""
 
     init() {}
 
@@ -174,6 +181,9 @@ struct CronJobDraft: Equatable {
         schedule = CronScheduleDraft(schedule: job.schedule, display: job.scheduleDisplay)
         deliver = job.deliver.flatMap { $0.isEmpty ? nil : $0 } ?? "local"
         promptOptional = job.noAgent == true || job.script?.isEmpty == false
+        runsAgent = job.noAgent != true
+        modelTag = job.modelTag
+        reasoning = job.pinnedReasoningEffort ?? ""
     }
 
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -186,12 +196,29 @@ struct CronJobDraft: Equatable {
     /// POST /api/cron/jobs.
     var createBody: [String: Any]? {
         guard canSave, let scheduleString = schedule.scheduleString else { return nil }
-        return [
+        var body: [String: Any] = [
             "name": trimmedName,
             "prompt": trimmedPrompt,
             "schedule": scheduleString,
             "deliver": deliver
         ]
+        if !modelTag.isEmpty { body.merge(modelFields) { _, model in model } }
+        return body
+    }
+
+    /// The reasoning a new job is saved with: Hermes' create takes a model
+    /// but no reasoning, so it follows as an edit once the job exists.
+    var createReasoningUpdate: [String: Any]? {
+        reasoning.isEmpty ? nil : ["reasoning_effort": reasoning]
+    }
+
+    /// The model's fields. The profile's clears the job's model, provider
+    /// and endpoint; a pick names its provider, and clears an endpoint kept
+    /// for the one before, which the provider's own would otherwise lose to.
+    private var modelFields: [String: Any] {
+        guard !modelTag.isEmpty else { return ["model": "", "provider": "", "base_url": ""] }
+        let pick = VoiceJobModelSettingsSection.parse(modelTag)
+        return ["model": pick.model, "provider": pick.provider ?? "", "base_url": ""]
     }
 
     /// PUT /api/cron/jobs/<id>'s `updates`: what differs from `original`.
@@ -203,7 +230,45 @@ struct CronJobDraft: Equatable {
             updates["schedule"] = scheduleString
         }
         if deliver != original.deliver { updates["deliver"] = deliver }
+        if modelTag != original.modelTag { updates.merge(modelFields) { _, model in model } }
+        // Empty clears it: the profile's reasoning again.
+        if reasoning != original.reasoning { updates["reasoning_effort"] = reasoning }
         return updates
+    }
+}
+
+extension CronJob {
+    private static func text(_ value: String?) -> String? {
+        let trimmed = value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
+    }
+
+    /// The job's model as a picker tag, empty when it runs on the
+    /// profile's. A provider without a model is that provider's default.
+    var modelTag: String {
+        let model = Self.text(model), provider = Self.text(provider)
+        guard model != nil || provider != nil else { return "" }
+        return VoiceJobModelSettingsSection.tag(provider: provider, model: model ?? "")
+    }
+
+    /// The job's own reasoning level, nil when it follows the profile's.
+    var pinnedReasoningEffort: String? { Self.text(reasoningEffort)?.lowercased() }
+
+    /// Whether the job runs on a model or reasoning of its own.
+    var pinsModel: Bool { !modelTag.isEmpty || pinnedReasoningEffort != nil }
+
+    /// What the job runs on, in the words of the Model page's row: the
+    /// model and its reasoning ("Claude Sonnet · High"), or "Profile
+    /// default". Nil for a job that runs no agent.
+    func modelSummary(in providers: [ProviderInfo], withProvider: Bool = false) -> String? {
+        guard noAgent != true else { return nil }
+        let choice = TaggedModelChoice(defaultTag: "", selection: modelTag)
+        let reasoning = pinnedReasoningEffort.map(ReasoningEffortLevel.displayTitle(for:))
+        let lines = choice.lines(in: providers, defaultTitle: AppLocalization.string("Profile default"))
+        var parts = [lines.value]
+        if withProvider, let provider = lines.detail { parts.append(provider) }
+        if let reasoning { parts.append(reasoning) }
+        return parts.joined(separator: " · ")
     }
 }
 

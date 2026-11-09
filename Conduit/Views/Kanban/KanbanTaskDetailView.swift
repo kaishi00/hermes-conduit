@@ -19,6 +19,7 @@ import SwiftUI
 /// runs, events, and metadata but never overwrites unsaved user edits; diffs
 /// run against the last-synced server baseline.
 struct KanbanTaskDetailView: View {
+    @EnvironmentObject private var appState: AppState
     @ObservedObject var appLanguage = AppLanguageStore.shared
     /// Editable fields as last synced from the server. The draft fields below
     /// are compared against this so a poll can refresh collections WITHOUT
@@ -361,6 +362,7 @@ struct KanbanTaskDetailView: View {
             .sheet(isPresented: $showModelSheet) {
                 KanbanModelOverrideSheet(value: $modelOverrideDraft)
                     .environment(store)
+                    .environmentObject(appState)
                     .presentationDetents([.medium, .large])
             }
             .onChange(of: showModelSheet) { wasOpen, nowOpen in
@@ -489,14 +491,18 @@ struct KanbanTaskDetailView: View {
                 .frame(minHeight: 120)
                 .padding(4)
                 .background(Color.primary.opacity(0.04), in: RoundedRectangle(cornerRadius: 12))
-            Picker("Status", selection: $status) {
-                ForEach(statusOptions) { value in
-                    Label(value.displayName, systemImage: value.systemImage)
-                        .tag(value.rawValue)
-                        .disabled(!value.isManuallySelectable)
+            // Settings' dropdown field. A status Hermes sets itself (Running,
+            // Review) is listed while the task is in it, but can't be picked.
+            ConduitMenuPicker(
+                value: status,
+                choices: statusOptions.map { (id: $0.rawValue, title: $0.displayName) },
+                onSelect: { picked in
+                    guard KanbanStatusPresentation.forStatus(picked).isManuallySelectable else { return }
+                    status = picked
                 }
+            ) {
+                Text("Status").foregroundStyle(.secondary)
             }
-            .pickerStyle(.menu)
             Button {
                 Task { await saveChanges() }
             } label: {

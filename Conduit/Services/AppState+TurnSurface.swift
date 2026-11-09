@@ -44,20 +44,37 @@ extension AppState {
     /// Forgets the report for `text` in `runtimeSessionID` after its send
     /// failed: no turn of it is coming, so the same words sent from another
     /// client there would take its line. Not after a send whose reply was
-    /// only lost (it may have started). Never waited on; a plugin without
-    /// the route keeps the report until it goes stale.
+    /// only lost (it may have started). Never waited on; one that fails to
+    /// go is tried again after `TurnSurface.discardRetryDelays` (notifier
+    /// issue 610). A plugin without the route keeps the report until it goes
+    /// stale.
     func discardTurnSurface(runtimeSessionID: String, text: String, after error: Error) {
         guard !Self.isAmbiguousPromptDelivery(error) else { return }
         let body = TurnSurface.discardBody(runtimeSessionID: runtimeSessionID, text: text)
+        let send: ([String: Any]) async throws -> Void
         if let turnSurfaceDiscarder {
-            Task { @MainActor in _ = try? await turnSurfaceDiscarder(body) }
-            return
+            send = turnSurfaceDiscarder
+        } else {
+            guard notifierPlugin.reports(TurnSurface.discardCapability),
+                  let bridge = dashboardTicketBridge else { return }
+            send = { body in
+                _ = try await bridge.requestJSON(path: TurnSurface.discardPath, method: "POST", body: body,
+                                                 timeoutMilliseconds: TurnSurface.timeoutMilliseconds)
+            }
         }
-        guard notifierPlugin.reports(TurnSurface.discardCapability),
-              let bridge = dashboardTicketBridge else { return }
+        let delays = turnSurfaceDiscardRetryDelays ?? TurnSurface.discardRetryDelays
         Task { @MainActor in
-            _ = try? await bridge.requestJSON(path: TurnSurface.discardPath, method: "POST", body: body,
-                                              timeoutMilliseconds: TurnSurface.timeoutMilliseconds)
+            for delay in [Duration.zero] + delays {
+                if delay > .zero {
+                    do { try await Task.sleep(for: delay) } catch { return }
+                }
+                do {
+                    try await send(body)
+                    return
+                } catch {
+                    guard TurnSurface.discardMayGoLater(error) else { return }
+                }
+            }
         }
     }
 }

@@ -100,6 +100,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
     /// press consumed; a declined action keeps the default text behavior.
     /// ComposerBar stays the owner of the actual send/steer/interrupt action.
     var onSubmitFromReturn: (() -> Bool)? = nil
+    /// The slash or mention suggestions over the field, while they show:
+    /// arrows, Tab, Escape and a highlighted Return are theirs.
+    var suggestionKeys: ComposerSuggestionKeys? = nil
     /// Invoked synchronously from `textViewDidChange` — the earliest
     /// authoritative point a text mutation is known to be genuine user input
     /// (typing, deletion, paste), after the active/programmatic guards and
@@ -145,6 +148,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         view.returnKeySends = returnKeySends
         view.canSubmitFromReturn = canSubmitFromReturn
         view.onSubmitFromReturn = onSubmitFromReturn
+        view.suggestionKeys = suggestionKeys
         return view
     }
 
@@ -194,6 +198,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
         uiView.returnKeySends = returnKeySends
         uiView.canSubmitFromReturn = canSubmitFromReturn
         uiView.onSubmitFromReturn = onSubmitFromReturn
+        uiView.suggestionKeys = suggestionKeys
         // Applied after this update, never inside it (issue 1781); a field
         // rebuilt with focus (a send on a Mac keeps it) takes it once it's
         // in the window.
@@ -352,6 +357,7 @@ struct ComposerPasteTextView: UIViewRepresentable {
                 textView.returnKeySends = false
                 textView.canSubmitFromReturn = false
                 textView.onSubmitFromReturn = nil
+                textView.suggestionKeys = nil
             }
             // Dismantling is part of a SwiftUI update: focus is let go
             // after it, as every focus change is (issue 1781).

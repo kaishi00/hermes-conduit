@@ -322,12 +322,14 @@ final class TranscriptLayoutTests: XCTestCase {
         func guess(_ row: GroupRoomRow) -> CGFloat {
             TranscriptLayout.estimatedHeight(of: TranscriptRow(id: "r", kind: .room(row)), width: width)
         }
-        func event(_ kind: String, _ text: String?, boards: [RichBoard] = []) -> GroupRoomRow {
+        func event(_ kind: String, _ text: String?, boards: [RichBoard] = [],
+                   actor: GroupActor = GroupActor(kind: "member", id: "furina", profile: "furina",
+                                                  displayName: nil, connectionID: nil)) -> GroupRoomRow {
             var payload: [String: AnyCodable] = [:]
             if let text { payload["text"] = .string(text) }
             let event = GroupEvent(
                 roomID: "room-1", seq: 1, eventID: "e1", kind: kind,
-                actor: GroupActor(kind: "member", id: "furina", profile: "furina", displayName: nil, connectionID: nil),
+                actor: actor,
                 authorityEpoch: nil, payload: payload, createdAt: 1
             )
             return .event(event, members: [], continuesRun: false, boards: boards)
@@ -345,5 +347,38 @@ final class TranscriptLayoutTests: XCTestCase {
             guess(event("message.user", long)),
             "the message on its way is guessed as its event"
         )
+        let picture = GroupRoomAttachment(attachmentID: "a1", kind: "image", name: "cat.png", size: 12, mime: "image/png")
+        XCTAssertGreaterThan(
+            guess(.pending(text: "Hi", members: [], isSending: true, files: [picture.attachment(roomID: "room-1")])),
+            guess(.pending(text: "Hi", members: [], isSending: true)),
+            "the message on its way guesses its files"
+        )
+        let withFiles = GroupEvent(
+            roomID: "room-1", seq: 1, eventID: "e1", kind: "message.user",
+            actor: GroupActor(kind: "user", id: "human", profile: nil, displayName: nil, connectionID: nil),
+            authorityEpoch: nil,
+            payload: ["text": .string("Hi"), "attachments": .array([.object([
+                "attachment_id": .string("a1"), "kind": .string("image"), "name": .string("cat.png"),
+                "size": .number(12), "mime": .string("image/png"),
+            ])])],
+            createdAt: 1
+        )
+        XCTAssertEqual(withFiles.attachments.count, 1)
+        XCTAssertGreaterThan(
+            guess(.event(withFiles, members: [], continuesRun: false, boards: [])),
+            guess(event("message.user", "Hi", actor: GroupActor(kind: "user", id: "human", profile: nil, displayName: nil, connectionID: nil))),
+            "a sent message guesses its files"
+        )
+        func job(_ id: String) -> GroupActor {
+            GroupActor(kind: "user", id: id, profile: nil, displayName: "Nightly", connectionID: nil)
+        }
+        XCTAssertGreaterThan(guess(event("message.user", long, actor: job("cron:job42"))), guess(event("message.user", long)),
+                             "a scheduled post is guessed on the members' side, under its name")
+        XCTAssertGreaterThan(guess(event("message.user", nil, actor: job("cron:job42"))), TranscriptLayout.rowGap + 24 + 44,
+                             "a scheduled post with no text is still a member bubble, not a caption")
+        let update = "@Furina Work update.\n" + long + "\n- W1 finished.\nTell the room."
+        XCTAssertEqual(guess(event("message.user", update, actor: job("cron:conduit-work-default-W1"))),
+                       guess(event("message.member", "W1 finished.")),
+                       "a work update is guessed from its \"- \" lines, not the whole post")
     }
 }

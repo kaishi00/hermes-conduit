@@ -123,7 +123,10 @@ struct VoiceConversationSheet: View {
                 Text("Mic input")
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
-                VoiceInputLevelMeter(level: inputMeterLevel, isActive: isInputMeterActive)
+                let meterActive = isInputMeterActive
+                VoiceMicrophoneLevelReader(meter: controller.microphoneMeter) { level in
+                    VoiceInputLevelMeter(level: meterActive ? level : 0, isActive: meterActive)
+                }
                     .frame(height: 20)
                     .accessibilityHint(Text(isInputMeterActive
                         ? AppLocalization.string("Shows audio reaching Conduit while the microphone is live.")
@@ -302,10 +305,6 @@ struct VoiceConversationSheet: View {
         case .listening, .thinking, .speaking, .muted: return true
         case .idle, .transcribing, .failed: return false
         }
-    }
-
-    private var inputMeterLevel: Float {
-        isInputMeterActive ? controller.microphoneLevel : 0
     }
 
     private var microphoneLabel: String {
@@ -602,10 +601,13 @@ extension VoiceConversationSheet {
             .padding(.horizontal, 24)
             .padding(.top, 20)
             Spacer(minLength: 16)
-            V2CallLevelBars(
-                phase: callPhase,
-                inputFraction: isInputMeterActive ? VoiceLevelMeterMath.displayFraction(forLevel: controller.microphoneLevel) : nil
-            )
+            let meterActive = isInputMeterActive
+            VoiceMicrophoneLevelReader(meter: controller.microphoneMeter) { level in
+                V2CallLevelBars(
+                    phase: callPhase,
+                    inputFraction: meterActive ? VoiceLevelMeterMath.displayFraction(forLevel: level) : nil
+                )
+            }
             .frame(height: 96)
             .padding(.horizontal, 28)
             .accessibilityHidden(true)
@@ -917,6 +919,8 @@ struct VoiceApprovalPanel: View {
                         ClarifyCard(message: message)
                     } else if message.inputPrompt != nil {
                         InputPromptCard(message: message)
+                    } else if message.connection != nil {
+                        ConnectionCard(message: message)
                     } else {
                         ApprovalCard(message: message)
                     }
@@ -928,4 +932,13 @@ struct VoiceApprovalPanel: View {
         }
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: approvals.first?.id)
     }
+}
+
+/// Draws `content` with the classic voice meter's level, so a tick
+/// re-renders only it, not the sheet around it (issue 1970).
+struct VoiceMicrophoneLevelReader<Content: View>: View {
+    @ObservedObject var meter: VoiceMicrophoneMeter
+    @ViewBuilder let content: (Float) -> Content
+
+    var body: some View { content(meter.level) }
 }

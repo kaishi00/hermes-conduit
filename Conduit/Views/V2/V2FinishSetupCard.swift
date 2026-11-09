@@ -131,6 +131,7 @@ struct V2FinishSetupCard: View {
         case .upToDate: return AppLocalization.string("Up to date on this dashboard's host")
         case .newerVersionWaits: return AppLocalization.string("Works with this app. Newer versions wait in Settings.")
         case .featuresWait: return AppLocalization.string("Works with this app. Some features need the newer version in Settings.")
+        case .managed: return NotifierPluginStatus.managedText(appState.notifierPlugin.managedBy)
         }
     }
 

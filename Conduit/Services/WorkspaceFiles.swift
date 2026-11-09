@@ -281,9 +281,11 @@ struct WorkspaceReveal: Equatable, Identifiable {
 
 /// File paths in a reply, made tappable: they open in the Folder tab.
 /// Inline code that names a path (`docs/guide.md`, `/srv/app/main.py`,
-/// `~/notes.txt`), and in plain text only a path with a folder and a file
-/// type (`meta-app-review/tutorial.md`), so ordinary words with a slash
-/// ("and/or") stay text.
+/// `~/notes.txt`, `src/app/`), and in plain text only a path with a folder
+/// and a file type (`meta-app-review/tutorial.md`), so ordinary words with a
+/// slash ("and/or") stay text. A name like `owner/repo` (a GitHub
+/// repository, a Docker image, a model) isn't a path: drawn as a link, it
+/// opened the Folder on a file the host never had (issue 1585).
 enum WorkspacePathLinks {
     static let maxLength = 512
 
@@ -338,11 +340,7 @@ enum WorkspacePathLinks {
         let ext = (name as NSString).pathExtension.lowercased()
         guard !ext.isEmpty, fileTypes.contains(ext), name.count > ext.count + 1 else { return nil }
         // `example.com/a.html` is a site written without its scheme.
-        if path.contains("/"), let first = path.split(separator: "/").first.map(String.init),
-           first.contains("."), !first.hasPrefix("."),
-           webSuffixes.contains((first as NSString).pathExtension.lowercased()) {
-            return nil
-        }
+        if path.contains("/"), startsWithWebHost(path) { return nil }
         return path
     }
 
@@ -378,6 +376,9 @@ enum WorkspacePathLinks {
               !text.contains("://"), !text.hasPrefix("@"), !text.contains("`"),
               text.rangeOfCharacter(from: .letters) != nil else { return false }
         let hasFolder = text.contains("/") && text != "/" && !text.hasSuffix("//")
+        // `vercel.app/docs` or `example.com/a.html` is a site written
+        // without its scheme.
+        if hasFolder, startsWithWebHost(text) { return false }
         let name = (text as NSString).lastPathComponent
         let ext = (name as NSString).pathExtension.lowercased()
         let hasType = !ext.isEmpty && fileTypes.contains(ext) && name.count > ext.count + 1
@@ -385,10 +386,22 @@ enum WorkspacePathLinks {
         // In code: a folder path (`src/app/`), or a file name with a known type.
         if hasType { return true }
         guard hasFolder else { return false }
-        // `a/b` in code still needs to look like a path rather than a ratio
-        // or a command option.
-        return text.hasPrefix("/") || text.hasPrefix("~/") || text.hasPrefix("./") || text.hasPrefix("../")
-            || text.split(separator: "/").count >= 2 && text.range(of: #"^[\w.~-]+(/[\w.@+-]+)+/?$"#, options: .regularExpression) != nil
+        // A folder in code with no file type: rooted (`/srv/app`, `~/notes`,
+        // `./out`), or relative and shaped like a path rather than a ratio
+        // or a command option, with a trailing slash (`src/app/`) or three
+        // parts (`src/app/models`). Two bare parts (`coleam00/excalidraw-skill`,
+        // `github/awesome-copilot`) name a repository, an image or a model
+        // far more often than a folder (issue 1585).
+        if text.hasPrefix("/") || text.hasPrefix("~/") || text.hasPrefix("./") || text.hasPrefix("../") { return true }
+        guard text.range(of: #"^[\w.~-]+(/[\w.@+-]+)+/?$"#, options: .regularExpression) != nil else { return false }
+        return text.hasSuffix("/") || text.split(separator: "/").count >= 3
+    }
+
+    /// Whether a path's first part is a web host (`example.com/…`).
+    private static func startsWithWebHost(_ path: String) -> Bool {
+        guard let first = path.split(separator: "/", omittingEmptySubsequences: false).first.map(String.init),
+              first.contains("."), !first.hasPrefix(".") else { return false }
+        return webSuffixes.contains((first as NSString).pathExtension.lowercased())
     }
 
     /// Nil only if the pattern were mistyped: plain text then links nothing.

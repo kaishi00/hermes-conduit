@@ -15,6 +15,13 @@ enum DashboardPath {
     /// them (#1336).
     static let conduitProfileParameter = "conduit_profile"
     static let dashboardProfilesCapability = "dashboard-profiles"
+    /// Linked Rooms' new drafts and room setup take `?conduit_profile=`
+    /// too, from a plugin that reports this (notifier #419): a draft starts
+    /// in the room service of the profile's session authority, which only
+    /// the dashboard has. Their own capability, since a plugin that reports
+    /// `dashboard-profiles` without them would act for the dashboard's own
+    /// profile there.
+    static let roomDashboardProfilesCapability = "room-dashboard-profiles"
 
     /// A socket's profile query: `?profile=` as these sockets always sent it,
     /// or `?conduit_profile=`, which leaves out the dashboard's own profile

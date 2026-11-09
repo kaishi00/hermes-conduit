@@ -182,11 +182,21 @@ enum BotMentions {
                 + (title.isEmpty ? "" : " (\"\(title)\")")
         }
         let note =
-            "\n\n[@mentions resolved from the Bot Mode roster — the user is referring to: "
+            annotationLead
             + lines.joined(separator: "; ")
             + ". If they want one of these agents contacted, compose your own message and send it with your message_agent tool (agents on other connected machines are reachable too — the Desktop relays it); never forward the user’s text verbatim. If this session has no message_agent tool, agent messaging is unavailable here — say so.]"
         return text + note
     }
+
+    /// The words the user wrote, without the note `annotated` added: for
+    /// sending them again, which annotates them afresh.
+    static func strippingAnnotation(_ text: String) -> String {
+        guard text.hasSuffix("]"),
+              let note = text.range(of: annotationLead, options: .backwards) else { return text }
+        return String(text[..<note.lowerBound])
+    }
+
+    private static let annotationLead = "\n\n[@mentions resolved from the Bot Mode roster — the user is referring to: "
 
     /// The composer middleware step: nil means "send the text untouched" —
     /// no roster, no plausible tag, or nothing resolved. Upstream leaves the

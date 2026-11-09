@@ -43,6 +43,23 @@ struct RootView: View {
             ConnectLinkSheet(link: link)
                 .environmentObject(appState)
         }
+        // A Link invite, the same way: it waits there for Conduit to
+        // connect when it opened Conduit.
+        .sheet(item: $appState.pendingRoomLink) { invite in
+            RoomLinkOpenedSheet(invite: invite)
+                .environmentObject(appState)
+        }
+        // An invite to a room whose notification was tapped: its join card.
+        .sheet(item: $appState.presentedRoomInvite) { invite in
+            RoomInviteSheet(invite: invite)
+                .environmentObject(appState)
+        }
+        // An approval in a room hosted elsewhere whose notification was
+        // tapped: its card.
+        .sheet(item: $appState.presentedRoomApproval) { approval in
+            RoomApprovalSheet(approval: approval)
+                .environmentObject(appState)
+        }
         // A draft shared from another app before Conduit listed any chats,
         // with more than one dashboard it could be for (#812). An alert, so
         // it shows the same on iPad, where a dialog would need an anchor.
@@ -437,6 +454,14 @@ struct MainView: View {
         }
         // A widget's New Chat or Talk asks Settings out of the way
         // (revealChatForWidgetLaunch); the chat it opens must end up on top.
+        // The sheet's pages belong to the dashboard it opened on, as the
+        // V2 tab's start over on a switch (V2SettingsTab): a switch made
+        // under it, by a notification's route, closes it (issue 2016).
+        .onChange(of: appState.activeDashboardID) { _, _ in
+            shouldPresentSettingsAfterSidebarDismissal = false
+            settingsOpensAt = nil
+            settingsPresentation = nil
+        }
         .onChange(of: appState.settingsDismissRequest) { _, _ in
             // A drawer closing on its way to Settings doesn't open it either.
             shouldPresentSettingsAfterSidebarDismissal = false
@@ -515,7 +540,7 @@ struct MainView: View {
                 )
                 .frame(width: persistentSidebarWidth)
                 // The leading column's share of the window's side insets.
-                .environment(\.windowSideInsets, windowSideInsets?.reaching(.leading))
+                .environment(\.windowSideInsets, windowSideInsets?.reaching(.leading, width: persistentSidebarWidth))
 
                 // Drags the sidebar's width, as V2's list (#1487).
                 ColumnDivider(
@@ -529,7 +554,7 @@ struct MainView: View {
                 )
 
                 chatNavigationContent
-                    .environment(\.windowSideInsets, windowSideInsets?.reaching(.trailing))
+                    .environment(\.windowSideInsets, windowSideInsets?.reaching(.trailing, width: availableWindowWidth - persistentSidebarWidth - 1))
             }
         } else {
             chatNavigationContent
@@ -746,6 +771,10 @@ struct MainView: View {
             },
             onEdit: inCall ? nil : { prompt in
                 Task { await appState.editPresentedConfirm(prompt) }
+            },
+            // Typed on the panel, so it stays open over a call too.
+            onSayInstead: { prompt, text in
+                Task { await appState.answerPresentedConfirm(prompt, outcome: .edit, via: .tap, editText: text) }
             }
         )
     }
@@ -753,7 +782,7 @@ struct MainView: View {
     private var windowWidthReader: some View {
         GeometryReader { proxy in
             Color.clear.preference(key: MainViewWindowWidthKey.self, value: proxy.size.width)
-                .onGeometryChange(for: WindowSideInsets.self) { WindowSideInsets($0.safeAreaInsets) } action: { insets in
+                .onGeometryChange(for: WindowSideInsets.self) { WindowSideInsets($0.safeAreaInsets, width: $0.size.width) } action: { insets in
                     if windowSideInsets != insets { windowSideInsets = insets }
                 }
         }

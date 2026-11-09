@@ -23,7 +23,7 @@ final class ConnectionSetupUITests: XCTestCase {
     }
 
     func testLANDetailsDiscoveryFirstCredentialsReviewAndHandoffWithoutConnecting() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         // The staged connection test runs against a deterministic stub probe
         // for a password dashboard (Credentials required until credentials
         // are entered): UI tests never depend on a real Hermes server.
@@ -123,7 +123,7 @@ final class ConnectionSetupUITests: XCTestCase {
     }
 
     func testTailscaleServeDetailEntryUsesHTTPSWithoutDefaultPort() {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launch()
         openSetup(app)
         stepLabel(app, "Step 1 of 2")
@@ -221,7 +221,7 @@ final class ConnectionSetupUITests: XCTestCase {
     }
 
     func testWizardAdvancesThroughQuestionsToTailscaleBranchAndBack() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launch()
         openSetup(app)
 
@@ -292,7 +292,7 @@ final class ConnectionSetupUITests: XCTestCase {
     }
 
     func testDontKnowPathShowsCopyPromptAndCompactsStayScrollable() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launch()
         openSetup(app)
 
@@ -331,7 +331,7 @@ final class ConnectionSetupUITests: XCTestCase {
     /// already covered by the other cases in this class, which tap elements
     /// directly.
     func testSetupCardsSelectFromWhitespaceOffTheirText() throws {
-        let app = XCUIApplication()
+        let app = XCUIApplication.conduit()
         app.launch()
 
         // 1. The login screen's setup entry card: its leading padding.
