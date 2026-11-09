@@ -457,6 +457,10 @@ enum PluginUpdateAsk {
 
     static var isManaged: Bool { activeManagedBy.withLock { $0 } != nil }
 
+    /// Who keeps the active host's plugin up to date, as it said: nil when
+    /// it doesn't manage the plugin, "" when it does without a name.
+    static var managedBy: String? { activeManagedBy.withLock { $0 } }
+
     /// `ask`, which asks to update (or install) the plugin, unless the active
     /// host manages it: then that the host's plugin lacks it, and who keeps it
     /// up to date.

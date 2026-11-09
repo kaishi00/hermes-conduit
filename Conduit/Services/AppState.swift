@@ -42456,7 +42456,11 @@ final class AppState: ObservableObject {
         let status = try await makeLocalLiveClient { profile }.status()
         noteWatchCallVoice(.localLive, ready: status.available, profile: profile)
         if let reason = LocalLiveClient.unavailableReason(status) {
-            throw WatchDirectPrepareError(reason)
+            // The reason is worded for the active host's plugin.
+            guard watchConnectionIsCurrent(connection) else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
+            throw WatchDirectPrepareError(PluginUpdateAsk.reason(reason) ?? reason)
         }
         guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)

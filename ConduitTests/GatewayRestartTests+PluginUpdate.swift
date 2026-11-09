@@ -447,7 +447,8 @@ extension GatewayRestartTests {
         // Local Live's session words, and a call watch's note for the live model.
         XCTAssertEqual(PluginUpdateAsk.reason(LocalLiveProtocol.pluginMissingReason),
                        "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
-        XCTAssertFalse(VoiceCallbackAvailability.unsupported.refusal.contains("needs an update"))
+        XCTAssertEqual(VoiceCallbackAvailability.unsupported.refusal,
+                       "Hermes can't call the user yet: the Conduit plugin on their Hermes host doesn't have this, and Family farm keeps the plugin up to date, so there's nothing for them to update.")
         // The Watch says the same, from the context the iPhone shares.
         let context = WatchPhoneContext(pluginAsk: PluginUpdateAsk.managedAsk)
         XCTAssertEqual(WatchPhoneContext.decode(context.encoded())?.pluginAsk,
