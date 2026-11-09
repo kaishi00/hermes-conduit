@@ -76,7 +76,7 @@ def commit(sha, message, parents=1):
 
 class EarlierRoundsTests(unittest.TestCase):
     def gather(self, chain=SECOND_CHAIN, comments=COMMENTS, reviewed=REVIEWED, fail=False, merge_only=False,
-               event="pull_request_target", pr_user={"login": "contributor"}, diff=DIFF):
+               event="pull_request_target", pr_user={"login": "contributor"}, diff=DIFF, many_commits=False):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         bin_dir = os.path.join(tmp, "bin")
@@ -94,6 +94,7 @@ class EarlierRoundsTests(unittest.TestCase):
             "pulls_7_commits_per_page=100": json.dumps([
                 commit("0" * 40, "First"), commit(REVIEWED, "Second"), commit(LATER, "Fix B's edge case"), {"sha": "f" * 40, "commit": {"message": ""}, "parents": [{}]},
                 commit(MERGE, "Merge remote-tracking branch 'origin/main'", parents=2), commit(HEAD, "Fix A")]
+                + ([commit(f"{i:040x}", "A long commit subject " + "y" * 80) for i in range(1, 80)] if many_commits else [])
                 if not merge_only else [commit(REVIEWED, "Second"),
                                         commit(HEAD, "Merge remote-tracking branch 'origin/main'", parents=2)]),
             "pulls_7_files_per_page=100": json.dumps([{"filename": "a.swift"}]),
@@ -107,7 +108,10 @@ class EarlierRoundsTests(unittest.TestCase):
         env = dict(os.environ, PATH=bin_dir + os.pathsep + os.environ["PATH"], FAKE=tmp,
                    GITHUB_REPOSITORY="o/r", PR_NUMBER="7", GITHUB_RUN_ID="200", CHAIN=json.dumps(chain))
         run = subprocess.run([sys.executable, "-I", "-c", _inline("EARLIER_PY")], env=env,
-                             capture_output=True, text=True, timeout=30, check=True)
+                             capture_output=True, text=True, timeout=30)
+        self.run_result = run
+        if not fail:
+            self.assertEqual(run.returncode, 0, run.stderr)
         return run.stdout
 
     def test_a_later_round_gets_its_last_review_the_change_since_and_the_replies(self):
@@ -205,6 +209,24 @@ class EarlierRoundsTests(unittest.TestCase):
 
     def test_a_failed_lookup_leaves_the_earlier_rounds_out(self):
         self.assertEqual(self.gather(fail=True), "")
+        # It fails, so the summary can tell a failure from no history, and
+        # the log says why.
+        self.assertNotEqual(self.run_result.returncode, 0)
+        self.assertIn("gh: not found", self.run_result.stderr)
+
+    def test_long_replies_keep_the_newest(self):
+        many = [person("kaishi00", f"2026-11-09T10:3{i}:00Z", f"reply {i} " + "x" * 1400) for i in range(8)]
+        out = self.gather(comments=COMMENTS[:-1] + many + COMMENTS[-1:])
+        self.assertIn("reply 7 ", out)
+        self.assertNotIn("reply 0 ", out)
+        self.assertIn("[earlier replies left out: too long]", out)
+        self.assertLess(out.index("[earlier replies left out"), out.index("reply 7 "))
+
+    def test_many_commits_are_capped(self):
+        comments = [c for c in COMMENTS if "actions/runs/90)" not in c["body"]]
+        out = self.gather(comments=comments, many_commits=True)
+        self.assertIn("[cut here: the rest is longer]", out)
+        self.assertIn("+fixed B", out)
 
 
 class ReviewJobPermissionTests(unittest.TestCase):
