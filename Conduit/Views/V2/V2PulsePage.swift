@@ -643,7 +643,7 @@ struct V2PulsePage: View {
                 .accessibilityIdentifier("pulse.brief.fold")
             }
             // In its parts when the plugin sends them (0.149.0), else as Hermes wrote it.
-            if let parts = brief.card.look?.briefParts, !(parts.today.isEmpty && parts.open.isEmpty) {
+            if let parts = brief.card.look?.briefParts, !(parts.summary.isEmpty && parts.today.isEmpty && parts.open.isEmpty) {
                 PulseBriefParts(summary: parts.summary, today: parts.today, open: parts.open, heldCount: parts.held)
             } else if !brief.card.news.isEmpty {
                 Text(brief.card.formattedNews)
@@ -1306,9 +1306,13 @@ struct V2PulsePage: View {
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
         .tint(.conduitAccent)
-        .accessibilityHint(Text(appState.pulseCardHasChat(card)
-            ? AppLocalization.string("Opens the chat with this reminder ready to send")
-            : AppLocalization.string("Opens a new chat with this reminder ready to send")))
+        .accessibilityHint(Text(ask != nil
+            ? (appState.pulseCardHasChat(card)
+                ? AppLocalization.string("Opens the chat with these words to edit before sending")
+                : AppLocalization.string("Opens a new chat with these words to edit before sending"))
+            : (appState.pulseCardHasChat(card)
+                ? AppLocalization.string("Opens the chat with this reminder ready to send")
+                : AppLocalization.string("Opens a new chat with this reminder ready to send"))))
         .disabled(actingCard != nil || isBusy(card))
         .accessibilityIdentifier("pulse.card.do-it")
     }

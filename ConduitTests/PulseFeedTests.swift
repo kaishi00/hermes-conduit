@@ -852,6 +852,34 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default"))
     }
 
+    func testAskFillsTheChatWithItsWordsAndNeedsAnAsk() async throws {
+        let state = try appState()
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"home_chat_id": "pulse_chat", "cards": [
+          {"id": 2, "kind": "noticed", "topic": "other", "level": "screen", "news": "The audit failed", "chat_id": "work",
+           "message_id": 42, "look": {"shape": "plain", "facts": {},
+           "actions": [{"label": "Retry", "does": "ask", "say": "Run the audit again"}]}},
+          {"id": 3, "kind": "noticed", "topic": "other", "level": "screen", "news": "No buttons", "chat_id": "work"}
+        ]}
+        """)))
+        state.setNotifierPluginStateForTesting(.reported(version: "0.149.0", capabilities: [
+            PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
+            PulseClient.foundActionsCapability
+        ]))
+        state.applyPulseFeed(page)
+        let asking = try XCTUnwrap(page.cards.first { $0.id == 2 })
+        let plain = try XCTUnwrap(page.cards.first { $0.id == 3 })
+        XCTAssertFalse(state.canAskFromPulseCard(plain))
+        let refused = await state.actOnPulseCard(plain, words: "Something else")
+        XCTAssertFalse(refused, "a card with no ask takes no words")
+        XCTAssertTrue(state.canAskFromPulseCard(asking))
+        state.activeSessionId = "work"
+        let opened = await state.actOnPulseCard(asking, words: "Run the audit again")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(state.composerPrefillText, "Run the audit again", "the ask's words, not the card's reminder")
+        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default"))
+    }
+
     func testOpeningACardsChatShowsTheMessageItCameFrom() throws {
         let state = try appState()
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
