@@ -1053,8 +1053,8 @@ extension GatewayRestartTests {
             Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
             Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
         ]
+        // A plugin without the host-run update: the restarts run from here.
         var updater = host.updater()
-        updater.onHost = true
         updater.restartOnly = true
         let outcome = await updater.run { _ in }
         XCTAssertEqual(outcome, .updated(version: "0.63.0"))
