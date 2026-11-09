@@ -885,7 +885,7 @@ struct RichReviewSheet: View {
     private func choose(_ option: String, in decision: RichReviewDecision) {
         choices[choiceKey(decision)] = option
         // An approval or a change follows the option shown, on the round being marked.
-        if editable, var mark = marks[decision.id], mark.kind != .skip {
+        if roundNumber == review.round, var mark = marks[decision.id], mark.kind != .skip {
             mark.option = option
             marks[decision.id] = mark
         }
