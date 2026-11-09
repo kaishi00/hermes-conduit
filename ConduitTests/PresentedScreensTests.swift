@@ -214,6 +214,8 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(prompt.isDeclined(by: "Don't send it to Alex\nsend it to Bob"))
         XCTAssertFalse(prompt.isDeclined(by: "不要，改到周三"))
         XCTAssertFalse(prompt.isDeclined(by: "我不想发给Alex，发给Bob"))
+        XCTAssertFalse(prompt.isDeclined(by: "我没有说不发"))
+        XCTAssertFalse(prompt.isDeclined(by: "送らないでとは言ってない"))
         // A Chinese or Japanese question, and one in another language.
         XCTAssertFalse(prompt.isDeclined(by: "取消吗"))
         XCTAssertFalse(prompt.isDeclined(by: "不发吗"))

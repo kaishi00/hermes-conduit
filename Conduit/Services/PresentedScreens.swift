@@ -282,9 +282,20 @@ struct PresentedConfirm: Identifiable, Equatable {
         // like a don't does.
         case .other:
             return VoiceThreadRouting.containsRefusalVerb(words)
-                || (Self.cjkSendRefusals.contains(where: { words.contains($0) }) && Self.isOneClause(words))
+                || (Self.isCJKSendRefusal(words) && Self.isOneClause(words))
         }
     }
+
+    /// A not on the send and no other not: "我没有说不发" (I didn't say
+    /// not to send) denies the refusal.
+    private static func isCJKSendRefusal(_ words: String) -> Bool {
+        guard let phrase = cjkSendRefusals.first(where: { words.contains($0) }) else { return false }
+        let rest = words.replacingOccurrences(of: phrase, with: " ")
+        return !cjkNots.contains(where: { rest.contains($0) })
+    }
+
+    /// Chinese, Japanese and Korean nots.
+    private static let cjkNots = ["不", "没", "沒", "别", "別", "ない", "ません", "않", "못", "마", "말"]
 
     /// The marks that end a Chinese or Japanese question.
     private static let cjkQuestionEnds = ["吗", "嗎", "么", "麼", "か", "かな"]
