@@ -315,8 +315,8 @@ struct PresentedConfirm: Identifiable, Equatable {
     }
 
     /// What may follow a Chinese send verb and keep it about sending
-    /// ("不要发了", "别发给他", "不用发出去").
-    private static let cjkSendFollowers: Set<Character> = ["了", "吧", "啊", "呀", "啦", "嘛", "给", "給", "到", "出", "过", "過", "这", "這", "那", "邮", "郵", "消", "信"]
+    /// ("不要发了", "别发给他", "不要发短信").
+    private static let cjkSendFollowers: Set<Character> = ["了", "吧", "啊", "呀", "啦", "嘛", "给", "給", "到", "出", "过", "過", "这", "這", "那", "邮", "郵", "消", "信", "短", "微", "电", "電", "文", "照", "图", "圖", "链", "鏈", "语", "語", "它", "个", "個", "条", "條", "封", "帖"]
 
     /// Chinese, Japanese and Korean nots.
     private static let cjkNots = ["不", "没", "沒", "别", "別", "ない", "ません", "않", "못", "마", "말"]
