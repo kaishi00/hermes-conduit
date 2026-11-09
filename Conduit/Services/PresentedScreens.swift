@@ -571,10 +571,12 @@ final class PresentedScreensSync: ObservableObject {
     /// person's Hermes' asks, the same way, with Share only when there's an
     /// answer to share (plugin 0.120+). "room-work": a room's ask to start
     /// work for it (Run work), answered Start, Change it (with what to do
-    /// instead) or Don't start (plugin 0.137+).
+    /// instead) or Don't start (plugin 0.137+). "pulse-looks": Pulse
+    /// cards drawn from their picks, a conduit_show card body among them
+    /// (plugin 0.150+).
     static let features = ["maps-navigate", "show-cards", "chat-cards", "info-cards", "media-cards", "live-cards",
                            "text-drafts", "board-cards", "room-boards", "diff-cards", "composed-cards", "review-cards", "room-asks", "link-asks",
-                           "room-work"]
+                           "room-work", "pulse-looks"]
     /// The longest Say instead the host keeps.
     static let maxEditText = 2_000
     /// Card ids remembered as seen, so a card is shown at most once.
