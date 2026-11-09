@@ -16,7 +16,7 @@ final class GroupRoomFilesClient {
     static let readCapability = "room-file-reads"
     /// Linked Rooms carry each file sent into a room to its guests' hosts,
     /// and the same route reads the home's path from your own host's copy
-    /// (plugin 0.148+), so a room someone else hosts draws them too.
+    /// (plugin 0.149+), so a room someone else hosts draws them too.
     static let linkedCapability = "room-files-linked"
     static let picturePath = "/api/plugins/conduit_push/room-files/data-url"
 
@@ -154,7 +154,7 @@ extension AppState {
 
     /// Where a room's pictures are read, or nil where they can't be: a
     /// plugin before 0.142, or a room someone else hosts while your plugin
-    /// doesn't keep its files (before 0.148, `room-files-linked`). One
+    /// doesn't keep its files (before 0.149, `room-files-linked`). One
     /// instance per dashboard, so the rows reading it compare equal.
     var roomFilePicturesResolver: GatewayMediaDataURLResolver? {
         roomFilesResolver(reporting: GroupRoomFilesClient.pictureCapability)

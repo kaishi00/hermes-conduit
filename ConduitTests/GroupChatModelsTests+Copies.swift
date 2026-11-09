@@ -208,7 +208,7 @@ extension GroupChatModelsTests {
     }
 
     /// A room someone else hosts draws its pictures and files only once
-    /// your own host keeps them (plugin 0.148+, `room-files-linked`): its
+    /// your own host keeps them (plugin 0.149+, `room-files-linked`): its
     /// messages name the home's paths, which your host reads from its copy.
     @MainActor
     func testACopysRoomFilesReadOnlyWhereYourHostKeepsThem() async throws {
