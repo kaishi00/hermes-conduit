@@ -357,6 +357,17 @@ extension GroupChatModelsTests {
             XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .unreadable("cat.heic"))
         }
         XCTAssertTrue(alone.uploads.isEmpty)
+
+        // Under both limits, the file Hermes never takes is still found
+        // before the picture beside it goes up.
+        let small = try attachmentsStaged("small.png", data: Self.pngBytes, mimeType: "image/png", kind: .image)
+        do {
+            _ = try await withoutPlugin.roomMessage("", attachments: [small, heic])
+            XCTFail("expected the message to fail")
+        } catch {
+            XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .unreadable("cat.heic"))
+        }
+        XCTAssertTrue(alone.uploads.isEmpty, "nothing is left on the host for a message that never sends")
         withoutPlugin.closeGroupRoom()
     }
 

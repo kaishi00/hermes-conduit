@@ -204,20 +204,19 @@ extension AppState {
             throw GroupRoomFilesClient.Failure.notConnected
         }
         if roomTakesHermesAttachments, let client, let roomID = activeRoomSurface?.room.roomID {
-            // Past Hermes' count or message total with nowhere for the
-            // rest: say so before anything goes up, so no upload is left
-            // stored on the host for a message that never sends.
+            // With nowhere for the rest, say what stops the message before
+            // anything goes up, so no upload is left stored on the host for
+            // a message that never sends. A file Hermes never takes comes
+            // first: no split of the message would send it.
             if !pluginStores {
+                let refused = await Task.detached(priority: .userInitiated) {
+                    attachments.first { !GroupRoomHermesUpload.takes($0) }
+                }.value
+                if let refused { throw GroupRoomFilesClient.Failure.unreadable(refused.name) }
                 if attachments.count > GroupRoomAttachment.maxPerMessage {
                     throw GroupRoomFilesClient.Failure.tooManyFiles
                 }
                 if Self.roomFilesBytes(attachments) > GroupRoomAttachment.maxMessageBytes {
-                    // A file Hermes can never take is the error to name:
-                    // no split of the message would send it.
-                    let refused = await Task.detached(priority: .userInitiated) {
-                        attachments.first { GroupRoomHermesUpload($0) == nil }
-                    }.value
-                    if let refused { throw GroupRoomFilesClient.Failure.unreadable(refused.name) }
                     throw GroupRoomFilesClient.Failure.overMessageLimit
                 }
             }
@@ -445,28 +444,37 @@ struct GroupRoomHermesUpload {
     let digest: String
 
     init?(_ attachment: Attachment) {
-        guard let data = AttachmentHelper.data(for: attachment), !data.isEmpty,
-              data.count <= GroupRoomAttachment.maxBytes else { return nil }
-        let declared = (attachment.mimeType ?? "").lowercased()
-        if let picture = Self.pictureType(data) {
-            (kind, mime) = ("image", picture)
-        } else if data.starts(with: Array("%PDF-".utf8)) {
-            (kind, mime) = ("pdf", "application/pdf")
-        } else if declared.hasPrefix("image/") || declared == "application/pdf" {
-            // A picture or PDF Hermes doesn't recognize (HEIC, a damaged
-            // file): Hermes takes neither as a plain file.
-            return nil
-        } else if declared.hasPrefix("text/") || declared.isEmpty {
-            // Hermes takes text only as plain text.
-            guard String(data: data, encoding: .utf8) != nil, !data.contains(0) else { return nil }
-            (kind, mime) = ("file", "text/plain")
-        } else {
-            (kind, mime) = ("file", declared)
-        }
+        guard let data = AttachmentHelper.data(for: attachment),
+              let accepted = Self.accepted(data, declared: attachment.mimeType) else { return nil }
+        (kind, mime) = accepted
         name = attachment.name
         size = data.count
         base64 = data.base64EncodedString()
         digest = SHA256.hash(data: data).prefix(12).map { String(format: "%02x", $0) }.joined()
+    }
+
+    /// Whether Hermes takes this file at all, read without encoding it.
+    static func takes(_ attachment: Attachment) -> Bool {
+        guard let data = AttachmentHelper.data(for: attachment) else { return false }
+        return accepted(data, declared: attachment.mimeType) != nil
+    }
+
+    /// The kind and type Hermes takes these bytes as, or nil where it
+    /// takes them as nothing.
+    private static func accepted(_ data: Data, declared mimeType: String?) -> (kind: String, mime: String)? {
+        guard !data.isEmpty, data.count <= GroupRoomAttachment.maxBytes else { return nil }
+        let declared = (mimeType ?? "").lowercased()
+        if let picture = pictureType(data) { return ("image", picture) }
+        if data.starts(with: Array("%PDF-".utf8)) { return ("pdf", "application/pdf") }
+        // A picture or PDF Hermes doesn't recognize (HEIC, a damaged
+        // file): Hermes takes neither as a plain file.
+        if declared.hasPrefix("image/") || declared == "application/pdf" { return nil }
+        if declared.hasPrefix("text/") || declared.isEmpty {
+            // Hermes takes text only as plain text.
+            guard String(data: data, encoding: .utf8) != nil, !data.contains(0) else { return nil }
+            return ("file", "text/plain")
+        }
+        return ("file", declared)
     }
 
     /// The staged file and its bytes: a retry of the same file reuses the
