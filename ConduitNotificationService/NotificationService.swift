@@ -10,7 +10,8 @@ import UserNotifications
 /// with Chat names (#1415), and the generic copy for its type otherwise. Anything that doesn't
 /// verify, is a replay, or is plaintext for a pairing that has a key shows
 /// only the generic copy and loses its routing data, so tapping it routes
-/// nowhere. Conduit itself re-verifies the envelope on tap; nothing this
+/// nowhere. A group room's replies replace each other (one notification per
+/// room, issue 2064). Conduit itself re-verifies the envelope on tap; nothing this
 /// extension writes into the notification is trusted on its own.
 final class NotificationService: UNNotificationServiceExtension {
     // didReceive and serviceExtensionTimeWillExpire may run on different
@@ -91,6 +92,20 @@ final class NotificationService: UNNotificationServiceExtension {
                 quietGateways: NotificationSharedSettings.pulseQuietGateways
             ) {
                 content.categoryIdentifier = PulseNotifications.categoryIdentifier
+            }
+            // A group room keeps one notification: this one replaces the
+            // room's last, whichever bot sent it (issue 2064).
+            if let thread = ReadChatHint.roomThread(note) {
+                content.threadIdentifier = thread
+                let center = UNUserNotificationCenter.current()
+                center.getDeliveredNotifications { [weak self] delivered in
+                    let earlier = delivered
+                        .filter { ReadChatHint.replaces(note, delivered: $0.request.content.userInfo) }
+                        .map(\.request.identifier)
+                    if !earlier.isEmpty { center.removeDeliveredNotifications(withIdentifiers: earlier) }
+                    self?.deliver(content)
+                }
+                return
             }
             deliver(content)
         }

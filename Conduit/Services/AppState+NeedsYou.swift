@@ -70,8 +70,10 @@ extension AppState {
         Task { @MainActor [weak self] in await self?.refreshNeedsYou() }
     }
 
-    /// Whether a wait is in the chat on screen, whose card is there.
+    /// Whether a wait is in the chat on screen, whose card is there, or in
+    /// the group room on screen, whose card answers it (issue 2064).
     func isOpenChat(_ item: NeedsYouItem) -> Bool {
+        if let roomID = item.roomID { return activeRoomSurface?.room.roomID == roomID }
         // A Bot Chat's own profile, not the strip's selected one.
         guard profilesMatch(item.profile, conversationIdentityProfile),
               let active = activeSessionId, !active.isEmpty else { return false }
@@ -83,6 +85,14 @@ extension AppState {
     /// the chat on screen it only scrolls.
     func openNeedsYou(_ item: NeedsYouItem) {
         needsYou.dismissBanner(item)
+        if let roomID = item.roomID {
+            // A wait in a group room this Hermes hosts: the room opens (in
+            // any profile, since rooms are the dashboard's) with its card.
+            dismissSidebarDrawer()
+            guard !isOpenChat(item) else { return }
+            Task { _ = await openNotificationRoom(roomID) }
+            return
+        }
         guard let sessionID = item.sessionIDs.first else { return }
         let isOpen = isOpenChat(item)
         // Another profile's chat doesn't open during a call (it says so),

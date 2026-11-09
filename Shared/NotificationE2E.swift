@@ -642,14 +642,40 @@ enum NotificationSharedSettings {
 enum ReadChatHint {
     static let userInfoKey = "conduit_chat"
 
-    /// The routing fields that name the chat, its dashboard and the kind
-    /// of push (one that waits on the user isn't cleared).
+    /// The routing fields that name the chat (or the room), its dashboard
+    /// and the kind of push (one that waits on the user isn't cleared).
     static func note(_ routing: [String: Any]) -> [String: String] {
         var note: [String: String] = [:]
         for field in ["session_id", "stored_session_id", "session_key", "dashboard_id", "gateway_id", "type"] {
             if let value = routing[field] as? String, !value.isEmpty { note[field] = value }
         }
+        // The group room a turn's push opens (issue 2064), so reading that
+        // room clears it and the room's next reply replaces it.
+        if let room = (routing["room"] as? [String: Any])?["id"] as? String, !room.isEmpty { note["room_id"] = room }
         return note
+    }
+
+    /// The pushes from a group room this Hermes hosts that keep one
+    /// notification per room, each replacing the last (Eric, 2026-11-09,
+    /// issue 2064): a bot's reply, a failed turn and a finished background
+    /// task. An approval keeps its own until it's answered. Each bot's
+    /// profile pairs and seals on its own, so the relay can't collapse them
+    /// across bots; the extension does, by the room in the note.
+    static let roomReplacingTypes: Set<String> = ["response.ready", "turn.failed", "background_task.finished"]
+
+    /// The Notification Center stack a room's pushes share, or nil for a
+    /// push that keeps its own.
+    static func roomThread(_ note: [String: String]) -> String? {
+        guard let room = note["room_id"], let type = note["type"], roomReplacingTypes.contains(type) else { return nil }
+        return "room:\(note["dashboard_id"] ?? note["gateway_id"] ?? "-"):\(room)"
+    }
+
+    /// Whether a delivered notification's note is an earlier push of the
+    /// room `note` is for, on the same dashboard: the new one replaces it.
+    static func replaces(_ note: [String: String], delivered: [AnyHashable: Any]) -> Bool {
+        guard let thread = roomThread(note), let other = read(delivered) else { return false }
+        let strings = other.compactMapValues { $0 as? String }
+        return roomThread(strings) == thread
     }
 
     /// Trusted as the extension's own: it drops any note a push arrives

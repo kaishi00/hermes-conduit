@@ -12913,7 +12913,10 @@ final class AppState: ObservableObject {
     @Published private(set) var activeRoomSurface: GroupRoomSurface? {
         // A room takes the chat's place without changing the open chat.
         didSet {
-            if (oldValue == nil) != (activeRoomSurface == nil) { updateChatOnScreen() }
+            // Another room straight from one: its notifications are read too (issue 2064).
+            if (oldValue == nil) != (activeRoomSurface == nil) || oldValue?.room.roomID != activeRoomSurface?.room.roomID {
+                updateChatOnScreen()
+            }
             // Another room (or none): no screen of it has left yet.
             if oldValue?.room.roomID != activeRoomSurface?.room.roomID { roomScreenLeft = false }
         }
@@ -13895,6 +13898,32 @@ final class AppState: ObservableObject {
         let rooms = keptRead(KeptGroupRooms.self, KeptRoute.groupRooms, profile: KeptRoute.everyProfile)
         keptGroupRoomsMemo = (key, rooms)
         return rooms
+    }
+
+    /// Opens the room a notification names (issue 2064), as Hermes lists
+    /// it: the list on hand when it has the room, else read again first. A
+    /// room Hermes no longer lists says so; one whose list can't be read
+    /// yet (support still being asked, a read that failed) is tried again.
+    func openNotificationRoom(_ roomID: String) async -> NotificationOpenOutcome {
+        guard client != nil, isConnected else { return .retry }
+        let dashboardID = activeDashboardID
+        if !groupRoomsListed || !groupRooms.contains(where: { $0.roomID == roomID }) {
+            if groupCapabilities == nil {
+                await refreshGroupChatSupport()
+            } else {
+                await refreshGroupRooms()
+            }
+            guard !Task.isCancelled, activeDashboardID == dashboardID else { return .retry }
+        }
+        guard let room = groupRooms.first(where: { $0.roomID == roomID && !$0.isDisbanded }) else {
+            guard groupRoomsListed || groupChatPhase == .gatewayUnsupported else { return .retry }
+            errorMessage = AppLocalization.string("That chat is no longer available.")
+            return .failed
+        }
+        showSidebar = false
+        await openGroupRoom(room)
+        guard !Task.isCancelled else { return .retry }
+        return activeRoomSurface?.room.roomID == roomID ? .opened : .failed
     }
 
     /// Open a hosted room. Loads the room's authoritative state, replays a
@@ -27688,6 +27717,15 @@ final class AppState: ObservableObject {
                 errorMessage = AppLocalization.string("This notification predates multi-dashboard pairing. Update the notifier on the sending gateway and pair it again to continue.")
             }
             return .failed
+        }
+        // A turn's reply, failure, background task or approval in a group
+        // room this Hermes hosts opens the room, where an approval has its
+        // card: the chat it names is the bot's hidden one there, not a chat
+        // to open (issue 2064). Rooms are the dashboard's, whichever
+        // profile's bot it was, so no profile switch.
+        if let roomID = target.roomID {
+            traceStage = "group room"
+            return await openNotificationRoom(roomID)
         }
         // An approval one of your agents waits for in a room someone else
         // hosts: its notification names the hidden chat the turn runs in,

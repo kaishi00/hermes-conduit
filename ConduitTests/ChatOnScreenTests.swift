@@ -99,6 +99,68 @@ final class ChatOnScreenTests: XCTestCase {
         XCTAssertNil(ReadChatHint.read([ReadChatHint.userInfoKey: ["dashboard_id": dashboard.uuidString]]), "no chat, no note")
     }
 
+    /// Issue 2064: a push from a group room this Hermes hosts opens, is read
+    /// with and keeps one notification for the room, not the bot's hidden
+    /// chat there.
+    func testAHostedRoomsPushesOpenAreReadWithAndReplaceEachOtherInTheRoom() throws {
+        let dashboard = UUID()
+        func parsed(_ type: String, room: Any? = ["id": "conduit-1"]) -> ConduitNotificationTarget? {
+            var payload: [String: Any] = ["session_id": "hidden-1", "type": type, "dashboard_id": dashboard.uuidString]
+            payload["room"] = room
+            return PushNotificationService.parseNotificationTarget(from: ["body": ["conduit": payload]], records: [],
+                                                                   knownGatewayIDs: [], keysProvisioned: false)
+        }
+        for type in ["response.ready", "turn.failed", "background_task.finished", "approval.needed"] {
+            XCTAssertEqual(parsed(type)?.roomID, "conduit-1", type)
+            XCTAssertEqual(parsed(type)?.sessionId, "hidden-1", "an older app still has the chat")
+        }
+        XCTAssertNil(parsed("input.needed")?.roomID, "nothing else names a room")
+        XCTAssertNil(parsed("room.invite")?.roomID, "an invite's room is another host's")
+        XCTAssertNil(parsed("response.ready", room: ["id": "  "])?.roomID)
+        XCTAssertNil(parsed("response.ready", room: nil)?.roomID, "an older notifier's")
+
+        // The extension's note keeps the room, so reading it clears the push after it stops verifying.
+        let note = ReadChatHint.note(["session_id": "hidden-1", "type": "response.ready", "dashboard_id": dashboard.uuidString,
+                                      "room": ["id": "conduit-1"]])
+        XCTAssertEqual(note["room_id"], "conduit-1")
+        XCTAssertEqual(PushNotificationService.readChatTarget(from: [ReadChatHint.userInfoKey: note], records: [])?.roomID,
+                       "conduit-1")
+
+        // The room on screen reads its replies and failures; an approval waits to be answered.
+        let delivered: [(identifier: String, target: ConduitNotificationTarget?)] = [
+            ("reply", parsed("response.ready")), ("failed", parsed("turn.failed")),
+            ("approval", parsed("approval.needed")), ("other-room", parsed("response.ready", room: ["id": "conduit-2"])),
+        ]
+        XCTAssertEqual(ReadChatNotifications.identifiers(of: delivered, sessionIDs: [], roomID: "conduit-1",
+                                                         activeDashboardID: dashboard, savedDashboardIDs: [dashboard],
+                                                         activeDashboardGatewayIDs: []), ["reply", "failed"])
+        XCTAssertEqual(ReadChatNotifications.identifiers(of: delivered, sessionIDs: [], activeDashboardID: dashboard,
+                                                         savedDashboardIDs: [dashboard], activeDashboardGatewayIDs: []), [],
+                       "no room on screen reads none")
+
+        // One notification per room (Eric, 2026-11-09): a reply, failure or task replaces the room's last.
+        func noted(_ type: String, room: String = "conduit-1", on board: UUID = dashboard) -> [String: String] {
+            ReadChatHint.note(["session_id": "hidden-\(type)", "type": type, "dashboard_id": board.uuidString, "room": ["id": room]])
+        }
+        let thread = try XCTUnwrap(ReadChatHint.roomThread(noted("response.ready")))
+        XCTAssertEqual(ReadChatHint.roomThread(noted("background_task.finished")), thread)
+        XCTAssertNil(ReadChatHint.roomThread(noted("approval.needed")), "an approval keeps its own until answered")
+        XCTAssertNil(ReadChatHint.roomThread(ReadChatHint.note(["session_id": "chat", "type": "response.ready"])))
+        let reply = noted("response.ready")
+        XCTAssertTrue(ReadChatHint.replaces(reply, delivered: [ReadChatHint.userInfoKey: noted("turn.failed")]))
+        XCTAssertFalse(ReadChatHint.replaces(reply, delivered: [ReadChatHint.userInfoKey: noted("approval.needed")]))
+        XCTAssertFalse(ReadChatHint.replaces(reply, delivered: [ReadChatHint.userInfoKey: noted("response.ready", room: "conduit-2")]))
+        XCTAssertFalse(ReadChatHint.replaces(reply, delivered: [ReadChatHint.userInfoKey: noted("response.ready", on: UUID())]),
+                       "another dashboard's room of the same id")
+        XCTAssertFalse(ReadChatHint.replaces(reply, delivered: [:]))
+
+        // Needs you opens the room for a wait in one.
+        let wait = try XCTUnwrap(NeedsYouItem(host: ["id": "w1", "kind": "approval", "session_ids": ["hidden-1"],
+                                                     "title": "Zoo trip", "room": "conduit-1"], profile: "furina"))
+        XCTAssertEqual(wait.roomID, "conduit-1")
+        XCTAssertNil(NeedsYouItem(host: ["id": "w2", "kind": "approval", "session_ids": ["chat"]], profile: "default")?.roomID)
+    }
+
     func testARunningTurnDoesNotCountAsSomeoneLooking() {
         let clock = UptimeBox()
         let idle = InteractionIdleState(idleAfter: 120, now: { clock.now }, schedule: { _, _ in {} },
