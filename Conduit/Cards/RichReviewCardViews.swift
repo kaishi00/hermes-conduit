@@ -36,9 +36,13 @@ struct RichReviewCard: View {
                     }
                     RichReviewSettledLines(settled: review.settled)
                     if failed {
-                        Text("The options couldn't be loaded.")
-                            .scaledFont(.footnote)
-                            .foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            Text("The options couldn't be loaded.")
+                                .scaledFont(.footnote)
+                                .foregroundStyle(.secondary)
+                            Button("Try again") { Task { await load(review) } }
+                                .scaledFont(.footnote.weight(.semibold))
+                        }
                     }
                     footer(review)
                 }
@@ -573,9 +577,13 @@ struct RichReviewSheet: View {
                             decisionView(decisions[decisionIndex])
                         }
                         if failed {
-                            Text("The options couldn't be loaded.")
-                                .scaledFont(.footnote)
-                                .foregroundStyle(.secondary)
+                            HStack(spacing: 8) {
+                                Text("The options couldn't be loaded.")
+                                    .scaledFont(.footnote)
+                                    .foregroundStyle(.secondary)
+                                Button("Try again") { Task { await load() } }
+                                    .scaledFont(.footnote.weight(.semibold))
+                            }
                         }
                         if roundNumber == review.round {
                             RichReviewSettledLines(settled: review.settled)

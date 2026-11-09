@@ -122,6 +122,13 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(round.decisions.map(\.id), ["d1"])
         _ = try await loader.round(id, 1)
         XCTAssertEqual(asked.paths, ["/api/plugins/conduit_push/boards/reviews?id=\(id)&round=1"], "read once")
+        XCTAssertNotNil(loader.kept(id, 1))
+        loader.forget(id, 1)
+        XCTAssertNil(loader.kept(id, 1), "a forgotten round isn't kept")
+        _ = try await loader.round(id, 1)
+        XCTAssertEqual(asked.paths.count, 2, "a forgotten round is read again")
+        _ = try await loader.round(id, 1, fresh: true)
+        XCTAssertEqual(asked.paths.count, 3, "fresh asks again")
         do {
             _ = try await loader.round("../etc", 1)
             XCTFail("only a kept review's id is read")

@@ -291,7 +291,7 @@ final class PresentedScreensSync: ObservableObject {
     /// "diff-cards": changes line by line (plugin 0.133+); "composed-cards":
     /// cards Hermes builds itself, and buttons and fields on any card
     /// (plugin 0.140+). "review-cards": options to look at and mark, a
-    /// quick pick or a review in rounds (plugin 0.142+). "room-asks": a
+    /// quick pick or a review in rounds (plugin 0.147+). "room-asks": a
     /// room's asks, answered with Share, Say instead (with the words) or
     /// Don't share (plugin 0.118+, Linked Rooms). "link-asks": a linked
     /// person's Hermes' asks, the same way, with Share only when there's an
