@@ -1260,6 +1260,44 @@ microphone · voice clips in the chat · the Read Aloud buttons in chats and gro
 
 **Checked:** 2026-11-07, #1977 (capture converts on the tap thread, Classic's meter publishes on its own, issues 1959 and 1970; the fallback clip's decode stays on the main thread so its failure reaches the speech stream); 2026-11-06, #1847 (an answered call from Hermes has Speaker on the call screen in every mode, for a tester who couldn't leave the earpiece; CarPlay and the Watch play on their own routes, the minimised bar opens the screen); 2026-11-05, #1794 (a live reply's odd trailing byte is dropped at turnComplete instead of shifting the next reply, Gemini, Qwen, Grok and Local Live on both audios, issue 1791; Classic and Read Aloud already did, the Watch carries none, GPT-Live is WebRTC); 2026-11-05, #1772 (Read Aloud kept off calls and the microphone, standalone playback leaves a call from Hermes' session alone, issue 1770); 2026-11-04, #1733 (a stream's odd byte kept on its own storage, so a route change's restart no longer traps); 2026-11-02, #1650 (Read Aloud and the speech test play on after a route change instead of restarting with the queued middle dropped, issue 1641; headphones taken out pause Read Aloud); 2026-10-30, #1524 (Read Aloud reads a Desktop card as a short note; route, Speaker and mute unchanged); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
 
+## Local Live's fast model on every speech server
+
+Agent mode (Live > Local): a fast model the user picks answers each thing
+said on the call, and hands work to Hermes as background jobs through the
+call's tools. Which speech servers it reaches: one that asks the plugin's
+model address for replies, and one that only reads text aloud, where the
+plugin's read-back relay runs the turns.
+
+**Siblings:** the model address (`/local-live/v1/chat/completions`) · the
+read-back relay on the phone's socket (notifier 0.149.0) · the Watch's
+bridge (a gap: its call has no agent, so it keeps Hermes turns) · CarPlay
+and calls from Hermes (the phone's call: not needed) · Talking over Hermes
+(talking over the fast model's reply stops it like Hermes', on both paths)
+· Job results during calls and Acknowledging work handed to Hermes (not
+needed: the phone runs the tools and says results whichever path asked the
+fast model) · Local > 3. Your fast model and its caption (not needed: they
+never named a server type) · the notifier's README (both sections) ·
+docs/VOICE_SETTINGS.md (not needed: it doesn't describe agent mode's
+paths)
+
+**Code**
+- The fast model and its tools: `notifier/dashboard/api/local_live_agent.py` (_LocalLiveAgent.reply, _local_live_front_target, LOCAL_LIVE_READY_PREFIX, LOCAL_LIVE_FRONT_UNREACHABLE_REPLY)
+- The model address: `notifier/dashboard/api/local_live.py` (post_local_live_chat_completions)
+- The read-back relay: `notifier/dashboard/api/local_live_read_back.py` (_ReadBackFrontTurn, _LocalLiveReadBack._open_turn and _let_go)
+- The Watch's bridge: `notifier/dashboard/api/watch_local_live.py` (_LocalLiveWatchCall)
+- What the phone sends: `Shared/LocalLive/LocalLiveProtocol.swift` (agentConfigure), `Conduit/Services/AppState.swift` (localLiveAgentSetup)
+- Tests: `notifier/tests/test_local_live.py` (the agent mode tests, and those named on_a_read_back_server)
+
+**Rulings**
+- The readiness check is always the phone's own turn, never the fast model's, on both paths (notifier 0.49.0, 0.149.0).
+- A fast model that isn't set up, or fails before saying anything, hands the words to a Hermes turn after its one first-person line, on both paths (notifier #586, 0.149.0).
+- On a read-back server the fast model's words go back sentence by sentence like Hermes', and talking over them, Interrupt or the call's response.cancel stop the fast model and any Hermes turn it fell back to; what it already said stays in its conversation (0.149.0; proposed with this PR, for Eric to confirm).
+
+**Open gaps**
+- The Watch's bridge keeps one Hermes turn per utterance on a read-back server: its call sends no conduit.agent, so there is no fast model to ask (0.149.0).
+
+**Checked:** 2026-11-09, #2058 (added: agent mode on a read-back speech server, notifier 0.149.0).
+
 ## Talking over Hermes
 
 Speaking while Hermes talks or thinks: barge-in, talk-over, steering, push to
