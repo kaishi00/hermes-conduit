@@ -131,7 +131,8 @@ extension ChatOnScreen {
 }
 
 /// The notifications a chat on screen has made read (#1579): those this
-/// device holds for the chat, under any of its ids, that a tap would open
+/// device holds for the chat, under any of its ids (or for the group room
+/// on screen, the room a reply or a failed turn opens), that a tap would open
 /// here (NotificationDashboardOwnership, as routing decides). One that
 /// waits on the user (an approval, a question, a call, a calendar change)
 /// stays until it's answered, and one Conduit can't read never matches.
@@ -144,6 +145,7 @@ enum ReadChatNotifications {
     static func identifiers(
         of delivered: [(identifier: String, target: ConduitNotificationTarget?)],
         sessionIDs: Set<String>,
+        roomID: String? = nil,
         activeDashboardID: UUID?,
         savedDashboardIDs: [UUID],
         activeDashboardGatewayIDs: Set<String>
@@ -151,7 +153,9 @@ enum ReadChatNotifications {
         delivered.compactMap { identifier, target in
             guard let target, !waitingTypes.contains(target.type ?? ""), target.decision == nil, target.call == nil,
                   sessionIDs.contains(target.sessionId)
-                    || target.durableSessionID.map({ sessionIDs.contains($0) }) == true,
+                    || target.durableSessionID.map({ sessionIDs.contains($0) }) == true
+                    // A group room on screen reads its bots' replies and failures (issue 2064).
+                    || (roomID != nil && target.roomID == roomID),
                   NotificationDashboardOwnership.resolve(
                     targetDashboardID: target.dashboardID,
                     hasMalformedDashboardID: target.hasMalformedDashboardID,
