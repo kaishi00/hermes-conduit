@@ -448,6 +448,10 @@ extension GatewayRestartTests {
         XCTAssertEqual(PluginUpdateAsk.reason(LocalLiveProtocol.pluginMissingReason),
                        "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
         XCTAssertFalse(VoiceCallbackAvailability.unsupported.refusal.contains("needs an update"))
+        // The Watch says the same, from the context the iPhone shares.
+        let context = WatchPhoneContext(pluginAsk: PluginUpdateAsk.managedAsk)
+        XCTAssertEqual(WatchPhoneContext.decode(context.encoded())?.pluginAsk,
+                       "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
         // What else the ask said (sharing paused, the version needed) leads.
         XCTAssertEqual(PluginUpdateAsk.text(ask, lead: "Sharing is paused."),
                        "Sharing is paused. The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
@@ -458,6 +462,7 @@ extension GatewayRestartTests {
         XCTAssertEqual(PluginUpdateAsk.text(ask, then: "This one wasn't kept."), ask)
         XCTAssertEqual(PluginUpdateAsk.text(ask, lead: "Sharing is paused."), ask)
         XCTAssertTrue(VoiceCallbackAvailability.unsupported.refusal.contains("needs an update"))
+        XCTAssertNil(PluginUpdateAsk.managedAsk)
         XCTAssertEqual(PluginUpdateAsk.title("Plugin update needed"), "Plugin update needed")
     }
 

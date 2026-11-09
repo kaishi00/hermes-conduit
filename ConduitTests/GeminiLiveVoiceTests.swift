@@ -1380,6 +1380,26 @@ extension VoiceConversationControllerTests {
         XCTAssertFalse(input.running)
     }
 
+    /// On a host that manages the plugin, a missing plugin feature says who
+    /// keeps it up to date, at the start and when a session's route is gone
+    /// (Grok and Local Live ride this controller too).
+    func testAManagedHostsMissingPluginSaysWhoKeepsItUpToDate() async {
+        PluginUpdateAsk.setActive(managedBy: "Family farm")
+        defer { PluginUpdateAsk.setActive(managedBy: nil) }
+        let managed = "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date."
+        let tokens = FakeGeminiLiveTokens()
+        tokens.availabilityResult = .success(.pluginMissing)
+        let (refused, _, _, _, _) = makeGeminiController(tokens: tokens, clock: Date.init)
+        await refused.start()
+        XCTAssertEqual(refused.phase, .failed(managed))
+
+        let (controller, session, _, _, _) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onStateChange?(.failed(LocalLiveProtocol.pluginMissingReason))
+        XCTAssertEqual(controller.phase, .failed(managed))
+    }
+
     func testGeminiLivePublishesSpeakingOncePerTurnNotOnEveryAudioChunk() async {
         let (controller, session, _, _, _) = makeGeminiController(clock: Date.init)
         await controller.start()

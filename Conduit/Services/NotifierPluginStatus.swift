@@ -461,7 +461,13 @@ enum PluginUpdateAsk {
     /// host manages it: then that the host's plugin lacks it, and who keeps it
     /// up to date.
     static func text(_ ask: String) -> String {
-        guard let managedBy = activeManagedBy.withLock({ $0 }) else { return ask }
+        managedAsk ?? ask
+    }
+
+    /// What a host that manages the plugin says in place of the ask (the
+    /// Watch's too, through WatchPhoneContext), or nil when it doesn't.
+    static var managedAsk: String? {
+        guard let managedBy = activeManagedBy.withLock({ $0 }) else { return nil }
         return AppLocalization.string("The Conduit plugin on this host doesn't have this yet.")
             + " " + NotifierPluginStatus.managedText(managedBy)
     }
