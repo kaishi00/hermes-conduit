@@ -56,7 +56,7 @@ extension GroupChatModelsTests {
     private final class AttachmentsHermes {
         var uploads: [(uploadID: String, kind: String, name: String, mime: String, data: Data)] = []
         var sentAttachments: [[GroupRoomAttachment]] = []
-        var downloads: [(eventID: String, attachmentID: String)] = []
+        var downloads: [(eventID: String, attachmentID: String, size: Int)] = []
         var refuseUploads = false
         /// Files Hermes turns down by name.
         var refusedNames: Set<String> = []
@@ -126,8 +126,8 @@ extension GroupChatModelsTests {
             return GroupRoomAttachment(attachmentID: "att-\(hermes.uploads.count)", kind: kind, name: name,
                                        size: Data(base64Encoded: base64)?.count ?? 0, mime: mime)
         }
-        operations.downloadAttachment = { _, _, eventID, attachmentID in
-            hermes.downloads.append((eventID, attachmentID))
+        operations.downloadAttachment = { _, _, eventID, attachmentID, size in
+            hermes.downloads.append((eventID, attachmentID, size))
             if let error = hermes.downloadError { throw error }
             return "data:image/png;base64,\(Self.pngBytes.base64EncodedString())"
         }
@@ -334,7 +334,8 @@ extension GroupChatModelsTests {
             _ = try await withoutPlugin.roomMessage("", attachments: [first, second])
             XCTFail("expected the message to fail")
         } catch {
-            XCTAssertTrue(error is GroupRoomFilesClient.Failure, "\(error)")
+            XCTAssertEqual(error as? GroupRoomFilesClient.Failure, .overMessageLimit(["a.png", "b.png"]),
+                           "the message's total is named, not a file that prepared fine")
         }
         withoutPlugin.closeGroupRoom()
     }
@@ -385,6 +386,7 @@ extension GroupChatModelsTests {
         XCTAssertNotEqual(read, .gone)
         XCTAssertEqual(hermes.downloads.first?.eventID, GroupRoomOutbox.serverEventID(forClientEventID: pending.eventID))
         XCTAssertEqual(hermes.downloads.first?.attachmentID, "a1")
+        XCTAssertEqual(hermes.downloads.first?.size, 9, "the manifest's size reaches the download, for its timeout")
         appState.closeGroupRoom()
     }
 

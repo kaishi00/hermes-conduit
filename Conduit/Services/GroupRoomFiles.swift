@@ -82,6 +82,9 @@ final class GroupRoomFilesClient {
     enum Failure: LocalizedError, Equatable {
         case unreadable(String)
         case malformed
+        /// Together past what Hermes takes in one message (25 MB), with no
+        /// plugin to take the rest.
+        case overMessageLimit([String])
 
         var errorDescription: String? {
             switch self {
@@ -89,6 +92,10 @@ final class GroupRoomFilesClient {
                 return AppLocalization.string("Could not prepare \(name) for upload.")
             case .malformed:
                 return AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again.")
+            case .overMessageLimit(let names):
+                let limit = String(GroupRoomAttachment.maxMessageBytes / 1_000_000)
+                let list = names.joined(separator: ", ")
+                return AppLocalization.string("These files are larger than the \(limit) MB a group room takes: \(list).")
             }
         }
     }
@@ -191,6 +198,11 @@ extension AppState {
                     upload = await Task.detached(priority: .userInitiated) { GroupRoomHermesUpload(attachment) }.value
                 }
                 guard let upload, total + upload.size <= GroupRoomAttachment.maxMessageBytes else {
+                    if upload != nil, !pluginStores {
+                        // Each fits, together they don't: say so, not that a
+                        // file couldn't be prepared.
+                        throw GroupRoomFilesClient.Failure.overMessageLimit(attachments.map(\.name))
+                    }
                     forPlugin.append(attachment)
                     continue
                 }

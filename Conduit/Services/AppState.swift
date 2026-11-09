@@ -304,8 +304,8 @@ struct GroupChatLifecycleOperations {
     var sendAttachments: (@MainActor ([GroupRoomAttachment]) -> Void)?
     /// Room, upload id, kind, name, mime, base64.
     var uploadAttachment: (@MainActor (HermesClient, String, String, String, String, String, String) async throws -> GroupRoomAttachment)?
-    /// Room, event id, attachment id; answers a data URL.
-    var downloadAttachment: (@MainActor (HermesClient, String, String, String) async throws -> String)?
+    /// Room, event id, attachment id, size; answers a data URL.
+    var downloadAttachment: (@MainActor (HermesClient, String, String, String, Int) async throws -> String)?
     var create: (@MainActor (HermesClient, String, String, [[String: Any]]) async throws -> GroupRoom)?
     var stop: (@MainActor (HermesClient, String) async throws -> Int)?
     var approve: (@MainActor (HermesClient, String, GroupPendingApproval, String) async throws -> Bool)?
@@ -13261,7 +13261,7 @@ final class AppState: ObservableObject {
         _ client: HermesClient, roomID: String, eventID: String, attachmentID: String, size: Int = 0
     ) async throws -> String {
         if let operation = groupChatOperations.downloadAttachment {
-            return try await operation(client, roomID, eventID, attachmentID)
+            return try await operation(client, roomID, eventID, attachmentID, size)
         }
         return try await client.groupsAttachmentDownload(
             roomID: roomID, eventID: eventID, attachmentID: attachmentID, size: size
