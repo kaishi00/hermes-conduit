@@ -7085,11 +7085,12 @@ board's live event stream is connected and says when to read.
 share both views) · the live event stream (a batch touching the open task
 reads it at once) · Low Power and Low Data Mode (stretch every poll) · the
 background (no poll) · Tasks' scheduled runs and the drawer's Cron list
-(one read of the newest chat page and the cron rows when shown, the full
-replace on a pull)
+(opening the V2 tab reads only the jobs and their notifications, see What
+opening Tasks reads; the drawer's Cron list reads the newest chat page and
+the cron rows when shown, the full replace on a pull)
 
 **Code**
-- Scheduled runs on show: `Conduit/Services/AppState.swift` (refreshCronContent, refreshNewestSessionCatalogPage), `Conduit/Views/V2/V2TasksView.swift`, `Conduit/Views/SidebarView.swift` (the drawer's Cron list), test in `ConduitTests/SessionCatalogLoadTests.swift` (testShowingTasksReadsTheNewestRowsOverTheCatalog)
+- Scheduled runs on show, the drawer's Cron list: `Conduit/Services/AppState.swift` (refreshCronContent, refreshNewestSessionCatalogPage), `Conduit/Views/SidebarView.swift` (the drawer's Cron list), test in `ConduitTests/SessionCatalogLoadTests.swift` (testShowingTasksReadsTheNewestRowsOverTheCatalog, which now pins this path; the V2 tab's show read is pinned by `scripts/tests/test_scheduled_tab_reads_source_contract.py`)
 - Intervals: `Conduit/Views/KanbanViews.swift` (KanbanPollingPolicy: boardInterval, detailInterval, withoutStream), `Conduit/Services/PowerPolicy.swift` (PollCadence.kanbanBoard, kanbanTaskDetail, kanbanWhileStreaming, stretched)
 - The loops: `Conduit/Views/KanbanViews.swift` (the board's poll task), `Conduit/Views/Kanban/KanbanTaskDetailView.swift` (the detail's poll task)
 - Tests: `ConduitTests/PowerPolicyTests.swift` (testPowerTasksPollAsABackstopWhileTheStreamIsConnected, testATaskOrBoardThatStaysTheSameIsReadLessOftenWithoutTheStream)
@@ -7099,23 +7100,24 @@ replace on a pull)
 - The board reads every 8 s and an open task every 4 s while the stream is down, both every 60 s while it's connected, stretched in Low Power and Low Data Mode; neither reads in the background.
 - Without the stream (a network that refuses the socket), a poll whose reads find nothing new spaces itself out: 15 s after 15 such reads, 30 s after 45, and back to its usual interval once a read finds a change or fails (so a recovered Hermes shows soon). It used to read every 4 s for as long as the task stayed open (2026-11-04, #1734, issue 1728).
 - The stream stops reconnecting, and mints no more ws-tickets, when Hermes refuses the board: at once on a 1008 close (a deleted or unknown board), after three refusals in a row otherwise (a refused upgrade, or another close Hermes chose, like an archived board's). A dropped link, a timeout or a restart keeps the 1-15 s ladder. Polling carries the board after that, until another board, server or tab visit starts a new stream (issue 1971, #1972).
-- Showing Tasks (or the drawer's Cron list) reads the newest chat page and the cron rows over the cached catalog; the older pages follow only when the full history is due, every 5 minutes. Pull to refresh replaces the whole catalog. Each visit used to drop the cache and walk all 25 pages (issue 1962, #1972).
+- Showing the drawer's Cron list reads the newest chat page and the cron rows over the cached catalog; the older pages follow only when the full history is due, every 5 minutes. Pull to refresh replaces the whole catalog. Showing the V2 Tasks tab reads only the jobs and their notifications it draws (2026-11-09, #1921, see What opening Tasks reads). Each visit used to drop the cache and walk all 25 pages (issue 1962, #1972).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-07, #1977 (the Tasks tab's and the Cron list's visits share one newest-page read, and one history walk at a time, review follow-up to #1972); 2026-11-07, #1972 (the stream rests on a refusal, issue 1971; showing Tasks stops walking the whole chat history, issue 1962); 2026-11-05, #1793 (the reassign sheet built from Settings' cards, see Sheets in Settings' look); 2026-11-04, #1734 (seeded; issue 1728; a failed read doesn't count as unchanged, from CodeRabbit's review).
+**Checked:** 2026-11-09, #1921 (the V2 Tasks tab's show read left this entry for What opening Tasks reads; the drawer's Cron list keeps the newest-page read, and the Swift test cited here now pins that path rather than the tab's); 2026-11-07, #1977 (the Tasks tab's and the Cron list's visits share one newest-page read, and one history walk at a time, review follow-up to #1972); 2026-11-07, #1972 (the stream rests on a refusal, issue 1971; showing Tasks stops walking the whole chat history, issue 1962); 2026-11-05, #1793 (the reassign sheet built from Settings' cards, see Sheets in Settings' look); 2026-11-04, #1734 (seeded; issue 1728; a failed read doesn't count as unchanged, from CodeRabbit's review).
 
 ## What opening Tasks reads
 
 Scheduled draws the dashboard's cron jobs and their notifications, so opening
 the tab reads those. The sessions catalogue the legacy drawer's Cron tab also
-fills is not read: the tab shows no cron-session rows.
+fills is not read on opening: the tab shows no cron-session rows.
 
 **Siblings:** the board beside it (its own polls, see How often Tasks reads
 Hermes) · the legacy drawer's Cron tab, which keeps the fuller read because it
-shows the cron-session history · pull to refresh on Scheduled (the same two
-reads) · Chats' Scheduled filter, which draws cron sessions: it loads and polls
+shows the cron-session history · pull to refresh on Scheduled, kept whole: the
+full catalogue replace plus the jobs and notifications, main's #1972 gesture
+(issue 1962) · Chats' Scheduled filter, which draws cron sessions: it loads and polls
 its own catalogue (`loadSessionCatalogIfNeeded`, `runChatListPolling`), so this
 tab's read never fed it, and Show runs in Chats reads the catalogue again on
 the tap because the list's routine poll reuses a cached cron read for up to
@@ -7127,7 +7129,7 @@ you (their own reads, already gated on what shows) · text: none (no Settings
 caption or doc gives this cadence)
 
 **Code**
-- The read: `Conduit/Services/AppState.swift` (refreshScheduledContent: loadCronJobs, refreshCronNotifications), `Conduit/Views/V2/V2TasksView.swift` (the tab's task, its refreshable, and the notification read repeated when the capability lands)
+- The read: `Conduit/Services/AppState.swift` (refreshScheduledContent: loadCronJobs, refreshCronNotifications), `Conduit/Views/V2/V2TasksView.swift` (the tab's task and the notification read repeated when the capability lands; its refreshable is the kept full repair, see the sibling and the ruling below)
 - Show runs in Chats: `Conduit/Views/V2/V2Shell.swift` (showScheduledRuns: the filter it selects, and the catalogue read on the tap)
 - The drawer's fuller read: `Conduit/Services/AppState.swift` (refreshCronContent, which also refreshes the sessions catalogue), `Conduit/Views/SidebarView.swift` (its Cron tab and its own capability re-read)
 
@@ -7135,11 +7137,12 @@ caption or doc gives this cadence)
 - Opening Scheduled reads the jobs and their notifications, never the sessions catalogue: the tab draws no sessions, and the catalogue read was a full list read and cache bypass on every switch to it (2026-11-07, #1921).
 - A notification read that lands before the host reports the capability is repeated when it arrives, so the mute state is corrected then; until that read lands a job can still be drawn unmuted (2026-11-09, #1921; the same signal the drawer's Cron tab uses). A read asked for while a job's notification save is in flight is repeated when the save ends rather than dropped.
 - Show runs in Chats reads the catalogue on the tap: the list's own poll reuses a cached cron read for up to five minutes (`SessionCatalogCache.fullHistoryRefreshInterval`), so a run that finished since Chats last read would be missing from the filter the button opens (2026-11-09, #1921).
+- Pull to refresh keeps the full repair: the jobs, their notifications and the whole session catalogue, as issue 1962's #1972 gave that gesture. Only opening is narrowed; a pull is an explicit request to re-read everything (2026-11-09, #1921, resolving the merge with #1972).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-09, #1921 (Scheduled's opening read narrowed to the jobs it draws; a notification read that lands before the capability is repeated when it arrives, and one asked for during a save is repeated after it; Show runs in Chats reads the catalogue on the tap; Chats' Scheduled filter and the job detail sheet recorded as siblings; the drawer's Cron tab keeps its catalogue read and its own re-read; Code)
+**Checked:** 2026-11-09, #1921 (Scheduled's opening read narrowed to the jobs it draws; a notification read that lands before the capability is repeated when it arrives, and one asked for during a save is repeated after it; Show runs in Chats reads the catalogue on the tap; pull to refresh keeps the full repair #1972 gave it; Chats' Scheduled filter and the job detail sheet recorded as siblings; the drawer's Cron tab keeps its catalogue read and its own re-read; Code)
 
 ## Two Hermes servers
 
