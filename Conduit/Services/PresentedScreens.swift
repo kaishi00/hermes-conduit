@@ -266,7 +266,7 @@ struct PresentedConfirm: Identifiable, Equatable {
               !Self.cjkUnsure.contains(where: { words.contains($0) }) else { return false }
         // Asked not to refuse ("don't decline it", "don't cancel the
         // email", "不要取消") isn't a no.
-        guard !VoiceThreadRouting.negatesRefusalVerb(words), !Self.negatesActionNo(said),
+        guard !VoiceThreadRouting.negatesRefusalVerb(words), !Self.negatesActionNo(said, in: words),
               !Self.cjkNegatedCancels.contains(where: { words.contains($0) }) else { return false }
         switch VoiceThreadRouting.heldRequestAnswer(words) {
         // A no with a change after it ("no, make it for Alex", "never mind,
@@ -317,7 +317,7 @@ struct PresentedConfirm: Identifiable, Equatable {
 
     /// What may follow a Chinese send verb and keep it about sending
     /// ("不要发了", "别发给他", "不要发短信").
-    private static let cjkSendFollowers: Set<Character> = ["了", "吧", "啊", "呀", "啦", "嘛", "给", "給", "到", "出", "过", "過", "这", "這", "那", "邮", "郵", "消", "信", "短", "微", "电", "電", "文", "照", "图", "圖", "链", "鏈", "语", "語", "它", "个", "個", "条", "條", "封", "帖"]
+    private static let cjkSendFollowers: Set<Character> = ["了", "吧", "啊", "呀", "啦", "嘛", "给", "給", "到", "出", "过", "過", "这", "這", "那", "邮", "郵", "消", "信", "送", "短", "微", "电", "電", "文", "照", "图", "圖", "链", "鏈", "语", "語", "它", "个", "個", "条", "條", "封", "帖"]
 
     /// Chinese, Japanese and Korean nots.
     private static let cjkNots = ["不", "没", "沒", "别", "別", "ない", "ません", "않", "못", "마", "말"]
@@ -425,11 +425,18 @@ struct PresentedConfirm: Identifiable, Equatable {
     }
 
     /// Whether a not comes right before a cancel ("don't cancel", "nicht
-    /// abbrechen"): the user turned the cancel down, not the request.
-    private static func negatesActionNo(_ said: [String]) -> Bool {
+    /// abbrechen"), or a German nicht after it in the same clause
+    /// ("Storniere es nicht"): the user turned the cancel down, not the
+    /// request.
+    private static func negatesActionNo(_ said: [String], in text: String) -> Bool {
         let nots: Set<String> = ["t", "not", "dont", "nicht", "never"]
         let cancels = Set(actionNos.filter { $0.count == 1 }.map { $0[0] }).subtracting(nots)
-        return zip(said, said.dropFirst()).contains { nots.contains($0) && cancels.contains($1) }
+        if zip(said, said.dropFirst()).contains(where: { nots.contains($0) && cancels.contains($1) }) { return true }
+        return text.components(separatedBy: CharacterSet(charactersIn: ",;:—–，；：、.!。！\n")).contains { clause in
+            let clauseWords = words(in: clause)
+            guard let cancel = clauseWords.firstIndex(where: { cancels.contains($0) }) else { return false }
+            return clauseWords[(cancel + 1)...].contains("nicht")
+        }
     }
 
     private static let cjkNegatedCancels = [
