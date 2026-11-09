@@ -348,6 +348,9 @@ jobs:
       # earlier rounds out, and the review reads the whole PR as before.
       - name: Gather the earlier rounds
         id: earlier
+        # A stalled lookup gives up and the review reads the whole PR.
+        timeout-minutes: 3
+        continue-on-error: true
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -391,7 +394,7 @@ jobs:
                 """opencode's review comments: the run and model its footer names."""
                 found = []
                 for c in comments:
-                    if c["user"]["login"] != "github-actions[bot]":
+                    if (c.get("user") or {}).get("login") != "github-actions[bot]":
                         continue
                     model = re.search(r"model=([^&\"]+)&", c["body"])
                     run = re.search(r"actions/runs/(\d+)\)", c["body"])
@@ -448,7 +451,7 @@ jobs:
                         delta = since or (["a merge"] if kept else [])
                         out += ["", f"Your last review (as {', '.join(OWN_NAMES)}) was of commit {reviewed[:7]}. "
                                     "The PR's commits since then (merges of the base branch left out):", ""]
-                        out += [f"- {c['sha'][:7]} {c['commit']['message'].splitlines()[0]}" for c in since] or ["- none but merges"]
+                        out += [f"- {c['sha'][:7]} {(c['commit']['message'].splitlines() or ['(no message)'])[0]}" for c in since] or ["- none but merges"]
                         out += ["", "The change since that review, in the PR's own files:", "", "```diff",
                                 clip("\n".join(kept), DIFF_CAP) or "(no change in the PR's files)", "```"]
                     else:
@@ -473,6 +476,8 @@ jobs:
                 replies, used = [], 0
                 for c in comments:
                     # The replies of people who can push here, or the PR's author.
+                    if not c.get("user"):
+                        continue
                     if (c["created_at"] <= since or c["user"].get("type") == "Bot"
                             or c["user"]["login"].endswith("[bot]")
                             or (c.get("author_association") not in TRUSTED and c["user"]["login"] != author)):
@@ -484,7 +489,7 @@ jobs:
                     used += len(text)
                     replies.append(f"#### {c['user']['login']} ({c['created_at']})\n\n{quote(text)}")
                 if replies:
-                    out += ["", "### The author's replies since", ""] + replies
+                    out += ["", "### Replies since", ""] + replies
                 print("\n".join(out))
 
             try:
