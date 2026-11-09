@@ -22,7 +22,8 @@ struct RichReviewCard: View {
     /// The host has said whether the round was answered (on another device,
     /// say), or the round draws from its pictures alone without it.
     @State private var known = false
-    /// A kept round shows, but asking the host again failed.
+    /// The round shows (kept, or from its pictures), but the host couldn't
+    /// be asked.
     @State private var stale = false
     @State private var picked: String?
     @State private var note = ""
@@ -227,7 +228,8 @@ struct RichReviewCard: View {
             // Pictures draw without the host; pages need it.
             failed = kept == nil && review.hasPages
             known = kept == nil && !review.hasPages
-            stale = kept != nil
+            // A shown round the host couldn't answer for can be asked again.
+            stale = !failed
         }
     }
 
@@ -560,7 +562,8 @@ struct RichReviewSheet: View {
     @State private var offline = false
     /// The host answered for the card's round this time the sheet opened.
     @State private var answered = false
-    /// A round read before shows, but asking the host again failed.
+    /// The round shows (read before, or from its pictures), but the host
+    /// couldn't be asked.
     @State private var stale = false
     @State private var decisionIndex = 0
     /// The option each decision shows, by decision id.
@@ -956,7 +959,7 @@ struct RichReviewSheet: View {
             failed = loaded == nil && (review.hasPages || number != review.round)
             offline = loaded == nil && !failed
             answered = false
-            stale = loaded != nil
+            stale = !failed
         }
     }
 }

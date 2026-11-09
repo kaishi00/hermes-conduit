@@ -135,6 +135,20 @@ extension AppStateVoiceCapabilityTests {
         } catch {}
     }
 
+    func testANoteIsCappedInUnicodeScalarsAsTheHostCounts() throws {
+        let max = RichReviewMark.maxNote
+        let below = String(repeating: "a", count: max - 1)
+        XCTAssertEqual(RichReviewMark.capped(below), below)
+        let at = String(repeating: "a", count: max)
+        XCTAssertEqual(RichReviewMark.capped(at), at)
+        XCTAssertEqual(RichReviewMark.capped(at + "b").unicodeScalars.count, max)
+        // A flag is one Character but two scalars: the cap counts scalars.
+        let flags = String(repeating: "\u{1F1EF}\u{1F1F5}", count: max / 2 + 5)
+        XCTAssertEqual(RichReviewMark.capped(flags).unicodeScalars.count, max)
+        let mark = RichReviewMark(kind: .change, option: "A", note: flags)
+        XCTAssertEqual((mark.json["note"] as? String)?.unicodeScalars.count, max)
+    }
+
     func testLiveModelsAreNotOfferedReviews() throws {
         let schema = try XCTUnwrap(RichCardSchema.bundled)
         let card = try XCTUnwrap(schema.liveToolParameter(description: "Cards.")["items"] as? [String: Any])
