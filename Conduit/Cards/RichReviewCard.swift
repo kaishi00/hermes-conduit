@@ -262,6 +262,11 @@ final class RichReviewLoader {
         return round
     }
 
+    /// A round already read this launch, without asking the host.
+    func kept(_ id: String, _ number: Int) -> RichReviewRound? {
+        rounds["\(id)#\(number)"]
+    }
+
     /// Forgets a round, after the user sent marks on it.
     func forget(_ id: String, _ number: Int) {
         let key = "\(id)#\(number)"

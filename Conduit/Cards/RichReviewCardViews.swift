@@ -191,13 +191,21 @@ struct RichReviewCard: View {
     }
 
     private func load(_ review: RichReview) async {
+        // A kept round draws at once; one not yet answered is asked again,
+        // since another device may have answered it since.
+        let kept = RichReviewLoader.shared.kept(review.id, review.round)
+        if let kept {
+            round = kept
+            failed = false
+            if kept.wasSent { return }
+        }
         do {
-            let loaded = try await RichReviewLoader.shared.round(review.id, review.round)
+            let loaded = try await RichReviewLoader.shared.round(review.id, review.round, fresh: kept != nil)
             guard !Task.isCancelled else { return }
             round = loaded
             failed = false
         } catch {
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, kept == nil else { return }
             // Pictures draw without the host; pages need it.
             failed = review.hasPages
         }
@@ -484,6 +492,8 @@ struct RichReviewPreview: View {
 struct RichReviewFullPage: Identifiable {
     let option: RichReviewOption
     let html: String?
+    /// The theme the sheet was showing; nil follows the app's.
+    var light: Bool?
     var id: String { option.id }
 }
 
@@ -493,10 +503,17 @@ struct RichReviewFullScreen: View {
 
     var body: some View {
         if let html = page.html {
-            HTMLPreviewSheet(name: page.option.name, html: html)
+            // At the phone's own width, to touch and scroll, in the theme picked.
+            if let light = page.light {
+                HTMLPreviewSheet(name: page.option.name, html: html)
+                    .environment(\.colorScheme, light ? .light : .dark)
+            } else {
+                HTMLPreviewSheet(name: page.option.name, html: html)
+            }
         } else {
             NavigationStack {
-                RichReviewPreview(option: page.option, html: nil, cssWidth: RichReviewWidth.phone.cssWidth, light: nil)
+                RichReviewPreview(option: page.option, html: nil, cssWidth: RichReviewWidth.phone.cssWidth,
+                                  light: page.light)
                     .scaledToFit()
                     .navigationTitle(Text(verbatim: page.option.name))
                     .navigationBarTitleDisplayMode(.inline)
@@ -519,6 +536,8 @@ struct RichReviewSheet: View {
     @State private var shownRound: Int?
     @State private var loaded: RichReviewRound?
     @State private var failed = false
+    /// The card's round couldn't be read but draws from its pictures alone.
+    @State private var offline = false
     @State private var decisionIndex = 0
     /// The option each decision shows, by decision id.
     @State private var choices: [String: String] = [:]
@@ -536,9 +555,11 @@ struct RichReviewSheet: View {
         roundNumber == review.round ? review.decisions : (loaded?.decisions ?? [])
     }
 
-    /// Marks go only on the card's own round, once.
+    /// Marks go only on the card's own round, once, and only once the host
+    /// has said whether it was already answered (on another device, say).
     private var editable: Bool {
-        roundNumber == review.round && loaded?.wasSent != true && tapState == nil && context?.tap != nil
+        roundNumber == review.round && (loaded?.round == review.round || offline) && loaded?.wasSent != true
+            && tapState == nil && context?.tap != nil
     }
 
     var body: some View {
@@ -691,7 +712,7 @@ struct RichReviewSheet: View {
                     .contentShape(Rectangle())
                     .onTapGesture { choose(option.id, in: decision) }
                 Button {
-                    fullScreen = RichReviewFullPage(option: option, html: html)
+                    fullScreen = RichReviewFullPage(option: option, html: html, light: light)
                 } label: {
                     Image(systemName: "arrow.up.left.and.arrow.down.right")
                         .scaledFont(.caption.weight(.bold))
@@ -846,14 +867,25 @@ struct RichReviewSheet: View {
         return loaded?.marks[decision.id]
     }
 
+    /// The option shown is kept per round, so browsing an earlier round
+    /// leaves this round's choices and marks as they were.
+    private func choiceKey(_ decision: RichReviewDecision) -> String {
+        "\(roundNumber)/\(decision.id)"
+    }
+
     private func choice(_ decision: RichReviewDecision) -> String {
-        choices[decision.id] ?? decision.options.first(where: \.recommended)?.id ?? decision.options[0].id
+        if let chosen = choices[choiceKey(decision)] { return chosen }
+        // A round already marked opens on the option its mark names.
+        if !editable, let marked = shownMark(decision)?.option, decision.options.contains(where: { $0.id == marked }) {
+            return marked
+        }
+        return decision.options.first(where: \.recommended)?.id ?? decision.options[0].id
     }
 
     private func choose(_ option: String, in decision: RichReviewDecision) {
-        choices[decision.id] = option
-        // An approval or a change follows the option shown.
-        if var mark = marks[decision.id], mark.kind != .skip {
+        choices[choiceKey(decision)] = option
+        // An approval or a change follows the option shown, on the round being marked.
+        if editable, var mark = marks[decision.id], mark.kind != .skip {
             mark.option = option
             marks[decision.id] = mark
         }
@@ -882,10 +914,12 @@ struct RichReviewSheet: View {
             guard number == roundNumber, !Task.isCancelled else { return }
             loaded = round
             failed = false
+            offline = false
         } catch {
             guard number == roundNumber, !Task.isCancelled else { return }
             loaded = nil
             failed = review.hasPages || number != review.round
+            offline = !failed
         }
     }
 }
