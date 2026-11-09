@@ -1861,6 +1861,16 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertNil(PulseLook.Action(json: ["does": "ask", "say": "x"]))  // an ask needs its label
     }
 
+    func testADrawnBodyDrawsItsCardAndOneThatDoesntHoldUpDrawsPlain() throws {
+        func look(_ body: Any) -> PulseLook? {
+            PulseLook(json: ["shape": "drawn", "facts": ["body": body]])
+        }
+        guard case .drawn = look(["type": "place", "places": [["name": "Gare du Nord"]]])?.body else {
+            return XCTFail("a place card should draw")
+        }
+        XCTAssertEqual(look(["type": "weather", "places": [["name": "X"]]])?.body, .plain)
+    }
+
     func testFactsThatDontHoldUpDrawPlain() throws {
         func look(_ text: String) throws -> PulseLook? {
             PulseLook(json: try JSONSerialization.jsonObject(with: Data(text.utf8)))

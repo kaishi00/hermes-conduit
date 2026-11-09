@@ -88,7 +88,15 @@ struct PulseLook: Equatable {
 
     /// Nil for no look, or a shape this build doesn't know with nothing to
     /// draw: the card shows its words.
-    init?(json: Any?, calendar: Calendar = .current) {
+    /// The plugin's dates are Gregorian whatever calendar the phone uses
+    /// (as PhoneSync reads them), in the phone's time zone.
+    static var wireCalendar: Calendar {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = .current
+        return calendar
+    }
+
+    init?(json: Any?, calendar: Calendar = PulseLook.wireCalendar) {
         guard let object = json as? [String: Any], let shape = object["shape"] as? String else { return nil }
         let facts = object["facts"] as? [String: Any] ?? [:]
         line = object["line"] as? String ?? ""
@@ -142,12 +150,12 @@ struct PulseLook: Equatable {
     /// "2026-11-20" (the start of that day) or "2026-11-20T15:00", in the
     /// phone's time zone, which is the user's.
     /// The last moment of `date`'s day, by which a due with no time is due.
-    static func endOfDay(_ date: Date, calendar: Calendar = .current) -> Date {
+    static func endOfDay(_ date: Date, calendar: Calendar = PulseLook.wireCalendar) -> Date {
         let start = calendar.startOfDay(for: date)
         return calendar.date(byAdding: .day, value: 1, to: start)?.addingTimeInterval(-1) ?? date
     }
 
-    static func day(_ value: String, calendar: Calendar = .current) -> (date: Date, hasTime: Bool)? {
+    static func day(_ value: String, calendar: Calendar = PulseLook.wireCalendar) -> (date: Date, hasTime: Bool)? {
         let parts = value.split(separator: "T", maxSplits: 1).map(String.init)
         let day = parts.first?.split(separator: "-").compactMap { Int($0) } ?? []
         guard day.count == 3 else { return nil }

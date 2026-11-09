@@ -15,7 +15,6 @@ import SwiftUI
 
 struct PulseLookBody: View {
     let look: PulseLook
-    var dimmed = false
 
     var body: some View {
         Group {
@@ -38,7 +37,6 @@ struct PulseLookBody: View {
                 EmptyView()
             }
         }
-        .opacity(dimmed ? 0.7 : 1)
     }
 
     private func dateTile(_ day: Date, what: String, whose: String) -> some View {
