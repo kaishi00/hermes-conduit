@@ -1272,11 +1272,12 @@ plugin's read-back relay runs the turns.
 read-back relay on the phone's socket (notifier 0.151.0) · the Watch's
 bridge (a gap: its call has no agent, so it keeps Hermes turns) · CarPlay
 and calls from Hermes (the phone's call: not needed) · Talking over Hermes
-(talking over the fast model's reply stops it like Hermes', on both paths)
+(done: talking over the fast model's reply, or new words, stops it like
+Hermes', on both paths; that entry needs no change)
 · Job results during calls and Acknowledging work handed to Hermes (not
 needed: the phone runs the tools and says results whichever path asked the
 fast model) · Local > 3. Your fast model and its caption (not needed: they
-never named a server type) · the notifier's README (both sections) ·
+never named a server type) · the notifier's README, both sections (done in the notifier PR) ·
 docs/VOICE_SETTINGS.md (not needed: it doesn't describe agent mode's
 paths)
 
