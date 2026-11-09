@@ -13040,6 +13040,8 @@ final class AppState: ObservableObject {
     /// Boards replies name by line, by id, once read (LineBoards).
     @Published var lineBoards: [String: RichBoard] = [:]
     var lineBoardsAsked: Set<String> = []
+    /// The dashboard and profile `lineBoards` were read from.
+    var lineBoardsScope = ""
     var lineBoardsReadOverride: ((String) async throws -> [String: Any])?
     var roomBoardsTask: Task<Void, Never>?
     /// Tests read a room's boards here in place of the dashboard.

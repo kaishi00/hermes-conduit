@@ -21,6 +21,13 @@ extension AppState {
     /// reply reads as it is); one whose read failed is, when its chat shows
     /// again or the plugin reports the route.
     func loadLineBoards(_ ids: [String]) {
+        // Board ids are the host's own: another Hermes or profile reads afresh.
+        let scope = "\(activeDashboardID?.uuidString ?? "")/\(activeProfile)"
+        if lineBoardsScope != scope {
+            lineBoardsScope = scope
+            lineBoards = [:]
+            lineBoardsAsked = []
+        }
         var seen: Set<String> = []  // two replies can name one board
         let wanted = ids.filter { lineBoards[$0] == nil && !lineBoardsAsked.contains($0) && seen.insert($0).inserted }
         guard !wanted.isEmpty, lineBoardsReadOverride != nil || notifierPlugin.reports(LineBoards.capability) else {
@@ -42,10 +49,15 @@ extension AppState {
                         answer = nil
                     }
                 } catch {
-                    self?.lineBoardsAsked.remove(id)  // asked again later
+                    if self?.lineBoardsScope == scope { self?.lineBoardsAsked.remove(id) }  // asked again later
                     return
                 }
-                guard let self, let answer, let board = LineBoards.board(answer, id: id) else { return }
+                guard let self, self.lineBoardsScope == scope else { return }  // read for another host
+                guard let answer else {
+                    self.lineBoardsAsked.remove(id)  // no bridge yet: asked again later
+                    return
+                }
+                guard let board = LineBoards.board(answer, id: id) else { return }
                 self.lineBoards[id] = board
             }
         }

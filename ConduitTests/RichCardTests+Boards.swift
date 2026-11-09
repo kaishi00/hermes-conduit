@@ -152,6 +152,29 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(ChatRowState(appState, facts: facts).followUpBoardRowID, "b1")
     }
 
+    @MainActor
+    func testALineBoardIsReadOnceAndAFailedReadIsAskedAgain() async throws {
+        let suite = "LineBoardReadTests-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        var reads: [String] = []
+        appState.lineBoardsReadOverride = { path in
+            reads.append(path)
+            if path.contains("cb-00000000bad0") { throw URLError(.timedOut) }
+            return ["board": ["cards": [["type": "callout", "callout": ["text": "Book early", "tone": "tip"]]]]]
+        }
+        appState.loadLineBoards(["cb-0000000000a1", "cb-00000000bad0", "cb-0000000000a1"])
+        for _ in 0..<100 where appState.lineBoards["cb-0000000000a1"] == nil || appState.lineBoardsAsked.contains("cb-00000000bad0") {
+            await Task.yield()
+        }
+        XCTAssertEqual(appState.lineBoards["cb-0000000000a1"]?.cards.count, 1)
+        XCTAssertEqual(reads.count, 2, "a board two replies name is read once")
+        XCTAssertFalse(appState.lineBoardsAsked.contains("cb-00000000bad0"), "a failed read is asked again")
+        appState.loadLineBoards(["cb-0000000000a1"])
+        XCTAssertEqual(reads.count, 2, "a read board isn't read again")
+    }
+
     func testATableSortsNumbersByValueWithBlanksLast() throws {
         let table = RichTable(columns: ["Company", "Revenue"], rows: [
             ["Acme", "$1.2M"], ["Globex", RichCardSchema.blankCell], ["Initech", "$950K"], ["Umbrella", "$3B"],
