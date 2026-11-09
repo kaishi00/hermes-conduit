@@ -185,11 +185,7 @@ struct V2ConversationScreen: View {
     }
 
     @ViewBuilder private var conversation: some View {
-        if appState.activeRoomSurface != nil, appState.botChatComingOverAnother != nil {
-            // A Bot Chat tapped beside an open room: the room closes as the
-            // chat opens, and its screen, title and all, gives way now.
-            Color.clear
-        } else if appState.activeRoomSurface != nil {
+        if appState.activeRoomSurface != nil {
             // Keyed by room: another room starts with its own draft.
             GroupChatView()
                 .id(appState.activeRoomSurface?.room.roomID)
