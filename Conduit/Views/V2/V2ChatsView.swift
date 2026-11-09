@@ -826,9 +826,13 @@ struct V2ChatsView: View, Equatable {
         setBarStacked(false)
         barSearchOpen = false
         // A pending focus was meant for the stacked field, which is going.
-        // Left set, it focused that field on some later stack nobody asked
-        // for.
-        barSearchFocusPending = false
+        // The list's field is the one on screen now, so hand the request to
+        // it: dropping it loses a ⌘F the user pressed, and leaving it set
+        // focused the bar's field on some later stack nobody asked for.
+        if barSearchFocusPending {
+            barSearchFocusPending = false
+            searchFocused = true
+        }
     }
 
     /// A change (rotation, a profile added) fades the list's search row in
