@@ -1398,6 +1398,7 @@ extension VoiceConversationControllerTests {
         session.becomeReady()
         session.onStateChange?(.failed(LocalLiveProtocol.pluginMissingReason))
         XCTAssertEqual(controller.phase, .failed(managed))
+        XCTAssertEqual(LocalLiveClientError.unavailable(LocalLiveProtocol.pluginMissingReason).errorDescription, managed)
     }
 
     func testGeminiLivePublishesSpeakingOncePerTurnNotOnEveryAudioChunk() async {

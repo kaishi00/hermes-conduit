@@ -29717,8 +29717,11 @@ final class AppState: ObservableObject {
         // this dashboard remembered.
         didSet {
             // Before the host has answered, the manager it last reported.
+            let askedBefore = PluginUpdateAsk.managedAsk
             PluginUpdateAsk.setActive(managedBy: notifierPlugin.managedBy ?? (notifierPlugin.state == .unknown
                 ? NotifierPluginStatus.Remembered.managedBy(for: activeDashboardID, in: defaults) : nil))
+            // The Watch words its plugin failures from the phone's shared context.
+            if PluginUpdateAsk.managedAsk != askedBefore { shareWatchCallVoices() }
             if oldValue.state != notifierPlugin.state {
                 updateChatOnScreen()
                 forgetPulseHomeIfGone()
