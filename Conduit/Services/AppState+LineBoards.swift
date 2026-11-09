@@ -21,7 +21,8 @@ extension AppState {
     /// reply reads as it is); one whose read failed is, when its chat shows
     /// again or the plugin reports the route.
     func loadLineBoards(_ ids: [String]) {
-        let wanted = ids.filter { lineBoards[$0] == nil && !lineBoardsAsked.contains($0) }
+        var seen: Set<String> = []  // two replies can name one board
+        let wanted = ids.filter { lineBoards[$0] == nil && !lineBoardsAsked.contains($0) && seen.insert($0).inserted }
         guard !wanted.isEmpty, lineBoardsReadOverride != nil || notifierPlugin.reports(LineBoards.capability) else {
             return
         }
