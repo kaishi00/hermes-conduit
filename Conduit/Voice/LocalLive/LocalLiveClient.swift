@@ -18,7 +18,7 @@ enum LocalLiveClientError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unavailable(let reason):
-            return reason
+            return PluginUpdateAsk.reason(reason) ?? reason
         case .socketUnavailable:
             return AppLocalization.string("Could not open the Local Live connection.")
         }

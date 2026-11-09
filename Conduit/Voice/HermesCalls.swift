@@ -544,6 +544,11 @@ extension VoiceCallbackAvailability {
         case .notPaired:
             return "Hermes can't call the user: this Hermes profile isn't set up for Conduit notifications. They can turn them on in Conduit's Settings, under Notifications."
         case .unsupported:
+            // A host that manages the plugin updates it; the user can't.
+            if let managedBy = PluginUpdateAsk.managedBy {
+                let keeper = managedBy.isEmpty ? "the host" : managedBy
+                return "Hermes can't call the user yet: the Conduit plugin on their Hermes host doesn't have this, and \(keeper) keeps the plugin up to date, so there's nothing for them to update."
+            }
             return "Hermes can't call the user yet: the Conduit plugin on their Hermes host needs an update."
         case .pluginOff(let remedy):
             return "Hermes can't call the user: " + remedy

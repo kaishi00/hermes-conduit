@@ -833,6 +833,11 @@ final class AppState: ObservableObject {
                 schedulePendingComposerSendCheck()
                 // The takeover belongs to the other host's chat.
                 dismissChatTakeover()
+                // Until the newly selected host answers, the manager it last
+                // reported words the plugin asks, not the old host's.
+                let askedBefore = PluginUpdateAsk.managedAsk
+                PluginUpdateAsk.setActive(managedBy: NotifierPluginStatus.Remembered.managedBy(for: selectedDashboard, in: defaults))
+                if PluginUpdateAsk.managedAsk != askedBefore { shareWatchCallVoices() }
             }
         }
     }
@@ -7305,6 +7310,13 @@ final class AppState: ObservableObject {
     private let defaults: UserDefaults
     /// This AppState's defaults, for its extensions in other files.
     var appDefaults: UserDefaults { defaults }
+
+    /// Who keeps a sharing destination's plugin up to date: the active
+    /// dashboard's answer, or what another saved dashboard last reported.
+    func pluginManagedBy(forDashboard id: UUID?) -> String? {
+        guard let id, id != activeDashboardID else { return PluginUpdateAsk.managedBy }
+        return NotifierPluginStatus.Remembered.managedBy(for: id, in: defaults)
+    }
     /// Kept outside ChatResumeStore on purpose: the return surface is a
     /// presentation preference, not part of the resume schema.
     static let chatReturnSurfaceKey = "conduit.chatReturnSurface.v1"
@@ -7832,6 +7844,9 @@ final class AppState: ObservableObject {
         let initialRegistry = preloadedRegistry
             ?? SavedDashboardMigrator.loadRegistry(defaults: defaults)
         self.savedDashboardRegistry = initialRegistry
+        // Screens that ask for a plugin update word it for a host that
+        // manages the plugin from launch, before its status is read.
+        PluginUpdateAsk.setActive(managedBy: NotifierPluginStatus.Remembered.managedBy(for: initialRegistry.activeDashboardID, in: defaults))
         // #1317 kept Off for older installs; Recent holds for every install
         // that hasn't picked one now (issue 1583).
         defaults.removeObject(forKey: ProjectChatsInChats.retiredDeviceDefaultKey)
@@ -29716,6 +29731,12 @@ final class AppState: ObservableObject {
         // already running; one that answered without Pulse ends the Pulse
         // this dashboard remembered.
         didSet {
+            // Before the host has answered, the manager it last reported.
+            let askedBefore = PluginUpdateAsk.managedAsk
+            PluginUpdateAsk.setActive(managedBy: notifierPlugin.managedBy ?? (notifierPlugin.state == .unknown
+                ? NotifierPluginStatus.Remembered.managedBy(for: activeDashboardID, in: defaults) : nil))
+            // The Watch words its plugin failures from the phone's shared context.
+            if PluginUpdateAsk.managedAsk != askedBefore { shareWatchCallVoices() }
             if oldValue.state != notifierPlugin.state {
                 updateChatOnScreen()
                 forgetPulseHomeIfGone()
@@ -30327,13 +30348,15 @@ final class AppState: ObservableObject {
     static func chatTakeoverFailureMessage(_ error: Error) -> String {
         switch error {
         case ChatTakeoverError.pluginMissing:
-            return AppLocalization.string("Update the Conduit notifier plugin on your Hermes host to take chats over.")
+            return PluginUpdateAsk.text(AppLocalization.string("Update the Conduit notifier plugin on your Hermes host to take chats over."))
         case ChatTakeoverError.pluginOff(let remedy):
             return remedy
         case ChatTakeoverError.unsupported:
             return AppLocalization.string("This Hermes version can't hand a chat over.")
         case ChatTakeoverError.malformed:
-            return AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again.")
+            // A managed host's plugin isn't missing the route: keep the retry, name who updates it.
+            return PluginUpdateAsk.text(AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again."),
+                                        instead: AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Try again in a moment."))
         default:
             let detail = UserFacingError.message(for: error).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !detail.isEmpty, !(error is DashboardTicketBridgeError) else {
@@ -42139,7 +42162,11 @@ final class AppState: ObservableObject {
         let status = try await tokens.availability()
         noteWatchCallVoice(qwen ? .qwenLive : .geminiLive, ready: status.isAvailable, profile: profile)
         guard status.isAvailable else {
-            throw WatchDirectPrepareError(status.userFacingReason(for: provider) ?? GeminiLiveAvailability.notAvailable(for: provider))
+            // The reason is worded for the active host's plugin.
+            guard watchConnectionIsCurrent(connection) else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
+            throw WatchDirectPrepareError(PluginUpdateAsk.reason(status.userFacingReason(for: provider)) ?? GeminiLiveAvailability.notAvailable(for: provider))
         }
         let search = await searchLookup
         let memory = await memoryLookup
@@ -42246,6 +42273,10 @@ final class AppState: ObservableObject {
         let status = try await makeGPTLiveClient { profile }.availability(billing: .subscription)
         noteWatchCallVoice(.gptLive, ready: status.isAvailable, profile: profile)
         guard status.isAvailable else {
+            // The reason is worded for the active host's plugin.
+            guard watchConnectionIsCurrent(connection) else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("GPT-Live is not available on this Hermes server."))
         }
         let memory = await memoryLookup
@@ -42342,7 +42373,11 @@ final class AppState: ObservableObject {
         let status = try await makeGrokLiveClient { profile }.availability()
         noteWatchCallVoice(.grokLive, ready: status.isAvailable, profile: profile)
         guard case .available(_, let voice, _) = status else {
-            throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
+            // The reason is worded for the active host's plugin.
+            guard watchConnectionIsCurrent(connection) else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
+            throw WatchDirectPrepareError(PluginUpdateAsk.reason(status.userFacingReason) ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
         }
         // xAI's own search (#598), as on the phone.
         let search = GeminiLiveSearchSource.grok
@@ -42445,7 +42480,11 @@ final class AppState: ObservableObject {
         let status = try await makeLocalLiveClient { profile }.status()
         noteWatchCallVoice(.localLive, ready: status.available, profile: profile)
         if let reason = LocalLiveClient.unavailableReason(status) {
-            throw WatchDirectPrepareError(reason)
+            // The reason is worded for the active host's plugin.
+            guard watchConnectionIsCurrent(connection) else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
+            throw WatchDirectPrepareError(PluginUpdateAsk.reason(reason) ?? reason)
         }
         guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)

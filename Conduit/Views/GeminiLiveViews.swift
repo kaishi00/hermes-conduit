@@ -235,7 +235,7 @@ struct GeminiLiveSettingsSection: View {
             if case .available(let modelName) = availability {
                 line = AppLocalization.string("Available (\(modelName))")
             } else {
-                line = availability.userFacingReason(for: model.provider == .qwenLive ? .qwen : .gemini)
+                line = PluginUpdateAsk.reason(availability.userFacingReason(for: model.provider == .qwenLive ? .qwen : .gemini))
             }
             status = line
             isAvailable = availability.isAvailable

@@ -15,6 +15,10 @@ final class GroupRoomFilesClient {
     /// The same route reads any file sent into a room (plugin 0.143+), so
     /// a room opens and plays them as a chat does.
     static let readCapability = "room-file-reads"
+    /// Linked Rooms carry each file sent into a room to its guests' hosts,
+    /// and the same route reads the home's path from your own host's copy
+    /// (plugin 0.149+), so a room someone else hosts draws them too.
+    static let linkedCapability = "room-files-linked"
     static let readPath = "/api/plugins/conduit_push/room-files/data-url"
 
     /// A picture `/room-files` stored (`<hermes home>/conduit/room-files/
@@ -97,7 +101,8 @@ final class GroupRoomFilesClient {
             case .unreadable(let name):
                 return AppLocalization.string("Could not prepare \(name) for upload.")
             case .malformed:
-                return AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again.")
+                return PluginUpdateAsk.text(AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again."),
+                                    instead: AppLocalization.string("The host's answer couldn't be read. Try again in a moment."))
             case .overMessageLimit:
                 let limit = String(GroupRoomAttachment.maxMessageBytes / 1_000_000)
                 return AppLocalization.string("Together these files are over the \(limit) MB a group room message takes. Send some in another message.")
@@ -313,9 +318,9 @@ extension AppState {
     }
 
     /// Where a room's pictures are read, or nil where they can't be: a
-    /// plugin before 0.142, or a room someone else hosts, whose files are on
-    /// its home's host. One instance per dashboard, so the rows reading it
-    /// compare equal.
+    /// plugin before 0.142, or a room someone else hosts while your plugin
+    /// doesn't keep its files (before 0.149, `room-files-linked`). One
+    /// instance per dashboard, so the rows reading it compare equal.
     var roomFilePicturesResolver: GatewayMediaDataURLResolver? {
         roomFilesResolver(reporting: GroupRoomFilesClient.pictureCapability)
     }
@@ -332,8 +337,11 @@ extension AppState {
             pluginFiles: notifierPlugin.reports(GroupRoomFilesClient.readCapability)
         )
         let hermesReads = reads.hermesAttachments
+        // A room someone else hosts names its home's paths; your own
+        // host reads them from the copy Linked Rooms keep there.
         guard notifierPlugin.reports(capability) || hermesReads,
-              activeRoomSurface?.copy == nil else { return nil }
+              activeRoomSurface?.copy == nil || notifierPlugin.reports(GroupRoomFilesClient.linkedCapability)
+        else { return nil }
         // A new resolver when what it reads changes, so the rows draw again.
         if let cached = cachedRoomFilesResolver, cached.dashboardID == activeDashboardID, cached.roomFileReads == reads {
             return cached
