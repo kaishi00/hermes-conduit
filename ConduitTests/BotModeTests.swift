@@ -2151,6 +2151,51 @@ final class BotModeTests: XCTestCase {
         XCTAssertNil(harness.appState.botsListNotice)
     }
 
+    /// A newer tap that opened first leaves its chat uncovered while the
+    /// earlier tap's lookup is still out: only the latest tap covers.
+    func testAnEarlierTapStillOutDoesNotCoverTheNewerChat() async {
+        let atlasLookup = ControlledSuspension()
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            openSessionWithProfile: { _, _, _, profile in
+                let bot = profile ?? "default"
+                return SessionResumeResult(
+                    sessionId: "\(bot)-runtime",
+                    storedSessionId: "\(bot)-chat",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in },
+            findBotChat: { _, profile in
+                if profile == "atlas" { await atlasLookup.suspend() }
+                return [BotChatLookupRow(id: "\(profile)-chat", title: "Bot Chat")]
+            }
+        ))
+        harness.appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        let atlas = makeBot(name: "atlas")
+        let scout = makeBot(name: "scout")
+
+        harness.appState.showSidebar = true
+        harness.appState.beginOpeningBotChat(atlas.name)
+        let atlasOpen = Task { @MainActor [appState = harness.appState] in
+            await appState.openBotChatFromList(atlas)
+        }
+        await atlasLookup.waitUntilSuspended()
+        harness.appState.beginOpeningBotChat(scout.name)
+        let scoutOpened = await harness.appState.openBotChatFromList(scout)
+
+        XCTAssertTrue(scoutOpened)
+        XCTAssertEqual(harness.appState.activeBotChatProfile, "scout")
+        XCTAssertFalse(harness.appState.botChatCoversOpenChat, "Scout's chat shows while Atlas's lookup is out")
+        atlasLookup.resume()
+        let atlasOpened = await atlasOpen.value
+        XCTAssertFalse(atlasOpened)
+        XCTAssertFalse(harness.appState.botChatCoversOpenChat)
+    }
+
     /// Back to the list while a Bot Chat is on its way stands its open
     /// down: it doesn't land behind the list.
     func testBackToTheListStandsAComingBotChatDown() async {

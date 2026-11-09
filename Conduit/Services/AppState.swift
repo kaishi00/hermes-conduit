@@ -1905,9 +1905,7 @@ final class AppState: ObservableObject {
             guard oldValue != botChatOnItsWay else { return }
             updateChatOnScreen()
             // The cover went, and with it nothing covers the chat it showed.
-            if oldValue != nil, botChatOnItsWay == nil, !botChatCoversOpenChat {
-                noteActiveChatSeen(respectingMarks: true)
-            }
+            if oldValue != nil, botChatOnItsWay == nil { noteActiveChatSeen(respectingMarks: true) }
         }
     }
     /// Why a Bot Chat opened from a list of bots didn't open, for that list
@@ -2429,7 +2427,7 @@ final class AppState: ObservableObject {
             // Closing the drawer uncovers the open chat (#454).
             // A list of bots closing for another bot's chat uncovers nothing:
             // that chat's cover shows (botChatCoversOpenChat).
-            if oldValue, !showSidebar, !botChatCoversOpenChat { noteActiveChatSeen(respectingMarks: true) }
+            if oldValue, !showSidebar { noteActiveChatSeen(respectingMarks: true) }
             // Covering it (Back to the list, the drawer opening) leaves it:
             // what it showed until now was seen. The list it returns to
             // reads the catalog again (refreshCatalogAfterLeavingChat, from
@@ -2507,6 +2505,9 @@ final class AppState: ObservableObject {
     /// list closed (`openBotChatFromList`). A tap made while the list is
     /// still closing over an earlier tap's push opens on that screen too.
     private var botChatMarks: [String: (taps: Int, pushed: Bool)] = [:]
+    /// The name the last mark was made for: only its open covers the chat,
+    /// since a newer tap takes the screen from an earlier one still out.
+    private var botChatLatestMark: String?
 
     /// Closes the list for `name`'s Bot Chat; `endOpeningBotChat` once the
     /// open has finished, opened or not.
@@ -2515,6 +2516,7 @@ final class AppState: ObservableObject {
         let pushed = showSidebar || botChatMarks.values.contains { $0.pushed }
         let mark = botChatMarks[name]
         botChatMarks[name] = ((mark?.taps ?? 0) + 1, (mark?.pushed ?? false) || pushed)
+        botChatLatestMark = name
         dismissSidebarDrawer()
     }
 
@@ -2526,23 +2528,21 @@ final class AppState: ObservableObject {
             return
         }
         botChatMarks[name] = nil
-        // What the chat shows from now on is seen: the cover is gone.
-        guard !botChatCoversOpenChat else { return }
+        // What the chat shows from now on is seen, once nothing covers it.
         noteActiveChatSeen(respectingMarks: true)
         updateChatOnScreen()
     }
 
     /// The open chat (or room) is hidden behind a bot a list of bots is
-    /// opening: its cover shows, or a mark for another bot or a room is
-    /// out, from the moment the list closes. What arrives meanwhile isn't
-    /// seen, so it's not marked read and its notifications stay.
+    /// opening: its cover shows, or the latest mark, for another bot or a
+    /// room, is still out, from the moment the list closes. What arrives
+    /// meanwhile isn't seen, so it's not marked read and its notifications
+    /// stay. An earlier tap still out covers nothing: a newer one took over.
     var botChatCoversOpenChat: Bool {
         if botChatComingOverAnother != nil { return true }
-        let open = activeRoomSurface == nil ? activeBotChatProfile : nil
-        return botChatMarks.keys.contains { name in
-            guard let open else { return true }
-            return !profilesMatch(open, name)
-        }
+        guard let name = botChatLatestMark, botChatMarks[name] != nil else { return false }
+        guard activeRoomSurface == nil, let open = activeBotChatProfile else { return true }
+        return !profilesMatch(open, name)
     }
 
     /// The shell placed the conversation for the marked Bot Chat: the mark
@@ -11257,8 +11257,10 @@ final class AppState: ObservableObject {
     /// returning to the app) leaves a chat the user, or Desktop, explicitly
     /// marked unread alone, the way Desktop keeps a marked chat unread until
     /// you open it again.
+    /// Not while a Bot Chat on its way covers it (`botChatCoversOpenChat`),
+    /// whoever asks: a catalog refresh meanwhile reads nothing into it.
     private func noteActiveChatSeen(respectingMarks: Bool = false) {
-        guard isSceneActive, !showSidebar,
+        guard isSceneActive, !showSidebar, !botChatCoversOpenChat,
               let session = readStateSessions.first(where: sessionMatchesActiveSession) else { return }
         let profile = activeProfile
         if respectingMarks {
