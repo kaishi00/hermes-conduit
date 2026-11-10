@@ -374,13 +374,20 @@ enum RichFieldDates {
 
 // MARK: - Buttons
 
-/// Redraws a card's buttons as the composer's draft changes.
-private struct RichDraftGate<Content: View>: View {
-    @ObservedObject var composer: PredictiveStore
-    @ViewBuilder let content: (Bool) -> Content
+/// Redraws what waits on an empty composer (a card's buttons, a board's
+/// follow-ups) as the composer empties or fills, not on each keystroke or
+/// guess the composer publishes (issue 2150).
+struct RichDraftGate<Content: View>: View {
+    @ObservedObject private var emptiness: ComposerEmptiness
+    private let content: (Bool) -> Content
+
+    init(composer: PredictiveStore, @ViewBuilder content: @escaping (Bool) -> Content) {
+        _emptiness = ObservedObject(wrappedValue: composer.emptiness)
+        self.content = content
+    }
 
     var body: some View {
-        content(composer.isEmpty)
+        content(emptiness.isEmpty)
     }
 }
 

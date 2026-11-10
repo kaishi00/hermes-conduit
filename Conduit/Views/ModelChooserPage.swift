@@ -312,7 +312,8 @@ struct ModelChooserPage: View {
                             row(title: item.label ?? item.id, isSelected: picked(option, item)) {
                                 onPick(option, item)
                             }
-                            .padding(.leading, 16)
+                            // Under the provider's name, past its logo.
+                            .padding(.leading, 30)
                             .disabled(!catalog.answered || disabled)
                             .contextMenu { pinMenu(item, provider: option) }
                         }
@@ -376,9 +377,15 @@ struct ModelChooserPage: View {
             }
         } label: {
             HStack(spacing: 10) {
-                Text(verbatim: option.title)
-                    .scaledFont(.subheadline.weight(.semibold))
-                    .foregroundStyle(.primary)
+                ProviderLogoView(provider: option)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: option.title)
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .foregroundStyle(.primary)
+                    if let summary = option.quota?.summary {
+                        ProviderQuotaLine(summary: summary)
+                    }
+                }
                 if holdsPick, !isExpanded {
                     Image(systemName: "checkmark")
                         .scaledFont(.caption.weight(.semibold))

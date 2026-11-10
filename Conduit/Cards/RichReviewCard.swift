@@ -258,6 +258,14 @@ final class RichReviewLoader {
     var read: (@MainActor (String) async throws -> [String: Any])?
     private var rounds: [String: RichReviewRound] = [:]
     private var order: [String] = []
+    /// When each kept round was read from the host.
+    private var readAt: [String: Date] = [:]
+
+    /// How long a card's row takes a round it read as fresh: the row is
+    /// drawn again each time it scrolls back, and a round can be megabytes
+    /// (issue 2149, as `HTMLPreviewDocuments.freshFor`). The review sheet,
+    /// where marking happens, always asks again.
+    static let rowFreshFor: TimeInterval = HTMLPreviewDocuments.freshFor
 
     enum LoadError: Error {
         case notConnected, gone
@@ -271,21 +279,29 @@ final class RichReviewLoader {
         return path + "?" + (components.percentEncodedQuery ?? "")
     }
 
-    /// A round; `fresh` asks again (its marks may have gone since).
-    func round(_ id: String, _ number: Int, fresh: Bool = false) async throws -> RichReviewRound {
+    /// A round; `fresh` asks again (its marks may have gone since), unless
+    /// it was read within `freshFor`.
+    func round(_ id: String, _ number: Int, fresh: Bool = false, freshFor: TimeInterval? = nil,
+               now: Date = .now) async throws -> RichReviewRound {
         let key = "\(id)#\(number)"
-        if !fresh, let kept = rounds[key] { return kept }
+        if let kept = rounds[key] {
+            if !fresh { return kept }
+            if let freshFor, let at = readAt[key], now.timeIntervalSince(at) < freshFor { return kept }
+        }
         guard RichCardSchema.isReviewID(id), let read else { throw LoadError.notConnected }
         let answer = try await read(Self.readPath(id: id, round: number))
         guard let round = Self.checkedRound(answer["review"], id: id) else { throw LoadError.gone }
         order.removeAll { $0 == key }
         order.append(key)
         rounds[key] = round
+        readAt[key] = .now
         // The newest rounds stay, a dozen at most and their pages within
         // the budget; the one just read always does.
         while order.count > 1,
               order.count > Self.keptRounds || order.compactMap({ rounds[$0]?.pageBytes }).reduce(0, +) > Self.keptPageBytes {
-            rounds[order.removeFirst()] = nil
+            let dropped = order.removeFirst()
+            rounds[dropped] = nil
+            readAt[dropped] = nil
         }
         return round
     }
@@ -310,6 +326,7 @@ final class RichReviewLoader {
     func forget(_ id: String, _ number: Int) {
         let key = "\(id)#\(number)"
         rounds[key] = nil
+        readAt[key] = nil
         order.removeAll { $0 == key }
     }
 }

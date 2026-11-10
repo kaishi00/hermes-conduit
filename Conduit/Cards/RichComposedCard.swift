@@ -93,6 +93,10 @@ struct RichField: Equatable, Hashable {
         placeholder = json["placeholder"] as? String
     }
 
+    /// Compiled once: a tap button checks every number field each time
+    /// its row draws (issue 2150).
+    private static let numberPattern = try! NSRegularExpression(pattern: #"^-?[0-9]+(\.[0-9]+)?$"#)
+
     /// A number field's text as the schema writes it (a comma, as a
     /// German or French keypad types it, read as the decimal point), or nil
     /// when it isn't a number within min and max, which the host would drop.
@@ -100,7 +104,7 @@ struct RichField: Equatable, Hashable {
     func numberText(_ text: String) -> String? {
         let number = text.trimmingCharacters(in: .whitespaces).replacingOccurrences(of: ",", with: ".")
         if number.isEmpty { return "" }
-        guard number.range(of: #"^-?[0-9]+(\.[0-9]+)?$"#, options: .regularExpression) != nil,
+        guard Self.numberPattern.firstMatch(in: number, range: NSRange(number.startIndex..., in: number)) != nil,
               let value = Double(number) else { return nil }
         if let min, value < min { return nil }
         if let max, value > max { return nil }

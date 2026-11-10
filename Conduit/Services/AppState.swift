@@ -13152,6 +13152,10 @@ final class AppState: ObservableObject {
     /// else hosts (`GET /rooms/people`'s `home`).
     @Published var activeRoomHomeName: String?
     var activeRoomLooksReadAt: Date?
+    /// When the open copy's room screen last read your agents' approvals:
+    /// a quiet room's ticks read them only every
+    /// `roomCopyQuietApprovalsInterval` (issue 2151).
+    var activeRoomCopyApprovalsReadAt: Date?
     /// The room (epoch and id) whose looks are being read now.
     var activeRoomLooksReading: String?
     /// What was last given each dashboard's Hermes (`PUT /rooms/looks`).
@@ -13922,11 +13926,16 @@ final class AppState: ObservableObject {
                 return
             }
             groupChatPhase = .available
-            await refreshGroupRooms()
-            await refreshLinkedRoomDrafts()
-            await refreshLinkedRoomInvites()
-            await refreshLinkedRoomApprovals()
-            await refreshLinkedRoomCopies()
+            // Only the capabilities gate the rest, which are reads of their
+            // own, each fenced by its own epoch and dashboard: they go
+            // together, so a cold open waits for the slowest, not the sum
+            // (issue 2153). The copies go before the invites, which read
+            // them again for a started invite with no copy yet.
+            async let rooms: Void = refreshGroupRooms()
+            async let drafts: Void = refreshLinkedRoomDrafts()
+            async let approvals = refreshLinkedRoomApprovals()
+            async let joined: Void = refreshLinkedRoomCopiesThenInvites()
+            _ = await (rooms, drafts, approvals, joined)
         } catch is CancellationError {
             return
         } catch {
@@ -13949,12 +13958,29 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// The rooms you joined, then the invites, which read the copies again
+    /// only for a started invite whose copy isn't there yet.
+    private func refreshLinkedRoomCopiesThenInvites() async {
+        await refreshLinkedRoomCopies()
+        await refreshLinkedRoomInvites()
+    }
+
     func refreshGroupRooms() async {
         guard groupChatPhase == .available, let client, isConnected else { return }
         let epoch = groupRoomEpoch
+        var stayed: KeptGroupRooms?
         do {
-            // Kept for the Bots list to open on, with the pictures (#1533).
-            _ = try await keepingRead(as: KeptRoute.groupRooms, profile: KeptRoute.everyProfile, owner: currentDashboardRuntimeOwner()) {
+            // Kept for the Bots list to open on, with the pictures (#1533),
+            // when they changed: a room's send reads the list again, and
+            // keeping it encodes up to a megabyte of pictures on the main
+            // actor, which an unchanged list needn't pay (issue 2152).
+            _ = try await keepingRead(as: KeptRoute.groupRooms, profile: KeptRoute.everyProfile,
+                                      owner: currentDashboardRuntimeOwner(),
+                                      unchanged: { [weak self] rooms in
+                                          guard let self, self.keptGroupRooms() == rooms else { return false }
+                                          stayed = rooms
+                                          return true
+                                      }) {
                 let (rooms, nextOffset) = try await self.groupsList(client)
                 guard self.groupRoomEpoch == epoch else { throw CancellationError() }
                 if !self.groupRoomsListed {
@@ -13972,6 +13998,9 @@ final class AppState: ObservableObject {
                 guard self.groupRoomEpoch == epoch else { throw CancellationError() }
                 return self.keptGroupRoomsNow()
             }
+            // Its turn moved on with nothing written: the decoded copy
+            // still stands, so the next send's compare decodes nothing.
+            if let stayed { keptGroupRoomsStayed(stayed) }
         } catch is CancellationError {
             return
         } catch {
@@ -14097,12 +14126,23 @@ final class AppState: ObservableObject {
 
     /// The rooms kept on this dashboard, decoded once per answer kept.
     func keptGroupRooms() -> KeptGroupRooms? {
-        let turn = keptAnswerTurn(KeptRoute.groupRooms, profile: KeptRoute.everyProfile)
-        let key = "\(activeDashboardID?.uuidString ?? "-")|\(offlineChatCache.removals)|\(turn)"
+        let key = keptGroupRoomsMemoKey
         if let memo = keptGroupRoomsMemo, memo.key == key { return memo.rooms }
         let rooms = keptRead(KeptGroupRooms.self, KeptRoute.groupRooms, profile: KeptRoute.everyProfile)
         keptGroupRoomsMemo = (key, rooms)
         return rooms
+    }
+
+    private var keptGroupRoomsMemoKey: String {
+        let turn = keptAnswerTurn(KeptRoute.groupRooms, profile: KeptRoute.everyProfile)
+        return "\(activeDashboardID?.uuidString ?? "-")|\(offlineChatCache.removals)|\(turn)"
+    }
+
+    /// A read the same as the kept rooms moved their turn on without
+    /// writing them (keepingRead's `unchanged`): what's kept is still
+    /// `rooms`, under the new turn.
+    private func keptGroupRoomsStayed(_ rooms: KeptGroupRooms) {
+        keptGroupRoomsMemo = (key: keptGroupRoomsMemoKey, rooms: Optional(rooms))
     }
 
     /// Opens the room a notification names (issue 2064), as Hermes lists
@@ -14997,6 +15037,7 @@ final class AppState: ObservableObject {
         activeRoomLooks = .empty
         activeRoomHomeName = nil
         activeRoomLooksReadAt = nil
+        activeRoomCopyApprovalsReadAt = nil
         activeRoomPeopleRetries = 0
         activeRoomPeopleReadFailed = false
         // Its events say whose each post is; the people read names yours.
@@ -15052,8 +15093,8 @@ final class AppState: ObservableObject {
 
     /// One tick of a copy's room screen: the log after the cursor, then,
     /// when it brought nothing new, the copy again for what the room is
-    /// doing, and your agents' approvals in it. A copy that's over stops
-    /// the polling; one that's gone closes the room.
+    /// doing, and your agents' approvals in it (`roomCopyReadsApprovals`).
+    /// A copy that's over stops the polling; one that's gone closes the room.
     private func pollActiveRoomCopyOnce(epoch: Int) async {
         guard let surface = activeRoomSurface, let copy = surface.copy, groupRoomEpoch == epoch else { return }
         let client = roomCopiesClient
@@ -15097,7 +15138,15 @@ final class AppState: ObservableObject {
             if fresh.isEmpty || activeRoomReplay.cursor >= page.latestSeq {
                 guard await refreshActiveRoomCopy(epoch: epoch) else { return }
             }
-            await refreshLinkedRoomApprovals()
+            let now = Date()
+            if Self.roomCopyReadsApprovals(roomMoved: !fresh.isEmpty, working: activeRoomDriverStatus?.working == true,
+                                           listed: !activeRoomCopyApprovals.isEmpty,
+                                           lastRead: activeRoomCopyApprovalsReadAt, now: now),
+               await refreshLinkedRoomApprovals() {
+                // Only a read that answered waits out the interval; a failed
+                // one is tried again next tick.
+                activeRoomCopyApprovalsReadAt = now
+            }
         } catch is CancellationError {
             return
         } catch {
@@ -15109,6 +15158,20 @@ final class AppState: ObservableObject {
             // Otherwise a transient failure: the next tick tries again.
         }
     }
+
+    /// Whether a copy's room tick reads your agents' approvals: each tick
+    /// while the room moves, the room says it's working or one of them is
+    /// listed (answered elsewhere, its card goes); a quiet room's on the
+    /// first tick and then every `roomCopyQuietApprovalsInterval`, so one
+    /// asked while nothing else shows is there within that (issue 2151).
+    nonisolated static func roomCopyReadsApprovals(roomMoved: Bool, working: Bool, listed: Bool,
+                                                   lastRead: Date?, now: Date) -> Bool {
+        if roomMoved || working || listed { return true }
+        guard let lastRead else { return true }
+        return now.timeIntervalSince(lastRead) >= roomCopyQuietApprovalsInterval
+    }
+
+    nonisolated static let roomCopyQuietApprovalsInterval: TimeInterval = 15
 
     /// The open copy read again: what the room is doing and how it stands.
     /// One deleted elsewhere closes the room, and one that's over stops the
@@ -38595,6 +38658,7 @@ final class AppState: ObservableObject {
         owner: DashboardRuntimeOwner,
         keptAs route: ([String: Any]) -> String?,
         writes: Bool = false,
+        turnOnly: () -> Bool = { false },
         _ read: () async throws -> [String: Any]
     ) async throws -> [String: Any] {
         let removals = offlineChatCache.removals
@@ -38602,7 +38666,8 @@ final class AppState: ObservableObject {
         let answer = try await read()
         let turn = writes ? nextKeptAnswerTurn() : asked
         if let route = route(answer) {
-            keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals, turn: turn, writes: writes)
+            keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals, turn: turn, writes: writes,
+                       turnOnly: turnOnly())
         }
         return answer
     }
@@ -38616,15 +38681,26 @@ final class AppState: ObservableObject {
         profile: String,
         owner: DashboardRuntimeOwner?,
         keeps: (Kept) -> Bool = { _ in true },
+        unchanged: (Kept) -> Bool = { _ in false },
         _ read: () async throws -> Kept
     ) async throws -> Kept {
         guard let owner else { return try await read() }
         var kept: Kept?
-        _ = try await keepingAnswer(profile: profile, owner: owner, keptAs: { $0.isEmpty ? nil : route }) {
+        var same = false
+        _ = try await keepingAnswer(profile: profile, owner: owner, keptAs: { $0.isEmpty ? nil : route },
+                                    turnOnly: { same }) {
             let value = try await read()
             kept = value
             // A read only partly Hermes' answer (`keeps` says) keeps nothing.
-            return keeps(value) ? Self.keptJSON(value) ?? [:] : [:]
+            guard keeps(value) else { return [:] }
+            // The same as what's kept: nothing is encoded or written, but
+            // its turn still counts, so an older read landing after it
+            // can't put an earlier answer back (issue 2152).
+            if unchanged(value) {
+                same = true
+                return ["unchanged": true]
+            }
+            return Self.keptJSON(value) ?? [:]
         }
         guard let kept else { throw CancellationError() }
         return kept
@@ -38720,7 +38796,8 @@ final class AppState: ObservableObject {
         owner: DashboardRuntimeOwner,
         removals: Int,
         turn: Int,
-        writes: Bool
+        writes: Bool,
+        turnOnly: Bool = false
     ) {
         guard let dashboardID = owner.dashboardID else { return }
         let scope = Self.keptAnswerScope(dashboardID, profile, route)
@@ -38728,7 +38805,8 @@ final class AppState: ObservableObject {
         let keeps = offlineChatCache.removals == removals && (writes || ownsDashboardRuntime(owner))
         guard keeps || writes else { return }
         keptAnswerTurnsKept[scope] = turn
-        guard keeps else { return }
+        // The same as what's kept (keepingRead's `unchanged`): the turn alone.
+        guard keeps, !turnOnly else { return }
         // A schema's fields are keyed by config path, not by what they hold.
         let names: Set<String> = route == KeptRoute.configSchema ? ["fields"] : []
         let answer = route == KeptRoute.modelAuxiliary ? HelperModelSlot.keptAnswer(answer) : answer

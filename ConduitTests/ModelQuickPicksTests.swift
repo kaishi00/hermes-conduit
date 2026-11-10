@@ -9,7 +9,8 @@ final class ModelQuickPicksTests: XCTestCase {
     private lazy var openrouter = ProviderInfo(
         name: "openrouter",
         models: [model("opus"), model("sonnet"), model("deepseek")],
-        aliases: ["custom:openrouter"]
+        aliases: ["custom:openrouter"],
+        quota: ProviderQuota(row: ["slug": "openrouter", "usage": ["windows": [["label": "Key", "used_percent": 10] as [String: Any]]]])
     )
     private lazy var zai = ProviderInfo(name: "zai", models: [model("glm"), model("opus")])
 
@@ -123,6 +124,12 @@ final class ModelQuickPicksTests: XCTestCase {
         XCTAssertEqual(shown.map(\.name), ["openrouter"])
         XCTAssertEqual(shown.first?.models.map(\.id), ["opus", "sonnet"])
         XCTAssertEqual(shown.first?.aliases, ["custom:openrouter"], "an alias still finds the row")
+        XCTAssertEqual(shown.first?.quota, openrouter.quota, "its quota line stays on the row")
+        // Edit's search finds a provider by the name its card shows.
+        let go = ProviderInfo(name: "opencode-go", models: [model("glm")], displayName: "OpenCode Go")
+        XCTAssertTrue(ModelVisibilityEditor.namesMatch(go, "opencode go"))
+        XCTAssertTrue(ModelVisibilityEditor.namesMatch(go, "opencode-go"))
+        XCTAssertFalse(ModelVisibilityEditor.namesMatch(go, "kimi"))
         XCTAssertTrue(visibility.isHidden(model: "glm", provider: zai))
         XCTAssertTrue(visibility.isHidden(model: "deepseek", provider: openrouter))
         XCTAssertFalse(visibility.isHidden(model: "opus", provider: openrouter))
