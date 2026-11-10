@@ -654,6 +654,46 @@ extension BotModeTests {
         XCTAssertEqual(coordinated.manage, [.pin, .leaveAlone])
     }
 
+    func testTheCoordinationListIsReadWithTheLinesBehindEachEntry() throws {
+        // Milestone 2 (Eric 2026-11-10): what the Bot Chat did to keep the work in step, and why.
+        XCTAssertNil(try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina")).coordination)
+        var response = workResponse()
+        response["coordination"] = ["mode": "ask", "items": [
+            ["id": "P1", "kind": "proposal", "ref": "W2", "title": "Deploy", "at": 1_800_000_300.0,
+             "text": "Move W2 to the v2 API", "status": "approved", "answer": "yes, go", "why": []],
+            ["id": "E7", "kind": "sent", "ref": "W2", "title": "Deploy", "at": 1_800_000_200.0,
+             "text": "v1 is gone, check first", "how": "added to the turn it was working on", "state": "delivered",
+             "why": [["ref": "W1", "title": "Login bug", "kind": "found", "text": "v1 returns 410",
+                      "at": 1_800_000_000.0],
+                     ["ref": "W2", "title": "Deploy", "kind": "user", "text": "Keep v1", "at": 1_800_000_050.0],
+                     ["ref": "W1", "kind": "found", "text": "", "at": 1_800_000_060.0]]],
+            ["id": "E5", "kind": "flag", "ref": "W1", "title": "Login bug", "at": 1_800_000_100.0,
+             "text": "W1 found v1 is gone, and W2 moves to it", "with": ["W2"], "woke": false,
+             "why": [["ref": "W1", "title": "Login bug", "kind": "found", "text": "v1 returns 410",
+                      "at": 1_800_000_000.0]]],
+            ["id": "E9", "kind": "later", "at": 1_800_000_400.0],
+            ["kind": "sent", "at": 1_800_000_400.0],
+        ]]
+        let list = try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina")?.coordination)
+        XCTAssertEqual(list.mode, "ask")
+        XCTAssertEqual(list.items.map(\.id), ["P1", "E7", "E5"])  // a kind this build doesn't know is left out
+        let proposal = list.items[0], sent = list.items[1], flag = list.items[2]
+        XCTAssertEqual(proposal.headline, "Asked you about W2")
+        XCTAssertEqual(proposal.stateText, "You approved")
+        XCTAssertEqual(proposal.answer, "yes, go")
+        XCTAssertNil(proposal.whyCaption(botName: "Furina"))
+        XCTAssertEqual(sent.headline, "Sent to W2")
+        XCTAssertEqual(sent.stateText, "In its chat")
+        XCTAssertEqual(sent.why.map(\.saidBy), ["W1 found", "You told W2"])  // a line with no words is left out
+        XCTAssertEqual(sent.whyCaption(botName: "Furina"), "What was on Furina’s board in the half hour before.")
+        XCTAssertEqual(flag.headline, "W1 may affect W2")
+        XCTAssertEqual(flag.stateText, "Kept on the board")
+        XCTAssertEqual(flag.why.first?.text, "v1 returns 410")
+        XCTAssertEqual(flag.at, Date(timeIntervalSince1970: 1_800_000_100))
+        response["coordination"] = ["mode": "off", "items": []]
+        XCTAssertEqual(BotWorkSnapshot(response: response, profile: "furina")?.coordination?.items, [])
+    }
+
     func testEverythingHereIsOfferedOnlyWhereThePluginTakesIt() throws {
         // Notifier issue 619 (Eric 2026-11-08): three choices by what the user notices.
         let older = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "lookups", "max_running": 2]))
