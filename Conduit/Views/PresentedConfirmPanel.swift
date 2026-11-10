@@ -137,10 +137,11 @@ struct PresentedConfirmPanel: View {
                         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { previewHeight = $0 }
                 }
                 .scrollBounceBehavior(.basedOnSize)
-                // A ScrollView (and a frame with only a maximum) takes all the
-                // height it's offered, which left a short preview's box mostly
-                // empty; it fits the text instead.
-                .frame(height: min(max(previewHeight, 1), Self.maxPreviewHeight))
+                // A ScrollView takes all the height it's offered, which left a
+                // short preview's box mostly empty at a 220 pt cap. The cap is
+                // the text's own height instead, and it still shrinks when
+                // space is tight (the keyboard up for Say instead).
+                .frame(maxHeight: min(max(previewHeight, 1), Self.maxPreviewHeight))
                 .padding(12)
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
