@@ -339,7 +339,12 @@ struct BotWorkPanel: View {
             }
         }
         .sheet(item: $whyItem) { item in
-            BotWorkWhySheet(item: item, botName: botName)
+            // The entry as the list has it now: a send that arrives, or an
+            // answer to what was asked, shows while the sheet is open.
+            BotWorkWhySheet(
+                item: work.snapshot(profile)?.coordination?.items.first { $0.id == item.id } ?? item,
+                botName: botName
+            )
         }
         // Settings' backdrop beside a Bot Chat (see Sheets in Settings'
         // look). In the Bot Overview the sheet's own shows through, so the
