@@ -126,23 +126,26 @@ private struct RichBoardTabs: View {
 /// ignore taps in their first moment on screen.
 struct RichBoardFollowUps: View {
     let followUps: [String]
-    /// Holds the composer's draft (Predictive's store sees every edit).
-    @ObservedObject var composer: PredictiveStore
+    /// Holds the composer's draft (Predictive's store sees every edit);
+    /// the chips follow only whether it's empty (RichDraftGate).
+    let composer: PredictiveStore
     let send: (String) -> Void
     let edit: (String) -> Void
 
     @State private var shownAt = Date.distantFuture
 
     var body: some View {
-        if composer.isEmpty {
-            CapabilityFlowLayout(spacing: 8) {
-                ForEach(Array(followUps.enumerated()), id: \.offset) { index, text in
-                    PredictiveReplyChip(text: text, isFirst: index == 0,
-                                        send: { if ready { send($0) } },
-                                        edit: { if ready { Haptics.light(); edit($0) } })
+        RichDraftGate(composer: composer) { empty in
+            if empty {
+                CapabilityFlowLayout(spacing: 8) {
+                    ForEach(Array(followUps.enumerated()), id: \.offset) { index, text in
+                        PredictiveReplyChip(text: text, isFirst: index == 0,
+                                            send: { if ready { send($0) } },
+                                            edit: { if ready { Haptics.light(); edit($0) } })
+                    }
                 }
+                .onAppear { shownAt = Date() }
             }
-            .onAppear { shownAt = Date() }
         }
     }
 

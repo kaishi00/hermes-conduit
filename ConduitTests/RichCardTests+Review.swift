@@ -129,6 +129,14 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(asked.paths.count, 2, "a forgotten round is read again")
         _ = try await loader.round(id, 1, fresh: true)
         XCTAssertEqual(asked.paths.count, 3, "fresh asks again")
+        // Issue 2149: a card's row drawn again within its window takes the
+        // round it just read; past it, it asks again.
+        _ = try await loader.round(id, 1, fresh: true, freshFor: RichReviewLoader.rowFreshFor,
+                                   now: Date().addingTimeInterval(5))
+        XCTAssertEqual(asked.paths.count, 3, "a row scrolled back within its window reads nothing")
+        _ = try await loader.round(id, 1, fresh: true, freshFor: RichReviewLoader.rowFreshFor,
+                                   now: Date().addingTimeInterval(RichReviewLoader.rowFreshFor + 1))
+        XCTAssertEqual(asked.paths.count, 4, "past it, the row asks again")
         do {
             _ = try await loader.round("../etc", 1)
             XCTFail("only a kept review's id is read")

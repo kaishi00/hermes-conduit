@@ -429,7 +429,8 @@ struct PeopleSettingsPage: View {
     }
 
     /// Every 5 s for up to 3 minutes: a confirm comes within seconds while
-    /// the other Hermes runs, or not until it's back.
+    /// the other Hermes runs, or not until it's back. A tick in the
+    /// background or while not connected is skipped (issue 2155).
     private func followWaitingLinks() async {
         guard !waitingIDs.isEmpty else { return }
         let key = key
@@ -437,6 +438,7 @@ struct PeopleSettingsPage: View {
             try? await Task.sleep(for: .seconds(5))
             guard !Task.isCancelled, key == self.key else { return }
             if changingID != nil { continue }
+            guard appState.isSceneActive, appState.isConnected else { continue }
             await load(key, keepingIdentity: true)
             if waitingIDs.isEmpty { return }
         }
