@@ -350,6 +350,27 @@ struct NotifierPluginUpdater {
         return .ended(.failed(detail: AppLocalization.string("The dashboard hasn't come back yet. Check that Hermes is running on the host.")))
     }
 
+    /// Nil when the run may go on from here, after a start on the host that
+    /// started nothing. A host that manages the plugin now, unknown to the
+    /// status this started from, never gets Hermes' own pull, nor does one
+    /// that can't say: the pull would replace a pinned copy. A restart-only
+    /// run pulls nothing: its restarts run from here.
+    private func managedRefusal(request: Request) async -> NotifierPluginUpdateState? {
+        if restartOnly { return nil }
+        let current: [String: Any]
+        do {
+            current = try await request(NotifierPluginStatus.path, "GET", nil)
+        } catch {
+            if Task.isCancelled { return .idle }
+            return .failed(detail: UserFacingError.message(for: error))
+        }
+        if let managedBy = NotifierPluginStatus.managedBy(from: current) {
+            report?(current)
+            return .failed(detail: NotifierPluginStatus.managedText(managedBy))
+        }
+        return nil
+    }
+
     /// Starts the update on the host and follows it. Nil when the host
     /// can't run it (an older Hermes, a dashboard that can't restart
     /// itself) or the plugin isn't one Hermes can pull: the steps above
@@ -388,28 +409,19 @@ struct NotifierPluginUpdater {
             // the job: follow one that runs rather than start a second
             // update from here.
             let status = Self.httpStatus(of: error)
-            guard status == nil || status == 0 else { return nil }
+            // Any other answer (an older Hermes' 404, a proxy's 502 while
+            // the host restarts) started nothing; Hermes' own pull runs from
+            // here only on a host that says it doesn't manage the plugin
+            // (issue 2061).
+            guard status == nil || status == 0 else {
+                return await managedRefusal(request: request)
+            }
             if let probe = try? await request(path, "GET", nil),
                let running = probe["job"] as? [String: Any], Self.hostStep(running) != nil {
                 job = running
             } else {
-                // Nothing runs there: a host that manages the plugin now, unknown
-                // to the status this started from, never gets Hermes' own pull.
-                // Nor does one that can't say: the pull would replace a pinned copy.
-                // A restart-only run pulls nothing: its restarts run from here.
-                if restartOnly { return nil }
-                let current: [String: Any]
-                do {
-                    current = try await request(NotifierPluginStatus.path, "GET", nil)
-                } catch {
-                    if Task.isCancelled { return .idle }
-                    return .failed(detail: UserFacingError.message(for: error))
-                }
-                if let managedBy = NotifierPluginStatus.managedBy(from: current) {
-                    report?(current)
-                    return .failed(detail: NotifierPluginStatus.managedText(managedBy))
-                }
-                return nil
+                // Nothing runs there.
+                return await managedRefusal(request: request)
             }
         }
         guard let jobID = job["id"] as? String else { return nil }

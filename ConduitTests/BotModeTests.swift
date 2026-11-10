@@ -1331,6 +1331,51 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(harness.appState.botModePhase, BotModePhase.idle)
     }
 
+    /// Issue 2085: an open from a list of bots that a server switch
+    /// cancelled is superseded, not failed. The next server's list says
+    /// nothing about the outgoing server's bot, and the list's marks go with
+    /// the rest of Bot Mode's state.
+    func testServerSwitchCancelledListOpenSaysNothingOnTheNextServer() async {
+        let harness = makeBotHarness(
+            configureDefaults: { defaults in
+                defaults.set("https://one.example", forKey: "conduit.chatResumeServerIdentity.v1")
+            },
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSessionWithProfile: { _, id, _, _ in
+                    SessionResumeResult(sessionId: id, storedSessionId: "stored-1", messages: [],
+                                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+                },
+                refreshContext: { _, _ in },
+                findBotChat: { _, _ in
+                    // The lookup is out when the server switches.
+                    try await Task.sleep(nanoseconds: 250_000_000)
+                    return [BotChatLookupRow(id: "stored-1", resolvedID: "runtime-1", title: "Bot Chat")]
+                }
+            )
+        )
+        let appState = harness.appState
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+            profile: "default"
+        )
+        let bot = makeBot(name: "atlas")
+        appState.showSidebar = true
+        appState.beginOpeningBotChat(bot.name)
+        async let opened: Bool = appState.openBotChatFromList(bot)
+        try? await Task.sleep(nanoseconds: 60_000_000)
+        _ = appState.prepareChatResumeForConnection(to: "https://elsewhere.example", dashboardID: UUID())
+        XCTAssertNil(appState.botChatComingOverAnother, "the cover went with the outgoing server's open")
+        XCTAssertFalse(appState.botChatCoversOpenChat, "the list's marks went with it too")
+        XCTAssertFalse(appState.placesConversationAsBotChat)
+        let sidebarAfterSwitch = appState.showSidebar
+        let result = await opened
+
+        XCTAssertFalse(result)
+        XCTAssertNil(appState.botsListNotice, "the next server's list says nothing about the outgoing server's bot")
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertEqual(appState.showSidebar, sidebarAfterSwitch, "the next server's screen is left as the switch laid it out")
+    }
+
     func testBackfillWindowCarriesBotProfileScope() async {
         var hydrationProfiles: [String] = []
         let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
@@ -2310,6 +2355,19 @@ final class BotModeTests: XCTestCase {
             "Could not check Atlas's Bot Chat — not starting a new chat."
         )
         XCTAssertNil(harness.appState.errorMessage)
+
+        // A retry that fails the same way, while that same text still
+        // shows, keeps its own explanation rather than the generic line
+        // (issue 2079).
+        harness.appState.botsListNotice = nil
+        harness.appState.errorMessage = "Could not check Atlas's Bot Chat — not starting a new chat."
+        harness.appState.showSidebar = true
+        let retried = await harness.appState.openBotChatFromList(atlas)
+        XCTAssertFalse(retried)
+        XCTAssertEqual(
+            harness.appState.botsListNotice,
+            "Could not check Atlas's Bot Chat — not starting a new chat."
+        )
     }
 
     /// #442: going atlas → scout → atlas used to leave scout's chat as the

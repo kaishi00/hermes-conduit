@@ -75,9 +75,12 @@ struct PulseLookBody: View {
         // A day with no time is due by that day's end: not late on the day.
         let by = hasTime ? due : PulseLook.endOfDay(due)
         let late = by < now
+        // A bar needs a start: with no day it was noticed before the due
+        // day (none, or the same day, as picks kept before 0.153.2 may say), only the day.
+        let start = noticed.flatMap { by > $0 && !Calendar.current.isDate($0, inSameDayAs: due) ? $0 : nil }
         let progress: Double = {
-            guard let noticed, by > noticed else { return late ? 1 : 0.5 }
-            return min(1, max(0, now.timeIntervalSince(noticed) / by.timeIntervalSince(noticed)))
+            guard let start else { return late ? 1 : 0.5 }
+            return min(1, max(0, now.timeIntervalSince(start) / by.timeIntervalSince(start)))
         }()
         let dueText = hasTime ? due.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute().locale(AppLocalization.formattingLocale))
             : due.formatted(.dateTime.weekday(.abbreviated).day().month().locale(AppLocalization.formattingLocale))
@@ -85,18 +88,22 @@ struct PulseLookBody: View {
             Text(verbatim: hasTime ? due.formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale)) : PulseLook.relativeDay(due))
                 .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(late ? Color.red : progress > 0.75 ? Color.orange : Color.primary)
-            ProgressView(value: progress)
-                .tint(late ? .red : progress > 0.75 ? .orange : .conduitAccent)
-                .accessibilityHidden(true)
-            HStack {
-                if let noticed {
+            if let noticed = start {
+                ProgressView(value: progress)
+                    .tint(late ? .red : progress > 0.75 ? .orange : .conduitAccent)
+                    .accessibilityHidden(true)
+                HStack {
                     Text(verbatim: noticed.formatted(.dateTime.day().month().locale(AppLocalization.formattingLocale)))
+                    Spacer(minLength: 0)
+                    Text(verbatim: dueText)
                 }
-                Spacer(minLength: 0)
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+            } else {
                 Text(verbatim: dueText)
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .scaledFont(.caption)
-            .foregroundStyle(.secondary)
         }
     }
 

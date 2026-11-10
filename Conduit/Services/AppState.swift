@@ -1237,6 +1237,12 @@ final class AppState: ObservableObject {
                     // on every chat the person opens.
                     if showModelPicker { showModelPicker = false }
                     if showContextSheet { showContextSheet = false }
+                    // A failed send's line under the composer was the chat
+                    // left's; a reconnect's new id for the same one keeps it.
+                    if let failure = sendFailureShown {
+                        if errorMessage == failure { errorMessage = nil }
+                        sendFailureShown = nil
+                    }
                 }
                 updateChatOnScreen()
             }
@@ -2580,7 +2586,12 @@ final class AppState: ObservableObject {
     func requestSettingsDismissal() {
         settingsDismissRequest &+= 1
     }
-    @Published var errorMessage: String?
+    @Published var errorMessage: String? {
+        didSet { errorMessageWrites &+= 1 }
+    }
+    /// Counts every write to `errorMessage`, the same text again included,
+    /// so an open can tell whether it said why it failed (issue 2079).
+    private(set) var errorMessageWrites = 0
     /// The open chat's sync error, raised while a room covers the chat. A
     /// room's banner shows `errorMessage`, so a chat that fails to resume
     /// behind it (a return to the app) would put its error in the room
@@ -5824,6 +5835,9 @@ final class AppState: ObservableObject {
     /// Bumped by a job delete so a list load that started before it can't
     /// bring the deleted job back.
     private var cronJobsGeneration = 0
+    /// The read in flight and the list generation, profile and connection
+    /// it is for. A second ask for the same list joins it.
+    private var cronJobsRead: (owner: String, token: UUID, task: Task<Void, Never>)?
     /// Cron jobs whose runs don't notify (AppState+CronNotifications), for
     /// the dashboard and profile in `cronMutedJobsKey`.
     @Published var cronMutedJobIDs: Set<String> = []
@@ -10451,6 +10465,8 @@ final class AppState: ObservableObject {
     /// lands at the turn's next step. The open chat shows the words the way
     /// it shows a typed correction.
     private func redirectLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
+        // Taken before waiting for a client: a send that fails meanwhile keeps its line.
+        let failureBefore = sendFailureShown
         let client = try await clientForVoiceRequest()
         let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
         do {
@@ -10462,10 +10478,16 @@ final class AppState: ObservableObject {
             }
             switch outcome {
             case .redirected:
-                if isOpenChat(target) { appendLocalUserMessage(text) }
+                if isOpenChat(target) {
+                    appendLocalUserMessage(text)
+                    clearSendFailureAfterSend(failureBefore)
+                }
                 return .redirected
             case .queued:
-                if isOpenChat(target) { appendLocalUserMessage(text) }
+                if isOpenChat(target) {
+                    appendLocalUserMessage(text)
+                    clearSendFailureAfterSend(failureBefore)
+                }
                 return .queued
             case .rejected:
                 return .notRunning
@@ -10481,7 +10503,10 @@ final class AppState: ObservableObject {
             } catch HermesError.steerRejected {
                 return .notRunning
             }
-            if isOpenChat(target) { appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore) }
+            if isOpenChat(target) {
+                appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore)
+                clearSendFailureAfterSend(failureBefore)
+            }
             return .redirected
         }
     }
@@ -10491,6 +10516,8 @@ final class AppState: ObservableObject {
     /// supervisor's redirect fallback: a timeout leaves delivery unknown and
     /// must not send the words a second time.
     private func steerLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
+        // Taken before waiting for a client: a send that fails meanwhile keeps its line.
+        let failureBefore = sendFailureShown
         let client = try await clientForVoiceRequest()
         let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
         let persistedTwinsBefore = persistedSteerIDs(matching: text)
@@ -10504,7 +10531,10 @@ final class AppState: ObservableObject {
             // Method not found: the words never arrived, so redirecting them is safe.
             throw HermesError.steerRejected
         }
-        if isOpenChat(target) { appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore) }
+        if isOpenChat(target) {
+            appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore)
+            clearSendFailureAfterSend(failureBefore)
+        }
         return .redirected
     }
 
@@ -12832,8 +12862,14 @@ final class AppState: ObservableObject {
         botChatSessionProfiles.removeAll()
         botChatSessionLabels.removeAll()
         botChatOpenFlights.removeAll()
-        // Another server's list: an earlier one's failed open isn't its.
+        // Another server's list: an earlier one's failed open isn't its,
+        // and the marks its taps made, and the cover over the chat, go
+        // with the opens they were for (issue 2085).
         botsListNotice = nil
+        botChatOpening = nil
+        botChatMarks.removeAll()
+        botChatLatestMark = nil
+        botChatOnItsWay = nil
         botRoster = []
         botAvatarImages = [:]
         botAvatarFetchedGeneration.removeAll()
@@ -13043,9 +13079,16 @@ final class AppState: ObservableObject {
     @Published var activeRoomBoards: [RoomBoard] = []
     /// Boards replies name by line, by id, once read (LineBoards).
     @Published var lineBoards: [String: RichBoard] = [:]
+    /// Boards replies name that the plugin no longer has (pruned: the
+    /// newest 500, a month), or answered in a shape Conduit can't draw:
+    /// not asked for again, and the reply says one was there.
+    @Published var lineBoardsGone: Set<String> = []
     var lineBoardsAsked: Set<String> = []
     /// The dashboard and profile `lineBoards` were read from.
     var lineBoardsScope = ""
+    /// Bumped whenever `lineBoards` is forgotten, so a read from before
+    /// stores nothing (issue 2083).
+    var lineBoardsGeneration = 0
     var lineBoardsReadOverride: ((String) async throws -> [String: Any])?
     var roomBoardsTask: Task<Void, Never>?
     /// Tests read a room's boards here in place of the dashboard.
@@ -16485,8 +16528,9 @@ final class AppState: ObservableObject {
             followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
             isConnected = true
             isConnecting = false
-            // A fresh healthy session never inherits an older banner error.
-            errorMessage = nil
+            // A fresh healthy session never inherits an older banner error;
+            // a failed send's reason stays until the next send or its chat.
+            if errorMessage == nil || errorMessage != sendFailureShown { errorMessage = nil }
             lastConnectionFailure = nil
             reconnectAttempts = 0
             connectedAt = Date()
@@ -16637,7 +16681,9 @@ final class AppState: ObservableObject {
         connection != nil
             && !isConnected
             && (lastConnectionFailure != nil
-                || (!(errorMessage ?? "").isEmpty && !isHoldingQuietReconnectFailure))
+                || (!(errorMessage ?? "").isEmpty && !isHoldingQuietReconnectFailure
+                    // A failed send's reason isn't the connection's.
+                    && errorMessage != sendFailureShown))
     }
 
     /// A failed renewal is being kept quiet: an older, unrelated message
@@ -16931,6 +16977,8 @@ final class AppState: ObservableObject {
         // sign-in never crosses the server-identity boundary, so without
         // this the previous session's room would be restored as it was.
         invalidateGroupChatState()
+        // And the boards its replies named, with any read still out.
+        resetLineBoards()
         botRosterRetry.succeeded()
         // Background jobs keep running on the server as ordinary chats; the
         // signed-out ledger just stops following them.
@@ -17502,6 +17550,7 @@ final class AppState: ObservableObject {
         // An open call transcript is the outgoing dashboard's, and its fetch
         // still in flight must not open one over the next.
         dismissChatCallTranscript()
+        retireCronJobsForDashboardSwitch()
     }
 
     /// The dashboard a request was sent to, through which bridge. Its
@@ -17996,10 +18045,12 @@ final class AppState: ObservableObject {
 
     /// Server-unreachable failures that leave the saved offline copy on
     /// screen instead of sending the user to sign-in. Authentication
-    /// failures always go to sign-in.
+    /// failures always go to sign-in. A server that refuses this network
+    /// (an IP allowlist, issue #2092) is unreachable from here too: signing
+    /// in again can't get past it.
     static func failureKeepsOfflineChat(_ failure: ConnectionFailure) -> Bool {
         switch failure {
-        case .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline, .dashboardUnavailable:
+        case .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline, .dashboardUnavailable, .accessDenied:
             return true
         default:
             return false
@@ -22127,7 +22178,9 @@ final class AppState: ObservableObject {
             // including the typed classification Repair Connection seeds
             // from: a successful reconnect makes any previous failure stale,
             // so a LATER unrelated failure must route repair from itself.
-            errorMessage = nil
+            // A failed send's reason stays: its words are back in the
+            // composer, and it goes with the next send or its chat.
+            if errorMessage == nil || errorMessage != sendFailureShown { errorMessage = nil }
             chatErrorBehindRoom = nil
             lastConnectionFailure = nil
             reconnectAttempts = 0
@@ -26854,6 +26907,7 @@ final class AppState: ObservableObject {
             }
         }
         let beganTransition = viewportTransitionGeneration == nil
+        let epoch = botRosterEpoch
         let transition = viewportTransitionGeneration ?? beginExplicitChatViewportTransition()
         if beganTransition {
             botChatOnItsWay = BotChatOnItsWay(bot: bot.name, label: bot.displayLabel, transition: transition)
@@ -26890,6 +26944,9 @@ final class AppState: ObservableObject {
         guard chatViewportTransitionIsCurrent(generation: transition) else { return .superseded }
         // Nothing replaced the chat on screen: its viewport goes on as it was.
         if beganTransition { finishChatViewportTransition(generation: transition) }
+        // A server switch cancelled it: what it says is the outgoing
+        // server's, never the next one's (issue 2085).
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return .superseded }
         return .failed
     }
 
@@ -26902,15 +26959,22 @@ final class AppState: ObservableObject {
     /// under this bot's tap. True when it opened.
     @discardableResult
     func openBotChatFromList(_ bot: BotProfile) async -> Bool {
-        let shownError = errorMessage
+        let writes = errorMessageWrites
+        let epoch = botRosterEpoch
         let outcome = await openBotChatOutcome(for: bot)
+        // A server switch retired the list's marks with the rest of Bot
+        // Mode's state: this open has no mark left to end, and a tap on the
+        // next server's list may have made one under the same name.
+        guard epoch == botRosterEpoch else { return outcome == .opened }
         let pushed = botChatMarks[bot.name]?.pushed ?? false
         // The list shows (it went back, or it never closed): the error
         // shows with a chat's composer, which isn't there, so the list
         // says it instead.
         if outcome == .failed, pushed || showSidebar {
             showSidebar = true
-            if let error = errorMessage, error != shownError {
+            // This open's own error, even when it reads like the one
+            // already showing (a retry that failed the same way).
+            if let error = errorMessage, errorMessageWrites != writes {
                 botsListNotice = error
                 errorMessage = nil
             } else {
@@ -26991,7 +27055,7 @@ final class AppState: ObservableObject {
         presentationMigrationSessionIDs: Set<String> = [],
         viewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
-        let shownError = errorMessage
+        let writes = errorMessageWrites
         noteBotChatOpen([resumeID, registryID], bot: bot)
         let outcome = await performSessionOpen(
             resumeID,
@@ -27006,8 +27070,10 @@ final class AppState: ObservableObject {
         // not an error.
         if outcome == .failed, !Task.isCancelled,
            botOpenFenceIsCurrent(epoch: epoch, client: client),
-           // The open's own failure says more; an error from before it doesn't.
-           errorMessage == nil || errorMessage == shownError {
+           // The open's own failure says more, even when its text matches
+           // the error already showing (a retry that failed the same way);
+           // an error from before it doesn't.
+           errorMessage == nil || errorMessageWrites == writes {
             errorMessage = AppLocalization.string(
                 "Could not open \(bot.displayLabel)'s Bot Chat."
             )
@@ -27819,8 +27885,10 @@ final class AppState: ObservableObject {
 
     /// How a notification open ended, for the route that retries it (#789):
     /// `.retry` is a read or switch that can succeed once the connection or
-    /// the session catalog is ready; `.failed` already told the user why it
-    /// can't open, and retrying would only repeat that. `.unverified` is a
+    /// the session catalog is ready; `.failed` means don't retry and say no
+    /// more: usually the open already told the user why it can't, or
+    /// something opened since owns the screen (a room open a newer
+    /// navigation superseded). `.unverified` is a
     /// `.retry` whose failure has something to tell the user (the dashboard
     /// didn't connect, the workspace couldn't be checked): the route says it
     /// only once its window runs out, so a retry that passes shows no error.
@@ -29371,7 +29439,9 @@ final class AppState: ObservableObject {
         // marks nothing: missing a mark costs one extra read, a wrong mark
         // hides the other device's turn.
         let isSlashCommand = runsSlashCommands && attachments.isEmpty && Self.parseSlashCommand(text) != nil
-        if sent, !isSlashCommand, activeSessionId == submissionContext.sessionID {
+        // One left waiting for a reconnect (keepComposerSendForReconnect)
+        // isn't Hermes' yet.
+        if sent, !isSlashCommand, activeSessionId == submissionContext.sessionID, pendingComposerSendOnScreen == nil {
             noteOpenChatSentHere()
         }
         return sent
@@ -30730,7 +30800,7 @@ final class AppState: ObservableObject {
         // Images staged for a Queue this Hermes refuses would ride on the
         // next turn instead, so they never go up.
         if queued, !attachments.isEmpty, client.refusesQueuedPrompts {
-            errorMessage = HermesClient.QueueUnsupportedError.attachmentsMessage
+            showSendFailure(HermesClient.QueueUnsupportedError.attachmentsMessage)
             return false
         }
         let joinsRunningTurn = queued && turnState.isRunning
@@ -30788,6 +30858,9 @@ final class AppState: ObservableObject {
         // Mid-turn ordering rule: the outgoing bubble must not land below a
         // still-live reasoning card's eventual commit.
         settleReasoningSegmentIntoTranscript()
+        // An earlier send's failure, shown under the composer, is over.
+        if errorMessage != nil { errorMessage = nil }
+        sendFailureShown = nil
         messages.append(userMessage)
         requestChatScrollToLatest()
         cacheMessagePresentation(for: [sessionId])
@@ -30876,7 +30949,10 @@ final class AppState: ObservableObject {
                         lostSessionIDs: submissionSessionIDs, using: client
                     )
                 }
-                errorMessage = AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))")
+                // A file can't wait as text: it comes back, and the
+                // reconnect starts now all the same.
+                noteDropFoundBySend(error, client: client)
+                showSendFailure(AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))"))
                 await recoverComposerSubmission(using: submissionContext)
                 return false
             }
@@ -31073,7 +31149,7 @@ final class AppState: ObservableObject {
             }
             if error is HermesClient.QueueUnsupportedError, !attachments.isEmpty {
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
-                errorMessage = HermesClient.QueueUnsupportedError.attachmentsMessage
+                showSendFailure(HermesClient.QueueUnsupportedError.attachmentsMessage)
                 await recoverComposerSubmission(using: submissionContext)
                 return false
             }
@@ -31087,6 +31163,12 @@ final class AppState: ObservableObject {
                     text, attachments: attachments, context: submissionContext, queued: queued,
                     lostSessionIDs: submissionSessionIDs, using: client
                 )
+            }
+            if keepComposerSendForReconnect(
+                after: error, text: text, attachments: attachments, queued: queued,
+                surface: surface, rowID: userMessage.id, client: client
+            ) {
+                return true
             }
             if Self.isAmbiguousPromptDelivery(error) {
                 lifecycleLog.notice(
@@ -31265,7 +31347,7 @@ final class AppState: ObservableObject {
                 // failed send must not paint an error onto the session the
                 // user switched to while recovery was suspended.
                 if isCurrentComposerSubmission(submissionContext) {
-                    errorMessage = AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))")
+                    showSendFailure(AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))"))
                 }
                 if !reconnected, isCurrentComposerSubmission(submissionContext) {
                     await recoverComposerSubmission(using: submissionContext)
@@ -31283,7 +31365,7 @@ final class AppState: ObservableObject {
                         refusal, sessionID: sessionId, knownSessionIDs: submissionSessionIDs, refusedText: text
                     )
                 } else {
-                    errorMessage = AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))")
+                    showSendFailure(AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))"))
                 }
             }
             await recoverComposerSubmission(using: submissionContext)
@@ -31307,6 +31389,68 @@ final class AppState: ObservableObject {
         case .redirected: return "redirected"
         case .queued: return "queued"
         }
+    }
+
+    /// A typed send `rpc` refused before writing it (`notConnected`): the
+    /// socket had closed under it, its close frame in before its receive
+    /// failed, so the drop wasn't known yet (issue 2095, a proxy closing
+    /// sockets with 1005 and 1013). Nothing left the phone, so rather than
+    /// come back to the composer the message waits in its chat as "Sends
+    /// when connected", and goes once the reconnect this starts has the
+    /// chat back. Text only, and only the composer's own: a call's, a
+    /// Shortcut's or a Queue send reports its own outcome. False, with
+    /// nothing changed but the drop noted, when it can't wait.
+    private func keepComposerSendForReconnect(
+        after error: Error,
+        text: String,
+        attachments: [Attachment],
+        queued: Bool,
+        surface: String?,
+        rowID: String,
+        client: HermesClient
+    ) -> Bool {
+        guard noteDropFoundBySend(error, client: client) else { return false }
+        guard attachments.isEmpty, !queued, surface == nil, submissionTurnSurface == nil,
+              !callSubmissionTexts.contains(text), composerWaitsForChat,
+              sendWhenConnected(text, replyReference: nil) else { return false }
+        // The waiting message shows in its place.
+        messages.removeAll { $0.id == rowID }
+        if let activeSessionId { cacheMessagePresentation(for: [activeSessionId]) }
+        lifecycleLog.notice("prompt.submit found no connection; the message waits for the reconnect")
+        return true
+    }
+
+    /// The failed send's error under the composer, which leaving its chat
+    /// clears: the composer shows `errorMessage` unlocked too.
+    var sendFailureShown: String?
+
+    /// A send that went through ends the failure line shown when it set
+    /// out, and only that line: another error, or a newer send's failure,
+    /// stays.
+    private func clearSendFailureAfterSend(_ failureBefore: String?) {
+        guard let failure = failureBefore, sendFailureShown == failure else { return }
+        if errorMessage == failure { errorMessage = nil }
+        sendFailureShown = nil
+    }
+
+    private func showSendFailure(_ message: String) {
+        errorMessage = message
+        sendFailureShown = message
+    }
+
+    /// A send's request `rpc` refused with `notConnected` on the current
+    /// client: the socket closed before its receive failed. The drop its
+    /// own close report would bring a moment later is acted on now; that
+    /// report, from this client, then finds it done. True when the error
+    /// was that refusal.
+    @discardableResult
+    private func noteDropFoundBySend(_ error: Error, client: HermesClient) -> Bool {
+        guard case HermesError.notConnected = error, self.client === client else { return false }
+        if isConnected {
+            noteConnectionStep("Send found the socket closed")
+            handleDisconnect()
+        }
+        return true
     }
 
     /// Which failures leave it genuinely unknown whether Hermes received the
@@ -33550,6 +33694,9 @@ final class AppState: ObservableObject {
         guard let client, let sessionId = activeSessionId else { return false }
         cancelChatResumeRestoration()
         let outboundText = mentionAnnotatedOutboundText(text)
+        // Only a failure already shown is this send's to clear; one a
+        // send made while this one was on its way stays.
+        let failureBefore = sendFailureShown
         let persistedTwinsBefore = persistedSteerIDs(matching: outboundText)
         do {
             if let steer = chatResumeLifecycleOperations.steer {
@@ -33581,6 +33728,7 @@ final class AppState: ObservableObject {
                 // when the agent next reaches a tool boundary, so without
                 // this the text just vanished from the composer.
                 appendLocalSteerMessage(outboundText, persistedTwinsBefore: persistedTwinsBefore)
+                clearSendFailureAfterSend(failureBefore)
             }
             // A successful steer is accepted by Hermes even if the user
             // switched sessions while the RPC was suspended. Apart from the
@@ -33619,6 +33767,9 @@ final class AppState: ObservableObject {
         // Fallbacks below re-enter `sendMessage` with the RAW text, which
         // annotates on its own; only the redirect itself sends this copy.
         let outboundText = mentionAnnotatedOutboundText(text)
+        // Only a failure already shown is this send's to clear; one a
+        // send made while this one was on its way stays.
+        let failureBefore = sendFailureShown
 
         do {
             let outcome: SessionRedirectOutcome
@@ -33631,6 +33782,7 @@ final class AppState: ObservableObject {
             case .redirected, .queued:
                 if isCurrentOrAliasedComposerSubmission(submissionContext) {
                     appendLocalUserMessage(outboundText)
+                    clearSendFailureAfterSend(failureBefore)
                 }
                 return true
             case .rejected:
@@ -37317,28 +37469,74 @@ final class AppState: ObservableObject {
     // MARK: - Scheduled jobs
 
     func loadCronJobs() async {
-        guard !cronJobsLoading else { return }
         let profile = activeProfile
         let generation = cronJobsGeneration
+        // One read at a time for the list as it is, on the connection and
+        // profile it is for: one an edit, a dashboard switch, a reconnect or
+        // a profile change made stale since doesn't hold the next back.
+        let owner = "\(generation)|\(profile)|"
+            + (dashboardTicketBridge.map { "\(ObjectIdentifier($0))" } ?? client.map { "c\(ObjectIdentifier($0))" } ?? "")
+        // The same list's read joins the one out: it runs on its own, so a
+        // Tasks tab whose task restarted mid-read (tab away and back) still
+        // sees it land, rather than finding it held and reading nothing.
+        if let running = cronJobsRead, running.owner == owner {
+            await running.task.value
+            return
+        }
+        // The read's own token, as an owner comes back (A, B, then A again)
+        // while an older read for it may still be out.
+        let token = UUID()
+        let task = Task<Void, Never> { [weak self] in
+            await self?.readCronJobs(token: token, profile: profile, generation: generation)
+        }
+        cronJobsRead = (owner, token, task)
         cronJobsLoading = true
-        defer { cronJobsLoading = false }
+        await task.value
+    }
+
+    private func readCronJobs(token: UUID, profile: String, generation: Int) async {
+        let startedBridge = dashboardTicketBridge
+        let startedClient = client
+        defer {
+            if cronJobsRead?.token == token {
+                cronJobsRead = nil
+                cronJobsLoading = false
+            }
+        }
 
         do {
             if let dashboardTicketBridge {
                 let result = try await dashboardTicketBridge.requestJSON(path: cronDashboardPath("/api/cron/jobs", profile: profile))
                 let values = result["_array"] as? [Any] ?? result["jobs"] as? [Any] ?? []
                 let jobs = values.compactMap(decodeCronJob)
-                guard profile == activeProfile, generation == cronJobsGeneration else { return }
+                guard profile == activeProfile, generation == cronJobsGeneration,
+                      self.dashboardTicketBridge === dashboardTicketBridge,
+                      cronJobsRead?.token == token else { return }
                 cronJobs = jobs.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
             } else if let client {
                 let jobs = try await client.listCronJobs()
-                guard profile == activeProfile, self.client === client, generation == cronJobsGeneration else { return }
+                guard profile == activeProfile, self.client === client, generation == cronJobsGeneration,
+                      cronJobsRead?.token == token else { return }
                 cronJobs = jobs
             }
+        } catch is CancellationError {
+            return
         } catch {
-            guard profile == activeProfile else { return }
+            // A read the outgoing connection failed isn't the next one's to report.
+            guard profile == activeProfile, generation == cronJobsGeneration,
+                  dashboardTicketBridge === startedBridge, client === startedClient,
+                  cronJobsRead?.token == token else { return }
             errorMessage = AppLocalization.string("Could not load scheduled jobs: \(UserFacingError.message(for: error))")
         }
+    }
+
+    /// The jobs listed are the outgoing dashboard's: they go, and a read
+    /// still out for them commits nothing (issue 2094).
+    private func retireCronJobsForDashboardSwitch() {
+        cronJobsGeneration += 1
+        cronJobs = []
+        cronJobsRead = nil
+        cronJobsLoading = false
     }
 
     func loadCronRuns(for job: CronJob) async {

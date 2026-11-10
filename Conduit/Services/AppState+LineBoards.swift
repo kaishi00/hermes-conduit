@@ -17,17 +17,14 @@ struct LineBoardsReadKey: Equatable {
 
 extension AppState {
     /// Reads each board `ids` names that isn't read or being read. One the
-    /// plugin answered for but Conduit can't draw isn't asked for again (its
-    /// reply reads as it is); one whose read failed is, when its chat shows
-    /// again or the plugin reports the route.
+    /// plugin no longer has, or answered for in a shape Conduit can't draw,
+    /// is gone: not asked for again, and its reply says a board was there
+    /// (issue 2093). One whose read failed otherwise is asked again, when
+    /// its chat shows again or the plugin reports the route.
     func loadLineBoards(_ ids: [String]) {
         // Board ids are the host's own: another Hermes or profile reads afresh.
         let scope = "\(activeDashboardID?.uuidString ?? "")/\(activeProfile)"
-        if lineBoardsScope != scope {
-            lineBoardsScope = scope
-            lineBoards = [:]
-            lineBoardsAsked = []
-        }
+        if lineBoardsScope != scope { resetLineBoards(scope: scope) }
         var seen: Set<String> = []  // two replies can name one board
         let wanted = ids.filter { lineBoards[$0] == nil && !lineBoardsAsked.contains($0) && seen.insert($0).inserted }
         guard !wanted.isEmpty, lineBoardsReadOverride != nil || notifierPlugin.reports(LineBoards.capability) else {
@@ -36,6 +33,7 @@ extension AppState {
         lineBoardsAsked.formUnion(wanted)
         let profile = activeProfile
         let read = lineBoardsReadOverride
+        let generation = lineBoardsGeneration
         for id in wanted {
             let path = LineBoards.readPath(profile: profile, id: id)
             Task { [weak self] in
@@ -49,17 +47,47 @@ extension AppState {
                         answer = nil
                     }
                 } catch {
-                    if self?.lineBoardsScope == scope { self?.lineBoardsAsked.remove(id) }  // asked again later
+                    guard let self, self.lineBoardsGeneration == generation else { return }
+                    if Self.lineBoardIsGone(error) {
+                        self.lineBoardsGone.insert(id)  // stays asked: the plugin said it's gone
+                    } else {
+                        self.lineBoardsAsked.remove(id)  // asked again later
+                    }
                     return
                 }
-                guard let self, self.lineBoardsScope == scope else { return }  // read for another host
+                // Read for another host or profile, an earlier visit to this
+                // one (A, B, then A again), or before a sign-out.
+                guard let self, self.lineBoardsGeneration == generation else { return }
                 guard let answer else {
                     self.lineBoardsAsked.remove(id)  // no bridge yet: asked again later
                     return
                 }
-                guard let board = LineBoards.board(answer, id: id) else { return }
+                guard let board = LineBoards.board(answer, id: id) else {
+                    self.lineBoardsGone.insert(id)
+                    return
+                }
                 self.lineBoards[id] = board
             }
         }
+    }
+
+    /// Forgets every board read or asked for: another dashboard or profile
+    /// shows, or the user signed out. A read still out for them stores
+    /// nothing and asks nothing again (issue 2083).
+    func resetLineBoards(scope: String = "") {
+        lineBoardsGeneration &+= 1
+        lineBoardsScope = scope
+        if !lineBoards.isEmpty { lineBoards = [:] }
+        if !lineBoardsGone.isEmpty { lineBoardsGone = [] }
+        lineBoardsAsked = []
+    }
+
+    /// The plugin answered that it has no such board (404 "That board is
+    /// gone", or an id it won't read), rather than that it couldn't answer.
+    /// A 404 for a profile that turned the plugin off isn't the board's: it
+    /// reads again once the plugin is back.
+    nonisolated static func lineBoardIsGone(_ error: Error) -> Bool {
+        guard case DashboardTicketBridgeError.http(let status, let detail) = error else { return false }
+        return [400, 404, 410].contains(status) && !DashboardTicketBridgeError.isPluginOffDetail(detail)
     }
 }

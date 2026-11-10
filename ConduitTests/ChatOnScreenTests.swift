@@ -221,6 +221,14 @@ final class ChatOnScreenTests: XCTestCase {
         defer { defaults.removePersistentDomain(forName: suite) }
         XCTAssertEqual(RoomHandoffs.record("a", thread: "room:d:r1", defaults: defaults, now: start), [])
         XCTAssertEqual(RoomHandoffs.record("b", thread: "room:d:r1", defaults: defaults, now: start.addingTimeInterval(0.1)), ["a"])
+
+        // Issue 2070: a's lookup, slower than b's wait, lands after b showed.
+        // b was handed over after a, so a leaves it; b finds nothing newer.
+        XCTAssertEqual(RoomHandoffs.handedOver(in: "room:d:r1", after: start, except: "a", defaults: defaults), ["b"])
+        XCTAssertEqual(RoomHandoffs.handedOver(in: "room:d:r1", after: start.addingTimeInterval(0.1), except: "b",
+                                               defaults: defaults), [])
+        XCTAssertEqual(RoomHandoffs.handedOver(in: "room:d:r2", after: start, except: "a", defaults: defaults), [],
+                       "Another room's is its own")
     }
 
     func testARunningTurnDoesNotCountAsSomeoneLooking() {

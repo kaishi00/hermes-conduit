@@ -56,6 +56,14 @@ enum ConnectionFailure: Equatable {
     case signInPageFailed
 
     // Server-side responses.
+    /// A 401 or 403 at provider discovery, which sends no credentials, or
+    /// a 403 from the native sign-in's token requests (Hermes refuses a
+    /// code or refresh token with 400/401): something in front of the
+    /// dashboard (an IP allowlist, a firewall, an access policy) refused
+    /// this device. Never bad credentials, and
+    /// not a wrong address either: the same request answers from an
+    /// allowed network (issue #2092).
+    case accessDenied
     case dashboardUnavailable
     case unexpectedServerResponse
 
@@ -74,6 +82,13 @@ enum ConnectionFailureClassifier {
         /// Dashboard-ticket bridge requests (WebKit-side ticket minting):
         /// like provider discovery, a 401/403 here is never bad credentials.
         case ticketMint
+        /// The native sign-in's token exchange and refresh. They carry a
+        /// code or refresh token, so a 401 is Hermes refusing it (a
+        /// refresh's 400/401 never gets here: it turns into sign-in
+        /// required). A 403 is the edge refusing this device: a launch
+        /// with saved tokens refreshes before any discovery, so an
+        /// allowlist refuses the refresh first. Never bad credentials.
+        case nativeToken
     }
 
     static func classify(_ error: Error) -> ConnectionFailure {
@@ -149,14 +164,14 @@ enum ConnectionFailureClassifier {
     }
 
     /// Native (PKCE) sign-in failures, so Repair's Sign In to Reconnect and
-    /// Settings' Sign In Again name them as the login screen does. Its
-    /// requests are discovery-like: a 401/403 is never bad credentials.
+    /// Settings' Sign In Again name them as the login screen does. A
+    /// 401/403 from its token requests is never bad credentials.
     static func classify(_ nativeError: NativeOAuthError) -> ConnectionFailure {
         switch nativeError {
         case .browserFailed:
             return .signInPageFailed
         case .requestFailed(let status):
-            return classifyHTTPStatus(status, stage: .providerDiscovery)
+            return classifyHTTPStatus(status, stage: .nativeToken)
         case .invalidURL, .callbackMalformed, .stateMismatch, .tokenResponseMalformed:
             return .unexpectedServerResponse
         case .randomGenerationFailed, .listenerFailed, .callbackRejected, .tokenStorageFailed, .timedOut:
@@ -222,6 +237,16 @@ enum ConnectionFailureClassifier {
             if status == 401 || status == 403 {
                 return .authenticationRejected
             }
+        }
+        // Discovery asks for no credentials, so a refusal there came from
+        // whatever guards the address (an IP allowlist, a firewall, an
+        // access policy). A ticket mint's 401/403 is Hermes refusing a
+        // spent or stale session, which stays an unexpected response.
+        if stage == .providerDiscovery, status == 401 || status == 403 {
+            return .accessDenied
+        }
+        if stage == .nativeToken, status == 403 {
+            return .accessDenied
         }
         if (500...599).contains(status) {
             return .dashboardUnavailable
@@ -389,6 +414,7 @@ extension ConnectionFailure {
         case .cloudflareTokenRejected: return AppLocalization.string("Cloudflare rejected the service token")
         case .sessionTicketFailure: return AppLocalization.string("Could not start the session")
         case .signInPageFailed: return AppLocalization.string("Sign-in page didn’t open")
+        case .accessDenied: return AppLocalization.string("Server refused access")
         case .dashboardUnavailable: return AppLocalization.string("Dashboard unavailable")
         case .unexpectedServerResponse: return AppLocalization.string("Unexpected response")
         case .unknown: return AppLocalization.string("Couldn’t connect")
@@ -431,6 +457,8 @@ extension ConnectionFailure {
             return AppLocalization.string("Signing in succeeded, but Conduit could not start a Hermes session. The dashboard may be busy, restarting, or it did not accept the new session — try again.")
         case .signInPageFailed:
             return AppLocalization.string("The sign-in page couldn’t open. Please try again.")
+        case .accessDenied:
+            return AppLocalization.string("Conduit reached the server, but it refused this device. If a proxy, firewall or access list only lets in some networks, connect from one it allows, such as your VPN, Tailscale or home Wi-Fi.")
         case .dashboardUnavailable:
             return AppLocalization.string("The dashboard is reachable but reported a server error. It may be restarting or unhealthy — try again in a moment.")
         case .unexpectedServerResponse:
@@ -446,7 +474,7 @@ extension ConnectionFailure {
         switch self {
         case .invalidAddress: return .start
         case .insecureTransport: return .dashboard
-        case .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline: return .network
+        case .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline, .accessDenied: return .network
         case .tlsUntrusted, .tlsBadDate, .tlsFailure, .tlsHostnameMismatch, .tlsNotStandardsCompliant: return .tls
         case .authenticationRejected: return .credentials
         case .rateLimited: return nil

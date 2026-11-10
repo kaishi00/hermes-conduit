@@ -97,6 +97,15 @@ struct WatchPhoneContext: Codable, Equatable {
         notificationsEncryption.flatMap(NotificationsEncryption.init(rawValue:))
     }
 
+    /// `pluginAsk` for a call that began under `began`: the latest context's
+    /// while the iPhone is still on the dashboard the call began on, else
+    /// the one it gave then, since the call runs on that host still and the
+    /// active host's keeper isn't this one's (issue 2066).
+    static func pluginAsk(forCallBegunUnder began: WatchPhoneContext?, now: WatchPhoneContext?) -> String? {
+        guard let began else { return now?.pluginAsk }
+        return now?.activeDashboardID == began.activeDashboardID ? now?.pluginAsk : began.pluginAsk
+    }
+
     static let key = "phoneContext"
 
     /// Whether `voice` is known not to start.

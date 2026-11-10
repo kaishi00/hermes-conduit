@@ -56,6 +56,9 @@ extension GroupChatModelsTests {
         let leftCopy = try XCTUnwrap(left.activeRoomSurface?.copy)
         XCTAssertEqual(RoomCopyText.readOnly(for: leftCopy, canPost: true),
                        AppLocalization.string("Hosted by \("Furina"). You can read it here."))
+        XCTAssertEqual(RoomCopyText.readOnly(for: leftCopy, canPost: false),
+                       AppLocalization.string("Hosted by \("Furina"). You can read it here."),
+                       "one that's over asks for no plugin update (issue 2063)")
         let unnamed = try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(from: "")))
         XCTAssertEqual(RoomCopyText.readOnly(for: unnamed, canPost: true),
                        AppLocalization.string("Hosted elsewhere. You can read it here."))

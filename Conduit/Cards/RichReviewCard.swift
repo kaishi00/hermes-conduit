@@ -156,6 +156,8 @@ struct RichReviewRound: Equatable {
     let round: Int
     let rounds: Int
     let pages: [String: String]
+    /// What its pages come to, in bytes.
+    let pageBytes: Int
     let marks: [String: RichReviewMark]
     let note: String?
     let decisions: [RichReviewDecision]
@@ -165,7 +167,20 @@ struct RichReviewRound: Equatable {
               let rounds = (json["rounds"] as? NSNumber)?.intValue else { return nil }
         self.round = round
         self.rounds = rounds
-        pages = (json["pages"] as? [String: Any] ?? [:]).compactMapValues { $0 as? String }
+        // Host text, bounded as every other page Conduit previews: a page
+        // over the preview's 4 MB ceiling isn't drawn, nor pages past the
+        // round's own budget (the plugin keeps a round under 6 MB).
+        var pages: [String: String] = [:]
+        var bytes = 0
+        for (key, value) in (json["pages"] as? [String: Any] ?? [:]).sorted(by: { $0.key < $1.key }) {
+            guard let page = value as? String else { continue }
+            let size = page.utf8.count
+            guard size <= HTMLPreviewPage.maximumDocumentBytes, bytes + size <= Self.maxPageBytes else { continue }
+            bytes += size
+            pages[key] = page
+        }
+        self.pages = pages
+        pageBytes = bytes
         // One decision per id, as the card has them.
         var seen: Set<String> = []
         decisions = (json["decisions"] as? [[String: Any]] ?? []).compactMap(RichReviewDecision.init(json:))
@@ -176,11 +191,14 @@ struct RichReviewRound: Equatable {
             guard let decision = entry["decision"] as? String,
                   let kind = (entry["mark"] as? String).flatMap(RichReviewMark.Kind.init(rawValue:)) else { continue }
             marks[decision] = RichReviewMark(kind: kind, option: entry["option"] as? String,
-                                             note: entry["note"] as? String ?? "")
+                                             note: RichReviewMark.capped(entry["note"] as? String ?? ""))
         }
         self.marks = marks
-        note = given?["note"] as? String
+        note = (given?["note"] as? String).map(RichReviewMark.capped)
     }
+
+    /// The most page text a round keeps.
+    static let maxPageBytes = 8 * 1024 * 1024
 
     var wasSent: Bool { !marks.isEmpty || note != nil }
 
@@ -232,6 +250,8 @@ final class RichReviewLoader {
     static let capability = "review-cards"
     static let path = "/api/plugins/conduit_push/boards/reviews"
     private static let keptRounds = 12
+    /// The most page text the kept rounds hold together.
+    static let keptPageBytes = 24 * 1024 * 1024
 
     /// The connected Hermes' answer for a path; nil while none is
     /// connected (AppState sets it).
@@ -257,15 +277,28 @@ final class RichReviewLoader {
         if !fresh, let kept = rounds[key] { return kept }
         guard RichCardSchema.isReviewID(id), let read else { throw LoadError.notConnected }
         let answer = try await read(Self.readPath(id: id, round: number))
-        guard let json = answer["review"] as? [String: Any], let round = RichReviewRound(json: json) else {
-            throw LoadError.gone
-        }
-        if rounds[key] == nil {
-            order.append(key)
-            if order.count > Self.keptRounds { rounds[order.removeFirst()] = nil }
-        }
+        guard let round = Self.checkedRound(answer["review"], id: id) else { throw LoadError.gone }
+        order.removeAll { $0 == key }
+        order.append(key)
         rounds[key] = round
+        // The newest rounds stay, a dozen at most and their pages within
+        // the budget; the one just read always does.
+        while order.count > 1,
+              order.count > Self.keptRounds || order.compactMap({ rounds[$0]?.pageBytes }).reduce(0, +) > Self.keptPageBytes {
+            rounds[order.removeFirst()] = nil
+        }
         return round
+    }
+
+    /// A round as the host answered it, its decisions checked as a review
+    /// card's are (the schema's caps on decisions, options and their text);
+    /// nil when it isn't one.
+    static func checkedRound(_ value: Any?, id: String) -> RichReviewRound? {
+        guard var json = value as? [String: Any] else { return nil }
+        if let decisions = json["decisions"] {
+            json["decisions"] = RichCardSchema.bundled?.normalizeReviewDecisions(decisions, id: id) ?? []
+        }
+        return RichReviewRound(json: json)
     }
 
     /// A round already read this launch, without asking the host.

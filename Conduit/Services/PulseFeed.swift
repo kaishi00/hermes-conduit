@@ -302,7 +302,7 @@ struct PulseCard: Equatable, Identifiable {
         }
     }
 
-    private static func formatted(_ news: String, markdown: Bool) -> AttributedString {
+    static func formatted(_ news: String, markdown: Bool) -> AttributedString {
         guard markdown else { return AttributedString(news) }
         // The feed is read every minute while Pulse shows, mostly the same
         // cards: each card's news is parsed once, not on every read
