@@ -1359,6 +1359,39 @@ Calls from Hermes use the default audio in every mode, so the speaker and car co
 
 **Checked:** 2026-11-07, #1944 (Classic's turn ends over steady room noise, notifier issue 596; the live modes and the Watch detect speech on their servers, push to talk has no silence timer); 2026-11-06, #1902 (a read-back server's own filler plays and opens the reply, and stops like it, notifier #588); 2026-11-05, #1795 (Interrupt after a turn ended only silences its tail, on the phone, CarPlay and the Watch); 2026-11-03, #1696 (a cancelled turn's words stay away from Voice, by its execution generation, until the next turn's first event, even after the next question was sent; its end reaches Voice as an interruption); 2026-11-03, #1694 (a spoken Stop retires the turn it cancels, as talking over and Interrupt do; a failed cancel is retried before the next turn); 2026-11-02, #1659 (a call from Hermes takes the default audio with talk-over on); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1390 (Classic: cutting Hermes' acknowledgement short steers); 2026-10-27, #1378 (CarPlay's Stop on Local Live tells the server too); 2026-10-27, #1331 (Interrupt tells a Local Live server, #1325); 2026-10-25, Qwen in the siblings, the table and the shared caption, at #1182, carried in #1235; 2026-10-23, seeded from main at 64d53c3.
 
+## Read replies aloud
+
+A setting that reads replies as they arrive, typed or dictated messages
+included, rather than only from the speaker button under a reply (notifier
+issue 674).
+
+**Siblings:** chats, project chats and the Bot Chat (read as they stream) ·
+group rooms (each bot's new message, in its own voice) · the speaker button
+under a reply and the Read Aloud player (Stop, pause, speed) · Classic voice
+and the live modes (they speak their own replies; Read Aloud stays off
+during a call) · the plugin's turn line (a typed message whose reply is read
+aloud is heard) · Hermes changing Conduit's settings · Sync across devices ·
+the Voice settings caption · the notifier README and changelog
+
+**Code**
+- Setting: `Conduit/Voice/VoiceTypes.swift` (ReadRepliesAloud), `Conduit/Views/VoiceSettingsView.swift` (readAloudSection), `Conduit/Services/AppState+SyncedPreferences.swift` (voice.read_replies_aloud), `Conduit/Services/AppState+AgentSettings.swift` (voice.read_replies_aloud)
+- Reading: `Conduit/Voice/MessageReadAloudController.swift` (followReply, runLivePlayback, adoptLiveReply, enqueue), `Conduit/Services/AppState.swift` (followReplyAloud from notifyVoiceAssistant, readyAutomaticReadAloud, readNewRoomMessagesAloud, stopFollowing in activeSessionId, adoptLiveReply in finalizeStreamingCompletion), `Conduit/Services/AppState+RoomBoards.swift` (roomReplayChanged)
+- Turn line: `Conduit/Services/TurnSurface.swift` (heard), `Conduit/Services/AppState+TurnSurface.swift` (messageTurnSurface), `notifier/turn_surface.py` (HEARD_HINT)
+
+**Rulings**
+- One device-wide switch in Voice > Read Aloud, off by default, rather than one per chat: a per-chat toggle would add an icon to the chat, and the reply row takes no new icons (2026-11-10, #2122).
+- A chat's reply is read the way Classic voice speaks one: its words as they stream, commentary before a tool as its own segment, the final snapshot only when nothing streamed, and never a reply that is all a silence marker ([SILENT]) (2026-11-10, #2122).
+- A reading starts only while Conduit is on screen, the open chat's turn (not a room over it or the saved copy), with no call and no held microphone; once playing it carries on with the phone locked, as Read Aloud does (#373). A turn that begins off screen is read only if Conduit is back on screen before its reply's first words (2026-11-10, #2122).
+- Stop (the button, the player, a call, dictation, a tap on another reply) ends the reading for the rest of that turn; the next turn is read again. A new turn's first words take over from the last one's reading. Paused while a tool runs between segments, the next segment waits for Resume (2026-11-10, #2122).
+- In a group room, bot messages that arrive while it's open are read one after another, each in its bot's voice; the messages its first read brings aren't. Rooms hosted elsewhere (copies) are read too. Messages a resync fills in above the window it already held are read; older history below it isn't. A waiting message whose room was left is skipped, not the rest. One waiting when Conduit leaves the screen is dropped; only the one playing carries on (2026-11-10, #2122).
+- A typed message sent with the setting on reports `"heard": true`, and the plugin tells Hermes the answer is heard too: no `text_to_speech` or sound file of its own (2026-11-10, #2122, notifier 0.156.0). It reports so only while a reading could start then: the setting on, Read Aloud available (no call, no held microphone) and Conduit on screen.
+- Hermes may turn it on or off through `conduit_settings`; the change asks, since speech can cost money on Hermes' side (2026-11-10, #2122).
+
+**Open gaps**
+- `heard` is decided at the send. If Conduit leaves the screen, a call starts or the chat closes before the reply's first words, nothing reads it and Hermes was still told not to send a sound file. Typed turns rarely get one anyway; correcting the report mid-turn would need a new plugin route (Maintainer's call).
+
+**Checked:** 2026-11-10, #2122 (new entry).
+
 ## Files Hermes attaches, in what voices say
 
 A reply can attach a file with Hermes' `MEDIA:<path>` tag (text_to_speech

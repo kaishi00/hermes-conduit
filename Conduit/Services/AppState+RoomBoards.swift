@@ -23,6 +23,9 @@ extension AppState {
             if !activeRoomBoards.isEmpty { activeRoomBoards = [] }
         } else if latest == old.events.last(where: \.isMemberMessage)?.seq {
             return
+        } else {
+            // A bot's new message, read aloud when Read replies aloud is on.
+            readNewRoomMessagesAloud(after: old)
         }
         refreshActiveRoomBoards()
     }

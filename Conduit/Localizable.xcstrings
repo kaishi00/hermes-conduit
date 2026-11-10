@@ -172182,84 +172182,84 @@
         }
       }
     },
-    "How fast the speaker button under a reply reads it aloud, without changing the voice's pitch. Applies from the next reply you play, on this device. Voice conversations always play at normal speed." : {
+    "How fast a reply is read aloud, without changing the voice's pitch. Applies from the next reply read, on this device. Voice conversations always play at normal speed." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wie schnell die Lautsprechertaste unter einer Antwort sie vorliest, ohne die Tonhöhe der Stimme zu ändern. Gilt ab der nächsten Antwort, die du abspielst, auf diesem Gerät. Sprachunterhaltungen laufen immer mit normaler Geschwindigkeit."
+            "value" : "Wie schnell eine Antwort vorgelesen wird, ohne die Tonhöhe der Stimme zu ändern. Gilt ab der nächsten vorgelesenen Antwort, auf diesem Gerät. Sprachunterhaltungen laufen immer mit normaler Geschwindigkeit."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La velocidad a la que el botón de altavoz bajo una respuesta la lee en voz alta, sin cambiar el tono de la voz. Se aplica desde la próxima respuesta que reproduzcas, en este dispositivo. Las conversaciones de voz siempre se reproducen a velocidad normal."
+            "value" : "La velocidad a la que se lee una respuesta en voz alta, sin cambiar el tono de la voz. Se aplica desde la próxima respuesta leída, en este dispositivo. Las conversaciones de voz siempre se reproducen a velocidad normal."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La vitesse à laquelle le bouton haut-parleur sous une réponse la lit à voix haute, sans changer la hauteur de la voix. S'applique à partir de la prochaine réponse lue, sur cet appareil. Les conversations vocales sont toujours lues à vitesse normale."
+            "value" : "La vitesse à laquelle une réponse est lue à voix haute, sans changer la hauteur de la voix. S'applique à partir de la prochaine réponse lue, sur cet appareil. Les conversations vocales sont toujours lues à vitesse normale."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seberapa cepat tombol speaker di bawah balasan membacakannya, tanpa mengubah nada suara. Berlaku mulai balasan berikutnya yang Anda putar, di perangkat ini. Percakapan suara selalu diputar dengan kecepatan normal."
+            "value" : "Seberapa cepat balasan dibacakan, tanpa mengubah nada suara. Berlaku mulai balasan berikutnya yang dibacakan, di perangkat ini. Percakapan suara selalu diputar dengan kecepatan normal."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La velocità con cui il pulsante altoparlante sotto una risposta la legge ad alta voce, senza cambiare l'altezza della voce. Vale dalla prossima risposta che riproduci, su questo dispositivo. Le conversazioni vocali vengono sempre riprodotte a velocità normale."
+            "value" : "La velocità con cui una risposta viene letta ad alta voce, senza cambiare l'altezza della voce. Vale dalla prossima risposta letta, su questo dispositivo. Le conversazioni vocali vengono sempre riprodotte a velocità normale."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "返信の下にあるスピーカーボタンで読み上げるときの速度です。声の高さは変わりません。このデバイスで次に再生する返信から適用されます。音声会話は常に通常の速度で再生されます。"
+            "value" : "返信を読み上げる速度です。声の高さは変わりません。このデバイスで次に読み上げる返信から適用されます。音声会話は常に通常の速度で再生されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "답장 아래의 스피커 버튼으로 소리 내어 읽을 때의 속도로, 목소리 높낮이는 바뀌지 않아요. 이 기기에서 다음에 재생하는 답장부터 적용돼요. 음성 대화는 항상 보통 속도로 재생돼요."
+            "value" : "답장을 소리 내어 읽는 속도로, 목소리 높낮이는 바뀌지 않아요. 이 기기에서 다음에 읽는 답장부터 적용돼요. 음성 대화는 항상 보통 속도로 재생돼요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jak szybko przycisk głośnika pod odpowiedzią czyta ją na głos, bez zmiany wysokości głosu. Obowiązuje od następnej odtwarzanej odpowiedzi, na tym urządzeniu. Rozmowy głosowe są zawsze odtwarzane z normalną prędkością."
+            "value" : "Jak szybko odpowiedź jest czytana na głos, bez zmiany wysokości głosu. Obowiązuje od następnej czytanej odpowiedzi, na tym urządzeniu. Rozmowy głosowe są zawsze odtwarzane z normalną prędkością."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A velocidade com que o botão de alto-falante abaixo de uma resposta a lê em voz alta, sem mudar o tom da voz. Vale a partir da próxima resposta que você reproduzir, neste aparelho. Conversas por voz sempre tocam na velocidade normal."
+            "value" : "A velocidade com que uma resposta é lida em voz alta, sem mudar o tom da voz. Vale a partir da próxima resposta lida, neste dispositivo. Conversas por voz sempre tocam na velocidade normal."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Скорость, с которой кнопка динамика под ответом читает его вслух, без изменения высоты голоса. Действует на этом устройстве со следующего воспроизводимого ответа. Голосовые разговоры всегда звучат с обычной скоростью."
+            "value" : "С какой скоростью ответ читается вслух, без изменения высоты голоса. Действует со следующего прочитанного ответа на этом устройстве. Голосовые разговоры всегда воспроизводятся с обычной скоростью."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bir yanıtın altındaki hoparlör düğmesinin, sesin perdesini değiştirmeden yanıtı ne kadar hızlı okuyacağı. Bu cihazda, oynattığınız sonraki yanıttan itibaren geçerli olur. Sesli konuşmalar her zaman normal hızda çalınır."
+            "value" : "Bir yanıtın, sesin perdesi değişmeden ne kadar hızlı sesli okunacağı. Bu cihazda, okunacak bir sonraki yanıttan itibaren geçerlidir. Sesli konuşmalar her zaman normal hızda çalınır."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "回复下方扬声器按钮的朗读速度，不改变音调。从下一条播放的回复开始生效，仅限此设备。语音对话始终以正常速度播放。"
+            "value" : "朗读回复的速度，不会改变声音的音调。在此设备上从下一条朗读的回复开始生效。语音对话始终以正常速度播放。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "回覆下方揚聲器按鈕的朗讀速度，不會改變聲音的音高。從你下一次播放的回覆起生效，僅限此裝置。語音對話一律以正常速度播放。"
+            "value" : "朗讀回覆的速度，不會改變聲音的音調。在此裝置上從下一則朗讀的回覆開始生效。語音對話一律以正常速度播放。"
           }
         }
       }
@@ -502888,6 +502888,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "依據"
+          }
+        }
+      }
+    },
+    "Read replies aloud" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antworten vorlesen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leer las respuestas en voz alta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lire les réponses à voix haute"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bacakan balasan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leggi le risposte ad alta voce"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返信を読み上げる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "답장 소리 내어 읽기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czytaj odpowiedzi na głos"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ler respostas em voz alta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Читать ответы вслух"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yanıtları sesli oku"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗读回复"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗讀回覆"
+          }
+        }
+      }
+    },
+    "Reads each reply in the open chat as it arrives, whether you typed or dictated the message, and each new message from the bots of the group room you have open. Stop it from the player or the speaker button. A reading starts only while Conduit is on screen, then carries on with the phone locked." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liest jede Antwort im geöffneten Chat vor, sobald sie eintrifft, egal ob du die Nachricht getippt oder diktiert hast, und jede neue Nachricht der Bots im geöffneten Gruppenraum. Stoppe es über den Player oder die Lautsprechertaste. Das Vorlesen beginnt nur, während Conduit auf dem Bildschirm ist, und läuft dann auch bei gesperrtem Telefon weiter."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lee cada respuesta del chat abierto en cuanto llega, tanto si escribiste el mensaje como si lo dictaste, y cada mensaje nuevo de los bots de la sala de grupo abierta. Detenlo desde el reproductor o el botón de altavoz. La lectura solo empieza con Conduit en pantalla y después sigue con el teléfono bloqueado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lit chaque réponse de la conversation ouverte dès qu'elle arrive, que vous ayez tapé ou dicté le message, ainsi que chaque nouveau message des bots du salon de groupe ouvert. Arrêtez la lecture depuis le lecteur ou le bouton haut-parleur. Elle ne démarre que lorsque Conduit est à l'écran, puis continue téléphone verrouillé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Membacakan setiap balasan di chat yang terbuka begitu tiba, baik pesannya Anda ketik maupun Anda diktekan, serta setiap pesan baru dari bot di ruang grup yang terbuka. Hentikan dari pemutar atau tombol speaker. Pembacaan hanya dimulai saat Conduit ada di layar, lalu berlanjut meski ponsel terkunci."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Legge ogni risposta della chat aperta appena arriva, che tu abbia scritto o dettato il messaggio, e ogni nuovo messaggio dei bot della stanza di gruppo aperta. Interrompila dal lettore o dal pulsante altoparlante. La lettura parte solo con Conduit sullo schermo, poi continua anche con il telefono bloccato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開いているチャットの返信を、メッセージを入力したか音声入力したかにかかわらず、届いたそばから読み上げます。開いているグループルームのボットからの新しいメッセージも読み上げます。プレーヤーまたはスピーカーボタンで停止できます。読み上げはConduitが画面に表示されているときにだけ始まり、その後はiPhoneをロックしても続きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "메시지를 입력했든 받아쓰기했든, 열려 있는 채팅의 답장이 도착하는 대로 소리 내어 읽어 주고, 열려 있는 그룹 룸의 봇이 보낸 새 메시지도 읽어 줘요. 플레이어나 스피커 버튼으로 멈출 수 있어요. 읽기는 Conduit가 화면에 있을 때만 시작되고, 그 뒤에는 휴대폰을 잠가도 계속돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czyta na głos każdą odpowiedź w otwartym czacie, gdy tylko nadejdzie, niezależnie od tego, czy wiadomość była wpisana, czy podyktowana, a także każdą nową wiadomość od botów w otwartym pokoju grupowym. Zatrzymasz to w odtwarzaczu lub przyciskiem głośnika. Czytanie zaczyna się tylko wtedy, gdy Conduit jest na ekranie, a potem trwa także przy zablokowanym telefonie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lê cada resposta do chat aberto assim que ela chega, quer você tenha digitado ou ditado a mensagem, e cada nova mensagem dos bots da sala de grupo aberta. Pare pelo player ou pelo botão de alto-falante. A leitura só começa com o Conduit na tela e depois continua com o celular bloqueado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Читает вслух каждый ответ в открытом чате, как только он приходит, независимо от того, напечатано сообщение или надиктовано, а также каждое новое сообщение ботов в открытой групповой комнате. Остановить можно в плеере или кнопкой динамика. Чтение начинается, только пока Conduit на экране, а затем продолжается и при заблокированном телефоне."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mesajı yazmış ya da dikte etmiş olun, açık sohbetteki her yanıtı gelir gelmez sesli okur; açık grup odasındaki botların her yeni mesajını da okur. Oynatıcıdan veya hoparlör düğmesinden durdurabilirsiniz. Okuma yalnızca Conduit ekrandayken başlar, ardından telefon kilitliyken de devam eder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无论消息是打字还是听写输入，打开的聊天中每条回复一到就朗读，打开的群组房间里机器人发来的每条新消息也会朗读。可在播放器或扬声器按钮上停止。朗读只会在 Conduit 显示在屏幕上时开始，之后锁定手机也会继续。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無論訊息是打字還是聽寫輸入，開啟的聊天中每則回覆一到就朗讀，開啟的群組房間裡機器人傳來的每則新訊息也會朗讀。可在播放器或揚聲器按鈕上停止。朗讀只會在 Conduit 顯示在螢幕上時開始，之後鎖定手機也會繼續。"
           }
         }
       }

@@ -30,6 +30,17 @@ final class AppStateTurnSurfaceTests: XCTestCase {
                        ["session_id": "rt-2", "text_sha256": hi, "surface": "siri"])
     }
 
+    func testATypedMessageReadAloudSaysItsReplyIsHeard() {
+        // `printf hi | shasum -a 256`
+        let hi = "8f434346648f6b96df89dda901c5176b10a6d83961dd3c1ac88b59b2dc327aa4"
+        let typed = TurnSurface.message(spoken: false, carPlay: false, device: .iphone, heard: true)
+        XCTAssertEqual(typed.body(runtimeSessionID: "rt-1", text: "hi") as NSDictionary,
+                       ["session_id": "rt-1", "text_sha256": hi, "surface": "iphone", "input": "typed", "heard": true])
+        // A spoken message is heard anyway: no flag.
+        let spoken = TurnSurface.message(spoken: true, carPlay: false, device: .iphone, heard: true)
+        XCTAssertNil(spoken.body(runtimeSessionID: "rt-1", text: "hi")["heard"])
+    }
+
     // MARK: - Sending
 
     func testATypedMessageReportsItsSurfaceBeforeItIsSent() async {

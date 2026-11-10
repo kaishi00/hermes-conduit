@@ -142,6 +142,7 @@ extension AppState {
             .defaults("dictation.engine", DictationEngine.preferenceKey, .string, in: defaults),
             .defaults("dictation.custom_words", DictationCustomWords.preferenceKey, .strings, in: defaults),
             .defaults("voice.read_aloud_speed", ReadAloudSpeed.preferenceKey, .double, in: defaults),
+            .defaults("voice.read_replies_aloud", ReadRepliesAloud.preferenceKey, .bool, in: defaults),
             .defaults("voice.keep_screen_awake", VoiceScreenAwake.preferenceKey, .bool, in: defaults),
             .defaults("voice.animate_call_orb", LiveVoiceOrbPower.preferenceKey, .bool, in: defaults),
         ]

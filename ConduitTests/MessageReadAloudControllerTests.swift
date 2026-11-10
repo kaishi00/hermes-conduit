@@ -939,6 +939,269 @@ final class MessageReadAloudControllerTests: XCTestCase {
         await waitUntil { controller.state == .idle }
         XCTAssertNil(controller.nowReading)
     }
+
+    // MARK: Read replies aloud (notifier issue 674)
+
+    func testAFollowedReplyIsReadAsItStreamsInOneStream() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.followReply(.started(sessionID: "s1")) { true }
+        XCTAssertNil(controller.nowReading, "nothing starts before the reply's first words")
+        controller.followReply(.delta(sessionID: "s1", text: "Hello there. ")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "How are you?")) { true }
+        controller.followReply(.completed(sessionID: "s1", content: "Hello there. How are you?")) { true }
+        await waitUntil { controller.state == .idle }
+
+        XCTAssertEqual(gateway.openCount, 1)
+        let said = gateway.streams.last?.appended.joined() ?? ""
+        XCTAssertTrue(said.contains("Hello there."), said)
+        XCTAssertTrue(said.contains("How are you?"), said)
+        XCTAssertEqual(said.components(separatedBy: "Hello there.").count, 2, "the final snapshot isn't said again")
+        XCTAssertEqual(gateway.streams.last?.finishCount, 1)
+    }
+
+    func testAFollowedReplyTakesTheIdOfItsRow() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        gateway.pauseAfterEmission = true
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.followReply(.started(sessionID: "s1")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "Hello there.")) { true }
+        await waitUntil { controller.state == .playing(messageID: MessageReadAloudController.liveMessageID(sessionID: "s1")) }
+        controller.adoptLiveReply(sessionID: "s1", messageID: "row-1")
+
+        XCTAssertTrue(controller.isActiveMessage("row-1"))
+        XCTAssertEqual(controller.nowReading?.messageID, "row-1")
+    }
+
+    func testASilentReplyIsNeverRead() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.followReply(.started(sessionID: "s1")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "[SIL")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "ENT]")) { true }
+        controller.followReply(.completed(sessionID: "s1", content: "[SILENT]")) { true }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(gateway.openCount, 0)
+        XCTAssertEqual(controller.state, .idle)
+    }
+
+    func testStopEndsTheReadingForTheRestOfTheTurn() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.followReply(.started(sessionID: "s1")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "First sentence. ")) { true }
+        await waitUntil { gateway.openCount == 1 }
+        controller.stop()
+        controller.followReply(.delta(sessionID: "s1", text: "Second sentence.")) { true }
+        controller.followReply(.completed(sessionID: "s1", content: nil)) { true }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(gateway.openCount, 1)
+        XCTAssertFalse((gateway.streams.last?.appended.joined() ?? "").contains("Second"))
+        XCTAssertEqual(controller.state, .idle)
+
+        // The next turn is read again.
+        controller.followReply(.started(sessionID: "s1")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "Next turn.")) { true }
+        await waitUntil { gateway.openCount == 2 }
+        XCTAssertEqual(gateway.openCount, 2)
+    }
+
+    func testAReplyIsNotReadWhenItMayNotStart() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        let controller = makeController(playback: playback, gateway: gateway)
+        var asked = 0
+
+        controller.followReply(.started(sessionID: "s1")) { asked += 1; return false }
+        controller.followReply(.delta(sessionID: "s1", text: "Hello. ")) { asked += 1; return false }
+        controller.followReply(.delta(sessionID: "s1", text: "Still here.")) { asked += 1; return false }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(asked, 1, "asked once, at the first words; the turn is then left alone")
+        XCTAssertEqual(gateway.openCount, 0)
+        XCTAssertEqual(controller.state, .idle)
+    }
+
+    func testCommentaryBeforeAToolIsItsOwnSegment() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.followReply(.started(sessionID: "s1")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "Let me check.")) { true }
+        controller.followReply(.interim(sessionID: "s1", text: "Let me check.", alreadyStreamed: true)) { true }
+        await waitUntil { gateway.streams.first?.finishCount == 1 }
+        XCTAssertEqual(gateway.streams.first?.finishCount, 1, "heard now, while the tool runs")
+        controller.followReply(.delta(sessionID: "s1", text: "It's sunny.")) { true }
+        controller.followReply(.completed(sessionID: "s1", content: "It's sunny.")) { true }
+        await waitUntil { controller.state == .idle }
+
+        XCTAssertEqual(gateway.openCount, 2)
+        XCTAssertTrue((gateway.streams.last?.appended.joined() ?? "").contains("It's sunny."))
+        XCTAssertFalse((gateway.streams.last?.appended.joined() ?? "").contains("Let me check"))
+    }
+
+    func testAPauseWhileAToolRunsHoldsTheNextSegment() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.followReply(.started(sessionID: "s1")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "Let me check.")) { true }
+        controller.followReply(.interim(sessionID: "s1", text: "Let me check.", alreadyStreamed: true)) { true }
+        await waitUntil { playback.drainCount == 1 }
+        XCTAssertTrue(controller.pause(), "nothing sounds, but the reply pauses")
+        XCTAssertTrue(controller.isPaused)
+
+        controller.followReply(.delta(sessionID: "s1", text: "It's sunny.")) { true }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+        XCTAssertEqual(gateway.openCount, 1, "the answer waits for Resume")
+
+        XCTAssertTrue(controller.resume())
+        await waitUntil { gateway.openCount == 2 }
+        XCTAssertFalse(controller.isPaused)
+    }
+
+    func testAnEmptyAnswerAfterAToolOpensNothingAndEndsAPausedReply() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.followReply(.started(sessionID: "s1")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "Let me check.")) { true }
+        controller.followReply(.interim(sessionID: "s1", text: "Let me check.", alreadyStreamed: true)) { true }
+        await waitUntil { playback.drainCount == 1 }
+        XCTAssertTrue(controller.pause())
+        controller.followReply(.completed(sessionID: "s1", content: "Let me check.", alreadyShown: true)) { true }
+        await waitUntil { controller.state == .idle }
+
+        XCTAssertEqual(gateway.openCount, 1, "no stream for nothing to say")
+    }
+
+    func testAWaitingRoomMessageDoesNotStartOffScreen() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        gateway.blocksFinish = true
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.enqueue(messageID: "room:r:1", content: "First bot.") { true }
+        controller.enqueue(messageID: "room:r:2", content: "Second bot.") { true }
+        await waitUntil { gateway.streams.first?.finishCount == 1 }
+        controller.setForegroundActive(false)
+        gateway.streams.first?.releaseFinishForTest()
+        await waitUntil { controller.state == .idle }
+
+        XCTAssertEqual(gateway.openCount, 1)
+    }
+
+    func testOpeningAnotherChatEndsTheFollowedTurn() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.followReply(.started(sessionID: "s1")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "First sentence. ")) { true }
+        await waitUntil { gateway.openCount == 1 }
+        controller.stopFollowing { $0 == "s2" }
+        controller.followReply(.delta(sessionID: "s1", text: "Second sentence.")) { true }
+        controller.followReply(.completed(sessionID: "s1", content: nil)) { true }
+        await waitUntil { controller.state == .idle }
+
+        XCTAssertEqual(gateway.openCount, 1)
+        XCTAssertEqual(gateway.streams.last?.finishCount, 1, "what it said plays out")
+        XCTAssertFalse((gateway.streams.last?.appended.joined() ?? "").contains("Second"))
+    }
+
+    func testTheOpenChatsTurnIsStillFollowedWhenItsChatStays() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.followReply(.started(sessionID: "s1")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "First sentence. ")) { true }
+        await waitUntil { gateway.openCount == 1 }
+        controller.stopFollowing { $0 == "s1" }
+        controller.followReply(.delta(sessionID: "s1", text: "Second sentence.")) { true }
+        controller.followReply(.completed(sessionID: "s1", content: nil)) { true }
+        await waitUntil { controller.state == .idle }
+
+        XCTAssertEqual(gateway.openCount, 1)
+        XCTAssertTrue((gateway.streams.last?.appended.joined() ?? "").contains("Second sentence."))
+    }
+
+    func testAnotherChatsTurnIsNotFollowed() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.followReply(.started(sessionID: "s1")) { true }
+        controller.followReply(.delta(sessionID: "s2", text: "Not this one.")) { true }
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(gateway.openCount, 0)
+        XCTAssertNil(controller.nowReading)
+    }
+
+    func testRoomMessagesAreReadOneAfterAnother() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        gateway.blocksFinish = true
+        let controller = makeController(playback: playback, gateway: gateway)
+        var prepared: [String] = []
+
+        controller.enqueue(messageID: "room:r:1", content: "First bot.") { prepared.append("1"); return true }
+        controller.enqueue(messageID: "room:r:2", content: "Second bot.") { prepared.append("2"); return true }
+        await waitUntil { gateway.streams.first?.finishCount == 1 }
+        XCTAssertEqual(gateway.openCount, 1, "the second waits for the first")
+        XCTAssertEqual(prepared, ["1"])
+
+        gateway.streams.first?.releaseFinishForTest()
+        await waitUntil { gateway.openCount == 2 }
+        XCTAssertEqual(prepared, ["1", "2"])
+        XCTAssertEqual(controller.state, .preparing(messageID: "room:r:2"))
+    }
+
+    func testAWaitingMessageFromARoomLeftDoesNotDropTheOnesAfterIt() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        gateway.blocksFinish = true
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.enqueue(messageID: "room:a:1", content: "First bot.") { true }
+        controller.enqueue(messageID: "room:a:2", content: "Left behind.") { false }
+        controller.enqueue(messageID: "room:b:1", content: "New room.") { true }
+        await waitUntil { gateway.streams.first?.finishCount == 1 }
+        gateway.streams.first?.releaseFinishForTest()
+        await waitUntil { gateway.openCount == 2 }
+
+        XCTAssertEqual(controller.state, .preparing(messageID: "room:b:1"))
+    }
+
+    func testStopDropsTheRoomMessagesWaiting() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        gateway.blocksFinish = true
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.enqueue(messageID: "room:r:1", content: "First bot.") { true }
+        controller.enqueue(messageID: "room:r:2", content: "Second bot.") { true }
+        await waitUntil { gateway.openCount == 1 }
+        controller.stop()
+        try? await Task.sleep(nanoseconds: 50_000_000)
+
+        XCTAssertEqual(gateway.openCount, 1)
+        XCTAssertEqual(controller.state, .idle)
+    }
 }
 
 @MainActor
@@ -1151,6 +1414,12 @@ private final class MockReadAloudStream: VoiceSpeechStream {
         let deferred = deferredCancelResumes
         deferredCancelResumes.removeAll()
         deferred.forEach { $0() }
+    }
+
+    func releaseFinishForTest() {
+        let continuation = finishContinuation
+        finishContinuation = nil
+        continuation?.resume(returning: true)
     }
 
     func releaseAppendForTest(throwing error: Error? = nil) {

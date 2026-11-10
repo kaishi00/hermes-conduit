@@ -226,6 +226,7 @@ struct VoiceSettingsView: View {
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
     @AppStorage(LiveVoiceOrbPower.preferenceKey) private var animateCallOrb = true
     @AppStorage(ReadAloudSpeed.preferenceKey) private var readAloudSpeedRaw = ReadAloudSpeed.normal.rawValue
+    @AppStorage(ReadRepliesAloud.preferenceKey) private var readsRepliesAloud = false
     @AppStorage("conduit.voice.settingsAdvancedExpanded") private var advancedExpanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let spokenStopPhrases: [String]
@@ -1349,6 +1350,14 @@ struct VoiceSettingsView: View {
 
     private var readAloudSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Read Aloud"), symbol: "speaker.wave.2", tint: .conduitAccent) {
+            Toggle("Read replies aloud", isOn: $readsRepliesAloud)
+                .accessibilityIdentifier("voice.readRepliesAloud")
+                .accessibilityHint("Reads each reply in the open chat as it arrives, whether you typed or dictated the message, and each new message from the bots of the group room you have open. Stop it from the player or the speaker button. A reading starts only while Conduit is on screen, then carries on with the phone locked.")
+            Text("Reads each reply in the open chat as it arrives, whether you typed or dictated the message, and each new message from the bots of the group room you have open. Stop it from the player or the speaker button. A reading starts only while Conduit is on screen, then carries on with the phone locked.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+                // The switch's hint already reads this.
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 8) {
                 Text("Speed")
                     .scaledFont(.subheadline.weight(.semibold))
@@ -1363,7 +1372,7 @@ struct VoiceSettingsView: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("voice.readAloudSpeed")
             }
-            Text("How fast the speaker button under a reply reads it aloud, without changing the voice's pitch. Applies from the next reply you play, on this device. Voice conversations always play at normal speed.")
+            Text("How fast a reply is read aloud, without changing the voice's pitch. Applies from the next reply read, on this device. Voice conversations always play at normal speed.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }

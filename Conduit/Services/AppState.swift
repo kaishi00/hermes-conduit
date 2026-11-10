@@ -1215,6 +1215,8 @@ final class AppState: ObservableObject {
         didSet {
             refreshActiveChatScrollSessionIdentity()
             if oldValue != activeSessionId {
+                // Read replies aloud follows only the open chat's turn.
+                messageReadAloudController.stopFollowing { self.eventBelongsToActiveSession($0) }
                 noteChatLeft(oldValue)
                 noteActiveChatSeen()
                 // A file lookup's "isn't on the server" was about the chat
@@ -41692,6 +41694,62 @@ final class AppState: ObservableObject {
         return speaker.profile
     }
 
+    /// Read replies aloud (notifier issue 674): the open chat's turn is
+    /// read as it streams, as a voice turn's is spoken.
+    private func followReplyAloud(_ event: VoiceAssistantEvent) {
+        messageReadAloudController.followReply(event) { [weak self] in
+            self?.readyAutomaticReadAloud(roomID: nil, speakingAs: nil) ?? false
+        }
+    }
+
+    /// Read replies aloud in the open group room: each bot message that
+    /// arrived since `old`, read one after another in its bot's voice. Not
+    /// the messages the room's first read brings, which were there before.
+    func readNewRoomMessagesAloud(after old: GroupRoomReplay) {
+        let replay = activeRoomReplay
+        guard ReadRepliesAloud.isOn(defaults), !replay.roomID.isEmpty, replay.roomID == old.roomID,
+              let surface = activeRoomSurface, surface.room.roomID == replay.roomID else { return }
+        // The room's first read isn't read aloud. A room hosted elsewhere
+        // (a copy) never marks its log read, so there the first read is the
+        // one that found the replay empty.
+        let firstReadDone = surface.copy == nil ? activeRoomLogRead == replay.roomID : !old.events.isEmpty
+        guard firstReadDone else { return }
+        // New is what the old replay didn't hold, so messages a resync
+        // fills in below the user's own send are read too.
+        let seen = Set(old.events.map(\.seq))
+        let floor = old.events.first?.seq ?? 0
+        let roomID = replay.roomID
+        for event in replay.events where event.seq > floor && !seen.contains(event.seq) && event.isMemberMessage {
+            let profile = GroupRoomTurns.speaker(of: event, members: surface.room.members)?.profile
+            messageReadAloudController.enqueue(
+                messageID: Self.roomReadAloudID(roomID: roomID, eventID: event.id),
+                content: GroupMessageParts(event.messageText ?? "").text
+            ) { [weak self] in
+                self?.readyAutomaticReadAloud(roomID: roomID, speakingAs: profile) ?? false
+            }
+        }
+    }
+
+    /// Whether Read replies aloud may start reading now, in the open chat
+    /// (`roomID` nil) or that room, with the gateway ready for the speaker.
+    /// Silent when it can't: the speaker button says why.
+    private func readyAutomaticReadAloud(roomID: String?, speakingAs: String?) -> Bool {
+        guard ReadRepliesAloud.isOn(defaults), readAloudUnavailableReason == nil else { return false }
+        if let roomID {
+            guard activeRoomSurface?.room.roomID == roomID else { return false }
+        } else {
+            // A room over the chat, or the chat's saved copy, isn't the chat.
+            guard activeRoomSurface == nil, offlineChatPresentation == nil else { return false }
+        }
+        let speaker = Self.readAloudSpeaker(speakingAs, activeProfile: activeProfile)
+        if !readAloudGateway(isCurrentFor: speaker ?? activeProfile) {
+            assignReadAloudGateway(speakingAs: speaker)
+        }
+        // As a tap does: a speech test still speaking gives way.
+        voiceConversationController.stop()
+        return true
+    }
+
     func toggleReadAloud(messageID: String, content: String, speakingAs: String? = nil) {
         if messageReadAloudController.isActiveMessage(messageID) {
             messageReadAloudController.stop()
@@ -43471,6 +43529,7 @@ final class AppState: ObservableObject {
     private func notifyVoiceAssistant(_ event: VoiceAssistantEvent) {
         guard let heard = takeVoiceEventAfterCancel(event) else { return }
         voiceAssistantObservers.values.forEach { $0(heard) }
+        followReplyAloud(heard)
     }
 
     private func scheduleStreamingPublish() {
@@ -43645,6 +43704,12 @@ final class AppState: ObservableObject {
             ))
         }
 
+        // A reply read aloud as it streamed: the button under its row shows Stop.
+        if let rowID = (trimmedMessageID.flatMap { id in messages.last(where: { $0.id == id })?.id })
+            ?? shownRowID.flatMap({ id in messages.contains { $0.id == id } ? id : nil })
+            ?? messages.last(where: { $0.role == .assistant })?.id {
+            messageReadAloudController.adoptLiveReply(sessionID: sessionId, messageID: rowID)
+        }
         clearStreamingText()
         activeAssistantMessageId = nil
         resetReasoningTurn()

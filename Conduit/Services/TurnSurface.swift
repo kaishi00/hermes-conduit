@@ -30,6 +30,10 @@ struct TurnSurface: Equatable {
     var place: Place
     /// Unknown for a Shortcut, which may have been spoken or run on its own.
     var input: Input?
+    /// A typed message whose reply Read replies aloud will read (notifier
+    /// issue 674): the plugin tells Hermes the answer is heard too, so it
+    /// isn't sent as a sound file of its own. A plugin before it ignores it.
+    var heard = false
 
     static let capability = "turn-surface"
     static let path = "/api/plugins/conduit_push/turn-surface"
@@ -78,9 +82,9 @@ struct TurnSurface: Equatable {
 
     /// A message typed or spoken in the app. A spoken one counts as CarPlay's
     /// while CarPlay presents the conversation.
-    @MainActor static func message(spoken: Bool, carPlay: Bool, device: Place? = nil) -> TurnSurface {
+    @MainActor static func message(spoken: Bool, carPlay: Bool, device: Place? = nil, heard: Bool = false) -> TurnSurface {
         let device = device ?? Self.device
-        guard spoken else { return TurnSurface(place: device, input: .typed) }
+        guard spoken else { return TurnSurface(place: device, input: .typed, heard: heard) }
         return TurnSurface(place: carPlay ? .carplay : device, input: .spoken)
     }
 
@@ -92,6 +96,7 @@ struct TurnSurface: Equatable {
         let digest = SHA256.hash(data: Data(text.utf8)).map { String(format: "%02x", $0) }.joined()
         var body: [String: Any] = ["session_id": runtimeSessionID, "text_sha256": digest, "surface": place.rawValue]
         if let input { body["input"] = input.rawValue }
+        if heard, input != .spoken { body["heard"] = true }
         return body
     }
 
