@@ -5172,6 +5172,9 @@ struct ProviderInfo: Equatable {
     /// Per-model speed support from the row's `capabilities`, keyed by
     /// model id. Empty on gateways that don't send it.
     var speedCapabilities: [String: ModelSpeedCapability] = [:]
+    /// The row's subscription windows or rate limit, from Hermes' cache;
+    /// nil for a provider that reports none (most API keys).
+    var quota: ProviderQuota? = nil
 
     /// Whether `model` offers Ultrafast on this route and account. Nil when
     /// the row says nothing about the model.
@@ -5261,6 +5264,7 @@ extension ProviderInfo {
         self.displayName = object["name"]?.stringValue
         self.aliases = (object["aliases"]?.arrayValue ?? []).compactMap(\.stringValue)
         self.isCurrent = object["is_current"]?.boolValue ?? false
+        self.quota = (codable.anyValue as? [String: Any]).flatMap(ProviderQuota.init(row:))
         self.speedCapabilities = (object["capabilities"]?.objectValue ?? [:]).reduce(into: [:]) { result, entry in
             guard let caps = entry.value.objectValue else { return }
             result[entry.key] = ModelSpeedCapability(
