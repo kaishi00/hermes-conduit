@@ -7061,10 +7061,11 @@ enum MessageNormalizer {
     /// parse time: the saved review keeps Hermes' words, so its dedupe
     /// against the transcript holds and it follows a language change.
     static func localizedReviewSummary(_ summary: String) -> String {
-        // Empty pieces (a stray " · ") and a closing period don't keep a
-        // fixed summary in English.
+        // Empty pieces (a stray " · ", whose halves split as "·" bits) and a
+        // closing period don't keep a fixed summary in English.
+        let edges = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "·.!"))
         let parts = summary.components(separatedBy: " · ")
-            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: ".!")) }
+            .map { $0.trimmingCharacters(in: edges) }
             .filter { !$0.isEmpty }
         guard !parts.isEmpty else { return summary }
         let labels = parts.map { part -> String? in
