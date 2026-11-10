@@ -56,12 +56,13 @@ enum ConnectionFailure: Equatable {
     case signInPageFailed
 
     // Server-side responses.
-    /// A 401 or 403 where no credentials were asked for: provider
-    /// discovery or the native sign-in's requests. Something in front of
-    /// the dashboard (an IP allowlist, a firewall, an access policy)
-    /// refused this device. Never bad credentials, and not a wrong
-    /// address either: the same request answers from an allowed network
-    /// (issue #2092).
+    /// A 401 or 403 at provider discovery, which sends no credentials, or
+    /// a 403 from the native sign-in's token requests (Hermes refuses a
+    /// code or refresh token with 400/401): something in front of the
+    /// dashboard (an IP allowlist, a firewall, an access policy) refused
+    /// this device. Never bad credentials, and
+    /// not a wrong address either: the same request answers from an
+    /// allowed network (issue #2092).
     case accessDenied
     case dashboardUnavailable
     case unexpectedServerResponse
@@ -81,6 +82,13 @@ enum ConnectionFailureClassifier {
         /// Dashboard-ticket bridge requests (WebKit-side ticket minting):
         /// like provider discovery, a 401/403 here is never bad credentials.
         case ticketMint
+        /// The native sign-in's token exchange and refresh. They carry a
+        /// code or refresh token, so a 401 is Hermes refusing it (a
+        /// refresh's 400/401 never gets here: it turns into sign-in
+        /// required). A 403 is the edge refusing this device: a launch
+        /// with saved tokens refreshes before any discovery, so an
+        /// allowlist refuses the refresh first. Never bad credentials.
+        case nativeToken
     }
 
     static func classify(_ error: Error) -> ConnectionFailure {
@@ -156,14 +164,14 @@ enum ConnectionFailureClassifier {
     }
 
     /// Native (PKCE) sign-in failures, so Repair's Sign In to Reconnect and
-    /// Settings' Sign In Again name them as the login screen does. Its
-    /// requests are discovery-like: a 401/403 is never bad credentials.
+    /// Settings' Sign In Again name them as the login screen does. A
+    /// 401/403 from its token requests is never bad credentials.
     static func classify(_ nativeError: NativeOAuthError) -> ConnectionFailure {
         switch nativeError {
         case .browserFailed:
             return .signInPageFailed
         case .requestFailed(let status):
-            return classifyHTTPStatus(status, stage: .providerDiscovery)
+            return classifyHTTPStatus(status, stage: .nativeToken)
         case .invalidURL, .callbackMalformed, .stateMismatch, .tokenResponseMalformed:
             return .unexpectedServerResponse
         case .randomGenerationFailed, .listenerFailed, .callbackRejected, .tokenStorageFailed, .timedOut:
@@ -235,6 +243,9 @@ enum ConnectionFailureClassifier {
         // access policy). A ticket mint's 401/403 is Hermes refusing a
         // spent or stale session, which stays an unexpected response.
         if stage == .providerDiscovery, status == 401 || status == 403 {
+            return .accessDenied
+        }
+        if stage == .nativeToken, status == 403 {
             return .accessDenied
         }
         if (500...599).contains(status) {
