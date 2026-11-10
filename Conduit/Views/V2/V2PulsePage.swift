@@ -1159,7 +1159,13 @@ struct V2PulsePage: View {
         let held = card.isHeld ? Text("For the morning brief")
             .scaledFont(.caption)
             .foregroundStyle(.secondary) : nil
-        func line(_ inline: Bool) -> some View {
+        // Rewritten since because the thing it follows changed (0.150.0): when, last.
+        let stamp: String? = if card.wasUpdated, let updated = card.updatedAt {
+            AppLocalization.string("Updated \(PulseTopicTint.stamp(updated))")
+        } else {
+            card.createdAt.map { PulseTopicTint.stamp($0) }
+        }
+        func line(stamped: Bool, holding: Bool) -> some View {
             HStack(spacing: 6) {
                 Circle()
                     .fill(tint)
@@ -1169,17 +1175,12 @@ struct V2PulsePage: View {
                     .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(tint)
                     .accessibilityAddTraits(.isHeader)
-                // Rewritten since because the thing it follows changed (0.150.0): when, last.
-                if card.wasUpdated, let updated = card.updatedAt {
-                    Text(verbatim: "· " + AppLocalization.string("Updated \(PulseTopicTint.stamp(updated))"))
-                        .scaledFont(.caption)
-                        .foregroundStyle(.secondary)
-                } else if let created = card.createdAt {
-                    Text(verbatim: "· " + PulseTopicTint.stamp(created))
+                if stamped, let stamp {
+                    Text(verbatim: "· " + stamp)
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
-                if inline { held }
+                if holding { held }
                 Spacer(minLength: 0)
                 if appState.explainsPulseCard(card) {
                     Button {
@@ -1197,12 +1198,24 @@ struct V2PulsePage: View {
                 }
             }
         }
-        // A held card's "For the morning brief" goes on its own line when a
-        // large text size leaves no room for it beside the topic and time.
+        // When a large text size or a narrow card leaves no room beside the
+        // topic, a held card's "For the morning brief" goes on its own line
+        // under it, then the time too, rather than breaking mid-word.
         return ViewThatFits(in: .horizontal) {
-            line(true)
+            line(stamped: true, holding: true)
+            if held != nil {
+                VStack(alignment: .leading, spacing: 2) {
+                    line(stamped: true, holding: false)
+                    held
+                }
+            }
             VStack(alignment: .leading, spacing: 2) {
-                line(false)
+                line(stamped: false, holding: false)
+                if let stamp {
+                    Text(verbatim: stamp)
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
                 held
             }
         }
