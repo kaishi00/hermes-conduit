@@ -22,6 +22,34 @@ extension ComposerFullEditorTests {
         )
     }
 
+    /// Issue 2074: voice messages can have their own engine; unset, unknown
+    /// or unsupported, they follow dictation's.
+    func testVoiceMessageEngineFollowsDictationUnlessChosen() {
+        let all: (DictationEngine) -> Bool = { _ in true }
+        XCTAssertEqual(VoiceMessageEngine.resolved(nil, dictation: .hermes, isSupported: all), .hermes)
+        XCTAssertEqual(VoiceMessageEngine.resolved("whisper", dictation: .appleSpeechAnalyzer, isSupported: all), .appleSpeechAnalyzer)
+        XCTAssertEqual(VoiceMessageEngine.resolved("hermes", dictation: .apple, isSupported: all), .hermes)
+        XCTAssertEqual(VoiceMessageEngine.resolved("apple", dictation: .hermes, isSupported: all), .apple)
+        XCTAssertEqual(
+            VoiceMessageEngine.resolved("appleSpeechAnalyzer", dictation: .hermes, isSupported: { $0 != .appleSpeechAnalyzer }),
+            .hermes,
+            "the new model on an iPhone without it follows dictation"
+        )
+        XCTAssertNil(VoiceMessageEngine.ownChoice(nil, isSupported: all))
+    }
+
+    func testVoiceMessageEngineReadsDefaults() throws {
+        let suite = "VoiceMessageEngine.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        XCTAssertEqual(VoiceMessageEngine.current(defaults: defaults), .apple, "nothing stored: dictation's default")
+        defaults.set("hermes", forKey: DictationEngine.preferenceKey)
+        XCTAssertEqual(VoiceMessageEngine.current(defaults: defaults), .hermes, "follows dictation")
+        defaults.set("apple", forKey: VoiceMessageEngine.preferenceKey)
+        XCTAssertEqual(VoiceMessageEngine.current(defaults: defaults), .apple, "its own choice")
+        XCTAssertEqual(DictationEngine.current(defaults: defaults), .hermes, "dictation keeps its own")
+    }
+
     func testCustomWordsKeepSpellingAndDropRepeats() {
         XCTAssertEqual(
             DictationCustomWords.canonicalized(["  Milim  ", "milim", "", "   ", "Hermes   Conduit", "OpenAI"]),

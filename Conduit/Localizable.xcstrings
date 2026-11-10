@@ -503747,6 +503747,170 @@
           }
         }
       }
+    },
+    "Same as dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie Diktat"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Igual que el dictado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comme la dictée"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sama seperti dikte"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Come la dettatura"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声入力と同じ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "받아쓰기와 동일"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jak dyktowanie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Igual ao ditado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Как у диктовки"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikte ile aynı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与听写相同"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與聽寫相同"
+          }
+        }
+      }
+    },
+    "The words sent with a voice message, which are what Hermes reads. Choose another engine here to keep dictation on this iPhone while voice messages use Hermes, or the other way round." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Wörter, die mit einer Sprachnachricht gesendet werden – sie sind das, was Hermes liest. Wähle hier eine andere Engine, um das Diktat auf diesem iPhone zu lassen, während Sprachnachrichten Hermes nutzen, oder umgekehrt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las palabras que se envían con un mensaje de voz, que son lo que lee Hermes. Elige aquí otro motor para mantener el dictado en este iPhone mientras los mensajes de voz usan Hermes, o al revés."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les mots envoyés avec un message vocal, c'est-à-dire ce que lit Hermes. Choisissez ici un autre moteur pour garder la dictée sur cet iPhone pendant que les messages vocaux utilisent Hermes, ou l'inverse."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kata-kata yang dikirim bersama pesan suara, yang dibaca oleh Hermes. Pilih mesin lain di sini agar dikte tetap di iPhone ini sementara pesan suara memakai Hermes, atau sebaliknya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le parole inviate con un messaggio vocale, che sono ciò che Hermes legge. Scegli qui un altro motore per tenere la dettatura su questo iPhone mentre i messaggi vocali usano Hermes, o viceversa."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボイスメッセージと一緒に送られる文字起こしで、Hermes が読むのはこの文字です。ここで別のエンジンを選ぶと、音声入力はこの iPhone のまま、ボイスメッセージだけ Hermes を使えます（その逆も可能です）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 메시지와 함께 보내는 텍스트로, Hermes가 읽는 내용입니다. 여기서 다른 엔진을 선택하면 받아쓰기는 이 iPhone에서 하고 음성 메시지는 Hermes를 사용하거나, 그 반대로 할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Słowa wysyłane z wiadomością głosową – to je czyta Hermes. Wybierz tu inny silnik, aby dyktowanie zostało na tym iPhonie, a wiadomości głosowe korzystały z Hermesa, albo odwrotnie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As palavras enviadas com uma mensagem de voz, que são o que o Hermes lê. Escolha outro mecanismo aqui para manter o ditado neste iPhone enquanto as mensagens de voz usam o Hermes, ou o contrário."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Слова, которые отправляются вместе с голосовым сообщением, — именно их читает Hermes. Выберите здесь другой движок, чтобы диктовка оставалась на этом iPhone, а голосовые сообщения шли через Hermes, или наоборот."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesli mesajla birlikte gönderilen sözcükler; Hermes bunları okur. Dikteyi bu iPhone'da tutup sesli mesajlarda Hermes'i kullanmak için ya da tam tersi için burada başka bir motor seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "随语音消息一起发送的文字，Hermes 读取的就是这些文字。在这里选择其他引擎，可以让听写留在这台 iPhone 上，而语音消息使用 Hermes，或者反过来。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隨語音訊息一起傳送的文字，Hermes 讀取的就是這些文字。在這裡選擇其他引擎，可以讓聽寫留在這台 iPhone 上，而語音訊息使用 Hermes，或者反過來。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
