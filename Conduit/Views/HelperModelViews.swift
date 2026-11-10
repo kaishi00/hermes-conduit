@@ -30,6 +30,10 @@ struct HelperModelSlot: Identifiable, Equatable {
     /// Conduit's predictions, a slot the Conduit plugin adds (0.124.0).
     static let predictions = "conduit_predict"
 
+    /// The Conduit plugin's work watch (0.155.0): reads a bot's workstreams
+    /// as they work; Edit Bot > Work sets it too.
+    static let workWatch = "conduit_work_watch"
+
     /// `/api/model/auxiliary`'s answer as the phone keeps it: each slot's
     /// endpoint as its scheme, host and port only, since a path can carry a
     /// token and the page shows only the host.
@@ -155,6 +159,9 @@ struct HelperModelSlot: Identifiable, Equatable {
         predictions: Words(title: { AppLocalization.string("Conduit predictions") },
                                  caption: { AppLocalization.string("Suggested replies and draft guesses in Conduit, when Predictive uses the fast model.") },
                                  symbol: "wand.and.stars"),
+        workWatch: Words(title: { AppLocalization.string("Conduit work watch") },
+                         caption: { AppLocalization.string("Reads what a bot’s workstreams report while they work and tells its Bot Chat when one may affect another.") },
+                         symbol: "binoculars"),
     ]
 
     private static func title(task: String, label: String?) -> String {

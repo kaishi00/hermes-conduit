@@ -309,9 +309,12 @@ extension HermesVoiceConfigurationServiceTests {
             ["task": "notes_digest", "provider": "auto", "model": "", "label": "Notes digest", "hint": "Digests notes.",
              "plugin": "notes", "inherit_from": "compression"],
             ["task": "compression", "provider": "auto", "model": ""],
+            ["task": "conduit_work_watch", "provider": "openrouter", "model": "fast/watch", "label": "Conduit work watch",
+             "hint": "Reads what a bot's workstreams report (Conduit: Edit Bot > Work > Coordination).", "plugin": "conduit_push"],
             ["task": ""],
         ]])
-        XCTAssertEqual(slots.map(\.id), ["vision", "title_generation", "brand_new_slot", "conduit_predict", "notes_digest", "compression"])
+        XCTAssertEqual(slots.map(\.id), ["vision", "title_generation", "brand_new_slot", "conduit_predict", "notes_digest", "compression",
+                                         HelperModelSlot.workWatch])
         XCTAssertEqual(slots[0].title, AppLocalization.string("Image reading"))
         XCTAssertEqual(slots[0].value, AppLocalization.string("Same as chats"))
         XCTAssertEqual(slots[1].value, "fast/titles")
@@ -324,6 +327,11 @@ extension HermesVoiceConfigurationServiceTests {
         XCTAssertEqual(slots[4].value, AppLocalization.string("Same as \(compaction)"))
         XCTAssertEqual(slots[4].followTitle, AppLocalization.string("Same as \(compaction)"))
         XCTAssertEqual(slots[5].followTitle, AppLocalization.string("Same as chats"))
+        // Edit Bot > Work shows the work watch's slot by this name too, in
+        // the app's language rather than the plugin's English label.
+        XCTAssertEqual(slots[6].title, AppLocalization.string("Conduit work watch"))
+        XCTAssertEqual(slots[6].caption, AppLocalization.string("Reads what a bot’s workstreams report while they work and tells its Bot Chat when one may affect another."))
+        XCTAssertEqual(slots[6].value, "fast/watch")
     }
 
     /// A provider pinned without a model is a choice of its own, named

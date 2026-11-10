@@ -503395,6 +503395,358 @@
           }
         }
       }
+    },
+    "Watch Model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für die Beobachtung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch Model"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelo de vigilancia"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modèle de surveillance"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model Pemantau"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modello di controllo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "見守りのモデル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "감시 모델"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model obserwatora"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelo de acompanhamento"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Модель наблюдения"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İzleme Modeli"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "监看模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "監看模型"
+          }
+        }
+      }
+    },
+    "A helper model reads what workstreams report while they work and tells %@ when one may affect another. A small, fast model is enough." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Hilfsmodell liest, was die Workstreams während der Arbeit melden, und sagt %@, wenn einer einen anderen betreffen könnte. Ein kleines, schnelles Modell reicht."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A helper model reads what workstreams report while they work and tells %@ when one may affect another. A small, fast model is enough."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un modelo auxiliar lee lo que informan los flujos de trabajo mientras trabajan y avisa a %@ cuando uno puede afectar a otro. Basta con un modelo pequeño y rápido."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un modèle auxiliaire lit ce que les tâches de fond signalent pendant leur travail et prévient %@ quand l’une peut en affecter une autre. Un petit modèle rapide suffit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model pembantu membaca laporan workstream selama bekerja dan memberi tahu %@ jika satu workstream bisa memengaruhi yang lain. Model kecil yang cepat sudah cukup."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un modello ausiliario legge ciò che i flussi di lavoro riportano mentre lavorano e avvisa %@ quando uno può influire su un altro. Basta un modello piccolo e veloce."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "補助モデルが作業中のワークストリームの報告を読み、別のワークストリームに影響しそうなときに%@に知らせます。小さく速いモデルで十分です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보조 모델이 작업 중인 워크스트림의 보고를 읽고, 하나가 다른 워크스트림에 영향을 줄 수 있으면 %@에게 알립니다. 작고 빠른 모델이면 충분합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model pomocniczy czyta, co wątki pracy zgłaszają w trakcie pracy, i mówi %@, gdy jeden może wpłynąć na inny. Wystarczy mały, szybki model."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um modelo auxiliar lê o que os fluxos de trabalho relatam enquanto trabalham e avisa %@ quando um pode afetar outro. Um modelo pequeno e rápido basta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вспомогательная модель читает, что сообщают рабочие потоки во время работы, и говорит %@, когда один может повлиять на другой. Достаточно небольшой быстрой модели."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir yardımcı model, iş akışlarının çalışırken bildirdiklerini okur ve biri diğerini etkileyebilecekse %@ adlı bota söyler. Küçük, hızlı bir model yeterlidir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "辅助模型会读取工作流在工作时的报告，并在某个工作流可能影响另一个时告诉 %@。小而快的模型就够了。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輔助模型會讀取工作流在工作時的報告，並在某個工作流可能影響另一個時告訴 %@。小而快的模型就夠了。"
+          }
+        }
+      }
+    },
+    "Conduit work watch" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit-Arbeitsbeobachtung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit work watch"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vigilancia del trabajo de Conduit"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Surveillance du travail Conduit"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pemantau kerja Conduit"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Controllo del lavoro di Conduit"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitの作業見守り"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 작업 감시"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obserwator pracy Conduit"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acompanhamento do trabalho do Conduit"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Наблюдение за работой Conduit"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit iş izleme"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 工作监看"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 工作監看"
+          }
+        }
+      }
+    },
+    "Reads what a bot’s workstreams report while they work and tells its Bot Chat when one may affect another." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liest, was die Workstreams eines Bots während der Arbeit melden, und sagt seinem Bot Chat, wenn einer einen anderen betreffen könnte."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reads what a bot’s workstreams report while they work and tells its Bot Chat when one may affect another."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lee lo que informan los flujos de trabajo de un bot mientras trabajan y avisa a su Bot Chat cuando uno puede afectar a otro."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lit ce que les tâches de fond d’un bot signalent pendant leur travail et prévient son Bot Chat quand l’une peut en affecter une autre."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Membaca laporan workstream sebuah bot selama bekerja dan memberi tahu Bot Chat-nya jika satu workstream bisa memengaruhi yang lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Legge ciò che i flussi di lavoro di un bot riportano mentre lavorano e avvisa la sua Bot Chat quando uno può influire su un altro."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボットのワークストリームが作業中に報告する内容を読み、別のワークストリームに影響しそうなときにそのBot Chatに知らせます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "봇의 워크스트림이 작업 중에 보고하는 내용을 읽고, 하나가 다른 워크스트림에 영향을 줄 수 있으면 그 봇의 Bot Chat에 알립니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czyta, co wątki pracy bota zgłaszają w trakcie pracy, i mówi jego Bot Chat, gdy jeden może wpłynąć na inny."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lê o que os fluxos de trabalho de um bot relatam enquanto trabalham e avisa o Bot Chat dele quando um pode afetar outro."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Читает, что сообщают рабочие потоки бота во время работы, и говорит его Bot Chat, когда один может повлиять на другой."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir botun iş akışlarının çalışırken bildirdiklerini okur ve biri diğerini etkileyebilecekse botun Bot Chat'ine söyler."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取机器人的工作流在工作时的报告，并在某个工作流可能影响另一个时告诉它的 Bot Chat。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取機器人的工作流在工作時的報告，並在某個工作流可能影響另一個時告訴它的 Bot Chat。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
