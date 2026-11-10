@@ -699,7 +699,7 @@ struct BotWorkSettings: Equatable {
         set { policy = newValue ? (policy == .off ? .lookups : policy) : .off }
     }
 
-    init(policy: Policy = .lookups, policies: [Policy] = Self.olderPolicies, maxRunning: Int = 2, maxRunningLimit: Int = 6,
+    init(policy: Policy = .lookups, policies: [Policy] = Self.olderPolicies, maxRunning: Int = 4, maxRunningLimit: Int = 6,
          afterRestart: AfterRestart = .continue, approvals: Approvals = .chats,
          chatApprovals: String = "manual", workstreamModel: Model? = nil, coordination: Coordination? = nil,
          quickSteps: Int? = nil, quickStepsChoices: [Int] = [], unavailable: String? = nil) {

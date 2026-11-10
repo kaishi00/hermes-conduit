@@ -349,8 +349,10 @@ struct BotWorkSettingsView: View {
     private func readWatchSlot() async {
         watchReads += 1
         let read = watchReads
-        if watchSlot == nil {
-            watchSlot = appState.keptHelperModels(inProfile: profile)?.first { $0.id == HelperModelSlot.workWatch }
+        // A save keeps its pick at once, so the row shows it even when the
+        // read after it fails.
+        if let kept = appState.keptHelperModels(inProfile: profile)?.first(where: { $0.id == HelperModelSlot.workWatch }) {
+            watchSlot = kept
         }
         for attempt in 0..<Self.loadAttempts {
             if attempt > 0 {
