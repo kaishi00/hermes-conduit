@@ -1049,6 +1049,9 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(gateway.openCount, 2)
         XCTAssertTrue((gateway.streams.last?.appended.joined() ?? "").contains("It's sunny."))
         XCTAssertFalse((gateway.streams.last?.appended.joined() ?? "").contains("Let me check"))
+        // Issue 2148: the session was held across the tool, and goes with the turn.
+        XCTAssertEqual(playback.sessionHolds, 1)
+        XCTAssertEqual(playback.sessionsHeld, 0)
     }
 
     func testAPauseWhileAToolRunsHoldsTheNextSegment() async {
@@ -1171,6 +1174,50 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(controller.state, .preparing(messageID: "room:r:2"))
     }
 
+    /// Issue 2148: the session stays up from one room message into the
+    /// next, so other audio doesn't come back up in between, and goes once
+    /// the next one sounds.
+    func testTheSessionIsHeldFromOneRoomMessageIntoTheNext() async throws {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        gateway.blocksFinish = true
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.enqueue(messageID: "room:r:1", content: "First bot.") { true }
+        controller.enqueue(messageID: "room:r:2", content: "Second bot.") { true }
+        await waitUntil { gateway.streams.first?.finishCount == 1 }
+        XCTAssertEqual(playback.sessionHolds, 0, "nothing held while the first plays")
+        gateway.streams.first?.releaseFinishForTest()
+        await waitUntil { gateway.openCount == 2 }
+        XCTAssertEqual(playback.sessionsHeld, 1, "held while the second opens")
+
+        try gateway.streams.last?.emitPCMForTest()
+        XCTAssertEqual(playback.sessionsHeld, 0, "the second sounding holds it itself")
+        XCTAssertEqual(playback.sessionHolds, 1)
+    }
+
+    func testALastOrStoppedReadingHoldsNoSession() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        gateway.blocksFinish = true
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.enqueue(messageID: "room:r:1", content: "Only bot.") { true }
+        await waitUntil { gateway.streams.first?.finishCount == 1 }
+        gateway.streams.first?.releaseFinishForTest()
+        await waitUntil { controller.state == .idle }
+        XCTAssertEqual(playback.sessionHolds, 0, "nothing waits, so nothing is held")
+
+        controller.enqueue(messageID: "room:r:2", content: "First bot.") { true }
+        controller.enqueue(messageID: "room:r:3", content: "Second bot.") { true }
+        await waitUntil { gateway.openCount == 2 && gateway.streams.last?.finishCount == 1 }
+        gateway.streams.last?.releaseFinishForTest()
+        await waitUntil { gateway.openCount == 3 }
+        XCTAssertEqual(playback.sessionsHeld, 1)
+        controller.stop()
+        XCTAssertEqual(playback.sessionsHeld, 0, "a stop lets the session go")
+    }
+
     func testAWaitingMessageFromARoomLeftDoesNotDropTheOnesAfterIt() async {
         let playback = MockReadAloudPlayback()
         let gateway = MockReadAloudGateway()
@@ -1272,6 +1319,16 @@ private final class MockReadAloudPlayback: SpeechPlaybackService {
     }
 
     func finish() throws { finishCount += 1 }
+
+    /// Sessions held between streams (issue 2148): taken, and still held.
+    private(set) var sessionHolds = 0
+    private(set) var sessionsHeld = 0
+
+    func holdSession(onTakenOver: (@MainActor () -> Void)?) -> (@MainActor () -> Void)? {
+        sessionHolds += 1
+        sessionsHeld += 1
+        return { [weak self] in self?.sessionsHeld -= 1 }
+    }
 
     func drain() async {
         drainCount += 1

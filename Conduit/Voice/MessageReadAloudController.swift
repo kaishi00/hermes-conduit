@@ -143,6 +143,16 @@ final class MessageReadAloudController: ObservableObject {
 
     private var queue: [QueuedReading] = []
 
+    /// The audio session held across the gap between a reading and the
+    /// next queued one, or a followed reply's segment and its next: each
+    /// stream's playback lets the session go as it drains, and deactivating
+    /// it there brought other audio back up and dropped Now Playing between
+    /// every message (issue 2148). Released once the next stream sounds, the
+    /// reading ends with nothing after it, or `sessionHoldLimit` passes.
+    private var sessionHold: (@MainActor () -> Void)?
+    private var sessionHoldTimeout: Task<Void, Never>?
+    static let sessionHoldLimit: Duration = .seconds(10)
+
     init(
         playback: SpeechPlaybackService? = nil,
         gateway: VoiceGatewayService? = nil,
@@ -409,10 +419,14 @@ final class MessageReadAloudController: ObservableObject {
     }
 
     private func startNextQueued() {
-        guard !queue.isEmpty else { return }
+        guard !queue.isEmpty else {
+            releaseSessionHold()
+            return
+        }
         // Only the message already playing carries on off screen.
         guard isForegroundActive else {
             queue = []
+            releaseSessionHold()
             return
         }
         let next = queue.removeFirst()
@@ -428,6 +442,7 @@ final class MessageReadAloudController: ObservableObject {
         while !reading.prepare() {
             guard !remaining.isEmpty else {
                 queue = []
+                releaseSessionHold()
                 return
             }
             reading = remaining.removeFirst()
@@ -620,6 +635,8 @@ final class MessageReadAloudController: ObservableObject {
             _ = try await stream.finish()
             guard isCurrent(generation) else { return }
             speechStream = nil
+            // A message waits: the session stays up into its stream.
+            if !queue.isEmpty { holdSessionForNext() }
             try playback.finish()
             await playback.drain()
             guard isCurrent(generation) else { return }
@@ -729,6 +746,9 @@ final class MessageReadAloudController: ObservableObject {
                     guard isCurrent(generation) else { return }
                     speechStream = nil
                     open = nil
+                    // A tool runs; the turn's next segment opens its own
+                    // stream, and the session stays up into it.
+                    holdSessionForNext()
                     try playback.finish()
                     await playback.drain()
                     guard isCurrent(generation) else { return }
@@ -767,6 +787,8 @@ final class MessageReadAloudController: ObservableObject {
 
     private func transitionToPlaying(generation: UInt64) {
         guard isCurrent(generation) else { return }
+        // The stream sounding holds the session itself now.
+        releaseSessionHold()
         // Safety net: the playback service holds a pause across a stream
         // restart, but if anything ever leaves the reply sounding, stop
         // reporting it paused so the paused-stop timer cannot end it.
@@ -825,6 +847,8 @@ final class MessageReadAloudController: ObservableObject {
     /// Ends the operation: the background activity it held is released with
     /// the state change, on every terminal path.
     private func settle(_ terminal: State) {
+        // Nothing waits to be read: the session goes as the reading did.
+        if queue.isEmpty { releaseSessionHold() }
         state = terminal
         isPaused = false
         betweenSegments = false
@@ -838,6 +862,25 @@ final class MessageReadAloudController: ObservableObject {
         let end = endBackgroundActivity
         endBackgroundActivity = nil
         end?()
+    }
+
+    private func holdSessionForNext() {
+        guard sessionHold == nil,
+              let release = playback.holdSession(onTakenOver: { [weak self] in self?.stop() }) else { return }
+        sessionHold = release
+        sessionHoldTimeout = Task { [weak self] in
+            try? await Task.sleep(for: Self.sessionHoldLimit)
+            guard !Task.isCancelled else { return }
+            self?.releaseSessionHold()
+        }
+    }
+
+    private func releaseSessionHold() {
+        sessionHoldTimeout?.cancel()
+        sessionHoldTimeout = nil
+        let release = sessionHold
+        sessionHold = nil
+        release?()
     }
 
     private func isCancellation(_ error: Error) -> Bool {

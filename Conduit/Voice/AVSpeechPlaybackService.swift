@@ -499,6 +499,12 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// coordinator never deactivates the session underneath live audio. The
     /// coordinator keeps the session active when another owner (conversation
     /// capture) still needs it.
+    func holdSession(onTakenOver: (@MainActor () -> Void)?) -> (@MainActor () -> Void)? {
+        guard let held = try? coordinator.acquire(ownershipIntent, onTakenOver: onTakenOver) else { return nil }
+        let coordinator = coordinator
+        return { coordinator.release(held) }
+    }
+
     private func releaseOwnership() {
         guard let lease else { return }
         self.lease = nil

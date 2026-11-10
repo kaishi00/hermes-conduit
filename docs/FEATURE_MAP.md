@@ -1382,7 +1382,7 @@ the Voice settings caption · the notifier README and changelog
 
 **Code**
 - Setting: `Conduit/Voice/VoiceTypes.swift` (ReadRepliesAloud), `Conduit/Views/VoiceSettingsView.swift` (readAloudSection), `Conduit/Services/AppState+SyncedPreferences.swift` (voice.read_replies_aloud), `Conduit/Services/AppState+AgentSettings.swift` (voice.read_replies_aloud)
-- Reading: `Conduit/Voice/MessageReadAloudController.swift` (followReply, runLivePlayback, adoptLiveReply, enqueue), `Conduit/Services/AppState.swift` (followReplyAloud from notifyVoiceAssistant, readyAutomaticReadAloud, readNewRoomMessagesAloud, stopFollowing in activeSessionId, adoptLiveReply in finalizeStreamingCompletion), `Conduit/Services/AppState+RoomBoards.swift` (roomReplayChanged), `Conduit/Services/GroupChatModels.swift` (GroupRoomReplay.memberMessages)
+- Reading: `Conduit/Voice/MessageReadAloudController.swift` (followReply, runLivePlayback, adoptLiveReply, enqueue, holdSessionForNext), the session held between streams in `Conduit/Voice/AVSpeechPlaybackService.swift` (holdSession) and `Conduit/Voice/VoiceTypes.swift` (SpeechPlaybackService.holdSession), `Conduit/Services/AppState.swift` (followReplyAloud from notifyVoiceAssistant, readyAutomaticReadAloud, readNewRoomMessagesAloud, stopFollowing in activeSessionId, adoptLiveReply in finalizeStreamingCompletion), `Conduit/Services/AppState+RoomBoards.swift` (roomReplayChanged), `Conduit/Services/GroupChatModels.swift` (GroupRoomReplay.memberMessages)
 - Turn line: `Conduit/Services/TurnSurface.swift` (heard), `Conduit/Services/AppState+TurnSurface.swift` (messageTurnSurface), `notifier/turn_surface.py` (HEARD_HINT)
 
 **Rulings**
@@ -1393,11 +1393,12 @@ the Voice settings caption · the notifier README and changelog
 - In a group room, bot messages that arrive while it's open are read one after another, each in its bot's voice; the messages its first read brings aren't. Rooms hosted elsewhere (copies) are read too; their opening tail read marks where new messages start, so an empty copy's first message is read. Messages a resync fills in above the window it already held are read; older history below it isn't. A waiting message whose room was left is skipped, not the rest. One waiting when Conduit leaves the screen is dropped; only the one playing carries on (2026-11-10, #2122).
 - A typed message sent with the setting on reports `"heard": true`, and the plugin tells Hermes the answer is heard too: no `text_to_speech` or sound file of its own (2026-11-10, #2122, notifier 0.156.0). It reports so only while a reading could start then: the setting on, Read Aloud available (no call, no held microphone) and Conduit on screen.
 - Hermes may turn it on or off through `conduit_settings`; the change asks, since speech can cost money on Hermes' side (2026-11-10, #2122).
+- Each message and segment is still its own speech stream (Hermes' speak-stream takes one utterance), but the audio session stays up across the gap: from a room message into the next one waiting, and from a segment into the next after a tool. Music behind it stays ducked rather than coming back up between messages. The hold goes once the next stream sounds, when nothing more waits, on Stop or a held microphone, and after 10 s at most (2026-11-10, issue 2148, #PR2). The speaker button reads one reply and holds nothing; Classic voice holds nothing between listens, as before.
 
 **Open gaps**
 - `heard` is decided at the send. If Conduit leaves the screen, a call starts or the chat closes before the reply's first words, nothing reads it and Hermes was still told not to send a sound file. Typed turns rarely get one anyway; correcting the report mid-turn would need a new plugin route (Maintainer's call).
 
-**Checked:** 2026-11-10, #2130 (AppState tests for an empty copy's first message, a retried tail and a resync's fill below the last bot message); 2026-11-10, #2128 (an empty copy reads its first message; new entry in #2122).
+**Checked:** 2026-11-10, #PR2 (the audio session held between queued room messages and between a followed reply's segments, issue 2148; the speaker button, Classic voice, the live modes and the notifier needed no change); 2026-11-10, #2130 (AppState tests for an empty copy's first message, a retried tail and a resync's fill below the last bot message); 2026-11-10, #2128 (an empty copy reads its first message; new entry in #2122).
 
 ## Files Hermes attaches, in what voices say
 
