@@ -1154,11 +1154,19 @@ struct ComposerBar: View, Equatable {
 
     /// Why the composer is locked. While the chat on screen is on its way
     /// the composer takes a message anyway, so the line about syncing
-    /// stays away; an error or a repair still shows.
+    /// stays away; an error or a repair still shows. An unlocked composer
+    /// shows an error too: a send that failed says why, rather than its
+    /// words coming back with nothing said (issue 2095).
     private var showsStateNotice: Bool {
-        guard !appState.composerIsEnabled else { return false }
+        let hasError = !(appState.errorMessage ?? "").isEmpty
+        guard !appState.composerIsEnabled else { return hasError }
         guard appState.composerWaitsForChat else { return true }
-        return !(appState.errorMessage ?? "").isEmpty || showsRepairConnection
+        return hasError || showsRepairConnection
+    }
+
+    /// The syncing line, only while the composer is locked for it.
+    private var showsSyncingLine: Bool {
+        !appState.composerIsEnabled && !appState.composerWaitsForChat
     }
 
     private var showsRepairConnection: Bool {
@@ -1168,7 +1176,7 @@ struct ComposerBar: View, Equatable {
     @ViewBuilder
     private var stateNotice: some View {
         VStack(alignment: .leading, spacing: 4) {
-            if !appState.composerWaitsForChat {
+            if showsSyncingLine {
                 HStack(spacing: 8) {
                 if appState.turnState != .unsupportedGateway {
                     ProgressView()

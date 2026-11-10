@@ -29373,7 +29373,9 @@ final class AppState: ObservableObject {
         // marks nothing: missing a mark costs one extra read, a wrong mark
         // hides the other device's turn.
         let isSlashCommand = runsSlashCommands && attachments.isEmpty && Self.parseSlashCommand(text) != nil
-        if sent, !isSlashCommand, activeSessionId == submissionContext.sessionID {
+        // One left waiting for a reconnect (keepComposerSendForReconnect)
+        // isn't Hermes' yet.
+        if sent, !isSlashCommand, activeSessionId == submissionContext.sessionID, pendingComposerSendOnScreen == nil {
             noteOpenChatSentHere()
         }
         return sent
@@ -30790,6 +30792,8 @@ final class AppState: ObservableObject {
         // Mid-turn ordering rule: the outgoing bubble must not land below a
         // still-live reasoning card's eventual commit.
         settleReasoningSegmentIntoTranscript()
+        // An earlier send's failure, shown under the composer, is over.
+        if errorMessage != nil { errorMessage = nil }
         messages.append(userMessage)
         requestChatScrollToLatest()
         cacheMessagePresentation(for: [sessionId])
@@ -31090,6 +31094,12 @@ final class AppState: ObservableObject {
                     lostSessionIDs: submissionSessionIDs, using: client
                 )
             }
+            if keepComposerSendForReconnect(
+                after: error, text: text, attachments: attachments, queued: queued,
+                surface: surface, rowID: userMessage.id, client: client
+            ) {
+                return true
+            }
             if Self.isAmbiguousPromptDelivery(error) {
                 lifecycleLog.notice(
                     "prompt.submit ambiguous (\(error.localizedDescription, privacy: .private)); querying authoritative state session=\(sessionId, privacy: .private(mask: .hash))"
@@ -31319,6 +31329,41 @@ final class AppState: ObservableObject {
     /// reached Hermes and the turn may already be running — so the
     /// authoritative registry probe decides, and unknown future `HermesError`
     /// cases fail toward the probe rather than toward a blind retry.
+    /// A typed send `rpc` refused before writing it (`notConnected`): the
+    /// socket had closed under it, its close frame in before its receive
+    /// failed, so the drop wasn't known yet (issue 2095, a proxy closing
+    /// sockets with 1005 and 1013). Nothing left the phone, so rather than
+    /// come back to the composer the message waits in its chat as "Sends
+    /// when connected", and goes once the reconnect this starts has the
+    /// chat back. Text only, and only the composer's own: a call's, a
+    /// Shortcut's or a Queue send reports its own outcome. False, with
+    /// nothing changed but the drop noted, when it can't wait.
+    private func keepComposerSendForReconnect(
+        after error: Error,
+        text: String,
+        attachments: [Attachment],
+        queued: Bool,
+        surface: String?,
+        rowID: String,
+        client: HermesClient
+    ) -> Bool {
+        guard case HermesError.notConnected = error, self.client === client else { return false }
+        // The drop the socket's own close report would bring a moment
+        // later: that report, from this client, then finds it done.
+        if isConnected {
+            noteConnectionStep("Send found the socket closed")
+            handleDisconnect()
+        }
+        guard attachments.isEmpty, !queued, surface == nil, submissionTurnSurface == nil,
+              !callSubmissionTexts.contains(text), composerWaitsForChat,
+              sendWhenConnected(text, replyReference: nil) else { return false }
+        // The waiting message shows in its place.
+        messages.removeAll { $0.id == rowID }
+        if let activeSessionId { cacheMessagePresentation(for: [activeSessionId]) }
+        lifecycleLog.notice("prompt.submit found no connection; the message waits for the reconnect")
+        return true
+    }
+
     static func isAmbiguousPromptDelivery(_ error: Error) -> Bool {
         switch error {
         case HermesError.notConnected:
