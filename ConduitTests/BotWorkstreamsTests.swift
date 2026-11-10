@@ -628,6 +628,33 @@ extension BotModeTests {
         XCTAssertNil(BotWorkSettings(response: ["ok": false, "policy": "strict", "max_running": 2]))
     }
 
+    func testCoordinationIsOfferedOnlyWhereThePluginKeepsIt() throws {
+        // Eric 2026-11-10: how independently the Bot Chat keeps its workstreams in step.
+        let older = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "lookups", "max_running": 2]))
+        XCTAssertNil(older.coordination)
+        let newer = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "lookups", "max_running": 2, "coordination": "ask",
+            "coordinations": ["off", "ask", "auto"],
+        ]))
+        XCTAssertEqual(newer.coordination, .ask)
+        var picked = newer
+        picked.coordination = .auto
+        XCTAssertEqual(picked.change(from: newer) as? [String: String], ["coordination": "auto"])
+        XCTAssertTrue(newer.change(from: newer).isEmpty)
+        for coordination in BotWorkSettings.Coordination.allCases {
+            XCTAssertTrue(BotWorkSettingsView.coordinationCaption(coordination, botName: "Furina").contains("Furina"))
+        }
+        // Leave alone on a workstream's card, as the plugin offers it.
+        let alone = try XCTUnwrap(BotWorkItem(row: ["ref": "W1", "kind": "workstream", "status": "running",
+                                                    "left_alone": true, "manage": ["pin", "coordinate"]]))
+        XCTAssertTrue(alone.isLeftAlone)
+        XCTAssertEqual(alone.manage, [.pin, .coordinate])
+        let coordinated = try XCTUnwrap(BotWorkItem(row: ["ref": "W2", "kind": "workstream", "status": "running",
+                                                          "manage": ["pin", "leave_alone"]]))
+        XCTAssertFalse(coordinated.isLeftAlone)
+        XCTAssertEqual(coordinated.manage, [.pin, .leaveAlone])
+    }
+
     func testEverythingHereIsOfferedOnlyWhereThePluginTakesIt() throws {
         // Notifier issue 619 (Eric 2026-11-08): three choices by what the user notices.
         let older = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "lookups", "max_running": 2]))

@@ -19,6 +19,9 @@ struct BotWorkItem: Identifiable, Equatable {
     enum Action: String, CaseIterable {
         case send, stop, `continue`, check
         case pin, unpin, resolve, reopen
+        /// Leave alone: the Bot Chat sends it nothing and doesn't stop it in
+        /// a turn the user didn't start; `coordinate` hands it back.
+        case leaveAlone = "leave_alone", coordinate
         /// Answers the approval its "Needs you" card shows (`approval`).
         case approve, deny
     }
@@ -67,6 +70,8 @@ struct BotWorkItem: Identifiable, Equatable {
     /// "user" or "bot" while it's resolved.
     let resolvedBy: String
     let isPinned: Bool
+    /// The user set it to Leave alone (Edit Bot > Work's Coordination).
+    let isLeftAlone: Bool
     /// A restart cut it off during a step that can change things, so it may
     /// or may not have taken effect: Check first is offered.
     let isUncertain: Bool
@@ -128,6 +133,7 @@ struct BotWorkItem: Identifiable, Equatable {
         closedAt = closed > 0 ? Date(timeIntervalSince1970: closed) : nil
         resolvedBy = row["resolved_by"] as? String ?? ""
         isPinned = row["pinned"] as? Bool ?? false
+        isLeftAlone = row["left_alone"] as? Bool ?? false
         isUncertain = row["uncertain"] as? Bool ?? false
         branch = (row["branch"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         fromCall = ["phone", "watch"].contains(row["from_call"] as? String ?? "") ? row["from_call"] as? String ?? "" : ""
@@ -491,6 +497,14 @@ struct BotWorkSettings: Equatable {
         case off
     }
 
+    /// How independently the Bot Chat keeps its workstreams working together
+    /// in the turns it starts itself, a work update's (Eric 2026-11-10): it
+    /// asks before it starts, stops or redirects work, does those on its
+    /// own, or only passes reports on.
+    enum Coordination: String, CaseIterable {
+        case off, ask, auto
+    }
+
     var policy: Policy
     /// The settings this plugin takes: one from before Everything Here
     /// doesn't list them, and takes off, strict and lookups.
@@ -504,6 +518,8 @@ struct BotWorkSettings: Equatable {
     /// The model new workstreams start on; nil for the bot's own, the one
     /// its Bot Chat uses (Eric 2026-11-03).
     var workstreamModel: Model?
+    /// nil on a plugin from before Coordination, which shows no such choice.
+    var coordination: Coordination?
     /// Why workstreams can't run on this Hermes, as the plugin says it.
     var unavailable: String?
 
@@ -550,7 +566,8 @@ struct BotWorkSettings: Equatable {
 
     init(policy: Policy = .lookups, policies: [Policy] = Self.olderPolicies, maxRunning: Int = 2, maxRunningLimit: Int = 6,
          afterRestart: AfterRestart = .continue, approvals: Approvals = .chats,
-         chatApprovals: String = "manual", workstreamModel: Model? = nil, unavailable: String? = nil) {
+         chatApprovals: String = "manual", workstreamModel: Model? = nil, coordination: Coordination? = nil,
+         unavailable: String? = nil) {
         self.policy = policy
         self.policies = policies
         self.maxRunning = maxRunning
@@ -559,6 +576,7 @@ struct BotWorkSettings: Equatable {
         self.approvals = approvals
         self.chatApprovals = chatApprovals
         self.workstreamModel = workstreamModel
+        self.coordination = coordination
         self.unavailable = unavailable
     }
 
@@ -577,6 +595,7 @@ struct BotWorkSettings: Equatable {
             approvals: (response["workstream_approvals"] as? String).flatMap(Approvals.init(rawValue:)) ?? .chats,
             chatApprovals: (response["chat_approvals"] as? String) ?? "manual",
             workstreamModel: Model(response["workstream_model"]),
+            coordination: (response["coordination"] as? String).flatMap(Coordination.init(rawValue:)),
             unavailable: (response["unavailable"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         )
     }
@@ -588,6 +607,7 @@ struct BotWorkSettings: Equatable {
         if maxRunning != old.maxRunning { body["max_running"] = maxRunning }
         if afterRestart != old.afterRestart { body["after_restart"] = afterRestart.rawValue }
         if approvals != old.approvals { body["workstream_approvals"] = approvals.rawValue }
+        if coordination != old.coordination, let coordination { body["coordination"] = coordination.rawValue }
         if workstreamModel != old.workstreamModel {
             // null: back to the bot's own.
             body["workstream_model"] = workstreamModel.map { $0.body as Any } ?? NSNull()
