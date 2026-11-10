@@ -1024,15 +1024,39 @@ struct V2PulsePage: View {
         }
     }
 
-    /// Whether the bar has anything in it: a lone hairline otherwise.
+    /// Whether the bar has anything in it: a lone hairline otherwise. It
+    /// reads the same choices `cardButtons` and `cardThumbs` draw from, so
+    /// a button added there can't leave the bar out or empty (issue 2099).
     private func hasBarActions(_ card: PulseCard) -> Bool {
-        let untold = untoldCards.contains(card.id)
-        return card.isRatable
-            || (!untold && (appState.canActOnPulseCard(card)
-                || (card.look?.ask != nil && appState.canAskFromPulseCard(card))))
-            || appState.canMarkPulseCardDone(card)
-            || card.look?.extraActions.isEmpty == false
-            || (card.look?.offersLater == true && card.dismissedAt == nil && card.doneAt == nil && canDismiss)
+        card.isRatable || shownButtons(card, untold: untoldCards.contains(card.id)).any
+    }
+
+    /// The buttons a card shows beside its thumbs.
+    private struct ShownButtons {
+        enum DoIt { case hidden, ask(PulseLook.Action), act }
+        var doIt: DoIt = .hidden
+        var done = false
+        var extras: [PulseLook.Action] = []
+        var later = false
+
+        var any: Bool {
+            if case .hidden = doIt { return done || !extras.isEmpty || later }
+            return true
+        }
+    }
+
+    private func shownButtons(_ card: PulseCard, untold: Bool) -> ShownButtons {
+        var shown = ShownButtons()
+        // A pick's Ask takes Do it's place, with its own words (0.150.0).
+        if !untold, let ask = card.look?.ask, appState.canAskFromPulseCard(card) {
+            shown.doIt = .ask(ask)
+        } else if !untold, appState.canActOnPulseCard(card) {
+            shown.doIt = .act
+        }
+        shown.done = appState.canMarkPulseCardDone(card)
+        shown.extras = card.look?.extraActions ?? []
+        shown.later = card.look?.offersLater == true && card.dismissedAt == nil && card.doneAt == nil && canDismiss
+        return shown
     }
 
     /// The frame's actions: each a full-width segment split by hairlines,
@@ -1242,19 +1266,17 @@ struct V2PulsePage: View {
 
     @ViewBuilder
     private func cardButtons(_ card: PulseCard, untold: Bool, bar: Bool = false) -> some View {
-        // A pick's Ask takes Do it's place, with its own words (0.150.0).
-        if !untold, let ask = card.look?.ask, appState.canAskFromPulseCard(card) {
-            doItButton(card, ask: ask, bar: bar)
-        } else if !untold, appState.canActOnPulseCard(card) {
-            doItButton(card, bar: bar)
+        let shown = shownButtons(card, untold: untold)
+        switch shown.doIt {
+        case .ask(let ask): doItButton(card, ask: ask, bar: bar)
+        case .act: doItButton(card, bar: bar)
+        case .hidden: EmptyView()
         }
-        if appState.canMarkPulseCardDone(card) { doneButton(card, bar: bar) }
-        ForEach(Array((card.look?.extraActions ?? []).enumerated()), id: \.offset) { _, action in
+        if shown.done { doneButton(card, bar: bar) }
+        ForEach(Array(shown.extras.enumerated()), id: \.offset) { _, action in
             pickActionButton(action, bar: bar)
         }
-        if card.look?.offersLater == true, card.dismissedAt == nil, card.doneAt == nil, canDismiss {
-            laterButton(card, bar: bar)
-        }
+        if shown.later { laterButton(card, bar: bar) }
     }
 
     @ViewBuilder

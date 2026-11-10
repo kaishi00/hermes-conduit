@@ -159,9 +159,10 @@ extension AppStateVoiceCapabilityTests {
         defer { defaults.removePersistentDomain(forName: suite) }
         let appState = AppState(defaults: defaults, loadSavedConnection: false)
         var reads: [String] = []
+        var hostDown = true
         appState.lineBoardsReadOverride = { path in
             reads.append(path)
-            if path.contains("cb-00000000bad0") { throw URLError(.timedOut) }
+            if hostDown, path.contains("cb-00000000bad0") { throw URLError(.timedOut) }
             return ["board": ["cards": [["type": "callout", "callout": ["text": "Book early", "tone": "tip"]]]]]
         }
         appState.loadLineBoards(["cb-0000000000a1", "cb-00000000bad0", "cb-0000000000a1"])
@@ -173,6 +174,37 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(appState.lineBoardsAsked.contains("cb-00000000bad0"), "a failed read is asked again")
         appState.loadLineBoards(["cb-0000000000a1"])
         XCTAssertEqual(reads.count, 2, "a read board isn't read again")
+
+        // The retry, once the host answers, stores the board.
+        hostDown = false
+        appState.loadLineBoards(["cb-00000000bad0"])
+        for _ in 0..<100 where appState.lineBoards["cb-00000000bad0"] == nil { await Task.yield() }
+        XCTAssertEqual(reads.count, 3)
+        XCTAssertEqual(appState.lineBoards["cb-00000000bad0"]?.cards.count, 1, "the retried board is stored")
+    }
+
+    /// Issue 2083: a read still out when the boards are forgotten (a
+    /// sign-out, or another dashboard or profile and back) stores nothing.
+    @MainActor
+    func testALineBoardReadFromBeforeASignOutStoresNothing() async throws {
+        let suite = "line-boards-reset-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        var held: [CheckedContinuation<Void, Never>] = []
+        appState.lineBoardsReadOverride = { _ in
+            await withCheckedContinuation { held.append($0) }
+            return ["board": ["cards": [["type": "callout", "callout": ["text": "Old", "tone": "tip"]]]]]
+        }
+        appState.loadLineBoards(["cb-0000000000a1"])
+        for _ in 0..<100 where held.isEmpty { await Task.yield() }
+        XCTAssertEqual(held.count, 1)
+
+        appState.resetLineBoards()
+        held.removeFirst().resume()
+        for _ in 0..<50 { await Task.yield() }
+        XCTAssertNil(appState.lineBoards["cb-0000000000a1"], "the earlier read stores nothing")
+        XCTAssertTrue(appState.lineBoardsAsked.isEmpty, "and holds nothing back")
     }
 
     /// Issue 2093: a board the plugin pruned (404 "That board is gone"), or

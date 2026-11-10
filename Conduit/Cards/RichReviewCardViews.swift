@@ -74,7 +74,6 @@ struct RichReviewCard: View {
                     round = nil
                     failed = false
                     stale = false
-                    known = false
                 }
                 loadedCard = card.normalizedJSON
                 await load(review)

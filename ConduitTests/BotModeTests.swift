@@ -2355,6 +2355,19 @@ final class BotModeTests: XCTestCase {
             "Could not check Atlas's Bot Chat — not starting a new chat."
         )
         XCTAssertNil(harness.appState.errorMessage)
+
+        // A retry that fails the same way, while that same text still
+        // shows, keeps its own explanation rather than the generic line
+        // (issue 2079).
+        harness.appState.botsListNotice = nil
+        harness.appState.errorMessage = "Could not check Atlas's Bot Chat — not starting a new chat."
+        harness.appState.showSidebar = true
+        let retried = await harness.appState.openBotChatFromList(atlas)
+        XCTAssertFalse(retried)
+        XCTAssertEqual(
+            harness.appState.botsListNotice,
+            "Could not check Atlas's Bot Chat — not starting a new chat."
+        )
     }
 
     /// #442: going atlas → scout → atlas used to leave scout's chat as the

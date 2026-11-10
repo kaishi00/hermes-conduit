@@ -863,6 +863,76 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(appState.cronJobs.isEmpty)
     }
 
+    /// A failed read says so, ends the spinner and doesn't hold the next
+    /// ask back (issue 2109).
+    func testAFailedScheduledJobsReadSaysSoAndTheNextAskReadsAgain() async throws {
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        addTeardownBlock { @MainActor in
+            held.releaseAll()
+            held.bridge.invalidate()
+        }
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let first = Task { await appState.loadCronJobs() }
+        try await held.answer(["error": "down"], toPathEnding: "/api/cron/jobs", status: 500)
+        await first.value
+        XCTAssertFalse(appState.cronJobsLoading)
+        XCTAssertNotNil(appState.errorMessage, "the failed read says so")
+
+        let again = Task { await appState.loadCronJobs() }
+        try await held.answer(["jobs": [["id": "j1", "enabled": true, "name": "Morning"]]], toPathEnding: "/api/cron/jobs")
+        await again.value
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["j1"])
+    }
+
+    /// Profile A, B, then A again while A's first read is out: that read's
+    /// end neither clears the newer A read's hold nor commits over it, as
+    /// each read carries its own token (issue 2109).
+    func testAnOlderScheduledJobsReadDoesNotEndTheNewerReadForTheSameProfile() async throws {
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        addTeardownBlock { @MainActor in
+            held.releaseAll()
+            held.bridge.invalidate()
+        }
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+        let profile = appState.activeProfile
+
+        let older = Task { await appState.loadCronJobs() }
+        try await held.waitForRequests(1)
+        appState.setActiveProfileForTesting("work")
+        let other = Task { await appState.loadCronJobs() }
+        // The work read is out before the switch back, so it reads "work".
+        for _ in 0..<1_000 where held.sent.filter({ $0.path.hasSuffix("/api/cron/jobs") }).count < 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        appState.setActiveProfileForTesting(profile)
+        let newer = Task { await appState.loadCronJobs() }
+        for _ in 0..<1_000 where held.sent.filter({ $0.path.hasSuffix("/api/cron/jobs") }).count < 3 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(held.sent.filter { $0.path.hasSuffix("/api/cron/jobs") }.count, 3, "each profile change starts its own read")
+
+        let cronReads = held.sent.indices.filter { held.sent[$0].path.hasSuffix("/api/cron/jobs") }
+        let olderPlace = cronReads[0], newerPlace = cronReads[2]
+        XCTAssertFalse(held.sent[newerPlace].query?.contains("work") ?? false)
+
+        // The newer read lands first, then the older one: the older read
+        // neither overwrites the newer list nor ends anything (#2113 review).
+        try await held.answer(["jobs": [["id": "new", "enabled": true, "name": "New"]]], at: newerPlace)
+        await newer.value
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["new"])
+        XCTAssertFalse(appState.cronJobsLoading)
+        try await held.answer(["jobs": [["id": "old", "enabled": true, "name": "Old"]]], at: olderPlace)
+        await older.value
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["new"], "the older read commits nothing over the newer")
+
+        held.releaseAll()
+        await other.value
+        XCTAssertFalse(appState.cronJobsLoading)
+    }
+
     func testFailedCredentialSwitchDoesNotBlockLaterSelection() async {
         // Switch to a credential dashboard whose auth fails (closed loopback
         // port), then switch to an authless dashboard: the later selection
