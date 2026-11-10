@@ -304,7 +304,8 @@ struct BotWorkCoordination: Equatable {
             self.id = id
             self.kind = kind
             ref = row["ref"] as? String ?? ""
-            let listed = (row["refs"] as? [String] ?? []).filter { !$0.isEmpty }
+            var seen = Set<String>()
+            let listed = (row["refs"] as? [String] ?? []).filter { !$0.isEmpty && seen.insert($0).inserted }
             refs = listed.isEmpty ? (ref.isEmpty ? [] : [ref]) : listed
             title = row["title"] as? String ?? ""
             self.at = Date(timeIntervalSince1970: at)
