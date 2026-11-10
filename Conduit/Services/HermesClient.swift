@@ -7054,6 +7054,38 @@ enum MessageNormalizer {
         return ReviewActivity(summary: summary, details: nil, fullSessionId: nil)
     }
 
+    /// Hermes writes a review's summary in English. The fixed ones ("Memory
+    /// updated", "User profile updated", joined by " · ") read in the app's
+    /// language, each category once; anything else, like a skill's name,
+    /// stays as Hermes wrote it. Applied where the card is drawn, never at
+    /// parse time: the saved review keeps Hermes' words, so its dedupe
+    /// against the transcript holds and it follows a language change.
+    static func localizedReviewSummary(_ summary: String) -> String {
+        // Empty pieces (a stray " · ", whose halves split as "·" bits) and a
+        // closing period don't keep a fixed summary in English.
+        let edges = CharacterSet.whitespacesAndNewlines.union(CharacterSet(charactersIn: "·.!"))
+        let parts = summary.components(separatedBy: " · ")
+            .map { $0.trimmingCharacters(in: edges) }
+            .filter { !$0.isEmpty }
+        guard !parts.isEmpty else { return summary }
+        let labels = parts.map { part -> String? in
+            switch part.lowercased() {
+            case "memory updated": return AppLocalization.string("Memory")
+            case "user profile updated": return AppLocalization.string("User profile")
+            case "skill updated": return AppLocalization.string("Skill")
+            default: return nil
+            }
+        }
+        guard !labels.contains(nil) else { return summary }
+        // Each category keeps its own line, once, in Hermes' order, so a
+        // profile and a skill update never read as a memory change.
+        var seen = Set<String>()
+        return labels.compactMap { $0 }
+            .filter { seen.insert($0).inserted }
+            .map { AppLocalization.string("\($0) updated") }
+            .joined(separator: " · ")
+    }
+
     static func reviewActivity(fromText text: String) -> ReviewActivity? {
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         let prefix = "💾 Self-improvement review:"

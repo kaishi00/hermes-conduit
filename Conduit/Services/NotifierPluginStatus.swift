@@ -405,11 +405,12 @@ enum NotifierPluginNoticeOffer: Equatable {
 }
 
 extension NotifierPluginStatus {
-    /// `finishSetupOffersInstall`: the Finish setting up card is still
-    /// pending, and its Conduit plugin row offers Install itself. One call
-    /// to action is enough, and an Update for a plugin that isn't there
-    /// misleads.
-    func noticeOffer(finishSetupOffersInstall: Bool) -> NotifierPluginNoticeOffer {
+    /// `finishSetupOffersPlugin`: the Finish setting up card is still
+    /// pending, and its Conduit plugin row offers Install, Update or Finish
+    /// Update itself. One call to action is enough (a new user saw the same
+    /// offer in the notice and in the card right under it), and an Update
+    /// for a plugin that isn't there misleads.
+    func noticeOffer(finishSetupOffersPlugin: Bool) -> NotifierPluginNoticeOffer {
         switch state {
         case .unknown:
             return .none
@@ -417,14 +418,15 @@ extension NotifierPluginStatus {
             // The host manages the plugin: nothing to install or update from here.
             guard !isManaged else { return .none }
             switch hostCopy {
-            case .old: return asksToUpdate ? .update : .none
+            case .old: return asksToUpdate && !finishSetupOffersPlugin ? .update : .none
             // Nothing one tap fixes; Settings > Conduit plugin has the steps.
             case .notServed: return .none
             // Installing isn't updating: Never still points at a missing
             // plugin, which most of Conduit needs.
-            case .missing, nil: return finishSetupOffersInstall ? .none : .install
+            case .missing, nil: return finishSetupOffersPlugin ? .none : .install
             }
         case .reported:
+            if finishSetupOffersPlugin { return .none }
             if updateRecommended { return .update }
             if restartPending { return .restart }
             return .none

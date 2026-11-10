@@ -11682,7 +11682,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ mis à jour"
+            "value" : "%@ : mise à jour"
           }
         },
         "id" : {
@@ -172182,84 +172182,84 @@
         }
       }
     },
-    "How fast the speaker button under a reply reads it aloud, without changing the voice's pitch. Applies from the next reply you play, on this device. Voice conversations always play at normal speed." : {
+    "How fast a reply is read aloud, without changing the voice's pitch. Applies from the next reply read, on this device. Voice conversations always play at normal speed." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wie schnell die Lautsprechertaste unter einer Antwort sie vorliest, ohne die Tonhöhe der Stimme zu ändern. Gilt ab der nächsten Antwort, die du abspielst, auf diesem Gerät. Sprachunterhaltungen laufen immer mit normaler Geschwindigkeit."
+            "value" : "Wie schnell eine Antwort vorgelesen wird, ohne die Tonhöhe der Stimme zu ändern. Gilt ab der nächsten vorgelesenen Antwort, auf diesem Gerät. Sprachunterhaltungen laufen immer mit normaler Geschwindigkeit."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La velocidad a la que el botón de altavoz bajo una respuesta la lee en voz alta, sin cambiar el tono de la voz. Se aplica desde la próxima respuesta que reproduzcas, en este dispositivo. Las conversaciones de voz siempre se reproducen a velocidad normal."
+            "value" : "La velocidad a la que se lee una respuesta en voz alta, sin cambiar el tono de la voz. Se aplica desde la próxima respuesta leída, en este dispositivo. Las conversaciones de voz siempre se reproducen a velocidad normal."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La vitesse à laquelle le bouton haut-parleur sous une réponse la lit à voix haute, sans changer la hauteur de la voix. S'applique à partir de la prochaine réponse lue, sur cet appareil. Les conversations vocales sont toujours lues à vitesse normale."
+            "value" : "La vitesse à laquelle une réponse est lue à voix haute, sans changer la hauteur de la voix. S'applique à partir de la prochaine réponse lue, sur cet appareil. Les conversations vocales sont toujours lues à vitesse normale."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seberapa cepat tombol speaker di bawah balasan membacakannya, tanpa mengubah nada suara. Berlaku mulai balasan berikutnya yang Anda putar, di perangkat ini. Percakapan suara selalu diputar dengan kecepatan normal."
+            "value" : "Seberapa cepat balasan dibacakan, tanpa mengubah nada suara. Berlaku mulai balasan berikutnya yang dibacakan, di perangkat ini. Percakapan suara selalu diputar dengan kecepatan normal."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La velocità con cui il pulsante altoparlante sotto una risposta la legge ad alta voce, senza cambiare l'altezza della voce. Vale dalla prossima risposta che riproduci, su questo dispositivo. Le conversazioni vocali vengono sempre riprodotte a velocità normale."
+            "value" : "La velocità con cui una risposta viene letta ad alta voce, senza cambiare l'altezza della voce. Vale dalla prossima risposta letta, su questo dispositivo. Le conversazioni vocali vengono sempre riprodotte a velocità normale."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "返信の下にあるスピーカーボタンで読み上げるときの速度です。声の高さは変わりません。このデバイスで次に再生する返信から適用されます。音声会話は常に通常の速度で再生されます。"
+            "value" : "返信を読み上げる速度です。声の高さは変わりません。このデバイスで次に読み上げる返信から適用されます。音声会話は常に通常の速度で再生されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "답장 아래의 스피커 버튼으로 소리 내어 읽을 때의 속도로, 목소리 높낮이는 바뀌지 않아요. 이 기기에서 다음에 재생하는 답장부터 적용돼요. 음성 대화는 항상 보통 속도로 재생돼요."
+            "value" : "답장을 소리 내어 읽는 속도로, 목소리 높낮이는 바뀌지 않아요. 이 기기에서 다음에 읽는 답장부터 적용돼요. 음성 대화는 항상 보통 속도로 재생돼요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Jak szybko przycisk głośnika pod odpowiedzią czyta ją na głos, bez zmiany wysokości głosu. Obowiązuje od następnej odtwarzanej odpowiedzi, na tym urządzeniu. Rozmowy głosowe są zawsze odtwarzane z normalną prędkością."
+            "value" : "Jak szybko odpowiedź jest czytana na głos, bez zmiany wysokości głosu. Obowiązuje od następnej czytanej odpowiedzi, na tym urządzeniu. Rozmowy głosowe są zawsze odtwarzane z normalną prędkością."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A velocidade com que o botão de alto-falante abaixo de uma resposta a lê em voz alta, sem mudar o tom da voz. Vale a partir da próxima resposta que você reproduzir, neste aparelho. Conversas por voz sempre tocam na velocidade normal."
+            "value" : "A velocidade com que uma resposta é lida em voz alta, sem mudar o tom da voz. Vale a partir da próxima resposta lida, neste dispositivo. Conversas por voz sempre tocam na velocidade normal."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Скорость, с которой кнопка динамика под ответом читает его вслух, без изменения высоты голоса. Действует на этом устройстве со следующего воспроизводимого ответа. Голосовые разговоры всегда звучат с обычной скоростью."
+            "value" : "С какой скоростью ответ читается вслух, без изменения высоты голоса. Действует со следующего прочитанного ответа на этом устройстве. Голосовые разговоры всегда воспроизводятся с обычной скоростью."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bir yanıtın altındaki hoparlör düğmesinin, sesin perdesini değiştirmeden yanıtı ne kadar hızlı okuyacağı. Bu cihazda, oynattığınız sonraki yanıttan itibaren geçerli olur. Sesli konuşmalar her zaman normal hızda çalınır."
+            "value" : "Bir yanıtın, sesin perdesi değişmeden ne kadar hızlı sesli okunacağı. Bu cihazda, okunacak bir sonraki yanıttan itibaren geçerlidir. Sesli konuşmalar her zaman normal hızda çalınır."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "回复下方扬声器按钮的朗读速度，不改变音调。从下一条播放的回复开始生效，仅限此设备。语音对话始终以正常速度播放。"
+            "value" : "朗读回复的速度，不会改变声音的音调。在此设备上从下一条朗读的回复开始生效。语音对话始终以正常速度播放。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "回覆下方揚聲器按鈕的朗讀速度，不會改變聲音的音高。從你下一次播放的回覆起生效，僅限此裝置。語音對話一律以正常速度播放。"
+            "value" : "朗讀回覆的速度，不會改變聲音的音調。在此裝置上從下一則朗讀的回覆開始生效。語音對話一律以正常速度播放。"
           }
         }
       }
@@ -501392,6 +501392,2522 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "不干預"
+          }
+        }
+      }
+    },
+    "%@ found" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hat herausgefunden"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ found"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ encontró"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ a trouvé"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ menemukan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ha scoperto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ が見つけたこと"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) 알아낸 것"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ustalił"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ descobriu"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ выяснил"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ şunu buldu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 发现"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 發現"
+          }
+        }
+      }
+    },
+    "%@ relies on" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ verlässt sich auf"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ relies on"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ da por hecho"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ s’appuie sur"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ mengandalkan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ dà per scontato"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ が前提にしていること"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) 전제로 하는 것"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ zakłada"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ conta com"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ опирается на"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ şuna güveniyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 依赖"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 依賴"
+          }
+        }
+      }
+    },
+    "%@ changed" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hat geändert"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ changed"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ cambió"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ a modifié"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ mengubah"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ha modificato"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ が変更したこと"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) 변경한 것"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ zmienił"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ alterou"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ изменил"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ şunu değiştirdi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 更改了"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 更改了"
+          }
+        }
+      }
+    },
+    "You told %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du hast %@ gesagt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You told %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le dijiste a %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous avez dit à %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anda memberi tahu %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hai detto a %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたが %@ に伝えたこと"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에게 직접 말한 내용"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Napisałeś do %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você disse a %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вы сказали %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ sohbetinde söyledikleriniz"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你告诉 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你告訴 %@"
+          }
+        }
+      }
+    },
+    "Noticed about %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zu %@ aufgefallen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noticed about %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Detectado sobre %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Remarqué à propos de %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yang diperhatikan tentang %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notato su %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ について気づいたこと"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에 대해 알아차린 것"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zauważono w sprawie %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Notado sobre %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Замечено о %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hakkında fark edilen"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "关于 %@ 的发现"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "關於 %@ 的發現"
+          }
+        }
+      }
+    },
+    "%@ may affect %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ könnte %@ betreffen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ may affect %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ puede afectar a %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ pourrait toucher %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ mungkin memengaruhi %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ potrebbe influire su %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ は %@ に影響するかもしれません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) %@에 영향을 줄 수 있음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ może wpłynąć na %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ pode afetar %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ может затронуть %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, %@ üzerinde etkili olabilir"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 可能影响 %@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 可能影響 %@"
+          }
+        }
+      }
+    },
+    "Asked you" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hat dich gefragt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asked you"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te preguntó"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous a demandé"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bertanya kepada Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ti ha chiesto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたに確認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사용자에게 물어봄"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zapytał Cię"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perguntou a você"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Спросил вас"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Size sordu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已询问你"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已詢問你"
+          }
+        }
+      }
+    },
+    "Asked you about %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hat dich zu %@ gefragt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Asked you about %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te preguntó sobre %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous a demandé à propos de %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bertanya kepada Anda tentang %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ti ha chiesto di %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ についてあなたに確認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@에 대해 물어봄"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zapytał Cię o %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Perguntou a você sobre %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Спросил вас о %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Size %@ hakkında sordu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已就 %@ 询问你"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已就 %@ 詢問你"
+          }
+        }
+      }
+    },
+    "Kept on the board" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf der Übersicht vermerkt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kept on the board"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anotado en el tablero"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noté au tableau"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dicatat di papan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Annotato sulla bacheca"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボードに記録のみ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보드에만 기록됨"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zapisano na tablicy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anotado no quadro"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отмечено на доске"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Panoya not edildi"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仅记在看板上"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "僅記在看板上"
+          }
+        }
+      }
+    },
+    "In its chat" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In seinem Chat"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In its chat"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En su chat"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dans sa discussion"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ada di obrolannya"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nella sua chat"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャットに届きました"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "해당 채팅에 도착"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "W jego czacie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No chat dele"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "В его чате"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sohbetine ulaştı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已到达它的聊天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已送達它的聊天"
+          }
+        }
+      }
+    },
+    "Didn’t arrive" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht angekommen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Didn’t arrive"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No llegó"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non arrivé"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak sampai"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non arrivato"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "届きませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "도착하지 않음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie dotarło"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não chegou"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не доставлено"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ulaşmadı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未送达"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未送達"
+          }
+        }
+      }
+    },
+    "Not in its chat yet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch nicht in seinem Chat"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Not in its chat yet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún no está en su chat"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pas encore dans sa discussion"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum ada di obrolannya"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non ancora nella sua chat"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだチャットに届いていません"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아직 채팅에 도착하지 않음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeszcze nie w jego czacie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ainda não está no chat dele"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Пока не в его чате"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Henüz sohbetinde değil"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未到达它的聊天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未送達它的聊天"
+          }
+        }
+      }
+    },
+    "You approved" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du hast zugestimmt"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "You approved"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo aprobaste"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous avez approuvé"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Anda menyetujui"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hai approvato"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたが承認"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "승인함"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zatwierdziłeś"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você aprovou"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вы одобрили"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Onayladınız"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你已批准"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你已核准"
+          }
+        }
+      }
+    },
+    "No answer yet" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Noch keine Antwort"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No answer yet"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aún sin respuesta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pas encore de réponse"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum ada jawaban"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ancora nessuna risposta"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "まだ回答なし"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아직 답변 없음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak odpowiedzi"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ainda sem resposta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ответа пока нет"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Henüz yanıt yok"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未回答"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "尚未回答"
+          }
+        }
+      }
+    },
+    "What a helper model read while the work ran." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was ein Hilfsmodell gelesen hat, während die Arbeit lief."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What a helper model read while the work ran."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo que leyó un modelo auxiliar mientras el trabajo seguía en marcha."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce qu’un modèle auxiliaire a lu pendant que le travail était en cours."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yang dibaca model pembantu saat pekerjaan berjalan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ciò che un modello ausiliario ha letto mentre il lavoro era in corso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作業中に補助モデルが読んだ内容です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업이 진행되는 동안 보조 모델이 읽은 내용입니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To, co model pomocniczy przeczytał w trakcie pracy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que um modelo auxiliar leu enquanto o trabalho estava em andamento."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Что прочитала вспомогательная модель, пока шла работа."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İş sürerken yardımcı modelin okudukları."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作进行期间辅助模型读到的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作進行期間輔助模型讀到的內容。"
+          }
+        }
+      }
+    },
+    "What was on %@’s board in the half hour before." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was in der halben Stunde davor auf der Übersicht von %@ stand."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What was on %@’s board in the half hour before."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lo que había en el tablero de %@ en la media hora anterior."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce qui figurait au tableau de %@ dans la demi-heure précédente."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yang ada di papan %@ dalam setengah jam sebelumnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ciò che era sulla bacheca di %@ nella mezz’ora precedente."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その前の30分間に %@ のボードにあった内容です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그 전 30분 동안 %@의 보드에 있던 내용입니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To, co było na tablicy %@ w ciągu poprzedniego pół godziny."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que estava no quadro de %@ na meia hora anterior."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Что было на доске %@ за полчаса до этого."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Önceki yarım saatte %@ panosunda olanlar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此前半小时内 %@ 看板上的内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此前半小時內 %@ 看板上的內容。"
+          }
+        }
+      }
+    },
+    "What was behind it" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Was dahinterstand"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "What was behind it"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qué había detrás"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce qu’il y avait derrière"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yang melatarbelakanginya"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cosa c’era dietro"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "その根拠"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그 근거"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Co za tym stało"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O que estava por trás"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Что за этим стояло"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bunun arkasındakiler"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依据"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "依據"
+          }
+        }
+      }
+    },
+    "Read replies aloud" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antworten vorlesen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leer las respuestas en voz alta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lire les réponses à voix haute"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bacakan balasan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leggi le risposte ad alta voce"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "返信を読み上げる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "답장 소리 내어 읽기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czytaj odpowiedzi na głos"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ler respostas em voz alta"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Читать ответы вслух"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yanıtları sesli oku"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗读回复"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "朗讀回覆"
+          }
+        }
+      }
+    },
+    "Reads each reply in the open chat as it arrives, whether you typed or dictated the message, and each new message from the bots of the group room you have open. Stop it from the player or the speaker button. A reading starts only while Conduit is on screen, then carries on with the phone locked." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liest jede Antwort im geöffneten Chat vor, sobald sie eintrifft, egal ob du die Nachricht getippt oder diktiert hast, und jede neue Nachricht der Bots im geöffneten Gruppenraum. Stoppe es über den Player oder die Lautsprechertaste. Das Vorlesen beginnt nur, während Conduit auf dem Bildschirm ist, und läuft dann auch bei gesperrtem Telefon weiter."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lee cada respuesta del chat abierto en cuanto llega, tanto si escribiste el mensaje como si lo dictaste, y cada mensaje nuevo de los bots de la sala de grupo abierta. Detenlo desde el reproductor o el botón de altavoz. La lectura solo empieza con Conduit en pantalla y después sigue con el teléfono bloqueado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lit chaque réponse de la conversation ouverte dès qu'elle arrive, que vous ayez tapé ou dicté le message, ainsi que chaque nouveau message des bots du salon de groupe ouvert. Arrêtez la lecture depuis le lecteur ou le bouton haut-parleur. Elle ne démarre que lorsque Conduit est à l'écran, puis continue téléphone verrouillé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Membacakan setiap balasan di chat yang terbuka begitu tiba, baik pesannya Anda ketik maupun Anda diktekan, serta setiap pesan baru dari bot di ruang grup yang terbuka. Hentikan dari pemutar atau tombol speaker. Pembacaan hanya dimulai saat Conduit ada di layar, lalu berlanjut meski ponsel terkunci."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Legge ogni risposta della chat aperta appena arriva, che tu abbia scritto o dettato il messaggio, e ogni nuovo messaggio dei bot della stanza di gruppo aperta. Interrompila dal lettore o dal pulsante altoparlante. La lettura parte solo con Conduit sullo schermo, poi continua anche con il telefono bloccato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開いているチャットの返信を、メッセージを入力したか音声入力したかにかかわらず、届いたそばから読み上げます。開いているグループルームのボットからの新しいメッセージも読み上げます。プレーヤーまたはスピーカーボタンで停止できます。読み上げはConduitが画面に表示されているときにだけ始まり、その後はiPhoneをロックしても続きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "메시지를 입력했든 받아쓰기했든, 열려 있는 채팅의 답장이 도착하는 대로 소리 내어 읽어 주고, 열려 있는 그룹 룸의 봇이 보낸 새 메시지도 읽어 줘요. 플레이어나 스피커 버튼으로 멈출 수 있어요. 읽기는 Conduit가 화면에 있을 때만 시작되고, 그 뒤에는 휴대폰을 잠가도 계속돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czyta na głos każdą odpowiedź w otwartym czacie, gdy tylko nadejdzie, niezależnie od tego, czy wiadomość była wpisana, czy podyktowana, a także każdą nową wiadomość od botów w otwartym pokoju grupowym. Zatrzymasz to w odtwarzaczu lub przyciskiem głośnika. Czytanie zaczyna się tylko wtedy, gdy Conduit jest na ekranie, a potem trwa także przy zablokowanym telefonie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lê cada resposta do chat aberto assim que ela chega, quer você tenha digitado ou ditado a mensagem, e cada nova mensagem dos bots da sala de grupo aberta. Pare pelo player ou pelo botão de alto-falante. A leitura só começa com o Conduit na tela e depois continua com o celular bloqueado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Читает вслух каждый ответ в открытом чате, как только он приходит, независимо от того, напечатано сообщение или надиктовано, а также каждое новое сообщение ботов в открытой групповой комнате. Остановить можно в плеере или кнопкой динамика. Чтение начинается, только пока Conduit на экране, а затем продолжается и при заблокированном телефоне."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mesajı yazmış ya da dikte etmiş olun, açık sohbetteki her yanıtı gelir gelmez sesli okur; açık grup odasındaki botların her yeni mesajını da okur. Oynatıcıdan veya hoparlör düğmesinden durdurabilirsiniz. Okuma yalnızca Conduit ekrandayken başlar, ardından telefon kilitliyken de devam eder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "无论消息是打字还是听写输入，打开的聊天中每条回复一到就朗读，打开的群组房间里机器人发来的每条新消息也会朗读。可在播放器或扬声器按钮上停止。朗读只会在 Conduit 显示在屏幕上时开始，之后锁定手机也会继续。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "無論訊息是打字還是聽寫輸入，開啟的聊天中每則回覆一到就朗讀，開啟的群組房間裡機器人傳來的每則新訊息也會朗讀。可在播放器或揚聲器按鈕上停止。朗讀只會在 Conduit 顯示在螢幕上時開始，之後鎖定手機也會繼續。"
+          }
+        }
+      }
+    },
+    "Pulse brought this up: %@\n\nFind out what's wrong and fix it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse hat das angesprochen: %@\n\nFinde heraus, was nicht stimmt, und behebe es."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mencionó esto: %@\n\nAverigua qué falla y arréglalo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse a signalé ceci : %@\n\nTrouve ce qui ne va pas et corrige-le."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mengangkat ini: %@\n\nCari tahu apa yang salah dan perbaiki."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse ha segnalato questo: %@\n\nScopri cosa non va e correggilo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulseからのお知らせ：%@\n\n何が問題なのか調べて、直してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse가 알려 준 소식: %@\n\n뭐가 문제인지 알아보고 고쳐 줘."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse zwrócił na to uwagę: %@\n\nSprawdź, co jest nie tak, i to napraw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Pulse trouxe isto: %@\n\nDescubra o que está errado e corrija."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse обратил на это внимание: %@\n\nВыясни, что не так, и исправь это."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse bunu gündeme getirdi: %@\n\nNeyin yanlış olduğunu bul ve düzelt."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提到了这件事：%@\n\n查明哪里出了问题，并把它修好。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提到了這件事：%@\n\n查明哪裡出了問題，並把它修好。"
+          }
+        }
+      }
+    },
+    "Steps in One Turn" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritte pro Antwort"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Steps in One Turn"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pasos por turno"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Étapes par tour"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Langkah dalam Satu Giliran"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passaggi per turno"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1ターンのステップ数"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "한 턴의 단계 수"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kroki w jednej turze"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passos por turno"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Шагов за один ход"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir Turdaki Adım Sayısı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每轮步骤数"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每輪步驟數"
+          }
+        }
+      }
+    },
+    "%@ does up to %@ steps of a task in its Bot Chat. A task that needs more carries on in the background." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ erledigt bis zu %@ Schritte einer Aufgabe im Bot-Chat. Braucht eine Aufgabe mehr, läuft sie im Hintergrund weiter."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ does up to %@ steps of a task in its Bot Chat. A task that needs more carries on in the background."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hace hasta %@ pasos de una tarea en su chat del bot. Si la tarea necesita más, sigue en segundo plano."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ effectue jusqu’à %@ étapes d’une tâche dans sa discussion du bot. Si la tâche en demande plus, elle se poursuit en arrière-plan."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ mengerjakan hingga %@ langkah tugas di Obrolan Bot-nya. Tugas yang butuh lebih banyak dilanjutkan di latar belakang."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ esegue fino a %@ passaggi di un’attività nella sua chat del bot. Se l’attività ne richiede di più, prosegue in background."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ はボットチャット内でタスクを最大 %@ ステップまで進めます。それ以上かかるタスクはバックグラウンドで続きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@은(는) 봇 채팅에서 작업을 최대 %@단계까지 직접 합니다. 더 필요한 작업은 백그라운드에서 이어집니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wykonuje do %@ kroków zadania w swoim czacie bota. Zadanie, które wymaga więcej, jest kontynuowane w tle."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ faz até %@ passos de uma tarefa no chat do bot. Se a tarefa precisar de mais, continua em segundo plano."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ выполняет до %@ шагов задачи в своём чате бота. Если задаче нужно больше, она продолжается в фоне."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, bir görevin en fazla %@ adımını bot sohbetinde yapar. Daha fazlası gereken görev arka planda sürer."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 会在机器人聊天中完成一项任务的最多 %@ 个步骤。需要更多步骤的任务会在后台继续。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 會在機器人聊天中完成一項任務的最多 %@ 個步驟。需要更多步驟的任務會在背景繼續。"
+          }
+        }
+      }
+    },
+    "Didn't fit a card type" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passte zu keinem Kartentyp"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No encajaba en ningún tipo de tarjeta"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ne correspondait à aucun type de carte"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak cocok dengan jenis kartu mana pun"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non rientrava in nessun tipo di scheda"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "どのカードの種類にも当てはまりませんでした"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "맞는 카드 유형이 없음"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nie pasowało do żadnego typu karty"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não se encaixou em nenhum tipo de cartão"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не подошло ни под один тип карточки"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hiçbir kart türüne uymadı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不符合任何卡片类型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不符合任何卡片類型"
+          }
+        }
+      }
+    },
+    "Watch Model" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modell für die Beobachtung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Watch Model"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelo de vigilancia"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modèle de surveillance"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model Pemantau"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modello di controllo"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "見守りのモデル"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "감시 모델"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model obserwatora"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Modelo de acompanhamento"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Модель наблюдения"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İzleme Modeli"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "监看模型"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "監看模型"
+          }
+        }
+      }
+    },
+    "A helper model reads what workstreams report while they work and tells %@ when one may affect another. A small, fast model is enough." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Hilfsmodell liest, was die Workstreams während der Arbeit melden, und sagt %@, wenn einer einen anderen betreffen könnte. Ein kleines, schnelles Modell reicht."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A helper model reads what workstreams report while they work and tells %@ when one may affect another. A small, fast model is enough."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un modelo auxiliar lee lo que informan los flujos de trabajo mientras trabajan y avisa a %@ cuando uno puede afectar a otro. Basta con un modelo pequeño y rápido."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un modèle auxiliaire lit ce que les tâches de fond signalent pendant leur travail et prévient %@ quand l’une peut en affecter une autre. Un petit modèle rapide suffit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model pembantu membaca laporan workstream selama bekerja dan memberi tahu %@ jika satu workstream bisa memengaruhi yang lain. Model kecil yang cepat sudah cukup."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un modello ausiliario legge ciò che i flussi di lavoro riportano mentre lavorano e avvisa %@ quando uno può influire su un altro. Basta un modello piccolo e veloce."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "補助モデルが作業中のワークストリームの報告を読み、別のワークストリームに影響しそうなときに%@に知らせます。小さく速いモデルで十分です。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보조 모델이 작업 중인 워크스트림의 보고를 읽고, 하나가 다른 워크스트림에 영향을 줄 수 있으면 %@에게 알립니다. 작고 빠른 모델이면 충분합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Model pomocniczy czyta, co wątki pracy zgłaszają w trakcie pracy, i mówi %@, gdy jeden może wpłynąć na inny. Wystarczy mały, szybki model."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um modelo auxiliar lê o que os fluxos de trabalho relatam enquanto trabalham e avisa %@ quando um pode afetar outro. Um modelo pequeno e rápido basta."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вспомогательная модель читает, что сообщают рабочие потоки во время работы, и говорит %@, когда один может повлиять на другой. Достаточно небольшой быстрой модели."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir yardımcı model, iş akışlarının çalışırken bildirdiklerini okur ve biri diğerini etkileyebilecekse %@ adlı bota söyler. Küçük, hızlı bir model yeterlidir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "辅助模型会读取工作流在工作时的报告，并在某个工作流可能影响另一个时告诉 %@。小而快的模型就够了。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "輔助模型會讀取工作流在工作時的報告，並在某個工作流可能影響另一個時告訴 %@。小而快的模型就夠了。"
+          }
+        }
+      }
+    },
+    "Conduit work watch" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit-Arbeitsbeobachtung"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit work watch"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vigilancia del trabajo de Conduit"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Surveillance du travail Conduit"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pemantau kerja Conduit"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Controllo del lavoro di Conduit"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitの作業見守り"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 작업 감시"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obserwator pracy Conduit"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acompanhamento do trabalho do Conduit"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Наблюдение за работой Conduit"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit iş izleme"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 工作监看"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 工作監看"
+          }
+        }
+      }
+    },
+    "Reads what a bot’s workstreams report while they work and tells its Bot Chat when one may affect another." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Liest, was die Workstreams eines Bots während der Arbeit melden, und sagt seinem Bot Chat, wenn einer einen anderen betreffen könnte."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Reads what a bot’s workstreams report while they work and tells its Bot Chat when one may affect another."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lee lo que informan los flujos de trabajo de un bot mientras trabajan y avisa a su Bot Chat cuando uno puede afectar a otro."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lit ce que les tâches de fond d’un bot signalent pendant leur travail et prévient son Bot Chat quand l’une peut en affecter une autre."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Membaca laporan workstream sebuah bot selama bekerja dan memberi tahu Bot Chat-nya jika satu workstream bisa memengaruhi yang lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Legge ciò che i flussi di lavoro di un bot riportano mentre lavorano e avvisa la sua Bot Chat quando uno può influire su un altro."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボットのワークストリームが作業中に報告する内容を読み、別のワークストリームに影響しそうなときにそのBot Chatに知らせます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "봇의 워크스트림이 작업 중에 보고하는 내용을 읽고, 하나가 다른 워크스트림에 영향을 줄 수 있으면 그 봇의 Bot Chat에 알립니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czyta, co wątki pracy bota zgłaszają w trakcie pracy, i mówi jego Bot Chat, gdy jeden może wpłynąć na inny."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lê o que os fluxos de trabalho de um bot relatam enquanto trabalham e avisa o Bot Chat dele quando um pode afetar outro."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Читает, что сообщают рабочие потоки бота во время работы, и говорит его Bot Chat, когда один может повлиять на другой."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir botun iş akışlarının çalışırken bildirdiklerini okur ve biri diğerini etkileyebilecekse botun Bot Chat'ine söyler."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "读取机器人的工作流在工作时的报告，并在某个工作流可能影响另一个时告诉它的 Bot Chat。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讀取機器人的工作流在工作時的報告，並在某個工作流可能影響另一個時告訴它的 Bot Chat。"
+          }
+        }
+      }
+    },
+    "Same as dictation" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wie Diktat"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Igual que el dictado"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Comme la dictée"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sama seperti dikte"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Come la dettatura"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声入力と同じ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "받아쓰기와 동일"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jak dyktowanie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Igual ao ditado"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Как у диктовки"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikte ile aynı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "与听写相同"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "與聽寫相同"
+          }
+        }
+      }
+    },
+    "The words sent with a voice message, which are what Hermes reads. Choose another engine here to keep dictation on this iPhone while voice messages use Hermes, or the other way round." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Wörter, die mit einer Sprachnachricht gesendet werden – sie sind das, was Hermes liest. Wähle hier eine andere Engine, um das Diktat auf diesem iPhone zu lassen, während Sprachnachrichten Hermes nutzen, oder umgekehrt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las palabras que se envían con un mensaje de voz, que son lo que lee Hermes. Elige aquí otro motor para mantener el dictado en este iPhone mientras los mensajes de voz usan Hermes, o al revés."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les mots envoyés avec un message vocal, c'est-à-dire ce que lit Hermes. Choisissez ici un autre moteur pour garder la dictée sur cet iPhone pendant que les messages vocaux utilisent Hermes, ou l'inverse."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kata-kata yang dikirim bersama pesan suara, yang dibaca oleh Hermes. Pilih mesin lain di sini agar dikte tetap di iPhone ini sementara pesan suara memakai Hermes, atau sebaliknya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le parole inviate con un messaggio vocale, che sono ciò che Hermes legge. Scegli qui un altro motore per tenere la dettatura su questo iPhone mentre i messaggi vocali usano Hermes, o viceversa."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボイスメッセージと一緒に送られる文字起こしで、Hermes が読むのはこの文字です。ここで別のエンジンを選ぶと、音声入力はこの iPhone のまま、ボイスメッセージだけ Hermes を使えます（その逆も可能です）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 메시지와 함께 보내는 텍스트로, Hermes가 읽는 내용입니다. 여기서 다른 엔진을 선택하면 받아쓰기는 이 iPhone에서 하고 음성 메시지는 Hermes를 사용하거나, 그 반대로 할 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Słowa wysyłane z wiadomością głosową – to je czyta Hermes. Wybierz tu inny silnik, aby dyktowanie zostało na tym iPhonie, a wiadomości głosowe korzystały z Hermesa, albo odwrotnie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As palavras enviadas com uma mensagem de voz, que são o que o Hermes lê. Escolha outro mecanismo aqui para manter o ditado neste iPhone enquanto as mensagens de voz usam o Hermes, ou o contrário."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Слова, которые отправляются вместе с голосовым сообщением, — именно их читает Hermes. Выберите здесь другой движок, чтобы диктовка оставалась на этом iPhone, а голосовые сообщения шли через Hermes, или наоборот."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sesli mesajla birlikte gönderilen sözcükler; Hermes bunları okur. Dikteyi bu iPhone'da tutup sesli mesajlarda Hermes'i kullanmak için ya da tam tersi için burada başka bir motor seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "随语音消息一起发送的文字，Hermes 读取的就是这些文字。在这里选择其他引擎，可以让听写留在这台 iPhone 上，而语音消息使用 Hermes，或者反过来。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隨語音訊息一起傳送的文字，Hermes 讀取的就是這些文字。在這裡選擇其他引擎，可以讓聽寫留在這台 iPhone 上，而語音訊息使用 Hermes，或者反過來。"
           }
         }
       }

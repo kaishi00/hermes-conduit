@@ -234,7 +234,14 @@ extension SidebarLayoutTests {
         let outer = V2StatusStrip(insets: EdgeInsets(top: 0, leading: 0, bottom: 34, trailing: 84), isPhone: true)
         XCTAssertEqual(outer?.edge, .trailing)
         XCTAssertEqual(outer?.width, 84)
-        XCTAssertEqual(outer?.barWidth, 72)
+        // The tabs take the 50 pt column of iOS's own controls in the
+        // strip, 24 pt in from the screen's edge (issue 2118).
+        XCTAssertEqual(outer?.columnWidth, 50)
+        XCTAssertEqual(outer?.columnOuterMargin, 24)
+        // A narrower strip keeps the column inside it.
+        let narrow = V2StatusStrip(insets: EdgeInsets(top: 0, leading: 0, bottom: 34, trailing: 72), isPhone: true)
+        XCTAssertEqual(narrow?.columnWidth, 50)
+        XCTAssertEqual(narrow?.columnOuterMargin, 18)
         // A strip on the left works the same.
         XCTAssertEqual(V2StatusStrip(insets: EdgeInsets(top: 0, leading: 84, bottom: 20, trailing: 0), isPhone: true)?.edge, .leading)
         // A landscape iPhone's sensor insets both sides: the floating bar.

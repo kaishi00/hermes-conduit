@@ -1215,6 +1215,8 @@ final class AppState: ObservableObject {
         didSet {
             refreshActiveChatScrollSessionIdentity()
             if oldValue != activeSessionId {
+                // Read replies aloud follows only the open chat's turn.
+                messageReadAloudController.stopFollowing { self.eventBelongsToActiveSession($0) }
                 noteChatLeft(oldValue)
                 noteActiveChatSeen()
                 // A file lookup's "isn't on the server" was about the chat
@@ -3213,14 +3215,45 @@ final class AppState: ObservableObject {
         keptAnswer(KeptRoute.modelAuxiliary).map { VoiceReplyModelSetting(auxiliaryResponse: $0, task: task) != nil }
     }
 
+    /// `profile`'s helper model slots, which may not be the open profile's:
+    /// Edit Bot > Work sets its bot's work watch there. The open profile's
+    /// share its read; another's come from the dashboard's route for it,
+    /// kept as Models & providers keeps them.
+    func loadHelperModels(inProfile profile: String) async throws -> [HelperModelSlot] {
+        HelperModelSlot.slots(in: try await readHelperModels(inProfile: profile))
+    }
+
+    func keptHelperModels(inProfile profile: String) -> [HelperModelSlot]? {
+        if profilesMatch(profile, activeProfile) { return keptHelperModels() }
+        return keptAnswer(KeptRoute.modelAuxiliary, profile: profile).map { HelperModelSlot.slots(in: $0) }
+    }
+
+    func loadHelperModel(task: String, inProfile profile: String) async throws -> VoiceReplyModelSetting? {
+        VoiceReplyModelSetting(auxiliaryResponse: try await readHelperModels(inProfile: profile), task: task)
+    }
+
+    func keptHelperModel(task: String, inProfile profile: String) -> VoiceReplyModelSetting? {
+        if profilesMatch(profile, activeProfile) { return keptHelperModel(task: task) }
+        return keptAnswer(KeptRoute.modelAuxiliary, profile: profile).flatMap { VoiceReplyModelSetting(auxiliaryResponse: $0, task: task) }
+    }
+
+    private func readHelperModels(inProfile profile: String) async throws -> [String: Any] {
+        if profilesMatch(profile, activeProfile) { return try await readHelperModels() }
+        guard let owner = currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
+        let answer = try await readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)
+        guard ownsDashboardRuntime(owner) else { throw CancellationError() }
+        return answer
+    }
+
     /// Hermes' `/api/model/auxiliary` answer, carried from the read to
     /// every reader sharing it.
     private struct HelperModelsAnswer: @unchecked Sendable { let json: [String: Any] }
 
     /// The helper models read in flight. A reader asking meanwhile on the
     /// same profile and Hermes shares it: the Model page and its Helper
-    /// models section open together. A save drops it, so a read asked
-    /// after the save isn't answered from before it. A reader that leaves
+    /// models section open together. A save in its profile drops it, so a
+    /// read asked after the save isn't answered from before it; another
+    /// profile's save (the work watch's) leaves it under way. A reader that leaves
     /// doesn't cancel it: the next one joins it, and the bridge's request
     /// timeout ends one Hermes never answers.
     private var helperModelsRead: (profile: String, owner: DashboardRuntimeOwner, task: Task<HelperModelsAnswer, Error>)?
@@ -3229,7 +3262,7 @@ final class AppState: ObservableObject {
         let profile = activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
         let task: Task<HelperModelsAnswer, Error>
-        if let read = helperModelsRead, read.profile == profile, ownsDashboardRuntime(read.owner) {
+        if let read = helperModelsRead, profilesMatch(read.profile, profile), ownsDashboardRuntime(read.owner) {
             task = read.task
         } else {
             task = Task { [self] in
@@ -3239,7 +3272,7 @@ final class AppState: ObservableObject {
         }
         let result = await task.result
         if helperModelsRead?.task == task { helperModelsRead = nil }
-        guard profile == activeProfile else { throw CancellationError() }
+        guard profilesMatch(profile, activeProfile) else { throw CancellationError() }
         return try result.get().json
     }
 
@@ -3296,19 +3329,20 @@ final class AppState: ObservableObject {
         )
     }
 
-    /// Writes a helper model slot (Models & providers > Helper models).
-    func setHelperModel(_ setting: VoiceReplyModelSetting, confirmed: Bool) async -> HelperModelSaveResult {
+    /// Writes a helper model slot (Models & providers > Helper models), in
+    /// `profile` when given (Edit Bot > Work's work watch, for its bot).
+    func setHelperModel(_ setting: VoiceReplyModelSetting, confirmed: Bool, profile: String? = nil) async -> HelperModelSaveResult {
         await setHelperModel(
-            setting, confirmed: confirmed,
+            setting, confirmed: confirmed, profile: profile,
             offline: AppLocalization.string("Connect to Hermes to change this profile's models."),
             failure: { AppLocalization.string("Could not save the helper model: \($0)") }
         )
     }
 
     private func setHelperModel(
-        _ setting: VoiceReplyModelSetting, confirmed: Bool, offline: String, failure: (String) -> String
+        _ setting: VoiceReplyModelSetting, confirmed: Bool, profile: String? = nil, offline: String, failure: (String) -> String
     ) async -> HelperModelSaveResult {
-        let profile = activeProfile
+        let profile = profile ?? activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { return .refused(offline) }
         let dashboardTicketBridge = owner.bridge
         do {
@@ -3330,7 +3364,10 @@ final class AppState: ObservableObject {
             // it even if the read after it never lands, and an answer to a
             // read asked before it isn't kept over it (#1533).
             keepHelperModelWrite(setting, profile: profile, owner: owner)
-            helperModelsRead = nil
+            // A save drops the read of the profile it saved, even one that
+            // isn't open now (a switch leaves a read under way); another
+            // profile's save (Edit Bot > Work's work watch) leaves it alone.
+            if let read = helperModelsRead, profilesMatch(read.profile, profile) { helperModelsRead = nil }
             // An open list's read asked before the save is dropped for one
             // asked after it.
             NotificationCenter.default.post(name: HelperModelSlot.saved, object: nil)
@@ -13004,6 +13041,9 @@ final class AppState: ObservableObject {
     /// The open copy's opening tail read failed: its next tick reads the
     /// tail again.
     private(set) var activeRoomCopyNeedsTail = false
+    /// Whether the open copy's opening tail has been read: the messages
+    /// after it are new (Read replies aloud reads them).
+    private(set) var activeRoomCopyTailRead = false
     /// Bumped by a copy's delete, so a copies read it overtook is dropped.
     var linkedRoomCopiesGeneration = 0
     /// Your Hermes' copies of the rooms other people host that your agents
@@ -13093,6 +13133,9 @@ final class AppState: ObservableObject {
     var roomBoardsTask: Task<Void, Never>?
     /// Tests read a room's boards here in place of the dashboard.
     var roomBoardsReadOverride: ((String) async throws -> [String: Any])?
+    /// Tests take the room messages Read replies aloud would queue here
+    /// (message id, text) in place of the reader.
+    var roomReadAloudQueueOverride: ((String, String) -> Void)?
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
     /// In a room over Links, each member by id (`GET /rooms/people`): its
     /// owner and whether it's out. Read when the room opens, when Group
@@ -14961,6 +15004,7 @@ final class AppState: ObservableObject {
         activeRoomCopyPost = nil
         roomDraftHandBack = nil
         activeRoomCopyNeedsTail = false
+        activeRoomCopyTailRead = false
         roomApprovalAnswers = [:]
         // A post parked when this room was left comes back with its retry
         // key; your Hermes says below how it stands now.
@@ -14976,6 +15020,7 @@ final class AppState: ObservableObject {
             var replay = GroupRoomReplay(roomID: copy.roomID)
             replay.adoptInitialTail(page: page)
             activeRoomReplay = replay
+            activeRoomCopyTailRead = true
         } catch is CancellationError {
             return
         } catch {
@@ -15024,6 +15069,7 @@ final class AppState: ObservableObject {
                 replay.adoptInitialTail(page: tail)
                 activeRoomReplay = replay
                 activeRoomCopyNeedsTail = false
+                activeRoomCopyTailRead = true
                 errorMessage = nil
                 // As it stands now: it may have ended, or been left, since;
                 // a post that may still settle keeps it polled.
@@ -41692,6 +41738,61 @@ final class AppState: ObservableObject {
         return speaker.profile
     }
 
+    /// Read replies aloud (notifier issue 674): the open chat's turn is
+    /// read as it streams, as a voice turn's is spoken.
+    private func followReplyAloud(_ event: VoiceAssistantEvent) {
+        messageReadAloudController.followReply(event) { [weak self] in
+            self?.readyAutomaticReadAloud(roomID: nil, speakingAs: nil) ?? false
+        }
+    }
+
+    /// Read replies aloud in the open group room: each bot message that
+    /// arrived since `old`, read one after another in its bot's voice. Not
+    /// the messages the room's first read brings, which were there before.
+    func readNewRoomMessagesAloud(after old: GroupRoomReplay) {
+        let replay = activeRoomReplay
+        guard ReadRepliesAloud.isOn(defaults), !replay.roomID.isEmpty, replay.roomID == old.roomID,
+              let surface = activeRoomSurface, surface.room.roomID == replay.roomID else { return }
+        // The room's first read isn't read aloud. A room hosted elsewhere
+        // (a copy) never marks its log read; its opening tail does instead,
+        // so the first message an empty copy gets is read.
+        let firstReadDone = surface.copy == nil ? activeRoomLogRead == replay.roomID : activeRoomCopyTailRead
+        guard firstReadDone else { return }
+        let roomID = replay.roomID
+        for event in replay.memberMessages(since: old) {
+            let profile = GroupRoomTurns.speaker(of: event, members: surface.room.members)?.profile
+            let messageID = Self.roomReadAloudID(roomID: roomID, eventID: event.id)
+            let content = GroupMessageParts(event.messageText ?? "").text
+            if let queued = roomReadAloudQueueOverride {
+                queued(messageID, content)
+                continue
+            }
+            messageReadAloudController.enqueue(messageID: messageID, content: content) { [weak self] in
+                self?.readyAutomaticReadAloud(roomID: roomID, speakingAs: profile) ?? false
+            }
+        }
+    }
+
+    /// Whether Read replies aloud may start reading now, in the open chat
+    /// (`roomID` nil) or that room, with the gateway ready for the speaker.
+    /// Silent when it can't: the speaker button says why.
+    private func readyAutomaticReadAloud(roomID: String?, speakingAs: String?) -> Bool {
+        guard ReadRepliesAloud.isOn(defaults), readAloudUnavailableReason == nil else { return false }
+        if let roomID {
+            guard activeRoomSurface?.room.roomID == roomID else { return false }
+        } else {
+            // A room over the chat, or the chat's saved copy, isn't the chat.
+            guard activeRoomSurface == nil, offlineChatPresentation == nil else { return false }
+        }
+        let speaker = Self.readAloudSpeaker(speakingAs, activeProfile: activeProfile)
+        if !readAloudGateway(isCurrentFor: speaker ?? activeProfile) {
+            assignReadAloudGateway(speakingAs: speaker)
+        }
+        // As a tap does: a speech test still speaking gives way.
+        voiceConversationController.stop()
+        return true
+    }
+
     func toggleReadAloud(messageID: String, content: String, speakingAs: String? = nil) {
         if messageReadAloudController.isActiveMessage(messageID) {
             messageReadAloudController.stop()
@@ -43471,6 +43572,7 @@ final class AppState: ObservableObject {
     private func notifyVoiceAssistant(_ event: VoiceAssistantEvent) {
         guard let heard = takeVoiceEventAfterCancel(event) else { return }
         voiceAssistantObservers.values.forEach { $0(heard) }
+        followReplyAloud(heard)
     }
 
     private func scheduleStreamingPublish() {
@@ -43645,6 +43747,12 @@ final class AppState: ObservableObject {
             ))
         }
 
+        // A reply read aloud as it streamed: the button under its row shows Stop.
+        if let rowID = (trimmedMessageID.flatMap { id in messages.last(where: { $0.id == id })?.id })
+            ?? shownRowID.flatMap({ id in messages.contains { $0.id == id } ? id : nil })
+            ?? messages.last(where: { $0.role == .assistant })?.id {
+            messageReadAloudController.adoptLiveReply(sessionID: sessionId, messageID: rowID)
+        }
         clearStreamingText()
         activeAssistantMessageId = nil
         resetReasoningTurn()

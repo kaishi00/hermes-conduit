@@ -1506,6 +1506,52 @@ extension AppStateMultiDashboardTests {
                        Set(["title_generation", "voice_chat"]), "the read after the save is kept")
     }
 
+    /// Edit Bot > Work's Watch Model reads and saves the work watch's slot in
+    /// the bot's own profile, kept apart from the open profile's slots.
+    func testAnotherProfilesHelperModelIsReadAndSavedInThatProfile() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let load = Task { try await appState.loadHelperModels(inProfile: "second") }
+        try await held.waitForRequests(1)
+        try await held.answer(["tasks": [
+            ["task": HelperModelSlot.workWatch, "provider": "auto", "model": "", "label": "Conduit work watch", "plugin": "conduit_push"],
+        ]])
+        let slots = try await load.value
+        XCTAssertEqual(slots.map(\.id), [HelperModelSlot.workWatch])
+        XCTAssertEqual(held.sent.first?.query, "profile=second")
+        XCTAssertEqual(appState.keptHelperModel(task: HelperModelSlot.workWatch, inProfile: "second")?.followsChats, true)
+        XCTAssertNil(appState.keptHelperModels(), "the open profile's kept slots are untouched")
+
+        let pick = VoiceReplyModelSetting(task: HelperModelSlot.workWatch, provider: "openrouter", model: "fast/watch", reasoningEffort: nil)
+        let save = Task { await appState.setHelperModel(pick, confirmed: true, profile: "second") }
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": [HelperModelSlot.workWatch]])
+        let saved = await save.value
+        XCTAssertEqual(saved, .saved)
+        XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary, "/api/model/set"],
+                       "no read of the open profile follows another profile's save")
+        XCTAssertEqual(held.sent.last?.query, "profile=second")
+        XCTAssertEqual(appState.keptHelperModel(task: HelperModelSlot.workWatch, inProfile: "second")?.model, "fast/watch")
+        XCTAssertNil(appState.keptHelperModels())
+
+        // Another profile's save leaves the open profile's read under way
+        // shared: a reader asking after the save joins it.
+        let open = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(3)
+        let again = Task { await appState.setHelperModel(pick, confirmed: true, profile: "second") }
+        try await held.waitForRequests(4)
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": [HelperModelSlot.workWatch]], at: 1)
+        let savedAgain = await again.value
+        XCTAssertEqual(savedAgain, .saved)
+        let joined = Task { try await appState.loadHelperModels() }
+        for _ in 0..<5 { await Task.yield() }
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]])
+        let openSlots = try await open.value
+        let joinedSlots = try await joined.value
+        XCTAssertEqual(openSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(joinedSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(held.sent.count, 4, "the reader after the save joined the open profile's read")
+    }
+
     /// The Model page and its Helper models section read together: one
     /// request answers both.
     func testHelperModelReadersAskingTogetherShareOneRead() async throws {
@@ -1545,6 +1591,50 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(afterSlots.first?.setting.model, "big/model", "the read after the save")
         XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary, "/api/model/set", AppState.KeptRoute.modelAuxiliary],
                        "the read after the save joined the save's own")
+    }
+
+    /// A read is shared across spellings of one profile, as a save drops it.
+    func testHelperModelReadersShareOneReadAcrossAProfilesSpellings() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let first = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        appState.setActiveProfileForTesting(" Default ")
+        let second = Task { try await appState.loadHelperModels() }
+        for _ in 0..<5 { await Task.yield() }
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]],
+                              toPathEnding: AppState.KeptRoute.modelAuxiliary)
+        let firstSlots = try await first.value
+        let secondSlots = try await second.value
+        XCTAssertEqual(firstSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(secondSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(held.sent.filter { $0.path == AppState.KeptRoute.modelAuxiliary }.count, 1, "one request for both")
+    }
+
+    /// A save drops its own profile's read even when that profile isn't
+    /// open: a switch leaves a read under way, and switching back mustn't
+    /// join it and show the pick from before the save.
+    func testAHelperModelSaveDropsItsProfilesReadAfterASwitchAway() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let before = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        appState.setActiveProfileForTesting("second")
+        let pick = VoiceReplyModelSetting(task: "title_generation", provider: "openrouter", model: "big/model", reasoningEffort: nil)
+        let save = Task { await appState.setHelperModel(pick, confirmed: true, profile: "default") }
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": ["title_generation"]], toPathEnding: "/api/model/set")
+        let saved = await save.value
+        XCTAssertEqual(saved, .saved)
+        appState.setActiveProfileForTesting("default")
+        let after = Task { try await appState.loadHelperModels() }
+        let reads = { held.sent.filter { $0.path == AppState.KeptRoute.modelAuxiliary }.count }
+        for _ in 0..<200 where reads() < 2 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(reads(), 2, "the read after the save is its own, not the one from before it")
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]],
+                              toPathEnding: AppState.KeptRoute.modelAuxiliary)
+        _ = try await before.value
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "openrouter", "model": "big/model"]]],
+                              toPathEnding: AppState.KeptRoute.modelAuxiliary)
+        let afterSlots = try await after.value
+        XCTAssertEqual(afterSlots.first?.setting.model, "big/model", "the pick from the save, not from before it")
     }
 
     private func heldSwitchFixture() -> (appState: AppState, held: HeldDashboardRequests, vps: SavedDashboard) {

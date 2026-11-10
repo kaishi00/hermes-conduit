@@ -3052,6 +3052,9 @@ private struct ReviewSummaryCard: View {
     @State private var expanded = false
 
     private var details: [String] { activity.details?.filter { !$0.isEmpty } ?? [] }
+    /// Hermes' fixed summaries in the app's language, at draw time
+    /// (`appLanguage` re-renders this on a change).
+    private var summary: String { MessageNormalizer.localizedReviewSummary(activity.summary) }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
@@ -3081,7 +3084,7 @@ private struct ReviewSummaryCard: View {
                         }
                     }
                     SelectableTextView(
-                        text: activity.summary,
+                        text: summary,
                         font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText).withTraits(.traitBold),
                         textColor: .label
                     )
@@ -3091,7 +3094,7 @@ private struct ReviewSummaryCard: View {
             }
             .buttonStyle(.plain)
             .disabled(details.isEmpty)
-            .accessibilityLabel(details.isEmpty ? activity.summary : (expanded ? AppLocalization.string("Collapse review details") : AppLocalization.string("Expand review details")))
+            .accessibilityLabel(details.isEmpty ? summary : (expanded ? AppLocalization.string("Collapse review details") : AppLocalization.string("Expand review details")))
 
             if expanded, !details.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {

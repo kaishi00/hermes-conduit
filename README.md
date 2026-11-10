@@ -57,7 +57,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 - Start, check and cancel Hermes jobs by voice; results come back into the call
 - Calls stay with their chat, keep going with the screen locked, shrink to a bar while you read, and are saved as chats you can resume
 - Hermes calls you: a CallKit call when a job is done, Hermes needs you, or a check you scheduled is due, on the phone or the Watch
-- Classic voice and dictation with on-device, Apple, Hermes or your own speech-to-text, spoken Stop and End, wake phrases, and Read Aloud for any reply
+- Classic voice and dictation with on-device, Apple, Hermes or your own speech-to-text, spoken Stop and End, wake phrases, and Read Aloud for any reply, or for every reply as it arrives
 - Apple Watch app that calls on its own, CarPlay, Siri and the Action Button; Watch and Siri calls can start on a profile you pick, whichever one the iPhone has open
 
 **Tasks, bots and groups**

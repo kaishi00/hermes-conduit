@@ -269,6 +269,57 @@ extension GroupChatModelsTests {
         XCTAssertNil(appState.activeRoomSurface)
     }
 
+    /// With Read replies aloud on, a copy's opening tail isn't read; the
+    /// messages after it are, the first message of an empty copy included,
+    /// and after a failed open only those after the retried tail.
+    @MainActor
+    func testACopysOpeningTailMarksWhereNewMessagesStart() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 0)])
+        routes.events = []
+        let appState = try copiesAppState(routes, readRepliesAloud: true)
+        var queued: [String] = []
+        appState.roomReadAloudQueueOverride = { id, _ in queued.append(id) }
+        copiesConnect(appState)
+        appState.applyNotifierPluginReport(copiesPluginReport)
+        await appState.refreshGroupChatSupport()
+        await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
+        XCTAssertEqual(appState.activeRoomReplay.events, [])
+        XCTAssertTrue(appState.activeRoomCopyTailRead, "an empty copy's first message is new")
+        routes.events = [copiesEvent(1, text: "first")]
+        routes.copies = [copiesCopy(lastSeq: 1)]
+        await appState.pollActiveRoom()
+        XCTAssertEqual(queued, [AppState.roomReadAloudID(roomID: "conduit-9", eventID: "ev-1")])
+        routes.events.append(copiesEvent(2, text: "second"))
+        routes.copies = [copiesCopy(lastSeq: 2)]
+        await appState.pollActiveRoom()
+        XCTAssertEqual(queued.count, 2)
+        XCTAssertEqual(queued.last, AppState.roomReadAloudID(roomID: "conduit-9", eventID: "ev-2"))
+        appState.closeGroupRoom()
+
+        // A failed opening read: nothing is new until the tail comes, and
+        // the tail itself isn't read.
+        let failing = CopiesRoutes(copies: [copiesCopy(lastSeq: 2)])
+        failing.events = [copiesEvent(1), copiesEvent(2)]
+        failing.failingLogReads = 1
+        let other = try copiesAppState(failing, readRepliesAloud: true)
+        var otherQueued: [String] = []
+        other.roomReadAloudQueueOverride = { id, _ in otherQueued.append(id) }
+        copiesConnect(other)
+        other.applyNotifierPluginReport(copiesPluginReport)
+        await other.refreshGroupChatSupport()
+        await other.openRoomCopy(try XCTUnwrap(other.linkedRoomCopyRows.first))
+        XCTAssertFalse(other.activeRoomCopyTailRead)
+        await other.pollActiveRoom()
+        XCTAssertTrue(other.activeRoomCopyTailRead)
+        XCTAssertEqual(other.activeRoomReplay.events.map(\.seq), [1, 2])
+        XCTAssertEqual(otherQueued, [], "the retried tail isn't read aloud")
+        failing.events.append(copiesEvent(3, text: "after"))
+        failing.copies = [copiesCopy(lastSeq: 3)]
+        await other.pollActiveRoom()
+        XCTAssertEqual(otherQueued, [AppState.roomReadAloudID(roomID: "conduit-9", eventID: "ev-3")])
+        other.closeGroupRoom()
+    }
+
     @MainActor
     func testAFailedOpeningReadReadsTheTailAgainNotTheFirstEvents() async throws {
         let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 300)])
@@ -550,10 +601,12 @@ extension GroupChatModelsTests {
     /// `routes`.
     @MainActor
     func copiesAppState(_ routes: CopiesRoutes, room: GroupRoom? = nil,
-                        chatResume: ChatResumeLifecycleOperations = .live) throws -> AppState {
+                        chatResume: ChatResumeLifecycleOperations = .live,
+                        readRepliesAloud: Bool = false) throws -> AppState {
         let suite = "GroupChatModelsTests.copies.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        if readRepliesAloud { defaults.set(true, forKey: ReadRepliesAloud.preferenceKey) }
         let operations = GroupChatLifecycleOperations(
             capabilities: { _ in
                 GroupCapabilities(protocolVersion: 2, driverReady: true, authorityGatewayID: "gw-a", features: [],

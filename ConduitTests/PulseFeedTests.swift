@@ -593,10 +593,28 @@ final class PulseFeedTests: XCTestCase {
           {"id": 6, "kind": "noticed", "topic": "watch", "level": "screen", "news": "The deploy is still flaky", "chat_id": "work"},
           {"id": 7, "kind": "noticed", "topic": "interest", "level": "screen", "news": "A new Swift release is out", "chat_id": "work"},
           {"id": 8, "kind": "noticed", "topic": "fact", "level": "screen", "news": "", "title": "Your sister is Ana", "chat_id": "work"},
-          {"id": 9, "kind": "noticed", "topic": "", "level": "screen", "news": "Something else", "chat_id": "work"}
+          {"id": 9, "kind": "noticed", "topic": "", "level": "screen", "news": "Something else", "chat_id": "work"},
+          {"id": 10, "kind": "noticed", "topic": "watch", "level": "screen", "news": "The deploy keeps failing", "chat_id": "work",
+           "look": {"shape": "status", "facts": {"label": "Deploy", "state": "fail"}, "line": "The deploy keeps failing", "detail": "", "actions": []}},
+          {"id": 11, "kind": "noticed", "topic": "other", "level": "screen", "news": "The audit failed again", "chat_id": "work",
+           "look": {"shape": "runs", "facts": {"job": "Audit", "results": ["ok", "fail"]}, "line": "The audit failed again", "detail": "", "actions": []}},
+          {"id": 12, "kind": "noticed", "topic": "watch", "level": "screen", "news": "The audit is back to normal", "chat_id": "work",
+           "look": {"shape": "runs", "facts": {"job": "Audit", "results": ["fail", "ok"]}, "line": "The audit is back to normal", "detail": "", "actions": []}},
+          {"id": 13, "kind": "noticed", "topic": "watch", "level": "screen", "news": "The disk is nearly full", "chat_id": "work",
+           "look": {"shape": "status", "facts": {"label": "Disk", "state": "warn"}, "line": "The disk is nearly full", "detail": "", "actions": []}},
+          {"id": 14, "kind": "noticed", "topic": "watch", "level": "screen", "news": "The backup is fine", "chat_id": "work",
+           "look": {"shape": "status", "facts": {"label": "Backup", "state": "ok"}, "line": "The backup is fine", "detail": "", "actions": []}}
         ]}
         """)))
         let message = Dictionary(uniqueKeysWithValues: page.cards.map { ($0.id, $0.actionMessage) })
+        // Something that went wrong asks for a fix, whatever its topic (issue 2082);
+        // a job back to normal is a watch like any other.
+        XCTAssertEqual(message[10], "Pulse brought this up: The deploy keeps failing\n\nFind out what's wrong and fix it.")
+        XCTAssertEqual(message[11], "Pulse brought this up: The audit failed again\n\nFind out what's wrong and fix it.")
+        XCTAssertEqual(message[12], "Pulse brought this up: The audit is back to normal\n\nWhere does that stand now?")
+        // A warning is a problem too; an OK status keeps the topic's ask.
+        XCTAssertEqual(message[13], "Pulse brought this up: The disk is nearly full\n\nFind out what's wrong and fix it.")
+        XCTAssertEqual(message[14], "Pulse brought this up: The backup is fine\n\nWhere does that stand now?")
         // What Hermes said it would do gets a go-ahead, whether the card is a
         // follow-up or a remembered promise.
         XCTAssertEqual(message[1], "Pulse reminded me: The backup is still on the server\n\nGo ahead with it now.")
@@ -1869,6 +1887,32 @@ final class PulseFeedTests: XCTestCase {
             return XCTFail("a place card should draw")
         }
         XCTAssertEqual(look(["type": "weather", "places": [["name": "X"]]])?.body, .plain)
+    }
+
+    func testEachCardTypeHasItsOwnPlaceAndColour() throws {
+        func style(_ text: String) throws -> PulseLookStyle {
+            let look = try XCTUnwrap(PulseLook(json: try JSONSerialization.jsonObject(with: Data(text.utf8))))
+            return PulseLookStyle(look.body)
+        }
+        XCTAssertEqual(try style(#"{"shape": "runs", "facts": {"job": "Backup", "results": ["ok", "ok"]}}"#).place, .band)
+        XCTAssertEqual(try style(#"{"shape": "runs", "facts": {"job": "Backup", "results": ["ok", "ok"]}}"#).tint, .green)
+        XCTAssertEqual(try style(#"{"shape": "runs", "facts": {"job": "Backup", "results": ["ok", "fail"]}}"#).tint, .red)
+        XCTAssertEqual(try style(#"{"shape": "status", "facts": {"label": "Relay", "state": "warn"}}"#).place, .lead)
+        XCTAssertEqual(try style(#"{"shape": "status", "facts": {"label": "Relay", "state": "warn"}}"#).tint, .orange)
+        XCTAssertEqual(try style(#"{"shape": "steps", "facts": {"names": ["Ordered", "Shipped"], "at": 1}}"#).place, .under)
+        XCTAssertEqual(try style(#"{"shape": "sparkle", "facts": {}}"#).place, PulseLookStyle.Place.none)
+        // Only a status card is tinted whole.
+        XCTAssertTrue(PulseLookStyle.washes(.status(label: "Relay", state: .fail)))
+        XCTAssertFalse(PulseLookStyle.washes(.plain))
+        // Something due by a day isn't late on that day, and is after it.
+        let calendar = PulseLook.wireCalendar
+        let noon = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 9, hour: 12)))
+        let today = calendar.startOfDay(for: noon)
+        XCTAssertEqual(PulseLookStyle(.due(due: today, hasTime: false, noticed: nil), now: noon).tint, .orange)
+        XCTAssertEqual(PulseLookStyle(.due(due: today, hasTime: false, noticed: nil), now: noon.addingTimeInterval(86_400)).tint, .red)
+        // What fits no card type says so in What Pulse left out (0.157.7).
+        let left = try XCTUnwrap(PulseLeftOut(json: ["id": 1, "text": "Idle fact", "decision": "skipped", "skip": "shapeless"]))
+        XCTAssertEqual(left.reason, AppLocalization.string("Didn't fit a card type"))
     }
 
     func testFactsThatDontHoldUpDrawPlain() throws {

@@ -628,6 +628,35 @@ extension BotModeTests {
         XCTAssertNil(BotWorkSettings(response: ["ok": false, "policy": "strict", "max_running": 2]))
     }
 
+    func testQuickStepsAreOfferedOnlyWhereThePluginTakesThem() throws {
+        // Eric 2026-11-10: how many steps a Quick Things Here turn does itself is the user's pick.
+        let older = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "lookups", "max_running": 2]))
+        XCTAssertNil(older.quickSteps)
+        XCTAssertTrue(older.quickStepsChoices.isEmpty)
+        let newer = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "lookups", "max_running": 2, "quick_steps": 5, "quick_steps_choices": [5, 10, 20],
+        ]))
+        XCTAssertEqual(newer.quickSteps, 5)
+        XCTAssertEqual(BotWorkSettingsView.quickStepsChoices(newer).map(\.id), [5, 10, 20])
+        XCTAssertEqual(BotWorkSettingsView.quickStepsChoices(newer).map(\.title), ["5", "10", "20"])
+        var picked = newer
+        picked.quickSteps = 20
+        XCTAssertEqual(picked.change(from: newer) as? [String: Int], ["quick_steps": 20])
+        XCTAssertTrue(newer.change(from: newer).isEmpty)
+        // A count a newer plugin kept still shows as the bot's own.
+        var other = newer
+        other.quickSteps = 15
+        XCTAssertEqual(BotWorkSettingsView.quickStepsChoices(other).map(\.id), [5, 10, 15, 20])
+        // A plugin with one count and a bot on another still offers both; a count of 0 is none.
+        let single = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "lookups", "max_running": 2, "quick_steps": 20, "quick_steps_choices": [5],
+        ]))
+        XCTAssertEqual(BotWorkSettingsView.quickStepsChoices(single).map(\.id), [5, 20])
+        XCTAssertNil(BotWorkSettings(response: [
+            "ok": true, "policy": "lookups", "max_running": 2, "quick_steps": 0, "quick_steps_choices": [5, 10],
+        ])?.quickSteps)
+    }
+
     func testCoordinationIsOfferedOnlyWhereThePluginKeepsIt() throws {
         // Eric 2026-11-10: how independently the Bot Chat keeps its workstreams in step.
         let older = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "lookups", "max_running": 2]))
@@ -654,6 +683,52 @@ extension BotModeTests {
         XCTAssertEqual(coordinated.manage, [.pin, .leaveAlone])
     }
 
+    func testTheCoordinationListIsReadWithTheLinesBehindEachEntry() throws {
+        // Milestone 2 (Eric 2026-11-10): what the Bot Chat did to keep the work in step, and why.
+        XCTAssertNil(try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina")).coordination)
+        var response = workResponse()
+        response["coordination"] = ["mode": "ask", "items": [
+            ["id": "P1", "kind": "proposal", "ref": "W2", "title": "Deploy", "at": 1_800_000_300.0,
+             "text": "Move W2 to the v2 API", "status": "approved", "answer": "yes, go", "why": []],
+            ["id": "E7", "kind": "sent", "ref": "W2", "title": "Deploy", "at": 1_800_000_200.0,
+             "text": "v1 is gone, check first", "how": "added to the turn it was working on", "state": "delivered",
+             "why": [["ref": "W1", "title": "Login bug", "kind": "found", "text": "v1 returns 410",
+                      "at": 1_800_000_000.0],
+                     ["ref": "W2", "title": "Deploy", "kind": "user", "text": "Keep v1", "at": 1_800_000_050.0],
+                     ["ref": "W1", "kind": "found", "text": "", "at": 1_800_000_060.0]]],
+            ["id": "E5", "kind": "flag", "ref": "W1", "title": "Login bug", "at": 1_800_000_100.0,
+             "text": "W1 found v1 is gone, and W2 moves to it", "with": ["W2"], "woke": false,
+             "why": [["ref": "W1", "title": "Login bug", "kind": "found", "text": "v1 returns 410",
+                      "at": 1_800_000_000.0]]],
+            ["id": "P2", "kind": "proposal", "ref": "W1", "refs": ["W1", "W3", "W1"], "title": "Login bug · Docs",
+             "at": 1_800_000_050.0, "text": "Drop v1 in both", "status": "open", "answer": "", "why": []],
+            ["id": "E9", "kind": "later", "at": 1_800_000_400.0],
+            ["kind": "sent", "at": 1_800_000_400.0],
+        ]]
+        let list = try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina")?.coordination)
+        XCTAssertEqual(list.mode, "ask")
+        XCTAssertEqual(list.items.map(\.id), ["P1", "E7", "E5", "P2"])  // a kind this build doesn't know is left out
+        let proposal = list.items[0], sent = list.items[1], flag = list.items[2]
+        XCTAssertEqual(proposal.headline, "Asked you about W2")
+        XCTAssertEqual(proposal.refs, ["W2"])  // a plugin before 0.158.0 sends only ref
+        // One question for related work (plugin 0.158.0+) names each workstream it covers, once.
+        XCTAssertEqual(list.items[3].headline, "Asked you about W1, W3")
+        XCTAssertEqual(list.items[3].stateText, "No answer yet")
+        XCTAssertEqual(proposal.stateText, "You approved")
+        XCTAssertEqual(proposal.answer, "yes, go")
+        XCTAssertNil(proposal.whyCaption(botName: "Furina"))
+        XCTAssertEqual(sent.headline, "Sent to W2")
+        XCTAssertEqual(sent.stateText, "In its chat")
+        XCTAssertEqual(sent.why.map(\.saidBy), ["W1 found", "You told W2"])  // a line with no words is left out
+        XCTAssertEqual(sent.whyCaption(botName: "Furina"), "What was on Furina’s board in the half hour before.")
+        XCTAssertEqual(flag.headline, "W1 may affect W2")
+        XCTAssertEqual(flag.stateText, "Kept on the board")
+        XCTAssertEqual(flag.why.first?.text, "v1 returns 410")
+        XCTAssertEqual(flag.at, Date(timeIntervalSince1970: 1_800_000_100))
+        response["coordination"] = ["mode": "off", "items": []]
+        XCTAssertEqual(BotWorkSnapshot(response: response, profile: "furina")?.coordination?.items, [])
+    }
+
     func testEverythingHereIsOfferedOnlyWhereThePluginTakesIt() throws {
         // Notifier issue 619 (Eric 2026-11-08): three choices by what the user notices.
         let older = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "lookups", "max_running": 2]))
@@ -675,7 +750,8 @@ extension BotModeTests {
     }
 
     func testAWorkSettingsChangeSendsOnlyWhatChanged() {
-        let old = BotWorkSettings()
+        let old = BotWorkSettings(maxRunning: 2)
+        XCTAssertEqual(BotWorkSettings().maxRunning, 4)  // the plugin's default (Eric 2026-11-10)
         XCTAssertEqual(old.policy, .lookups)  // the plugin's default (Eric 2026-11-03)
         var toggled = BotWorkSettings(policy: .off)
         toggled.isOnSetting = true
