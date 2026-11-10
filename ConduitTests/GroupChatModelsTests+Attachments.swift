@@ -542,6 +542,9 @@ extension GroupChatModelsTests {
         hermes.downloadAnswer = "data:image/png,not-base64"
         let garbage = await appState.roomFileRead(for: path)
         XCTAssertEqual(garbage, .gone)
+        hermes.downloadAnswer = "data:image/png;base64,not base64!"
+        let malformed = await appState.roomFileRead(for: path)
+        XCTAssertEqual(malformed, .gone, "a payload that doesn't decode")
         hermes.downloadAnswer = nil
 
         hermes.downloadError = RpcError(code: 4004, message: "attachment expired")

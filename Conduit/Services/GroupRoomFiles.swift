@@ -429,8 +429,8 @@ extension AppState {
                 client, roomID: roomID, eventID: carrying.eventID, attachmentID: attachmentID, size: size
             )
             // Bounded as the plugin's room-file read: an answer over 16 MB,
-            // or one that isn't base64 media, is one Hermes won't give.
-            return DataURLLimits.isBoundedBase64DataURL(dataURL) ? .dataURL(dataURL) : .gone
+            // or one whose payload isn't base64, is one Hermes won't give.
+            return DataURLLimits.decodeBase64DataURL(dataURL) != nil ? .dataURL(dataURL) : .gone
         } catch is CancellationError {
             return .failed
         } catch {

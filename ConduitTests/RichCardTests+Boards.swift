@@ -204,6 +204,9 @@ extension AppStateVoiceCapabilityTests {
         for _ in 0..<100 where reads.count < 4 { await Task.yield() }
         XCTAssertEqual(reads.count, 4, "only the board the host couldn't answer for is read again")
         XCTAssertFalse(AppState.lineBoardIsGone(URLError(.timedOut)))
+        XCTAssertFalse(AppState.lineBoardIsGone(DashboardTicketBridgeError.http(
+            status: 404, detail: DashboardTicketBridgeError.pluginRefusedDetail)),
+                       "a profile that turned the plugin off reads again once it's back")
     }
 
     func testATableSortsNumbersByValueWithBlanksLast() throws {
