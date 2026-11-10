@@ -430,11 +430,11 @@ final class ChatScrollHostedTests: XCTestCase {
         // The scroller writes the offset inside the collection view's pass
         // (a pin, a browsing reader's row kept as rows above measure, a
         // saved place), after UIKit placed the cells for the old offset.
-        // Left to UIKit, the cells for the new one wait for whatever next
-        // wakes the main thread: on a still screen, a blank chat with the
-        // jump button over it. The pass goes again for the new offset, so
-        // the rows on screen are drawn when it returns, with no run loop
-        // turn in between.
+        // Left to UIKit, the cells for the new one wait for its next pass,
+        // and on a still screen nothing asks for one: a blank chat with the
+        // jump button over it. The pass is Core Animation's own here, as on
+        // a phone, not one the test forces, and the check runs from the
+        // main queue right after it, before any later commit.
         let mounted = try mount(Self.transcript(0..<80))
         let collectionView = try XCTUnwrap(mounted.scrollView as? TranscriptCollectionView)
         // Browsing at the top, so nothing pins the reader back to the end.
@@ -444,30 +444,41 @@ final class ChatScrollHostedTests: XCTestCase {
         let middle = (maxOffset(collectionView) - collectionView.adjustedContentInset.top) / 2
         XCTAssertGreaterThan(middle, collectionView.bounds.height * 2, "the write moves more than a screen")
 
+        final class Probe { var wrote = false; var missing: [String]?; var stillNeedsLayout = false }
+        let probe = Probe()
         let original = collectionView.didLayout
-        var wrote = false
         collectionView.didLayout = {
             original?()
-            guard !wrote else { return }
-            wrote = true
+            guard !probe.wrote else { return }
+            probe.wrote = true
             collectionView.contentOffset.y = middle
+            DispatchQueue.main.async {
+                MainActor.assumeIsolated {
+                    probe.stillNeedsLayout = collectionView.layer.needsLayout()
+                    let top = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
+                    let bottom = collectionView.contentOffset.y + collectionView.bounds.height
+                        - collectionView.adjustedContentInset.bottom
+                    let onScreen = Set(mounted.layout.rows(crossing: top...bottom).map(\.id))
+                    let drawn = Set(collectionView.visibleCells.compactMap { cell -> String? in
+                        guard let cell = cell as? TranscriptCell, cell.hosting != nil else { return nil }
+                        return cell.hostedRowID
+                    })
+                    probe.missing = onScreen.isEmpty ? ["<no rows on screen>"] : onScreen.subtracting(drawn).sorted()
+                }
+            }
         }
+        defer { collectionView.didLayout = original }
+        // Asked for, and left to the run loop's commit.
         collectionView.setNeedsLayout()
-        collectionView.layoutIfNeeded()
-        collectionView.didLayout = original
-        XCTAssertTrue(wrote, "the pass ran and wrote the offset")
-
-        let top = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
-        let bottom = collectionView.contentOffset.y + collectionView.bounds.height - collectionView.adjustedContentInset.bottom
-        let onScreen = Set(mounted.layout.rows(crossing: top...bottom).map(\.id))
-        XCTAssertFalse(onScreen.isEmpty, "rows cross the screen at the new offset")
-        let drawn = Set(collectionView.visibleCells.compactMap { cell -> String? in
-            guard let cell = cell as? TranscriptCell, cell.hosting != nil else { return nil }
-            return cell.hostedRowID
-        })
-        XCTAssertTrue(
-            onScreen.isSubset(of: drawn),
-            "every row on screen has its cell, drawn in the pass that moved there (missing \(onScreen.subtracting(drawn).sorted()))"
+        let deadline = Date().addingTimeInterval(2)
+        while probe.missing == nil, Date() < deadline {
+            _ = CFRunLoopRunInMode(.defaultMode, 0.01, true)
+        }
+        XCTAssertTrue(probe.wrote, "the pass ran and wrote the offset")
+        let missing = try XCTUnwrap(probe.missing, "the check ran after the pass")
+        XCTAssertEqual(
+            missing, [],
+            "every row on screen has its cell once the pass that moved there is done (still needs layout: \(probe.stillNeedsLayout))"
         )
     }
 
