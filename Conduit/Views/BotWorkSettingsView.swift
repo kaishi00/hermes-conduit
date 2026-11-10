@@ -20,6 +20,9 @@ struct BotWorkSettingsView: View {
     /// Hermes' helper model slot the plugin's work watch reads with, in
     /// this bot's profile; nil until read, or on a plugin without it.
     @State private var watchSlot: HelperModelSlot?
+    /// Names the newest slot read: an older one that answers later is
+    /// dropped.
+    @State private var watchReads = 0
 
     var body: some View {
         // Settings' own page: cards with their names over them, menus for
@@ -340,13 +343,26 @@ struct BotWorkSettingsView: View {
         )
     }
 
-    /// Kept first, then Hermes. A read that fails keeps what was shown.
+    /// Kept first, then Hermes, tried as often as the settings' read. A
+    /// read that fails keeps what was shown; only the newest read's answer
+    /// is shown.
     private func readWatchSlot() async {
+        watchReads += 1
+        let read = watchReads
         if watchSlot == nil {
             watchSlot = appState.keptHelperModels(inProfile: profile)?.first { $0.id == HelperModelSlot.workWatch }
         }
-        if let loaded = try? await appState.loadHelperModels(inProfile: profile) {
-            watchSlot = loaded.first { $0.id == HelperModelSlot.workWatch }
+        for attempt in 0..<Self.loadAttempts {
+            if attempt > 0 {
+                try? await Task.sleep(for: .seconds(attempt))
+                if Task.isCancelled { return }
+            }
+            if let loaded = try? await appState.loadHelperModels(inProfile: profile) {
+                guard read == watchReads else { return }
+                watchSlot = loaded.first { $0.id == HelperModelSlot.workWatch }
+                return
+            }
+            if Task.isCancelled || read != watchReads { return }
         }
     }
 
