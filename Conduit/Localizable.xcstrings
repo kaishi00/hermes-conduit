@@ -500603,6 +500603,798 @@
           }
         }
       }
+    },
+    "Coordination" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koordination"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coordination"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coordinación"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coordination"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koordinasi"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coordinamento"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "連携"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "조율"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koordynacja"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Coordenação"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Координация"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koordinasyon"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "协调"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "協調"
+          }
+        }
+      }
+    },
+    "Between Workstreams" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zwischen Workstreams"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Between Workstreams"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entre flujos de trabajo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entre les flux de travail"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Antar Alur Kerja"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tra i flussi di lavoro"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワークストリーム間"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업 스트림 간"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Między wątkami pracy"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entre fluxos de trabalho"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Между рабочими потоками"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İş Akışları Arasında"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作流之间"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "工作流程之間"
+          }
+        }
+      }
+    },
+    "This doesn’t change what workstreams may do: their approvals stay as set under Safety." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das ändert nicht, was Workstreams tun dürfen: Ihre Freigaben bleiben so, wie unter Sicherheit eingestellt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "This doesn’t change what workstreams may do: their approvals stay as set under Safety."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esto no cambia lo que pueden hacer los flujos de trabajo: sus aprobaciones siguen como están en Seguridad."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cela ne change pas ce que les flux de travail peuvent faire : leurs approbations restent telles que réglées dans Sécurité."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ini tidak mengubah apa yang boleh dilakukan alur kerja: persetujuannya tetap seperti yang diatur di Keamanan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo non cambia ciò che i flussi di lavoro possono fare: le loro approvazioni restano come impostate in Sicurezza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ワークストリームに許可されている操作は変わりません。承認は「安全」での設定のままです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "작업 스트림이 할 수 있는 일은 바뀌지 않아요. 승인은 안전에서 설정한 그대로예요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "To nie zmienia tego, co mogą robić wątki pracy: ich zatwierdzenia pozostają takie, jak ustawiono w sekcji Bezpieczeństwo."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Isso não muda o que os fluxos de trabalho podem fazer: as aprovações deles continuam como definidas em Segurança."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Это не меняет того, что разрешено рабочим потокам: их подтверждения остаются такими, как задано в разделе «Безопасность»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu, iş akışlarının yapabileceklerini değiştirmez: onayları Güvenlik altında ayarlandığı gibi kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这不会改变工作流可以做的事：它们的审批仍按“安全”中的设置。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這不會改變工作流程可以做的事：它們的核准仍依「安全」中的設定。"
+          }
+        }
+      }
+    },
+    "%@ follows what each workstream finds and changes. When one affects another, it tells you what it recommends and asks before it starts, stops or redirects work." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ verfolgt, was jeder Workstream herausfindet und ändert. Wirkt sich einer auf einen anderen aus, sagt dir der Bot, was er empfiehlt, und fragt, bevor er Arbeit startet, stoppt oder umlenkt."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ follows what each workstream finds and changes. When one affects another, it tells you what it recommends and asks before it starts, stops or redirects work."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ sigue lo que cada flujo de trabajo descubre y cambia. Cuando uno afecta a otro, te dice qué recomienda y pregunta antes de iniciar, detener o redirigir trabajo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ suit ce que chaque flux de travail découvre et modifie. Quand l’un en affecte un autre, le bot vous dit ce qu’il recommande et demande avant de lancer, d’arrêter ou de réorienter un travail."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ mengikuti apa yang ditemukan dan diubah tiap alur kerja. Saat satu alur memengaruhi yang lain, bot memberi tahu rekomendasinya dan bertanya sebelum memulai, menghentikan, atau mengalihkan pekerjaan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ segue ciò che ogni flusso di lavoro scopre e modifica. Quando uno influisce su un altro, ti dice cosa consiglia e chiede prima di avviare, fermare o reindirizzare il lavoro."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@は各ワークストリームが見つけたことや変更したことを追います。あるワークストリームが別のものに影響するときは、おすすめの対応を伝え、作業を開始、停止、方向転換する前に確認します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) 각 작업 스트림이 알아낸 것과 바꾼 것을 지켜봐요. 한 작업이 다른 작업에 영향을 주면 권장 사항을 알려 주고, 작업을 시작하거나 중지하거나 방향을 바꾸기 전에 물어봐요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ śledzi, co każdy wątek pracy ustala i zmienia. Gdy jeden wpływa na inny, bot mówi, co zaleca, i pyta, zanim rozpocznie, zatrzyma lub przekieruje pracę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ acompanha o que cada fluxo de trabalho descobre e altera. Quando um afeta outro, o bot diz o que recomenda e pergunta antes de iniciar, parar ou redirecionar trabalho."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ следит за тем, что выясняет и меняет каждый рабочий поток. Когда один влияет на другой, бот сообщает, что рекомендует, и спрашивает, прежде чем запускать, останавливать или перенаправлять работу."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ her iş akışının bulduklarını ve değiştirdiklerini izler. Biri diğerini etkilediğinde ne önerdiğini söyler ve bir işi başlatmadan, durdurmadan veya yönlendirmeden önce sorar."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 会关注每个工作流的发现和改动。当一个工作流影响到另一个时，它会告诉你它的建议，并在启动、停止或调整工作方向前先询问你。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 會留意每個工作流程的發現和變更。當一個工作流程影響到另一個時，它會告訴你它的建議，並在啟動、停止或調整工作方向前先詢問你。"
+          }
+        }
+      }
+    },
+    "%@ keeps its workstreams in step on its own. When one affects another, it can start, stop or redirect work, and tells you in a line when it did." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ stimmt seine Workstreams selbst aufeinander ab. Wirkt sich einer auf einen anderen aus, kann der Bot Arbeit starten, stoppen oder umlenken und sagt dir in einer Zeile, wenn er es getan hat."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ keeps its workstreams in step on its own. When one affects another, it can start, stop or redirect work, and tells you in a line when it did."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ mantiene coordinados sus flujos de trabajo por su cuenta. Cuando uno afecta a otro, puede iniciar, detener o redirigir trabajo, y te lo dice en una línea cuando lo hace."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ coordonne ses flux de travail de lui-même. Quand l’un en affecte un autre, le bot peut lancer, arrêter ou réorienter un travail, et vous le dit en une ligne quand il l’a fait."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ menjaga alur kerjanya tetap selaras sendiri. Saat satu alur memengaruhi yang lain, bot bisa memulai, menghentikan, atau mengalihkan pekerjaan, lalu memberi tahu Anda dalam satu baris."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ tiene allineati i suoi flussi di lavoro da solo. Quando uno influisce su un altro, può avviare, fermare o reindirizzare il lavoro, e te lo dice in una riga quando lo fa."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@は自分でワークストリーム同士の足並みをそろえます。あるワークストリームが別のものに影響するときは、作業を開始、停止、方向転換でき、そうしたときは一言で知らせます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) 작업 스트림들을 스스로 맞춰 가요. 한 작업이 다른 작업에 영향을 주면 작업을 시작하거나 중지하거나 방향을 바꿀 수 있고, 그렇게 했을 때 한 줄로 알려 줘요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ sam uzgadnia swoje wątki pracy. Gdy jeden wpływa na inny, bot może rozpocząć, zatrzymać lub przekierować pracę i informuje o tym w jednym zdaniu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ mantém seus fluxos de trabalho alinhados por conta própria. Quando um afeta outro, o bot pode iniciar, parar ou redirecionar trabalho, e avisa você em uma linha quando faz isso."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ сам согласует свои рабочие потоки. Когда один влияет на другой, бот может запускать, останавливать или перенаправлять работу и сообщает об этом одной строкой."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ iş akışlarını kendi başına uyum içinde tutar. Biri diğerini etkilediğinde iş başlatabilir, durdurabilir veya yönlendirebilir ve bunu yaptığında size bir satırla bildirir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 会自行让各个工作流保持一致。当一个工作流影响到另一个时，它可以启动、停止或调整工作方向，并在这样做后用一句话告诉你。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 會自行讓各個工作流程保持一致。當一個工作流程影響到另一個時，它可以啟動、停止或調整工作方向，並在這樣做後用一句話告訴你。"
+          }
+        }
+      }
+    },
+    "%@ only passes on what its workstreams report." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ gibt nur weiter, was seine Workstreams melden."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ only passes on what its workstreams report."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ solo transmite lo que informan sus flujos de trabajo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ transmet seulement ce que ses flux de travail rapportent."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hanya meneruskan apa yang dilaporkan alur kerjanya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ riferisce soltanto ciò che i suoi flussi di lavoro riportano."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@はワークストリームからの報告を伝えるだけです。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@은(는) 작업 스트림이 보고한 내용만 전달해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ tylko przekazuje to, co zgłaszają jego wątki pracy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ só repassa o que seus fluxos de trabalho informam."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ только передаёт то, что сообщают его рабочие потоки."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ yalnızca iş akışlarının bildirdiklerini iletir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 只转达其工作流的报告。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 只轉達其工作流程的回報。"
+          }
+        }
+      }
+    },
+    "Leave Alone" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In Ruhe lassen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Leave Alone"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dejar en paz"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laisser tranquille"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biarkan Saja"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lascia stare"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのままにする"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그대로 두기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zostaw w spokoju"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deixar em paz"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не трогать"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kendi Haline Bırak"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不要干预"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不要干預"
+          }
+        }
+      }
+    },
+    "Let %@ Coordinate It" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Von %@ koordinieren lassen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Let %@ Coordinate It"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dejar que %@ lo coordine"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laisser %@ le coordonner"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Biarkan %@ Mengoordinasikannya"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lascia che %@ lo coordini"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@に連携させる"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@이(가) 조율하게 하기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pozwól %@ to koordynować"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deixar %@ coordenar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешить %@ координировать"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ Koordine Etsin"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让 %@ 协调它"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓 %@ 協調它"
+          }
+        }
+      }
+    },
+    "Left alone" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "In Ruhe gelassen"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Left alone"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sin intervención"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laissé tranquille"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dibiarkan saja"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lasciato stare"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのままにしています"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그대로 둠"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zostawiony w spokoju"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deixado em paz"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не трогается"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kendi haline bırakıldı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不干预"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不干預"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
