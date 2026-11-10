@@ -1021,7 +1021,7 @@ notifier's README
 - A Bot Chat's calls are kept in the bot's profile, so another device doesn't adopt them (#1445).
 - Desktop doesn't group voice rows under their call; archiving is how they stay out of its list (would need Hermes).
 
-**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445.
+**Checked:** 2026-11-10, #2163 (Send to Hermes takes a picked chat, which counts as reused; reading the reply unchanged); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1445.
 
 ## The user's words in a call's transcript
 
