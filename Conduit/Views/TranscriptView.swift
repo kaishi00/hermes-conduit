@@ -470,11 +470,34 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
 final class TranscriptCollectionView: UICollectionView, TranscriptScrollSurface {
     var didLayout: (() -> Void)?
 
+    /// Passes one layout may take for offsets written in it: each new
+    /// region's rows measure, which can move the reader's row once more.
+    static let maxPassesPerLayout = 4
+
     private var transcriptLayout: TranscriptLayout? { collectionViewLayout as? TranscriptLayout }
 
+    /// The scroller moves the offset inside this pass, after UIKit has
+    /// placed the cells for the old one (following to the end, keeping the
+    /// reader's row as rows measure, a saved place, an unread reply's
+    /// start). UIKit places the cells for the new offset only in its next
+    /// pass, and a pass asked for during one waits for whatever next wakes
+    /// the main thread: on a still screen, the chat showed nothing but its
+    /// title and composer, with the jump button over it, until a touch.
+    /// So the pass goes again here, for the offset it ends at.
     override func layoutSubviews() {
         super.layoutSubviews()
-        didLayout?()
+        var passes = 1
+        while true {
+            let offset = contentOffset.y
+            didLayout?()
+            let moved = contentOffset.y - offset
+            guard abs(moved) > 0.01, passes < Self.maxPassesPerLayout else { return }
+            passes += 1
+            if abs(moved) > bounds.height {
+                ChatViewportTrace.shared.log(String(format: "surface pass again for a move of %.1f", moved))
+            }
+            super.layoutSubviews()
+        }
     }
 
     var contentOffsetY: CGFloat { contentOffset.y }

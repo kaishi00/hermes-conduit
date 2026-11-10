@@ -426,6 +426,51 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertTrue(checked.value, "the block queued after the report ran")
     }
 
+    func testAnOffsetWrittenDuringThePassIsDrawnInThatPass() throws {
+        // The scroller writes the offset inside the collection view's pass
+        // (a pin, a browsing reader's row kept as rows above measure, a
+        // saved place), after UIKit placed the cells for the old offset.
+        // Left to UIKit, the cells for the new one wait for whatever next
+        // wakes the main thread: on a still screen, a blank chat with the
+        // jump button over it. The pass goes again for the new offset, so
+        // the rows on screen are drawn when it returns, with no run loop
+        // turn in between.
+        let mounted = try mount(Self.transcript(0..<80))
+        let collectionView = try XCTUnwrap(mounted.scrollView as? TranscriptCollectionView)
+        // Browsing at the top, so nothing pins the reader back to the end.
+        mounted.scroller.explicitTopRequested()
+        settle(mounted.host.view)
+        XCTAssertFalse(mounted.scroller.isFollowingLatest)
+        let middle = (maxOffset(collectionView) - collectionView.adjustedContentInset.top) / 2
+        XCTAssertGreaterThan(middle, collectionView.bounds.height * 2, "the write moves more than a screen")
+
+        let original = collectionView.didLayout
+        var wrote = false
+        collectionView.didLayout = {
+            original?()
+            guard !wrote else { return }
+            wrote = true
+            collectionView.contentOffset.y = middle
+        }
+        collectionView.setNeedsLayout()
+        collectionView.layoutIfNeeded()
+        collectionView.didLayout = original
+        XCTAssertTrue(wrote, "the pass ran and wrote the offset")
+
+        let top = collectionView.contentOffset.y + collectionView.adjustedContentInset.top
+        let bottom = collectionView.contentOffset.y + collectionView.bounds.height - collectionView.adjustedContentInset.bottom
+        let onScreen = Set(mounted.layout.rows(crossing: top...bottom).map(\.id))
+        XCTAssertFalse(onScreen.isEmpty, "rows cross the screen at the new offset")
+        let drawn = Set(collectionView.visibleCells.compactMap { cell -> String? in
+            guard let cell = cell as? TranscriptCell, cell.hosting != nil else { return nil }
+            return cell.hostedRowID
+        })
+        XCTAssertTrue(
+            onScreen.isSubset(of: drawn),
+            "every row on screen has its cell, drawn in the pass that moved there (missing \(onScreen.subtracting(drawn).sorted()))"
+        )
+    }
+
     func testARunningReplyOpenedAgainShowsWhatWasWrittenAtOnce() throws {
         // Opening a chat whose reply is still running seeds the live bubble
         // with everything written so far. It must not be typed out again:
