@@ -960,6 +960,49 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertNil(activity.details)
     }
 
+    /// Hermes' fixed English summaries read in the app's language; a
+    /// summary naming something (a skill) stays as Hermes wrote it.
+    func testFixedReviewSummariesGoThroughTheAppLanguage() {
+        let memory = AppLocalization.string("\(AppLocalization.string("Memory")) updated")
+        // The parsed review keeps Hermes' words; the card localizes them.
+        XCTAssertEqual(MessageNormalizer.reviewActivity(fromText: "💾 Self-improvement review: Memory updated")?.summary, "Memory updated")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated"), memory)
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("User profile updated"),
+                       AppLocalization.string("\(AppLocalization.string("User profile")) updated"))
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · User profile updated"),
+                       "\(memory) · \(AppLocalization.string("\(AppLocalization.string("User profile")) updated"))")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · Memory updated"), memory)
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("📝 Skill 'hermes-release' patched"), "📝 Skill 'hermes-release' patched")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · 📝 Skill 'x' created: y"), "Memory updated · 📝 Skill 'x' created: y")
+    }
+
+    /// The same summaries with French selected, so a summary left in
+    /// English fails here.
+    func testFixedReviewSummariesReadInFrench() {
+        let standard = UserDefaults.standard
+        let saved = standard.object(forKey: AppLanguageStore.defaultsKey)
+        standard.set("fr", forKey: AppLanguageStore.defaultsKey)
+        defer {
+            if let saved {
+                standard.set(saved, forKey: AppLanguageStore.defaultsKey)
+            } else {
+                standard.removeObject(forKey: AppLanguageStore.defaultsKey)
+            }
+        }
+        // Parsed in French, the review still keeps Hermes' words, so a
+        // saved one matches its transcript row and follows a later change.
+        XCTAssertEqual(MessageNormalizer.reviewActivity(fromText: "💾 Self-improvement review: Memory updated")?.summary,
+                       "Memory updated")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated"), "Mémoire : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · "), "Mémoire : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · · Skill updated."),
+                       "Mémoire : mise à jour · Compétence : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("User profile updated · Skill updated"),
+                       "Profil utilisateur : mise à jour · Compétence : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · Memory updated"), "Mémoire : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("📝 Skill 'hermes-release' patched"), "📝 Skill 'hermes-release' patched")
+    }
+
     func testReviewSummaryWithEmptyTextReturnsNil() {
         let event = parse(#"""
         {"type": "review.summary", "session_id": "s1", "payload": {"text": "  💾  "}}

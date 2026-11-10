@@ -11682,7 +11682,7 @@
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "%@ mis à jour"
+            "value" : "%@ : mise à jour"
           }
         },
         "id" : {
