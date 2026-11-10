@@ -140,6 +140,7 @@ extension AppState {
             .defaults("app.take_over_chats", ChatTakeoverPreference.automaticKey, .bool, in: defaults),
             .defaults("app.live_activities", LiveTurnActivities.enabledDefaultsKey, .bool, in: defaults),
             .defaults("dictation.engine", DictationEngine.preferenceKey, .string, in: defaults),
+            .defaults("voice_message.engine", VoiceMessageEngine.preferenceKey, .string, in: defaults),
             .defaults("dictation.custom_words", DictationCustomWords.preferenceKey, .strings, in: defaults),
             .defaults("voice.read_aloud_speed", ReadAloudSpeed.preferenceKey, .double, in: defaults),
             .defaults("voice.read_replies_aloud", ReadRepliesAloud.preferenceKey, .bool, in: defaults),

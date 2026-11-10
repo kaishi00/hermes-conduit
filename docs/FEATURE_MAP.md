@@ -4830,6 +4830,35 @@ Classic voice utterances
 
 **Checked:** 2026-10-24, at #1222.
 
+## Voice message transcription engine
+
+Which speech recognizer writes the transcript a voice message carries,
+the text the agent reads (most models can't listen to the attached audio).
+It can differ from dictation's, whose words are read over before they go.
+
+**Siblings:** voice messages from the composer and from the chat's big
+voice button set to Voice message (done, both `AppState.startVoiceMessage`) ·
+composer dictation (keeps its own engine) · synced preferences (done,
+voice_message.engine) · Settings > Voice > Dictation caption (done) ·
+docs/VOICE_SETTINGS.md "Dictate into the composer" (done) · group rooms,
+Watch and CarPlay (not needed, no voice messages) · agent settings catalog
+(not needed, dictation's engine isn't there either)
+
+**Code**
+- Choice: `Conduit/Voice/DictationEngine.swift` (VoiceMessageEngine)
+- Recorder: `Conduit/Voice/VoiceMessageRecorder.swift` (start), `Conduit/Voice/ComposerDictationService.swift` (makeRecognizer)
+- Setting: `Conduit/Views/DictationSettingsSection.swift` (voiceMessageEngine), `Conduit/Services/AppState+SyncedPreferences.swift` (voice_message.engine)
+- Tests: `ConduitTests/DictationEngineTests.swift`
+
+**Rulings**
+- Voice messages follow dictation's engine until a person picks one of their own; an unknown choice, or one this device can't run, follows dictation's too. "Same as dictation" clears the choice (2026-11-10, issue 2074, #2147).
+- One app-wide choice, no per-profile override (2026-11-10, #2147).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-10, at #2147.
+
 ## Send while dictating
 
 What the composer offers while a dictation runs: a wide Stop in Send's

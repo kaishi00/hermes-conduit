@@ -3,13 +3,16 @@
 //  Conduit
 //
 //  Voice settings for the composer's dictate button: which engine turns
-//  speech into text, and custom words it should expect.
+//  speech into text, which one writes voice messages' transcripts, and
+//  custom words they should expect.
 //
 
 import SwiftUI
 
 struct DictationSettingsSection: View {
     @AppStorage(DictationEngine.preferenceKey) private var engineRaw = DictationEngine.apple.rawValue
+    /// Unset follows dictation's engine.
+    @AppStorage(VoiceMessageEngine.preferenceKey) private var voiceMessageEngineRaw: String?
     @State private var words = DictationCustomWords.load()
     @State private var draft = ""
     /// The word Edit put in the field; saving replaces it in place.
@@ -32,7 +35,34 @@ struct DictationSettingsSection: View {
             Text(verbatim: engine.summary)
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
+            voiceMessageEngine
             customWords
+        }
+    }
+
+    /// The stored voice message choice, or this id for following dictation
+    /// (nothing stored, or a choice this device can't run).
+    private static let sameAsDictation = "sameAsDictation"
+
+    private var voiceMessageChoice: String {
+        VoiceMessageEngine.ownChoice(voiceMessageEngineRaw, isSupported: { $0.isSupportedOnThisDevice })?.rawValue
+            ?? Self.sameAsDictation
+    }
+
+    private var voiceMessageEngine: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            ConduitMenuPicker(
+                value: voiceMessageChoice,
+                choices: [(id: Self.sameAsDictation, title: AppLocalization.string("Same as dictation"))]
+                    + DictationEngine.available.map { (id: $0.rawValue, title: $0.title) },
+                onSelect: selectVoiceMessageEngine
+            ) {
+                Text("Voice message").foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("voice.voiceMessageEngine")
+            Text("The words sent with a voice message, which are what Hermes reads. Choose another engine here to keep dictation on this iPhone while voice messages use Hermes, or the other way round.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
         }
     }
 
@@ -88,6 +118,17 @@ struct DictationSettingsSection: View {
         engineRaw = raw
         if #available(iOS 26.0, *), raw == DictationEngine.appleSpeechAnalyzer.rawValue {
             // The model for your language, before the first dictation.
+            Task { await SpeechAnalyzerDictationRecognizer.prepare() }
+        }
+    }
+
+    private func selectVoiceMessageEngine(_ raw: String) {
+        guard raw != Self.sameAsDictation else {
+            voiceMessageEngineRaw = nil
+            return
+        }
+        voiceMessageEngineRaw = raw
+        if #available(iOS 26.0, *), raw == DictationEngine.appleSpeechAnalyzer.rawValue {
             Task { await SpeechAnalyzerDictationRecognizer.prepare() }
         }
     }
