@@ -16,12 +16,13 @@ extension AppState {
     }
 
     func roomReplayChanged(from old: GroupRoomReplay) {
-        let latest = activeRoomReplay.events.last(where: \.isMemberMessage)?.seq
         if activeRoomReplay.roomID != old.roomID {
             // Another room's boards never go under this one's messages,
             // whether or not its own read comes back.
             if !activeRoomBoards.isEmpty { activeRoomBoards = [] }
-        } else if latest == old.events.last(where: \.isMemberMessage)?.seq {
+        } else if activeRoomReplay.memberMessages(since: old).isEmpty {
+            // No bot message it didn't hold, a resync's fill below the
+            // last one included.
             return
         } else {
             // A bot's new message, read aloud when Read replies aloud is on.

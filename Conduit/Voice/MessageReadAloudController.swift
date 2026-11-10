@@ -98,7 +98,9 @@ final class MessageReadAloudController: ObservableObject {
         var continuation: AsyncStream<LiveSpeech>.Continuation?
 
         /// `raw` once the segment's words can no longer be a silence
-        /// marker; until then nothing.
+        /// marker; until then nothing. A reply opening with a marker's
+        /// prefix ("S", "NO", "[") waits for its next delta before its
+        /// first word is read.
         mutating func admit(_ raw: String) -> String {
             guard holding else { return raw }
             held += raw

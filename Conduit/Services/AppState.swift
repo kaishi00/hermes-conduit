@@ -13006,6 +13006,9 @@ final class AppState: ObservableObject {
     /// The open copy's opening tail read failed: its next tick reads the
     /// tail again.
     private(set) var activeRoomCopyNeedsTail = false
+    /// Whether the open copy's opening tail has been read: the messages
+    /// after it are new (Read replies aloud reads them).
+    private(set) var activeRoomCopyTailRead = false
     /// Bumped by a copy's delete, so a copies read it overtook is dropped.
     var linkedRoomCopiesGeneration = 0
     /// Your Hermes' copies of the rooms other people host that your agents
@@ -14963,6 +14966,7 @@ final class AppState: ObservableObject {
         activeRoomCopyPost = nil
         roomDraftHandBack = nil
         activeRoomCopyNeedsTail = false
+        activeRoomCopyTailRead = false
         roomApprovalAnswers = [:]
         // A post parked when this room was left comes back with its retry
         // key; your Hermes says below how it stands now.
@@ -14978,6 +14982,7 @@ final class AppState: ObservableObject {
             var replay = GroupRoomReplay(roomID: copy.roomID)
             replay.adoptInitialTail(page: page)
             activeRoomReplay = replay
+            activeRoomCopyTailRead = true
         } catch is CancellationError {
             return
         } catch {
@@ -15026,6 +15031,7 @@ final class AppState: ObservableObject {
                 replay.adoptInitialTail(page: tail)
                 activeRoomReplay = replay
                 activeRoomCopyNeedsTail = false
+                activeRoomCopyTailRead = true
                 errorMessage = nil
                 // As it stands now: it may have ended, or been left, since;
                 // a post that may still settle keeps it polled.
@@ -41710,16 +41716,12 @@ final class AppState: ObservableObject {
         guard ReadRepliesAloud.isOn(defaults), !replay.roomID.isEmpty, replay.roomID == old.roomID,
               let surface = activeRoomSurface, surface.room.roomID == replay.roomID else { return }
         // The room's first read isn't read aloud. A room hosted elsewhere
-        // (a copy) never marks its log read, so there the first read is the
-        // one that found the replay empty.
-        let firstReadDone = surface.copy == nil ? activeRoomLogRead == replay.roomID : !old.events.isEmpty
+        // (a copy) never marks its log read; its opening tail does instead,
+        // so the first message an empty copy gets is read.
+        let firstReadDone = surface.copy == nil ? activeRoomLogRead == replay.roomID : activeRoomCopyTailRead
         guard firstReadDone else { return }
-        // New is what the old replay didn't hold, so messages a resync
-        // fills in below the user's own send are read too.
-        let seen = Set(old.events.map(\.seq))
-        let floor = old.events.first?.seq ?? 0
         let roomID = replay.roomID
-        for event in replay.events where event.seq > floor && !seen.contains(event.seq) && event.isMemberMessage {
+        for event in replay.memberMessages(since: old) {
             let profile = GroupRoomTurns.speaker(of: event, members: surface.room.members)?.profile
             messageReadAloudController.enqueue(
                 messageID: Self.roomReadAloudID(roomID: roomID, eventID: event.id),
