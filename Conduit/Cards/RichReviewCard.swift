@@ -278,7 +278,8 @@ final class RichReviewLoader {
         guard RichCardSchema.isReviewID(id), let read else { throw LoadError.notConnected }
         let answer = try await read(Self.readPath(id: id, round: number))
         guard let round = Self.checkedRound(answer["review"], id: id) else { throw LoadError.gone }
-        if rounds[key] == nil { order.append(key) }
+        order.removeAll { $0 == key }
+        order.append(key)
         rounds[key] = round
         // The newest rounds stay, a dozen at most and their pages within
         // the budget; the one just read always does.

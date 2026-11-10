@@ -63,7 +63,15 @@ struct RichReviewCard: View {
             // the same rows), starts over: one review's pick and note never
             // go with another's Send. The same chat under its durable id
             // keeps them, as a composed card's fields.
-            .onChange(of: card.normalizedJSON) { _, _ in startOver() }
+            .onChange(of: card.normalizedJSON) { _, _ in
+                startOver()
+                // Another card's round isn't this one's: its own read (the
+                // task above) brings it.
+                round = nil
+                failed = false
+                stale = false
+                known = false
+            }
             .onChange(of: context?.chat) { old, new in
                 if let old, let new, context?.sameChat(old, new) == true { return }
                 startOver()
