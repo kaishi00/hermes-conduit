@@ -506699,6 +506699,526 @@
           }
         }
       }
+    },
+    "%lld left out in the last 7 days" : {
+      "localizations" : {
+        "de" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "In den letzten 7 Tagen weggelassen: %lld"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "In den letzten 7 Tagen weggelassen: %lld"
+                }
+              }
+            }
+          }
+        },
+        "en" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld event left out in the last 7 days"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld events left out in the last 7 days"
+                }
+              }
+            }
+          }
+        },
+        "es" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Omitidos en los últimos 7 días: %lld"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Omitidos en los últimos 7 días: %lld"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Omitidos en los últimos 7 días: %lld"
+                }
+              }
+            }
+          }
+        },
+        "fr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Écartés ces 7 derniers jours : %lld"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Écartés ces 7 derniers jours : %lld"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Écartés ces 7 derniers jours : %lld"
+                }
+              }
+            }
+          }
+        },
+        "id" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "%lld dilewati dalam 7 hari terakhir"
+                }
+              }
+            }
+          }
+        },
+        "it" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Esclusi negli ultimi 7 giorni: %lld"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Esclusi negli ultimi 7 giorni: %lld"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Esclusi negli ultimi 7 giorni: %lld"
+                }
+              }
+            }
+          }
+        },
+        "ja" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "過去7日間に除外: %lld件"
+                }
+              }
+            }
+          }
+        },
+        "ko" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "지난 7일 동안 제외됨: %lld개"
+                }
+              }
+            }
+          }
+        },
+        "pl" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Pominięte w ostatnich 7 dniach: %lld"
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Pominięte w ostatnich 7 dniach: %lld"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Pominięte w ostatnich 7 dniach: %lld"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Pominięte w ostatnich 7 dniach: %lld"
+                }
+              }
+            }
+          }
+        },
+        "pt-BR" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Deixados de fora nos últimos 7 dias: %lld"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Deixados de fora nos últimos 7 dias: %lld"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Deixados de fora nos últimos 7 dias: %lld"
+                }
+              }
+            }
+          }
+        },
+        "ru" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Отсеяно за последние 7 дней: %lld"
+                }
+              },
+              "few" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Отсеяно за последние 7 дней: %lld"
+                }
+              },
+              "many" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Отсеяно за последние 7 дней: %lld"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Отсеяно за последние 7 дней: %lld"
+                }
+              }
+            }
+          }
+        },
+        "tr" : {
+          "variations" : {
+            "plural" : {
+              "one" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Son 7 günde dışarıda bırakılan: %lld"
+                }
+              },
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "Son 7 günde dışarıda bırakılan: %lld"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hans" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "过去 7 天略过 %lld 条"
+                }
+              }
+            }
+          }
+        },
+        "zh-Hant" : {
+          "variations" : {
+            "plural" : {
+              "other" : {
+                "stringUnit" : {
+                  "state" : "translated",
+                  "value" : "過去 7 天略過 %lld 則"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "Apple Intelligence on this iPhone sorts notifications, messages and emails before they're logged. Marketing, newsletters, spam and app nudges stay on the phone. Anything from a person, bills, deliveries and alerts always go. When unsure, it logs it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence sortiert auf diesem iPhone Mitteilungen, Nachrichten und E-Mails, bevor sie protokolliert werden. Werbung, Newsletter, Spam und Erinnerungen von Apps bleiben auf dem Telefon. Alles von Menschen, Rechnungen, Lieferungen und Warnungen geht immer mit. Im Zweifel wird es protokolliert."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence en este iPhone clasifica notificaciones, mensajes y correos antes de registrarlos. El marketing, los boletines, el spam y los avisos de apps se quedan en el teléfono. Lo que venga de una persona, facturas, entregas y alertas siempre se envía. Si duda, lo registra."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence trie sur cet iPhone les notifications, messages et e-mails avant qu'ils soient consignés. Le marketing, les newsletters, le spam et les relances d'apps restent sur le téléphone. Tout ce qui vient d'une personne, les factures, les livraisons et les alertes passent toujours. En cas de doute, il est consigné."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence di iPhone ini memilah notifikasi, pesan, dan email sebelum dicatat. Pemasaran, buletin, spam, dan ajakan aplikasi tetap di ponsel. Apa pun dari seseorang, tagihan, pengiriman, dan peringatan selalu dikirim. Jika ragu, tetap dicatat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence su questo iPhone smista notifiche, messaggi ed email prima che vengano registrati. Marketing, newsletter, spam e solleciti delle app restano sul telefono. Tutto ciò che arriva da una persona, bollette, consegne e avvisi passa sempre. Nel dubbio, viene registrato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPhoneのApple Intelligenceが、記録する前に通知、メッセージ、メールを仕分けます。マーケティング、ニュースレター、スパム、アプリからの誘いは電話に残ります。人からのもの、請求、配達、アラートは必ず送られます。迷ったときは記録します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 iPhone의 Apple Intelligence가 기록하기 전에 알림, 메시지, 이메일을 분류합니다. 마케팅, 뉴스레터, 스팸, 앱의 재방문 유도는 휴대폰에 남습니다. 사람이 보낸 것, 청구서, 배송, 경고는 항상 전송됩니다. 확실하지 않으면 기록합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence na tym iPhonie sortuje powiadomienia, wiadomości i e-maile przed ich zapisaniem. Marketing, newslettery, spam i ponaglenia aplikacji zostają na telefonie. Wszystko od ludzi, rachunki, przesyłki i alerty zawsze trafiają dalej. W razie wątpliwości zapisuje."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A Apple Intelligence neste iPhone separa notificações, mensagens e e-mails antes de registrá-los. Marketing, newsletters, spam e lembretes de apps ficam no telefone. Qualquer coisa de uma pessoa, contas, entregas e alertas sempre vão. Na dúvida, registra."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apple Intelligence на этом iPhone сортирует уведомления, сообщения и письма перед записью. Реклама, рассылки, спам и напоминания приложений остаются на телефоне. Всё от людей, счета, доставки и оповещения отправляются всегда. В сомнительных случаях записывает."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu iPhone'daki Apple Intelligence, bildirimleri, mesajları ve e-postaları kaydedilmeden önce ayıklar. Pazarlama, bültenler, spam ve uygulama hatırlatmaları telefonda kalır. Bir kişiden gelen her şey, faturalar, teslimatlar ve uyarılar her zaman gider. Emin olmadığında kaydeder."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 上的 Apple Intelligence 会在记录前分拣通知、信息和邮件。营销、新闻通讯、垃圾信息和 App 的召回提醒会留在手机上。来自真人的内容、账单、快递和警报始终会发送。拿不准时会记录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此 iPhone 上的 Apple Intelligence 會在記錄前分類通知、訊息和郵件。行銷、電子報、垃圾訊息和 App 的召回提醒會留在手機上。來自真人的內容、帳單、包裹和警示一律會傳送。拿不準時會記錄。"
+          }
+        }
+      }
+    },
+    "Junk" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Junk"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Basura"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Indésirables"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sampah"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spazzatura"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "迷惑"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "정크"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Śmieci"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lixo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Мусор"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gereksiz"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "垃圾"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "垃圾"
+          }
+        }
+      }
+    },
+    "Leave out junk" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Junk weglassen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Omitir la basura"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Écarter les indésirables"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lewati sampah"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Escludi la spazzatura"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "迷惑なものを除外"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "정크 제외"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pomijaj śmieci"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deixar de fora o lixo"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отсеивать мусор"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gereksizleri dışarıda bırak"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "略过垃圾"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "略過垃圾"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

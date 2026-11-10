@@ -98,6 +98,35 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     // inbox_store.py's test_what_counts_as_a_code: keep both lists in step.
+    /// The junk filter leaves out only what the model calls junk, for the
+    /// kinds it sorts, while it's on, and keeps the event when the model is
+    /// slow or can't answer.
+    func testShortcutInboxJunkFilterLeavesOutOnlyClearJunk() async {
+        let defaults = UserDefaults(suiteName: "junk-\(UUID().uuidString)")!
+        let promo = ShortcutEvent(kind: .email, at: Date(), source: "Shop", title: "50% off today", text: "Sale ends soon")
+        let asked = PromptBox()
+        let junk: @Sendable (String) async -> Bool? = { text in await asked.add(text); return true }
+        let left = await ShortcutJunkFilter.shouldLeaveOut(promo, defaults: defaults, classify: junk)
+        XCTAssertTrue(left)
+        XCTAssertEqual(ShortcutJunkFilter.leftOutCount(in: defaults), 1)
+        let prompt = await asked.texts.first ?? ""
+        XCTAssertTrue(prompt.contains("From: Shop") && prompt.contains("Title: 50% off today"))
+        // A payment, a tag or a sound is never sorted.
+        let payment = ShortcutEvent(kind: .transaction, at: Date(), title: "Coffee", amount: "$4")
+        let kept = await ShortcutJunkFilter.shouldLeaveOut(payment, defaults: defaults, classify: junk)
+        XCTAssertFalse(kept)
+        // Unsure or unavailable keeps it.
+        let unsure = await ShortcutJunkFilter.shouldLeaveOut(promo, defaults: defaults, classify: { _ in nil })
+        XCTAssertFalse(unsure)
+        let notJunk = await ShortcutJunkFilter.shouldLeaveOut(promo, defaults: defaults, classify: { _ in false })
+        XCTAssertFalse(notJunk)
+        // Off: nothing is sorted.
+        ShortcutJunkFilter.setOn(false, in: defaults)
+        let off = await ShortcutJunkFilter.shouldLeaveOut(promo, defaults: defaults, classify: junk)
+        XCTAssertFalse(off)
+        XCTAssertEqual(ShortcutJunkFilter.leftOutCount(in: defaults), 1)
+    }
+
     func testShortcutInboxDropsWhatLooksLikeASignInCode() {
         let cases: [(String, Bool)] = [
             ("Your verification code is 482913", true),
@@ -345,4 +374,9 @@ extension HermesVoiceGatewayTimeoutTests {
         state.noteKey(true, for: scope.storageID)
         XCTAssertEqual(state.hasLocalData(scope), true)
     }
+}
+
+private actor PromptBox {
+    private(set) var texts: [String] = []
+    func add(_ text: String) { texts.append(text) }
 }

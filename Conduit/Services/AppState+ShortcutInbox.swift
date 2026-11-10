@@ -72,6 +72,8 @@ enum ShortcutLogOutcome: Equatable {
     case logged(Int)
     /// It looked like a sign-in code, so it never left the phone.
     case skippedCode
+    /// The on-device model took it for junk, so it never left the phone.
+    case skippedJunk
 }
 
 /// Whether the host in use keeps Log to Hermes events.
@@ -99,6 +101,7 @@ extension AppState {
             throw ShortcutLogError.tooOld
         }
         if ShortcutEventFilter.looksLikeCode(event) { return .skippedCode }
+        if await ShortcutJunkFilter.shouldLeaveOut(event) { return .skippedJunk }
         // Right after a cold launch in the background the dashboard
         // connection takes a moment.
         for _ in 0..<10 where dashboardTicketBridge == nil && Date().addingTimeInterval(8) < deadline {
