@@ -503911,6 +503911,416 @@
           }
         }
       }
+    },
+    "Hermes chat" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes-Chat"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat de Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Discussion Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat di Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesのチャット"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 채팅"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Czat Hermesa"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat do Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чат Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes sohbeti"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 聊天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 聊天"
+          }
+        }
+      }
+    },
+    "Open Chat" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chat öffnen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir chat"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrir la discussion"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka Obrolan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apri chat"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャットを開く"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "채팅 열기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otwórz czat"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abrir chat"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открыть чат"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sohbeti Aç"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开聊天"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開聊天"
+          }
+        }
+      }
+    },
+    "Open a Hermes chat in Conduit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Einen Hermes-Chat in Conduit öffnen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre un chat de Hermes en Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvrir une discussion Hermes dans Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buka obrolan Hermes di Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apri una chat di Hermes in Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ConduitでHermesのチャットを開きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit에서 Hermes 채팅을 엽니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otwórz czat Hermesa w Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abra um chat do Hermes no Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открыть чат Hermes в Conduit."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit'te bir Hermes sohbeti açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Conduit 中打开 Hermes 聊天。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Conduit 中打開 Hermes 聊天。"
+          }
+        }
+      }
+    },
+    "Conduit couldn't find that chat on Hermes, so nothing was sent. Pick another chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit hat diesen Chat bei Hermes nicht gefunden, daher wurde nichts gesendet. Wähle einen anderen Chat."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no encontró ese chat en Hermes, así que no se envió nada. Elige otro chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit n'a pas trouvé cette discussion sur Hermes, rien n'a donc été envoyé. Choisissez une autre discussion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak menemukan obrolan itu di Hermes, jadi tidak ada yang dikirim. Pilih obrolan lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non ha trovato quella chat su Hermes, quindi non è stato inviato nulla. Scegli un'altra chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ConduitはHermesでそのチャットを見つけられなかったため、何も送信していません。別のチャットを選んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit가 Hermes에서 그 채팅을 찾지 못해 아무것도 보내지 않았습니다. 다른 채팅을 고르세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie znalazł tego czatu w Hermesie, więc nic nie zostało wysłane. Wybierz inny czat."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não encontrou esse chat no Hermes, então nada foi enviado. Escolha outro chat."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit не нашёл этот чат в Hermes, поэтому ничего не отправлено. Выберите другой чат."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bu sohbeti Hermes'te bulamadı, bu yüzden hiçbir şey gönderilmedi. Başka bir sohbet seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 在 Hermes 上找不到该聊天，因此没有发送任何内容。请选择其他聊天。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 在 Hermes 上找不到該聊天，因此沒有傳送任何內容。請選擇其他聊天。"
+          }
+        }
+      }
+    },
+    "That chat is on another Hermes dashboard. Switch to it in Conduit first, then run this again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Chat ist auf einem anderen Hermes-Dashboard. Wechsle zuerst in Conduit dorthin und führe dies dann erneut aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ese chat está en otro panel de Hermes. Cambia a él en Conduit primero y vuelve a ejecutar esto."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette discussion se trouve sur un autre tableau de bord Hermes. Passez-y d'abord dans Conduit, puis relancez ceci."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Obrolan itu ada di dasbor Hermes lain. Beralih ke dasbor itu di Conduit dulu, lalu jalankan ini lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quella chat è su un'altra dashboard di Hermes. Passa a quella dashboard in Conduit, poi esegui di nuovo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのチャットは別のHermesダッシュボードにあります。先にConduitでそのダッシュボードに切り替えてから、もう一度実行してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그 채팅은 다른 Hermes 대시보드에 있습니다. 먼저 Conduit에서 그 대시보드로 전환한 다음 다시 실행하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten czat jest na innym pulpicie Hermesa. Najpierw przełącz się na niego w Conduit, a potem uruchom to ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esse chat está em outro painel do Hermes. Mude para ele no Conduit primeiro e execute de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этот чат находится на другой панели Hermes. Сначала переключитесь на неё в Conduit, затем запустите снова."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu sohbet başka bir Hermes panosunda. Önce Conduit'te o panoya geçin, sonra bunu yeniden çalıştırın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "该聊天位于另一个 Hermes 仪表板上。请先在 Conduit 中切换到它，然后再运行一次。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "該聊天位於另一個 Hermes 儀表板上。請先在 Conduit 中切換到它，然後再執行一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
