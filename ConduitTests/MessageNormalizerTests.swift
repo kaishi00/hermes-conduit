@@ -3002,6 +3002,21 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(messages.first?.isSteer, false)
     }
 
+    func testAReplyThatIsOnlyASilenceMarkerShowsNothingOnReload() {
+        // A Bot Chat's work update the bot had nothing to say about: Hermes
+        // sends the live turn an empty reply and stores "[SILENT]".
+        let messages = MessageNormalizer.normalizeMessages([
+            .object(["id": .number(31), "role": .string("user"), "display_kind": .string("hidden"),
+                     "content": .string("Work update from your workstreams.")]),
+            .object(["id": .number(32), "role": .string("assistant"), "content": .string("[SILENT]\n")]),
+            .object(["id": .number(33), "role": .string("user"), "content": .string("How's W1?")]),
+            .object(["id": .number(34), "role": .string("assistant"),
+                     "content": .string("[SILENT] is what I answer when nothing changed.")])
+        ])
+
+        XCTAssertEqual(messages.map(\.content), ["How's W1?", "[SILENT] is what I answer when nothing changed."])
+    }
+
     func testHiddenUserRowIsDroppedEntirely() {
         let messages = MessageNormalizer.normalizeMessages([
             .object([

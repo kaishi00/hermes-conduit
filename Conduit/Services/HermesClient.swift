@@ -5792,6 +5792,16 @@ enum MessageNormalizer {
         return .other
     }
 
+    /// Hermes' own markers for "nothing to send" (gateway/response_filters.py,
+    /// `LIVE_GATEWAY_SILENT_MARKERS`), when they are the whole reply.
+    static let silenceMarkers: Set<String> = [
+        "[SILENT]", "SILENT", "NO_REPLY", "NO REPLY", "[静默]", "静默", "[沉默]", "沉默"
+    ]
+
+    static func isSilenceMarker(_ text: String) -> Bool {
+        silenceMarkers.contains(text.trimmingCharacters(in: .whitespacesAndNewlines))
+    }
+
     /// `imageScope` names the session and profile the rows were read from,
     /// so pictures stored inside them can be fetched again (#652).
     static func normalizeMessages(
@@ -5903,6 +5913,14 @@ enum MessageNormalizer {
             }
             if isSteerRow {
                 rawContent = steerText(fromMarker: rawContent)
+            }
+            // A reply that is only Hermes' silence marker is the model saying
+            // it has nothing to tell the user (a Bot Chat's work update, a
+            // cron run). Hermes sends the live turn an empty reply for it, but
+            // stores the marker, so a reload reads it back: it shows nothing
+            // then too. Its tool calls and commentary stay.
+            if role == .assistant, !isToolResult, displayKind == nil, isSilenceMarker(rawContent) {
+                rawContent = ""
             }
             let modelChange = modelChangeActivity(fromText: rawContent)
             let systemNotice = systemNoticeText(fromText: rawContent)
