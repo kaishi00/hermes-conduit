@@ -75,8 +75,10 @@ extension AppState {
 
     /// The plugin answered that it has no such board (404 "That board is
     /// gone", or an id it won't read), rather than that it couldn't answer.
+    /// A 404 for a profile that turned the plugin off isn't the board's: it
+    /// reads again once the plugin is back.
     nonisolated static func lineBoardIsGone(_ error: Error) -> Bool {
-        guard case DashboardTicketBridgeError.http(let status, _) = error else { return false }
-        return [400, 404, 410].contains(status)
+        guard case DashboardTicketBridgeError.http(let status, let detail) = error else { return false }
+        return [400, 404, 410].contains(status) && !DashboardTicketBridgeError.isPluginOffDetail(detail)
     }
 }

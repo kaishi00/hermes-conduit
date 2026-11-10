@@ -392,6 +392,7 @@ final class WatchDirectBroker {
             "connected": appState.isConnected,
         ])
         var planned: WatchDirectConnection?
+        let startedOn = appState.activeDashboardID
         do {
             let plan = try await appState.prepareWatchDirectCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }, provider: provider)
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
@@ -475,7 +476,7 @@ final class WatchDirectBroker {
             ])
             return .directSession(callID: id, session: session)
         } catch {
-            let reason = refusal(for: error, connection: planned)
+            let reason = refusal(for: error, connection: planned, startedOn: startedOn)
             link.log.note("watchDirectPrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -524,6 +525,7 @@ final class WatchDirectBroker {
             "connected": appState.isConnected,
         ])
         var planned: WatchDirectConnection?
+        let startedOn = appState.activeDashboardID
         do {
             let plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
@@ -601,7 +603,7 @@ final class WatchDirectBroker {
             endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return reply
         } catch {
-            let reason = refusal(for: error, connection: planned)
+            let reason = refusal(for: error, connection: planned, startedOn: startedOn)
             link.log.note("watchBridgePrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -644,6 +646,7 @@ final class WatchDirectBroker {
             "connected": appState.isConnected,
         ])
         var planned: WatchDirectConnection?
+        let startedOn = appState.activeDashboardID
         do {
             let plan = try await appState.prepareWatchGrokCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
@@ -735,7 +738,7 @@ final class WatchDirectBroker {
             endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return reply
         } catch {
-            let reason = refusal(for: error, connection: planned)
+            let reason = refusal(for: error, connection: planned, startedOn: startedOn)
             link.log.note("watchGrokPrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -777,6 +780,7 @@ final class WatchDirectBroker {
             "connected": appState.isConnected,
         ])
         var planned: WatchDirectConnection?
+        let startedOn = appState.activeDashboardID
         do {
             let plan = try await appState.prepareWatchLocalLiveCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
@@ -825,7 +829,7 @@ final class WatchDirectBroker {
             endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return reply
         } catch {
-            let reason = refusal(for: error, connection: planned)
+            let reason = refusal(for: error, connection: planned, startedOn: startedOn)
             link.log.note("watchLocalLivePrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -1204,8 +1208,12 @@ final class WatchDirectBroker {
     /// call's connection is still the active one: after a dashboard switch
     /// the call ended because the connection changed, as the guarded steps
     /// say, never with another host's keeper named for this one (issue 2066).
-    private func refusal(for error: Error, connection: WatchDirectConnection?) -> String {
-        if let connection, !appState.watchConnectionIsCurrent(connection) {
+    /// Before the plan names its connection, the dashboard the prepare
+    /// started on stands in for it.
+    private func refusal(for error: Error, connection: WatchDirectConnection?, startedOn: UUID?) -> String {
+        if let connection {
+            if !appState.watchConnectionIsCurrent(connection) { return WatchVoiceStartFailure.connectionChanged }
+        } else if appState.activeDashboardID != startedOn {
             return WatchVoiceStartFailure.connectionChanged
         }
         return (error as? WatchDirectPrepareError)?.reason ?? PluginUpdateAsk.reason(UserFacingError.message(for: error)) ?? ""
