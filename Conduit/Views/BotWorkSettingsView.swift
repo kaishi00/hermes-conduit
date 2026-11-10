@@ -17,6 +17,12 @@ struct BotWorkSettingsView: View {
     /// The Workstream Model page's pick: it sets the provider, then the
     /// model, and the model's write saves the two together.
     @State private var pickedProvider = ""
+    /// Hermes' helper model slot the plugin's work watch reads with, in
+    /// this bot's profile; nil until read, or on a plugin without it.
+    @State private var watchSlot: HelperModelSlot?
+    /// Names the newest slot read: an older one that answers later is
+    /// dropped.
+    @State private var watchReads = 0
 
     var body: some View {
         // Settings' own page: cards with their names over them, menus for
@@ -46,8 +52,12 @@ struct BotWorkSettingsView: View {
         // Again when the connection comes back: a page opened while the
         // app reconnects (just back in the foreground) read nothing.
         .task(id: appState.isConnected) {
-            guard settings == nil else { return }
-            await load()
+            if settings == nil { await load() }
+            await readWatchSlot()
+        }
+        // Back from its page, or set on Models & providers meanwhile.
+        .onReceive(NotificationCenter.default.publisher(for: HelperModelSlot.saved)) { _ in
+            Task { await readWatchSlot() }
         }
     }
 
@@ -122,6 +132,18 @@ struct BotWorkSettingsView: View {
                 caption(Self.coordinationCaption(coordination, botName: botName))
                 if coordination != .off {
                     caption(AppLocalization.string("This doesn’t change what workstreams may do: their approvals stay as set under Safety."))
+                    if let watchSlot {
+                        // The same slot as Models & providers > Helper
+                        // models, in this bot's profile.
+                        NavigationLink {
+                            HelperModelPage(slot: watchSlot, settings: watchModelSettings)
+                        } label: {
+                            ModelChooserLinkRow(title: AppLocalization.string("Watch Model"), value: watchSlot.value)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("bot.work.watchModel")
+                        caption(AppLocalization.string("A helper model reads what workstreams report while they work and tells \(botName) when one may affect another. A small, fast model is enough."))
+                    }
                 }
             }
         }
@@ -305,6 +327,43 @@ struct BotWorkSettingsView: View {
                 Task { await save(new, from: old) }
             }
         )
+    }
+
+    /// The work watch's slot in this bot's profile, as the Helper models
+    /// pages set it.
+    private var watchModelSettings: VoiceReplyModelSettingsModel {
+        let profile = profile
+        let appState = appState
+        return VoiceReplyModelSettingsModel(
+            kept: { appState.keptHelperModel(task: HelperModelSlot.workWatch, inProfile: profile) },
+            keptProviders: { appState.keptModelProviders(inProfile: profile) },
+            load: { try await appState.loadHelperModel(task: HelperModelSlot.workWatch, inProfile: profile) },
+            loadProviders: { await appState.loadModelProviders(inProfile: profile) },
+            save: { await appState.setHelperModel($0, confirmed: $1, profile: profile) }
+        )
+    }
+
+    /// Kept first, then Hermes, tried as often as the settings' read. A
+    /// read that fails keeps what was shown; only the newest read's answer
+    /// is shown.
+    private func readWatchSlot() async {
+        watchReads += 1
+        let read = watchReads
+        if watchSlot == nil {
+            watchSlot = appState.keptHelperModels(inProfile: profile)?.first { $0.id == HelperModelSlot.workWatch }
+        }
+        for attempt in 0..<Self.loadAttempts {
+            if attempt > 0 {
+                try? await Task.sleep(for: .seconds(attempt))
+                if Task.isCancelled { return }
+            }
+            if let loaded = try? await appState.loadHelperModels(inProfile: profile) {
+                guard read == watchReads else { return }
+                watchSlot = loaded.first { $0.id == HelperModelSlot.workWatch }
+                return
+            }
+            if Task.isCancelled || read != watchReads { return }
+        }
     }
 
     /// A read can miss while the dashboard's bridge settles (a reconnect, a

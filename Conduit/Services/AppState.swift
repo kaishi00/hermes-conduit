@@ -3215,6 +3215,36 @@ final class AppState: ObservableObject {
         keptAnswer(KeptRoute.modelAuxiliary).map { VoiceReplyModelSetting(auxiliaryResponse: $0, task: task) != nil }
     }
 
+    /// `profile`'s helper model slots, which may not be the open profile's:
+    /// Edit Bot > Work sets its bot's work watch there. The open profile's
+    /// share its read; another's come from the dashboard's route for it,
+    /// kept as Models & providers keeps them.
+    func loadHelperModels(inProfile profile: String) async throws -> [HelperModelSlot] {
+        HelperModelSlot.slots(in: try await readHelperModels(inProfile: profile))
+    }
+
+    func keptHelperModels(inProfile profile: String) -> [HelperModelSlot]? {
+        if profilesMatch(profile, activeProfile) { return keptHelperModels() }
+        return keptAnswer(KeptRoute.modelAuxiliary, profile: profile).map { HelperModelSlot.slots(in: $0) }
+    }
+
+    func loadHelperModel(task: String, inProfile profile: String) async throws -> VoiceReplyModelSetting? {
+        VoiceReplyModelSetting(auxiliaryResponse: try await readHelperModels(inProfile: profile), task: task)
+    }
+
+    func keptHelperModel(task: String, inProfile profile: String) -> VoiceReplyModelSetting? {
+        if profilesMatch(profile, activeProfile) { return keptHelperModel(task: task) }
+        return keptAnswer(KeptRoute.modelAuxiliary, profile: profile).flatMap { VoiceReplyModelSetting(auxiliaryResponse: $0, task: task) }
+    }
+
+    private func readHelperModels(inProfile profile: String) async throws -> [String: Any] {
+        if profilesMatch(profile, activeProfile) { return try await readHelperModels() }
+        guard let owner = currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
+        let answer = try await readKeepingAnswer(KeptRoute.modelAuxiliary, profile: profile, owner: owner)
+        guard ownsDashboardRuntime(owner) else { throw CancellationError() }
+        return answer
+    }
+
     /// Hermes' `/api/model/auxiliary` answer, carried from the read to
     /// every reader sharing it.
     private struct HelperModelsAnswer: @unchecked Sendable { let json: [String: Any] }
@@ -3298,19 +3328,20 @@ final class AppState: ObservableObject {
         )
     }
 
-    /// Writes a helper model slot (Models & providers > Helper models).
-    func setHelperModel(_ setting: VoiceReplyModelSetting, confirmed: Bool) async -> HelperModelSaveResult {
+    /// Writes a helper model slot (Models & providers > Helper models), in
+    /// `profile` when given (Edit Bot > Work's work watch, for its bot).
+    func setHelperModel(_ setting: VoiceReplyModelSetting, confirmed: Bool, profile: String? = nil) async -> HelperModelSaveResult {
         await setHelperModel(
-            setting, confirmed: confirmed,
+            setting, confirmed: confirmed, profile: profile,
             offline: AppLocalization.string("Connect to Hermes to change this profile's models."),
             failure: { AppLocalization.string("Could not save the helper model: \($0)") }
         )
     }
 
     private func setHelperModel(
-        _ setting: VoiceReplyModelSetting, confirmed: Bool, offline: String, failure: (String) -> String
+        _ setting: VoiceReplyModelSetting, confirmed: Bool, profile: String? = nil, offline: String, failure: (String) -> String
     ) async -> HelperModelSaveResult {
-        let profile = activeProfile
+        let profile = profile ?? activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { return .refused(offline) }
         let dashboardTicketBridge = owner.bridge
         do {
