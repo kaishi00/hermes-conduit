@@ -1259,6 +1259,7 @@ final class MessageReadAloudControllerTests: XCTestCase {
         let gateway = MockReadAloudGateway()
         gateway.blocksFinish = true
         let other = MockReadAloudGateway()
+        other.blocksFinish = true
         let nowPlaying = MockReadAloudNowPlaying()
         let controller = makeController(playback: playback, gateway: gateway, nowPlaying: nowPlaying)
 
