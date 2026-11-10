@@ -415,6 +415,49 @@ extension GatewayRestartTests {
         XCTAssertTrue(appState.showsNotifierPluginUpdateNotice)
     }
 
+    func testFinishSetupPendingHoldsTheNoticeUntilItEnds() throws {
+        // Through AppState, as the notice reads it: while Finish setting up
+        // is pending for this dashboard under V2, its plugin row is the only
+        // offer, for an update and a restart alike; ending it brings the
+        // notice back.
+        let standard = UserDefaults.standard
+        let savedShell = standard.object(forKey: V2ShellPreference.key)
+        standard.set(true, forKey: V2ShellPreference.key)
+        addTeardownBlock {
+            if let savedShell {
+                standard.set(savedShell, forKey: V2ShellPreference.key)
+            } else {
+                standard.removeObject(forKey: V2ShellPreference.key)
+            }
+        }
+        for (channel, report, offer) in [
+            (NotifierPluginNoticeChannel.stableOnly, Self.capabilities(loaded: "0.30.0", disk: "0.30.0", boot: "a"), NotifierPluginNoticeOffer.update),
+            (NotifierPluginNoticeChannel.never, Self.capabilities(loaded: "0.63.0", disk: "0.64.0", boot: "a"), NotifierPluginNoticeOffer.restart),
+        ] {
+            let suite = "GatewayRestartTests.finishSetupNotice.\(UUID().uuidString)"
+            let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+            addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+            let dashboard = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://mac.example")
+            let appState = AppState(
+                defaults: defaults,
+                loadSavedConnection: false,
+                dashboardRegistry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard]),
+                clearSessionPresentationCache: {},
+                sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+            )
+            appState.setNotifierPluginNoticeChannel(channel)
+            appState.dashboardsFinishingSetup = [dashboard.id]
+            appState.applyNotifierPluginReport(report)
+            XCTAssertEqual(appState.notifierPlugin.noticeOffer(finishSetupOffersPlugin: false), offer, "\(offer)")
+            XCTAssertEqual(appState.notifierPluginNoticeOffer, NotifierPluginNoticeOffer.none, "\(offer)")
+            XCTAssertFalse(appState.showsNotifierPluginUpdateNotice, "\(offer)")
+
+            appState.endFinishSetup()
+            XCTAssertEqual(appState.notifierPluginNoticeOffer, offer, "\(offer)")
+            XCTAssertTrue(appState.showsNotifierPluginUpdateNotice, "\(offer)")
+        }
+    }
+
     func testEachReportSaysWhetherTheHostManagesThePlugin() throws {
         let suite = "GatewayRestartTests.managed.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
