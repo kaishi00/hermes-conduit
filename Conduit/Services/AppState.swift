@@ -22135,7 +22135,9 @@ final class AppState: ObservableObject {
             // including the typed classification Repair Connection seeds
             // from: a successful reconnect makes any previous failure stale,
             // so a LATER unrelated failure must route repair from itself.
-            errorMessage = nil
+            // A failed send's reason stays: its words are back in the
+            // composer, and it goes with the next send or its chat.
+            if errorMessage == nil || errorMessage != sendFailureShown { errorMessage = nil }
             chatErrorBehindRoom = nil
             lastConnectionFailure = nil
             reconnectAttempts = 0
