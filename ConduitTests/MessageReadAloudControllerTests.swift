@@ -1181,18 +1181,52 @@ final class MessageReadAloudControllerTests: XCTestCase {
         let playback = MockReadAloudPlayback()
         let gateway = MockReadAloudGateway()
         gateway.blocksFinish = true
-        let controller = makeController(playback: playback, gateway: gateway)
+        let nowPlaying = MockReadAloudNowPlaying()
+        let controller = makeController(playback: playback, gateway: gateway, nowPlaying: nowPlaying)
 
         controller.enqueue(messageID: "room:r:1", content: "First bot.") { true }
         controller.enqueue(messageID: "room:r:2", content: "Second bot.") { true }
         await waitUntil { gateway.streams.first?.finishCount == 1 }
+        try gateway.streams.first?.emitPCMForTest()
         XCTAssertEqual(playback.sessionHolds, 0, "nothing held while the first plays")
         gateway.streams.first?.releaseFinishForTest()
         await waitUntil { gateway.openCount == 2 }
         XCTAssertEqual(playback.sessionsHeld, 1, "held while the second opens")
+        XCTAssertEqual(nowPlaying.endCount, 0, "Now Playing stays through the gap")
 
         try gateway.streams.last?.emitPCMForTest()
         XCTAssertEqual(playback.sessionsHeld, 0, "the second sounding holds it itself")
+        XCTAssertEqual(playback.sessionHolds, 1)
+        XCTAssertEqual(nowPlaying.endCount, 0)
+        XCTAssertEqual(nowPlaying.titles.count, 2, "retitled for the second")
+        controller.stop()
+        XCTAssertEqual(nowPlaying.endCount, 1)
+    }
+
+    /// The next message in another bot's voice readies its gateway, which
+    /// stops the controller: the hold carries over all the same.
+    func testTheSessionHoldCarriesIntoAnotherBotsVoice() async throws {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        gateway.blocksFinish = true
+        let other = MockReadAloudGateway()
+        let nowPlaying = MockReadAloudNowPlaying()
+        let controller = makeController(playback: playback, gateway: gateway, nowPlaying: nowPlaying)
+
+        controller.enqueue(messageID: "room:r:1", content: "First bot.") { true }
+        controller.enqueue(messageID: "room:r:2", content: "Second bot.") { [weak controller] in
+            controller?.setGateway(other)
+            return true
+        }
+        await waitUntil { gateway.streams.first?.finishCount == 1 }
+        try gateway.streams.first?.emitPCMForTest()
+        gateway.streams.first?.releaseFinishForTest()
+        await waitUntil { other.openCount == 1 }
+        XCTAssertEqual(playback.sessionsHeld, 1, "still held while the other bot's stream opens")
+        XCTAssertEqual(nowPlaying.endCount, 0)
+
+        try other.streams.last?.emitPCMForTest()
+        XCTAssertEqual(playback.sessionsHeld, 0)
         XCTAssertEqual(playback.sessionHolds, 1)
     }
 

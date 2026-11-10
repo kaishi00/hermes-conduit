@@ -148,10 +148,17 @@ final class MessageReadAloudController: ObservableObject {
     /// stream's playback lets the session go as it drains, and deactivating
     /// it there brought other audio back up and dropped Now Playing between
     /// every message (issue 2148). Released once the next stream sounds, the
-    /// reading ends with nothing after it, or `sessionHoldLimit` passes.
+    /// reading ends with nothing after it, or `sessionHoldLimit` passes
+    /// from when the last one drained.
     private var sessionHold: (@MainActor () -> Void)?
     private var sessionHoldTimeout: Task<Void, Never>?
     static let sessionHoldLimit: Duration = .seconds(10)
+    /// Now Playing kept through a held gap rather than ended with the
+    /// reading: the next stream retitles it, a release ends it.
+    private var nowPlayingKeptForNext = false
+    /// The next queued message is being readied: another bot's gateway
+    /// stops the controller, which mustn't let the hold go (issue 2148).
+    private var carryingSessionHold = false
 
     init(
         playback: SpeechPlaybackService? = nil,
@@ -439,8 +446,10 @@ final class MessageReadAloudController: ObservableObject {
         // ones after it may still be.
         var reading = reading
         var remaining = rest
+        carryingSessionHold = true
         while !reading.prepare() {
             guard !remaining.isEmpty else {
+                carryingSessionHold = false
                 queue = []
                 releaseSessionHold()
                 return
@@ -448,6 +457,7 @@ final class MessageReadAloudController: ObservableObject {
             reading = remaining.removeFirst()
         }
         endOperation()
+        carryingSessionHold = false
         queue = remaining.filter { $0.messageID != reading.messageID }
         startPlayback(messageID: reading.messageID, content: reading.content)
     }
@@ -752,6 +762,7 @@ final class MessageReadAloudController: ObservableObject {
                     try playback.finish()
                     await playback.drain()
                     guard isCurrent(generation) else { return }
+                    armSessionHoldLimit()
                     betweenSegments = true
                 }
                 guard isCurrent(generation) else { return }
@@ -787,8 +798,9 @@ final class MessageReadAloudController: ObservableObject {
 
     private func transitionToPlaying(generation: UInt64) {
         guard isCurrent(generation) else { return }
-        // The stream sounding holds the session itself now.
-        releaseSessionHold()
+        // The stream sounding holds the session itself now; Now Playing,
+        // kept through the gap, is retitled below.
+        releaseSessionHold(endingNowPlaying: false)
         // Safety net: the playback service holds a pause across a stream
         // restart, but if anything ever leaves the reply sounding, stop
         // reporting it paused so the paused-stop timer cannot end it.
@@ -848,7 +860,8 @@ final class MessageReadAloudController: ObservableObject {
     /// the state change, on every terminal path.
     private func settle(_ terminal: State) {
         // Nothing waits to be read: the session goes as the reading did.
-        if queue.isEmpty { releaseSessionHold() }
+        // Readying the next one may stop the controller, which keeps it.
+        if queue.isEmpty, !carryingSessionHold { releaseSessionHold() }
         state = terminal
         isPaused = false
         betweenSegments = false
@@ -858,16 +871,32 @@ final class MessageReadAloudController: ObservableObject {
         nowReading = nil
         pausedStopTask?.cancel()
         pausedStopTask = nil
-        nowPlaying.end()
+        if sessionHold != nil, terminal == .idle {
+            // Held into the next message: Now Playing stays on the lock
+            // screen, and the limit runs from here, once this one drained.
+            nowPlayingKeptForNext = true
+            armSessionHoldLimit()
+        } else {
+            nowPlayingKeptForNext = false
+            nowPlaying.end()
+        }
         let end = endBackgroundActivity
         endBackgroundActivity = nil
         end?()
     }
 
+    /// Takes the hold before the stream drains, so the session never
+    /// drops; its limit starts once it has (`armSessionHoldLimit`), as
+    /// speech still queued can outlast it.
     private func holdSessionForNext() {
         guard sessionHold == nil,
               let release = playback.holdSession(onTakenOver: { [weak self] in self?.stop() }) else { return }
         sessionHold = release
+    }
+
+    private func armSessionHoldLimit() {
+        guard sessionHold != nil else { return }
+        sessionHoldTimeout?.cancel()
         sessionHoldTimeout = Task { [weak self] in
             try? await Task.sleep(for: Self.sessionHoldLimit)
             guard !Task.isCancelled else { return }
@@ -875,12 +904,16 @@ final class MessageReadAloudController: ObservableObject {
         }
     }
 
-    private func releaseSessionHold() {
+    private func releaseSessionHold(endingNowPlaying: Bool = true) {
         sessionHoldTimeout?.cancel()
         sessionHoldTimeout = nil
         let release = sessionHold
         sessionHold = nil
         release?()
+        if nowPlayingKeptForNext {
+            nowPlayingKeptForNext = false
+            if endingNowPlaying { nowPlaying.end() }
+        }
     }
 
     private func isCancellation(_ error: Error) -> Bool {
