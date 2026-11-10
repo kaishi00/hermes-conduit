@@ -70,6 +70,8 @@ struct ChatRowState: Equatable {
     /// boards read for them (LineBoards).
     var lineBoardIDs: [String: [String]] = [:]
     var lineBoards: [String: RichBoard] = [:]
+    /// Those the plugin no longer has, or that can't be drawn.
+    var lineBoardsGone: Set<String> = []
 
     init() {}
 
@@ -110,6 +112,7 @@ struct ChatRowState: Equatable {
         followUpReasons = appState.predictive.followUpReasons
         lineBoardIDs = facts.lineBoardIDs
         lineBoards = lineBoardIDs.isEmpty ? [:] : appState.lineBoards
+        lineBoardsGone = lineBoardIDs.isEmpty ? [] : appState.lineBoardsGone
         if !lineBoards.isEmpty {
             // A board read for a reply can bring a live card up to date too.
             latestLiveRows = LineBoards.latestLiveRows(latestLiveRows, order: facts.rowOrder, waiting: lineBoardIDs,

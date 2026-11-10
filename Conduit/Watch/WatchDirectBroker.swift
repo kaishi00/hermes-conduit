@@ -391,9 +391,11 @@ final class WatchDirectBroker {
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
+        var planned: WatchDirectConnection?
         do {
             let plan = try await appState.prepareWatchDirectCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }, provider: provider)
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            planned = plan.connection
             guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
@@ -473,8 +475,7 @@ final class WatchDirectBroker {
             ])
             return .directSession(callID: id, session: session)
         } catch {
-            // A token mint that 404s says who keeps the plugin up to date on a managed host.
-            let reason = (error as? WatchDirectPrepareError)?.reason ?? PluginUpdateAsk.reason(UserFacingError.message(for: error)) ?? ""
+            let reason = refusal(for: error, connection: planned)
             link.log.note("watchDirectPrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -522,9 +523,11 @@ final class WatchDirectBroker {
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
+        var planned: WatchDirectConnection?
         do {
             let plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            planned = plan.connection
             guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
@@ -598,8 +601,7 @@ final class WatchDirectBroker {
             endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return reply
         } catch {
-            // A token mint that 404s says who keeps the plugin up to date on a managed host.
-            let reason = (error as? WatchDirectPrepareError)?.reason ?? PluginUpdateAsk.reason(UserFacingError.message(for: error)) ?? ""
+            let reason = refusal(for: error, connection: planned)
             link.log.note("watchBridgePrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -641,9 +643,11 @@ final class WatchDirectBroker {
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
+        var planned: WatchDirectConnection?
         do {
             let plan = try await appState.prepareWatchGrokCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            planned = plan.connection
             guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
@@ -731,8 +735,7 @@ final class WatchDirectBroker {
             endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return reply
         } catch {
-            // A token mint that 404s says who keeps the plugin up to date on a managed host.
-            let reason = (error as? WatchDirectPrepareError)?.reason ?? PluginUpdateAsk.reason(UserFacingError.message(for: error)) ?? ""
+            let reason = refusal(for: error, connection: planned)
             link.log.note("watchGrokPrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -773,9 +776,11 @@ final class WatchDirectBroker {
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
+        var planned: WatchDirectConnection?
         do {
             let plan = try await appState.prepareWatchLocalLiveCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            planned = plan.connection
             guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
@@ -820,8 +825,7 @@ final class WatchDirectBroker {
             endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return reply
         } catch {
-            // A token mint that 404s says who keeps the plugin up to date on a managed host.
-            let reason = (error as? WatchDirectPrepareError)?.reason ?? PluginUpdateAsk.reason(UserFacingError.message(for: error)) ?? ""
+            let reason = refusal(for: error, connection: planned)
             link.log.note("watchLocalLivePrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -1193,6 +1197,19 @@ final class WatchDirectBroker {
     }
 
     // MARK: Tool grant
+
+    /// Why a call's prepare failed, as the Watch shows it and the log keeps
+    /// it. A missing plugin route is worded for the active host's plugin
+    /// (who keeps it up to date on a managed host), so only while the
+    /// call's connection is still the active one: after a dashboard switch
+    /// the call ended because the connection changed, as the guarded steps
+    /// say, never with another host's keeper named for this one (issue 2066).
+    private func refusal(for error: Error, connection: WatchDirectConnection?) -> String {
+        if let connection, !appState.watchConnectionIsCurrent(connection) {
+            return WatchVoiceStartFailure.connectionChanged
+        }
+        return (error as? WatchDirectPrepareError)?.reason ?? PluginUpdateAsk.reason(UserFacingError.message(for: error)) ?? ""
+    }
 
     /// A grant for the running call's lookups, jobs and Gemini tokens; nil
     /// when the host can't give one. A host that refuses jobs (a plugin

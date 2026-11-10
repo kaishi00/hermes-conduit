@@ -721,6 +721,15 @@ struct RichCardSchema {
         return normalizeCard(["type": "diff", "diff": value])?["diff"] as? [String: Any]
     }
 
+    /// A review round's decisions the host kept (GET /boards/reviews),
+    /// checked as a review card's are; empty when none is one.
+    func normalizeReviewDecisions(_ value: Any?, id: String) -> [[String: Any]] {
+        guard let value,
+              let review = normalizeCard(["type": "review", "review": ["id": id, "round": 1, "decisions": value]])?["review"]
+                as? [String: Any] else { return [] }
+        return review["decisions"] as? [[String: Any]] ?? []
+    }
+
     // MARK: A board's follow-ups
 
     /// The most follow-ups a board shows (the schema's board.next).

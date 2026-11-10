@@ -63,6 +63,7 @@ extension GroupChatModelsTests {
         /// What the plugin's `/room-files` stored, by name.
         var pluginStored: [String] = []
         var downloadError: Error?
+        var downloadAnswer: String?
         /// The send's outcome is unknown: the message stays pending.
         var sendsFail = false
         var logEvents: [GroupEvent] = []
@@ -129,6 +130,7 @@ extension GroupChatModelsTests {
         operations.downloadAttachment = { _, _, eventID, attachmentID, size in
             hermes.downloads.append((eventID, attachmentID, size))
             if let error = hermes.downloadError { throw error }
+            if let answer = hermes.downloadAnswer { return answer }
             return "data:image/png;base64,\(Self.pngBytes.base64EncodedString())"
         }
         let appState = AppState(
@@ -531,6 +533,16 @@ extension GroupChatModelsTests {
         XCTAssertEqual(read, .dataURL("data:image/png;base64,\(Self.pngBytes.base64EncodedString())"))
         XCTAssertEqual(hermes.downloads.map(\.eventID), ["srv-1"])
         XCTAssertEqual(hermes.downloads.map(\.attachmentID), ["a1"])
+
+        // Issue 2059: bounded as the plugin's room-file read, an answer over
+        // 16 MB, or one that isn't base64 media, is one Hermes won't give.
+        hermes.downloadAnswer = "data:image/png;base64," + String(repeating: "A", count: DataURLLimits.maxBase64Characters + 4)
+        let oversize = await appState.roomFileRead(for: path)
+        XCTAssertEqual(oversize, .gone)
+        hermes.downloadAnswer = "data:image/png,not-base64"
+        let garbage = await appState.roomFileRead(for: path)
+        XCTAssertEqual(garbage, .gone)
+        hermes.downloadAnswer = nil
 
         hermes.downloadError = RpcError(code: 4004, message: "attachment expired")
         let gone = await appState.roomFileRead(for: path)
