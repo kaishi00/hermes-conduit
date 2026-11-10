@@ -44,14 +44,14 @@ extension AppState {
                     // The bot's chat now, as its Bots row opens it (a /new
                     // since the pick moved it), never a new one.
                     guard let botName = reference.botName else { throw ShortcutSendError.chatUnavailable }
-                    func shown() -> BotProfile? {
-                        self.shownBotRoster.first { $0.name == botName && !$0.isHiddenByMeta }
-                    }
+                    let isPicked = { (bot: BotProfile) in bot.name == botName && !bot.isHiddenByMeta }
                     // Right after connecting the bot list may not have loaded
                     // yet (or was cleared with saved chats): ask for the
                     // current one before calling the bot gone.
-                    if shown() == nil { await self.refreshBotRoster() }
-                    guard let bot = shown() else { throw ShortcutSendError.chatUnavailable }
+                    if !self.shownBotRoster.contains(where: isPicked) { await self.refreshBotRoster() }
+                    guard let bot = self.shownBotRoster.first(where: isPicked) else {
+                        throw ShortcutSendError.chatUnavailable
+                    }
                     let rows = try await client.findBotChatSession(profile: bot.name)
                     guard case .success(.openExisting(_, let resumeID)) = BotChatResolver.resolve(
                         rows: rows, rosterCanonicalID: bot.canonicalSessionID
