@@ -5503,17 +5503,17 @@ README.md
 - Tests: `ConduitTests/WidgetConfigurationTests.swift` (the catalog), `ConduitTests/ShortcutSendTests.swift` (a picked chat)
 
 **Rulings**
-- The chats are the widget snapshot's: each workspace the app has shown, its last chat, pinned and recent chats and its Bot Chats, up to 20 a workspace. Only titles and where they live go into Spotlight, on the phone; no message does. iOS's Siri & Search settings for Conduit turn it off (2026-11-10, #NNNN).
-- Spotlight's copy is rebuilt whole from the snapshot after each write that changed it, so a chat that left the snapshot (deleted, archived, a removed dashboard or profile) leaves Spotlight too (2026-11-10, #NNNN).
-- Opening a chat goes through the widget's launch: it switches dashboard and profile and says when the chat is gone, as a widget tap does (2026-11-10, #NNNN).
-- Send to Hermes with a picked chat sends into that chat and never makes a new one: a chat Hermes no longer has, or a bot no longer listed, fails the run and nothing is sent. A picked Bot Chat is its bot's chat now, found as its Bots row finds it, so a /new since the pick doesn't strand it. It never switches dashboards: a chat on another dashboard says to switch in Conduit first. The pick wins over Chat Name and Profile (2026-11-10, #NNNN).
-- A saved shortcut's pick that the snapshot no longer lists keeps its identity, untitled, so the shortcut keeps working while the chat exists (2026-11-10, #NNNN).
+- The chats are the widget snapshot's: each workspace the app has shown, its last chat, pinned and recent chats and its Bot Chats, up to 20 a workspace. Only titles and where they live go into Spotlight, on the phone; no message does. iOS's Siri & Search settings for Conduit turn it off (2026-11-10, #2163).
+- Spotlight's copy is rebuilt whole from the snapshot after each write that changed it, so a chat that left the snapshot (deleted, archived, a removed dashboard or profile) leaves Spotlight too (2026-11-10, #2163).
+- Opening a chat goes through the widget's launch: it switches dashboard and profile and says when the chat is gone, as a widget tap does (2026-11-10, #2163).
+- Send to Hermes with a picked chat sends into that chat and never makes a new one: a chat Hermes no longer has, or a bot no longer listed, fails the run and nothing is sent. A picked Bot Chat is its bot's chat now, found as its Bots row finds it, so a /new since the pick doesn't strand it. It never switches dashboards: a chat on another dashboard says to switch in Conduit first. The pick wins over Chat Name and Profile (2026-11-10, #2163).
+- A saved shortcut's pick that the snapshot no longer lists keeps its identity, untitled, so the shortcut keeps working while the chat exists (2026-11-10, #2163).
 
 **Open gaps**
 - Scheduled jobs and projects aren't entities yet ("Run my morning job").
 - Not tried on a device yet: Spotlight results, Siri's chat names and the Shortcuts picker.
 
-**Checked:** 2026-11-10, #NNNN.
+**Checked:** 2026-11-10, #2163.
 
 ## Steps in a turn
 
@@ -6888,7 +6888,7 @@ platform list) · the chat header (shows no source)
 - A plugin platform Hermes adds after this list shows as Other until it's added here.
 - A saved chat list written before #1572 keeps Other on its platform rows until the live list replaces it: a saved row keeps no raw Hermes source, as in Kanban workers' transcripts.
 
-**Checked:** 2026-11-10, #NNNN (Siri, Spotlight and Send to Hermes' chat picker read the widget snapshot, so they leave out what it does; nothing here changed); 2026-10-31, #1572 (every gateway platform named, issue #1561).
+**Checked:** 2026-11-10, #2163 (Siri, Spotlight and Send to Hermes' chat picker read the widget snapshot, so they leave out what it does; nothing here changed); 2026-10-31, #1572 (every gateway platform named, issue #1561).
 
 ## Kanban workers' transcripts
 
