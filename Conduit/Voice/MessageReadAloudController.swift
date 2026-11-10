@@ -123,6 +123,10 @@ final class MessageReadAloudController: ObservableObject {
     }
 
     private var liveReply: LiveReply?
+    /// A followed reply between segments (a tool runs): nothing sounds, so
+    /// a pause holds the next segment until Resume rather than the engine.
+    private var betweenSegments = false
+    private var segmentWaiter: CheckedContinuation<Void, Never>?
 
     /// A group room's messages waiting to be read after the one playing.
     private struct QueuedReading {
@@ -401,6 +405,11 @@ final class MessageReadAloudController: ObservableObject {
 
     private func startNextQueued() {
         guard !queue.isEmpty else { return }
+        // Only the message already playing carries on off screen.
+        guard isForegroundActive else {
+            queue = []
+            return
+        }
         let next = queue.removeFirst()
         start(next, rest: queue)
     }
@@ -446,7 +455,7 @@ final class MessageReadAloudController: ObservableObject {
     func pause() -> Bool {
         guard case .playing = state else { return false }
         guard !isPaused else { return true }
-        guard playback.pause() else { return false }
+        guard betweenSegments || playback.pause() else { return false }
         isPaused = true
         nowPlaying.setPaused(true)
         let delay = pausedStopDelay
@@ -466,6 +475,16 @@ final class MessageReadAloudController: ObservableObject {
     func resume() -> Bool {
         guard case .playing = state else { return false }
         guard isPaused else { return true }
+        if betweenSegments {
+            isPaused = false
+            pausedStopTask?.cancel()
+            pausedStopTask = nil
+            nowPlaying.setPaused(false)
+            let waiter = segmentWaiter
+            segmentWaiter = nil
+            waiter?.resume()
+            return true
+        }
         // The service stopped underneath the pause (a phone call, a media
         // services reset): there is nothing left to resume, so settle the
         // reply instead of advertising playback that cannot sound.
@@ -672,6 +691,12 @@ final class MessageReadAloudController: ObservableObject {
                 switch item {
                 case .text(let text):
                     if open == nil {
+                        // Paused while a tool ran: the next segment waits.
+                        if isPaused, betweenSegments {
+                            await withCheckedContinuation { segmentWaiter = $0 }
+                            guard isCurrent(generation) else { return }
+                        }
+                        betweenSegments = false
                         let stream = try await openStream(gateway: gateway, generation: generation)
                         guard isCurrent(generation) else {
                             stream.cancel()
@@ -689,6 +714,8 @@ final class MessageReadAloudController: ObservableObject {
                     open = nil
                     try playback.finish()
                     await playback.drain()
+                    guard isCurrent(generation) else { return }
+                    betweenSegments = true
                 }
                 guard isCurrent(generation) else { return }
             }
@@ -782,6 +809,10 @@ final class MessageReadAloudController: ObservableObject {
     private func settle(_ terminal: State) {
         state = terminal
         isPaused = false
+        betweenSegments = false
+        let waiter = segmentWaiter
+        segmentWaiter = nil
+        waiter?.resume()
         nowReading = nil
         pausedStopTask?.cancel()
         pausedStopTask = nil
