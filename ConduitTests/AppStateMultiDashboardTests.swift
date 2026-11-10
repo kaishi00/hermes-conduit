@@ -1593,6 +1593,33 @@ extension AppStateMultiDashboardTests {
                        "the read after the save joined the save's own")
     }
 
+    /// A save drops its own profile's read even when that profile isn't
+    /// open: a switch leaves a read under way, and switching back mustn't
+    /// join it and show the pick from before the save.
+    func testAHelperModelSaveDropsItsProfilesReadAfterASwitchAway() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let before = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        appState.setActiveProfileForTesting("second")
+        let pick = VoiceReplyModelSetting(task: "title_generation", provider: "openrouter", model: "big/model", reasoningEffort: nil)
+        let save = Task { await appState.setHelperModel(pick, confirmed: true, profile: "default") }
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": ["title_generation"]], toPathEnding: "/api/model/set")
+        let saved = await save.value
+        XCTAssertEqual(saved, .saved)
+        appState.setActiveProfileForTesting("default")
+        let after = Task { try await appState.loadHelperModels() }
+        let reads = { held.sent.filter { $0.path == AppState.KeptRoute.modelAuxiliary }.count }
+        for _ in 0..<200 where reads() < 2 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(reads(), 2, "the read after the save is its own, not the one from before it")
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]],
+                              toPathEnding: AppState.KeptRoute.modelAuxiliary)
+        _ = try await before.value
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "openrouter", "model": "big/model"]]],
+                              toPathEnding: AppState.KeptRoute.modelAuxiliary)
+        let afterSlots = try await after.value
+        XCTAssertEqual(afterSlots.first?.setting.model, "big/model", "the pick from the save, not from before it")
+    }
+
     private func heldSwitchFixture() -> (appState: AppState, held: HeldDashboardRequests, vps: SavedDashboard) {
         let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
         let vps = dashboard("VPS", "https://vps-\(UUID().uuidString.lowercased()).invalid")
