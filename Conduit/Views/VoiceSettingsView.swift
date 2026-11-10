@@ -1352,8 +1352,8 @@ struct VoiceSettingsView: View {
         ConduitSettingsSection(title: AppLocalization.string("Read Aloud"), symbol: "speaker.wave.2", tint: .conduitAccent) {
             Toggle("Read replies aloud", isOn: $readsRepliesAloud)
                 .accessibilityIdentifier("voice.readRepliesAloud")
-                .accessibilityHint("Reads each reply in the open chat as it arrives, whether you typed or dictated the message, and each new message from a group room's bots. Stop it from the player or the speaker button. A reading starts only while Conduit is on screen, then carries on with the phone locked.")
-            Text("Reads each reply in the open chat as it arrives, whether you typed or dictated the message, and each new message from a group room's bots. Stop it from the player or the speaker button. A reading starts only while Conduit is on screen, then carries on with the phone locked.")
+                .accessibilityHint("Reads each reply in the open chat as it arrives, whether you typed or dictated the message, and each new message from the bots of the group room you have open. Stop it from the player or the speaker button. A reading starts only while Conduit is on screen, then carries on with the phone locked.")
+            Text("Reads each reply in the open chat as it arrives, whether you typed or dictated the message, and each new message from the bots of the group room you have open. Stop it from the player or the speaker button. A reading starts only while Conduit is on screen, then carries on with the phone locked.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 // The switch's hint already reads this.

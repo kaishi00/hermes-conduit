@@ -190,7 +190,7 @@ extension AppState {
         ))
         catalog.append(boolDescriptor(
             key: "voice.read_replies_aloud", section: "Read Aloud", title: "Read replies aloud",
-            description: "Reads each reply in the open chat aloud as it arrives, typed or dictated messages included, and each new message from a group room's bots. Off means only the speaker button under a reply reads it.",
+            description: "Reads each reply in the open chat aloud as it arrives, typed or dictated messages included, and each new message from the bots of the group room you have open. Off means only the speaker button under a reply reads it.",
             tier: .ask, displayTitle: { AppLocalization.string("Read replies aloud") },
             read: { ReadRepliesAloud.isOn(self.appDefaults) },
             write: { self.appDefaults.set($0, forKey: ReadRepliesAloud.preferenceKey) }

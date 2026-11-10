@@ -1088,6 +1088,41 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(gateway.openCount, 1)
     }
 
+    func testOpeningAnotherChatEndsTheFollowedTurn() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.followReply(.started(sessionID: "s1")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "First sentence. ")) { true }
+        await waitUntil { gateway.openCount == 1 }
+        controller.stopFollowing { $0 == "s2" }
+        controller.followReply(.delta(sessionID: "s1", text: "Second sentence.")) { true }
+        controller.followReply(.completed(sessionID: "s1", content: nil)) { true }
+        await waitUntil { controller.state == .idle }
+
+        XCTAssertEqual(gateway.openCount, 1)
+        XCTAssertEqual(gateway.streams.last?.finishCount, 1, "what it said plays out")
+        XCTAssertFalse((gateway.streams.last?.appended.joined() ?? "").contains("Second"))
+    }
+
+    func testTheOpenChatsTurnIsStillFollowedWhenItsChatStays() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.followReply(.started(sessionID: "s1")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "First sentence. ")) { true }
+        await waitUntil { gateway.openCount == 1 }
+        controller.stopFollowing { $0 == "s1" }
+        controller.followReply(.delta(sessionID: "s1", text: "Second sentence.")) { true }
+        controller.followReply(.completed(sessionID: "s1", content: nil)) { true }
+        await waitUntil { controller.state == .idle }
+
+        XCTAssertEqual(gateway.openCount, 1)
+        XCTAssertTrue((gateway.streams.last?.appended.joined() ?? "").contains("Second sentence."))
+    }
+
     func testAnotherChatsTurnIsNotFollowed() async {
         let playback = MockReadAloudPlayback()
         let gateway = MockReadAloudGateway()

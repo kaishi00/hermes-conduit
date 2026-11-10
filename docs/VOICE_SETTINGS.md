@@ -156,7 +156,7 @@ Live calls speak your language: the App Language you picked in Settings, or else
 
 ## Read replies aloud
 
-The speaker button under a reply reads it aloud. To hear every reply without tapping, turn on Read replies aloud in Settings > Voice > Read Aloud: each reply in the open chat is read as it arrives, whether you typed the message or dictated it, the way a Classic voice turn's reply is spoken, and in a group room each new message from its bots is read in turn, in that bot's voice. Stop it from the player or the speaker button; the next reply is read again. A reading starts only while Conduit is on screen, then carries on with the phone locked. It never plays during a call or while the microphone is in use. Hermes is told the answer is heard, so it doesn't send a sound file of its own. The speed is Read Aloud's.
+The speaker button under a reply reads it aloud. To hear every reply without tapping, turn on Read replies aloud in Settings > Voice > Read Aloud: each reply in the open chat is read as it arrives, whether you typed the message or dictated it, the way a Classic voice turn's reply is spoken, and in the group room you have open each new message from its bots is read in turn, in that bot's voice. Stop it from the player or the speaker button; the next reply is read again. A reading starts only while Conduit is on screen, then carries on with the phone locked. It never plays during a call or while the microphone is in use. Hermes is told the answer is heard, so it doesn't send a sound file of its own. The speed is Read Aloud's.
 
 ## Dictate into the composer
 

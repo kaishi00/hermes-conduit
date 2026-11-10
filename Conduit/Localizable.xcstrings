@@ -502974,84 +502974,84 @@
         }
       }
     },
-    "Reads each reply in the open chat as it arrives, whether you typed or dictated the message, and each new message from a group room's bots. Stop it from the player or the speaker button. A reading starts only while Conduit is on screen, then carries on with the phone locked." : {
+    "Reads each reply in the open chat as it arrives, whether you typed or dictated the message, and each new message from the bots of the group room you have open. Stop it from the player or the speaker button. A reading starts only while Conduit is on screen, then carries on with the phone locked." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Liest jede Antwort im geöffneten Chat vor, sobald sie eintrifft, egal ob du die Nachricht getippt oder diktiert hast, und jede neue Nachricht der Bots in einem Gruppenraum. Stoppe es über den Player oder die Lautsprechertaste. Das Vorlesen beginnt nur, während Conduit auf dem Bildschirm ist, und läuft dann auch bei gesperrtem Telefon weiter."
+            "value" : "Liest jede Antwort im geöffneten Chat vor, sobald sie eintrifft, egal ob du die Nachricht getippt oder diktiert hast, und jede neue Nachricht der Bots im geöffneten Gruppenraum. Stoppe es über den Player oder die Lautsprechertaste. Das Vorlesen beginnt nur, während Conduit auf dem Bildschirm ist, und läuft dann auch bei gesperrtem Telefon weiter."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lee cada respuesta del chat abierto en cuanto llega, tanto si escribiste el mensaje como si lo dictaste, y cada mensaje nuevo de los bots de una sala de grupo. Detenlo desde el reproductor o el botón de altavoz. La lectura solo empieza con Conduit en pantalla y después sigue con el teléfono bloqueado."
+            "value" : "Lee cada respuesta del chat abierto en cuanto llega, tanto si escribiste el mensaje como si lo dictaste, y cada mensaje nuevo de los bots de la sala de grupo abierta. Detenlo desde el reproductor o el botón de altavoz. La lectura solo empieza con Conduit en pantalla y después sigue con el teléfono bloqueado."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lit chaque réponse de la conversation ouverte dès qu'elle arrive, que vous ayez tapé ou dicté le message, ainsi que chaque nouveau message des bots d'un salon de groupe. Arrêtez la lecture depuis le lecteur ou le bouton haut-parleur. Elle ne démarre que lorsque Conduit est à l'écran, puis continue téléphone verrouillé."
+            "value" : "Lit chaque réponse de la conversation ouverte dès qu'elle arrive, que vous ayez tapé ou dicté le message, ainsi que chaque nouveau message des bots du salon de groupe ouvert. Arrêtez la lecture depuis le lecteur ou le bouton haut-parleur. Elle ne démarre que lorsque Conduit est à l'écran, puis continue téléphone verrouillé."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Membacakan setiap balasan di chat yang terbuka begitu tiba, baik pesannya Anda ketik maupun Anda diktekan, serta setiap pesan baru dari bot di ruang grup. Hentikan dari pemutar atau tombol speaker. Pembacaan hanya dimulai saat Conduit ada di layar, lalu berlanjut meski ponsel terkunci."
+            "value" : "Membacakan setiap balasan di chat yang terbuka begitu tiba, baik pesannya Anda ketik maupun Anda diktekan, serta setiap pesan baru dari bot di ruang grup yang terbuka. Hentikan dari pemutar atau tombol speaker. Pembacaan hanya dimulai saat Conduit ada di layar, lalu berlanjut meski ponsel terkunci."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Legge ogni risposta della chat aperta appena arriva, che tu abbia scritto o dettato il messaggio, e ogni nuovo messaggio dei bot di una stanza di gruppo. Interrompila dal lettore o dal pulsante altoparlante. La lettura parte solo con Conduit sullo schermo, poi continua anche con il telefono bloccato."
+            "value" : "Legge ogni risposta della chat aperta appena arriva, che tu abbia scritto o dettato il messaggio, e ogni nuovo messaggio dei bot della stanza di gruppo aperta. Interrompila dal lettore o dal pulsante altoparlante. La lettura parte solo con Conduit sullo schermo, poi continua anche con il telefono bloccato."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "開いているチャットの返信を、メッセージを入力したか音声入力したかにかかわらず、届いたそばから読み上げます。グループルームのボットからの新しいメッセージも読み上げます。プレーヤーまたはスピーカーボタンで停止できます。読み上げはConduitが画面に表示されているときにだけ始まり、その後はiPhoneをロックしても続きます。"
+            "value" : "開いているチャットの返信を、メッセージを入力したか音声入力したかにかかわらず、届いたそばから読み上げます。開いているグループルームのボットからの新しいメッセージも読み上げます。プレーヤーまたはスピーカーボタンで停止できます。読み上げはConduitが画面に表示されているときにだけ始まり、その後はiPhoneをロックしても続きます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "메시지를 입력했든 받아쓰기했든, 열려 있는 채팅의 답장이 도착하는 대로 소리 내어 읽어 주고, 그룹 룸의 봇이 보낸 새 메시지도 읽어 줘요. 플레이어나 스피커 버튼으로 멈출 수 있어요. 읽기는 Conduit가 화면에 있을 때만 시작되고, 그 뒤에는 휴대폰을 잠가도 계속돼요."
+            "value" : "메시지를 입력했든 받아쓰기했든, 열려 있는 채팅의 답장이 도착하는 대로 소리 내어 읽어 주고, 열려 있는 그룹 룸의 봇이 보낸 새 메시지도 읽어 줘요. 플레이어나 스피커 버튼으로 멈출 수 있어요. 읽기는 Conduit가 화면에 있을 때만 시작되고, 그 뒤에는 휴대폰을 잠가도 계속돼요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Czyta na głos każdą odpowiedź w otwartym czacie, gdy tylko nadejdzie, niezależnie od tego, czy wiadomość była wpisana, czy podyktowana, a także każdą nową wiadomość od botów w pokoju grupowym. Zatrzymasz to w odtwarzaczu lub przyciskiem głośnika. Czytanie zaczyna się tylko wtedy, gdy Conduit jest na ekranie, a potem trwa także przy zablokowanym telefonie."
+            "value" : "Czyta na głos każdą odpowiedź w otwartym czacie, gdy tylko nadejdzie, niezależnie od tego, czy wiadomość była wpisana, czy podyktowana, a także każdą nową wiadomość od botów w otwartym pokoju grupowym. Zatrzymasz to w odtwarzaczu lub przyciskiem głośnika. Czytanie zaczyna się tylko wtedy, gdy Conduit jest na ekranie, a potem trwa także przy zablokowanym telefonie."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lê cada resposta do chat aberto assim que ela chega, quer você tenha digitado ou ditado a mensagem, e cada nova mensagem dos bots de uma sala de grupo. Pare pelo player ou pelo botão de alto-falante. A leitura só começa com o Conduit na tela e depois continua com o celular bloqueado."
+            "value" : "Lê cada resposta do chat aberto assim que ela chega, quer você tenha digitado ou ditado a mensagem, e cada nova mensagem dos bots da sala de grupo aberta. Pare pelo player ou pelo botão de alto-falante. A leitura só começa com o Conduit na tela e depois continua com o celular bloqueado."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Читает вслух каждый ответ в открытом чате, как только он приходит, независимо от того, напечатано сообщение или надиктовано, а также каждое новое сообщение ботов в групповой комнате. Остановить можно в плеере или кнопкой динамика. Чтение начинается, только пока Conduit на экране, а затем продолжается и при заблокированном телефоне."
+            "value" : "Читает вслух каждый ответ в открытом чате, как только он приходит, независимо от того, напечатано сообщение или надиктовано, а также каждое новое сообщение ботов в открытой групповой комнате. Остановить можно в плеере или кнопкой динамика. Чтение начинается, только пока Conduit на экране, а затем продолжается и при заблокированном телефоне."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mesajı yazmış ya da dikte etmiş olun, açık sohbetteki her yanıtı gelir gelmez sesli okur; bir grup odasındaki botların her yeni mesajını da okur. Oynatıcıdan veya hoparlör düğmesinden durdurabilirsiniz. Okuma yalnızca Conduit ekrandayken başlar, ardından telefon kilitliyken de devam eder."
+            "value" : "Mesajı yazmış ya da dikte etmiş olun, açık sohbetteki her yanıtı gelir gelmez sesli okur; açık grup odasındaki botların her yeni mesajını da okur. Oynatıcıdan veya hoparlör düğmesinden durdurabilirsiniz. Okuma yalnızca Conduit ekrandayken başlar, ardından telefon kilitliyken de devam eder."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "无论消息是打字还是听写输入，打开的聊天中每条回复一到就朗读，群组房间里机器人发来的每条新消息也会朗读。可在播放器或扬声器按钮上停止。朗读只会在 Conduit 显示在屏幕上时开始，之后锁定手机也会继续。"
+            "value" : "无论消息是打字还是听写输入，打开的聊天中每条回复一到就朗读，打开的群组房间里机器人发来的每条新消息也会朗读。可在播放器或扬声器按钮上停止。朗读只会在 Conduit 显示在屏幕上时开始，之后锁定手机也会继续。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "無論訊息是打字還是聽寫輸入，開啟的聊天中每則回覆一到就朗讀，群組房間裡機器人傳來的每則新訊息也會朗讀。可在播放器或揚聲器按鈕上停止。朗讀只會在 Conduit 顯示在螢幕上時開始，之後鎖定手機也會繼續。"
+            "value" : "無論訊息是打字還是聽寫輸入，開啟的聊天中每則回覆一到就朗讀，開啟的群組房間裡機器人傳來的每則新訊息也會朗讀。可在播放器或揚聲器按鈕上停止。朗讀只會在 Conduit 顯示在螢幕上時開始，之後鎖定手機也會繼續。"
           }
         }
       }

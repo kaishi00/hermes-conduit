@@ -1384,11 +1384,11 @@ the Voice settings caption · the notifier README and changelog
 - A reading starts only while Conduit is on screen, the open chat's turn (not a room over it or the saved copy), with no call and no held microphone; once playing it carries on with the phone locked, as Read Aloud does (#373). A reply whose turn starts in the background isn't read (2026-11-10, #2122).
 - Stop (the button, the player, a call, dictation, a tap on another reply) ends the reading for the rest of that turn; the next turn is read again. A new turn's first words take over from the last one's reading. Paused while a tool runs between segments, the next segment waits for Resume (2026-11-10, #2122).
 - In a group room, bot messages that arrive while it's open are read one after another, each in its bot's voice; the messages its first read brings aren't. One waiting when Conduit leaves the screen is dropped; only the one playing carries on (2026-11-10, #2122).
-- A typed message sent with the setting on reports `"heard": true`, and the plugin tells Hermes the answer is heard too: no `text_to_speech` or sound file of its own (2026-11-10, #2122, notifier 0.156.0).
+- A typed message sent with the setting on reports `"heard": true`, and the plugin tells Hermes the answer is heard too: no `text_to_speech` or sound file of its own (2026-11-10, #2122, notifier 0.156.0). It reports so only while a reading could start then: the setting on, Read Aloud available (no call, no held microphone) and Conduit on screen.
 - Hermes may turn it on or off through `conduit_settings`; the change asks, since speech can cost money on Hermes' side (2026-11-10, #2122).
 
 **Open gaps**
-- None known.
+- `heard` is decided at the send. If Conduit leaves the screen, a call starts or the chat closes before the reply's first words, nothing reads it and Hermes was still told not to send a sound file. Typed turns rarely get one anyway; correcting the report mid-turn would need a new plugin route (Maintainer's call).
 
 **Checked:** 2026-11-10, #2122 (new entry).
 

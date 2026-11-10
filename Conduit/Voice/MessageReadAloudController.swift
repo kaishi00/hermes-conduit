@@ -60,6 +60,8 @@ final class MessageReadAloudController: ObservableObject {
     private var playbackTask: Task<Void, Never>?
     private var operationGeneration: UInt64 = 0
     private var isForegroundActive = true
+    /// Whether a reading may start now: Conduit is on screen.
+    var isOnScreen: Bool { isForegroundActive }
     /// Held for the whole operation, from the tap until it settles. What it
     /// buys is the gap before the first audio (the stream is still opening
     /// when the phone is locked); once audio plays, the `audio` background
@@ -362,15 +364,16 @@ final class MessageReadAloudController: ObservableObject {
     }
 
     private func speakLive(_ text: String, mayStart: @MainActor () -> Bool) {
-        guard !text.isEmpty, let reply = liveReply else { return }
+        guard let reply = liveReply else { return }
         if let continuation = reply.continuation {
             continuation.yield(.text(text))
             return
         }
         guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        // Off screen nothing starts, so the gateway isn't readied either.
         // Readying the gateway may stop whatever plays, which forgets the
         // turn; it is still the one to read.
-        guard mayStart(), isForegroundActive else {
+        guard isForegroundActive, mayStart() else {
             liveReply = nil
             return
         }
@@ -626,6 +629,7 @@ final class MessageReadAloudController: ObservableObject {
                 // idle so the message is tappable again.
                 playback.stop()
                 settle(.idle)
+                startNextQueued()
                 return
             }
             // The stream can die after audio is already sounding; settle the
@@ -741,6 +745,7 @@ final class MessageReadAloudController: ObservableObject {
             liveReply = nil
             if isCancellation(error) {
                 settle(.idle)
+                startNextQueued()
                 return
             }
             fail(message: UserFacingError.message(for: error), generation: generation)
