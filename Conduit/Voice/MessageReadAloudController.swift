@@ -202,10 +202,13 @@ final class MessageReadAloudController: ObservableObject {
         if let routeObserver { NotificationCenter.default.removeObserver(routeObserver) }
         playbackTask?.cancel()
         pausedStopTask?.cancel()
+        sessionHoldTimeout?.cancel()
         let end = endBackgroundActivity
         let nowPlaying = nowPlaying
+        let hold = sessionHold
         Task { @MainActor in
             end?()
+            hold?()
             nowPlaying.end()
         }
     }

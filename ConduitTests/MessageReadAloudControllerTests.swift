@@ -1042,6 +1042,8 @@ final class MessageReadAloudControllerTests: XCTestCase {
         controller.followReply(.interim(sessionID: "s1", text: "Let me check.", alreadyStreamed: true)) { true }
         await waitUntil { gateway.streams.first?.finishCount == 1 }
         XCTAssertEqual(gateway.streams.first?.finishCount, 1, "heard now, while the tool runs")
+        await waitUntil { playback.drainCount == 1 }
+        XCTAssertEqual(playback.sessionsHeld, 1, "held across the tool")
         controller.followReply(.delta(sessionID: "s1", text: "It's sunny.")) { true }
         controller.followReply(.completed(sessionID: "s1", content: "It's sunny.")) { true }
         await waitUntil { controller.state == .idle }
