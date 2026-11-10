@@ -744,7 +744,8 @@ extension BotModeTests {
     }
 
     func testAWorkSettingsChangeSendsOnlyWhatChanged() {
-        let old = BotWorkSettings()
+        let old = BotWorkSettings(maxRunning: 2)
+        XCTAssertEqual(BotWorkSettings().maxRunning, 4)  // the plugin's default (Eric 2026-11-10)
         XCTAssertEqual(old.policy, .lookups)  // the plugin's default (Eric 2026-11-03)
         var toggled = BotWorkSettings(policy: .off)
         toggled.isOnSetting = true

@@ -1532,6 +1532,24 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(held.sent.last?.query, "profile=second")
         XCTAssertEqual(appState.keptHelperModel(task: HelperModelSlot.workWatch, inProfile: "second")?.model, "fast/watch")
         XCTAssertNil(appState.keptHelperModels())
+
+        // Another profile's save leaves the open profile's read under way
+        // shared: a reader asking after the save joins it.
+        let open = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(3)
+        let again = Task { await appState.setHelperModel(pick, confirmed: true, profile: "second") }
+        try await held.waitForRequests(4)
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": [HelperModelSlot.workWatch]], at: 1)
+        let savedAgain = await again.value
+        XCTAssertEqual(savedAgain, .saved)
+        let joined = Task { try await appState.loadHelperModels() }
+        for _ in 0..<5 { await Task.yield() }
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]])
+        let openSlots = try await open.value
+        let joinedSlots = try await joined.value
+        XCTAssertEqual(openSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(joinedSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(held.sent.count, 4, "the reader after the save joined the open profile's read")
     }
 
     /// The Model page and its Helper models section read together: one
