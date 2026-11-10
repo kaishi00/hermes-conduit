@@ -507219,6 +507219,88 @@
           }
         }
       }
+    },
+    "Conduit couldn't confirm that chat on Hermes, so nothing was sent. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit konnte diesen Chat auf Hermes nicht bestätigen, daher wurde nichts gesendet. Versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no pudo confirmar ese chat en Hermes, así que no se envió nada. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit n'a pas pu confirmer cette discussion sur Hermes, rien n'a donc été envoyé. Réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak dapat memastikan chat itu di Hermes, jadi tidak ada yang dikirim. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non è riuscito a confermare quella chat su Hermes, quindi non è stato inviato nulla. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ConduitはHermesでそのチャットを確認できなかったため、何も送信されませんでした。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit이 Hermes에서 해당 채팅을 확인하지 못해 아무것도 보내지 않았습니다. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie mógł potwierdzić tego czatu w Hermes, więc nic nie zostało wysłane. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não conseguiu confirmar esse chat no Hermes, então nada foi enviado. Tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit не удалось подтвердить этот чат в Hermes, поэтому ничего не отправлено. Попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bu sohbeti Hermes'te doğrulayamadı, bu yüzden hiçbir şey gönderilmedi. Tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法在 Hermes 上确认该聊天，因此未发送任何内容。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 無法在 Hermes 上確認該聊天，因此未傳送任何內容。請再試一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

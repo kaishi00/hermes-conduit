@@ -2165,6 +2165,15 @@ final class AppState: ObservableObject {
         return !ids.isDisjoint(with: botOwnedSessionIDs)
     }
 
+    /// `profile`'s canonical Bot Chat lookup, through the tests' seam when
+    /// one is set.
+    func botChatLookupRows(_ client: HermesClient, profile: String) async throws -> [BotChatLookupRow] {
+        if let findBotChat = chatResumeLifecycleOperations.findBotChat {
+            return try await findBotChat(client, profile)
+        }
+        return try await client.findBotChatSession(profile: profile)
+    }
+
     /// Asks `profile` for its canonical Bot Chat (exact-title lookup, which
     /// the gateway resolves to the lineage tip) and reports whether the push
     /// names it. Throws when the lookup cannot be made or fails.

@@ -5546,14 +5546,14 @@ README.md
 - The chats are the widget snapshot's: each workspace the app has shown, its last chat, pinned and recent chats and its Bot Chats, up to 20 a workspace. Only titles and where they live go into Spotlight, on the phone; no message does. iOS's Siri & Search settings for Conduit turn it off (2026-11-10, #2163).
 - Spotlight's copy is rebuilt whole from the snapshot at launch and after each write that changed it, one rebuild at a time with the newest list last, so a chat that left the snapshot (deleted, archived, a removed dashboard or profile) leaves Spotlight too (2026-11-10, #2163).
 - Opening a chat goes through the widget's launch: it switches dashboard and profile and says when the chat is gone, as a widget tap does (2026-11-10, #2163).
-- Send to Hermes with a picked chat sends into that chat and never makes a new one: a chat Hermes no longer has, or a bot no longer listed, fails the run and nothing is sent. A picked Bot Chat is its bot's chat now, found as its Bots row finds it, so a /new since the pick doesn't strand it. It never switches dashboards: a chat on another dashboard says to switch in Conduit first. The pick wins over Chat Name and Profile (2026-11-10, #2163).
+- Send to Hermes with a picked chat sends into that chat and never makes a new one: a chat Hermes no longer has, or a bot no longer listed, fails the run and nothing is sent. A picked Bot Chat is its bot's chat now, found as its Bots row finds it, so a /new since the pick doesn't strand it. It never switches dashboards: a chat on another dashboard says to switch in Conduit first. The pick wins over Chat Name and Profile (2026-11-10, #2163). Hermes out of reach says so rather than calling the chat gone, a bot not in the list yet is looked up first, and an empty lookup for a Bot Chat the roster still names asks to try again (2026-11-10, #NNNN).
 - A saved shortcut's pick that the snapshot no longer lists keeps its identity, untitled, so the shortcut keeps working while the chat exists (2026-11-10, #2163).
 
 **Open gaps**
 - Scheduled jobs and projects aren't entities yet ("Run my morning job").
 - Not tried on a device yet: Spotlight results, Siri's chat names and the Shortcuts picker.
 
-**Checked:** 2026-11-10, #2163.
+**Checked:** 2026-11-10, #NNNN (the picked chat's errors, the bot list loaded first); 2026-11-10, #2163.
 
 ## Contacts Hermes asks to change
 
