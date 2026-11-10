@@ -503055,6 +503055,88 @@
           }
         }
       }
+    },
+    "Pulse brought this up: %@\n\nFind out what's wrong and fix it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse hat das angesprochen: %@\n\nFinde heraus, was nicht stimmt, und behebe es."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mencionó esto: %@\n\nAverigua qué falla y arréglalo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse a signalé ceci : %@\n\nTrouve ce qui ne va pas et corrige-le."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse mengangkat ini: %@\n\nCari tahu apa yang salah dan perbaiki."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse ha segnalato questo: %@\n\nScopri cosa non va e correggilo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulseからのお知らせ：%@\n\n何が問題なのか調べて、直してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse가 알려 준 소식: %@\n\n뭐가 문제인지 알아보고 고쳐 줘."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse zwrócił na to uwagę: %@\n\nSprawdź, co jest nie tak, i to napraw."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Pulse trouxe isto: %@\n\nDescubra o que está errado e corrija."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse обратил на это внимание: %@\n\nВыясни, что не так, и исправь это."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse bunu gündeme getirdi: %@\n\nNeyin yanlış olduğunu bul ve düzelt."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提到了这件事：%@\n\n查明哪里出了问题，并把它修好。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pulse 提到了這件事：%@\n\n查明哪裡出了問題，並把它修好。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
