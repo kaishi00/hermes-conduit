@@ -31329,14 +31329,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Which failures leave it genuinely unknown whether Hermes received the
-    /// prompt. Two classes are DEFINITIVE rejections: a structured `RpcError`
-    /// (the gateway answered, so the prompt was not accepted) and
-    /// `notConnected` (`rpc` throws before any bytes leave the device). The
-    /// remaining transport failures are ambiguous — the bytes may have
-    /// reached Hermes and the turn may already be running — so the
-    /// authoritative registry probe decides, and unknown future `HermesError`
-    /// cases fail toward the probe rather than toward a blind retry.
     /// A typed send `rpc` refused before writing it (`notConnected`): the
     /// socket had closed under it, its close frame in before its receive
     /// failed, so the drop wasn't known yet (issue 2095, a proxy closing
@@ -31390,6 +31382,14 @@ final class AppState: ObservableObject {
         return true
     }
 
+    /// Which failures leave it genuinely unknown whether Hermes received the
+    /// prompt. Two classes are DEFINITIVE rejections: a structured `RpcError`
+    /// (the gateway answered, so the prompt was not accepted) and
+    /// `notConnected` (`rpc` throws before any bytes leave the device). The
+    /// remaining transport failures are ambiguous — the bytes may have
+    /// reached Hermes and the turn may already be running — so the
+    /// authoritative registry probe decides, and unknown future `HermesError`
+    /// cases fail toward the probe rather than toward a blind retry.
     static func isAmbiguousPromptDelivery(_ error: Error) -> Bool {
         switch error {
         case HermesError.notConnected:
