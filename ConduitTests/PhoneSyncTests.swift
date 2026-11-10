@@ -1096,6 +1096,15 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testPhoneShortcutRunURLAndAnswers() async throws {
+        // What shortcuts gave back shares one exchange's room, so the
+        // sealed body stays under the host's cap.
+        let long = String(repeating: "y", count: PhoneChangeResult.resultChars + 10)
+        let sent = PhoneChangeResult.json(for: (0..<5).map { PhoneChangeResult(id: "c\($0)", outcome: .applied, result: long) })
+        let texts = sent.map { $0["result"] as? String ?? "" }
+        XCTAssertEqual(texts.map(\.count).reduce(0, +), PhoneChangeResult.resultsChars)
+        XCTAssertEqual(texts[0].count, PhoneChangeResult.resultChars)
+        XCTAssertNil(sent[4]["result"])
+
         let url = try XCTUnwrap(PhoneShortcutRunner.runURL(name: "Log Water & Tea", input: "250 ml + ünï", scheme: "conduit", token: "t1"))
         let items = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
         XCTAssertEqual(url.scheme, "shortcuts")
