@@ -502891,6 +502891,182 @@
           }
         }
       }
+    },
+    "Steps in One Turn" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schritte pro Antwort"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Steps in One Turn"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pasos por turno"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Étapes par tour"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Langkah dalam Satu Giliran"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passaggi per turno"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1ターンのステップ数"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "한 턴의 단계 수"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kroki w jednej turze"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Passos por turno"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Шагов за один ход"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir Turdaki Adım Sayısı"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每轮步骤数"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每輪步驟數"
+          }
+        }
+      }
+    },
+    "%@ does up to %@ steps of a task in its Bot Chat. A task that needs more carries on in the background." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ erledigt bis zu %@ Schritte einer Aufgabe im Bot-Chat. Braucht eine Aufgabe mehr, läuft sie im Hintergrund weiter."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ does up to %@ steps of a task in its Bot Chat. A task that needs more carries on in the background."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ hace hasta %@ pasos de una tarea en su chat del bot. Si la tarea necesita más, sigue en segundo plano."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ effectue jusqu’à %@ étapes d’une tâche dans sa discussion du bot. Si la tâche en demande plus, elle se poursuit en arrière-plan."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ mengerjakan hingga %@ langkah tugas di Obrolan Bot-nya. Tugas yang butuh lebih banyak dilanjutkan di latar belakang."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ esegue fino a %@ passaggi di un’attività nella sua chat del bot. Se l’attività ne richiede di più, prosegue in background."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ はボットチャット内でタスクを最大 %@ ステップまで進めます。それ以上かかるタスクはバックグラウンドで続きます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@은(는) 봇 채팅에서 작업을 최대 %@단계까지 직접 합니다. 더 필요한 작업은 백그라운드에서 이어집니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wykonuje do %@ kroków zadania w swoim czacie bota. Zadanie, które wymaga więcej, jest kontynuowane w tle."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ faz até %@ passos de uma tarefa no chat do bot. Se a tarefa precisar de mais, continua em segundo plano."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ выполняет до %@ шагов задачи в своём чате бота. Если задаче нужно больше, она продолжается в фоне."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, bir görevin en fazla %@ adımını bot sohbetinde yapar. Daha fazlası gereken görev arka planda sürer."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 会在机器人聊天中完成一项任务的最多 %@ 个步骤。需要更多步骤的任务会在后台继续。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 會在機器人聊天中完成一項任務的最多 %@ 個步驟。需要更多步驟的任務會在背景繼續。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

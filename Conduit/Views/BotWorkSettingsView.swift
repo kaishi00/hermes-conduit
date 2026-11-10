@@ -87,6 +87,16 @@ struct BotWorkSettingsView: View {
                     Text(AppLocalization.string("What It Does Itself")).foregroundStyle(.secondary)
                 }
                 caption(Self.policyCaption(settings.policy, botName: botName))
+                if settings.policy == .lookups, let steps = settings.quickSteps, settings.quickStepsChoices.count > 1 {
+                    ConduitMenuPicker(
+                        value: steps,
+                        choices: Self.quickStepsChoices(settings),
+                        onSelect: { binding(\.quickSteps).wrappedValue = $0 }
+                    ) {
+                        Text(AppLocalization.string("Steps in One Turn")).foregroundStyle(.secondary)
+                    }
+                    caption(AppLocalization.string("\(botName) does up to \(String(steps)) steps of a task in its Bot Chat. A task that needs more carries on in the background."))
+                }
                 Stepper(value: binding(\.maxRunning), in: 1...settings.maxRunningLimit) {
                     LabeledContent(AppLocalization.string("Running at Once")) {
                         Text(verbatim: "\(settings.maxRunning)")
@@ -184,6 +194,14 @@ struct BotWorkSettingsView: View {
         }
         choices.append((id: .strict, title: AppLocalization.string("Only Coordinates")))
         return choices
+    }
+
+    /// The step counts the plugin takes, with the bot's own when it isn't
+    /// one of them.
+    static func quickStepsChoices(_ settings: BotWorkSettings) -> [(id: Int, title: String)] {
+        var counts = settings.quickStepsChoices
+        if let steps = settings.quickSteps, !counts.contains(steps) { counts.append(steps) }
+        return counts.sorted().map { (id: $0, title: String($0)) }
     }
 
     /// What the chosen setting means, in what the user will notice.

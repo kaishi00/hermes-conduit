@@ -649,6 +649,12 @@ struct BotWorkSettings: Equatable {
     var workstreamModel: Model?
     /// nil on a plugin from before Coordination, which shows no such choice.
     var coordination: Coordination?
+    /// How many steps a Quick Things Here turn does in the Bot Chat before
+    /// the rest goes to a workstream (Eric 2026-11-10); nil on a plugin
+    /// that doesn't take it, which holds it at 5 and shows no such choice.
+    var quickSteps: Int?
+    /// The step counts this plugin takes.
+    var quickStepsChoices: [Int]
     /// Why workstreams can't run on this Hermes, as the plugin says it.
     var unavailable: String?
 
@@ -696,7 +702,7 @@ struct BotWorkSettings: Equatable {
     init(policy: Policy = .lookups, policies: [Policy] = Self.olderPolicies, maxRunning: Int = 2, maxRunningLimit: Int = 6,
          afterRestart: AfterRestart = .continue, approvals: Approvals = .chats,
          chatApprovals: String = "manual", workstreamModel: Model? = nil, coordination: Coordination? = nil,
-         unavailable: String? = nil) {
+         quickSteps: Int? = nil, quickStepsChoices: [Int] = [], unavailable: String? = nil) {
         self.policy = policy
         self.policies = policies
         self.maxRunning = maxRunning
@@ -706,6 +712,8 @@ struct BotWorkSettings: Equatable {
         self.chatApprovals = chatApprovals
         self.workstreamModel = workstreamModel
         self.coordination = coordination
+        self.quickSteps = quickSteps
+        self.quickStepsChoices = quickStepsChoices
         self.unavailable = unavailable
     }
 
@@ -725,6 +733,8 @@ struct BotWorkSettings: Equatable {
             chatApprovals: (response["chat_approvals"] as? String) ?? "manual",
             workstreamModel: Model(response["workstream_model"]),
             coordination: (response["coordination"] as? String).flatMap(Coordination.init(rawValue:)),
+            quickSteps: response["quick_steps"] as? Int,
+            quickStepsChoices: (response["quick_steps_choices"] as? [Int]) ?? [],
             unavailable: (response["unavailable"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         )
     }
@@ -737,6 +747,7 @@ struct BotWorkSettings: Equatable {
         if afterRestart != old.afterRestart { body["after_restart"] = afterRestart.rawValue }
         if approvals != old.approvals { body["workstream_approvals"] = approvals.rawValue }
         if coordination != old.coordination, let coordination { body["coordination"] = coordination.rawValue }
+        if quickSteps != old.quickSteps, let quickSteps { body["quick_steps"] = quickSteps }
         if workstreamModel != old.workstreamModel {
             // null: back to the bot's own.
             body["workstream_model"] = workstreamModel.map { $0.body as Any } ?? NSNull()

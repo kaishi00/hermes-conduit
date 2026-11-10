@@ -628,6 +628,27 @@ extension BotModeTests {
         XCTAssertNil(BotWorkSettings(response: ["ok": false, "policy": "strict", "max_running": 2]))
     }
 
+    func testQuickStepsAreOfferedOnlyWhereThePluginTakesThem() throws {
+        // Eric 2026-11-10: how many steps a Quick Things Here turn does itself is the user's pick.
+        let older = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "lookups", "max_running": 2]))
+        XCTAssertNil(older.quickSteps)
+        XCTAssertTrue(older.quickStepsChoices.isEmpty)
+        let newer = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "lookups", "max_running": 2, "quick_steps": 5, "quick_steps_choices": [5, 10, 20],
+        ]))
+        XCTAssertEqual(newer.quickSteps, 5)
+        XCTAssertEqual(BotWorkSettingsView.quickStepsChoices(newer).map(\.id), [5, 10, 20])
+        XCTAssertEqual(BotWorkSettingsView.quickStepsChoices(newer).map(\.title), ["5", "10", "20"])
+        var picked = newer
+        picked.quickSteps = 20
+        XCTAssertEqual(picked.change(from: newer) as? [String: Int], ["quick_steps": 20])
+        XCTAssertTrue(newer.change(from: newer).isEmpty)
+        // A count a newer plugin kept still shows as the bot's own.
+        var other = newer
+        other.quickSteps = 15
+        XCTAssertEqual(BotWorkSettingsView.quickStepsChoices(other).map(\.id), [5, 10, 15, 20])
+    }
+
     func testCoordinationIsOfferedOnlyWhereThePluginKeepsIt() throws {
         // Eric 2026-11-10: how independently the Bot Chat keeps its workstreams in step.
         let older = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "lookups", "max_running": 2]))
