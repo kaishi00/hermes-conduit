@@ -634,7 +634,6 @@ extension BotModeTests {
         XCTAssertNil(older.coordination)
         let newer = try XCTUnwrap(BotWorkSettings(response: [
             "ok": true, "policy": "lookups", "max_running": 2, "coordination": "ask",
-            "coordinations": ["off", "ask", "auto"],
         ]))
         XCTAssertEqual(newer.coordination, .ask)
         var picked = newer
