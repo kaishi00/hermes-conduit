@@ -5824,6 +5824,8 @@ final class AppState: ObservableObject {
     /// Bumped by a job delete so a list load that started before it can't
     /// bring the deleted job back.
     private var cronJobsGeneration = 0
+    /// The list generation, profile and connection the read in flight is for.
+    private var cronJobsLoadingOwner: String?
     /// Cron jobs whose runs don't notify (AppState+CronNotifications), for
     /// the dashboard and profile in `cronMutedJobsKey`.
     @Published var cronMutedJobIDs: Set<String> = []
@@ -12832,8 +12834,14 @@ final class AppState: ObservableObject {
         botChatSessionProfiles.removeAll()
         botChatSessionLabels.removeAll()
         botChatOpenFlights.removeAll()
-        // Another server's list: an earlier one's failed open isn't its.
+        // Another server's list: an earlier one's failed open isn't its,
+        // and the marks its taps made, and the cover over the chat, go
+        // with the opens they were for (issue 2085).
         botsListNotice = nil
+        botChatOpening = nil
+        botChatMarks.removeAll()
+        botChatLatestMark = nil
+        botChatOnItsWay = nil
         botRoster = []
         botAvatarImages = [:]
         botAvatarFetchedGeneration.removeAll()
@@ -13043,6 +13051,10 @@ final class AppState: ObservableObject {
     @Published var activeRoomBoards: [RoomBoard] = []
     /// Boards replies name by line, by id, once read (LineBoards).
     @Published var lineBoards: [String: RichBoard] = [:]
+    /// Boards replies name that the plugin no longer has (pruned: the
+    /// newest 500, a month), or answered in a shape Conduit can't draw:
+    /// not asked for again, and the reply says one was there.
+    @Published var lineBoardsGone: Set<String> = []
     var lineBoardsAsked: Set<String> = []
     /// The dashboard and profile `lineBoards` were read from.
     var lineBoardsScope = ""
@@ -17502,6 +17514,7 @@ final class AppState: ObservableObject {
         // An open call transcript is the outgoing dashboard's, and its fetch
         // still in flight must not open one over the next.
         dismissChatCallTranscript()
+        retireCronJobsForDashboardSwitch()
     }
 
     /// The dashboard a request was sent to, through which bridge. Its
@@ -26856,6 +26869,7 @@ final class AppState: ObservableObject {
             }
         }
         let beganTransition = viewportTransitionGeneration == nil
+        let epoch = botRosterEpoch
         let transition = viewportTransitionGeneration ?? beginExplicitChatViewportTransition()
         if beganTransition {
             botChatOnItsWay = BotChatOnItsWay(bot: bot.name, label: bot.displayLabel, transition: transition)
@@ -26892,6 +26906,9 @@ final class AppState: ObservableObject {
         guard chatViewportTransitionIsCurrent(generation: transition) else { return .superseded }
         // Nothing replaced the chat on screen: its viewport goes on as it was.
         if beganTransition { finishChatViewportTransition(generation: transition) }
+        // A server switch cancelled it: what it says is the outgoing
+        // server's, never the next one's (issue 2085).
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return .superseded }
         return .failed
     }
 
@@ -26905,7 +26922,12 @@ final class AppState: ObservableObject {
     @discardableResult
     func openBotChatFromList(_ bot: BotProfile) async -> Bool {
         let shownError = errorMessage
+        let epoch = botRosterEpoch
         let outcome = await openBotChatOutcome(for: bot)
+        // A server switch retired the list's marks with the rest of Bot
+        // Mode's state: this open has no mark left to end, and a tap on the
+        // next server's list may have made one under the same name.
+        guard epoch == botRosterEpoch else { return outcome == .opened }
         let pushed = botChatMarks[bot.name]?.pushed ?? false
         // The list shows (it went back, or it never closed): the error
         // shows with a chat's composer, which isn't there, so the list
@@ -37364,28 +37386,55 @@ final class AppState: ObservableObject {
     // MARK: - Scheduled jobs
 
     func loadCronJobs() async {
-        guard !cronJobsLoading else { return }
         let profile = activeProfile
         let generation = cronJobsGeneration
+        // One read at a time for the list as it is, on the connection and
+        // profile it is for: one an edit, a dashboard switch, a reconnect or
+        // a profile change made stale since doesn't hold the next back.
+        let owner = "\(generation)|\(profile)|"
+            + (dashboardTicketBridge.map { "\(ObjectIdentifier($0))" } ?? client.map { "c\(ObjectIdentifier($0))" } ?? "")
+        guard cronJobsLoadingOwner != owner else { return }
+        let startedBridge = dashboardTicketBridge
+        let startedClient = client
+        cronJobsLoadingOwner = owner
         cronJobsLoading = true
-        defer { cronJobsLoading = false }
+        defer {
+            if cronJobsLoadingOwner == owner {
+                cronJobsLoadingOwner = nil
+                cronJobsLoading = false
+            }
+        }
 
         do {
             if let dashboardTicketBridge {
                 let result = try await dashboardTicketBridge.requestJSON(path: cronDashboardPath("/api/cron/jobs", profile: profile))
                 let values = result["_array"] as? [Any] ?? result["jobs"] as? [Any] ?? []
                 let jobs = values.compactMap(decodeCronJob)
-                guard profile == activeProfile, generation == cronJobsGeneration else { return }
+                guard profile == activeProfile, generation == cronJobsGeneration,
+                      self.dashboardTicketBridge === dashboardTicketBridge else { return }
                 cronJobs = jobs.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
             } else if let client {
                 let jobs = try await client.listCronJobs()
                 guard profile == activeProfile, self.client === client, generation == cronJobsGeneration else { return }
                 cronJobs = jobs
             }
+        } catch is CancellationError {
+            return
         } catch {
-            guard profile == activeProfile else { return }
+            // A read the outgoing connection failed isn't the next one's to report.
+            guard profile == activeProfile, generation == cronJobsGeneration,
+                  dashboardTicketBridge === startedBridge, client === startedClient else { return }
             errorMessage = AppLocalization.string("Could not load scheduled jobs: \(UserFacingError.message(for: error))")
         }
+    }
+
+    /// The jobs listed are the outgoing dashboard's: they go, and a read
+    /// still out for them commits nothing (issue 2094).
+    private func retireCronJobsForDashboardSwitch() {
+        cronJobsGeneration += 1
+        cronJobs = []
+        cronJobsLoadingOwner = nil
+        cronJobsLoading = false
     }
 
     func loadCronRuns(for job: CronJob) async {

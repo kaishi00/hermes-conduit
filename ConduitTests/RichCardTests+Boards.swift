@@ -175,6 +175,40 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(reads.count, 2, "a read board isn't read again")
     }
 
+    /// Issue 2093: a board the plugin pruned (404 "That board is gone"), or
+    /// answered in a shape Conduit can't draw, is gone: not read again on
+    /// every open, and its reply says a board was there.
+    @MainActor
+    func testALineBoardThePluginNoLongerHasIsGoneAndNotReadAgain() async throws {
+        let suite = "line-boards-gone-\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        var reads: [String] = []
+        appState.lineBoardsReadOverride = { path in
+            reads.append(path)
+            if path.contains("cb-00000000901e") {
+                throw DashboardTicketBridgeError.http(status: 404, detail: "That board is gone")
+            }
+            if path.contains("cb-000000005e0a") { throw DashboardTicketBridgeError.http(status: 503, detail: "busy") }
+            return ["board": ["nothing": true]]
+        }
+        let ids = ["cb-00000000901e", "cb-000000005e0a", "cb-0000000000dd"]
+        appState.loadLineBoards(ids)
+        for _ in 0..<100 where appState.lineBoardsGone.count < 2 || appState.lineBoardsAsked.contains("cb-000000005e0a") {
+            await Task.yield()
+        }
+        XCTAssertEqual(appState.lineBoardsGone, ["cb-00000000901e", "cb-0000000000dd"])
+        XCTAssertFalse(appState.lineBoardsAsked.contains("cb-000000005e0a"), "a host in trouble is asked again")
+        appState.loadLineBoards(ids)
+        for _ in 0..<100 where reads.count < 4 { await Task.yield() }
+        XCTAssertEqual(reads.count, 4, "only the board the host couldn't answer for is read again")
+        XCTAssertFalse(AppState.lineBoardIsGone(URLError(.timedOut)))
+        XCTAssertFalse(AppState.lineBoardIsGone(DashboardTicketBridgeError.http(
+            status: 404, detail: DashboardTicketBridgeError.pluginRefusedDetail)),
+                       "a profile that turned the plugin off reads again once it's back")
+    }
+
     func testATableSortsNumbersByValueWithBlanksLast() throws {
         let table = RichTable(columns: ["Company", "Revenue"], rows: [
             ["Acme", "$1.2M"], ["Globex", RichCardSchema.blankCell], ["Initech", "$950K"], ["Umbrella", "$3B"],

@@ -59,6 +59,24 @@ struct RichReviewCard: View {
                 }
             }
             .task(id: review.id + "#\(review.round)") { await load(review) }
+            // A row kept for another card, or another chat (a branch keeps
+            // the same rows), starts over: one review's pick and note never
+            // go with another's Send. The same chat under its durable id
+            // keeps them, as a composed card's fields.
+            .onChange(of: card.normalizedJSON) { _, _ in
+                startOver()
+                // Another card's round isn't this one's: this card's own is
+                // read (or taken from what's kept) afresh.
+                round = nil
+                failed = false
+                stale = false
+                known = false
+                if let review = card.review { Task { await load(review) } }
+            }
+            .onChange(of: context?.chat) { old, new in
+                if let old, let new, context?.sameChat(old, new) == true { return }
+                startOver()
+            }
             .sheet(isPresented: $reviewing) {
                 RichReviewSheet(card: card, review: review, onSent: { sent(review) })
                     .environment(\.richCardActions, context)
@@ -237,6 +255,15 @@ struct RichReviewCard: View {
             // A shown round the host couldn't answer for can be asked again.
             stale = !failed
         }
+    }
+
+    /// What the user picked and typed belongs to the card and chat it was
+    /// done in.
+    private func startOver() {
+        picked = nil
+        note = ""
+        reviewing = false
+        fullScreen = nil
     }
 
     private func sent(_ review: RichReview) {

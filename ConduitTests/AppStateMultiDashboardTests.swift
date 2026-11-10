@@ -797,6 +797,7 @@ extension AppStateMultiDashboardTests {
             isArchived: false,
             lineageRootId: nil
         )]
+        appState.cronJobs = [CronJob(enabled: true, id: "mac-job")]
 
         await appState.switchDashboard(to: vps.id)
 
@@ -805,6 +806,7 @@ extension AppStateMultiDashboardTests {
         XCTAssertFalse(appState.isConnected)
         XCTAssertNil(appState.connection)
         XCTAssertTrue(appState.sessions.isEmpty, "the outgoing server's session catalog is retired at the switch boundary")
+        XCTAssertTrue(appState.cronJobs.isEmpty, "so are its scheduled jobs (issue 2094)")
         // ...the target is selected and presents its sign-in...
         XCTAssertEqual(appState.activeDashboardID, vps.id)
         XCTAssertTrue(appState.showLogin)

@@ -425,9 +425,12 @@ extension AppState {
         }
         let size = carrying.attachments.first { $0.attachmentID == attachmentID }?.size ?? 0
         do {
-            return .dataURL(try await groupsAttachmentDownload(
+            let dataURL = try await groupsAttachmentDownload(
                 client, roomID: roomID, eventID: carrying.eventID, attachmentID: attachmentID, size: size
-            ))
+            )
+            // Bounded as the plugin's room-file read: an answer over 16 MB,
+            // or one whose payload isn't base64, is one Hermes won't give.
+            return DataURLLimits.decodeBase64DataURL(dataURL) != nil ? .dataURL(dataURL) : .gone
         } catch is CancellationError {
             return .failed
         } catch {

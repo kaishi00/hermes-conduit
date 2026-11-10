@@ -135,6 +135,35 @@ extension AppStateVoiceCapabilityTests {
         } catch {}
     }
 
+    /// Issue 2062: a round is host content, checked as the card is and
+    /// bounded as every page Conduit previews.
+    func testARoundIsCheckedAsTheCardIsAndItsPagesBounded() throws {
+        let id = "rv-0123456789abcdef"
+        let options: [[String: Any]] = (0..<9).map { ["id": "o\($0)", "label": String(repeating: "L", count: 200), "kind": "page"] }
+        let decisions: [[String: Any]] = (0..<9).map { ["id": "d\($0)", "title": "Decision \($0)", "options": options] }
+        let huge = String(repeating: "x", count: HTMLPreviewPage.maximumDocumentBytes + 1)
+        let fits = String(repeating: "y", count: 1_000)
+        let long = String(repeating: "n", count: RichReviewMark.maxNote + 50)
+        let round = try XCTUnwrap(RichReviewLoader.checkedRound([
+            "round": 1, "rounds": 1, "decisions": decisions,
+            "pages": ["d0/o0": huge, "d0/o1": fits],
+            "marks": ["decisions": [["decision": "d0", "mark": "change", "option": "o1", "note": long]], "note": long],
+        ] as [String: Any], id: id))
+        XCTAssertEqual(round.decisions.count, 6, "the schema's six decisions")
+        XCTAssertEqual(round.decisions.first?.options.count, 6, "and six options each")
+        XCTAssertEqual(round.decisions.first?.options.first?.label.count, 60, "labels at the schema's length")
+        XCTAssertNil(round.page(decision: "d0", option: "o0"), "a page over the preview's ceiling isn't drawn")
+        XCTAssertEqual(round.page(decision: "d0", option: "o1"), fits)
+        XCTAssertEqual(round.pageBytes, fits.utf8.count)
+        XCTAssertEqual(round.marks["d0"]?.note.unicodeScalars.count, RichReviewMark.maxNote)
+        XCTAssertEqual(round.note?.unicodeScalars.count, RichReviewMark.maxNote)
+        let invalid = try XCTUnwrap(RichReviewLoader.checkedRound(
+            ["round": 1, "rounds": 1, "decisions": [["id": "d1", "title": "One option", "options": [options[0]]]]] as [String: Any],
+            id: id))
+        XCTAssertTrue(invalid.decisions.isEmpty, "a decision the card wouldn't take isn't drawn")
+        XCTAssertNil(RichReviewLoader.checkedRound(["pages": [String: String]()] as [String: Any], id: id))
+    }
+
     func testANoteIsCappedInUnicodeScalarsAsTheHostCounts() throws {
         let max = RichReviewMark.maxNote
         let below = String(repeating: "a", count: max - 1)

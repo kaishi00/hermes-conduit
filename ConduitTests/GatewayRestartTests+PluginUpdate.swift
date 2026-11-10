@@ -453,6 +453,16 @@ extension GatewayRestartTests {
         let context = WatchPhoneContext(pluginAsk: PluginUpdateAsk.managedAsk)
         XCTAssertEqual(WatchPhoneContext.decode(context.encoded())?.pluginAsk,
                        "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
+        // A Watch call keeps the ask of the host it began on: after the
+        // iPhone switched dashboards, the new host's keeper isn't this
+        // call's (issue 2066).
+        let began = WatchPhoneContext(activeDashboardID: "A", pluginAsk: nil)
+        let switched = WatchPhoneContext(activeDashboardID: "B", pluginAsk: PluginUpdateAsk.managedAsk)
+        XCTAssertNil(WatchPhoneContext.pluginAsk(forCallBegunUnder: began, now: switched))
+        let managedLater = WatchPhoneContext(activeDashboardID: "A", pluginAsk: PluginUpdateAsk.managedAsk)
+        XCTAssertEqual(WatchPhoneContext.pluginAsk(forCallBegunUnder: began, now: managedLater), PluginUpdateAsk.managedAsk,
+                       "the same host's newer word counts")
+        XCTAssertEqual(WatchPhoneContext.pluginAsk(forCallBegunUnder: nil, now: switched), PluginUpdateAsk.managedAsk)
         // What else the ask said (sharing paused, the version needed) leads.
         XCTAssertEqual(PluginUpdateAsk.text(ask, lead: "Sharing is paused."),
                        "Sharing is paused. The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date.")
@@ -1050,6 +1060,8 @@ extension GatewayRestartTests {
         let host = PluginHost()
         host.selfUpdateStartError = DashboardTicketBridgeError.http(status: 501, detail: "This Hermes can't run the plugin update on its own")
         host.capabilities = [
+            // Asked first who manages the plugin (issue 2061): nobody does.
+            Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
             Self.capabilities(loaded: "0.62.0", disk: "0.63.0", boot: "old"),
             Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "new"),
         ]
@@ -1091,6 +1103,33 @@ extension GatewayRestartTests {
             XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
             XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"))
         }
+    }
+
+    /// Issue 2061: an answered start that started nothing (a proxy's 502
+    /// while the host restarts) is no license for Hermes' own pull either.
+    func testAnAnsweredFailedStartOnAHostNowManagedNeverFallsBackToHermesPull() async {
+        for status in [500, 502, 503, 404] {
+            let host = PluginHost()
+            host.selfUpdateStartError = DashboardTicketBridgeError.http(status: status, detail: "Bad Gateway")
+            var managed = Self.capabilities(loaded: "0.63.0", disk: "0.63.0", boot: "a")
+            managed["managed"] = true
+            managed["managed_by"] = "Family farm"
+            host.capabilities = [managed]
+            var updater = host.updater()
+            updater.onHost = true
+            let outcome = await updater.run { _ in }
+            XCTAssertEqual(outcome, .failed(detail: "Family farm keeps the plugin up to date."), "\(status)")
+            XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"), "\(status)")
+            XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.installPath)"), "\(status)")
+        }
+        let host = PluginHost()
+        host.selfUpdateStartError = DashboardTicketBridgeError.http(status: 502, detail: "Bad Gateway")
+        host.capabilities = []
+        var updater = host.updater()
+        updater.onHost = true
+        let outcome = await updater.run { _ in }
+        guard case .failed = outcome else { return XCTFail("a host that can't say gets no pull, got \(outcome)") }
+        XCTAssertFalse(host.calls.contains("POST \(NotifierPluginUpdater.updatePath)"))
     }
 
     func testALostStartOnAHostThatCantSayWhoManagesItNeverFallsBackToHermesPull() async {

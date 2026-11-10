@@ -1250,6 +1250,13 @@ struct MessageBubble: View, Equatable {
         return boards.isEmpty ? nil : boards
     }
 
+    /// One of this reply's ::conduit-board lines names a board the plugin
+    /// no longer has, or one Conduit can't draw.
+    private var hasGoneLineBoard: Bool {
+        guard let ids = rowState.lineBoardIDs[message.id] else { return false }
+        return ids.contains { rowState.lineBoardsGone.contains($0) && rowState.lineBoards[$0] == nil }
+    }
+
     /// A board as the chat draws it. A live card shows only where it was
     /// last brought up to date. A board this Conduit can't draw every card
     /// of shows as its Markdown. `followUps`: the row's own conduit_show,
@@ -1368,13 +1375,20 @@ struct MessageBubble: View, Equatable {
                 )
             }
         case .assistant:
-            if let boards = lineBoards, !boards.isEmpty {
+            if lineBoards != nil || hasGoneLineBoard {
                 // The boards its ::conduit-board lines name, under it: a card
                 // the plugin showed for a call the model wrote out as text.
+                // One the plugin no longer has leaves a line saying so, as
+                // the line itself is hidden (issue 2093).
                 VStack(alignment: .leading, spacing: 10) {
                     assistantRow
-                    ForEach(Array(boards.enumerated()), id: \.offset) { _, board in
+                    ForEach(Array((lineBoards ?? []).enumerated()), id: \.offset) { _, board in
                         boardView(board, rowID: message.id, followUps: false)
+                    }
+                    if hasGoneLineBoard {
+                        Label("A board this reply showed is no longer available.", systemImage: "rectangle.on.rectangle.slash")
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
                     }
                 }
             } else {

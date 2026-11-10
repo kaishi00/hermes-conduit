@@ -723,6 +723,8 @@ final class WatchDirectCallModel: ObservableObject {
 
     /// The iPhone's answer to the start, over the link or through the relay.
     private func sessionAnswered(_ answer: WatchVoiceWire.Message?) {
+        // The iPhone's context as the session came: the host it runs on.
+        sessionPhoneContext = link.phoneContext
         switch answer {
         case .directSession(_, let session)? where engine == .gemini || engine == .qwen:
             begin(session)
@@ -1162,7 +1164,8 @@ final class WatchDirectCallModel: ObservableObject {
                 "reachable": link.isReachable,
             ])
         case .failed(let failure):
-            let message = Self.worded(failure, pluginAsk: link.phoneContext?.pluginAsk)
+            let message = Self.worded(failure, pluginAsk: WatchPhoneContext.pluginAsk(forCallBegunUnder: sessionPhoneContext,
+                                                                                         now: link.phoneContext))
             WatchCallLog.shared.note("directFailed", ["message": message, "screen": "\(scenePhase)", "rejoins": rejoins])
             // Once the call has been live, a fresh session carries it on;
             // not on the bridge once its grant is over, which its bridge was.
@@ -3350,7 +3353,11 @@ final class WatchDirectCallModel: ObservableObject {
         finish(reason)
     }
 
+    /// The iPhone's context when this call's session came (WatchPhoneContext.pluginAsk).
+    private var sessionPhoneContext: WatchPhoneContext?
+
     private func reset() {
+        sessionPhoneContext = nil
         noNetwork = WatchNoNetwork()
         grokStreams = 0
         streamsSpent = false
