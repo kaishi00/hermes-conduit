@@ -956,7 +956,10 @@ struct V2Shell: View {
     }
 
     /// The tabs and the main button standing in the status strip, at its
-    /// foot, clear of the clock and wifi at its top. Any page pushed over
+    /// foot, clear of the clock and wifi at its top and of iOS's window
+    /// controls under them, which reach about 332 pt down the outer screen
+    /// (issue 2118): icons only, in the controls' 50 pt column, so the bar
+    /// is short enough to leave a gap under them. Any page pushed over
     /// the tab's root on one column hides them, not just a chat or Pulse
     /// as with the floating bar: iOS lays the page's Back and a search
     /// toolbar button out in the same strip, over the tabs and the main
@@ -965,15 +968,18 @@ struct V2Shell: View {
         ZStack(alignment: .bottom) {
             if split || path(of: selectedTab).isEmpty {
                 VStack(spacing: 12) {
-                    V2StripTabBar(selection: $selectedTab, width: strip.barWidth)
+                    V2StripTabBar(selection: $selectedTab, width: strip.columnWidth)
                     voiceButton(chatVoiceBeside: V2SplitLayout.hasChatVoiceBeside(split: split, path: path(of: selectedTab), inRoom: appState.activeRoomSurface != nil))
+                        .environment(\.v2MainButtonDiameter, strip.columnWidth)
                 }
+                .frame(width: strip.columnWidth)
+                .padding(strip.edge == .trailing ? .trailing : .leading, strip.columnOuterMargin)
                 .padding(.bottom, 6)
                 .transition(.move(edge: strip.edge == .trailing ? .trailing : .leading).combined(with: .opacity))
             }
         }
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: path(of: selectedTab).isEmpty)
-        .frame(width: strip.width)
+        .frame(width: strip.width, alignment: strip.edge == .trailing ? .trailing : .leading)
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: strip.edge == .trailing ? .bottomTrailing : .bottomLeading)
         // Out past the shell's frame, into the strip itself.
         .ignoresSafeArea(.container, edges: strip.edge == .trailing ? .trailing : .leading)
@@ -1831,12 +1837,27 @@ struct V2StatusStrip: Equatable {
         }
     }
 
-    /// The tabs' glass column, a margin in from the strip's sides.
-    var barWidth: CGFloat { width - 12 }
+    /// The column iOS's own controls stand in, down the strip: its window
+    /// controls (a close and arrange capsule, a "…" circle) are 50 pt wide,
+    /// 24 pt in from the screen's edge, on a Duo (issue 2118, a tester's
+    /// screenshots). The tabs and the main button take the same column, so
+    /// they line up under them at the same width.
+    static let columnWidth: CGFloat = 50
+    static let columnOuterMargin: CGFloat = 24
+
+    /// The column's width, narrower in a strip without the room for it.
+    var columnWidth: CGFloat { min(Self.columnWidth, width - 8) }
+
+    /// The column's margin from the screen's edge, so it's centered where
+    /// iOS's controls are: a little in from the strip's middle.
+    var columnOuterMargin: CGFloat { max(4, min(Self.columnOuterMargin, width - columnWidth - 4)) }
 }
 
 /// The tab bar standing in a Duo's status strip: the same four items as
 /// the capsule, one above another, the selection sliding between them.
+/// Icons only, as iOS's own controls in the strip: a title doesn't fit
+/// their 50 pt column ("Settings" alone is 44 pt), and the labelled bar
+/// was tall enough to run into those controls (issue 2118).
 private struct V2StripTabBar: View {
     @Binding var selection: V2Tab
     let width: CGFloat
@@ -1852,39 +1873,33 @@ private struct V2StripTabBar: View {
                         selection = tab
                     }
                 } label: {
-                    VStack(spacing: 3) {
-                        Image(systemName: tab.symbol)
-                            .font(.system(size: 18, weight: .semibold))
-                            .conduitFixedGlyph()
-                        Text(tab.title)
-                            .scaledFont(.caption2.weight(.semibold))
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.7)
-                    }
-                    .foregroundStyle(isSelected ? Color.conduitAccent : Color.secondary)
-                    .padding(.horizontal, 2)
-                    .frame(maxWidth: .infinity, minHeight: 54)
-                    .background {
-                        if isSelected {
-                            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                                .fill(Color.primary.opacity(0.08))
-                                .matchedGeometryEffect(id: "selection", in: highlight)
+                    Image(systemName: tab.symbol)
+                        .font(.system(size: 18, weight: .semibold))
+                        .conduitFixedGlyph()
+                        .foregroundStyle(isSelected ? Color.conduitAccent : Color.secondary)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background {
+                            if isSelected {
+                                Capsule(style: .continuous)
+                                    .fill(Color.primary.opacity(0.08))
+                                    .matchedGeometryEffect(id: "selection", in: highlight)
+                            }
                         }
-                    }
-                    .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+                        .contentShape(Capsule(style: .continuous))
                 }
                 .buttonStyle(PressableButtonStyle())
                 .accessibilityLabel(tab.title)
                 .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
+                // The titles don't fit the controls' column: a long press
+                // shows the tab's name, as at large Text Sizes.
                 .accessibilityShowsLargeContentViewer {
                     Label(tab.title, systemImage: tab.symbol)
                 }
             }
         }
-        .padding(4)
+        .padding(3)
         .frame(width: width)
-        .conduitGlassControl(cornerRadius: 22, interactive: false)
-        .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+        .conduitGlassControl(cornerRadius: width / 2, interactive: false)
     }
 }
 
