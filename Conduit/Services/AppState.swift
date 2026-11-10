@@ -1237,6 +1237,12 @@ final class AppState: ObservableObject {
                     // on every chat the person opens.
                     if showModelPicker { showModelPicker = false }
                     if showContextSheet { showContextSheet = false }
+                    // A failed send's line under the composer was the chat
+                    // left's; a reconnect's new id for the same one keeps it.
+                    if let failure = sendFailureShown {
+                        if errorMessage == failure { errorMessage = nil }
+                        sendFailureShown = nil
+                    }
                 }
                 updateChatOnScreen()
             }
@@ -16498,8 +16504,9 @@ final class AppState: ObservableObject {
             followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
             isConnected = true
             isConnecting = false
-            // A fresh healthy session never inherits an older banner error.
-            errorMessage = nil
+            // A fresh healthy session never inherits an older banner error;
+            // a failed send's reason stays until the next send or its chat.
+            if errorMessage == nil || errorMessage != sendFailureShown { errorMessage = nil }
             lastConnectionFailure = nil
             reconnectAttempts = 0
             connectedAt = Date()
@@ -22143,7 +22150,9 @@ final class AppState: ObservableObject {
             // including the typed classification Repair Connection seeds
             // from: a successful reconnect makes any previous failure stale,
             // so a LATER unrelated failure must route repair from itself.
-            errorMessage = nil
+            // A failed send's reason stays: its words are back in the
+            // composer, and it goes with the next send or its chat.
+            if errorMessage == nil || errorMessage != sendFailureShown { errorMessage = nil }
             chatErrorBehindRoom = nil
             lastConnectionFailure = nil
             reconnectAttempts = 0
@@ -30757,7 +30766,7 @@ final class AppState: ObservableObject {
         // Images staged for a Queue this Hermes refuses would ride on the
         // next turn instead, so they never go up.
         if queued, !attachments.isEmpty, client.refusesQueuedPrompts {
-            errorMessage = HermesClient.QueueUnsupportedError.attachmentsMessage
+            showSendFailure(HermesClient.QueueUnsupportedError.attachmentsMessage)
             return false
         }
         let joinsRunningTurn = queued && turnState.isRunning
@@ -30817,6 +30826,7 @@ final class AppState: ObservableObject {
         settleReasoningSegmentIntoTranscript()
         // An earlier send's failure, shown under the composer, is over.
         if errorMessage != nil { errorMessage = nil }
+        sendFailureShown = nil
         messages.append(userMessage)
         requestChatScrollToLatest()
         cacheMessagePresentation(for: [sessionId])
@@ -30905,7 +30915,10 @@ final class AppState: ObservableObject {
                         lostSessionIDs: submissionSessionIDs, using: client
                     )
                 }
-                errorMessage = AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))")
+                // A file can't wait as text: it comes back, and the
+                // reconnect starts now all the same.
+                noteDropFoundBySend(error, client: client)
+                showSendFailure(AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))"))
                 await recoverComposerSubmission(using: submissionContext)
                 return false
             }
@@ -31102,7 +31115,7 @@ final class AppState: ObservableObject {
             }
             if error is HermesClient.QueueUnsupportedError, !attachments.isEmpty {
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
-                errorMessage = HermesClient.QueueUnsupportedError.attachmentsMessage
+                showSendFailure(HermesClient.QueueUnsupportedError.attachmentsMessage)
                 await recoverComposerSubmission(using: submissionContext)
                 return false
             }
@@ -31300,7 +31313,7 @@ final class AppState: ObservableObject {
                 // failed send must not paint an error onto the session the
                 // user switched to while recovery was suspended.
                 if isCurrentComposerSubmission(submissionContext) {
-                    errorMessage = AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))")
+                    showSendFailure(AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))"))
                 }
                 if !reconnected, isCurrentComposerSubmission(submissionContext) {
                     await recoverComposerSubmission(using: submissionContext)
@@ -31318,7 +31331,7 @@ final class AppState: ObservableObject {
                         refusal, sessionID: sessionId, knownSessionIDs: submissionSessionIDs, refusedText: text
                     )
                 } else {
-                    errorMessage = AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))")
+                    showSendFailure(AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))"))
                 }
             }
             await recoverComposerSubmission(using: submissionContext)
@@ -31344,14 +31357,6 @@ final class AppState: ObservableObject {
         }
     }
 
-    /// Which failures leave it genuinely unknown whether Hermes received the
-    /// prompt. Two classes are DEFINITIVE rejections: a structured `RpcError`
-    /// (the gateway answered, so the prompt was not accepted) and
-    /// `notConnected` (`rpc` throws before any bytes leave the device). The
-    /// remaining transport failures are ambiguous — the bytes may have
-    /// reached Hermes and the turn may already be running — so the
-    /// authoritative registry probe decides, and unknown future `HermesError`
-    /// cases fail toward the probe rather than toward a blind retry.
     /// A typed send `rpc` refused before writing it (`notConnected`): the
     /// socket had closed under it, its close frame in before its receive
     /// failed, so the drop wasn't known yet (issue 2095, a proxy closing
@@ -31370,13 +31375,7 @@ final class AppState: ObservableObject {
         rowID: String,
         client: HermesClient
     ) -> Bool {
-        guard case HermesError.notConnected = error, self.client === client else { return false }
-        // The drop the socket's own close report would bring a moment
-        // later: that report, from this client, then finds it done.
-        if isConnected {
-            noteConnectionStep("Send found the socket closed")
-            handleDisconnect()
-        }
+        guard noteDropFoundBySend(error, client: client) else { return false }
         guard attachments.isEmpty, !queued, surface == nil, submissionTurnSurface == nil,
               !callSubmissionTexts.contains(text), composerWaitsForChat,
               sendWhenConnected(text, replyReference: nil) else { return false }
@@ -31387,6 +31386,38 @@ final class AppState: ObservableObject {
         return true
     }
 
+    /// The failed send's error under the composer, which leaving its chat
+    /// clears: the composer shows `errorMessage` unlocked too.
+    var sendFailureShown: String?
+
+    private func showSendFailure(_ message: String) {
+        errorMessage = message
+        sendFailureShown = message
+    }
+
+    /// A send's request `rpc` refused with `notConnected` on the current
+    /// client: the socket closed before its receive failed. The drop its
+    /// own close report would bring a moment later is acted on now; that
+    /// report, from this client, then finds it done. True when the error
+    /// was that refusal.
+    @discardableResult
+    private func noteDropFoundBySend(_ error: Error, client: HermesClient) -> Bool {
+        guard case HermesError.notConnected = error, self.client === client else { return false }
+        if isConnected {
+            noteConnectionStep("Send found the socket closed")
+            handleDisconnect()
+        }
+        return true
+    }
+
+    /// Which failures leave it genuinely unknown whether Hermes received the
+    /// prompt. Two classes are DEFINITIVE rejections: a structured `RpcError`
+    /// (the gateway answered, so the prompt was not accepted) and
+    /// `notConnected` (`rpc` throws before any bytes leave the device). The
+    /// remaining transport failures are ambiguous — the bytes may have
+    /// reached Hermes and the turn may already be running — so the
+    /// authoritative registry probe decides, and unknown future `HermesError`
+    /// cases fail toward the probe rather than toward a blind retry.
     static func isAmbiguousPromptDelivery(_ error: Error) -> Bool {
         switch error {
         case HermesError.notConnected:
