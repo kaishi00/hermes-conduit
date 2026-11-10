@@ -5499,12 +5499,12 @@ README.md
 - Entities: `Conduit/Intents/ConduitChatEntity.swift` (ConduitChatEntity, IndexedEntity on iOS 18; ConduitChatCatalog; ConduitChatEntityQuery; OpenConduitChatIntent; ConduitChatSpotlight)
 - Phrases: `Conduit/Intents/StartVoiceConversationIntent.swift` (ConduitVoiceShortcuts), `Conduit/AppShortcuts.xcstrings`
 - Send to Hermes: `Conduit/Intents/SendToHermesIntent.swift` (ShortcutPickedChat, ShortcutSender's picked chat), `Conduit/Services/AppState+ShortcutSend.swift` (pickedChat)
-- Index refresh: `Conduit/Services/AppState+Widgets.swift` (widgetReload, after each snapshot write that changed it)
+- Index refresh: `Conduit/Services/AppState+Widgets.swift` (widgetReload, after each snapshot write that changed it), `Conduit/ConduitApp.swift` (at launch)
 - Tests: `ConduitTests/WidgetConfigurationTests.swift` (the catalog), `ConduitTests/ShortcutSendTests.swift` (a picked chat)
 
 **Rulings**
 - The chats are the widget snapshot's: each workspace the app has shown, its last chat, pinned and recent chats and its Bot Chats, up to 20 a workspace. Only titles and where they live go into Spotlight, on the phone; no message does. iOS's Siri & Search settings for Conduit turn it off (2026-11-10, #2163).
-- Spotlight's copy is rebuilt whole from the snapshot after each write that changed it, so a chat that left the snapshot (deleted, archived, a removed dashboard or profile) leaves Spotlight too (2026-11-10, #2163).
+- Spotlight's copy is rebuilt whole from the snapshot at launch and after each write that changed it, one rebuild at a time with the newest list last, so a chat that left the snapshot (deleted, archived, a removed dashboard or profile) leaves Spotlight too (2026-11-10, #2163).
 - Opening a chat goes through the widget's launch: it switches dashboard and profile and says when the chat is gone, as a widget tap does (2026-11-10, #2163).
 - Send to Hermes with a picked chat sends into that chat and never makes a new one: a chat Hermes no longer has, or a bot no longer listed, fails the run and nothing is sent. A picked Bot Chat is its bot's chat now, found as its Bots row finds it, so a /new since the pick doesn't strand it. It never switches dashboards: a chat on another dashboard says to switch in Conduit first. The pick wins over Chat Name and Profile (2026-11-10, #2163).
 - A saved shortcut's pick that the snapshot no longer lists keeps its identity, untitled, so the shortcut keeps working while the chat exists (2026-11-10, #2163).

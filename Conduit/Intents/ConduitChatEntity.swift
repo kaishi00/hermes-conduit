@@ -153,21 +153,30 @@ struct OpenConduitChatIntent: OpenIntent {
 enum ConduitChatSpotlight {
     private static let logger = Logger(subsystem: "com.milim.relay", category: "spotlight")
     private static var pending: Task<Void, Never>?
+    private static var generation = 0
 
     static func refresh(from store: WidgetSnapshotStore?) {
         // Siri matches spoken chat names only against what it was told.
         SiriProfileShortcuts.refresh()
         guard #available(iOS 18.0, *) else { return }
-        pending?.cancel()
+        generation += 1
+        let mine = generation
+        let previous = pending
+        previous?.cancel()
         pending = Task { @MainActor in
+            // One replacement at a time: an older one that already started
+            // finishes before this one deletes, so it can't put its list back.
+            await previous?.value
             // Writes come in bursts (each profile's list, then its bots).
             try? await Task.sleep(for: .seconds(2))
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, mine == generation else { return }
             let chats = ConduitChatCatalog.entities(in: store?.read())
             let index = CSSearchableIndex.default()
             do {
                 // Whole, so a chat that left the snapshot leaves Spotlight.
                 try await index.deleteAppEntities(ofType: ConduitChatEntity.self)
+                // A newer list waits behind this one and replaces it.
+                guard mine == generation else { return }
                 if !chats.isEmpty { try await index.indexAppEntities(chats) }
             } catch {
                 logger.error("Spotlight chat index failed: \(error.localizedDescription, privacy: .public)")
