@@ -4135,7 +4135,9 @@ one page, see One Model page for every model setting, #1992; it took over a
 bot's Model page, the voice job, voice reply, Helper and Pulse menus'
 submenus, the Model page editors' provider-then-model menus and the Kanban
 override's disclosures) · Searching for a model (every match still lists,
-whatever is closed) · Text (not needed: no caption describes the lists)
+whatever is closed) · Provider logos and quota on provider rows (each
+provider row shows its logo and quota left, #2161) · Text (not needed: no
+caption describes the lists)
 
 **Code**
 - Every setting's Model page: `Conduit/Views/ModelChooserPage.swift` (providerRow, expandedProviders, openPickedProvider)
@@ -4151,7 +4153,40 @@ whatever is closed) · Text (not needed: no caption describes the lists)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #1992 (the settings menus and pages grouped this way became one Model page; rulings say page and row); 2026-11-08, #1984 (the model sheet's providers moved to an All providers page that opens on the provider holding the checked model; Quick picks lead the sheet, see Pinned and recent models); 2026-11-05, #1805 (ConduitMenuPicker's value goes under its name on one line when both don't fit, instead of wrapping; see Sheets in Settings' look); 2026-11-05, #1793 (the Model page draws on Settings' backdrop and cards, its grouping unchanged, see Sheets in Settings' look); 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
+**Checked:** 2026-11-10, #2161 (each provider row shows its logo and quota left, and a Model page's models sit under the provider's name past its logo; see Provider logos and quota on provider rows); 2026-11-08, #1992 (the settings menus and pages grouped this way became one Model page; rulings say page and row); 2026-11-08, #1984 (the model sheet's providers moved to an All providers page that opens on the provider holding the checked model; Quick picks lead the sheet, see Pinned and recent models); 2026-11-05, #1805 (ConduitMenuPicker's value goes under its name on one line when both don't fit, instead of wrapping; see Sheets in Settings' look); 2026-11-05, #1793 (the Model page draws on Settings' backdrop and cards, its grouping unchanged, see Sheets in Settings' look); 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
+
+## Provider logos and quota on provider rows
+
+Every list of providers shows each one's logo, and a provider whose
+`model.options` row reports a quota says how much is left and when it
+resets (Eric, 2026-11-10: "can we include more than what hermes offers?").
+Hermes sends a slug and a name, no logo, so the logos are bundled.
+
+**Siblings:** the model sheet's All providers page (done) · every setting's
+Model page (done) · Models & providers' Providers section and Add a provider
+(done: the logo replaces the status symbol, a key that needs a look keeps an
+orange badge) · Settings > Usage (done: logo beside each quota; its full
+windows stay there) · search matches and Quick picks (not needed: the
+provider is a caption under a model) · a per-model rate limit (not needed
+on a provider row: it stays on Settings > Usage) · Watch, CarPlay, rooms and
+the notifier (not needed: none lists providers) · Text (done: README's
+Models & providers line)
+
+**Code**
+- Logos: `Conduit/Views/Components/ProviderLogoView.swift` (ProviderLogo.bySlug, byWord, asset, ProviderLogoView), `Conduit/Resources/ProviderLogos.xcassets/Contents.json`, `Conduit/Resources/ProviderLogos-LICENSE.txt`, `scripts/make-provider-logos.py`
+- Quota: `Conduit/Models/UsageReport.swift` (ProviderQuota.init(row:), summary, ProviderQuotaSummary), `Conduit/Services/HermesClient.swift` (ProviderInfo.quota), `Conduit/Views/Components/ProviderLogoView.swift` (ProviderQuotaLine)
+- Rows: `Conduit/Views/ModelPickerView.swift` (providerCard), `Conduit/Views/ModelChooserPage.swift` (providerRow), `Conduit/Views/ProviderSettingsViews.swift` (ProviderRow, ProvidersSettingsSection.quota), `Conduit/Views/UsageSettingsViews.swift` (quotaSection)
+- Tests: `ConduitTests/HermesClientTests+Usage.swift` (testAProviderRowCarriesItsQuotaSummary, testProviderLogosMatchSlugsAndNamesAndAreBundled)
+
+**Rulings**
+- Logos are bundled from lobe-icons (MIT), never fetched: no request leaves the phone for them. A provider is matched by slug, then alias, then a whole word of its slug or name; one with none shows its initial (#2161).
+- A single-colour logo takes the text colour; a coloured one keeps its brand colours unless it has black parts, which vanish in Dark Mode (#2161).
+- A row's quota is its tightest account-wide window's share left (a model-scoped window only when there's no other), with that window's reset; a pool counts the usable account with the most left; an account limit, or every signed-in account limited, reads "Limited until …". Orange under a fifth left, red at none (#2161).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-10, #2161 (entry added)
 
 ## Pinned and recent models
 
