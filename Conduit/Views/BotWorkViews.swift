@@ -286,6 +286,8 @@ struct BotWorkPanel: View {
             case .pin: return (AppLocalization.string("Pin"), "pin", .orange)
             case .unpin: return (AppLocalization.string("Unpin"), "pin.slash", .gray)
             case .resolve: return (AppLocalization.string("Resolve"), "checkmark.circle", .green)
+            case .leaveAlone: return (AppLocalization.string("Leave Alone"), "hand.raised", .gray)
+            case .coordinate: return (AppLocalization.string("Let \(botName) Coordinate It"), "point.3.connected.trianglepath.dotted", .blue)
             default: return (AppLocalization.string("Reopen"), "arrow.uturn.backward.circle", .conduitAccent)
             }
         }()
@@ -708,6 +710,12 @@ private struct BotWorkRow: View {
                         .foregroundStyle(Color.primary)
                         .lineLimit(expanded ? nil : 1)
                     Spacer(minLength: 4)
+                    if item.isLeftAlone {
+                        Image(systemName: "hand.raised.fill")
+                            .scaledFont(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(AppLocalization.string("Left alone"))
+                    }
                     if item.isPinned {
                         Image(systemName: "pin.fill")
                             .scaledFont(.caption2)

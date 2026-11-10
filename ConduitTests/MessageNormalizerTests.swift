@@ -3015,6 +3015,15 @@ final class MessageNormalizerTests: XCTestCase {
         ])
 
         XCTAssertEqual(messages.map(\.content), ["How's W1?", "[SILENT] is what I answer when nothing changed."])
+
+        // Every marker Hermes has, and a reply that only starts with one.
+        for marker in MessageNormalizer.silenceMarkers {
+            let read = MessageNormalizer.normalizeMessages([
+                .object(["id": .number(41), "role": .string("assistant"), "content": .string(" \(marker)\n")]),
+                .object(["id": .number(42), "role": .string("assistant"), "content": .string("\(marker) and more")])
+            ])
+            XCTAssertEqual(read.map(\.content), ["\(marker) and more"], marker)
+        }
     }
 
     func testHiddenUserRowIsDroppedEntirely() {
