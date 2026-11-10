@@ -5,32 +5,95 @@
 //  A Pulse card's body, drawn from the pick it was made from (PulseLook,
 //  plugin 0.150.0): the Pulse screen keeps one frame for every card (what
 //  it's about and when, its words, its buttons) and draws what's inside by
-//  its shape. A date as a calendar tile, something due as the days left on
-//  a bar from when it was noticed, a job's runs as dots, a promise in the
-//  words it was made, a status as a pill, steps as a stepper, and a card
-//  body as a chat draws a conduit_show card. Plain words draw nothing more.
+//  its shape, each in its own colour and place so the type reads at a
+//  glance (PulseLookStyle). A date as a coloured day down the card's edge,
+//  something due as a countdown over a bar from when it was noticed, a
+//  job's runs as blocks across the top, a promise in the words it was
+//  made, a status as its state writ large on a tinted card, steps as a
+//  checklist, and a card body as a chat draws a conduit_show card. Plain
+//  words draw nothing more.
 //
 
 import SwiftUI
 
+/// How a card's type shows at a glance (Eric, 2026-11-10: the cards still
+/// looked alike): each shape has its own colour, a symbol, and a place on
+/// the card for what defines it. A date stands as a coloured day down the
+/// card's leading edge, a job's runs as a band across its top, and what's
+/// due, a promise and a status lead the card above its words; steps list
+/// under them.
+struct PulseLookStyle {
+    enum Place { case side, band, lead, under, none }
+
+    let tint: Color
+    let symbol: String
+    let place: Place
+
+    init(_ body: PulseLook.Body, now: Date = Date()) {
+        let parts = Self.parts(body, now: now)
+        tint = parts.0
+        symbol = parts.1
+        place = parts.2
+    }
+
+    private static func parts(_ body: PulseLook.Body, now: Date) -> (Color, String, Place) {
+        switch body {
+        case .date:
+            return (.blue, "calendar", .side)
+        case let .due(due, hasTime, _):
+            let late = (hasTime ? due : PulseLook.endOfDay(due)) < now
+            return (late ? .red : .orange, "hourglass", .lead)
+        case let .runs(_, results):
+            return (results.contains(false) ? .red : .green, "arrow.triangle.2.circlepath", .band)
+        case .promise:
+            return (.purple, "quote.opening", .lead)
+        case let .status(_, state):
+            switch state {
+            case .ok: return (.green, "checkmark.circle.fill", .lead)
+            case .warn: return (.orange, "exclamationmark.triangle.fill", .lead)
+            case .fail: return (.red, "xmark.octagon.fill", .lead)
+            }
+        case .steps:
+            return (.teal, "checklist", .under)
+        case .drawn:
+            return (.conduitAccent, "", .under)
+        case .brief, .plain:
+            return (.conduitAccent, "", .none)
+        }
+    }
+
+    /// A status card is tinted whole: its state is the news.
+    static func washes(_ body: PulseLook.Body) -> Bool {
+        if case .status = body { return true }
+        return false
+    }
+}
+
 struct PulseLookBody: View {
     let look: PulseLook
+    /// Drawn inside the Pulse frame, which stands a date's day down the
+    /// card's edge; anywhere else (the morning brief's block) the date's
+    /// line says the day itself.
+    var framed = false
+
+    private var style: PulseLookStyle { PulseLookStyle(look.body) }
+    private var tint: Color { style.tint }
 
     var body: some View {
         Group {
             switch look.body {
             case let .date(day, what, whose):
-                dateTile(day, what: what, whose: whose)
+                dateLine(day, what: what, whose: whose)
             case let .due(due, hasTime, noticed):
-                dueBar(due, hasTime: hasTime, noticed: noticed)
+                dueCountdown(due, hasTime: hasTime, noticed: noticed)
             case let .runs(job, results):
-                runDots(job, results: results)
+                runBlocks(job, results: results)
             case let .promise(said, person, place, when):
                 promise(said, details: [person, place, when])
             case let .status(label, state):
                 status(label, state: state)
             case let .steps(names, at):
-                stepper(names, at: at)
+                checklist(names, at: at)
             case let .drawn(card):
                 RichCardView(card: card)
             case .brief, .plain:
@@ -39,38 +102,19 @@ struct PulseLookBody: View {
         }
     }
 
-    private func dateTile(_ day: Date, what: String, whose: String) -> some View {
-        HStack(spacing: 12) {
-            VStack(spacing: 0) {
-                Text(verbatim: day.formatted(.dateTime.weekday(.abbreviated).locale(AppLocalization.formattingLocale)).uppercased())
-                    .scaledFont(.caption2.weight(.semibold))
-                    .foregroundStyle(Color.conduitAccent)
-                Text(verbatim: day.formatted(.dateTime.day().locale(AppLocalization.formattingLocale)))
-                    .scaledFont(.title2.weight(.semibold))
-                Text(verbatim: day.formatted(.dateTime.month(.abbreviated).locale(AppLocalization.formattingLocale)))
-                    .scaledFont(.caption2)
-                    .foregroundStyle(.secondary)
-            }
-            .frame(minWidth: 52)
-            .padding(.vertical, 6)
-            .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(.quaternary))
-            .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(verbatim: day.formatted(Date.FormatStyle(date: .complete, time: .omitted).locale(AppLocalization.formattingLocale))))
-            VStack(alignment: .leading, spacing: 2) {
-                let title = [whose, what].filter { !$0.isEmpty }.joined(separator: " · ")
-                if !title.isEmpty {
-                    Text(verbatim: title)
-                        .scaledFont(.subheadline.weight(.medium))
-                }
-                Text(verbatim: PulseLook.relativeDay(day))
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-        }
+    /// In the frame the day itself stands down the card's edge
+    /// (PulseDateColumn): here, whose it is and how far off, after the day
+    /// where there's no column.
+    private func dateLine(_ day: Date, what: String, whose: String) -> some View {
+        let title = [whose, what].filter { !$0.isEmpty }.joined(separator: " · ")
+        let date = framed ? "" : day.formatted(.dateTime.weekday(.abbreviated).day().month().locale(AppLocalization.formattingLocale))
+        return Text(verbatim: ([date, title, PulseLook.relativeDay(day)].filter { !$0.isEmpty }).joined(separator: " · "))
+            .scaledFont(.caption.weight(.semibold))
+            .foregroundStyle(tint)
+            .fixedSize(horizontal: false, vertical: true)
     }
 
-    private func dueBar(_ due: Date, hasTime: Bool, noticed: Date?) -> some View {
+    private func dueCountdown(_ due: Date, hasTime: Bool, noticed: Date?) -> some View {
         let now = Date()
         // A day with no time is due by that day's end: not late on the day.
         let by = hasTime ? due : PulseLook.endOfDay(due)
@@ -85,37 +129,39 @@ struct PulseLookBody: View {
         let dueText = hasTime ? due.formatted(.dateTime.weekday(.abbreviated).day().month().hour().minute().locale(AppLocalization.formattingLocale))
             : due.formatted(.dateTime.weekday(.abbreviated).day().month().locale(AppLocalization.formattingLocale))
         return VStack(alignment: .leading, spacing: 6) {
-            Text(verbatim: hasTime ? due.formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale)) : PulseLook.relativeDay(due))
-                .scaledFont(.subheadline.weight(.semibold))
-                .foregroundStyle(late ? Color.red : progress > 0.75 ? Color.orange : Color.primary)
-            if let noticed = start {
-                ProgressView(value: progress)
-                    .tint(late ? .red : progress > 0.75 ? .orange : .conduitAccent)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: style.symbol)
+                    .scaledFont(.headline)
+                    .foregroundStyle(tint)
                     .accessibilityHidden(true)
-                HStack {
-                    Text(verbatim: noticed.formatted(.dateTime.day().month().locale(AppLocalization.formattingLocale)))
-                    Spacer(minLength: 0)
-                    Text(verbatim: dueText)
-                }
-                .scaledFont(.caption)
-                .foregroundStyle(.secondary)
-            } else {
+                Text(verbatim: hasTime ? due.formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale)) : PulseLook.relativeDay(due))
+                    .scaledFont(.title2.weight(.bold))
+                    .foregroundStyle(tint)
+                Spacer(minLength: 0)
                 Text(verbatim: dueText)
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
+            if start != nil {
+                ProgressView(value: progress)
+                    .tint(tint)
+                    .accessibilityHidden(true)
+            }
         }
     }
 
-    private func runDots(_ job: String, results: [Bool]) -> some View {
+    /// One block a run, oldest first, across the card's top band.
+    private func runBlocks(_ job: String, results: [Bool]) -> some View {
         let failedCount = results.filter { !$0 }.count
         return VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 ForEach(Array(results.enumerated()), id: \.offset) { _, ok in
-                    Circle()
+                    RoundedRectangle(cornerRadius: 4, style: .continuous)
                         .fill(ok ? Color.green : Color.red)
-                        .frame(width: 10, height: 10)
+                        .frame(height: 22)
+                        .frame(maxWidth: 36)
                 }
+                Spacer(minLength: 0)
             }
             .accessibilityHidden(true)
             HStack(spacing: 6) {
@@ -128,28 +174,29 @@ struct PulseLookBody: View {
                 Text(verbatim: "·")
                 Text(AppLocalization.string("Failed: \(failedCount)"))
             }
-            .scaledFont(.caption)
-            .foregroundStyle(.secondary)
+            .scaledFont(.caption.weight(.semibold))
+            .foregroundStyle(tint)
             .accessibilityElement(children: .combine)
         }
     }
 
+    /// The words as they were said lead the card.
     private func promise(_ said: String, details: [String]) -> some View {
-        HStack(alignment: .top, spacing: 10) {
-            Capsule()
-                .fill(Color.conduitAccent.opacity(0.6))
-                .frame(width: 3)
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: style.symbol)
+                .scaledFont(.title2.weight(.bold))
+                .foregroundStyle(tint)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
-                Text(verbatim: "“\(said)”")
-                    .italic()
-                    .scaledFont(.subheadline)
+                Text(verbatim: said)
+                    .scaledFont(.title3.weight(.medium))
+                    .foregroundStyle(tint)
                     .fixedSize(horizontal: false, vertical: true)
                 let line = details.filter { !$0.isEmpty }.joined(separator: " · ")
                 if !line.isEmpty {
                     Text(verbatim: line)
-                        .scaledFont(.caption)
-                        .foregroundStyle(.secondary)
+                        .scaledFont(.caption.weight(.semibold))
+                        .foregroundStyle(tint)
                 }
             }
         }
@@ -157,55 +204,72 @@ struct PulseLookBody: View {
     }
 
     private func status(_ label: String, state: PulseLook.State) -> some View {
-        let tint: Color = state == .ok ? .green : state == .warn ? .orange : .red
         let title: String = switch state {
         case .ok: AppLocalization.string("OK")
         case .warn: AppLocalization.string("Warning")
         case .fail: AppLocalization.string("Failing")
         }
-        return HStack(spacing: 8) {
-            Text(verbatim: label)
-                .scaledFont(.subheadline)
-                .lineLimit(2)
+        return HStack(spacing: 10) {
+            Image(systemName: style.symbol)
+                .scaledFont(.title.weight(.semibold))
+                .foregroundStyle(style.tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(verbatim: title)
+                    .scaledFont(.title3.weight(.bold))
+                    .foregroundStyle(style.tint)
+                Text(verbatim: label)
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             Spacer(minLength: 0)
-            Text(verbatim: title)
-                .scaledFont(.caption.weight(.semibold))
-                .foregroundStyle(tint)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 3)
-                .background(Capsule().fill(tint.opacity(0.15)))
         }
         .accessibilityElement(children: .combine)
     }
 
-    private func stepper(_ names: [String], at: Int) -> some View {
+    /// The steps as a list: done ones struck through, the one it's at in bold.
+    private func checklist(_ names: [String], at: Int) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 0) {
-                ForEach(Array(names.enumerated()), id: \.offset) { index, _ in
-                    Circle()
-                        .fill(index <= at ? Color.conduitAccent : Color.secondary.opacity(0.3))
-                        .frame(width: 10, height: 10)
-                    if index < names.count - 1 {
-                        Rectangle()
-                            .fill(index < at ? Color.conduitAccent : Color.secondary.opacity(0.3))
-                            .frame(height: 2)
-                    }
-                }
-            }
-            HStack(alignment: .top, spacing: 4) {
-                ForEach(Array(names.enumerated()), id: \.offset) { index, name in
+            ForEach(Array(names.enumerated()), id: \.offset) { index, name in
+                HStack(spacing: 8) {
+                    Image(systemName: index < at ? "checkmark.circle.fill" : index == at ? "circle.inset.filled" : "circle")
+                        .foregroundStyle(index <= at ? tint : Color.secondary.opacity(0.5))
                     Text(verbatim: name)
-                        .scaledFont(.caption2.weight(index == at ? .semibold : .regular))
+                        .strikethrough(index < at)
+                        .fontWeight(index == at ? .semibold : .regular)
                         .foregroundStyle(index == at ? Color.primary : Color.secondary)
-                        .lineLimit(2)
-                        .frame(maxWidth: .infinity,
-                               alignment: index == 0 ? .leading : index == names.count - 1 ? .trailing : .center)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
+                .scaledFont(.subheadline)
             }
         }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(AppLocalization.string(
             "Step \(String(at + 1)) of \(String(names.count)) · \(names[at])")))
+    }
+}
+
+/// A date card's day, down its leading edge in the type's colour.
+struct PulseDateColumn: View {
+    let day: Date
+    var tint: Color = .blue
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Text(verbatim: day.formatted(.dateTime.weekday(.abbreviated).locale(AppLocalization.formattingLocale)).uppercased())
+                .scaledFont(.caption.weight(.bold))
+            Text(verbatim: day.formatted(.dateTime.day().locale(AppLocalization.formattingLocale)))
+                .scaledFont(.largeTitle.weight(.bold))
+            Text(verbatim: day.formatted(.dateTime.month(.abbreviated).locale(AppLocalization.formattingLocale)).uppercased())
+                .scaledFont(.caption.weight(.bold))
+        }
+        .foregroundStyle(.white)
+        .frame(minWidth: 76, maxHeight: .infinity)
+        .padding(.horizontal, 6)
+        .background(tint)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: day.formatted(Date.FormatStyle(date: .complete, time: .omitted).locale(AppLocalization.formattingLocale))))
     }
 }
 

@@ -1889,6 +1889,32 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(look(["type": "weather", "places": [["name": "X"]]])?.body, .plain)
     }
 
+    func testEachCardTypeHasItsOwnPlaceAndColour() throws {
+        func style(_ text: String) throws -> PulseLookStyle {
+            let look = try XCTUnwrap(PulseLook(json: try JSONSerialization.jsonObject(with: Data(text.utf8))))
+            return PulseLookStyle(look.body)
+        }
+        XCTAssertEqual(try style(#"{"shape": "runs", "facts": {"job": "Backup", "results": ["ok", "ok"]}}"#).place, .band)
+        XCTAssertEqual(try style(#"{"shape": "runs", "facts": {"job": "Backup", "results": ["ok", "ok"]}}"#).tint, .green)
+        XCTAssertEqual(try style(#"{"shape": "runs", "facts": {"job": "Backup", "results": ["ok", "fail"]}}"#).tint, .red)
+        XCTAssertEqual(try style(#"{"shape": "status", "facts": {"label": "Relay", "state": "warn"}}"#).place, .lead)
+        XCTAssertEqual(try style(#"{"shape": "status", "facts": {"label": "Relay", "state": "warn"}}"#).tint, .orange)
+        XCTAssertEqual(try style(#"{"shape": "steps", "facts": {"names": ["Ordered", "Shipped"], "at": 1}}"#).place, .under)
+        XCTAssertEqual(try style(#"{"shape": "sparkle", "facts": {}}"#).place, PulseLookStyle.Place.none)
+        // Only a status card is tinted whole.
+        XCTAssertTrue(PulseLookStyle.washes(.status(label: "Relay", state: .fail)))
+        XCTAssertFalse(PulseLookStyle.washes(.plain))
+        // Something due by a day isn't late on that day, and is after it.
+        let calendar = PulseLook.wireCalendar
+        let noon = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 9, hour: 12)))
+        let today = calendar.startOfDay(for: noon)
+        XCTAssertEqual(PulseLookStyle(.due(due: today, hasTime: false, noticed: nil), now: noon).tint, .orange)
+        XCTAssertEqual(PulseLookStyle(.due(due: today, hasTime: false, noticed: nil), now: noon.addingTimeInterval(86_400)).tint, .red)
+        // What fits no card type says so in What Pulse left out (0.157.7).
+        let left = try XCTUnwrap(PulseLeftOut(json: ["id": 1, "text": "Idle fact", "decision": "skipped", "skip": "shapeless"]))
+        XCTAssertEqual(left.reason, AppLocalization.string("Didn't fit a card type"))
+    }
+
     func testFactsThatDontHoldUpDrawPlain() throws {
         func look(_ text: String) throws -> PulseLook? {
             PulseLook(json: try JSONSerialization.jsonObject(with: Data(text.utf8)))
