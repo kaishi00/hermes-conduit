@@ -162,9 +162,21 @@ extension AppState {
         var state = notifierPlugin.state
         let remaining = Int(deadline.timeIntervalSinceNow * 1_000)
         if state == .unknown, let bridge = dashboardTicketBridge, remaining > 0 {
+            let dashboardID = activeDashboardID
             do {
-                state = NotifierPluginStatus.state(
-                    from: try await bridge.requestJSON(path: NotifierPluginStatus.path, timeoutMilliseconds: min(5_000, remaining)))
+                let response = try await bridge.requestJSON(
+                    path: NotifierPluginStatus.path, timeoutMilliseconds: min(5_000, remaining))
+                state = NotifierPluginStatus.state(from: response)
+                // A host that manages the plugin, answering before any status
+                // load said so (a cold launch in the background): the run's
+                // "plugin missing" names who keeps it up to date rather than
+                // asking for an update (issue 2063). Only while the answer is
+                // still the active dashboard's and nothing newer knows more.
+                if bridge === dashboardTicketBridge, dashboardID == activeDashboardID, notifierPlugin.state == .unknown {
+                    let managedBy = NotifierPluginStatus.managedBy(from: response)
+                    NotifierPluginStatus.Remembered.remember(managedBy, for: dashboardID, in: appDefaults)
+                    PluginUpdateAsk.setActive(managedBy: managedBy)
+                }
             } catch {
                 state = NotifierPluginStatus.state(from: error)
             }

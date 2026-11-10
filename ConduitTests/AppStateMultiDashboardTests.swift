@@ -863,6 +863,64 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(appState.cronJobs.isEmpty)
     }
 
+    /// A failed read says so, ends the spinner and doesn't hold the next
+    /// ask back (issue 2109).
+    func testAFailedScheduledJobsReadSaysSoAndTheNextAskReadsAgain() async throws {
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        addTeardownBlock { @MainActor in
+            held.releaseAll()
+            held.bridge.invalidate()
+        }
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let first = Task { await appState.loadCronJobs() }
+        try await held.answer(["error": "down"], toPathEnding: "/api/cron/jobs", status: 500)
+        await first.value
+        XCTAssertFalse(appState.cronJobsLoading)
+        XCTAssertNotNil(appState.errorMessage, "the failed read says so")
+
+        let again = Task { await appState.loadCronJobs() }
+        try await held.answer(["jobs": [["id": "j1", "enabled": true, "name": "Morning"]]], toPathEnding: "/api/cron/jobs")
+        await again.value
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["j1"])
+    }
+
+    /// Profile A, B, then A again while A's first read is out: that read's
+    /// end neither clears the newer A read's hold nor commits over it, as
+    /// each read carries its own token (issue 2109).
+    func testAnOlderScheduledJobsReadDoesNotEndTheNewerReadForTheSameProfile() async throws {
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        addTeardownBlock { @MainActor in
+            held.releaseAll()
+            held.bridge.invalidate()
+        }
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+        let profile = appState.activeProfile
+
+        let older = Task { await appState.loadCronJobs() }
+        try await held.waitForRequests(1)
+        appState.setActiveProfileForTesting("work")
+        let other = Task { await appState.loadCronJobs() }
+        appState.setActiveProfileForTesting(profile)
+        let newer = Task { await appState.loadCronJobs() }
+        for _ in 0..<1_000 where held.sent.filter({ $0.path.hasSuffix("/api/cron/jobs") }).count < 3 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(held.sent.filter { $0.path.hasSuffix("/api/cron/jobs") }.count, 3, "each profile change starts its own read")
+
+        try await held.answer(["jobs": [["id": "old", "enabled": true, "name": "Old"]]], toPathEnding: "/api/cron/jobs")
+        await older.value
+        XCTAssertTrue(appState.cronJobsLoading, "the newer read still holds the list")
+        XCTAssertTrue(appState.cronJobs.isEmpty, "and the older read commits nothing over it")
+
+        held.releaseAll()
+        await other.value
+        await newer.value
+        XCTAssertFalse(appState.cronJobsLoading)
+    }
+
     func testFailedCredentialSwitchDoesNotBlockLaterSelection() async {
         // Switch to a credential dashboard whose auth fails (closed loopback
         // port), then switch to an authless dashboard: the later selection
