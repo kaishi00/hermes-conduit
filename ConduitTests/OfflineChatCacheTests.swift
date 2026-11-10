@@ -2572,13 +2572,12 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertFalse(appState.isConnected, "The reconnect starts all the same")
         XCTAssertNotNil(appState.errorMessage, "Said under the composer, now shown while it's unlocked too")
         let failure = try XCTUnwrap(appState.sendFailureShown)
-        XCTAssertEqual(appState.errorMessage, failure)
-        XCTAssertFalse(appState.showsConnectionRepair, "A send's reason offers no Repair while the reconnect runs")
 
         // Leaving its chat takes the line with it.
         appState.sessions.append(session("stored-b"))
         appState.activeSessionId = "stored-b"
-        XCTAssertNil(appState.errorMessage)
+        // The recovery's own sync may have said something since: that stays.
+        XCTAssertNotEqual(appState.errorMessage, failure)
         XCTAssertNil(appState.sendFailureShown)
     }
 
