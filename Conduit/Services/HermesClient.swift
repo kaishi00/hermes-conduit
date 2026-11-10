@@ -7051,15 +7051,22 @@ enum MessageNormalizer {
         let summary = String(text.drop { !$0.isLetter && !$0.isNumber })
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard !summary.isEmpty else { return nil }
-        return ReviewActivity(summary: localizedReviewSummary(summary), details: nil, fullSessionId: nil)
+        return ReviewActivity(summary: summary, details: nil, fullSessionId: nil)
     }
 
     /// Hermes writes a review's summary in English. The fixed ones ("Memory
     /// updated", "User profile updated", joined by " · ") read in the app's
     /// language, each category once; anything else, like a skill's name,
-    /// stays as Hermes wrote it.
+    /// stays as Hermes wrote it. Applied where the card is drawn, never at
+    /// parse time: the saved review keeps Hermes' words, so its dedupe
+    /// against the transcript holds and it follows a language change.
     static func localizedReviewSummary(_ summary: String) -> String {
-        let parts = summary.components(separatedBy: " · ").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
+        // Empty pieces (a stray " · ") and a closing period don't keep a
+        // fixed summary in English.
+        let parts = summary.components(separatedBy: " · ")
+            .map { $0.trimmingCharacters(in: .whitespacesAndNewlines).trimmingCharacters(in: CharacterSet(charactersIn: ".!")) }
+            .filter { !$0.isEmpty }
+        guard !parts.isEmpty else { return summary }
         let labels = parts.map { part -> String? in
             switch part.lowercased() {
             case "memory updated": return AppLocalization.string("Memory")
@@ -7086,7 +7093,7 @@ enum MessageNormalizer {
         guard !body.isEmpty else { return nil }
         let parts = body.components(separatedBy: " · ").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         let details = parts.filter { part in ["➕", "✏️", "➖"].contains { part.contains($0) } }
-        guard !details.isEmpty else { return ReviewActivity(summary: localizedReviewSummary(body), details: nil, fullSessionId: nil) }
+        guard !details.isEmpty else { return ReviewActivity(summary: body, details: nil, fullSessionId: nil) }
         let labels = Set(details.compactMap { detail -> String? in
             let lower = detail.lowercased()
             if lower.hasPrefix("user profile") { return AppLocalization.string("User profile") }

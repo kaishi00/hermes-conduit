@@ -964,7 +964,9 @@ final class StreamEventParserTests: XCTestCase {
     /// summary naming something (a skill) stays as Hermes wrote it.
     func testFixedReviewSummariesGoThroughTheAppLanguage() {
         let memory = AppLocalization.string("\(AppLocalization.string("Memory")) updated")
-        XCTAssertEqual(MessageNormalizer.reviewActivity(fromText: "💾 Self-improvement review: Memory updated")?.summary, memory)
+        // The parsed review keeps Hermes' words; the card localizes them.
+        XCTAssertEqual(MessageNormalizer.reviewActivity(fromText: "💾 Self-improvement review: Memory updated")?.summary, "Memory updated")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated"), memory)
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("User profile updated"),
                        AppLocalization.string("\(AppLocalization.string("User profile")) updated"))
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · User profile updated"),
@@ -987,8 +989,14 @@ final class StreamEventParserTests: XCTestCase {
                 standard.removeObject(forKey: AppLanguageStore.defaultsKey)
             }
         }
+        // Parsed in French, the review still keeps Hermes' words, so a
+        // saved one matches its transcript row and follows a later change.
         XCTAssertEqual(MessageNormalizer.reviewActivity(fromText: "💾 Self-improvement review: Memory updated")?.summary,
-                       "Mémoire : mise à jour")
+                       "Memory updated")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated"), "Mémoire : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · "), "Mémoire : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · · Skill updated."),
+                       "Mémoire : mise à jour · Compétence : mise à jour")
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("User profile updated · Skill updated"),
                        "Profil utilisateur : mise à jour · Compétence : mise à jour")
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · Memory updated"), "Mémoire : mise à jour")
