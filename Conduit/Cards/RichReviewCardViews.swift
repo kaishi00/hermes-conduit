@@ -65,12 +65,13 @@ struct RichReviewCard: View {
             // keeps them, as a composed card's fields.
             .onChange(of: card.normalizedJSON) { _, _ in
                 startOver()
-                // Another card's round isn't this one's: its own read (the
-                // task above) brings it.
+                // Another card's round isn't this one's: this card's own is
+                // read (or taken from what's kept) afresh.
                 round = nil
                 failed = false
                 stale = false
                 known = false
+                if let review = card.review { Task { await load(review) } }
             }
             .onChange(of: context?.chat) { old, new in
                 if let old, let new, context?.sameChat(old, new) == true { return }
