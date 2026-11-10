@@ -815,6 +815,26 @@ extension AppStateMultiDashboardTests {
         XCTAssertNotNil(KeychainHelper.loadConnection(dashboardID: mac.id))
     }
 
+    /// A second ask for the scheduled jobs joins the read out rather than
+    /// returning with nothing read (a Tasks tab whose task restarted
+    /// mid-read), and a finished read doesn't hold the next one back.
+    func testScheduledJobReadsJoinTheOneOutAndReleaseIt() async {
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://cron.example", ticket: "cron-test"),
+            profile: "default"
+        )
+        async let first: Void = appState.loadCronJobs()
+        async let second: Void = appState.loadCronJobs()
+        _ = await (first, second)
+        XCTAssertFalse(appState.cronJobsLoading)
+        XCTAssertNotNil(appState.errorMessage, "the read ran: an unconnected client's failure is reported")
+        appState.errorMessage = nil
+        await appState.loadCronJobs()
+        XCTAssertNotNil(appState.errorMessage, "a finished read doesn't hold the next back")
+        XCTAssertFalse(appState.cronJobsLoading)
+    }
+
     func testFailedCredentialSwitchDoesNotBlockLaterSelection() async {
         // Switch to a credential dashboard whose auth fails (closed loopback
         // port), then switch to an authless dashboard: the later selection

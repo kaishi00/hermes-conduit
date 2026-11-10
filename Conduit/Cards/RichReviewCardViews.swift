@@ -27,6 +27,9 @@ struct RichReviewCard: View {
     @State private var stale = false
     /// Counts reads, so a retry's older read can't overwrite a newer one's answer.
     @State private var reads = 0
+    /// The card this view last read for, so another card in a kept row
+    /// starts over.
+    @State private var loadedCard: String?
     @State private var picked: String?
     @State private var note = ""
     @State private var reviewing = false
@@ -58,20 +61,23 @@ struct RichReviewCard: View {
                     footer(review)
                 }
             }
-            .task(id: review.id + "#\(review.round)") { await load(review) }
             // A row kept for another card, or another chat (a branch keeps
             // the same rows), starts over: one review's pick and note never
             // go with another's Send. The same chat under its durable id
-            // keeps them, as a composed card's fields.
-            .onChange(of: card.normalizedJSON) { _, _ in
-                startOver()
-                // Another card's round isn't this one's: this card's own is
-                // read (or taken from what's kept) afresh.
-                round = nil
-                failed = false
-                stale = false
-                known = false
-                if let review = card.review { Task { await load(review) } }
+            // keeps them, as a composed card's fields. Another card's round
+            // isn't this one's either: this card's own is read (or taken
+            // from what's kept) afresh, by this one task, so a switch reads
+            // the host once.
+            .task(id: card.normalizedJSON) {
+                if let shown = loadedCard, shown != card.normalizedJSON {
+                    startOver()
+                    round = nil
+                    failed = false
+                    stale = false
+                    known = false
+                }
+                loadedCard = card.normalizedJSON
+                await load(review)
             }
             .onChange(of: context?.chat) { old, new in
                 if let old, let new, context?.sameChat(old, new) == true { return }
