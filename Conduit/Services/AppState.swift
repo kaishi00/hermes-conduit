@@ -10460,9 +10460,10 @@ final class AppState: ObservableObject {
     /// lands at the turn's next step. The open chat shows the words the way
     /// it shows a typed correction.
     private func redirectLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
+        // Taken before waiting for a client: a send that fails meanwhile keeps its line.
+        let failureBefore = sendFailureShown
         let client = try await clientForVoiceRequest()
         let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
-        let failureBefore = sendFailureShown
         do {
             let outcome: SessionRedirectOutcome
             if let redirect = chatResumeLifecycleOperations.redirect {
@@ -10510,9 +10511,10 @@ final class AppState: ObservableObject {
     /// supervisor's redirect fallback: a timeout leaves delivery unknown and
     /// must not send the words a second time.
     private func steerLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
+        // Taken before waiting for a client: a send that fails meanwhile keeps its line.
+        let failureBefore = sendFailureShown
         let client = try await clientForVoiceRequest()
         let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
-        let failureBefore = sendFailureShown
         let persistedTwinsBefore = persistedSteerIDs(matching: text)
         do {
             if let steer = chatResumeLifecycleOperations.steer {
