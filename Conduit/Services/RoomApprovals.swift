@@ -202,8 +202,10 @@ extension AppState {
     /// Reads the approvals. A read that fails keeps what was read last, and
     /// one that a sign-out or another dashboard overtook is dropped, as the
     /// invites' is.
-    func refreshLinkedRoomApprovals() async {
-        _ = await readLinkedRoomApprovals()
+    /// True when the plugin answered.
+    @discardableResult
+    func refreshLinkedRoomApprovals() async -> Bool {
+        await readLinkedRoomApprovals() != nil
     }
 
     /// The approvals read now, kept for Group Chats; nil when the read

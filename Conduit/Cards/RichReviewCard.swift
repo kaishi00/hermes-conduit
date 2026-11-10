@@ -265,7 +265,7 @@ final class RichReviewLoader {
     /// drawn again each time it scrolls back, and a round can be megabytes
     /// (issue 2149, as `HTMLPreviewDocuments.freshFor`). The review sheet,
     /// where marking happens, always asks again.
-    static let rowFreshFor: TimeInterval = 30
+    static let rowFreshFor: TimeInterval = HTMLPreviewDocuments.freshFor
 
     enum LoadError: Error {
         case notConnected, gone

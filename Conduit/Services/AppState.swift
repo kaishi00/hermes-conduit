@@ -13933,7 +13933,7 @@ final class AppState: ObservableObject {
             // them again for a started invite with no copy yet.
             async let rooms: Void = refreshGroupRooms()
             async let drafts: Void = refreshLinkedRoomDrafts()
-            async let approvals: Void = refreshLinkedRoomApprovals()
+            async let approvals = refreshLinkedRoomApprovals()
             async let joined: Void = refreshLinkedRoomCopiesThenInvites()
             _ = await (rooms, drafts, approvals, joined)
         } catch is CancellationError {
@@ -13968,6 +13968,7 @@ final class AppState: ObservableObject {
     func refreshGroupRooms() async {
         guard groupChatPhase == .available, let client, isConnected else { return }
         let epoch = groupRoomEpoch
+        var stayed: KeptGroupRooms?
         do {
             // Kept for the Bots list to open on, with the pictures (#1533),
             // when they changed: a room's send reads the list again, and
@@ -13975,7 +13976,11 @@ final class AppState: ObservableObject {
             // actor, which an unchanged list needn't pay (issue 2152).
             _ = try await keepingRead(as: KeptRoute.groupRooms, profile: KeptRoute.everyProfile,
                                       owner: currentDashboardRuntimeOwner(),
-                                      keeps: { [weak self] rooms in self?.keptGroupRooms() != rooms }) {
+                                      unchanged: { [weak self] rooms in
+                                          guard let self, self.keptGroupRooms() == rooms else { return false }
+                                          stayed = rooms
+                                          return true
+                                      }) {
                 let (rooms, nextOffset) = try await self.groupsList(client)
                 guard self.groupRoomEpoch == epoch else { throw CancellationError() }
                 if !self.groupRoomsListed {
@@ -13993,6 +13998,9 @@ final class AppState: ObservableObject {
                 guard self.groupRoomEpoch == epoch else { throw CancellationError() }
                 return self.keptGroupRoomsNow()
             }
+            // Its turn moved on with nothing written: the decoded copy
+            // still stands, so the next send's compare decodes nothing.
+            if let stayed { keptGroupRoomsStayed(stayed) }
         } catch is CancellationError {
             return
         } catch {
@@ -14118,12 +14126,23 @@ final class AppState: ObservableObject {
 
     /// The rooms kept on this dashboard, decoded once per answer kept.
     func keptGroupRooms() -> KeptGroupRooms? {
-        let turn = keptAnswerTurn(KeptRoute.groupRooms, profile: KeptRoute.everyProfile)
-        let key = "\(activeDashboardID?.uuidString ?? "-")|\(offlineChatCache.removals)|\(turn)"
+        let key = keptGroupRoomsMemoKey
         if let memo = keptGroupRoomsMemo, memo.key == key { return memo.rooms }
         let rooms = keptRead(KeptGroupRooms.self, KeptRoute.groupRooms, profile: KeptRoute.everyProfile)
         keptGroupRoomsMemo = (key, rooms)
         return rooms
+    }
+
+    private var keptGroupRoomsMemoKey: String {
+        let turn = keptAnswerTurn(KeptRoute.groupRooms, profile: KeptRoute.everyProfile)
+        return "\(activeDashboardID?.uuidString ?? "-")|\(offlineChatCache.removals)|\(turn)"
+    }
+
+    /// A read the same as the kept rooms moved their turn on without
+    /// writing them (keepingRead's `unchanged`): what's kept is still
+    /// `rooms`, under the new turn.
+    private func keptGroupRoomsStayed(_ rooms: KeptGroupRooms) {
+        keptGroupRoomsMemo = (key: keptGroupRoomsMemoKey, rooms: Optional(rooms))
     }
 
     /// Opens the room a notification names (issue 2064), as Hermes lists
@@ -15122,9 +15141,11 @@ final class AppState: ObservableObject {
             let now = Date()
             if Self.roomCopyReadsApprovals(roomMoved: !fresh.isEmpty, working: activeRoomDriverStatus?.working == true,
                                            listed: !activeRoomCopyApprovals.isEmpty,
-                                           lastRead: activeRoomCopyApprovalsReadAt, now: now) {
+                                           lastRead: activeRoomCopyApprovalsReadAt, now: now),
+               await refreshLinkedRoomApprovals() {
+                // Only a read that answered waits out the interval; a failed
+                // one is tried again next tick.
                 activeRoomCopyApprovalsReadAt = now
-                await refreshLinkedRoomApprovals()
             }
         } catch is CancellationError {
             return
@@ -38637,6 +38658,7 @@ final class AppState: ObservableObject {
         owner: DashboardRuntimeOwner,
         keptAs route: ([String: Any]) -> String?,
         writes: Bool = false,
+        turnOnly: () -> Bool = { false },
         _ read: () async throws -> [String: Any]
     ) async throws -> [String: Any] {
         let removals = offlineChatCache.removals
@@ -38644,7 +38666,8 @@ final class AppState: ObservableObject {
         let answer = try await read()
         let turn = writes ? nextKeptAnswerTurn() : asked
         if let route = route(answer) {
-            keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals, turn: turn, writes: writes)
+            keepAnswer(answer, for: route, profile: profile, owner: owner, removals: removals, turn: turn, writes: writes,
+                       turnOnly: turnOnly())
         }
         return answer
     }
@@ -38658,15 +38681,26 @@ final class AppState: ObservableObject {
         profile: String,
         owner: DashboardRuntimeOwner?,
         keeps: (Kept) -> Bool = { _ in true },
+        unchanged: (Kept) -> Bool = { _ in false },
         _ read: () async throws -> Kept
     ) async throws -> Kept {
         guard let owner else { return try await read() }
         var kept: Kept?
-        _ = try await keepingAnswer(profile: profile, owner: owner, keptAs: { $0.isEmpty ? nil : route }) {
+        var same = false
+        _ = try await keepingAnswer(profile: profile, owner: owner, keptAs: { $0.isEmpty ? nil : route },
+                                    turnOnly: { same }) {
             let value = try await read()
             kept = value
             // A read only partly Hermes' answer (`keeps` says) keeps nothing.
-            return keeps(value) ? Self.keptJSON(value) ?? [:] : [:]
+            guard keeps(value) else { return [:] }
+            // The same as what's kept: nothing is encoded or written, but
+            // its turn still counts, so an older read landing after it
+            // can't put an earlier answer back (issue 2152).
+            if unchanged(value) {
+                same = true
+                return ["unchanged": true]
+            }
+            return Self.keptJSON(value) ?? [:]
         }
         guard let kept else { throw CancellationError() }
         return kept
@@ -38762,7 +38796,8 @@ final class AppState: ObservableObject {
         owner: DashboardRuntimeOwner,
         removals: Int,
         turn: Int,
-        writes: Bool
+        writes: Bool,
+        turnOnly: Bool = false
     ) {
         guard let dashboardID = owner.dashboardID else { return }
         let scope = Self.keptAnswerScope(dashboardID, profile, route)
@@ -38770,7 +38805,8 @@ final class AppState: ObservableObject {
         let keeps = offlineChatCache.removals == removals && (writes || ownsDashboardRuntime(owner))
         guard keeps || writes else { return }
         keptAnswerTurnsKept[scope] = turn
-        guard keeps else { return }
+        // The same as what's kept (keepingRead's `unchanged`): the turn alone.
+        guard keeps, !turnOnly else { return }
         // A schema's fields are keyed by config path, not by what they hold.
         let names: Set<String> = route == KeptRoute.configSchema ? ["fields"] : []
         let answer = route == KeptRoute.modelAuxiliary ? HelperModelSlot.keptAnswer(answer) : answer
