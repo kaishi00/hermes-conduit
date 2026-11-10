@@ -1230,6 +1230,28 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(nowPlaying.endCount, 0)
     }
 
+    /// A held gap whose next stream never sounds lets the session and Now
+    /// Playing go once the limit passes after the drain (#2162 review).
+    func testAHeldGapEndsAtItsLimit() async throws {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        gateway.blocksFinish = true
+        let nowPlaying = MockReadAloudNowPlaying()
+        let controller = makeController(playback: playback, gateway: gateway, nowPlaying: nowPlaying)
+        controller.sessionHoldLimit = .milliseconds(300)
+
+        controller.enqueue(messageID: "room:r:1", content: "First bot.") { true }
+        controller.enqueue(messageID: "room:r:2", content: "Second bot.") { true }
+        await waitUntil { gateway.streams.first?.finishCount == 1 }
+        try gateway.streams.first?.emitPCMForTest()
+        gateway.streams.first?.releaseFinishForTest()
+        await waitUntil { gateway.openCount == 2 }
+        XCTAssertEqual(playback.sessionsHeld, 1)
+        await waitUntil { playback.sessionsHeld == 0 }
+        XCTAssertEqual(playback.sessionsHeld, 0, "the second never sounded, so the hold went at its limit")
+        XCTAssertEqual(nowPlaying.endCount, 1, "and Now Playing with it")
+    }
+
     /// The next message in another bot's voice readies its gateway, which
     /// stops the controller: the hold carries over all the same.
     func testTheSessionHoldCarriesIntoAnotherBotsVoice() async throws {

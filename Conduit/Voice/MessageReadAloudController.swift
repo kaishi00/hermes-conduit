@@ -152,7 +152,7 @@ final class MessageReadAloudController: ObservableObject {
     /// from when the last one drained.
     private var sessionHold: (@MainActor () -> Void)?
     private var sessionHoldTimeout: Task<Void, Never>?
-    static let sessionHoldLimit: Duration = .seconds(10)
+    var sessionHoldLimit: Duration = .seconds(10)
     /// Now Playing kept through a held gap rather than ended with the
     /// reading: the next stream retitles it, a release ends it.
     private var nowPlayingKeptForNext = false
@@ -906,7 +906,8 @@ final class MessageReadAloudController: ObservableObject {
         guard sessionHold != nil else { return }
         sessionHoldTimeout?.cancel()
         sessionHoldTimeout = Task { [weak self] in
-            try? await Task.sleep(for: Self.sessionHoldLimit)
+            guard let limit = self?.sessionHoldLimit else { return }
+            try? await Task.sleep(for: limit)
             guard !Task.isCancelled else { return }
             self?.releaseSessionHold()
         }
