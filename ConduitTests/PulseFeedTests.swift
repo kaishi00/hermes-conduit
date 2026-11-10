@@ -599,7 +599,11 @@ final class PulseFeedTests: XCTestCase {
           {"id": 11, "kind": "noticed", "topic": "other", "level": "screen", "news": "The audit failed again", "chat_id": "work",
            "look": {"shape": "runs", "facts": {"job": "Audit", "results": ["ok", "fail"]}, "line": "The audit failed again", "detail": "", "actions": []}},
           {"id": 12, "kind": "noticed", "topic": "watch", "level": "screen", "news": "The audit is back to normal", "chat_id": "work",
-           "look": {"shape": "runs", "facts": {"job": "Audit", "results": ["fail", "ok"]}, "line": "The audit is back to normal", "detail": "", "actions": []}}
+           "look": {"shape": "runs", "facts": {"job": "Audit", "results": ["fail", "ok"]}, "line": "The audit is back to normal", "detail": "", "actions": []}},
+          {"id": 13, "kind": "noticed", "topic": "watch", "level": "screen", "news": "The disk is nearly full", "chat_id": "work",
+           "look": {"shape": "status", "facts": {"label": "Disk", "state": "warn"}, "line": "The disk is nearly full", "detail": "", "actions": []}},
+          {"id": 14, "kind": "noticed", "topic": "watch", "level": "screen", "news": "The backup is fine", "chat_id": "work",
+           "look": {"shape": "status", "facts": {"label": "Backup", "state": "ok"}, "line": "The backup is fine", "detail": "", "actions": []}}
         ]}
         """)))
         let message = Dictionary(uniqueKeysWithValues: page.cards.map { ($0.id, $0.actionMessage) })
@@ -608,6 +612,9 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(message[10], "Pulse brought this up: The deploy keeps failing\n\nFind out what's wrong and fix it.")
         XCTAssertEqual(message[11], "Pulse brought this up: The audit failed again\n\nFind out what's wrong and fix it.")
         XCTAssertEqual(message[12], "Pulse brought this up: The audit is back to normal\n\nWhere does that stand now?")
+        // A warning is a problem too; an OK status keeps the topic's ask.
+        XCTAssertEqual(message[13], "Pulse brought this up: The disk is nearly full\n\nFind out what's wrong and fix it.")
+        XCTAssertEqual(message[14], "Pulse brought this up: The backup is fine\n\nWhere does that stand now?")
         // What Hermes said it would do gets a go-ahead, whether the card is a
         // follow-up or a remembered promise.
         XCTAssertEqual(message[1], "Pulse reminded me: The backup is still on the server\n\nGo ahead with it now.")

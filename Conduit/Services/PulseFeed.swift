@@ -274,7 +274,8 @@ struct PulseCard: Equatable, Identifiable {
     /// getting ready; a deadline, taking care of it before then; a next
     /// step (0.106.0), taking care of it like a plan; something
     /// watched, where it stands; an interest, more about it; anything else,
-    /// a look.
+    /// a look. A look showing something wrong (``showsProblem``) asks to find
+    /// out what's wrong and fix it, whatever the topic (issue 2082).
     /// One from a Kanban task's worker asks Hermes to get the task going
     /// again: the work happens on the board, not in a chat.
     var actionMessage: String {
