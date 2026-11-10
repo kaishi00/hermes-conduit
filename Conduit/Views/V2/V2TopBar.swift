@@ -57,6 +57,13 @@ struct V2TopBar<Trailing: View, LowerLeading: View>: View {
                         }
                     }
                 }
+                // Never wider than offered: unconstrained, ViewThatFits
+                // reports its first candidate's ideal width (the one-row
+                // bar, 436 pt with five buttons), and the screen's safe area
+                // bar sized the Duo's outer screen's Chats past its column:
+                // 328 pt centered off the left, empty bands either side
+                // (issue 2118).
+                .frame(minWidth: 0, maxWidth: .infinity)
             }
         }
         .padding(.horizontal, 16)
