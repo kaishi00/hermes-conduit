@@ -800,6 +800,15 @@ struct GroupRoomReplay: Equatable {
         return false
     }
 
+    /// The bots' messages this replay holds and `old` didn't (Read replies
+    /// aloud reads them): a resync's fill below the user's own send
+    /// included, history below `old`'s first event not.
+    func memberMessages(since old: GroupRoomReplay) -> [GroupEvent] {
+        let seen = Set(old.events.map(\.seq))
+        let floor = old.events.first?.seq ?? 0
+        return events.filter { $0.seq > floor && !seen.contains($0.seq) && $0.isMemberMessage }
+    }
+
     /// Adopt one incremental page. An empty page (fresh room, or nothing
     /// new) is a no-op.
     mutating func adopt(page: GroupLogPage) {

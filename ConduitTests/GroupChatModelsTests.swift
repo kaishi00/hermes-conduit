@@ -425,6 +425,22 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(replay.lastChatMessage?.messageText, "b")
     }
 
+    func testTheBotsMessagesAReplayGainedAreTheOnesReadAloud() {
+        func bot(_ seq: Int) -> [String: Any] {
+            eventJSON(seq: seq, kind: "message.member", actor: ["kind": "member", "id": "researcher"],
+                      payload: ["text": "b\(seq)", "thread_id": "main"])
+        }
+        var old = GroupRoomReplay(roomID: "room-1")
+        old.adopt(page: logPage([bot(5), eventJSON(seq: 8, kind: "message.user", payload: ["text": "mine"])]))
+        // A resync fills in 6 and 7 below the user's own send, and 9 after it.
+        var new = GroupRoomReplay(roomID: "room-1")
+        new.adoptInitialTail(page: logPage([bot(3), bot(5), bot(6), bot(7),
+                                            eventJSON(seq: 8, kind: "message.user", payload: ["text": "mine"]), bot(9)]))
+        XCTAssertEqual(new.memberMessages(since: old).map(\.seq), [6, 7, 9], "history below the old window isn't new")
+        // An empty room's first bot message is new.
+        XCTAssertEqual(old.memberMessages(since: GroupRoomReplay(roomID: "room-1")).map(\.seq), [5])
+    }
+
     func testReplayIncrementalPageAppendsWithoutDuplicates() {
         var replay = GroupRoomReplay(roomID: "room-1")
         replay.adopt(page: logPage([eventJSON(seq: 1, kind: "message.user", payload: ["text": "a"])]))

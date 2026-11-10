@@ -270,6 +270,34 @@ extension GroupChatModelsTests {
     }
 
     @MainActor
+    func testACopysOpeningTailMarksWhereNewMessagesStart() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 0)])
+        routes.events = []
+        let appState = try copiesAppState(routes)
+        copiesConnect(appState)
+        appState.applyNotifierPluginReport(copiesPluginReport)
+        await appState.refreshGroupChatSupport()
+        await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
+        XCTAssertEqual(appState.activeRoomReplay.events, [])
+        XCTAssertTrue(appState.activeRoomCopyTailRead, "an empty copy's first message is new")
+        appState.closeGroupRoom()
+
+        // A failed opening read: nothing is new until the tail comes.
+        let failing = CopiesRoutes(copies: [copiesCopy(lastSeq: 2)])
+        failing.events = [copiesEvent(1), copiesEvent(2)]
+        failing.failingLogReads = 1
+        let other = try copiesAppState(failing)
+        copiesConnect(other)
+        other.applyNotifierPluginReport(copiesPluginReport)
+        await other.refreshGroupChatSupport()
+        await other.openRoomCopy(try XCTUnwrap(other.linkedRoomCopyRows.first))
+        XCTAssertFalse(other.activeRoomCopyTailRead)
+        await other.pollActiveRoom()
+        XCTAssertTrue(other.activeRoomCopyTailRead)
+        other.closeGroupRoom()
+    }
+
+    @MainActor
     func testAFailedOpeningReadReadsTheTailAgainNotTheFirstEvents() async throws {
         let routes = CopiesRoutes(copies: [copiesCopy(lastSeq: 300)])
         routes.events = (1...300).map { copiesEvent($0) }
