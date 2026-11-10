@@ -1155,6 +1155,22 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(controller.state, .preparing(messageID: "room:r:2"))
     }
 
+    func testAWaitingMessageFromARoomLeftDoesNotDropTheOnesAfterIt() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway()
+        gateway.blocksFinish = true
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.enqueue(messageID: "room:a:1", content: "First bot.") { true }
+        controller.enqueue(messageID: "room:a:2", content: "Left behind.") { false }
+        controller.enqueue(messageID: "room:b:1", content: "New room.") { true }
+        await waitUntil { gateway.streams.first?.finishCount == 1 }
+        gateway.streams.first?.releaseFinishForTest()
+        await waitUntil { gateway.openCount == 2 }
+
+        XCTAssertEqual(controller.state, .preparing(messageID: "room:b:1"))
+    }
+
     func testStopDropsTheRoomMessagesWaiting() async {
         let playback = MockReadAloudPlayback()
         let gateway = MockReadAloudGateway()

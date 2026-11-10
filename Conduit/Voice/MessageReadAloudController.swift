@@ -418,13 +418,20 @@ final class MessageReadAloudController: ObservableObject {
     }
 
     private func start(_ reading: QueuedReading, rest: [QueuedReading]) {
-        // Readying the gateway may stop (and clear the queue).
-        guard reading.prepare() else {
-            queue = []
-            return
+        // Readying the gateway may stop (and clear the queue). A message
+        // that may no longer be read (its room was left) is skipped; the
+        // ones after it may still be.
+        var reading = reading
+        var remaining = rest
+        while !reading.prepare() {
+            guard !remaining.isEmpty else {
+                queue = []
+                return
+            }
+            reading = remaining.removeFirst()
         }
         endOperation()
-        queue = rest.filter { $0.messageID != reading.messageID }
+        queue = remaining.filter { $0.messageID != reading.messageID }
         startPlayback(messageID: reading.messageID, content: reading.content)
     }
 
