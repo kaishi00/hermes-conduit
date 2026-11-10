@@ -1020,6 +1020,8 @@ struct PulseLeftOut: Equatable, Identifiable {
             case "raised": return AppLocalization.string("Brought up lately, and nothing changed since")
             case "rated": return AppLocalization.string("You said before that it wasn't useful")
             case "minor": return AppLocalization.string("Too minor to bring up")
+            // 0.157.7: what fits no card type stays out.
+            case "shapeless": return AppLocalization.string("Didn't fit a card type")
             default: return AppLocalization.string("Pulse chose to leave it out")
             }
         }

@@ -951,52 +951,76 @@ struct V2PulsePage: View {
     /// headline and its one more sentence, what the pick draws, then the
     /// actions as a full-width bar with the thumbs at its end.
     private func lookCardView(_ card: PulseCard, look: PulseLook) -> some View {
-        VStack(alignment: .leading, spacing: 0) {
-            VStack(alignment: .leading, spacing: 8) {
-                topicLine(card)
-                lookWords(card, look: look)
-                lookBody(card)
-                if !card.quote.isEmpty, !card.isCleared, !card.drawsPromise {
-                    Text(verbatim: "“\(card.quote)”")
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.secondary)
-                        .fixedSize(horizontal: false, vertical: true)
+        // Each type in its own place and colour (PulseLookStyle); a cleared
+        // card keeps the shape and steps back whole.
+        let style = PulseLookStyle(look.body)
+        return HStack(spacing: 0) {
+            if style.place == .side, case let .date(day, _, _) = look.body {
+                PulseDateColumn(day: day)
+            }
+            VStack(alignment: .leading, spacing: 0) {
+                if style.place == .band {
+                    lookBody(card)
+                        .padding(EdgeInsets(top: 12, leading: 14, bottom: 10, trailing: 14))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .background(style.tint.opacity(0.14))
                 }
-                sourceLink(card)
-                whyNote(card)
-                if card.isCleared {
-                    HStack(spacing: 8) {
-                        clearedLabel(card)
-                        Spacer(minLength: 0)
-                        clearedUndoButton(card)
+                VStack(alignment: .leading, spacing: 8) {
+                    topicLine(card)
+                    if style.place == .lead { lookBody(card) }
+                    lookWords(card, look: look, quiet: style.place == .lead)
+                    if style.place == .under || style.place == .side { lookBody(card) }
+                    if !card.quote.isEmpty, !card.isCleared, !card.drawsPromise {
+                        Text(verbatim: "“\(card.quote)”")
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
+                            .fixedSize(horizontal: false, vertical: true)
                     }
-                } else if untoldCards.contains(card.id) {
-                    Label(Self.untoldNote, systemImage: "exclamationmark.circle")
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.orange)
-                        .fixedSize(horizontal: false, vertical: true)
+                    sourceLink(card)
+                    whyNote(card)
+                    if card.isCleared {
+                        HStack(spacing: 8) {
+                            clearedLabel(card)
+                            Spacer(minLength: 0)
+                            clearedUndoButton(card)
+                        }
+                    } else if untoldCards.contains(card.id) {
+                        Label(Self.untoldNote, systemImage: "exclamationmark.circle")
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.orange)
+                            .fixedSize(horizontal: false, vertical: true)
+                    }
+                    if card.rating == "down", let reason = PulseDownReason(rawValue: card.reason),
+                       !(card.isAwayForWrongTime && card.isResting) {
+                        Text(verbatim: reason.title)
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .trailing)
+                    }
                 }
-                if card.rating == "down", let reason = PulseDownReason(rawValue: card.reason),
-                   !(card.isAwayForWrongTime && card.isResting) {
-                    Text(verbatim: reason.title)
-                        .scaledFont(.caption)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(EdgeInsets(top: 12, leading: 14, bottom: 14, trailing: 14))
+                if !card.isCleared, hasBarActions(card) {
+                    actionBar(card)
                 }
             }
-            .padding(EdgeInsets(top: 12, leading: 14, bottom: 14, trailing: 14))
-            if !card.isCleared, hasBarActions(card) {
-                actionBar(card)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
+        .fixedSize(horizontal: false, vertical: true)
         .background(
-            RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .fill(.thinMaterial)
+            ZStack {
+                RoundedRectangle(cornerRadius: 22, style: .continuous)
+                    .fill(.thinMaterial)
+                if PulseLookStyle.washes(look.body) {
+                    RoundedRectangle(cornerRadius: 22, style: .continuous)
+                        .fill(style.tint.opacity(0.10))
+                }
+            }
         )
         .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: 22, style: .continuous)
-                .strokeBorder(focusedCard == card.id ? Color.conduitAccent.opacity(0.8) : Color.white.opacity(0.14),
+                .strokeBorder(focusedCard == card.id ? Color.conduitAccent.opacity(0.8)
+                              : PulseLookStyle.washes(look.body) ? style.tint.opacity(0.45) : Color.white.opacity(0.14),
                               lineWidth: focusedCard == card.id ? 1.5 : 1)
         )
         .opacity(card.isCleared ? 0.7 : 1)
@@ -1004,7 +1028,8 @@ struct V2PulsePage: View {
 
     /// The pick's headline in bold and its one more sentence under it (the
     /// card's news when the pick has no headline).
-    @ViewBuilder private func lookWords(_ card: PulseCard, look: PulseLook) -> some View {
+    /// `quiet`: the shape leads the card, so the headline steps down a size.
+    @ViewBuilder private func lookWords(_ card: PulseCard, look: PulseLook, quiet: Bool = false) -> some View {
         Group {
             if look.line.isEmpty {
                 Text(card.formattedNews)
@@ -1012,7 +1037,7 @@ struct V2PulsePage: View {
                 Text(PulseCard.formatted(look.line, markdown: card.kind != "followup"))
             }
         }
-        .scaledFont(.headline)
+        .scaledFont(quiet ? .subheadline.weight(.semibold) : .headline)
         .strikethrough(card.doneAt != nil)
         .foregroundStyle(card.isCleared ? Color.secondary : Color.primary)
         .fixedSize(horizontal: false, vertical: true)
