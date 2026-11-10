@@ -30740,7 +30740,7 @@ final class AppState: ObservableObject {
         // Images staged for a Queue this Hermes refuses would ride on the
         // next turn instead, so they never go up.
         if queued, !attachments.isEmpty, client.refusesQueuedPrompts {
-            errorMessage = HermesClient.QueueUnsupportedError.attachmentsMessage
+            showSendFailure(HermesClient.QueueUnsupportedError.attachmentsMessage)
             return false
         }
         let joinsRunningTurn = queued && turnState.isRunning
@@ -30800,6 +30800,7 @@ final class AppState: ObservableObject {
         settleReasoningSegmentIntoTranscript()
         // An earlier send's failure, shown under the composer, is over.
         if errorMessage != nil { errorMessage = nil }
+        sendFailureShown = nil
         messages.append(userMessage)
         requestChatScrollToLatest()
         cacheMessagePresentation(for: [sessionId])
@@ -31088,7 +31089,7 @@ final class AppState: ObservableObject {
             }
             if error is HermesClient.QueueUnsupportedError, !attachments.isEmpty {
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
-                errorMessage = HermesClient.QueueUnsupportedError.attachmentsMessage
+                showSendFailure(HermesClient.QueueUnsupportedError.attachmentsMessage)
                 await recoverComposerSubmission(using: submissionContext)
                 return false
             }
