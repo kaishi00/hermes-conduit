@@ -621,15 +621,28 @@ struct V2PulsePage: View {
                 Image(systemName: "sunrise")
                     .foregroundStyle(Color.conduitAccent)
                     .accessibilityHidden(true)
-                Text("Morning brief")
+                // At a large text size the stamp goes under the title, so
+                // the title isn't squeezed into breaking mid-word.
+                let title = Text("Morning brief")
                     .scaledFont(.headline)
                     .accessibilityAddTraits(.isHeader)
                     .accessibilityFocused($voiceOverCard, equals: brief.card.id)
-                Spacer(minLength: 0)
-                if let stamp = briefStamp(brief) {
-                    Text(verbatim: stamp)
+                let stamp = briefStamp(brief).map {
+                    Text(verbatim: $0)
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
+                }
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        title
+                        Spacer(minLength: 0)
+                        stamp
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        title
+                        stamp
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 // Read it, fold it: it stays one row, here and after a relaunch, until it's opened again.
                 Button {
@@ -771,14 +784,27 @@ struct V2PulsePage: View {
                 Image(systemName: "sunrise")
                     .foregroundStyle(Color.conduitAccent)
                     .accessibilityHidden(true)
-                Text("Morning brief")
+                let title = Text("Morning brief")
                     .scaledFont(.subheadline)
                     .foregroundStyle(.primary)
-                Spacer(minLength: 0)
-                if let stamp = briefStamp(brief) {
-                    Text(verbatim: stamp)
+                let stamp = briefStamp(brief).map {
+                    Text(verbatim: $0)
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
+                }
+                // As the open brief's header: the stamp under the title when
+                // a large text size leaves no room beside it.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 10) {
+                        title
+                        Spacer(minLength: 0)
+                        stamp
+                    }
+                    VStack(alignment: .leading, spacing: 2) {
+                        title
+                        stamp
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 Image(systemName: "chevron.down")
                     .scaledFont(.footnote.weight(.semibold))
@@ -1130,44 +1156,54 @@ struct V2PulsePage: View {
     /// The coloured dot and what it's about, and when.
     private func topicLine(_ card: PulseCard) -> some View {
         let tint = PulseTopicTint.color(card)
-        return HStack(spacing: 6) {
-            Circle()
-                .fill(tint)
-                .frame(width: 8, height: 8)
-                .accessibilityHidden(true)
-            Text(verbatim: card.heading)
-                .scaledFont(.caption.weight(.semibold))
-                .foregroundStyle(tint)
-                .accessibilityAddTraits(.isHeader)
-            // Rewritten since because the thing it follows changed (0.150.0): when, last.
-            if card.wasUpdated, let updated = card.updatedAt {
-                Text(verbatim: "· " + AppLocalization.string("Updated \(PulseTopicTint.stamp(updated))"))
-                    .scaledFont(.caption)
-                    .foregroundStyle(.secondary)
-            } else if let created = card.createdAt {
-                Text(verbatim: "· " + PulseTopicTint.stamp(created))
-                    .scaledFont(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            if card.isHeld {
-                Text("For the morning brief")
-                    .scaledFont(.caption)
-                    .foregroundStyle(.secondary)
-            }
-            Spacer(minLength: 0)
-            if appState.explainsPulseCard(card) {
-                Button {
-                    withAnimation {
-                        if expandedWhy.contains(card.id) { expandedWhy.remove(card.id) } else { expandedWhy.insert(card.id) }
-                    }
-                } label: {
-                    Text("Why?")
-                        .scaledFont(.caption.weight(.medium))
+        let held = card.isHeld ? Text("For the morning brief")
+            .scaledFont(.caption)
+            .foregroundStyle(.secondary) : nil
+        func line(_ inline: Bool) -> some View {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(tint)
+                    .frame(width: 8, height: 8)
+                    .accessibilityHidden(true)
+                Text(verbatim: card.heading)
+                    .scaledFont(.caption.weight(.semibold))
+                    .foregroundStyle(tint)
+                    .accessibilityAddTraits(.isHeader)
+                // Rewritten since because the thing it follows changed (0.150.0): when, last.
+                if card.wasUpdated, let updated = card.updatedAt {
+                    Text(verbatim: "· " + AppLocalization.string("Updated \(PulseTopicTint.stamp(updated))"))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                } else if let created = card.createdAt {
+                    Text(verbatim: "· " + PulseTopicTint.stamp(created))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
                 }
-                .buttonStyle(.borderless)
-                .accessibilityValue(expandedWhy.contains(card.id)
-                    ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
-                .accessibilityHint(AppLocalization.string("Shows why Pulse brought this up"))
+                if inline { held }
+                Spacer(minLength: 0)
+                if appState.explainsPulseCard(card) {
+                    Button {
+                        withAnimation {
+                            if expandedWhy.contains(card.id) { expandedWhy.remove(card.id) } else { expandedWhy.insert(card.id) }
+                        }
+                    } label: {
+                        Text("Why?")
+                            .scaledFont(.caption.weight(.medium))
+                    }
+                    .buttonStyle(.borderless)
+                    .accessibilityValue(expandedWhy.contains(card.id)
+                        ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
+                    .accessibilityHint(AppLocalization.string("Shows why Pulse brought this up"))
+                }
+            }
+        }
+        // A held card's "For the morning brief" goes on its own line when a
+        // large text size leaves no room for it beside the topic and time.
+        return ViewThatFits(in: .horizontal) {
+            line(true)
+            VStack(alignment: .leading, spacing: 2) {
+                line(false)
+                held
             }
         }
     }
