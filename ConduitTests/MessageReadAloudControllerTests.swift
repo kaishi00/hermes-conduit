@@ -1072,6 +1072,22 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertFalse(controller.isPaused)
     }
 
+    func testAnEmptyAnswerAfterAToolOpensNothingAndEndsAPausedReply() async {
+        let playback = MockReadAloudPlayback()
+        let gateway = MockReadAloudGateway(emitsPCM: true)
+        let controller = makeController(playback: playback, gateway: gateway)
+
+        controller.followReply(.started(sessionID: "s1")) { true }
+        controller.followReply(.delta(sessionID: "s1", text: "Let me check.")) { true }
+        controller.followReply(.interim(sessionID: "s1", text: "Let me check.", alreadyStreamed: true)) { true }
+        await waitUntil { playback.drainCount == 1 }
+        XCTAssertTrue(controller.pause())
+        controller.followReply(.completed(sessionID: "s1", content: "Let me check.", alreadyShown: true)) { true }
+        await waitUntil { controller.state == .idle }
+
+        XCTAssertEqual(gateway.openCount, 1, "no stream for nothing to say")
+    }
+
     func testAWaitingRoomMessageDoesNotStartOffScreen() async {
         let playback = MockReadAloudPlayback()
         let gateway = MockReadAloudGateway()

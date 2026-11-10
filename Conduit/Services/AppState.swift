@@ -41708,8 +41708,12 @@ final class AppState: ObservableObject {
     func readNewRoomMessagesAloud(after old: GroupRoomReplay) {
         let replay = activeRoomReplay
         guard ReadRepliesAloud.isOn(defaults), !replay.roomID.isEmpty, replay.roomID == old.roomID,
-              activeRoomLogRead == replay.roomID,
               let surface = activeRoomSurface, surface.room.roomID == replay.roomID else { return }
+        // The room's first read isn't read aloud. A room hosted elsewhere
+        // (a copy) never marks its log read, so there the first read is the
+        // one that found the replay empty.
+        let firstReadDone = surface.copy == nil ? activeRoomLogRead == replay.roomID : !old.events.isEmpty
+        guard firstReadDone else { return }
         // New is what the old replay didn't hold, so messages a resync
         // fills in below the user's own send are read too.
         let seen = Set(old.events.map(\.seq))

@@ -12,7 +12,7 @@ import Foundation
 extension AppState {
     /// A message typed or spoken in the app, on this device or CarPlay. A
     /// typed one's reply is heard too while Read replies aloud reads it,
-    /// which needs Conduit on screen when the reply's first words arrive.
+    /// which needs Conduit on screen when the message is sent.
     func messageTurnSurface(spoken: Bool) -> TurnSurface {
         TurnSurface.message(
             spoken: spoken, carPlay: isCarPlayVoiceSurfaceActive,

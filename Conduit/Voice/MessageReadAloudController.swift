@@ -702,6 +702,10 @@ final class MessageReadAloudController: ObservableObject {
                 switch item {
                 case .text(let text):
                     if open == nil {
+                        // Nothing to say opens no stream (an empty or
+                        // silent answer after a tool), and a paused reply
+                        // isn't held for it.
+                        guard !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { continue }
                         // Paused while a tool ran: the next segment waits.
                         if isPaused, betweenSegments {
                             await withCheckedContinuation { segmentWaiter = $0 }
