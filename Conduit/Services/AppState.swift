@@ -31392,6 +31392,13 @@ final class AppState: ObservableObject {
     /// clears: the composer shows `errorMessage` unlocked too.
     var sendFailureShown: String?
 
+    /// A send that went through ends an earlier send's failure line, and
+    /// only that line: another error under the composer stays.
+    private func clearSendFailureAfterSend() {
+        if let failure = sendFailureShown, errorMessage == failure { errorMessage = nil }
+        sendFailureShown = nil
+    }
+
     private func showSendFailure(_ message: String) {
         errorMessage = message
         sendFailureShown = message
@@ -33684,6 +33691,7 @@ final class AppState: ObservableObject {
                 // when the agent next reaches a tool boundary, so without
                 // this the text just vanished from the composer.
                 appendLocalSteerMessage(outboundText, persistedTwinsBefore: persistedTwinsBefore)
+                clearSendFailureAfterSend()
             }
             // A successful steer is accepted by Hermes even if the user
             // switched sessions while the RPC was suspended. Apart from the
@@ -33734,6 +33742,7 @@ final class AppState: ObservableObject {
             case .redirected, .queued:
                 if isCurrentOrAliasedComposerSubmission(submissionContext) {
                     appendLocalUserMessage(outboundText)
+                    clearSendFailureAfterSend()
                 }
                 return true
             case .rejected:
