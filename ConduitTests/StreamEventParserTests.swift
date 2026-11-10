@@ -968,10 +968,31 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("User profile updated"),
                        AppLocalization.string("\(AppLocalization.string("User profile")) updated"))
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · User profile updated"),
-                       AppLocalization.string("Memory and skills updated"))
+                       "\(memory) · \(AppLocalization.string("\(AppLocalization.string("User profile")) updated"))")
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · Memory updated"), memory)
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("📝 Skill 'hermes-release' patched"), "📝 Skill 'hermes-release' patched")
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · 📝 Skill 'x' created: y"), "Memory updated · 📝 Skill 'x' created: y")
+    }
+
+    /// The same summaries with French selected, so a summary left in
+    /// English fails here.
+    func testFixedReviewSummariesReadInFrench() {
+        let standard = UserDefaults.standard
+        let saved = standard.object(forKey: AppLanguageStore.defaultsKey)
+        standard.set("fr", forKey: AppLanguageStore.defaultsKey)
+        defer {
+            if let saved {
+                standard.set(saved, forKey: AppLanguageStore.defaultsKey)
+            } else {
+                standard.removeObject(forKey: AppLanguageStore.defaultsKey)
+            }
+        }
+        XCTAssertEqual(MessageNormalizer.reviewActivity(fromText: "💾 Self-improvement review: Memory updated")?.summary,
+                       "Mémoire : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("User profile updated · Skill updated"),
+                       "Profil utilisateur : mise à jour · Compétence : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · Memory updated"), "Mémoire : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("📝 Skill 'hermes-release' patched"), "📝 Skill 'hermes-release' patched")
     }
 
     func testReviewSummaryWithEmptyTextReturnsNil() {

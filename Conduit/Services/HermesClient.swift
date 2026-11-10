@@ -7056,7 +7056,8 @@ enum MessageNormalizer {
 
     /// Hermes writes a review's summary in English. The fixed ones ("Memory
     /// updated", "User profile updated", joined by " · ") read in the app's
-    /// language; anything else, like a skill's name, stays as Hermes wrote it.
+    /// language, each category once; anything else, like a skill's name,
+    /// stays as Hermes wrote it.
     static func localizedReviewSummary(_ summary: String) -> String {
         let parts = summary.components(separatedBy: " · ").map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
         let labels = parts.map { part -> String? in
@@ -7068,9 +7069,13 @@ enum MessageNormalizer {
             }
         }
         guard !labels.contains(nil) else { return summary }
-        let unique = Set(labels.compactMap { $0 })
-        if unique.count == 1, let label = unique.first { return AppLocalization.string("\(label) updated") }
-        return AppLocalization.string("Memory and skills updated")
+        // Each category keeps its own line, once, in Hermes' order, so a
+        // profile and a skill update never read as a memory change.
+        var seen = Set<String>()
+        return labels.compactMap { $0 }
+            .filter { seen.insert($0).inserted }
+            .map { AppLocalization.string("\($0) updated") }
+            .joined(separator: " · ")
     }
 
     static func reviewActivity(fromText text: String) -> ReviewActivity? {
