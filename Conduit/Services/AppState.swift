@@ -3251,9 +3251,9 @@ final class AppState: ObservableObject {
 
     /// The helper models read in flight. A reader asking meanwhile on the
     /// same profile and Hermes shares it: the Model page and its Helper
-    /// models section open together. A save in the open profile drops it,
-    /// so a read asked after the save isn't answered from before it;
-    /// another profile's save (the work watch's) leaves it under way. A reader that leaves
+    /// models section open together. A save in its profile drops it, so a
+    /// read asked after the save isn't answered from before it; another
+    /// profile's save (the work watch's) leaves it under way. A reader that leaves
     /// doesn't cancel it: the next one joins it, and the bridge's request
     /// timeout ends one Hermes never answers.
     private var helperModelsRead: (profile: String, owner: DashboardRuntimeOwner, task: Task<HelperModelsAnswer, Error>)?
@@ -3364,9 +3364,10 @@ final class AppState: ObservableObject {
             // it even if the read after it never lands, and an answer to a
             // read asked before it isn't kept over it (#1533).
             keepHelperModelWrite(setting, profile: profile, owner: owner)
-            // Only the open profile's reads are shared; another profile's
-            // save (Edit Bot > Work's work watch) leaves one under way alone.
-            if profilesMatch(profile, activeProfile) { helperModelsRead = nil }
+            // A save drops the read of the profile it saved, even one that
+            // isn't open now (a switch leaves a read under way); another
+            // profile's save (Edit Bot > Work's work watch) leaves it alone.
+            if let read = helperModelsRead, profilesMatch(read.profile, profile) { helperModelsRead = nil }
             // An open list's read asked before the save is dropped for one
             // asked after it.
             NotificationCenter.default.post(name: HelperModelSlot.saved, object: nil)
