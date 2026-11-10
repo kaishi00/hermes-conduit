@@ -32,6 +32,9 @@ struct TranscriptCellEnvironment: Equatable {
         // The call screen's control row sets it for its own buttons; no
         // transcript row reads it.
         "liveVoiceCallButtonSlotWidth",
+        // The shell sets it for the main button in a Duo's status strip;
+        // no transcript row reads it.
+        "v2MainButtonDiameter",
     ]
 
     // Conduit's
