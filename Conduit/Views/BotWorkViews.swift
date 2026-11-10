@@ -500,7 +500,7 @@ struct BotWorkPanel: View {
                             Image(systemName: "arrow.triangle.branch")
                                 .foregroundStyle(.secondary)
                                 .accessibilityHidden(true)
-                            Text("Coordination")
+                            Text(AppLocalization.string("Coordination"))
                                 .scaledFont(.body.weight(.semibold))
                                 .foregroundStyle(Color.primary)
                             Spacer(minLength: 4)
