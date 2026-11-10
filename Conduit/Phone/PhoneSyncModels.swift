@@ -336,19 +336,26 @@ struct PhoneChangeResult: Codable, Equatable {
     var result: String?
 
     static let resultChars = 4_000
-    /// What every shortcut in one exchange gave back, together, so the
-    /// sealed body stays under the host's 64 KiB cap (it trims to the same).
-    static let resultsChars = 16_000
+    /// What every shortcut in one exchange gave back, together, in UTF-8
+    /// bytes, so the sealed body stays under the host's 64 KiB cap (it
+    /// trims to the same).
+    static let resultsBytes = 16_000
 
     /// Each result as the exchange sends it, later shortcuts' text cut once
-    /// the exchange's share is spent.
+    /// the exchange's share is spent, never inside a character.
     static func json(for results: [PhoneChangeResult]) -> [[String: Any]] {
-        var budget = resultsChars
+        var budget = resultsBytes
         return results.map { item in
             var item = item
-            if let text = item.result.map({ String($0.prefix(min(resultChars, budget))) }) {
+            if let whole = item.result {
+                var text = ""
+                for character in whole.prefix(resultChars) {
+                    let size = String(character).utf8.count
+                    guard size <= budget else { break }
+                    text.append(character)
+                    budget -= size
+                }
                 item.result = text.isEmpty ? nil : text
-                budget -= text.count
             }
             return item.json
         }
