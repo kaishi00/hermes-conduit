@@ -4135,7 +4135,9 @@ one page, see One Model page for every model setting, #1992; it took over a
 bot's Model page, the voice job, voice reply, Helper and Pulse menus'
 submenus, the Model page editors' provider-then-model menus and the Kanban
 override's disclosures) · Searching for a model (every match still lists,
-whatever is closed) · Text (not needed: no caption describes the lists)
+whatever is closed) · Provider logos and quota on provider rows (each
+provider row shows its logo and quota left, #2161) · Text (not needed: no
+caption describes the lists)
 
 **Code**
 - Every setting's Model page: `Conduit/Views/ModelChooserPage.swift` (providerRow, expandedProviders, openPickedProvider)
@@ -4151,7 +4153,41 @@ whatever is closed) · Text (not needed: no caption describes the lists)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #1992 (the settings menus and pages grouped this way became one Model page; rulings say page and row); 2026-11-08, #1984 (the model sheet's providers moved to an All providers page that opens on the provider holding the checked model; Quick picks lead the sheet, see Pinned and recent models); 2026-11-05, #1805 (ConduitMenuPicker's value goes under its name on one line when both don't fit, instead of wrapping; see Sheets in Settings' look); 2026-11-05, #1793 (the Model page draws on Settings' backdrop and cards, its grouping unchanged, see Sheets in Settings' look); 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
+**Checked:** 2026-11-10, #2161 (each provider row shows its logo and quota left, and a Model page's models sit under the provider's name past its logo; see Provider logos and quota on provider rows); 2026-11-08, #1992 (the settings menus and pages grouped this way became one Model page; rulings say page and row); 2026-11-08, #1984 (the model sheet's providers moved to an All providers page that opens on the provider holding the checked model; Quick picks lead the sheet, see Pinned and recent models); 2026-11-05, #1805 (ConduitMenuPicker's value goes under its name on one line when both don't fit, instead of wrapping; see Sheets in Settings' look); 2026-11-05, #1793 (the Model page draws on Settings' backdrop and cards, its grouping unchanged, see Sheets in Settings' look); 2026-11-05, #1788 (a pick under a provider's alias is its listed row); 2026-11-05, #1787 (entry added)
+
+## Provider logos and quota on provider rows
+
+Every list of providers shows each one's logo, and a provider whose
+`model.options` row reports a quota says how much is left and when it
+resets (Eric, 2026-11-10: "can we include more than what hermes offers?").
+Hermes sends a slug and a name, no logo, so the logos are bundled.
+
+**Siblings:** the model sheet's All providers page (done) · every setting's
+Model page (done) · Edit's provider list on both (done: logo and display
+name; no quota, as it shows and hides rather than picks) · Models & providers' Providers section and Add a provider
+(done: the logo replaces the status symbol, a key that needs a look keeps an
+orange badge) · Settings > Usage (done: logo beside each quota; its full
+windows stay there) · search matches and Quick picks (not needed: the
+provider is a caption under a model) · a per-model rate limit (not needed
+on a provider row: it stays on Settings > Usage) · Watch, CarPlay, rooms and
+the notifier (not needed: none lists providers) · Text (done: README's
+Models & providers line)
+
+**Code**
+- Logos: `Conduit/Views/Components/ProviderLogoView.swift` (ProviderLogo.bySlug, byWord, asset, ProviderLogoView), `Conduit/Resources/ProviderLogos.xcassets/Contents.json`, `Conduit/Resources/ProviderLogos-LICENSE.txt`, `scripts/make-provider-logos.py`
+- Quota: `Conduit/Models/UsageReport.swift` (ProviderQuota.init(row:), summary, ProviderQuotaSummary), `Conduit/Services/HermesClient.swift` (ProviderInfo.quota), `Conduit/Views/Components/ProviderLogoView.swift` (ProviderQuotaLine)
+- Rows: `Conduit/Views/ModelPickerView.swift` (providerCard), `Conduit/Views/ModelChooserPage.swift` (providerRow), `Conduit/Views/ModelVisibilityEditor.swift` (ModelVisibility.visible keeps the quota, visibilityProviderCard), `Conduit/Views/ProviderSettingsViews.swift` (ProviderRow, ProvidersSettingsSection.quota), `Conduit/Views/UsageSettingsViews.swift` (quotaSection)
+- Tests: `ConduitTests/HermesClientTests+Usage.swift` (testAProviderRowCarriesItsQuotaSummary, testProviderLogosMatchSlugsAndNamesAndAreBundled), `ConduitTests/ModelQuickPicksTests.swift` (testHiddenModelsLeaveTheLists)
+
+**Rulings**
+- Logos are bundled from lobe-icons (MIT), never fetched: no request leaves the phone for them. A provider is matched by slug, then alias, then a whole word of its slug or name; one with none shows its initial (#2161).
+- A single-colour logo takes the text colour; a coloured one keeps its brand colours unless it has black parts, which vanish in Dark Mode (#2161).
+- A row's quota is its tightest account-wide window's share left (a model-scoped window only when there's no other), with that window's reset; a pool counts the usable account with the most left; an account limit, or every signed-in account limited, reads "Limited until …". Orange under a fifth left, red at none (#2161).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name; Edit's search matches the name it shows)
 
 ## Pinned and recent models
 
@@ -4227,7 +4263,7 @@ menus)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #2047 (a scheduled job's Model row in Edit job and New job opens this page, Profile default first, with every reasoning level); 2026-11-08, #2002 (a bot's Model and Workstream Model rows name the catalog's model and provider, as every other row does; a provider-only pick is named by its row's title on the Model page's top card and on the tagged rows, Voice jobs, Voice replies, Helper models' pages and Pulse; the Helper models list's own summary, HelperModelSlot.value, keeps the saved spelling as it does for every pick, having no catalog); 2026-11-08, #1992 (entry added)
+**Checked:** 2026-11-10, #2161 (each provider shows its logo and quota left, its models under its name, and Edit's list finds a provider by the name it shows; see Provider logos and quota on provider rows); 2026-11-08, #2047 (a scheduled job's Model row in Edit job and New job opens this page, Profile default first, with every reasoning level); 2026-11-08, #2002 (a bot's Model and Workstream Model rows name the catalog's model and provider, as every other row does; a provider-only pick is named by its row's title on the Model page's top card and on the tagged rows, Voice jobs, Voice replies, Helper models' pages and Pulse; the Helper models list's own summary, HelperModelSlot.value, keeps the saved spelling as it does for every pick, having no catalog); 2026-11-08, #1992 (entry added)
 
 ## The + that makes something new
 
@@ -4636,7 +4672,7 @@ Profile config saves (the key order, a profile setting)
 - Key order isn't offered for a provider whose id has a dot (`custom:together.ai`): the profile setting's dotted key would split it.
 - Removing the shared key or signing out on the main profile checks only the main profile's default, delegate, fallback and helper models, not other profiles' that run on it.
 
-**Checked:** 2026-11-05, #1823 (#1816 checked here: Models & providers and a provider's page read the models again after opening, see Model lists Hermes is still fetching); 2026-11-01, #1638 (a summary kept by an older build, without sign-in counts, waits for Hermes: key section on the provider page and the Add sheet's connect page and key order wait, a failed read says so, the card says Connected); 2026-11-01, #1636 (key order says keys and sign-ins, waits for Hermes over a kept config without the setting; Remove reads the helper models from Hermes); 2026-11-01, #1632 (key order counts sign-ins, a profile's own sign-in among its own rows, its picks in a tested type; a removal names the helper models pinned to the provider); 2026-11-01, #1625 (stage 2: key order, providers with only settings; two gaps closed, two opened); 2026-11-01, #1620 (from #1616's last reviews: a removal tries every variable, a save behind a held key says so, a given-up sign-in is cancelled on Hermes, a model pick's spinner stays until its own catalog read lands; base-URL-only providers noted as a gap); 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup; host-tested on Hermes 0.22.2: an override wins after its copies go, across restarts, and replacing and going back to the shared key work)
+**Checked:** 2026-11-10, #2161 (a provider's row shows its logo, and its quota left from Hermes' catalog, with an orange badge for a key that needs a look; see Provider logos and quota on provider rows); 2026-11-05, #1823 (#1816 checked here: Models & providers and a provider's page read the models again after opening, see Model lists Hermes is still fetching); 2026-11-01, #1638 (a summary kept by an older build, without sign-in counts, waits for Hermes: key section on the provider page and the Add sheet's connect page and key order wait, a failed read says so, the card says Connected); 2026-11-01, #1636 (key order says keys and sign-ins, waits for Hermes over a kept config without the setting; Remove reads the helper models from Hermes); 2026-11-01, #1632 (key order counts sign-ins, a profile's own sign-in among its own rows, its picks in a tested type; a removal names the helper models pinned to the provider); 2026-11-01, #1625 (stage 2: key order, providers with only settings; two gaps closed, two opened); 2026-11-01, #1620 (from #1616's last reviews: a removal tries every variable, a save behind a held key says so, a given-up sign-in is cancelled on Hermes, a model pick's spinner stays until its own catalog read lands; base-URL-only providers noted as a gap); 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup; host-tested on Hermes 0.22.2: an override wins after its copies go, across restarts, and replacing and going back to the shared key work)
 
 ## Helper models
 

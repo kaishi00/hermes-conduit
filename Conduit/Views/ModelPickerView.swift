@@ -986,13 +986,14 @@ struct ModelPickerView: View {
                 }
             } label: {
                 HStack(spacing: 10) {
-                    Image(systemName: "cube.transparent")
-                        .scaledFont(.subheadline.weight(.semibold))
-                        .foregroundStyle(.conduitAccent)
-                        .frame(width: 20)
-                        .accessibilityHidden(true)
-                    Text(provider.name)
-                        .scaledFont(.subheadline.weight(.semibold))
+                    ProviderLogoView(provider: provider)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: provider.title)
+                            .scaledFont(.subheadline.weight(.semibold))
+                        if let summary = provider.quota?.summary {
+                            ProviderQuotaLine(summary: summary)
+                        }
+                    }
                     Spacer(minLength: 12)
                     Text("\(provider.models.count)")
                         .scaledFont(.caption.monospacedDigit())

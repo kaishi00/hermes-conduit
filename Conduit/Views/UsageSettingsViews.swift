@@ -281,8 +281,11 @@ struct UsageSettingsDetail: View {
         ConduitSettingsSection(title: AppLocalization.string("Provider quota"), symbol: "gauge.with.dots.needle.50percent", tint: .conduitAura) {
             ForEach(quotas) { quota in
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(verbatim: quota.title)
-                        .scaledFont(.subheadline.weight(.semibold))
+                    HStack(spacing: 8) {
+                        ProviderLogoView(slug: quota.slug, title: quota.title)
+                        Text(verbatim: quota.title)
+                            .scaledFont(.subheadline.weight(.semibold))
+                    }
                     if let limit = quota.limit {
                         limitView(limit)
                     }

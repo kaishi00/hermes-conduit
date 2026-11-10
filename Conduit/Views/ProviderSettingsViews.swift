@@ -222,7 +222,7 @@ struct ProvidersSettingsSection: View {
                         ProviderDetailPage(service: service, entryID: entry.id, context: context)
                             .v2TabBarClearance()
                     } label: {
-                        ProviderRow(entry: entry, isDefault: isDefault(entry))
+                        ProviderRow(entry: entry, isDefault: isDefault(entry), quota: quota(entry))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.providers.\(entry.id)")
@@ -254,6 +254,10 @@ struct ProvidersSettingsSection: View {
         }
     }
 
+    private func quota(_ entry: ProviderEntry) -> ProviderQuotaSummary? {
+        context.catalog.flatMap { entry.catalogRow(in: $0.providers) }?.quota?.summary
+    }
+
     private func isDefault(_ entry: ProviderEntry) -> Bool {
         guard let catalog = context.catalog else { return entry.endpoint?.isCurrent == true }
         return entry.catalogRow(in: catalog.providers)?.name == catalog.selection.provider
@@ -265,20 +269,34 @@ private struct ProviderRow: View {
     let entry: ProviderEntry
     var isDefault = false
     var showsChevron = true
+    /// Its quota, from Hermes' model catalog, where the section has it.
+    var quota: ProviderQuotaSummary?
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: ProviderText.symbol(entry))
-                .foregroundStyle(ProviderText.color(entry))
-                .frame(width: 22)
-                .accessibilityHidden(true)
+            // The logo names the provider; a key or sign-in that needs a
+            // look keeps its warning on it.
+            ProviderLogoView(slug: entry.id, title: entry.name, size: 22)
+                .overlay(alignment: .bottomTrailing) {
+                    if ProviderText.needsLook(entry) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.orange)
+                            .background(Circle().fill(Color(.systemBackground)))
+                            .offset(x: 4, y: 4)
+                            .accessibilityHidden(true)
+                    }
+                }
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: entry.name)
                     .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                 Text(verbatim: isDefault ? ProviderText.status(entry) + " · " + AppLocalization.string("Default model") : ProviderText.status(entry))
                     .scaledFont(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ProviderText.needsLook(entry) ? Color.orange : Color.secondary)
+                if let quota {
+                    ProviderQuotaLine(summary: quota)
+                }
             }
             Spacer(minLength: 8)
             if showsChevron {
@@ -352,6 +370,14 @@ enum ProviderText {
         case .oldCopy, .mainProfileOnly: return "exclamationmark.shield"
         case .configured: return "slider.horizontal.3"
         case .notConnected: return entry.key != nil ? "key" : (entry.account != nil ? "person.crop.circle" : "slider.horizontal.3")
+        }
+    }
+
+    /// A key that doesn't reach every profile, or an old copy of one.
+    static func needsLook(_ entry: ProviderEntry) -> Bool {
+        switch entry.status {
+        case .oldCopy, .mainProfileOnly: return true
+        default: return false
         }
     }
 
