@@ -15,6 +15,12 @@ import UserNotifications
 import XCTest
 @testable import Conduit
 
+/// Whether an ask for the scheduled jobs has returned.
+@MainActor
+private final class ScheduledJobsAskDone {
+    var done = false
+}
+
 @MainActor
 final class AppStateMultiDashboardTests: XCTestCase {
 
@@ -813,6 +819,48 @@ extension AppStateMultiDashboardTests {
         // ...and the outgoing dashboard stays saved with its auth intact.
         XCTAssertNotNil(appState.savedDashboardRegistry.dashboard(with: mac.id))
         XCTAssertNotNil(KeychainHelper.loadConnection(dashboardID: mac.id))
+    }
+
+    /// A second ask for the scheduled jobs joins the read out rather than
+    /// returning with nothing read: the Tasks tab's task restarted mid-read
+    /// (away and back) cancels the first ask, and the read still lands for
+    /// the second, from one request. A finished read doesn't hold the next
+    /// one back.
+    func testAScheduledJobsAskJoinsTheReadOutWhenTheFirstIsCancelled() async throws {
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        addTeardownBlock { @MainActor in
+            held.releaseAll()
+            held.bridge.invalidate()
+        }
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let first = Task { await appState.loadCronJobs() }
+        try await held.waitForRequests(1)
+        first.cancel()
+        let secondDone = ScheduledJobsAskDone()
+        let second = Task {
+            await appState.loadCronJobs()
+            secondDone.done = true
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(secondDone.done, "the second ask waits for the read out")
+        XCTAssertEqual(held.sent.count, 1, "and sends nothing of its own")
+        XCTAssertTrue(appState.cronJobsLoading)
+
+        try await held.answer(["jobs": [["id": "j1", "enabled": true, "name": "Morning"]]])
+        await second.value
+        await first.value
+        XCTAssertTrue(secondDone.done)
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["j1"], "the read landed though the first ask was cancelled")
+        XCTAssertFalse(appState.cronJobsLoading)
+
+        let again = Task { await appState.loadCronJobs() }
+        try await held.waitForRequests(2)
+        try await held.answer(["jobs": [[String: Any]]()])
+        await again.value
+        XCTAssertEqual(held.sent.count, 2, "a finished read doesn't hold the next back")
+        XCTAssertTrue(appState.cronJobs.isEmpty)
     }
 
     func testFailedCredentialSwitchDoesNotBlockLaterSelection() async {

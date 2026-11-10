@@ -5824,8 +5824,9 @@ final class AppState: ObservableObject {
     /// Bumped by a job delete so a list load that started before it can't
     /// bring the deleted job back.
     private var cronJobsGeneration = 0
-    /// The list generation, profile and connection the read in flight is for.
-    private var cronJobsLoadingOwner: String?
+    /// The read in flight and the list generation, profile and connection
+    /// it is for. A second ask for the same list joins it.
+    private var cronJobsRead: (owner: String, task: Task<Void, Never>)?
     /// Cron jobs whose runs don't notify (AppState+CronNotifications), for
     /// the dashboard and profile in `cronMutedJobsKey`.
     @Published var cronMutedJobIDs: Set<String> = []
@@ -37393,14 +37394,27 @@ final class AppState: ObservableObject {
         // a profile change made stale since doesn't hold the next back.
         let owner = "\(generation)|\(profile)|"
             + (dashboardTicketBridge.map { "\(ObjectIdentifier($0))" } ?? client.map { "c\(ObjectIdentifier($0))" } ?? "")
-        guard cronJobsLoadingOwner != owner else { return }
+        // The same list's read joins the one out: it runs on its own, so a
+        // Tasks tab whose task restarted mid-read (tab away and back) still
+        // sees it land, rather than finding it held and reading nothing.
+        if let running = cronJobsRead, running.owner == owner {
+            await running.task.value
+            return
+        }
+        let task = Task<Void, Never> { [weak self] in
+            await self?.readCronJobs(owner: owner, profile: profile, generation: generation)
+        }
+        cronJobsRead = (owner, task)
+        cronJobsLoading = true
+        await task.value
+    }
+
+    private func readCronJobs(owner: String, profile: String, generation: Int) async {
         let startedBridge = dashboardTicketBridge
         let startedClient = client
-        cronJobsLoadingOwner = owner
-        cronJobsLoading = true
         defer {
-            if cronJobsLoadingOwner == owner {
-                cronJobsLoadingOwner = nil
+            if cronJobsRead?.owner == owner {
+                cronJobsRead = nil
                 cronJobsLoading = false
             }
         }
@@ -37433,7 +37447,7 @@ final class AppState: ObservableObject {
     private func retireCronJobsForDashboardSwitch() {
         cronJobsGeneration += 1
         cronJobs = []
-        cronJobsLoadingOwner = nil
+        cronJobsRead = nil
         cronJobsLoading = false
     }
 
