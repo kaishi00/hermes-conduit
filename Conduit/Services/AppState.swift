@@ -1220,11 +1220,6 @@ final class AppState: ObservableObject {
                 // A file lookup's "isn't on the server" was about the chat
                 // left, and an answer still coming is too.
                 clearWorkspaceLookupNotice()
-                // A failed send's line under the composer was the chat left's.
-                if let failure = sendFailureShown {
-                    if errorMessage == failure { errorMessage = nil }
-                    sendFailureShown = nil
-                }
                 workspaceRevealGeneration &+= 1
                 // The chat New Chat made takes the New Chat's draft only
                 // while it's the one open.
@@ -1242,6 +1237,12 @@ final class AppState: ObservableObject {
                     // on every chat the person opens.
                     if showModelPicker { showModelPicker = false }
                     if showContextSheet { showContextSheet = false }
+                    // A failed send's line under the composer was the chat
+                    // left's; a reconnect's new id for the same one keeps it.
+                    if let failure = sendFailureShown {
+                        if errorMessage == failure { errorMessage = nil }
+                        sendFailureShown = nil
+                    }
                 }
                 updateChatOnScreen()
             }
