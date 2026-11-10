@@ -1593,6 +1593,23 @@ extension AppStateMultiDashboardTests {
                        "the read after the save joined the save's own")
     }
 
+    /// A read is shared across spellings of one profile, as a save drops it.
+    func testHelperModelReadersShareOneReadAcrossAProfilesSpellings() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let first = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        appState.setActiveProfileForTesting(" Default ")
+        let second = Task { try await appState.loadHelperModels() }
+        for _ in 0..<5 { await Task.yield() }
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]],
+                              toPathEnding: AppState.KeptRoute.modelAuxiliary)
+        let firstSlots = try await first.value
+        let secondSlots = try await second.value
+        XCTAssertEqual(firstSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(secondSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(held.sent.filter { $0.path == AppState.KeptRoute.modelAuxiliary }.count, 1, "one request for both")
+    }
+
     /// A save drops its own profile's read even when that profile isn't
     /// open: a switch leaves a read under way, and switching back mustn't
     /// join it and show the pick from before the save.

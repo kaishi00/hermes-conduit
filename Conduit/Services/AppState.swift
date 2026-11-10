@@ -3262,7 +3262,7 @@ final class AppState: ObservableObject {
         let profile = activeProfile
         guard let owner = currentDashboardRuntimeOwner() else { throw DashboardTicketBridgeError.notReady }
         let task: Task<HelperModelsAnswer, Error>
-        if let read = helperModelsRead, read.profile == profile, ownsDashboardRuntime(read.owner) {
+        if let read = helperModelsRead, profilesMatch(read.profile, profile), ownsDashboardRuntime(read.owner) {
             task = read.task
         } else {
             task = Task { [self] in
@@ -3272,7 +3272,7 @@ final class AppState: ObservableObject {
         }
         let result = await task.result
         if helperModelsRead?.task == task { helperModelsRead = nil }
-        guard profile == activeProfile else { throw CancellationError() }
+        guard profilesMatch(profile, activeProfile) else { throw CancellationError() }
         return try result.get().json
     }
 
