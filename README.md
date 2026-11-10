@@ -75,7 +75,7 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 - Location and place rules, travel times, directions and navigation
 - Calendar and reminders, with each change asked first unless you allow adds
 - Apple Health data
-- Focus and phone status, alarms and timers, and contacts you pick
+- Focus and phone status, alarms and timers, and contacts you pick, which Hermes can ask to add to or change
 - Shortcuts you list, which Hermes can ask to run, with what each gives back
 - Ask Hermes about what's on your screen, or send anything from Shortcuts or the share sheet
 

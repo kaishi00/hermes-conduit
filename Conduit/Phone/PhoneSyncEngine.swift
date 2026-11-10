@@ -929,7 +929,7 @@ final class PhoneSyncEngine: ObservableObject {
     }
 
     private func calendarTitle(for change: PhoneChange) -> String? {
-        guard !change.kind.isAlarm, change.kind != .runShortcut else { return nil }
+        guard !change.kind.isAlarm, change.kind != .runShortcut, !change.kind.isContact else { return nil }
         return calendarSource.calendarTitle(id: change.fields.calendarID ?? change.fields.listID, forEvents: change.kind.isEvent)
     }
 
@@ -947,6 +947,7 @@ final class PhoneSyncEngine: ObservableObject {
     nonisolated static func refusalNote(_ kind: PhoneChange.Kind) -> String {
         if kind.isAlarm { return "The user doesn't let Hermes set alarms on this iPhone" }
         if kind == .runShortcut { return "The user doesn't let Hermes run Shortcuts on this iPhone" }
+        if kind.isContact { return "The user doesn't let Hermes change their contacts" }
         return kind.isEvent
             ? "The user doesn't let Hermes make this change to their calendar (read-only or not shared)"
             : "The user doesn't let Hermes change their reminders (read-only or not shared)"
@@ -966,6 +967,10 @@ final class PhoneSyncEngine: ObservableObject {
         }
         if change.kind == .runShortcut {
             await applyShortcut(change)
+            return
+        }
+        if change.kind.isContact {
+            await applyContact(change)
             return
         }
         do {
@@ -1027,6 +1032,65 @@ final class PhoneSyncEngine: ObservableObject {
             // next exchange.
             if case .notOnScreen? = error as? PhoneShortcutError { return }
             record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.shortcutNote(error)))
+            lastError = Self.describe(error)
+        }
+    }
+
+    /// Adds a contact, or changes or deletes a picked person's card. A new
+    /// contact joins the picked people (with the relation Hermes gave), a
+    /// deleted one leaves them, and a changed one is read again, so the
+    /// next upload tells Hermes.
+    private func applyContact(_ change: PhoneChange) async {
+        var person: PhonePerson?
+        var contactID: String?
+        if change.kind != .addContact {
+            guard let id = change.contactID, let picked = people.first(where: { $0.id == id }) else {
+                record(PhoneChangeResult(id: change.id, outcome: .failed,
+                                         note: "That person isn't among the people the user picked any more"))
+                return
+            }
+            person = picked
+            contactID = picked.contactID
+            if contactID == nil, contactsSource.access.canRead {
+                contactID = await contactsSource.identifiers(for: [id])?[id]
+            }
+        }
+        do {
+            let identifier = try await contactsSource.applyChange(change, contactID: contactID)
+            switch change.kind {
+            case .addContact:
+                let read = await contactsSource.read([identifier])
+                var added: PhonePerson
+                if case .person(let person)? = read[identifier] {
+                    added = person
+                } else {
+                    // Not readable back (limited access can hide it): what the change said.
+                    let edit = change.fields.contact
+                    let typed = [edit?.givenName, edit?.familyName].compactMap { $0 }.joined(separator: " ")
+                    let name = change.fields.personName ?? (typed.isEmpty ? edit?.organization : typed)
+                    added = PhonePerson(id: PhonePerson.id(forContact: identifier), name: name ?? AppLocalization.string("Contact"))
+                    added.organization = edit?.organization
+                    added.nickname = edit?.nickname
+                    added.phones = edit?.phones ?? []
+                    added.emails = edit?.emails ?? []
+                    added.birthday = edit?.birthday
+                }
+                added.contactID = identifier
+                added.relation = change.fields.contact?.relation
+                savePeople(PhonePeopleStore.merging([added], into: people))
+                record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: added.id))
+            case .deleteContact:
+                savePeople(people.filter { $0.id != person?.id })
+                record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: person?.id))
+            default:
+                if let relation = change.fields.contact?.relation, let id = person?.id {
+                    savePeople(people.map { var kept = $0; if kept.id == id { kept.relation = relation }; return kept })
+                }
+                await refreshPeople()
+                record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: person?.id))
+            }
+        } catch {
+            record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.describe(error)))
             lastError = Self.describe(error)
         }
     }

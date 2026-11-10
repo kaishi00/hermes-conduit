@@ -44,6 +44,9 @@ struct PhoneSettingsPage: View {
     private var showsPeople: Bool {
         appState.notifierPlugin.reports(AppState.phoneContactsCapability) || choices.contacts
     }
+    private var showsContactEdits: Bool {
+        appState.notifierPlugin.reports(AppState.phoneContactEditsCapability) || choices.contactsEdit
+    }
     private var showsShortcuts: Bool {
         appState.notifierPlugin.reports(AppState.phoneShortcutsCapability) || choices.shortcuts
     }
@@ -385,6 +388,15 @@ struct PhoneSettingsPage: View {
                 .foregroundStyle(.secondary)
             if appState.pulseBringsUpBirthdays {
                 Text("With Pulse and its memory on, it brings up their birthdays two weeks ahead, the day before and on the day.")
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if choices.contacts, showsContactEdits {
+                Toggle(isOn: binding(\.contactsEdit)) {
+                    Text("Let Hermes ask to add or change contacts")
+                }
+                .accessibilityIdentifier("settings.phone.contacts.edit")
+                Text("Hermes can ask to add someone to your contacts, or change or delete the card of someone you picked here. Each waits on a card for your yes. Changing contacts needs Contacts access.")
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -839,6 +851,9 @@ enum PhoneChangeWording {
         case .setTimer: return AppLocalization.string("Hermes wants to start a timer")
         case .cancelAlarm: return AppLocalization.string("Hermes wants to cancel an alarm")
         case .runShortcut: return AppLocalization.string("Hermes wants to run a shortcut")
+        case .addContact: return AppLocalization.string("Hermes wants to add a contact")
+        case .updateContact: return AppLocalization.string("Hermes wants to change a contact")
+        case .deleteContact: return AppLocalization.string("Hermes wants to delete a contact")
         }
     }
 
@@ -879,6 +894,12 @@ enum PhoneChangeWording {
     static func detail(_ change: PhoneChange) -> String {
         if change.kind == .setAlarm || change.kind == .setTimer { return alarmSummary(change.fields, kind: change.kind) }
         if change.kind == .runShortcut { return shortcutSummary(change.fields) }
+        if change.kind.isContact {
+            // Who it's about, then what changes (a new contact's name is in it).
+            let edit = change.fields.contact?.summary ?? ""
+            if change.kind == .addContact { return edit }
+            return [change.fields.personName, edit.isEmpty ? nil : edit].compactMap { $0 }.joined(separator: " → ")
+        }
         var parts: [String] = []
         if let title = change.fields.title, !title.isEmpty { parts.append(title) }
         let allDay = change.fields.allDay ?? false
@@ -909,6 +930,9 @@ enum PhoneChangeWording {
         case .setTimer: return AppLocalization.string("Start")
         case .cancelAlarm: return AppLocalization.string("Cancel alarm")
         case .runShortcut: return AppLocalization.string("Run")
+        case .addContact: return AppLocalization.string("Add")
+        case .updateContact: return AppLocalization.string("Change")
+        case .deleteContact: return AppLocalization.string("Delete")
         }
     }
 
@@ -923,13 +947,14 @@ enum PhoneChangeWording {
     static func symbol(_ kind: PhoneChange.Kind) -> String {
         if kind == .setTimer { return "timer" }
         if kind == .runShortcut { return "square.2.layers.3d" }
+        if kind.isContact { return kind == .deleteContact ? "person.crop.circle.badge.minus" : "person.crop.circle.badge.plus" }
         if kind.isAlarm { return "alarm" }
         return kind.isEvent ? "calendar.badge.plus" : "checklist"
     }
 
     /// Changes whose approve button is the red one.
     static func isRemoval(_ kind: PhoneChange.Kind) -> Bool {
-        kind == .deleteEvent || kind == .deleteReminder || kind == .cancelAlarm
+        kind == .deleteEvent || kind == .deleteReminder || kind == .cancelAlarm || kind == .deleteContact
     }
 }
 

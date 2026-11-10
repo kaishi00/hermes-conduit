@@ -101,6 +101,9 @@ struct PhoneSyncPreferences: Codable, Equatable {
     var shortcutsChoice: Bool?
     var shortcutsAutoChoice: Bool?
     var shortcutListChoice: [PhoneShortcut]?
+    /// Hermes may ask to add a contact, or change or delete a picked
+    /// person's; always on a card. Read `contactsEdit`.
+    var contactsEditChoice: Bool?
 
     /// Hermes may set alarms and timers on this phone (iOS 26's AlarmKit).
     /// They ring through Silent and Focus, so it's its own choice.
@@ -119,6 +122,12 @@ struct PhoneSyncPreferences: Codable, Equatable {
     var remindersReadOnly: Bool {
         get { remindersReadOnlyChoice ?? false }
         set { remindersReadOnlyChoice = newValue ? true : nil }
+    }
+
+    /// Part of sharing the picked people: off with them.
+    var contactsEdit: Bool {
+        get { contacts && (contactsEditChoice ?? false) }
+        set { contactsEditChoice = newValue ? true : nil }
     }
 
     /// Hermes may ask to run the Shortcuts in `shortcutList`.
@@ -150,12 +159,13 @@ struct PhoneSyncPreferences: Codable, Equatable {
     func allows(_ kind: PhoneChange.Kind) -> Bool {
         if kind.isAlarm { return alarms }
         if kind == .runShortcut { return shortcuts }
+        if kind.isContact { return contactsEdit }
         if kind.isEvent { return kind.isAddition ? calendar.adds : calendar == .full }
         return reminders && !remindersReadOnly
     }
 
     /// Something Hermes may ask to add or change.
-    var takesChanges: Bool { calendar.adds || (reminders && !remindersReadOnly) || alarms || shortcuts }
+    var takesChanges: Bool { calendar.adds || (reminders && !remindersReadOnly) || alarms || shortcuts || contactsEdit }
 
     var isOn: Bool { destination != nil && sharesAnything }
     var sharesAnything: Bool { calendar != .off || reminders || status || focus || alarms || contacts || shortcuts }
@@ -205,6 +215,7 @@ struct PhoneSyncPreferences: Codable, Equatable {
             "contacts": contacts,
             "shortcuts": shortcuts,
             "shortcuts_auto": shortcutsRunWithoutAsking,
+            "contacts_edit": contactsEdit,
             "past_days": PhoneCalendarWindow.pastDays,
             "future_days": window.rawValue,
         ]
@@ -349,11 +360,15 @@ struct PhoneChange: Identifiable, Equatable {
         case setTimer = "set_timer"
         case cancelAlarm = "cancel_alarm"
         case runShortcut = "run_shortcut"
+        case addContact = "add_contact"
+        case updateContact = "update_contact"
+        case deleteContact = "delete_contact"
 
         /// A new calendar event or reminder.
         var isAddition: Bool { self == .addEvent || self == .addReminder }
         var isEvent: Bool { self == .addEvent || self == .updateEvent || self == .deleteEvent }
         var isAlarm: Bool { self == .setAlarm || self == .setTimer || self == .cancelAlarm }
+        var isContact: Bool { self == .addContact || self == .updateContact || self == .deleteContact }
         /// What "Add without asking" lets in: new items, never changes or
         /// cancellations.
         var addsWithoutAsking: Bool { isAddition || self == .setAlarm || self == .setTimer }
@@ -367,6 +382,8 @@ struct PhoneChange: Identifiable, Equatable {
     var eventID: String?
     var reminderID: String?
     var alarmID: String?
+    /// The picked person a contact change is about (PhonePerson.id).
+    var contactID: String?
     /// "this" or "future" for a recurring event.
     var span: String?
     var fields: PhoneChangeFields
@@ -384,6 +401,7 @@ struct PhoneChange: Identifiable, Equatable {
         eventID = target?["event_id"] as? String
         reminderID = target?["reminder_id"] as? String
         alarmID = target?["alarm_id"] as? String
+        contactID = target?["contact_id"] as? String
         let fieldsJSON = json["fields"] as? [String: Any] ?? [:]
         span = (fieldsJSON["span"] as? String) ?? (target?["span"] as? String)
         fields = PhoneChangeFields(json: fieldsJSON)
@@ -405,6 +423,12 @@ struct PhoneChange: Identifiable, Equatable {
             guard alarmID != nil else { return nil }
         case .runShortcut:
             guard fields.shortcut != nil else { return nil }
+        case .addContact:
+            guard fields.contact?.hasName == true else { return nil }
+        case .updateContact:
+            guard contactID != nil, fields.contact != nil else { return nil }
+        case .deleteContact:
+            guard contactID != nil else { return nil }
         }
     }
 }
@@ -441,6 +465,10 @@ struct PhoneChangeFields: Equatable {
     /// The shortcut a run names, and the text it's given.
     var shortcut: String?
     var input: String?
+    /// What a contact change sets, when it sets anything.
+    var contact: PhoneContactEdit?
+    /// The person's name as shared, for the card.
+    var personName: String?
 
     static let weekdays = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
@@ -471,6 +499,8 @@ struct PhoneChangeFields: Equatable {
         shortcut = (json["shortcut"] as? String).map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(PhoneShortcut.nameChars)) }
             .flatMap { $0.isEmpty ? nil : $0 }
         input = (json["input"] as? String).map { String($0.prefix(PhoneShortcut.inputChars)) }.flatMap { $0.isEmpty ? nil : $0 }
+        contact = PhoneContactEdit(json: json)
+        personName = (json["name"] as? String).map { String($0.prefix(120)) }.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// `HH:MM` on a 24-hour clock.

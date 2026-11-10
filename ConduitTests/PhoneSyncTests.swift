@@ -1127,6 +1127,69 @@ extension HermesVoiceGatewayTimeoutTests {
         }
     }
 
+    /// Contacts Hermes asks to add, change or delete: never without a card,
+    /// on the picked person's own card, and the picked people follow.
+    func testPhoneContactChangesAskThenFollowThePickedPeople() async throws {
+        let contacts = FakePhoneContactsSource()
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: FakePhoneCalendarSource(), contacts: contacts)
+        var preferences = phonePreferences()
+        preferences.contacts = true
+        preferences.contactsEdit = true
+        preferences.autoAdd = true
+        engine.savePreferences(preferences)
+        engine.savePeople([PhonePerson(id: "p_sam", name: "Sam Lee", relation: "wife", contactID: "C-sam"),
+                           PhonePerson(id: "p_alex", name: "Alex Kim", contactID: "C-alex")])
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["contacts_edit"] as? Bool, true)
+
+        host.changes = [
+            ["id": "ch_add", "kind": "add_contact", "auto": true,
+             "fields": ["given_name": "Jo", "family_name": "Park", "relation": "dentist", "name": "Jo Park",
+                        "phones": [["number": "+1 555 0100", "label": "work"]]]],
+            ["id": "ch_change", "kind": "update_contact", "target": ["contact_id": "p_sam"],
+             "fields": ["nickname": "Sammy", "relation": "partner", "name": "Sam Lee"]],
+            ["id": "ch_delete", "kind": "delete_contact", "target": ["contact_id": "p_alex"], "fields": ["name": "Alex Kim"]],
+            ["id": "ch_bad", "kind": "update_contact", "target": ["contact_id": "p_sam"], "fields": ["name": "Sam Lee"]],
+        ]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_add", "ch_change", "ch_delete"], "Each asks; one that sets nothing is dropped")
+        XCTAssertTrue(contacts.changes.isEmpty)
+        XCTAssertEqual(PhoneChangeWording.detail(engine.prompts[1].change), "Sam Lee → “Sammy” · partner")
+        XCTAssertTrue(PhoneChangeWording.isRemoval(engine.prompts[2].change.kind))
+
+        // Without Contacts access, a yes fails and says why.
+        await engine.answer(engine.prompts[0], approve: true)
+        XCTAssertEqual(engine.state.answered["ch_add"]?.outcome, .failed)
+        contacts.granted = .limited
+        _ = await contacts.requestAccess()
+        host.changes = Array(host.changes[1...2])
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        for prompt in engine.prompts { await engine.answer(prompt, approve: true) }
+        XCTAssertEqual(contacts.changes.map(\.contactID), ["C-sam", "C-alex"], "On the picked person's own card")
+        XCTAssertEqual(engine.people.map(\.id), ["p_sam"])
+        XCTAssertEqual(engine.people.first?.relation, "partner")
+
+        // A new contact joins the picked people with its relation.
+        host.changes = [["id": "ch_add2", "kind": "add_contact", "fields": ["given_name": "Jo", "relation": "dentist", "name": "Jo"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        await engine.answer(try XCTUnwrap(engine.prompts.first), approve: true)
+        let added = try XCTUnwrap(engine.people.last)
+        XCTAssertEqual(added.id, PhonePerson.id(forContact: "C-new"))
+        XCTAssertEqual(added.name, "Jo")
+        XCTAssertEqual(added.relation, "dentist")
+        host.changes = []
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual((host.batches.last?["contacts"] as? [[String: Any]])?.count, 2)
+
+        // Turned off: refused without a card.
+        preferences.contactsEdit = false
+        engine.savePreferences(preferences)
+        host.changes = [["id": "ch_off", "kind": "delete_contact", "target": ["contact_id": "p_sam"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertTrue(engine.prompts.isEmpty)
+    }
+
     func testPhonePeoplePickedAgainKeepTheirRelation() {
         let picked = [PhonePerson(id: "p_1", name: "Sam Lee (new)"), PhonePerson(id: "p_2", name: "Alex")]
         let people = PhonePeopleStore.merging(picked, into: [PhonePerson(id: "p_1", name: "Sam Lee", relation: "wife")])
@@ -1634,6 +1697,13 @@ private final class FakePhoneContactsSource: PhoneContactsSource, @unchecked Sen
     func identifiers(for ids: Set<String>) async -> [String: String]? {
         searchedIDs.formUnion(ids)
         return searchFails ? nil : found.filter { ids.contains($0.key) }
+    }
+    private(set) var changes: [(kind: PhoneChange.Kind, contactID: String?)] = []
+    var newIdentifier = "C-new"
+    func applyChange(_ change: PhoneChange, contactID: String?) async throws -> String {
+        guard access.canRead else { throw PhoneContactChangeError.noAccess }
+        changes.append((change.kind, contactID))
+        return change.kind == .addContact ? newIdentifier : (contactID ?? "")
     }
 }
 

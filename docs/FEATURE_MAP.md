@@ -5552,6 +5552,44 @@ README.md
 
 **Checked:** 2026-11-10, #2163.
 
+## Contacts Hermes asks to change
+
+Hermes asking to add a contact, or change or delete the card of someone the
+user picked for it, when the user lets it; the phone applies it after the
+user's yes, and the picked people follow.
+
+**Siblings:** Settings > Calendar & phone > People (Let Hermes ask to add or
+change contacts, its caption, the Contacts permission prompt and its usage
+text) · the change card and its wording (PhoneChangeWording) · the push titles
+`phone.add_contact`, `phone.update_contact` and `phone.delete_contact`
+(NotificationCopy) · live voice's phone_changes tool (lists them, and approves
+or dismisses them out loud like other changes) · Phone data sync with the host
+(the picked people upload after a change) · the notifier's phone store
+(`contacts_edit`, the three kinds), the conduit_contacts tool's add, update and
+delete actions and description, the `phone-contact-edits` capability, README,
+CHANGELOG and privacy policy · Pulse's birthdays (read the picked people; no
+change needed)
+
+**Code**
+- Models: `Conduit/Phone/PhoneSyncModels.swift` (PhoneSyncPreferences.contactsEdit; PhoneChange.Kind.addContact, updateContact, deleteContact; PhoneChange.contactID; PhoneChangeFields.contact, personName)
+- Edits and the card write: `Conduit/Phone/PhoneContactChanges.swift` (PhoneContactEdit, SystemContactsSource.applyChange), `Conduit/Phone/PhonePeople.swift` (PhoneContactsSource.applyChange)
+- Engine: `Conduit/Phone/PhoneSyncEngine.swift` (applyContact)
+- Settings, card: `Conduit/Views/PhoneSettingsViews.swift` (peopleSection, PhoneChangeWording), `Conduit/Services/AppState+PhoneSync.swift` (phoneContactEditsCapability, updatePhoneSync's Contacts ask), `Conduit/Info.plist` and `Conduit/InfoPlist.xcstrings` (NSContactsUsageDescription)
+- Push titles: `Shared/Notifications/NotificationCopy.swift` (phoneTitle)
+- Voice: `Conduit/Phone/PhoneVoiceTools.swift` (describe)
+- Notifier: `notifier/phone_store.py` (_check_contact_change, CONTACT_FIELDS), `notifier/phone_tool.py` (_contact_write)
+- Tests: `ConduitTests/PhoneSyncTests.swift` (testPhoneContactChangesAskThenFollowThePickedPeople), `notifier/tests/test_phone.py`
+
+**Rulings**
+- A contact change always waits on a card (or the user's yes in a call), even with Add without asking on, and only a picked person can be changed or deleted, by the id the host shared (2026-11-10, Eric's go on contact edits, #NNNN).
+- A change or delete goes to that person's own contact card; a new contact joins the picked people with the relation Hermes gave, a deleted one leaves them, and a changed one is read again, so the next upload tells Hermes. Phones and emails, when a change names them, replace the card's whole list (2026-11-10, #NNNN).
+- Changing contacts needs Contacts access (limited is enough for the picked people and new contacts); turning it on asks once, and without access a yes fails and says so (2026-11-10, #NNNN).
+
+**Open gaps**
+- Not tried on a device: a write under limited access, and a linked (unified) contact's update (#NNNN).
+
+**Checked:** 2026-11-10, #NNNN (added with the notifier's contact changes).
+
 ## Shortcuts Hermes can run
 
 Shortcuts from the user's Shortcuts app that Hermes may ask to run, by name,
