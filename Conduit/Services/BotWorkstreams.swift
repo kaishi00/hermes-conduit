@@ -733,7 +733,7 @@ struct BotWorkSettings: Equatable {
             chatApprovals: (response["chat_approvals"] as? String) ?? "manual",
             workstreamModel: Model(response["workstream_model"]),
             coordination: (response["coordination"] as? String).flatMap(Coordination.init(rawValue:)),
-            quickSteps: response["quick_steps"] as? Int,
+            quickSteps: (response["quick_steps"] as? Int).flatMap { $0 > 0 ? $0 : nil },
             quickStepsChoices: (response["quick_steps_choices"] as? [Int]) ?? [],
             unavailable: (response["unavailable"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         )

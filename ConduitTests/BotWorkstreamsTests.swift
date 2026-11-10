@@ -647,6 +647,14 @@ extension BotModeTests {
         var other = newer
         other.quickSteps = 15
         XCTAssertEqual(BotWorkSettingsView.quickStepsChoices(other).map(\.id), [5, 10, 15, 20])
+        // A plugin with one count and a bot on another still offers both; a count of 0 is none.
+        let single = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "lookups", "max_running": 2, "quick_steps": 20, "quick_steps_choices": [5],
+        ]))
+        XCTAssertEqual(BotWorkSettingsView.quickStepsChoices(single).map(\.id), [5, 20])
+        XCTAssertNil(BotWorkSettings(response: [
+            "ok": true, "policy": "lookups", "max_running": 2, "quick_steps": 0, "quick_steps_choices": [5, 10],
+        ])?.quickSteps)
     }
 
     func testCoordinationIsOfferedOnlyWhereThePluginKeepsIt() throws {

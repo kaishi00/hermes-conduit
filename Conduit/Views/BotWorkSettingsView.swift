@@ -87,10 +87,11 @@ struct BotWorkSettingsView: View {
                     Text(AppLocalization.string("What It Does Itself")).foregroundStyle(.secondary)
                 }
                 caption(Self.policyCaption(settings.policy, botName: botName))
-                if settings.policy == .lookups, let steps = settings.quickSteps, settings.quickStepsChoices.count > 1 {
+                let stepChoices = Self.quickStepsChoices(settings)
+                if settings.policy == .lookups, let steps = settings.quickSteps, stepChoices.count > 1 {
                     ConduitMenuPicker(
                         value: steps,
-                        choices: Self.quickStepsChoices(settings),
+                        choices: stepChoices,
                         onSelect: { binding(\.quickSteps).wrappedValue = $0 }
                     ) {
                         Text(AppLocalization.string("Steps in One Turn")).foregroundStyle(.secondary)
@@ -199,7 +200,7 @@ struct BotWorkSettingsView: View {
     /// The step counts the plugin takes, with the bot's own when it isn't
     /// one of them.
     static func quickStepsChoices(_ settings: BotWorkSettings) -> [(id: Int, title: String)] {
-        var counts = settings.quickStepsChoices
+        var counts = settings.quickStepsChoices.filter { $0 > 0 }
         if let steps = settings.quickSteps, !counts.contains(steps) { counts.append(steps) }
         return counts.sorted().map { (id: $0, title: String($0)) }
     }
