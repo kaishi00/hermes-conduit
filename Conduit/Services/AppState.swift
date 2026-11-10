@@ -16491,8 +16491,9 @@ final class AppState: ObservableObject {
             followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
             isConnected = true
             isConnecting = false
-            // A fresh healthy session never inherits an older banner error.
-            errorMessage = nil
+            // A fresh healthy session never inherits an older banner error;
+            // a failed send's reason stays until the next send or its chat.
+            if errorMessage == nil || errorMessage != sendFailureShown { errorMessage = nil }
             lastConnectionFailure = nil
             reconnectAttempts = 0
             connectedAt = Date()
