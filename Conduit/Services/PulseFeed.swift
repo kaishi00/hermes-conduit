@@ -284,6 +284,12 @@ struct PulseCard: Equatable, Identifiable {
                 ? AppLocalization.string("Pulse reminded me: \(reminder)\n\nIt came up in the work on a Kanban task. Find the task on the board, and if it's stuck, get it going again.")
                 : AppLocalization.string("Pulse reminded me: \(reminder)\n\nIt came up in the work on Kanban task \(kanbanTask). Check the task on the board, and if it's stuck, get it going again.")
         }
+        // Something that went wrong asks for a fix, not another status
+        // question (issue 2082): its look shows a status that isn't OK or a
+        // job whose latest run failed.
+        if showsProblem {
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nFind out what's wrong and fix it.")
+        }
         switch kind == "followup" ? "promise" : topic {
         case "promise":
             return AppLocalization.string("Pulse reminded me: \(reminder)\n\nGo ahead with it now.")
@@ -299,6 +305,16 @@ struct PulseCard: Equatable, Identifiable {
             return AppLocalization.string("Pulse brought this up: \(reminder)\n\nTell me more.")
         default:
             return AppLocalization.string("Pulse brought this up: \(reminder)\n\nLet's look into it.")
+        }
+    }
+
+    /// Whether the card's look shows something wrong: a warning or failing
+    /// status, or a job whose latest run failed.
+    var showsProblem: Bool {
+        switch look?.body {
+        case let .status(_, state): state != .ok
+        case let .runs(_, results): results.last == false
+        default: false
         }
     }
 
