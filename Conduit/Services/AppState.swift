@@ -18009,10 +18009,12 @@ final class AppState: ObservableObject {
 
     /// Server-unreachable failures that leave the saved offline copy on
     /// screen instead of sending the user to sign-in. Authentication
-    /// failures always go to sign-in.
+    /// failures always go to sign-in. A server that refuses this network
+    /// (an IP allowlist, issue #2092) is unreachable from here too: signing
+    /// in again can't get past it.
     static func failureKeepsOfflineChat(_ failure: ConnectionFailure) -> Bool {
         switch failure {
-        case .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline, .dashboardUnavailable:
+        case .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline, .dashboardUnavailable, .accessDenied:
             return true
         default:
             return false
