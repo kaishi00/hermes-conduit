@@ -490,6 +490,76 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    /// A resync that fills a bot message below the last one it held (the
+    /// last bot message unchanged) reads the room's boards again and, with
+    /// Read replies aloud on, reads that message.
+    func testAResyncsFillBelowTheLastBotMessageIsReadAndReadsBoards() async throws {
+        final class Box {
+            var events: [GroupEvent] = []
+            var skipsNextPoll = false
+            var boardReads = 0
+            var queued: [String] = []
+        }
+        let box = Box()
+        let room = self.room()
+        func message(_ seq: Int, fromMember: Bool) -> GroupEvent {
+            let actor: [String: String] = fromMember ? ["kind": "member", "id": "researcher", "profile": "researcher"]
+                : ["kind": "user", "id": "human"]
+            return GroupDecoders.event(AnyCodable.from([
+                "room_id": room.roomID,
+                "seq": seq,
+                "event_id": "srv-\(seq)",
+                "kind": fromMember ? "message.member" : "message.user",
+                "actor": actor,
+                "payload": ["text": "hello \(seq)", "thread_id": "main"],
+                "created_at": Double(seq) * 100,
+            ]))!
+        }
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                var events = box.events.filter { $0.seq > sinceSeq }
+                if box.skipsNextPoll, sinceSeq > 0 {
+                    // A poll that jumps past an event it hasn't seen.
+                    box.skipsNextPoll = false
+                    events = Array(events.suffix(1))
+                }
+                let latest = box.events.last?.seq ?? 0
+                return GroupLogPage(events: events, cursor: latest, latestSeq: latest, hasMore: false,
+                                    authorityGatewayID: "gw-a", authorityEpoch: 1)
+            }
+        )
+        defaults.set(true, forKey: ReadRepliesAloud.preferenceKey)
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        appState.roomBoardsReadOverride = { _ in
+            box.boardReads += 1
+            return ["boards": []]
+        }
+        appState.roomReadAloudQueueOverride = { id, _ in box.queued.append(id) }
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.129.0", capabilities: [RoomBoard.capability]))
+        await appState.refreshGroupChatSupport()
+
+        // The room opens holding 4, the last bot message, but not 3.
+        box.events = [message(1, fromMember: false), message(2, fromMember: true), message(4, fromMember: true)]
+        await appState.openGroupRoom(room)
+        await appState.roomBoardsTask?.value
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1, 2, 4])
+        XCTAssertEqual(box.queued, [], "The room's first read isn't read aloud")
+        let readsAtOpen = box.boardReads
+
+        box.events = [1, 2, 3, 4, 5, 6].map { message($0, fromMember: [2, 3, 4].contains($0)) }
+        box.skipsNextPoll = true
+        await appState.pollActiveRoom()
+        await appState.roomBoardsTask?.value
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1, 2, 3, 4, 5, 6], "Resynced")
+        XCTAssertEqual(box.queued, [AppState.roomReadAloudID(roomID: room.roomID, eventID: "srv-3")])
+        XCTAssertGreaterThan(box.boardReads, readsAtOpen, "The filled message may have a board")
+        appState.closeGroupRoom()
+    }
+
     /// A dictation Retry that lands after its room was left: the words go
     /// after the room's kept draft and are there on reopen.
     func testRetriedDictationWordsReachALeftRoomsDraft() async throws {
