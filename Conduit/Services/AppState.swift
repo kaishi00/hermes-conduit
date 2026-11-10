@@ -37476,12 +37476,12 @@ final class AppState: ObservableObject {
                 let jobs = values.compactMap(decodeCronJob)
                 guard profile == activeProfile, generation == cronJobsGeneration,
                       self.dashboardTicketBridge === dashboardTicketBridge,
-                      cronJobsRead == nil || cronJobsRead?.token == token else { return }
+                      cronJobsRead?.token == token else { return }
                 cronJobs = jobs.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
             } else if let client {
                 let jobs = try await client.listCronJobs()
                 guard profile == activeProfile, self.client === client, generation == cronJobsGeneration,
-                      cronJobsRead == nil || cronJobsRead?.token == token else { return }
+                      cronJobsRead?.token == token else { return }
                 cronJobs = jobs
             }
         } catch is CancellationError {
@@ -37490,7 +37490,7 @@ final class AppState: ObservableObject {
             // A read the outgoing connection failed isn't the next one's to report.
             guard profile == activeProfile, generation == cronJobsGeneration,
                   dashboardTicketBridge === startedBridge, client === startedClient,
-                  cronJobsRead == nil || cronJobsRead?.token == token else { return }
+                  cronJobsRead?.token == token else { return }
             errorMessage = AppLocalization.string("Could not load scheduled jobs: \(UserFacingError.message(for: error))")
         }
     }

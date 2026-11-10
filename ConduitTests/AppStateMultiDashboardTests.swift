@@ -903,6 +903,10 @@ extension AppStateMultiDashboardTests {
         try await held.waitForRequests(1)
         appState.setActiveProfileForTesting("work")
         let other = Task { await appState.loadCronJobs() }
+        // The work read is out before the switch back, so it reads "work".
+        for _ in 0..<1_000 where held.sent.filter({ $0.path.hasSuffix("/api/cron/jobs") }).count < 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
         appState.setActiveProfileForTesting(profile)
         let newer = Task { await appState.loadCronJobs() }
         for _ in 0..<1_000 where held.sent.filter({ $0.path.hasSuffix("/api/cron/jobs") }).count < 3 {
@@ -910,14 +914,22 @@ extension AppStateMultiDashboardTests {
         }
         XCTAssertEqual(held.sent.filter { $0.path.hasSuffix("/api/cron/jobs") }.count, 3, "each profile change starts its own read")
 
-        try await held.answer(["jobs": [["id": "old", "enabled": true, "name": "Old"]]], toPathEnding: "/api/cron/jobs")
+        let cronReads = held.sent.indices.filter { held.sent[$0].path.hasSuffix("/api/cron/jobs") }
+        let olderPlace = cronReads[0], newerPlace = cronReads[2]
+        XCTAssertFalse(held.sent[newerPlace].query?.contains("work") ?? false)
+
+        // The newer read lands first, then the older one: the older read
+        // neither overwrites the newer list nor ends anything (#2113 review).
+        try await held.answer(["jobs": [["id": "new", "enabled": true, "name": "New"]]], at: newerPlace)
+        await newer.value
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["new"])
+        XCTAssertFalse(appState.cronJobsLoading)
+        try await held.answer(["jobs": [["id": "old", "enabled": true, "name": "Old"]]], at: olderPlace)
         await older.value
-        XCTAssertTrue(appState.cronJobsLoading, "the newer read still holds the list")
-        XCTAssertTrue(appState.cronJobs.isEmpty, "and the older read commits nothing over it")
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["new"], "the older read commits nothing over the newer")
 
         held.releaseAll()
         await other.value
-        await newer.value
         XCTAssertFalse(appState.cronJobsLoading)
     }
 
