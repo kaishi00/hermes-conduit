@@ -1506,6 +1506,34 @@ extension AppStateMultiDashboardTests {
                        Set(["title_generation", "voice_chat"]), "the read after the save is kept")
     }
 
+    /// Edit Bot > Work's Watch Model reads and saves the work watch's slot in
+    /// the bot's own profile, kept apart from the open profile's slots.
+    func testAnotherProfilesHelperModelIsReadAndSavedInThatProfile() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let load = Task { try await appState.loadHelperModels(inProfile: "second") }
+        try await held.waitForRequests(1)
+        try await held.answer(["tasks": [
+            ["task": HelperModelSlot.workWatch, "provider": "auto", "model": "", "label": "Conduit work watch", "plugin": "conduit_push"],
+        ]])
+        let slots = try await load.value
+        XCTAssertEqual(slots.map(\.id), [HelperModelSlot.workWatch])
+        XCTAssertEqual(held.sent.first?.query, "profile=second")
+        XCTAssertEqual(appState.keptHelperModel(task: HelperModelSlot.workWatch, inProfile: "second")?.followsChats, true)
+        XCTAssertNil(appState.keptHelperModels(), "the open profile's kept slots are untouched")
+
+        let pick = VoiceReplyModelSetting(task: HelperModelSlot.workWatch, provider: "openrouter", model: "fast/watch", reasoningEffort: nil)
+        let save = Task { await appState.setHelperModel(pick, confirmed: true, profile: "second") }
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": [HelperModelSlot.workWatch]])
+        let saved = await save.value
+        XCTAssertEqual(saved, .saved)
+        XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary, "/api/model/set"],
+                       "no read of the open profile follows another profile's save")
+        XCTAssertEqual(held.sent.last?.query, "profile=second")
+        XCTAssertEqual(appState.keptHelperModel(task: HelperModelSlot.workWatch, inProfile: "second")?.model, "fast/watch")
+        XCTAssertNil(appState.keptHelperModels())
+    }
+
     /// The Model page and its Helper models section read together: one
     /// request answers both.
     func testHelperModelReadersAskingTogetherShareOneRead() async throws {

@@ -3363,7 +3363,9 @@ final class AppState: ObservableObject {
             // it even if the read after it never lands, and an answer to a
             // read asked before it isn't kept over it (#1533).
             keepHelperModelWrite(setting, profile: profile, owner: owner)
-            helperModelsRead = nil
+            // Only the open profile's reads are shared; another profile's
+            // save (Edit Bot > Work's work watch) leaves one under way alone.
+            if profilesMatch(profile, activeProfile) { helperModelsRead = nil }
             // An open list's read asked before the save is dropped for one
             // asked after it.
             NotificationCenter.default.post(name: HelperModelSlot.saved, object: nil)
