@@ -5552,6 +5552,46 @@ README.md
 
 **Checked:** 2026-11-10, #2163.
 
+## Shortcuts Hermes can run
+
+Shortcuts from the user's Shortcuts app that Hermes may ask to run, by name,
+with text as their input; the text a shortcut ends with goes back to Hermes
+with the outcome. Part of Calendar & phone sharing.
+
+**Siblings:** Settings > Calendar & phone > Shortcuts (the switch, the list
+with its notes, Run without asking, and its captions) · the change card and
+its wording (PhoneChangeWording) · the push titles `phone.run_shortcut` and
+`phone.auto.run_shortcut` (NotificationCopy) · the runner and the
+`shortcut-result` callback (ConduitApp's onOpenURL) · live voice's
+phone_changes tool (lists and dismisses a run, never approves one) · the
+notifier's phone store (the list, `run_shortcut`, a change's `result`, the
+hour a run waits), the conduit_phone tool's description and results, the
+`phone-shortcuts` capability, README, CHANGELOG and privacy policy · Phone
+data sync with the host (the same sealed upload and exchange) · Phone change
+errors (a run's failures reach Hermes as the change's note)
+
+**Code**
+- Models: `Conduit/Phone/PhoneSyncModels.swift` (PhoneShortcut; PhoneSyncPreferences.shortcuts, shortcutsRunWithoutAsking, shortcutList, listedShortcut; PhoneChange.Kind.runShortcut; PhoneChangeResult.result)
+- Engine: `Conduit/Phone/PhoneSyncEngine.swift` (the upload's `shortcuts` section, exchange's run without asking, applyShortcut, shortcutNote)
+- Runner: `Conduit/Phone/PhoneShortcutRunner.swift` (runURL, handle), `Conduit/ConduitApp.swift` (onOpenURL)
+- Settings, card: `Conduit/Views/PhoneSettingsViews.swift` (shortcutsSection, PhoneChangeWording), `Conduit/Services/AppState+PhoneSync.swift` (phoneShortcutsCapability)
+- Push titles: `Shared/Notifications/NotificationCopy.swift` (phoneTitle)
+- Voice: `Conduit/Phone/PhoneVoiceTools.swift` (runChanges, describe)
+- Notifier: `notifier/phone_store.py` (_parse_shortcuts, _check_shortcut_change, SHORTCUT_TTL_S), `notifier/phone_tool.py` (_shortcuts, _shortcut_write), `notifier/dashboard/api/capabilities.py`
+- Tests: `ConduitTests/PhoneSyncTests.swift` (testPhoneShortcutsSyncRunAndReportWhatTheyGaveBack, testPhoneShortcutRunURLAndAnswers), `notifier/tests/test_phone.py`
+
+**Rulings**
+- Hermes runs only shortcuts the user listed in Conduit, by name: the host refuses any other name, and the phone checks the name against its own list again before it runs one (2026-11-10, Eric's go on agent-run Shortcuts, notifier #696, #NNNN).
+- iOS runs another app's shortcut only through the Shortcuts app's x-callback-url, which opens only for an app on screen, so a run waits on its card until the user taps Run. Run without asking runs it straight away only while Conduit is open, and otherwise leaves the card; it never covers calendar or alarm changes, which keep Add without asking (2026-11-10, #NNNN).
+- A live call can list or dismiss a run but not approve it: a call from the lock screen, the Watch or CarPlay can't open the Shortcuts app (2026-11-10, #NNNN).
+- Cancelled in Shortcuts reports as dismissed; an error, or no answer from Shortcuts within 10 minutes, reports as failed with why. A run waits on the host for an hour, not a day like other changes, since it's asked for now (2026-11-10, notifier #696, #NNNN).
+
+**Open gaps**
+- Not tried on a device: the x-callback round trip, a shortcut that asks the user something mid-run, and the 10-minute wait (#NNNN).
+- iOS has no list of the user's shortcuts for an app to read, so names are typed and a typo only shows when a run fails.
+
+**Checked:** 2026-11-10, #NNNN (added with notifier #696).
+
 ## Steps in a turn
 
 How a turn's thinking and tool calls read in the chat while it runs and

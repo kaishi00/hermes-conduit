@@ -44,6 +44,12 @@ struct PhoneSettingsPage: View {
     private var showsPeople: Bool {
         appState.notifierPlugin.reports(AppState.phoneContactsCapability) || choices.contacts
     }
+    private var showsShortcuts: Bool {
+        appState.notifierPlugin.reports(AppState.phoneShortcutsCapability) || choices.shortcuts
+    }
+    @State private var showsAddShortcut = false
+    @State private var newShortcutName = ""
+    @State private var newShortcutNote = ""
 
     var body: some View {
         SettingsDetailContainer {
@@ -61,10 +67,14 @@ struct PhoneSettingsPage: View {
             }
             if preferences.isOn || pluginServes {
                 calendarSection
-                if choices.takesChanges { changesSection }
+                // Runs have their own choice, in Shortcuts.
+                if choices.calendar.adds || (choices.reminders && !choices.remindersReadOnly) || choices.alarms {
+                    changesSection
+                }
                 phoneSection
                 if showsAlarms { alarmsSection }
                 if showsPeople { peopleSection }
+                if showsShortcuts { shortcutsSection }
                 if preferences.isOn { voiceSection }
                 actionSection
             }
@@ -287,6 +297,77 @@ struct PhoneSettingsPage: View {
             Text("They ring like the Clock app's, even in Silent mode or a Focus. Hermes asks each time unless new items go in without asking, and always asks before cancelling one. Hermes sees only the alarms it set.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
+        }
+    }
+
+    // MARK: Shortcuts
+
+    private var shortcutsSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Shortcuts"), symbol: "square.2.layers.3d", tint: .conduitAccent) {
+            Toggle(isOn: binding(\.shortcuts)) {
+                Label("Let Hermes run shortcuts you list", systemImage: "square.2.layers.3d")
+            }
+            .accessibilityIdentifier("settings.phone.shortcuts")
+            Text("Add shortcuts from the Shortcuts app by name, with a note on what each does. Hermes can ask to run one, with some text as its input, and gets back the text it ends with. A run opens the Shortcuts app, so it happens with Conduit open: Hermes' request waits on a card until you tap Run.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+            if choices.shortcuts {
+                ForEach(choices.shortcutList) { shortcut in
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(shortcut.name)
+                                .scaledFont(.subheadline)
+                            if let note = shortcut.note {
+                                Text(note)
+                                    .scaledFont(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer(minLength: 4)
+                        Button(role: .destructive) {
+                            Haptics.selection()
+                            var list = choices.shortcutList
+                            list.removeAll { $0.id == shortcut.id }
+                            binding(\.shortcutList).wrappedValue = list
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text(AppLocalization.string("Remove \(shortcut.name)")))
+                    }
+                }
+                Button {
+                    Haptics.selection()
+                    newShortcutName = ""
+                    newShortcutNote = ""
+                    showsAddShortcut = true
+                } label: {
+                    Label("Add a shortcut", systemImage: "plus.circle")
+                }
+                .disabled(choices.shortcutList.count >= PhoneShortcut.maximum)
+                .accessibilityIdentifier("settings.phone.shortcuts.add")
+                Toggle(isOn: binding(\.shortcutsRunWithoutAsking)) {
+                    Text("Run without asking")
+                }
+                .accessibilityIdentifier("settings.phone.shortcuts.auto")
+                Text("When Conduit is open, a shortcut Hermes asks for runs straight away. When it isn't, it waits on its card.")
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .alert("Add a shortcut", isPresented: $showsAddShortcut) {
+            TextField("Name in Shortcuts", text: $newShortcutName)
+            TextField("What it does (optional)", text: $newShortcutNote)
+            Button("Add") {
+                guard let shortcut = PhoneShortcut(name: newShortcutName, note: newShortcutNote) else { return }
+                var list = choices.shortcutList.filter { $0.id != shortcut.id }
+                list.append(shortcut)
+                binding(\.shortcutList).wrappedValue = list
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Type its name exactly as the Shortcuts app shows it.")
         }
     }
 
@@ -757,6 +838,7 @@ enum PhoneChangeWording {
         case .setAlarm: return AppLocalization.string("Hermes wants to set an alarm")
         case .setTimer: return AppLocalization.string("Hermes wants to start a timer")
         case .cancelAlarm: return AppLocalization.string("Hermes wants to cancel an alarm")
+        case .runShortcut: return AppLocalization.string("Hermes wants to run a shortcut")
         }
     }
 
@@ -796,6 +878,7 @@ enum PhoneChangeWording {
     /// The item's title and time, as far as the change says.
     static func detail(_ change: PhoneChange) -> String {
         if change.kind == .setAlarm || change.kind == .setTimer { return alarmSummary(change.fields, kind: change.kind) }
+        if change.kind == .runShortcut { return shortcutSummary(change.fields) }
         var parts: [String] = []
         if let title = change.fields.title, !title.isEmpty { parts.append(title) }
         let allDay = change.fields.allDay ?? false
@@ -825,11 +908,21 @@ enum PhoneChangeWording {
         case .setAlarm: return AppLocalization.string("Set")
         case .setTimer: return AppLocalization.string("Start")
         case .cancelAlarm: return AppLocalization.string("Cancel alarm")
+        case .runShortcut: return AppLocalization.string("Run")
         }
+    }
+
+    /// A run in a line: the shortcut's name, and the start of its text.
+    static func shortcutSummary(_ fields: PhoneChangeFields) -> String {
+        let name = fields.shortcut ?? AppLocalization.string("Shortcut")
+        guard let input = fields.input?.trimmingCharacters(in: .whitespacesAndNewlines), !input.isEmpty else { return name }
+        let preview = input.count > 120 ? String(input.prefix(120)) + "…" : input
+        return "\(name) · “\(preview)”"
     }
 
     static func symbol(_ kind: PhoneChange.Kind) -> String {
         if kind == .setTimer { return "timer" }
+        if kind == .runShortcut { return "square.2.layers.3d" }
         if kind.isAlarm { return "alarm" }
         return kind.isEvent ? "calendar.badge.plus" : "checklist"
     }

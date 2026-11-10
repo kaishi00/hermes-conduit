@@ -183,7 +183,7 @@ enum NotificationCopy {
         }
     }
 
-    /// A calendar, reminder or alarm change Hermes asks for
+    /// A calendar, reminder or alarm change, or a shortcut run, Hermes asks for
     /// (`phone.<kind>`) or makes on its own (`phone.auto.<kind>`).
     private static func phoneTitle(for label: String) -> String? {
         switch label {
@@ -197,10 +197,12 @@ enum NotificationCopy {
         case "phone.set_alarm": return AppLocalization.string("Hermes wants to set an alarm")
         case "phone.set_timer": return AppLocalization.string("Hermes wants to start a timer")
         case "phone.cancel_alarm": return AppLocalization.string("Hermes wants to cancel an alarm")
+        case "phone.run_shortcut": return AppLocalization.string("Hermes wants to run a shortcut")
         case "phone.auto.add_event": return AppLocalization.string("Hermes is adding an event")
         case "phone.auto.add_reminder": return AppLocalization.string("Hermes is adding a reminder")
         case "phone.auto.set_alarm": return AppLocalization.string("Hermes is setting an alarm")
         case "phone.auto.set_timer": return AppLocalization.string("Hermes is starting a timer")
+        case "phone.auto.run_shortcut": return AppLocalization.string("Hermes is running a shortcut")
         case "phone.change": return AppLocalization.string("Hermes has a change for you")
         default: return nil
         }

@@ -36,6 +36,8 @@ extension AppState {
     /// Plugin 0.30.0: alarms and timers, and picked people.
     static let phoneAlarmsCapability = "phone-alarms"
     static let phoneContactsCapability = "phone-contacts"
+    /// Plugin 0.159.0: Shortcuts Hermes can run.
+    static let phoneShortcutsCapability = "phone-shortcuts"
     static let phoneSyncTaskIdentifier = "com.milim.relay.phone-sync"
     static let phoneChangesPushType = "phone.changes"
     static let phoneSyncLog = Logger(subsystem: "com.milim.relay", category: "phone-sync")

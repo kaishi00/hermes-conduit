@@ -439,6 +439,8 @@ struct ConduitApp: App {
             // Another app opening a chat: only session links, opened through
             // the same route as an in-app link once Hermes is connected.
             .onOpenURL { url in
+                // The Shortcuts app back from a run Hermes asked for.
+                if PhoneShortcutRunner.shared.handle(url) { return }
                 if appState.routeWidgetLaunchURL(url) { return }
                 // A sign-in code tapped in another app (a Telegram chat with
                 // Hermes): Conduit asks before it signs in.
