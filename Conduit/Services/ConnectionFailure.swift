@@ -56,12 +56,11 @@ enum ConnectionFailure: Equatable {
     case signInPageFailed
 
     // Server-side responses.
-    /// A 401 or 403 where no credentials were asked for: provider
-    /// discovery or the native sign-in's requests. Something in front of
-    /// the dashboard (an IP allowlist, a firewall, an access policy)
-    /// refused this device. Never bad credentials, and not a wrong
-    /// address either: the same request answers from an allowed network
-    /// (issue #2092).
+    /// A 401 or 403 at provider discovery, which sends no credentials:
+    /// something in front of the dashboard (an IP allowlist, a firewall,
+    /// an access policy) refused this device. Never bad credentials, and
+    /// not a wrong address either: the same request answers from an
+    /// allowed network (issue #2092).
     case accessDenied
     case dashboardUnavailable
     case unexpectedServerResponse
@@ -81,6 +80,11 @@ enum ConnectionFailureClassifier {
         /// Dashboard-ticket bridge requests (WebKit-side ticket minting):
         /// like provider discovery, a 401/403 here is never bad credentials.
         case ticketMint
+        /// The native sign-in's token exchange and refresh. They carry a
+        /// code or refresh token, so a 401/403 is Hermes refusing that,
+        /// not the network refusing this device; never bad credentials
+        /// either (an allowlist would have refused discovery first).
+        case nativeToken
     }
 
     static func classify(_ error: Error) -> ConnectionFailure {
@@ -156,14 +160,14 @@ enum ConnectionFailureClassifier {
     }
 
     /// Native (PKCE) sign-in failures, so Repair's Sign In to Reconnect and
-    /// Settings' Sign In Again name them as the login screen does. Its
-    /// requests are discovery-like: a 401/403 is never bad credentials.
+    /// Settings' Sign In Again name them as the login screen does. A
+    /// 401/403 from its token requests is never bad credentials.
     static func classify(_ nativeError: NativeOAuthError) -> ConnectionFailure {
         switch nativeError {
         case .browserFailed:
             return .signInPageFailed
         case .requestFailed(let status):
-            return classifyHTTPStatus(status, stage: .providerDiscovery)
+            return classifyHTTPStatus(status, stage: .nativeToken)
         case .invalidURL, .callbackMalformed, .stateMismatch, .tokenResponseMalformed:
             return .unexpectedServerResponse
         case .randomGenerationFailed, .listenerFailed, .callbackRejected, .tokenStorageFailed, .timedOut:
