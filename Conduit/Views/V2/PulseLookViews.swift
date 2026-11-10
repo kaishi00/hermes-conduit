@@ -85,18 +85,23 @@ struct PulseLookBody: View {
             Text(verbatim: hasTime ? due.formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale)) : PulseLook.relativeDay(due))
                 .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(late ? Color.red : progress > 0.75 ? Color.orange : Color.primary)
-            ProgressView(value: progress)
-                .tint(late ? .red : progress > 0.75 ? .orange : .conduitAccent)
-                .accessibilityHidden(true)
-            HStack {
-                if let noticed {
+            // A bar needs a start: with no earlier day it was noticed, only the day.
+            if let noticed, by > noticed {
+                ProgressView(value: progress)
+                    .tint(late ? .red : progress > 0.75 ? .orange : .conduitAccent)
+                    .accessibilityHidden(true)
+                HStack {
                     Text(verbatim: noticed.formatted(.dateTime.day().month().locale(AppLocalization.formattingLocale)))
+                    Spacer(minLength: 0)
+                    Text(verbatim: dueText)
                 }
-                Spacer(minLength: 0)
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+            } else {
                 Text(verbatim: dueText)
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
             }
-            .scaledFont(.caption)
-            .foregroundStyle(.secondary)
         }
     }
 
