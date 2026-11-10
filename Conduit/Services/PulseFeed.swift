@@ -274,7 +274,9 @@ struct PulseCard: Equatable, Identifiable {
     /// getting ready; a deadline, taking care of it before then; a next
     /// step (0.106.0), taking care of it like a plan; something
     /// watched, where it stands; an interest, more about it; anything else,
-    /// a look.
+    /// a look. Something watched, or about nothing in particular, whose look
+    /// shows it going wrong (reportsProblem) asks for it to be found and
+    /// fixed instead of another status check (issue 2082).
     /// One from a Kanban task's worker asks Hermes to get the task going
     /// again: the work happens on the board, not in a chat.
     var actionMessage: String {
@@ -293,12 +295,24 @@ struct PulseCard: Equatable, Identifiable {
             return AppLocalization.string("Pulse brought this up: \(reminder)\n\nHelp me get ready for it.")
         case "deadline":
             return AppLocalization.string("Pulse brought this up: \(reminder)\n\nHelp me take care of it before then.")
-        case "watch":
-            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nWhere does that stand now?")
         case "interest":
             return AppLocalization.string("Pulse brought this up: \(reminder)\n\nTell me more.")
+        case _ where reportsProblem:
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nFind out what's wrong and fix it.")
+        case "watch":
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nWhere does that stand now?")
         default:
             return AppLocalization.string("Pulse brought this up: \(reminder)\n\nLet's look into it.")
+        }
+    }
+
+    /// Whether the card's look shows something going wrong: a status that
+    /// warns or fails, or a job whose latest run failed. No look, no.
+    var reportsProblem: Bool {
+        switch look?.body {
+        case let .status(_, state): return state != .ok
+        case let .runs(_, results): return results.last == false
+        default: return false
         }
     }
 

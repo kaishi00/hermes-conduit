@@ -612,6 +612,46 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(message[9], "Pulse brought this up: Something else\n\nLet's look into it.")
     }
 
+    // Issue 2082: Do it on a card whose look shows something going wrong asks
+    // for it to be fixed, not for another status update; an informational
+    // watch still asks where it stands, and a topic with its own ask keeps it.
+    func testDoItOnAProblemAsksForAFixNotAStatus() throws {
+        func card(_ id: Int, topic: String, look: String) -> String {
+            #"{"id": \#(id), "kind": "noticed", "topic": "\#(topic)", "level": "screen", "news": "Audit job", "chat_id": "work", "look": \#(look)}"#
+        }
+        func status(_ state: String) -> String {
+            #"{"shape": "status", "line": "Audit job", "facts": {"label": "Audit", "state": "\#(state)"}, "actions": []}"#
+        }
+        func runs(_ results: String) -> String {
+            #"{"shape": "runs", "line": "Audit job", "facts": {"job": "audit", "results": \#(results)}, "actions": []}"#
+        }
+        let cards = [
+            card(1, topic: "watch", look: status("fail")),
+            card(2, topic: "watch", look: status("warn")),
+            card(3, topic: "watch", look: status("ok")),
+            card(4, topic: "watch", look: runs(#"["ok", "fail"]"#)),
+            card(5, topic: "watch", look: runs(#"["fail", "ok"]"#)),
+            card(6, topic: "", look: status("fail")),
+            card(7, topic: "interest", look: status("fail")),
+            card(8, topic: "commitment", look: status("fail")),
+            card(9, topic: "watch", look: #"{"shape": "plain", "facts": {}, "actions": []}"#)
+        ].joined(separator: ",\n")
+        let page = try XCTUnwrap(PulseFeedPage(json: json("{\"cards\": [\(cards)]}")))
+        let message = Dictionary(uniqueKeysWithValues: page.cards.map { ($0.id, $0.actionMessage) })
+        let fix = "Pulse brought this up: Audit job\n\nFind out what's wrong and fix it."
+        let stand = "Pulse brought this up: Audit job\n\nWhere does that stand now?"
+        XCTAssertEqual(page.cards.count, 9)
+        XCTAssertEqual(message[1], fix)
+        XCTAssertEqual(message[2], fix)
+        XCTAssertEqual(message[3], stand)
+        XCTAssertEqual(message[4], fix)   // the latest run failed
+        XCTAssertEqual(message[5], stand) // it failed before, and recovered
+        XCTAssertEqual(message[6], fix)
+        XCTAssertEqual(message[7], "Pulse brought this up: Audit job\n\nTell me more.")
+        XCTAssertEqual(message[8], "Pulse reminded me: Audit job\n\nLet's take care of it now.")
+        XCTAssertEqual(message[9], stand) // no look that says anything is wrong
+    }
+
     func testACardPointingAtPulsesOwnChatOpensNoChat() throws {
         let state = try appState()
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
