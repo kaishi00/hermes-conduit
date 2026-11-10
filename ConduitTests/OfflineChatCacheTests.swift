@@ -2576,6 +2576,7 @@ final class OfflineChatCacheTests: XCTestCase {
         // Leaving its chat takes the line with it.
         appState.sessions.append(session("stored-b"))
         appState.activeSessionId = "stored-b"
+        // The recovery's own sync may have said something since: that stays.
         XCTAssertNotEqual(appState.errorMessage, failure)
         XCTAssertNil(appState.sendFailureShown)
     }
