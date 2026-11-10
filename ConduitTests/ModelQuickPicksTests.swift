@@ -125,7 +125,11 @@ final class ModelQuickPicksTests: XCTestCase {
         XCTAssertEqual(shown.first?.models.map(\.id), ["opus", "sonnet"])
         XCTAssertEqual(shown.first?.aliases, ["custom:openrouter"], "an alias still finds the row")
         XCTAssertEqual(shown.first?.quota, openrouter.quota, "its quota line stays on the row")
-        XCTAssertNotNil(shown.first?.quota)
+        // Edit's search finds a provider by the name its card shows.
+        let go = ProviderInfo(name: "opencode-go", models: [model("glm")], displayName: "OpenCode Go")
+        XCTAssertTrue(ModelVisibilityEditor.namesMatch(go, "opencode go"))
+        XCTAssertTrue(ModelVisibilityEditor.namesMatch(go, "opencode-go"))
+        XCTAssertFalse(ModelVisibilityEditor.namesMatch(go, "kimi"))
         XCTAssertTrue(visibility.isHidden(model: "glm", provider: zai))
         XCTAssertTrue(visibility.isHidden(model: "deepseek", provider: openrouter))
         XCTAssertFalse(visibility.isHidden(model: "opus", provider: openrouter))

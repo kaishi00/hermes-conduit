@@ -12,7 +12,7 @@ logo added here also needs its Hermes slugs in ProviderLogo.bySlug
 (Conduit/Views/Components/ProviderLogoView.swift). Pick a single-colour
 logo when the coloured one has black parts, which vanish in Dark Mode.
 """
-import json, os, re, shutil, sys
+import json, os, re, shutil, sys, tempfile
 import cairosvg
 
 SRC = sys.argv[1]; FINAL = sys.argv[2].rstrip("/")
@@ -29,10 +29,11 @@ LOGOS = {
  "tencent":"tencent-color", "together":"together-color", "upstage":"upstage-color", "vercel":"vercel",
  "vertex":"vertexai-color", "vllm":"vllm-color", "xai":"xai", "zai":"zai",
 }
-# Built beside the catalog and swapped in only once every logo converted,
-# so a wrong source folder leaves the catalog as it was.
-OUT = FINAL + ".building"
-shutil.rmtree(OUT, ignore_errors=True)
+# Built in a temporary folder outside the app's sources and swapped in only
+# once every logo converted, so a wrong source folder leaves the catalog as
+# it was and nothing behind.
+BUILD = tempfile.TemporaryDirectory()
+OUT = os.path.join(BUILD.name, "ProviderLogos.xcassets")
 os.makedirs(OUT)
 json.dump({"info":{"author":"xcode","version":1}}, open(f"{OUT}/Contents.json","w"), indent=2)
 for name, src in sorted(LOGOS.items()):
@@ -47,5 +48,6 @@ for name, src in sorted(LOGOS.items()):
     json.dump({"images":[{"filename":f"provider-{name}.pdf","idiom":"universal"}],
                "info":{"author":"xcode","version":1},"properties":props}, open(f"{d}/Contents.json","w"), indent=2)
 shutil.rmtree(FINAL, ignore_errors=True)
-os.rename(OUT, FINAL)
+shutil.move(OUT, FINAL)
+BUILD.cleanup()
 print(len(LOGOS))

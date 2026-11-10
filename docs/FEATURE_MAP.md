@@ -4187,7 +4187,7 @@ Models & providers line)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name)
+**Checked:** 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name; Edit's search matches the name it shows)
 
 ## Pinned and recent models
 
@@ -4263,7 +4263,7 @@ menus)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-08, #2047 (a scheduled job's Model row in Edit job and New job opens this page, Profile default first, with every reasoning level); 2026-11-08, #2002 (a bot's Model and Workstream Model rows name the catalog's model and provider, as every other row does; a provider-only pick is named by its row's title on the Model page's top card and on the tagged rows, Voice jobs, Voice replies, Helper models' pages and Pulse; the Helper models list's own summary, HelperModelSlot.value, keeps the saved spelling as it does for every pick, having no catalog); 2026-11-08, #1992 (entry added)
+**Checked:** 2026-11-10, #2161 (each provider shows its logo and quota left, its models under its name, and Edit's list finds a provider by the name it shows; see Provider logos and quota on provider rows); 2026-11-08, #2047 (a scheduled job's Model row in Edit job and New job opens this page, Profile default first, with every reasoning level); 2026-11-08, #2002 (a bot's Model and Workstream Model rows name the catalog's model and provider, as every other row does; a provider-only pick is named by its row's title on the Model page's top card and on the tagged rows, Voice jobs, Voice replies, Helper models' pages and Pulse; the Helper models list's own summary, HelperModelSlot.value, keeps the saved spelling as it does for every pick, having no catalog); 2026-11-08, #1992 (entry added)
 
 ## The + that makes something new
 
@@ -4672,7 +4672,7 @@ Profile config saves (the key order, a profile setting)
 - Key order isn't offered for a provider whose id has a dot (`custom:together.ai`): the profile setting's dotted key would split it.
 - Removing the shared key or signing out on the main profile checks only the main profile's default, delegate, fallback and helper models, not other profiles' that run on it.
 
-**Checked:** 2026-11-05, #1823 (#1816 checked here: Models & providers and a provider's page read the models again after opening, see Model lists Hermes is still fetching); 2026-11-01, #1638 (a summary kept by an older build, without sign-in counts, waits for Hermes: key section on the provider page and the Add sheet's connect page and key order wait, a failed read says so, the card says Connected); 2026-11-01, #1636 (key order says keys and sign-ins, waits for Hermes over a kept config without the setting; Remove reads the helper models from Hermes); 2026-11-01, #1632 (key order counts sign-ins, a profile's own sign-in among its own rows, its picks in a tested type; a removal names the helper models pinned to the provider); 2026-11-01, #1625 (stage 2: key order, providers with only settings; two gaps closed, two opened); 2026-11-01, #1620 (from #1616's last reviews: a removal tries every variable, a save behind a held key says so, a given-up sign-in is cancelled on Hermes, a model pick's spinner stays until its own catalog read lands; base-URL-only providers noted as a gap); 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup; host-tested on Hermes 0.22.2: an override wins after its copies go, across restarts, and replacing and going back to the shared key work)
+**Checked:** 2026-11-10, #2161 (a provider's row shows its logo, and its quota left from Hermes' catalog, with an orange badge for a key that needs a look; see Provider logos and quota on provider rows); 2026-11-05, #1823 (#1816 checked here: Models & providers and a provider's page read the models again after opening, see Model lists Hermes is still fetching); 2026-11-01, #1638 (a summary kept by an older build, without sign-in counts, waits for Hermes: key section on the provider page and the Add sheet's connect page and key order wait, a failed read says so, the card says Connected); 2026-11-01, #1636 (key order says keys and sign-ins, waits for Hermes over a kept config without the setting; Remove reads the helper models from Hermes); 2026-11-01, #1632 (key order counts sign-ins, a profile's own sign-in among its own rows, its picks in a tested type; a removal names the helper models pinned to the provider); 2026-11-01, #1625 (stage 2: key order, providers with only settings; two gaps closed, two opened); 2026-11-01, #1620 (from #1616's last reviews: a removal tries every variable, a save behind a held key says so, a given-up sign-in is cancelled on Hermes, a model pick's spinner stays until its own catalog read lands; base-URL-only providers noted as a gap); 2026-11-01, #1616 (entry added: Providers section, Add a provider, shared keys with overrides and cleanup; host-tested on Hermes 0.22.2: an override wins after its copies go, across restarts, and replacing and going back to the shared key work)
 
 ## Helper models
 

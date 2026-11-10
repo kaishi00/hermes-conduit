@@ -80,7 +80,7 @@ struct ModelVisibilityEditor: View {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
         guard !query.isEmpty else { return providers }
         return providers.filter { provider in
-            provider.name.lowercased().contains(query) || provider.models.contains { $0.id.lowercased().contains(query) }
+            Self.namesMatch(provider, query) || provider.models.contains { $0.id.lowercased().contains(query) }
         }
     }
 
@@ -165,8 +165,14 @@ struct ModelVisibilityEditor: View {
 
     private func matchingModels(in provider: ProviderInfo) -> [ModelInfo] {
         let query = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !query.isEmpty, !provider.name.lowercased().contains(query) else { return provider.models }
+        guard !query.isEmpty, !Self.namesMatch(provider, query) else { return provider.models }
         return provider.models.filter { $0.id.lowercased().contains(query) }
+    }
+
+    /// The slug, the name shown on the card or an alias holds the
+    /// lowercased query.
+    static func namesMatch(_ provider: ProviderInfo, _ query: String) -> Bool {
+        ([provider.name, provider.title] + provider.aliases).contains { $0.lowercased().contains(query) }
     }
 
     private func visibleModelCount(in provider: ProviderInfo) -> Int {
