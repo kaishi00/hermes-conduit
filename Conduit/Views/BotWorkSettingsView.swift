@@ -95,6 +95,25 @@ struct BotWorkSettingsView: View {
                 caption(AppLocalization.string("When this many are running, \(botName) waits for one to finish or sends new work to one that’s already on it."))
             }
         }
+        if settings.isOn, let coordination = settings.coordination {
+            ConduitSettingsSection(title: AppLocalization.string("Coordination"), symbol: "point.3.connected.trianglepath.dotted", tint: .blue) {
+                ConduitMenuPicker(
+                    value: coordination,
+                    choices: [
+                        (id: BotWorkSettings.Coordination.ask, title: AppLocalization.string("Ask Me First")),
+                        (id: BotWorkSettings.Coordination.auto, title: AppLocalization.string("Automatic")),
+                        (id: BotWorkSettings.Coordination.off, title: AppLocalization.string("Off")),
+                    ],
+                    onSelect: { binding(\.coordination).wrappedValue = $0 }
+                ) {
+                    Text(AppLocalization.string("Between Workstreams")).foregroundStyle(.secondary)
+                }
+                caption(Self.coordinationCaption(coordination, botName: botName))
+                if coordination != .off {
+                    caption(AppLocalization.string("This doesn’t change what workstreams may do: their approvals stay as set under Safety."))
+                }
+            }
+        }
         if settings.isOn {
             ConduitSettingsSection(title: AppLocalization.string("Workstream Model"), symbol: "cpu", tint: .purple) {
                 NavigationLink {
@@ -176,6 +195,18 @@ struct BotWorkSettingsView: View {
             return AppLocalization.string("Everything but cards, maps, notifications, memories and its questions to you runs in the background, so its Bot Chat is always free to talk.")
         case .lookups, .off:
             return AppLocalization.string("\(botName) answers and does quick things in its Bot Chat. Anything that takes longer runs in the background, and you’re told there when it’s done.")
+        }
+    }
+
+    /// What the Coordination choice means, in what the user will notice.
+    static func coordinationCaption(_ coordination: BotWorkSettings.Coordination, botName: String) -> String {
+        switch coordination {
+        case .ask:
+            return AppLocalization.string("\(botName) follows what each workstream finds and changes. When one affects another, it tells you what it recommends and asks before it starts, stops or redirects work.")
+        case .auto:
+            return AppLocalization.string("\(botName) keeps its workstreams in step on its own. When one affects another, it can start, stop or redirect work, and tells you in a line when it did.")
+        case .off:
+            return AppLocalization.string("\(botName) only passes on what its workstreams report.")
         }
     }
 

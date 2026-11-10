@@ -458,6 +458,37 @@ extension GatewayRestartTests {
         }
     }
 
+    func testTheDrawerShellKeepsTheNoticeWhileFinishSetupIsPending() throws {
+        // The drawer shell has no Finish setting up card, so nothing else
+        // would offer the update or the restart: the notice keeps them.
+        let standard = UserDefaults.standard
+        let savedShell = standard.object(forKey: V2ShellPreference.key)
+        standard.set(false, forKey: V2ShellPreference.key)
+        addTeardownBlock {
+            if let savedShell {
+                standard.set(savedShell, forKey: V2ShellPreference.key)
+            } else {
+                standard.removeObject(forKey: V2ShellPreference.key)
+            }
+        }
+        let suite = "GatewayRestartTests.drawerNotice.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let dashboard = SavedDashboard(id: UUID(), label: "Mac", normalizedURL: "https://mac.example")
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard]),
+            clearSessionPresentationCache: {},
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        appState.setNotifierPluginNoticeChannel(.never)
+        appState.dashboardsFinishingSetup = [dashboard.id]
+        appState.applyNotifierPluginReport(Self.capabilities(loaded: "0.63.0", disk: "0.64.0", boot: "a"))
+        XCTAssertEqual(appState.notifierPluginNoticeOffer, .restart)
+        XCTAssertTrue(appState.showsNotifierPluginUpdateNotice)
+    }
+
     func testEachReportSaysWhetherTheHostManagesThePlugin() throws {
         let suite = "GatewayRestartTests.managed.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))

@@ -752,6 +752,13 @@ struct RoomHandoffs: Codable, Equatable {
         return earlier
     }
 
+    /// The handoffs in `thread` noted after `date`, other than `own`: a
+    /// newer notification an earlier one, slow to look up what shows, must
+    /// not remove (issue 2070).
+    func handedOver(in thread: String, after date: Date, except own: String) -> Set<String> {
+        Set(entries.filter { $0.thread == thread && $0.id != own && $0.at > date }.map(\.id))
+    }
+
     private static let key = "conduit.notifications.roomHandoffs"
     private static let lock = NSLock()
 
@@ -763,6 +770,15 @@ struct RoomHandoffs: Codable, Equatable {
             let earlier = handoffs.record(id, thread: thread, now: now)
             if let data = try? JSONEncoder().encode(handoffs) { defaults?.set(data, forKey: key) }
             return earlier
+        }
+    }
+
+    /// `handedOver` on the list kept in the app group.
+    static func handedOver(in thread: String, after date: Date, except own: String, defaults: UserDefaults?) -> Set<String> {
+        lock.withLock {
+            let handoffs = defaults?.data(forKey: key)
+                .flatMap { try? JSONDecoder().decode(RoomHandoffs.self, from: $0) } ?? RoomHandoffs()
+            return handoffs.handedOver(in: thread, after: date, except: own)
         }
     }
 }
