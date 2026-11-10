@@ -189,6 +189,13 @@ extension AppState {
             write: { self.setLiveVoiceSpeakerBargeInEnabled($0) }
         ))
         catalog.append(boolDescriptor(
+            key: "voice.read_replies_aloud", section: "Read Aloud", title: "Read replies aloud",
+            description: "Reads each reply in the open chat aloud as it arrives, typed or dictated messages included, and each new message from a group room's bots. Off means only the speaker button under a reply reads it.",
+            tier: .ask, displayTitle: { AppLocalization.string("Read replies aloud") },
+            read: { ReadRepliesAloud.isOn(self.appDefaults) },
+            write: { self.appDefaults.set($0, forKey: ReadRepliesAloud.preferenceKey) }
+        ))
+        catalog.append(boolDescriptor(
             key: "voice.continuous_conversation", section: "Conversation", title: "Continuous Conversation",
             description: "In Classic voice, listens again after each reply instead of waiting for a tap.",
             // It keeps the microphone on: asks, like every such setting.

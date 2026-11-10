@@ -431,6 +431,18 @@ enum ReadAloudSpeed: Double, CaseIterable, Identifiable {
     }
 }
 
+/// Read replies aloud (notifier issue 674): the open chat's replies are read
+/// as they stream, whatever way the message was sent, and a group room's
+/// new messages one after another. A device-wide choice like the speed;
+/// off by default, when only the speaker button under a reply reads it.
+enum ReadRepliesAloud {
+    static let preferenceKey = "conduit.voice.readRepliesAloud"
+
+    static func isOn(_ defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: preferenceKey)
+    }
+}
+
 /// A prebuilt Gemini Live voice: its API name and Google's one-word
 /// description of how it sounds.
 struct GeminiLiveVoice: Equatable, Identifiable {

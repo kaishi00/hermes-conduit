@@ -10,9 +10,13 @@ import Foundation
 
 @MainActor
 extension AppState {
-    /// A message typed or spoken in the app, on this device or CarPlay.
+    /// A message typed or spoken in the app, on this device or CarPlay. A
+    /// typed one's reply is heard too while Read replies aloud reads it.
     func messageTurnSurface(spoken: Bool) -> TurnSurface {
-        TurnSurface.message(spoken: spoken, carPlay: isCarPlayVoiceSurfaceActive)
+        TurnSurface.message(
+            spoken: spoken, carPlay: isCarPlayVoiceSurfaceActive,
+            heard: !spoken && ReadRepliesAloud.isOn(appDefaults) && readAloudUnavailableReason == nil
+        )
     }
 
     /// Reports `surface` for the turn of `text` in `runtimeSessionID`. The task
