@@ -3251,8 +3251,9 @@ final class AppState: ObservableObject {
 
     /// The helper models read in flight. A reader asking meanwhile on the
     /// same profile and Hermes shares it: the Model page and its Helper
-    /// models section open together. A save drops it, so a read asked
-    /// after the save isn't answered from before it. A reader that leaves
+    /// models section open together. A save in the open profile drops it,
+    /// so a read asked after the save isn't answered from before it;
+    /// another profile's save (the work watch's) leaves it under way. A reader that leaves
     /// doesn't cancel it: the next one joins it, and the bridge's request
     /// timeout ends one Hermes never answers.
     private var helperModelsRead: (profile: String, owner: DashboardRuntimeOwner, task: Task<HelperModelsAnswer, Error>)?
