@@ -1390,7 +1390,7 @@ the Voice settings caption · the notifier README and changelog
 **Open gaps**
 - `heard` is decided at the send. If Conduit leaves the screen, a call starts or the chat closes before the reply's first words, nothing reads it and Hermes was still told not to send a sound file. Typed turns rarely get one anyway; correcting the report mid-turn would need a new plugin route (Maintainer's call).
 
-**Checked:** 2026-11-10, #2122 (new entry).
+**Checked:** 2026-11-10, #2128 (an empty copy reads its first message; new entry in #2122).
 
 ## Files Hermes attaches, in what voices say
 
