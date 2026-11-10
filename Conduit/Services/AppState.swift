@@ -13098,6 +13098,9 @@ final class AppState: ObservableObject {
     var roomBoardsTask: Task<Void, Never>?
     /// Tests read a room's boards here in place of the dashboard.
     var roomBoardsReadOverride: ((String) async throws -> [String: Any])?
+    /// Tests take the room messages Read replies aloud would queue here
+    /// (message id, text) in place of the reader.
+    var roomReadAloudQueueOverride: ((String, String) -> Void)?
     @Published private(set) var activeRoomDriverStatus: GroupDriverStatus?
     /// In a room over Links, each member by id (`GET /rooms/people`): its
     /// owner and whether it's out. Read when the room opens, when Group
@@ -41723,10 +41726,13 @@ final class AppState: ObservableObject {
         let roomID = replay.roomID
         for event in replay.memberMessages(since: old) {
             let profile = GroupRoomTurns.speaker(of: event, members: surface.room.members)?.profile
-            messageReadAloudController.enqueue(
-                messageID: Self.roomReadAloudID(roomID: roomID, eventID: event.id),
-                content: GroupMessageParts(event.messageText ?? "").text
-            ) { [weak self] in
+            let messageID = Self.roomReadAloudID(roomID: roomID, eventID: event.id)
+            let content = GroupMessageParts(event.messageText ?? "").text
+            if let queued = roomReadAloudQueueOverride {
+                queued(messageID, content)
+                continue
+            }
+            messageReadAloudController.enqueue(messageID: messageID, content: content) { [weak self] in
                 self?.readyAutomaticReadAloud(roomID: roomID, speakingAs: profile) ?? false
             }
         }
