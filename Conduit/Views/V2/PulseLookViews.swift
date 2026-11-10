@@ -164,19 +164,14 @@ struct PulseLookBody: View {
                 Spacer(minLength: 0)
             }
             .accessibilityHidden(true)
-            HStack(spacing: 6) {
-                if !job.isEmpty {
-                    Text(verbatim: job)
-                        .lineLimit(1)
-                    Text(verbatim: "·")
-                }
-                Text(AppLocalization.string("Runs: \(results.count)"))
-                Text(verbatim: "·")
-                Text(AppLocalization.string("Failed: \(failedCount)"))
-            }
-            .scaledFont(.caption.weight(.semibold))
-            .foregroundStyle(tint)
-            .accessibilityElement(children: .combine)
+            // One line that wraps, so a large text size keeps the job's name
+            // whole rather than cutting it to fit the counts.
+            Text(verbatim: [job, AppLocalization.string("Runs: \(results.count)"),
+                            AppLocalization.string("Failed: \(failedCount)")]
+                .filter { !$0.isEmpty }.joined(separator: " · "))
+                .scaledFont(.caption.weight(.semibold))
+                .foregroundStyle(tint)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
