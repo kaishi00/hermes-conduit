@@ -3272,7 +3272,7 @@ final class AppState: ObservableObject {
         }
         let result = await task.result
         if helperModelsRead?.task == task { helperModelsRead = nil }
-        guard profile == activeProfile else { throw CancellationError() }
+        guard profilesMatch(profile, activeProfile) else { throw CancellationError() }
         return try result.get().json
     }
 
