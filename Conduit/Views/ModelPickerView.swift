@@ -988,7 +988,7 @@ struct ModelPickerView: View {
                 HStack(spacing: 10) {
                     ProviderLogoView(provider: provider)
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(provider.name)
+                        Text(verbatim: provider.title)
                             .scaledFont(.subheadline.weight(.semibold))
                         if let summary = provider.quota?.summary {
                             ProviderQuotaLine(summary: summary)

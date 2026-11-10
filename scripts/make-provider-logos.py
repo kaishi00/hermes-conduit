@@ -15,7 +15,7 @@ logo when the coloured one has black parts, which vanish in Dark Mode.
 import json, os, re, shutil, sys
 import cairosvg
 
-SRC = sys.argv[1]; OUT = sys.argv[2]
+SRC = sys.argv[1]; FINAL = sys.argv[2].rstrip("/")
 # asset name -> lobe-icons file (without .svg)
 LOGOS = {
  "anthropic":"anthropic", "arcee":"arcee-color", "bedrock":"bedrock-color", "azure":"azureai-color",
@@ -29,6 +29,9 @@ LOGOS = {
  "tencent":"tencent-color", "together":"together-color", "upstage":"upstage-color", "vercel":"vercel",
  "vertex":"vertexai-color", "vllm":"vllm-color", "xai":"xai", "zai":"zai",
 }
+# Built beside the catalog and swapped in only once every logo converted,
+# so a wrong source folder leaves the catalog as it was.
+OUT = FINAL + ".building"
 shutil.rmtree(OUT, ignore_errors=True)
 os.makedirs(OUT)
 json.dump({"info":{"author":"xcode","version":1}}, open(f"{OUT}/Contents.json","w"), indent=2)
@@ -43,4 +46,6 @@ for name, src in sorted(LOGOS.items()):
     if template: props["template-rendering-intent"] = "template"
     json.dump({"images":[{"filename":f"provider-{name}.pdf","idiom":"universal"}],
                "info":{"author":"xcode","version":1},"properties":props}, open(f"{d}/Contents.json","w"), indent=2)
+shutil.rmtree(FINAL, ignore_errors=True)
+os.rename(OUT, FINAL)
 print(len(LOGOS))

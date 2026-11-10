@@ -4163,7 +4163,8 @@ resets (Eric, 2026-11-10: "can we include more than what hermes offers?").
 Hermes sends a slug and a name, no logo, so the logos are bundled.
 
 **Siblings:** the model sheet's All providers page (done) · every setting's
-Model page (done) · Models & providers' Providers section and Add a provider
+Model page (done) · Edit's provider list on both (done: logo and display
+name; no quota, as it shows and hides rather than picks) · Models & providers' Providers section and Add a provider
 (done: the logo replaces the status symbol, a key that needs a look keeps an
 orange badge) · Settings > Usage (done: logo beside each quota; its full
 windows stay there) · search matches and Quick picks (not needed: the
@@ -4175,8 +4176,8 @@ Models & providers line)
 **Code**
 - Logos: `Conduit/Views/Components/ProviderLogoView.swift` (ProviderLogo.bySlug, byWord, asset, ProviderLogoView), `Conduit/Resources/ProviderLogos.xcassets/Contents.json`, `Conduit/Resources/ProviderLogos-LICENSE.txt`, `scripts/make-provider-logos.py`
 - Quota: `Conduit/Models/UsageReport.swift` (ProviderQuota.init(row:), summary, ProviderQuotaSummary), `Conduit/Services/HermesClient.swift` (ProviderInfo.quota), `Conduit/Views/Components/ProviderLogoView.swift` (ProviderQuotaLine)
-- Rows: `Conduit/Views/ModelPickerView.swift` (providerCard), `Conduit/Views/ModelChooserPage.swift` (providerRow), `Conduit/Views/ProviderSettingsViews.swift` (ProviderRow, ProvidersSettingsSection.quota), `Conduit/Views/UsageSettingsViews.swift` (quotaSection)
-- Tests: `ConduitTests/HermesClientTests+Usage.swift` (testAProviderRowCarriesItsQuotaSummary, testProviderLogosMatchSlugsAndNamesAndAreBundled)
+- Rows: `Conduit/Views/ModelPickerView.swift` (providerCard), `Conduit/Views/ModelChooserPage.swift` (providerRow), `Conduit/Views/ModelVisibilityEditor.swift` (ModelVisibility.visible keeps the quota, visibilityProviderCard), `Conduit/Views/ProviderSettingsViews.swift` (ProviderRow, ProvidersSettingsSection.quota), `Conduit/Views/UsageSettingsViews.swift` (quotaSection)
+- Tests: `ConduitTests/HermesClientTests+Usage.swift` (testAProviderRowCarriesItsQuotaSummary, testProviderLogosMatchSlugsAndNamesAndAreBundled), `ConduitTests/ModelQuickPicksTests.swift` (testHiddenModelsLeaveTheLists)
 
 **Rulings**
 - Logos are bundled from lobe-icons (MIT), never fetched: no request leaves the phone for them. A provider is matched by slug, then alias, then a whole word of its slug or name; one with none shows its initial (#2161).
@@ -4186,7 +4187,7 @@ Models & providers line)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-10, #2161 (entry added)
+**Checked:** 2026-11-10, #2161 (entry added; from its review, the lists Edit filters keep each row's quota, Edit's list shows logos, a host's word wins over a model maker's, and the sheet's card shows the display name)
 
 ## Pinned and recent models
 

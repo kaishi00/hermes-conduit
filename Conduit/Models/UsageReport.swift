@@ -263,7 +263,8 @@ struct ProviderQuota: Equatable, Identifiable {
         }
         if let tightest = Self.tightest(windows) { return tightest }
         let usable = accounts.filter { $0.state == .ready || $0.state == .unknown }.compactMap { Self.tightest($0.windows) }
-        if let best = usable.max(by: { ($0.left ?? 0, -($0.resetsAt?.timeIntervalSince1970 ?? 0)) < ($1.left ?? 0, -($1.resetsAt?.timeIntervalSince1970 ?? 0)) }) {
+        // Of two as full, the one that resets sooner, as it frees first.
+        if let best = usable.max(by: { ($0.left ?? 0, -($0.resetsAt?.timeIntervalSince1970 ?? .infinity)) < ($1.left ?? 0, -($1.resetsAt?.timeIntervalSince1970 ?? .infinity)) }) {
             return best
         }
         // Every account Hermes could use is limited: the pool is, until the first frees.
@@ -324,7 +325,8 @@ extension ProviderQuota {
     /// One `model.options` provider row's quota, or nil when it reports
     /// none: the Model lists read it from the row they show.
     init?(row: [String: Any]) {
-        guard let slug = (row["slug"] as? String ?? row["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+        // Spelled as ProviderInfo reads a row, so every row it lists can carry one.
+        guard let slug = (row["slug"] as? String ?? row["id"] as? String ?? row["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
               !slug.isEmpty else { return nil }
         let usage = row["usage"] as? [String: Any] ?? [:]
         let windows = Self.windows(usage["windows"])

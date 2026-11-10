@@ -77,18 +77,22 @@ enum ProviderLogo {
     /// Words in a slug or name that name a provider, for one Hermes has no
     /// slug of ours for: a custom endpoint ("lab-vllm", "Together AI") or a
     /// plugin's. Whole words only, so "xai" never matches inside another.
+    /// The first entry found wins, so a host comes before the model makers
+    /// it serves ("Azure OpenAI" is Azure).
     static let byWord: [(word: String, logo: String)] = [
-        ("openrouter", "openrouter"), ("ollama", "ollama"), ("vllm", "vllm"), ("lmstudio", "lmstudio"),
-        ("together", "together"), ("groq", "groq"), ("mistral", "mistral"), ("cerebras", "cerebras"),
-        ("perplexity", "perplexity"), ("cohere", "cohere"), ("sambanova", "sambanova"), ("chutes", "chutes"),
-        ("siliconflow", "siliconflow"), ("fireworks", "fireworks"), ("deepinfra", "deepinfra"),
-        ("deepseek", "deepseek"), ("anthropic", "anthropic"), ("claude", "anthropic"), ("openai", "openai"),
-        ("chatgpt", "openai"), ("codex", "openai"), ("gemini", "gemini"), ("vertex", "vertex"),
-        ("qwen", "qwen"), ("dashscope", "qwen"), ("kimi", "kimi"), ("moonshot", "kimi"), ("minimax", "minimax"),
-        ("glm", "zai"), ("zhipu", "zai"), ("grok", "xai"), ("xai", "xai"), ("nvidia", "nvidia"),
-        ("huggingface", "huggingface"), ("bedrock", "bedrock"), ("azure", "azure"), ("vercel", "vercel"),
-        ("stepfun", "stepfun"), ("nebius", "nebius"), ("novita", "novita"), ("copilot", "copilot"),
-        ("opencode", "opencode"), ("kilocode", "kilocode"), ("nous", "nous"),
+        // Hosts and gateways.
+        ("openrouter", "openrouter"), ("azure", "azure"), ("bedrock", "bedrock"), ("vertex", "vertex"),
+        ("vercel", "vercel"), ("ollama", "ollama"), ("vllm", "vllm"), ("lmstudio", "lmstudio"),
+        ("together", "together"), ("groq", "groq"), ("cerebras", "cerebras"), ("sambanova", "sambanova"),
+        ("chutes", "chutes"), ("siliconflow", "siliconflow"), ("fireworks", "fireworks"), ("deepinfra", "deepinfra"),
+        ("nvidia", "nvidia"), ("huggingface", "huggingface"), ("nebius", "nebius"), ("novita", "novita"),
+        ("copilot", "copilot"), ("opencode", "opencode"), ("kilocode", "kilocode"), ("nous", "nous"),
+        // Model makers.
+        ("perplexity", "perplexity"), ("cohere", "cohere"), ("mistral", "mistral"), ("deepseek", "deepseek"),
+        ("anthropic", "anthropic"), ("claude", "anthropic"), ("openai", "openai"), ("chatgpt", "openai"),
+        ("codex", "openai"), ("gemini", "gemini"), ("qwen", "qwen"), ("dashscope", "qwen"), ("kimi", "kimi"),
+        ("moonshot", "kimi"), ("minimax", "minimax"), ("glm", "zai"), ("zhipu", "zai"), ("grok", "xai"),
+        ("xai", "xai"), ("stepfun", "stepfun"),
     ]
 
     /// The asset for a provider, by its slug, then any alias, then a word
@@ -170,7 +174,7 @@ struct ProviderQuotaLine: View {
 
     static func text(_ summary: ProviderQuotaSummary, now: Date = Date()) -> String {
         let reset = summary.resetsAt.map { time($0, now: now) }
-        guard let left = summary.left, left > 0 else {
+        guard !summary.isLimited, let left = summary.left else {
             return reset.map { AppLocalization.string("Limited until \($0)") } ?? AppLocalization.string("Limited")
         }
         // A window nearly used up reads 0.4%, not 0%.
@@ -180,7 +184,7 @@ struct ProviderQuotaLine: View {
     }
 
     static func tint(_ summary: ProviderQuotaSummary) -> Color {
-        guard let left = summary.left, left > 0 else { return .red }
+        guard !summary.isLimited, let left = summary.left else { return .red }
         return left < 0.2 ? .orange : .secondary
     }
 

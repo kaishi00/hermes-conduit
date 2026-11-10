@@ -195,8 +195,13 @@ extension HermesClientTests {
         XCTAssertEqual(limited?.summary, ProviderQuotaSummary(left: nil, resetsAt: nil))
 
         let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-22T01:00:00Z"))
-        XCTAssertTrue(ProviderQuotaLine.text(ProviderQuotaSummary(left: 1, resetsAt: nil), now: now).contains("100"))
-        XCTAssertTrue(ProviderQuotaLine.text(ProviderQuotaSummary(left: 0.004, resetsAt: nil), now: now).contains("0.4"))
+        // In the app language's own digits and separators.
+        let locale = AppLocalization.formattingLocale
+        let whole = (1.0).formatted(.percent.precision(.fractionLength(0)).locale(locale))
+        let sliver = (0.004).formatted(.percent.precision(.fractionLength(0...1)).locale(locale))
+        XCTAssertTrue(ProviderQuotaLine.text(ProviderQuotaSummary(left: 1, resetsAt: nil), now: now).contains(whole))
+        XCTAssertTrue(ProviderQuotaLine.text(ProviderQuotaSummary(left: 0.004, resetsAt: nil), now: now).contains(sliver))
+        XCTAssertEqual(ProviderQuotaLine.text(ProviderQuotaSummary(left: 0, resetsAt: nil), now: now), AppLocalization.string("Limited"))
     }
 
     /// Every provider Hermes ships gets its logo by slug, a custom
@@ -209,6 +214,8 @@ extension HermesClientTests {
         XCTAssertEqual(ProviderLogo.asset(slug: "lab-vllm", name: "Lab vLLM"), "provider-vllm")
         XCTAssertEqual(ProviderLogo.asset(slug: "together", name: "Together AI"), "provider-together")
         XCTAssertEqual(ProviderLogo.asset(slug: "my-box", name: "LM Studio"), "provider-lmstudio")
+        // A host before the models it serves.
+        XCTAssertEqual(ProviderLogo.asset(slug: "work", name: "Azure OpenAI"), "provider-azure")
         // Whole words only: "xai" isn't inside another word.
         XCTAssertNil(ProviderLogo.asset(slug: "moa", name: "Mixture of Agents"))
         XCTAssertNil(ProviderLogo.asset(slug: "xiaomi", name: "Xiaomi MiMo"))

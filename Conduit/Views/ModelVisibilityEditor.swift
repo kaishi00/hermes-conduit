@@ -31,7 +31,8 @@ extension ModelVisibility {
                 displayName: provider.displayName,
                 aliases: provider.aliases,
                 isCurrent: provider.isCurrent,
-                speedCapabilities: provider.speedCapabilities
+                speedCapabilities: provider.speedCapabilities,
+                quota: provider.quota
             )
         }
     }
@@ -100,8 +101,9 @@ struct ModelVisibilityEditor: View {
                     HStack(spacing: 10) {
                         Image(systemName: expanded ? "chevron.down" : "chevron.right")
                             .scaledFont(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                        ProviderLogoView(provider: provider)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(provider.name).scaledFont(.subheadline.weight(.semibold))
+                            Text(verbatim: provider.title).scaledFont(.subheadline.weight(.semibold))
                             Text("\(String(visibleModelCount(in: provider))) of \(String(provider.models.count)) shown")
                                 .scaledFont(.caption).foregroundStyle(.secondary)
                         }
