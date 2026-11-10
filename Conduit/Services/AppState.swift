@@ -41710,9 +41710,12 @@ final class AppState: ObservableObject {
         guard ReadRepliesAloud.isOn(defaults), !replay.roomID.isEmpty, replay.roomID == old.roomID,
               activeRoomLogRead == replay.roomID,
               let surface = activeRoomSurface, surface.room.roomID == replay.roomID else { return }
-        let seen = old.events.last?.seq ?? 0
+        // New is what the old replay didn't hold, so messages a resync
+        // fills in below the user's own send are read too.
+        let seen = Set(old.events.map(\.seq))
+        let floor = old.events.first?.seq ?? 0
         let roomID = replay.roomID
-        for event in replay.events where event.seq > seen && event.isMemberMessage {
+        for event in replay.events where event.seq > floor && !seen.contains(event.seq) && event.isMemberMessage {
             let profile = GroupRoomTurns.speaker(of: event, members: surface.room.members)?.profile
             messageReadAloudController.enqueue(
                 messageID: Self.roomReadAloudID(roomID: roomID, eventID: event.id),
