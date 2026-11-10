@@ -71,8 +71,13 @@ struct PulseLookStyle {
 
 struct PulseLookBody: View {
     let look: PulseLook
+    /// Drawn inside the Pulse frame, which stands a date's day down the
+    /// card's edge; anywhere else (the morning brief's block) the date's
+    /// line says the day itself.
+    var framed = false
 
-    private var tint: Color { PulseLookStyle(look.body).tint }
+    private var style: PulseLookStyle { PulseLookStyle(look.body) }
+    private var tint: Color { style.tint }
 
     var body: some View {
         Group {
@@ -97,11 +102,13 @@ struct PulseLookBody: View {
         }
     }
 
-    /// The day itself stands down the card's edge (PulseDateColumn): here,
-    /// whose it is and how far off.
+    /// In the frame the day itself stands down the card's edge
+    /// (PulseDateColumn): here, whose it is and how far off, after the day
+    /// where there's no column.
     private func dateLine(_ day: Date, what: String, whose: String) -> some View {
         let title = [whose, what].filter { !$0.isEmpty }.joined(separator: " · ")
-        return Text(verbatim: ([title, PulseLook.relativeDay(day)].filter { !$0.isEmpty }).joined(separator: " · "))
+        let date = framed ? "" : day.formatted(.dateTime.weekday(.abbreviated).day().month().locale(AppLocalization.formattingLocale))
+        return Text(verbatim: ([date, title, PulseLook.relativeDay(day)].filter { !$0.isEmpty }).joined(separator: " · "))
             .scaledFont(.caption.weight(.semibold))
             .foregroundStyle(tint)
             .fixedSize(horizontal: false, vertical: true)
@@ -123,7 +130,7 @@ struct PulseLookBody: View {
             : due.formatted(.dateTime.weekday(.abbreviated).day().month().locale(AppLocalization.formattingLocale))
         return VStack(alignment: .leading, spacing: 6) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "hourglass")
+                Image(systemName: style.symbol)
                     .scaledFont(.headline)
                     .foregroundStyle(tint)
                     .accessibilityHidden(true)
@@ -176,13 +183,14 @@ struct PulseLookBody: View {
     /// The words as they were said lead the card.
     private func promise(_ said: String, details: [String]) -> some View {
         HStack(alignment: .top, spacing: 8) {
-            Image(systemName: "quote.opening")
+            Image(systemName: style.symbol)
                 .scaledFont(.title2.weight(.bold))
                 .foregroundStyle(tint)
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 4) {
                 Text(verbatim: said)
                     .scaledFont(.title3.weight(.medium))
+                    .foregroundStyle(tint)
                     .fixedSize(horizontal: false, vertical: true)
                 let line = details.filter { !$0.isEmpty }.joined(separator: " · ")
                 if !line.isEmpty {
@@ -196,7 +204,6 @@ struct PulseLookBody: View {
     }
 
     private func status(_ label: String, state: PulseLook.State) -> some View {
-        let style = PulseLookStyle(look.body)
         let title: String = switch state {
         case .ok: AppLocalization.string("OK")
         case .warn: AppLocalization.string("Warning")
@@ -214,7 +221,7 @@ struct PulseLookBody: View {
                 Text(verbatim: label)
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
-                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }
@@ -246,6 +253,7 @@ struct PulseLookBody: View {
 /// A date card's day, down its leading edge in the type's colour.
 struct PulseDateColumn: View {
     let day: Date
+    var tint: Color = .blue
 
     var body: some View {
         VStack(spacing: 0) {
@@ -259,7 +267,7 @@ struct PulseDateColumn: View {
         .foregroundStyle(.white)
         .frame(minWidth: 76, maxHeight: .infinity)
         .padding(.horizontal, 6)
-        .background(Color.blue)
+        .background(tint)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(verbatim: day.formatted(Date.FormatStyle(date: .complete, time: .omitted).locale(AppLocalization.formattingLocale))))
     }

@@ -956,20 +956,20 @@ struct V2PulsePage: View {
         let style = PulseLookStyle(look.body)
         return HStack(spacing: 0) {
             if style.place == .side, case let .date(day, _, _) = look.body {
-                PulseDateColumn(day: day)
+                PulseDateColumn(day: day, tint: style.tint)
             }
             VStack(alignment: .leading, spacing: 0) {
                 if style.place == .band {
-                    lookBody(card)
+                    lookBody(card, framed: true)
                         .padding(EdgeInsets(top: 12, leading: 14, bottom: 10, trailing: 14))
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(style.tint.opacity(0.14))
                 }
                 VStack(alignment: .leading, spacing: 8) {
                     topicLine(card)
-                    if style.place == .lead { lookBody(card) }
+                    if style.place == .lead { lookBody(card, framed: true) }
                     lookWords(card, look: look, quiet: style.place == .lead)
-                    if style.place == .under || style.place == .side { lookBody(card) }
+                    if style.place == .under || style.place == .side { lookBody(card, framed: true) }
                     if !card.quote.isEmpty, !card.isCleared, !card.drawsPromise {
                         Text(verbatim: "“\(card.quote)”")
                             .scaledFont(.footnote)
@@ -1120,10 +1120,10 @@ struct V2PulsePage: View {
 
     /// What the card's pick draws under its words (0.150.0): a date, the
     /// days left, a job's runs, a promise, a status, steps or a card body.
-    @ViewBuilder private func lookBody(_ card: PulseCard) -> some View {
+    @ViewBuilder private func lookBody(_ card: PulseCard, framed: Bool = false) -> some View {
         if let look = card.look, look.drawsBody {
             // The whole card already steps back when cleared.
-            PulseLookBody(look: look)
+            PulseLookBody(look: look, framed: framed)
         }
     }
 
