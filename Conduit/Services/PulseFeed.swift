@@ -247,10 +247,7 @@ struct PulseCard: Equatable, Identifiable {
     /// nil for one that never came back, or a reason this build doesn't know.
     func backText(now: Date = Date()) -> String? {
         guard let backActedAt else { return nil }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.dateTimeStyle = .named
-        formatter.locale = AppLocalization.formattingLocale
-        let when = formatter.localizedString(for: backActedAt, relativeTo: now)
+        let when = PulseLook.relativeFormatter().localizedString(for: backActedAt, relativeTo: now)
         switch back {
         case "unsent": return AppLocalization.string("You tapped Do it \(when) but didn't send it.")
         case "not_done": return AppLocalization.string("You tapped Do it \(when), and it isn't done yet.")

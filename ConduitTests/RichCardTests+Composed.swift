@@ -9,6 +9,7 @@
 //  new entry.
 //
 
+import Combine
 import XCTest
 @testable import Conduit
 
@@ -295,6 +296,29 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(store.isEmpty)
         store.forgetAll()
         XCTAssertTrue(store.isEmpty)
+    }
+
+    /// Issue 2150: a card's buttons follow only whether the composer is
+    /// empty, which publishes once per change, not per keystroke.
+    @MainActor
+    func testComposerEmptinessPublishesOnlyWhenItChanges() {
+        let store = PredictiveStore()
+        var published = 0
+        let watch = store.emptiness.objectWillChange.sink { published += 1 }
+        defer { watch.cancel() }
+        XCTAssertTrue(store.emptiness.isEmpty)
+        store.draftChanged("h")
+        store.draftChanged("hi")
+        store.draftChanged("hi there")
+        XCTAssertFalse(store.emptiness.isEmpty)
+        XCTAssertEqual(published, 1, "typing on doesn't redraw the buttons")
+        store.stagedAttachmentsChanged(true)
+        XCTAssertEqual(published, 1, "still not empty")
+        store.draftChanged("  ")
+        store.stagedAttachmentsChanged(false)
+        XCTAssertTrue(store.emptiness.isEmpty, "only spaces left, nothing staged")
+        XCTAssertEqual(published, 2)
+        XCTAssertEqual(store.emptiness.isEmpty, store.isEmpty)
     }
 
     func testAFieldsDateReadsAndWritesAsTheSchemaDoes() throws {

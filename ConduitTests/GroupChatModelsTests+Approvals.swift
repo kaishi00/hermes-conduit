@@ -144,6 +144,24 @@ extension GroupChatModelsTests {
         } catch HermesError.invalidResponse {}
     }
 
+    /// A copy's room screen reads approvals each tick only while something
+    /// moves; a quiet room's on its first tick, then every 15 s (issue 2151).
+    func testACopysQuietTicksReadApprovalsEveryFifteenSeconds() {
+        let now = Date()
+        let recent = now.addingTimeInterval(-3)
+        XCTAssertTrue(AppState.roomCopyReadsApprovals(roomMoved: false, working: false, listed: false, lastRead: nil, now: now),
+                      "the first tick reads them")
+        XCTAssertFalse(AppState.roomCopyReadsApprovals(roomMoved: false, working: false, listed: false, lastRead: recent, now: now),
+                       "a quiet tick right after doesn't")
+        XCTAssertTrue(AppState.roomCopyReadsApprovals(roomMoved: true, working: false, listed: false, lastRead: recent, now: now))
+        XCTAssertTrue(AppState.roomCopyReadsApprovals(roomMoved: false, working: true, listed: false, lastRead: recent, now: now))
+        XCTAssertTrue(AppState.roomCopyReadsApprovals(roomMoved: false, working: false, listed: true, lastRead: recent, now: now),
+                      "one listed is read again, so an answer elsewhere drops it")
+        XCTAssertTrue(AppState.roomCopyReadsApprovals(
+            roomMoved: false, working: false, listed: false,
+            lastRead: now.addingTimeInterval(-AppState.roomCopyQuietApprovalsInterval), now: now))
+    }
+
     func testApprovalRefusalsShowThePluginsWords() {
         let answered = "That approval was answered already, or its turn moved on"
         XCTAssertEqual(RoomApprovalsClient.refusal(for: DashboardTicketBridgeError.http(status: 409, detail: answered)),

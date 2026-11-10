@@ -231,7 +231,9 @@ struct RichReviewCard: View {
 
     private func load(_ review: RichReview) async {
         // A kept round draws at once; one not yet answered is asked again,
-        // since another device may have answered it since.
+        // since another device may have answered it since, but not each
+        // time the row scrolls back: within `rowFreshFor` of its last read
+        // the kept one stands (issue 2149).
         reads += 1
         let read = reads
         let kept = RichReviewLoader.shared.kept(review.id, review.round)
@@ -246,7 +248,8 @@ struct RichReviewCard: View {
             }
         }
         do {
-            let loaded = try await RichReviewLoader.shared.round(review.id, review.round, fresh: kept != nil)
+            let loaded = try await RichReviewLoader.shared.round(review.id, review.round, fresh: kept != nil,
+                                                                 freshFor: RichReviewLoader.rowFreshFor)
             guard !Task.isCancelled, read == reads else { return }
             round = loaded
             failed = false

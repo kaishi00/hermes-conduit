@@ -274,11 +274,15 @@ struct RoomLinkInviteSheet: View {
 
     /// Every 3 s for up to 3 minutes while the invite shows: once their
     /// accept reaches this Hermes, it confirms it, and the Link is linked.
+    /// A tick while Conduit is in the background or not connected is
+    /// skipped, as the join card skips them (issue 2155); the Links made
+    /// meanwhile are found on the next one.
     private func followNewLink() async {
         guard let made = shown, let before = made.linksBefore, linkedWith == nil else { return }
         for _ in 0..<60 {
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled, made.key == key else { return }
+            guard appState.isSceneActive, appState.isConnected else { continue }
             guard let list = try? await appState.roomLinksClient.list(), made.key == key else { continue }
             if let link = list.links.first(where: { !before.contains($0.id) && $0.status == "linked" }) {
                 Haptics.success()
@@ -567,7 +571,8 @@ struct RoomLinkOpenedSheet: View {
     }
 
     /// Every 3 s for up to 90 s: their Hermes confirms within seconds while
-    /// it runs.
+    /// it runs. A tick in the background or while not connected is skipped
+    /// (issue 2155).
     private func followLink() async {
         guard let first = link, first.status == "waiting" else { return }
         let key = key
@@ -575,6 +580,7 @@ struct RoomLinkOpenedSheet: View {
         for _ in 0..<30 {
             try? await Task.sleep(for: .seconds(3))
             guard !Task.isCancelled, key == self.key else { return }
+            guard appState.isSceneActive, appState.isConnected else { continue }
             guard let list = try? await appState.roomLinksClient.list(), key == self.key else { continue }
             guard let now = list.links.first(where: { $0.id == first.id }) else {
                 gone = true

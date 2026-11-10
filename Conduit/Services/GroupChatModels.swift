@@ -287,8 +287,8 @@ struct GroupRoom: Equatable, Identifiable, Codable {
 
 /// What the Bots list keeps of its hosted rooms to open on (#1533): the
 /// rooms `groups.list` gave, and the pictures the host keeps for them.
-struct KeptGroupRooms: Codable {
-    struct Picture: Codable {
+struct KeptGroupRooms: Codable, Equatable {
+    struct Picture: Codable, Equatable {
         let roomID: String
         let revision: String
         let data: Data

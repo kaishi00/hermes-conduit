@@ -158,11 +158,18 @@ struct PulseLook: Equatable {
     static func relativeDay(_ day: Date, now: Date = Date(), calendar: Calendar = PulseLook.wireCalendar) -> String {
         let days = calendar.dateComponents([.day], from: calendar.startOfDay(for: now),
                                            to: calendar.startOfDay(for: day)).day ?? 0
-        let formatter = RelativeDateTimeFormatter()
-        formatter.dateTimeStyle = .named
-        formatter.locale = AppLocalization.formattingLocale
-        return formatter.localizedString(from: DateComponents(day: days))
+        return relativeFormatter().localizedString(from: DateComponents(day: days))
     }
+
+    /// A named relative formatter ("tomorrow", "2 hours ago") in the
+    /// formatting locale, made once per locale: a card's date line asks for
+    /// one each time the Pulse page draws, which every app-wide publish
+    /// redraws (issue 2156). Formatting with a shared one is thread-safe.
+    static func relativeFormatter() -> RelativeDateTimeFormatter {
+        relativeFormatters.formatter(for: AppLocalization.formattingLocale)
+    }
+
+    private static let relativeFormatters = RelativeFormatterCache()
 
     static func endOfDay(_ date: Date, calendar: Calendar = PulseLook.wireCalendar) -> Date {
         let start = calendar.startOfDay(for: date)
@@ -217,5 +224,22 @@ extension PulseCard {
     var drawsPromise: Bool {
         if case .promise = look?.body { return true }
         return false
+    }
+}
+
+/// The last relative formatter made, kept while the locale stays.
+private final class RelativeFormatterCache: @unchecked Sendable {
+    private let lock = NSLock()
+    private var kept: RelativeDateTimeFormatter?
+
+    func formatter(for locale: Locale) -> RelativeDateTimeFormatter {
+        lock.lock()
+        defer { lock.unlock() }
+        if let kept, kept.locale == locale { return kept }
+        let made = RelativeDateTimeFormatter()
+        made.dateTimeStyle = .named
+        made.locale = locale
+        kept = made
+        return made
     }
 }
