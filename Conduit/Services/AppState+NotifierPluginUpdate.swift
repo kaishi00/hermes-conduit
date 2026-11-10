@@ -251,11 +251,11 @@ extension AppState {
     }
 
     /// What the notice offers. While Finish setting up is pending for this
-    /// dashboard, its plugin row on Chats is the one place that offers the
-    /// install.
+    /// dashboard, its plugin row is the one place that offers the install,
+    /// update or restart.
     var notifierPluginNoticeOffer: NotifierPluginNoticeOffer {
         let finishingSetup = activeDashboardID.map(dashboardsFinishingSetup.contains) ?? false
-        return notifierPlugin.noticeOffer(finishSetupOffersInstall: finishingSetup && V2ShellPreference.isOn)
+        return notifierPlugin.noticeOffer(finishSetupOffersPlugin: finishingSetup && V2ShellPreference.isOn)
     }
 
     /// "Not now" belongs to one dashboard and one asked-for version.
