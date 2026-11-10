@@ -14142,7 +14142,7 @@ final class AppState: ObservableObject {
     /// writing them (keepingRead's `unchanged`): what's kept is still
     /// `rooms`, under the new turn.
     private func keptGroupRoomsStayed(_ rooms: KeptGroupRooms) {
-        keptGroupRoomsMemo = (key: keptGroupRoomsMemoKey, rooms: Optional(rooms))
+        keptGroupRoomsMemo = (key: keptGroupRoomsMemoKey, rooms: rooms)
     }
 
     /// Opens the room a notification names (issue 2064), as Hermes lists
@@ -15138,15 +15138,7 @@ final class AppState: ObservableObject {
             if fresh.isEmpty || activeRoomReplay.cursor >= page.latestSeq {
                 guard await refreshActiveRoomCopy(epoch: epoch) else { return }
             }
-            let now = Date()
-            if Self.roomCopyReadsApprovals(roomMoved: !fresh.isEmpty, working: activeRoomDriverStatus?.working == true,
-                                           listed: !activeRoomCopyApprovals.isEmpty,
-                                           lastRead: activeRoomCopyApprovalsReadAt, now: now),
-               await refreshLinkedRoomApprovals() {
-                // Only a read that answered waits out the interval; a failed
-                // one is tried again next tick.
-                activeRoomCopyApprovalsReadAt = now
-            }
+            await readRoomCopyApprovalsIfDue(roomMoved: !fresh.isEmpty)
         } catch is CancellationError {
             return
         } catch {
@@ -15157,6 +15149,17 @@ final class AppState: ObservableObject {
             }
             // Otherwise a transient failure: the next tick tries again.
         }
+    }
+
+    /// A copy tick's approvals read, when `roomCopyReadsApprovals` says
+    /// it's due. Only a read that answered waits out the quiet interval; a
+    /// failed one is tried again next tick (issue 2151).
+    func readRoomCopyApprovalsIfDue(roomMoved: Bool, now: Date = Date()) async {
+        guard Self.roomCopyReadsApprovals(roomMoved: roomMoved, working: activeRoomDriverStatus?.working == true,
+                                          listed: !activeRoomCopyApprovals.isEmpty,
+                                          lastRead: activeRoomCopyApprovalsReadAt, now: now),
+              await refreshLinkedRoomApprovals() else { return }
+        activeRoomCopyApprovalsReadAt = now
     }
 
     /// Whether a copy's room tick reads your agents' approvals: each tick

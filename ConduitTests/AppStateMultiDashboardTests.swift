@@ -3087,6 +3087,50 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(saved.soul, written.soul)
     }
 
+    /// A read whose answer is the same as what's kept writes nothing, but
+    /// its turn still counts: an older read landing after it with another
+    /// answer doesn't put that one back (issue 2152, #2159 review).
+    func testAnUnchangedKeptReadStillCountsItsTurn() async throws {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac])
+        let appState = rosterAppState(registry)
+        connectRoster(appState, to: mac)
+        let owner = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
+        let route = "test.unchangedKeptRead"
+        let profile = AppState.KeptRoute.everyProfile
+        let kept = KeptNamesForTest(names: ["a"])
+        _ = try await appState.keepingRead(as: route, profile: profile, owner: owner) { kept }
+        let keptTurn = appState.keptAnswerTurn(route, profile: profile)
+        XCTAssertEqual(appState.keptRead(KeptNamesForTest.self, route, profile: profile), kept)
+
+        // An older read is asked and waits; a newer one answers what's kept.
+        let gate = KeptReadGate()
+        let older = Task { @MainActor in
+            try await appState.keepingRead(as: route, profile: profile, owner: owner) { () async throws -> KeptNamesForTest in
+                gate.asked = true
+                while !gate.mayAnswer { try await Task.sleep(for: .milliseconds(10)) }
+                return KeptNamesForTest(names: ["old"])
+            }
+        }
+        for _ in 0..<1_000 where !gate.asked { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(gate.asked)
+        var compared = 0
+        let newer = try await appState.keepingRead(
+            as: route, profile: profile, owner: owner,
+            unchanged: { compared += 1; return $0 == kept }
+        ) { kept }
+        XCTAssertEqual(newer, kept)
+        XCTAssertEqual(compared, 1)
+        XCTAssertGreaterThan(appState.keptAnswerTurn(route, profile: profile), keptTurn, "its turn counts")
+        XCTAssertEqual(appState.keptRead(KeptNamesForTest.self, route, profile: profile), kept)
+
+        gate.mayAnswer = true
+        let olderAnswer = try await older.value
+        XCTAssertEqual(olderAnswer, KeptNamesForTest(names: ["old"]), "the older read still answers its caller")
+        XCTAssertEqual(appState.keptRead(KeptNamesForTest.self, route, profile: profile), kept,
+                       "but isn't kept over the newer one")
+    }
+
     /// Hosted rooms and their pictures open as Hermes and the host listed
     /// them last time on this dashboard, until `groups.list` answers; the
     /// kept pictures then carry over, so only one whose revision moved is
@@ -3339,4 +3383,16 @@ private final class BotEditorHermes {
         held?.resume()
         held = nil
     }
+}
+
+/// What `testAnUnchangedKeptReadStillCountsItsTurn` keeps.
+private struct KeptNamesForTest: Codable, Equatable {
+    var names: [String]
+}
+
+/// Holds that test's older read until it may answer.
+@MainActor
+private final class KeptReadGate {
+    var asked = false
+    var mayAnswer = false
 }

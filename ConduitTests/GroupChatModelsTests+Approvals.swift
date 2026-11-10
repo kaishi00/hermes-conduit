@@ -162,6 +162,38 @@ extension GroupChatModelsTests {
             lastRead: now.addingTimeInterval(-AppState.roomCopyQuietApprovalsInterval), now: now))
     }
 
+    /// A copy tick's approvals read that fails doesn't start the quiet
+    /// interval, so the next tick reads them again; one that answers does
+    /// (issue 2151, #2159 review).
+    @MainActor
+    func testAFailedCopyApprovalsReadIsTriedAgainNextTick() async {
+        let backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+        defer { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let routes = ApprovalsRoutes(approvals: [])
+        let appState = approvalsAppState(routes)
+        approvalsConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(approvalsPluginReport)
+        await approvalsWait("the first approvals read", until: { routes.approvalsReads == 1 })
+        let reads = routes.approvalsReads
+
+        routes.readsFail = true
+        let now = Date()
+        await appState.readRoomCopyApprovalsIfDue(roomMoved: false, now: now)
+        XCTAssertEqual(routes.approvalsReads, reads + 1)
+        XCTAssertNil(appState.activeRoomCopyApprovalsReadAt, "a failed read doesn't start the quiet interval")
+
+        routes.readsFail = false
+        let next = now.addingTimeInterval(3)
+        await appState.readRoomCopyApprovalsIfDue(roomMoved: false, now: next)
+        XCTAssertEqual(routes.approvalsReads, reads + 2, "so the next tick reads them again")
+        XCTAssertEqual(appState.activeRoomCopyApprovalsReadAt, next)
+
+        await appState.readRoomCopyApprovalsIfDue(roomMoved: false, now: next.addingTimeInterval(3))
+        XCTAssertEqual(routes.approvalsReads, reads + 2, "one that answered waits out the interval")
+    }
+
     func testApprovalRefusalsShowThePluginsWords() {
         let answered = "That approval was answered already, or its turn moved on"
         XCTAssertEqual(RoomApprovalsClient.refusal(for: DashboardTicketBridgeError.http(status: 409, detail: answered)),

@@ -841,6 +841,12 @@ protocol SpeechPlaybackService: AnyObject {
     var keepsRateAdjustable: Bool { get set }
     /// Retimes the audio already playing as well as the next stream.
     func changeRate(_ rate: Float)
+    /// Holds the audio session as this service's `ownershipIntent` while
+    /// nothing plays, so the gap between one stream's end and the next's
+    /// start doesn't deactivate it (other audio coming back up, Now Playing
+    /// lost; issue 2148). Returns the release, safe to call more than once;
+    /// nil when the session can't be held.
+    func holdSession(onTakenOver: (@MainActor () -> Void)?) -> (@MainActor () -> Void)?
 }
 
 extension SpeechPlaybackService {
@@ -868,6 +874,9 @@ extension SpeechPlaybackService {
     }
 
     func changeRate(_ rate: Float) { playbackRate = rate }
+
+    /// Services that don't own an audio session hold nothing.
+    func holdSession(onTakenOver: (@MainActor () -> Void)?) -> (@MainActor () -> Void)? { nil }
 }
 
 @MainActor
