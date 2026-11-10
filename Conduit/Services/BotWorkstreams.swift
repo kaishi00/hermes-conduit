@@ -280,6 +280,9 @@ struct BotWorkCoordination: Equatable {
         let id: String
         let kind: Kind
         let ref: String
+        /// Every workstream a proposal is about (plugin 0.158.0+ asks one
+        /// question for related work); just `ref` from an older plugin.
+        let refs: [String]
         let title: String
         let at: Date
         let text: String
@@ -301,6 +304,8 @@ struct BotWorkCoordination: Equatable {
             self.id = id
             self.kind = kind
             ref = row["ref"] as? String ?? ""
+            let listed = (row["refs"] as? [String] ?? []).filter { !$0.isEmpty }
+            refs = listed.isEmpty ? (ref.isEmpty ? [] : [ref]) : listed
             title = row["title"] as? String ?? ""
             self.at = Date(timeIntervalSince1970: at)
             text = row["text"] as? String ?? ""
@@ -325,7 +330,8 @@ struct BotWorkCoordination: Equatable {
             case .sent:
                 return AppLocalization.string("Sent to \(ref)")
             case .proposal:
-                return ref.isEmpty ? AppLocalization.string("Asked you") : AppLocalization.string("Asked you about \(ref)")
+                let about = refs.joined(separator: ", ")
+                return about.isEmpty ? AppLocalization.string("Asked you") : AppLocalization.string("Asked you about \(about)")
             }
         }
 

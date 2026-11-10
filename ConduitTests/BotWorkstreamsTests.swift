@@ -700,14 +700,20 @@ extension BotModeTests {
              "text": "W1 found v1 is gone, and W2 moves to it", "with": ["W2"], "woke": false,
              "why": [["ref": "W1", "title": "Login bug", "kind": "found", "text": "v1 returns 410",
                       "at": 1_800_000_000.0]]],
+            ["id": "P2", "kind": "proposal", "ref": "W1", "refs": ["W1", "W3"], "title": "Login bug · Docs",
+             "at": 1_800_000_050.0, "text": "Drop v1 in both", "status": "open", "answer": "", "why": []],
             ["id": "E9", "kind": "later", "at": 1_800_000_400.0],
             ["kind": "sent", "at": 1_800_000_400.0],
         ]]
         let list = try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina")?.coordination)
         XCTAssertEqual(list.mode, "ask")
-        XCTAssertEqual(list.items.map(\.id), ["P1", "E7", "E5"])  // a kind this build doesn't know is left out
+        XCTAssertEqual(list.items.map(\.id), ["P1", "E7", "E5", "P2"])  // a kind this build doesn't know is left out
         let proposal = list.items[0], sent = list.items[1], flag = list.items[2]
         XCTAssertEqual(proposal.headline, "Asked you about W2")
+        XCTAssertEqual(proposal.refs, ["W2"])  // a plugin before 0.158.0 sends only ref
+        // One question for related work (plugin 0.158.0+) names each workstream it covers.
+        XCTAssertEqual(list.items[3].headline, "Asked you about W1, W3")
+        XCTAssertEqual(list.items[3].stateText, "No answer yet")
         XCTAssertEqual(proposal.stateText, "You approved")
         XCTAssertEqual(proposal.answer, "yes, go")
         XCTAssertNil(proposal.whyCaption(botName: "Furina"))
