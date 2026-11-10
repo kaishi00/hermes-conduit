@@ -1220,6 +1220,11 @@ final class AppState: ObservableObject {
                 // A file lookup's "isn't on the server" was about the chat
                 // left, and an answer still coming is too.
                 clearWorkspaceLookupNotice()
+                // A failed send's line under the composer was the chat left's.
+                if let failure = sendFailureShown {
+                    if errorMessage == failure { errorMessage = nil }
+                    sendFailureShown = nil
+                }
                 workspaceRevealGeneration &+= 1
                 // The chat New Chat made takes the New Chat's draft only
                 // while it's the one open.
@@ -30882,7 +30887,10 @@ final class AppState: ObservableObject {
                         lostSessionIDs: submissionSessionIDs, using: client
                     )
                 }
-                errorMessage = AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))")
+                // A file can't wait as text: it comes back, and the
+                // reconnect starts now all the same.
+                noteDropFoundBySend(error, client: client)
+                showSendFailure(AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))"))
                 await recoverComposerSubmission(using: submissionContext)
                 return false
             }
@@ -31277,7 +31285,7 @@ final class AppState: ObservableObject {
                 // failed send must not paint an error onto the session the
                 // user switched to while recovery was suspended.
                 if isCurrentComposerSubmission(submissionContext) {
-                    errorMessage = AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))")
+                    showSendFailure(AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))"))
                 }
                 if !reconnected, isCurrentComposerSubmission(submissionContext) {
                     await recoverComposerSubmission(using: submissionContext)
@@ -31295,7 +31303,7 @@ final class AppState: ObservableObject {
                         refusal, sessionID: sessionId, knownSessionIDs: submissionSessionIDs, refusedText: text
                     )
                 } else {
-                    errorMessage = AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))")
+                    showSendFailure(AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))"))
                 }
             }
             await recoverComposerSubmission(using: submissionContext)
@@ -31347,13 +31355,7 @@ final class AppState: ObservableObject {
         rowID: String,
         client: HermesClient
     ) -> Bool {
-        guard case HermesError.notConnected = error, self.client === client else { return false }
-        // The drop the socket's own close report would bring a moment
-        // later: that report, from this client, then finds it done.
-        if isConnected {
-            noteConnectionStep("Send found the socket closed")
-            handleDisconnect()
-        }
+        guard noteDropFoundBySend(error, client: client) else { return false }
         guard attachments.isEmpty, !queued, surface == nil, submissionTurnSurface == nil,
               !callSubmissionTexts.contains(text), composerWaitsForChat,
               sendWhenConnected(text, replyReference: nil) else { return false }
@@ -31361,6 +31363,30 @@ final class AppState: ObservableObject {
         messages.removeAll { $0.id == rowID }
         if let activeSessionId { cacheMessagePresentation(for: [activeSessionId]) }
         lifecycleLog.notice("prompt.submit found no connection; the message waits for the reconnect")
+        return true
+    }
+
+    /// The failed send's error under the composer, which leaving its chat
+    /// clears: the composer shows `errorMessage` unlocked too.
+    var sendFailureShown: String?
+
+    private func showSendFailure(_ message: String) {
+        errorMessage = message
+        sendFailureShown = message
+    }
+
+    /// A send's request `rpc` refused with `notConnected` on the current
+    /// client: the socket closed before its receive failed. The drop its
+    /// own close report would bring a moment later is acted on now; that
+    /// report, from this client, then finds it done. True when the error
+    /// was that refusal.
+    @discardableResult
+    private func noteDropFoundBySend(_ error: Error, client: HermesClient) -> Bool {
+        guard case HermesError.notConnected = error, self.client === client else { return false }
+        if isConnected {
+            noteConnectionStep("Send found the socket closed")
+            handleDisconnect()
+        }
         return true
     }
 
