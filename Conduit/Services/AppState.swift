@@ -5824,8 +5824,8 @@ final class AppState: ObservableObject {
     /// Bumped by a job delete so a list load that started before it can't
     /// bring the deleted job back.
     private var cronJobsGeneration = 0
-    /// The generation the list's read in flight was made for.
-    private var cronJobsLoadingGeneration: Int?
+    /// The list generation, profile and connection the read in flight is for.
+    private var cronJobsLoadingOwner: String?
     /// Cron jobs whose runs don't notify (AppState+CronNotifications), for
     /// the dashboard and profile in `cronMutedJobsKey`.
     @Published var cronMutedJobIDs: Set<String> = []
@@ -37341,14 +37341,19 @@ final class AppState: ObservableObject {
     func loadCronJobs() async {
         let profile = activeProfile
         let generation = cronJobsGeneration
-        // One read at a time for the list as it is: one an edit or a
-        // dashboard switch made stale since doesn't hold the next back.
-        guard cronJobsLoadingGeneration != generation else { return }
-        cronJobsLoadingGeneration = generation
+        // One read at a time for the list as it is, on the connection and
+        // profile it is for: one an edit, a dashboard switch, a reconnect or
+        // a profile change made stale since doesn't hold the next back.
+        let owner = "\(generation)|\(profile)|"
+            + (dashboardTicketBridge.map { "\(ObjectIdentifier($0))" } ?? client.map { "c\(ObjectIdentifier($0))" } ?? "")
+        guard cronJobsLoadingOwner != owner else { return }
+        let startedBridge = dashboardTicketBridge
+        let startedClient = client
+        cronJobsLoadingOwner = owner
         cronJobsLoading = true
         defer {
-            if cronJobsLoadingGeneration == generation {
-                cronJobsLoadingGeneration = nil
+            if cronJobsLoadingOwner == owner {
+                cronJobsLoadingOwner = nil
                 cronJobsLoading = false
             }
         }
@@ -37366,9 +37371,12 @@ final class AppState: ObservableObject {
                 guard profile == activeProfile, self.client === client, generation == cronJobsGeneration else { return }
                 cronJobs = jobs
             }
+        } catch is CancellationError {
+            return
         } catch {
-            // A read the outgoing dashboard failed isn't the next one's to report.
-            guard profile == activeProfile, generation == cronJobsGeneration else { return }
+            // A read the outgoing connection failed isn't the next one's to report.
+            guard profile == activeProfile, generation == cronJobsGeneration,
+                  dashboardTicketBridge === startedBridge, client === startedClient else { return }
             errorMessage = AppLocalization.string("Could not load scheduled jobs: \(UserFacingError.message(for: error))")
         }
     }
@@ -37378,7 +37386,7 @@ final class AppState: ObservableObject {
     private func retireCronJobsForDashboardSwitch() {
         cronJobsGeneration += 1
         cronJobs = []
-        cronJobsLoadingGeneration = nil
+        cronJobsLoadingOwner = nil
         cronJobsLoading = false
     }
 
