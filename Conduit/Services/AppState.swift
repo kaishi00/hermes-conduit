@@ -10462,6 +10462,7 @@ final class AppState: ObservableObject {
     private func redirectLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
         let client = try await clientForVoiceRequest()
         let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
+        let failureBefore = sendFailureShown
         do {
             let outcome: SessionRedirectOutcome
             if let redirect = chatResumeLifecycleOperations.redirect {
@@ -10471,10 +10472,16 @@ final class AppState: ObservableObject {
             }
             switch outcome {
             case .redirected:
-                if isOpenChat(target) { appendLocalUserMessage(text) }
+                if isOpenChat(target) {
+                    appendLocalUserMessage(text)
+                    clearSendFailureAfterSend(failureBefore)
+                }
                 return .redirected
             case .queued:
-                if isOpenChat(target) { appendLocalUserMessage(text) }
+                if isOpenChat(target) {
+                    appendLocalUserMessage(text)
+                    clearSendFailureAfterSend(failureBefore)
+                }
                 return .queued
             case .rejected:
                 return .notRunning
@@ -10490,7 +10497,10 @@ final class AppState: ObservableObject {
             } catch HermesError.steerRejected {
                 return .notRunning
             }
-            if isOpenChat(target) { appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore) }
+            if isOpenChat(target) {
+                appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore)
+                clearSendFailureAfterSend(failureBefore)
+            }
             return .redirected
         }
     }
@@ -10502,6 +10512,7 @@ final class AppState: ObservableObject {
     private func steerLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
         let client = try await clientForVoiceRequest()
         let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
+        let failureBefore = sendFailureShown
         let persistedTwinsBefore = persistedSteerIDs(matching: text)
         do {
             if let steer = chatResumeLifecycleOperations.steer {
@@ -10513,7 +10524,10 @@ final class AppState: ObservableObject {
             // Method not found: the words never arrived, so redirecting them is safe.
             throw HermesError.steerRejected
         }
-        if isOpenChat(target) { appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore) }
+        if isOpenChat(target) {
+            appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore)
+            clearSendFailureAfterSend(failureBefore)
+        }
         return .redirected
     }
 
