@@ -3,8 +3,9 @@
 //  Conduit
 //
 //  The confirmation Hermes asks this iPhone to present (PresentedScreens.swift):
-//  a strong-glass panel from the bottom with the title, a preview of what
-//  will happen, Edit, Not now and a gold primary action. Over a voice call
+//  a strong-glass panel from the bottom, only as tall as its content, with
+//  the title, a preview of what will happen, then Edit, Not now and a gold
+//  primary action right under it. Over a voice call
 //  it also says the user can just answer out loud. A room's ask (Linked
 //  Rooms, Ask me first) names its room and offers Say instead, Don't share
 //  and Share, Say instead typed right here. A Link's ask (a linked person's
@@ -65,6 +66,10 @@ struct PresentedConfirmPanel: View {
     var onSayInstead: ((String) -> Void)?
 
     @State private var sayingInstead = false
+    /// The preview's own height, so its box is only as tall as its text
+    /// (up to `maxPreviewHeight`, then it scrolls) (issue 2086).
+    @State private var previewHeight: CGFloat = 0
+    private static let maxPreviewHeight: CGFloat = 220
     @State private var instead = ""
     @FocusState private var insteadFocused: Bool
 
@@ -128,9 +133,14 @@ struct PresentedConfirmPanel: View {
                         .scaledFont(.body)
                         .textSelection(.enabled)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { previewHeight = $0 }
                 }
                 .scrollBounceBehavior(.basedOnSize)
-                .frame(maxHeight: 220)
+                // A ScrollView (and a frame with only a maximum) takes all the
+                // height it's offered, which left a short preview's box mostly
+                // empty; it fits the text instead.
+                .frame(height: min(max(previewHeight, 1), Self.maxPreviewHeight))
                 .padding(12)
                 .background(Color.primary.opacity(0.05), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
             }
@@ -146,9 +156,24 @@ struct PresentedConfirmPanel: View {
             if sayingInstead {
                 sayInsteadField
             } else {
+                // The buttons sit right under the preview. Too narrow for one
+                // row (a folded screen, larger text): the secondary buttons
+                // keep a row and the primary goes under them, never a spacer
+                // that would stretch the panel to the top (issue 2086).
                 ViewThatFits(in: .horizontal) {
-                    HStack(spacing: 10) { buttons }
-                    VStack(alignment: .leading, spacing: 10) { buttons }
+                    HStack(spacing: 10) {
+                        secondaryButtons
+                        Spacer(minLength: 0)
+                        primaryButton
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 10) { secondaryButtons }
+                        primaryButton
+                    }
+                    VStack(alignment: .leading, spacing: 10) {
+                        secondaryButtons
+                        primaryButton
+                    }
                 }
             }
         }
@@ -212,8 +237,9 @@ struct PresentedConfirmPanel: View {
         .onAppear { insteadFocused = true }
     }
 
+    /// Say instead or Edit, and the decline.
     @ViewBuilder
-    private var buttons: some View {
+    private var secondaryButtons: some View {
         if onSayInstead != nil {
             Button {
                 Haptics.selection()
@@ -250,7 +276,10 @@ struct PresentedConfirmPanel: View {
                 .padding(.horizontal, 8)
         }
         .buttonStyle(PressableButtonStyle())
-        Spacer(minLength: 0)
+    }
+
+    @ViewBuilder
+    private var primaryButton: some View {
         // A Link's question has no answer to Share: Say instead answers it.
         if prompt.canConfirm {
             Button {
