@@ -22,11 +22,15 @@ final class ConnectionFailureTests: XCTestCase {
         XCTAssertNil(failure.helpDestination)
     }
 
+    @MainActor
     func testNativeSignInFailuresNeverClaimBadCredentials() {
-        // Token exchange and refresh carry a code or refresh token, so their
-        // 401/403 is Hermes refusing it, never "this device was refused".
+        // Token exchange and refresh carry a code or refresh token: a 401 is
+        // Hermes refusing it. A 403 is the edge refusing this device, which
+        // a launch with saved tokens meets at the refresh, before any
+        // discovery, so it keeps the offline copy.
         XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.requestFailed(status: 401)), .unexpectedServerResponse)
-        XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.requestFailed(status: 403)), .unexpectedServerResponse)
+        XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.requestFailed(status: 403)), .accessDenied)
+        XCTAssertTrue(AppState.failureKeepsOfflineChat(ConnectionFailureClassifier.classify(NativeOAuthError.requestFailed(status: 403))))
         XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.requestFailed(status: 503)), .dashboardUnavailable)
         XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.tokenResponseMalformed), .unexpectedServerResponse)
         XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.timedOut), .unknown)

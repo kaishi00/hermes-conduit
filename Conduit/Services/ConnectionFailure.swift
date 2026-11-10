@@ -56,9 +56,11 @@ enum ConnectionFailure: Equatable {
     case signInPageFailed
 
     // Server-side responses.
-    /// A 401 or 403 at provider discovery, which sends no credentials:
-    /// something in front of the dashboard (an IP allowlist, a firewall,
-    /// an access policy) refused this device. Never bad credentials, and
+    /// A 401 or 403 at provider discovery, which sends no credentials, or
+    /// a 403 from the native sign-in's token requests (Hermes refuses a
+    /// code or refresh token with 400/401): something in front of the
+    /// dashboard (an IP allowlist, a firewall, an access policy) refused
+    /// this device. Never bad credentials, and
     /// not a wrong address either: the same request answers from an
     /// allowed network (issue #2092).
     case accessDenied
@@ -81,9 +83,11 @@ enum ConnectionFailureClassifier {
         /// like provider discovery, a 401/403 here is never bad credentials.
         case ticketMint
         /// The native sign-in's token exchange and refresh. They carry a
-        /// code or refresh token, so a 401/403 is Hermes refusing that,
-        /// not the network refusing this device; never bad credentials
-        /// either (an allowlist would have refused discovery first).
+        /// code or refresh token, so a 401 is Hermes refusing it (a
+        /// refresh's 400/401 never gets here: it turns into sign-in
+        /// required). A 403 is the edge refusing this device: a launch
+        /// with saved tokens refreshes before any discovery, so an
+        /// allowlist refuses the refresh first. Never bad credentials.
         case nativeToken
     }
 
@@ -239,6 +243,9 @@ enum ConnectionFailureClassifier {
         // access policy). A ticket mint's 401/403 is Hermes refusing a
         // spent or stale session, which stays an unexpected response.
         if stage == .providerDiscovery, status == 401 || status == 403 {
+            return .accessDenied
+        }
+        if stage == .nativeToken, status == 403 {
             return .accessDenied
         }
         if (500...599).contains(status) {
