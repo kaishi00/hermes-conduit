@@ -15,6 +15,12 @@ import UserNotifications
 import XCTest
 @testable import Conduit
 
+/// Whether an ask for the scheduled jobs has returned.
+@MainActor
+private final class ScheduledJobsAskDone {
+    var done = false
+}
+
 @MainActor
 final class AppStateMultiDashboardTests: XCTestCase {
 
@@ -411,6 +417,19 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertEqual(relaunched.lastDashboardURL, "https://hermes.example.test/new")
     }
 
+    func testSelectingADashboardWordsPluginAsksWithItsLastReportedManager() {
+        let home = dashboard("Home", "https://home.example.test")
+        let farm = dashboard("Farm", "https://farm.example.test")
+        NotifierPluginStatus.Remembered.remember("Family farm", for: farm.id, in: defaults)
+        addTeardownBlock { PluginUpdateAsk.setActive(managedBy: nil) }
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home, farm]))
+        XCTAssertNil(PluginUpdateAsk.managedBy)
+        appState.selectDashboardTarget(farm.id)
+        XCTAssertEqual(PluginUpdateAsk.managedBy, "Family farm")
+        appState.selectDashboardTarget(home.id)
+        XCTAssertNil(PluginUpdateAsk.managedBy)
+    }
+
     func testSwitchingBackMovesTheDashboardAndForgetsThePasswordForTheOldAddress() async {
         let home = dashboard("Home", "http://127.0.0.1:1")
         let work = dashboard("Work", "https://work.example.test")
@@ -784,6 +803,7 @@ extension AppStateMultiDashboardTests {
             isArchived: false,
             lineageRootId: nil
         )]
+        appState.cronJobs = [CronJob(enabled: true, id: "mac-job")]
 
         await appState.switchDashboard(to: vps.id)
 
@@ -792,12 +812,125 @@ extension AppStateMultiDashboardTests {
         XCTAssertFalse(appState.isConnected)
         XCTAssertNil(appState.connection)
         XCTAssertTrue(appState.sessions.isEmpty, "the outgoing server's session catalog is retired at the switch boundary")
+        XCTAssertTrue(appState.cronJobs.isEmpty, "so are its scheduled jobs (issue 2094)")
         // ...the target is selected and presents its sign-in...
         XCTAssertEqual(appState.activeDashboardID, vps.id)
         XCTAssertTrue(appState.showLogin)
         // ...and the outgoing dashboard stays saved with its auth intact.
         XCTAssertNotNil(appState.savedDashboardRegistry.dashboard(with: mac.id))
         XCTAssertNotNil(KeychainHelper.loadConnection(dashboardID: mac.id))
+    }
+
+    /// A second ask for the scheduled jobs joins the read out rather than
+    /// returning with nothing read: the Tasks tab's task restarted mid-read
+    /// (away and back) cancels the first ask, and the read still lands for
+    /// the second, from one request. A finished read doesn't hold the next
+    /// one back.
+    func testAScheduledJobsAskJoinsTheReadOutWhenTheFirstIsCancelled() async throws {
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        addTeardownBlock { @MainActor in
+            held.releaseAll()
+            held.bridge.invalidate()
+        }
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let first = Task { await appState.loadCronJobs() }
+        try await held.waitForRequests(1)
+        first.cancel()
+        let secondDone = ScheduledJobsAskDone()
+        let second = Task {
+            await appState.loadCronJobs()
+            secondDone.done = true
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(secondDone.done, "the second ask waits for the read out")
+        XCTAssertEqual(held.sent.count, 1, "and sends nothing of its own")
+        XCTAssertTrue(appState.cronJobsLoading)
+
+        try await held.answer(["jobs": [["id": "j1", "enabled": true, "name": "Morning"]]])
+        await second.value
+        await first.value
+        XCTAssertTrue(secondDone.done)
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["j1"], "the read landed though the first ask was cancelled")
+        XCTAssertFalse(appState.cronJobsLoading)
+
+        let again = Task { await appState.loadCronJobs() }
+        try await held.waitForRequests(2)
+        try await held.answer(["jobs": [[String: Any]]()])
+        await again.value
+        XCTAssertEqual(held.sent.count, 2, "a finished read doesn't hold the next back")
+        XCTAssertTrue(appState.cronJobs.isEmpty)
+    }
+
+    /// A failed read says so, ends the spinner and doesn't hold the next
+    /// ask back (issue 2109).
+    func testAFailedScheduledJobsReadSaysSoAndTheNextAskReadsAgain() async throws {
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        addTeardownBlock { @MainActor in
+            held.releaseAll()
+            held.bridge.invalidate()
+        }
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let first = Task { await appState.loadCronJobs() }
+        try await held.answer(["error": "down"], toPathEnding: "/api/cron/jobs", status: 500)
+        await first.value
+        XCTAssertFalse(appState.cronJobsLoading)
+        XCTAssertNotNil(appState.errorMessage, "the failed read says so")
+
+        let again = Task { await appState.loadCronJobs() }
+        try await held.answer(["jobs": [["id": "j1", "enabled": true, "name": "Morning"]]], toPathEnding: "/api/cron/jobs")
+        await again.value
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["j1"])
+    }
+
+    /// Profile A, B, then A again while A's first read is out: that read's
+    /// end neither clears the newer A read's hold nor commits over it, as
+    /// each read carries its own token (issue 2109).
+    func testAnOlderScheduledJobsReadDoesNotEndTheNewerReadForTheSameProfile() async throws {
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        addTeardownBlock { @MainActor in
+            held.releaseAll()
+            held.bridge.invalidate()
+        }
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+        let profile = appState.activeProfile
+
+        let older = Task { await appState.loadCronJobs() }
+        try await held.waitForRequests(1)
+        appState.setActiveProfileForTesting("work")
+        let other = Task { await appState.loadCronJobs() }
+        // The work read is out before the switch back, so it reads "work".
+        for _ in 0..<1_000 where held.sent.filter({ $0.path.hasSuffix("/api/cron/jobs") }).count < 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        appState.setActiveProfileForTesting(profile)
+        let newer = Task { await appState.loadCronJobs() }
+        for _ in 0..<1_000 where held.sent.filter({ $0.path.hasSuffix("/api/cron/jobs") }).count < 3 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(held.sent.filter { $0.path.hasSuffix("/api/cron/jobs") }.count, 3, "each profile change starts its own read")
+
+        let cronReads = held.sent.indices.filter { held.sent[$0].path.hasSuffix("/api/cron/jobs") }
+        let olderPlace = cronReads[0], newerPlace = cronReads[2]
+        XCTAssertFalse(held.sent[newerPlace].query?.contains("work") ?? false)
+
+        // The newer read lands first, then the older one: the older read
+        // neither overwrites the newer list nor ends anything (#2113 review).
+        try await held.answer(["jobs": [["id": "new", "enabled": true, "name": "New"]]], at: newerPlace)
+        await newer.value
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["new"])
+        XCTAssertFalse(appState.cronJobsLoading)
+        try await held.answer(["jobs": [["id": "old", "enabled": true, "name": "Old"]]], at: olderPlace)
+        await older.value
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["new"], "the older read commits nothing over the newer")
+
+        held.releaseAll()
+        await other.value
+        XCTAssertFalse(appState.cronJobsLoading)
     }
 
     func testFailedCredentialSwitchDoesNotBlockLaterSelection() async {
@@ -1667,7 +1800,10 @@ extension AppStateMultiDashboardTests {
         appState.setNotifierPluginStateForTesting(.reported(
             version: "0.143.0", capabilities: [GroupRoomFilesClient.pictureCapability, GroupRoomFilesClient.readCapability]
         ))
-        XCTAssertTrue(appState.roomFileReadsResolver === resolver, "other files read through the same room reader")
+        let reads = try XCTUnwrap(appState.roomFileReadsResolver)
+        XCTAssertFalse(reads === resolver, "what the room reads changed, so its rows draw again")
+        XCTAssertTrue(appState.roomFilePicturesResolver === reads, "pictures and other files read through one room reader")
+        XCTAssertTrue(reads.roomFileReads.pluginPictures && reads.roomFileReads.pluginFiles)
         XCTAssertTrue(GroupRoomFilesClient.isStoredFile(Attachment(
             id: "d", name: "report.pdf", uri: "/h/conduit/room-files/20261108-c/report.pdf", mimeType: "application/pdf", kind: .document
         )))
@@ -1686,7 +1822,7 @@ extension AppStateMultiDashboardTests {
         try await held.answer(["dataUrl": "data:image/jpeg;base64,/9j/"], toPathEnding: "/room-files/data-url")
         let answered = await read.value
         XCTAssertEqual(answered, .dataURL("data:image/jpeg;base64,/9j/"))
-        XCTAssertEqual(held.sent.last?.path, GroupRoomFilesClient.picturePath)
+        XCTAssertEqual(held.sent.last?.path, GroupRoomFilesClient.readPath)
         XCTAssertEqual(held.sent.last?.query?.removingPercentEncoding, "path=\(path)")
 
         let refused = Task { await resolver.read(for: "/elsewhere/x.jpg") }

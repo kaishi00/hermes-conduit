@@ -300,6 +300,12 @@ struct GroupChatLifecycleOperations {
     var state: (@MainActor (HermesClient, String) async throws -> (GroupRoom, GroupDriverStatus?))?
     var log: (@MainActor (HermesClient, String, Int, Int?) async throws -> GroupLogPage)?
     var send: (@MainActor (HermesClient, String, String, String, String) async throws -> GroupSendResult)?
+    /// A send's Hermes attachments, seen before `send` runs.
+    var sendAttachments: (@MainActor ([GroupRoomAttachment]) -> Void)?
+    /// Room, upload id, kind, name, mime, base64.
+    var uploadAttachment: (@MainActor (HermesClient, String, String, String, String, String, String) async throws -> GroupRoomAttachment)?
+    /// Room, event id, attachment id, size; answers a data URL.
+    var downloadAttachment: (@MainActor (HermesClient, String, String, String, Int) async throws -> String)?
     var create: (@MainActor (HermesClient, String, String, [[String: Any]]) async throws -> GroupRoom)?
     var stop: (@MainActor (HermesClient, String) async throws -> Int)?
     var approve: (@MainActor (HermesClient, String, GroupPendingApproval, String) async throws -> Bool)?
@@ -769,7 +775,7 @@ final class AppState: ObservableObject {
 
     private var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
     /// See `roomFilePicturesResolver` (GroupRoomFiles.swift).
-    var cachedRoomFilePicturesResolver: GatewayMediaDataURLResolver?
+    var cachedRoomFilesResolver: GatewayMediaDataURLResolver?
 
     /// The open chat's pictures, which a tapped one pages through in the
     /// viewer: the saved copy's while it stands in for the chat. One
@@ -800,6 +806,7 @@ final class AppState: ObservableObject {
                 // Its own saved voice jobs, if no boundary already took them.
                 if voiceJobLedgerRestoredKey != nil { scheduleVoiceJobLedgerRestore() }
                 composerNotice = nil
+                botsListNotice = nil
                 restoreDisplayPreferences()
                 restoreBusyInputMode()
                 dismissChatTakeover()
@@ -819,6 +826,7 @@ final class AppState: ObservableObject {
         didSet {
             if oldValue.activeDashboardID != savedDashboardRegistry.activeDashboardID {
                 composerNotice = nil
+                botsListNotice = nil
                 widgetSettledCatalogOwner = nil
                 let selectedDashboard = savedDashboardRegistry.activeDashboardID
                 let selectedProfile = selectedDashboard.flatMap { rememberedActiveProfile(for: $0) } ?? "default"
@@ -827,6 +835,11 @@ final class AppState: ObservableObject {
                 schedulePendingComposerSendCheck()
                 // The takeover belongs to the other host's chat.
                 dismissChatTakeover()
+                // Until the newly selected host answers, the manager it last
+                // reported words the plugin asks, not the old host's.
+                let askedBefore = PluginUpdateAsk.managedAsk
+                PluginUpdateAsk.setActive(managedBy: NotifierPluginStatus.Remembered.managedBy(for: selectedDashboard, in: defaults))
+                if PluginUpdateAsk.managedAsk != askedBefore { shareWatchCallVoices() }
             }
         }
     }
@@ -1224,6 +1237,12 @@ final class AppState: ObservableObject {
                     // on every chat the person opens.
                     if showModelPicker { showModelPicker = false }
                     if showContextSheet { showContextSheet = false }
+                    // A failed send's line under the composer was the chat
+                    // left's; a reconnect's new id for the same one keeps it.
+                    if let failure = sendFailureShown {
+                        if errorMessage == failure { errorMessage = nil }
+                        sendFailureShown = nil
+                    }
                 }
                 updateChatOnScreen()
             }
@@ -1869,8 +1888,44 @@ final class AppState: ObservableObject {
     /// the underlying task.
     private final class BotChatOpenFlight {
         var task: Task<Bool, Never>?
+        /// The navigation the flight's open owns (`chatViewportTransition`):
+        /// once a newer one has begun, a tap on the same bot opens on its
+        /// own rather than join a flight that will stand down.
+        var transition: UInt64?
     }
     private var botChatOpenFlights: [String: BotChatOpenFlight] = [:]
+
+    /// A Bot Chat a tap, a link or a new bot is opening, with the navigation
+    /// its open began. Bots pushes the chat's screen as its list closes,
+    /// before Hermes' lookup lands (#1700), so until then the active chat is
+    /// still the one open before: another bot's, a session or a room. The
+    /// screen covers that chat meanwhile (`botChatComingOverAnother`); a newer
+    /// navigation, or the open's end, takes it away.
+    struct BotChatOnItsWay: Equatable {
+        let bot: String
+        let label: String
+        let transition: UInt64
+    }
+    @Published private(set) var botChatOnItsWay: BotChatOnItsWay? {
+        didSet {
+            guard oldValue != botChatOnItsWay else { return }
+            updateChatOnScreen()
+            // The cover went, and with it nothing covers the chat it showed.
+            if oldValue != nil, botChatOnItsWay == nil { noteActiveChatSeen(respectingMarks: true) }
+        }
+    }
+    /// Why a Bot Chat opened from a list of bots didn't open, for that list
+    /// to show (`openBotChatFromList`); the list takes it.
+    @Published var botsListNotice: String?
+
+    /// The coming bot's name while the screen still holds another chat
+    /// (`botChatOnItsWay`): its chat screen shows this bot's name over a
+    /// cover, never the chat open before. Nil once its own chat is open.
+    var botChatComingOverAnother: String? {
+        guard let coming = botChatOnItsWay else { return nil }
+        if activeRoomSurface == nil, let open = activeBotChatProfile, profilesMatch(open, coming.bot) { return nil }
+        return coming.label
+    }
 
     /// Every id the client can POSITIVELY attribute to Bot Mode right now: the
     /// roster's canonical registry (id + lineage tip) and the runtime
@@ -2376,12 +2431,14 @@ final class AppState: ObservableObject {
     @Published var showSidebar = false {
         didSet {
             // Closing the drawer uncovers the open chat (#454).
+            // A list of bots closing for another bot's chat uncovers nothing:
+            // that chat's cover shows (botChatCoversOpenChat).
             if oldValue, !showSidebar { noteActiveChatSeen(respectingMarks: true) }
             // Covering it (Back to the list, the drawer opening) leaves it:
             // what it showed until now was seen. The list it returns to
             // reads the catalog again (refreshCatalogAfterLeavingChat, from
             // RootView, whenever the chat is covered).
-            if !oldValue, showSidebar { noteChatLeft(activeSessionId) }
+            if !oldValue, showSidebar, !botChatCoversOpenChat { noteChatLeft(activeSessionId) }
             if oldValue != showSidebar { updateChatOnScreen() }
             // The drawer covers the chat, so its live rows need not redraw at
             // streaming cadence while it is up or animating (liveRowsHidden).
@@ -2446,16 +2503,49 @@ final class AppState: ObservableObject {
     /// the chat then, before it lands, so this tells it a Bot Chat or a room
     /// is coming (it stays in Bots) whatever was open before.
     private(set) var botChatOpening: String?
+    /// Each open a list of bots marked and hasn't ended, by name: how many
+    /// taps, and whether the chat's screen they open on was pushed as the
+    /// list closed (`openBotChatFromList`). A tap made while the list is
+    /// still closing over an earlier tap's push opens on that screen too.
+    private var botChatMarks: [String: (taps: Int, pushed: Bool)] = [:]
+    /// The name the last mark was made for: only its open covers the chat,
+    /// since a newer tap takes the screen from an earlier one still out.
+    private var botChatLatestMark: String?
 
     /// Closes the list for `name`'s Bot Chat; `endOpeningBotChat` once the
     /// open has finished, opened or not.
     func beginOpeningBotChat(_ name: String) {
         botChatOpening = name
+        let pushed = showSidebar || botChatMarks.values.contains { $0.pushed }
+        let mark = botChatMarks[name]
+        botChatMarks[name] = ((mark?.taps ?? 0) + 1, (mark?.pushed ?? false) || pushed)
+        botChatLatestMark = name
         dismissSidebarDrawer()
     }
 
     func endOpeningBotChat(_ name: String) {
         if botChatOpening == name { botChatOpening = nil }
+        guard let mark = botChatMarks[name] else { return }
+        if mark.taps > 1 {
+            botChatMarks[name] = (mark.taps - 1, mark.pushed)
+            return
+        }
+        botChatMarks[name] = nil
+        // What the chat shows from now on is seen, once nothing covers it.
+        noteActiveChatSeen(respectingMarks: true)
+        updateChatOnScreen()
+    }
+
+    /// The open chat (or room) is hidden behind a bot a list of bots is
+    /// opening: its cover shows, or the latest mark, for another bot or a
+    /// room, is still out, from the moment the list closes. What arrives
+    /// meanwhile isn't seen, so it's not marked read and its notifications
+    /// stay. An earlier tap still out covers nothing: a newer one took over.
+    var botChatCoversOpenChat: Bool {
+        if botChatComingOverAnother != nil { return true }
+        guard let name = botChatLatestMark, botChatMarks[name] != nil else { return false }
+        guard activeRoomSurface == nil, let open = activeBotChatProfile else { return true }
+        return !profilesMatch(open, name)
     }
 
     /// The shell placed the conversation for the marked Bot Chat: the mark
@@ -2496,7 +2586,12 @@ final class AppState: ObservableObject {
     func requestSettingsDismissal() {
         settingsDismissRequest &+= 1
     }
-    @Published var errorMessage: String?
+    @Published var errorMessage: String? {
+        didSet { errorMessageWrites &+= 1 }
+    }
+    /// Counts every write to `errorMessage`, the same text again included,
+    /// so an open can tell whether it said why it failed (issue 2079).
+    private(set) var errorMessageWrites = 0
     /// The open chat's sync error, raised while a room covers the chat. A
     /// room's banner shows `errorMessage`, so a chat that fails to resume
     /// behind it (a return to the app) would put its error in the room
@@ -5740,6 +5835,9 @@ final class AppState: ObservableObject {
     /// Bumped by a job delete so a list load that started before it can't
     /// bring the deleted job back.
     private var cronJobsGeneration = 0
+    /// The read in flight and the list generation, profile and connection
+    /// it is for. A second ask for the same list joins it.
+    private var cronJobsRead: (owner: String, token: UUID, task: Task<Void, Never>)?
     /// Cron jobs whose runs don't notify (AppState+CronNotifications), for
     /// the dashboard and profile in `cronMutedJobsKey`.
     @Published var cronMutedJobIDs: Set<String> = []
@@ -5752,6 +5850,10 @@ final class AppState: ObservableObject {
     /// turn (the plugin's `shows_reports`), for `cronMutedJobsKey`.
     @Published var cronShowsBotChatReports = false
     @Published var cronNotificationsChangingJobID: String?
+    /// A notification read asked for while a save was in flight. The
+    /// capability report can land then, so the read is repeated when the
+    /// save ends instead of being dropped.
+    var cronNotificationsReadDeferred = false
     /// Moves with every save, so a refresh that started before one drops its answer.
     var cronNotificationsGeneration = 0
     lazy var cronNotificationsClient = CronNotificationsClient(request: { [weak self] path, method, body in
@@ -7174,6 +7276,9 @@ final class AppState: ObservableObject {
         // So do the open dashboard's pinned replies (#918): they keep reply
         // text, and the next sign-in may be another account.
         if dashboardID == nil || dashboardID == activeDashboardID { clearPinnedReplies() }
+        // So do its confirmations' answers still waiting to reach the host:
+        // a Say instead keeps the user's words (issue 2041).
+        presentedScreens.forgetAnswers(dashboardID: dashboardID)
         // So do the summaries describing its runs of steps.
         forgetStepSummaries(scopePrefix: dashboardID.map { "\(Self.dashboardPreferenceBucket($0))." })
         // And the open dashboard's predictions: guesses, the draft they
@@ -7296,6 +7401,13 @@ final class AppState: ObservableObject {
     private let defaults: UserDefaults
     /// This AppState's defaults, for its extensions in other files.
     var appDefaults: UserDefaults { defaults }
+
+    /// Who keeps a sharing destination's plugin up to date: the active
+    /// dashboard's answer, or what another saved dashboard last reported.
+    func pluginManagedBy(forDashboard id: UUID?) -> String? {
+        guard let id, id != activeDashboardID else { return PluginUpdateAsk.managedBy }
+        return NotifierPluginStatus.Remembered.managedBy(for: id, in: defaults)
+    }
     /// Kept outside ChatResumeStore on purpose: the return surface is a
     /// presentation preference, not part of the resume schema.
     static let chatReturnSurfaceKey = "conduit.chatReturnSurface.v1"
@@ -7823,6 +7935,9 @@ final class AppState: ObservableObject {
         let initialRegistry = preloadedRegistry
             ?? SavedDashboardMigrator.loadRegistry(defaults: defaults)
         self.savedDashboardRegistry = initialRegistry
+        // Screens that ask for a plugin update word it for a host that
+        // manages the plugin from launch, before its status is read.
+        PluginUpdateAsk.setActive(managedBy: NotifierPluginStatus.Remembered.managedBy(for: initialRegistry.activeDashboardID, in: defaults))
         // #1317 kept Off for older installs; Recent holds for every install
         // that hasn't picked one now (issue 1583).
         defaults.removeObject(forKey: ProjectChatsInChats.retiredDeviceDefaultKey)
@@ -7948,6 +8063,7 @@ final class AppState: ObservableObject {
         // After init's own defaults reads, so they don't queue behind it.
         sessionPresentationCache.prewarm()
         installRichDiffReader()
+        installRichReviewReader()
     }
 
     func deviceConditionsChanged(_ conditions: DeviceConditions) {
@@ -10349,6 +10465,8 @@ final class AppState: ObservableObject {
     /// lands at the turn's next step. The open chat shows the words the way
     /// it shows a typed correction.
     private func redirectLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
+        // Taken before waiting for a client: a send that fails meanwhile keeps its line.
+        let failureBefore = sendFailureShown
         let client = try await clientForVoiceRequest()
         let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
         do {
@@ -10360,10 +10478,16 @@ final class AppState: ObservableObject {
             }
             switch outcome {
             case .redirected:
-                if isOpenChat(target) { appendLocalUserMessage(text) }
+                if isOpenChat(target) {
+                    appendLocalUserMessage(text)
+                    clearSendFailureAfterSend(failureBefore)
+                }
                 return .redirected
             case .queued:
-                if isOpenChat(target) { appendLocalUserMessage(text) }
+                if isOpenChat(target) {
+                    appendLocalUserMessage(text)
+                    clearSendFailureAfterSend(failureBefore)
+                }
                 return .queued
             case .rejected:
                 return .notRunning
@@ -10379,7 +10503,10 @@ final class AppState: ObservableObject {
             } catch HermesError.steerRejected {
                 return .notRunning
             }
-            if isOpenChat(target) { appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore) }
+            if isOpenChat(target) {
+                appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore)
+                clearSendFailureAfterSend(failureBefore)
+            }
             return .redirected
         }
     }
@@ -10389,6 +10516,8 @@ final class AppState: ObservableObject {
     /// supervisor's redirect fallback: a timeout leaves delivery unknown and
     /// must not send the words a second time.
     private func steerLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
+        // Taken before waiting for a client: a send that fails meanwhile keeps its line.
+        let failureBefore = sendFailureShown
         let client = try await clientForVoiceRequest()
         let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
         let persistedTwinsBefore = persistedSteerIDs(matching: text)
@@ -10402,7 +10531,10 @@ final class AppState: ObservableObject {
             // Method not found: the words never arrived, so redirecting them is safe.
             throw HermesError.steerRejected
         }
-        if isOpenChat(target) { appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore) }
+        if isOpenChat(target) {
+            appendLocalSteerMessage(text, persistedTwinsBefore: persistedTwinsBefore)
+            clearSendFailureAfterSend(failureBefore)
+        }
         return .redirected
     }
 
@@ -11156,8 +11288,10 @@ final class AppState: ObservableObject {
     /// returning to the app) leaves a chat the user, or Desktop, explicitly
     /// marked unread alone, the way Desktop keeps a marked chat unread until
     /// you open it again.
+    /// Not while a Bot Chat on its way covers it (`botChatCoversOpenChat`),
+    /// whoever asks: a catalog refresh meanwhile reads nothing into it.
     private func noteActiveChatSeen(respectingMarks: Bool = false) {
-        guard isSceneActive, !showSidebar,
+        guard isSceneActive, !showSidebar, !botChatCoversOpenChat,
               let session = readStateSessions.first(where: sessionMatchesActiveSession) else { return }
         let profile = activeProfile
         if respectingMarks {
@@ -11842,6 +11976,11 @@ final class AppState: ObservableObject {
         if let transition = chatViewportTransition {
             finishChatViewportTransition(generation: transition.generation)
         }
+        // A newer navigation: the Bot Chat on its way stands down, and so
+        // does a list tap's mark, joined or not yet open: what shows next
+        // isn't covered by it. (A tap's own open sets its cover next.)
+        botChatOnItsWay = nil
+        botChatLatestMark = nil
         let renderedViewport = chatViewportSnapshotProvider?.capture()
         chatResumeCoordinator.captureViewportAndFreeze(
             renderedViewport?.snapshot,
@@ -11873,6 +12012,19 @@ final class AppState: ObservableObject {
 
     private func chatViewportTransitionIsCurrent(_ generation: UInt64?) -> Bool {
         generation.map { chatViewportTransitionIsCurrent(generation: $0) } ?? true
+    }
+
+    /// The chat's screen was popped (Back, the edge swipe, Close beside the
+    /// list: V2Shell) while a Bot Chat was on its way: its open no longer
+    /// owns the screen, so it stands down as a newer tap's would make it,
+    /// and the chat open before keeps its viewport. A tab switch that only
+    /// hides the screen leaves the open to land.
+    func standDownBotChatOnItsWay() {
+        guard let coming = botChatOnItsWay,
+              chatViewportTransitionIsCurrent(generation: coming.transition) else { return }
+        finishChatViewportTransition(generation: coming.transition)
+        chatViewportTransitionGeneration &+= 1
+        botChatOnItsWay = nil
     }
 
     private func markChatViewportReplacement() {
@@ -12710,6 +12862,14 @@ final class AppState: ObservableObject {
         botChatSessionProfiles.removeAll()
         botChatSessionLabels.removeAll()
         botChatOpenFlights.removeAll()
+        // Another server's list: an earlier one's failed open isn't its,
+        // and the marks its taps made, and the cover over the chat, go
+        // with the opens they were for (issue 2085).
+        botsListNotice = nil
+        botChatOpening = nil
+        botChatMarks.removeAll()
+        botChatLatestMark = nil
+        botChatOnItsWay = nil
         botRoster = []
         botAvatarImages = [:]
         botAvatarFetchedGeneration.removeAll()
@@ -12878,8 +13038,10 @@ final class AppState: ObservableObject {
     /// room; a room drops out once all of them have settled.
     var groupRoomPicturesChanging: [String: Int] = [:]
     /// Whether the open chat's own sheet or prompt (Artifacts, Rename,
-    /// Delete) covers it, so reading it doesn't clear its notifications yet
-    /// (#1579). Set by V2ConversationScreen and RootView; nothing redraws on it.
+    /// Delete), or the open room's (its settings, info, picture, disband;
+    /// issue 2064), covers it, so reading it doesn't clear its notifications
+    /// yet (#1579). Set by V2ConversationScreen, RootView and GroupChatView;
+    /// nothing redraws on it.
     var chatCoveredBySheet = false
     /// Bot Screen sheets open now, from any surface: one covers the open
     /// chat like `chatCoveredBySheet` (#1832). Nothing redraws on it.
@@ -12888,10 +13050,19 @@ final class AppState: ObservableObject {
     @Published private(set) var activeRoomSurface: GroupRoomSurface? {
         // A room takes the chat's place without changing the open chat.
         didSet {
-            if (oldValue == nil) != (activeRoomSurface == nil) { updateChatOnScreen() }
             // Another room (or none): no screen of it has left yet.
             if oldValue?.room.roomID != activeRoomSurface?.room.roomID { roomScreenLeft = false }
+            // Another room straight from one: its notifications are read too (issue 2064).
+            if (oldValue == nil) != (activeRoomSurface == nil) || oldValue?.room.roomID != activeRoomSurface?.room.roomID {
+                updateChatOnScreen()
+            }
         }
+    }
+    /// The open hosted room once Hermes has given its messages since it
+    /// opened: until then it shows a kept or empty transcript, so its
+    /// notifications haven't been read (issue 2064). Nothing redraws on it.
+    private(set) var activeRoomLogRead: String? {
+        didSet { if activeRoomLogRead != oldValue { updateChatOnScreen() } }
     }
     @Published private(set) var activeRoomReplay = GroupRoomReplay(roomID: "") {
         // An agent's new message may have a board kept for it (RoomBoards).
@@ -12906,6 +13077,19 @@ final class AppState: ObservableObject {
     private var roomReplayRevision = 0
     /// The open room's boards on the host, oldest first (AppState+RoomBoards).
     @Published var activeRoomBoards: [RoomBoard] = []
+    /// Boards replies name by line, by id, once read (LineBoards).
+    @Published var lineBoards: [String: RichBoard] = [:]
+    /// Boards replies name that the plugin no longer has (pruned: the
+    /// newest 500, a month), or answered in a shape Conduit can't draw:
+    /// not asked for again, and the reply says one was there.
+    @Published var lineBoardsGone: Set<String> = []
+    var lineBoardsAsked: Set<String> = []
+    /// The dashboard and profile `lineBoards` were read from.
+    var lineBoardsScope = ""
+    /// Bumped whenever `lineBoards` is forgotten, so a read from before
+    /// stores nothing (issue 2083).
+    var lineBoardsGeneration = 0
+    var lineBoardsReadOverride: ((String) async throws -> [String: Any])?
     var roomBoardsTask: Task<Void, Never>?
     /// Tests read a room's boards here in place of the dashboard.
     var roomBoardsReadOverride: ((String) async throws -> [String: Any])?
@@ -13176,6 +13360,11 @@ final class AppState: ObservableObject {
     /// the server-identity boundary (with the rest of Bot Mode teardown), on
     /// a dashboard switch, and when a session open takes the viewport back.
     private(set) var groupRoomEpoch = 0
+    /// The room the last open found gone (disbanded, or not found) as it
+    /// read it, which closes back to the roster with nothing said: a
+    /// notification's open says why (issue 2064). With the room epoch its
+    /// close left, so a room, chat or dashboard opened since owns the screen.
+    private var roomFoundGoneOnOpen: (roomID: String, epoch: Int)?
     private var groupRoomPollTask: Task<Void, Never>?
     /// The Group Chats probe asked again after a transient failure, so its
     /// notice clears on its own once Hermes answers (Eric 2026-11-04: it
@@ -13183,6 +13372,9 @@ final class AppState: ObservableObject {
     private var groupChatProbeRetry = TransientReadRetry()
     /// The same for the bot roster's "Could not refresh bots".
     private var botRosterRetry = TransientReadRetry()
+
+    /// Tests stand in for the plugin's rooms routes.
+    var roomRouteIsStubbed: Bool { groupChatOperations.roomRoute != nil }
 
     /// A rooms route of the plugin (the drafts, the Links): the injectable
     /// seam first (tests), then the dashboard bridge.
@@ -13220,12 +13412,43 @@ final class AppState: ObservableObject {
         return try await client.groupsLog(roomID: roomID, sinceSeq: sinceSeq, limit: limit, includeDisbanded: true)
     }
 
-    private func groupsSend(_ client: HermesClient, roomID: String, eventID: String, text: String, threadID: String)
-        async throws -> GroupSendResult {
+    private func groupsSend(
+        _ client: HermesClient,
+        roomID: String,
+        eventID: String,
+        text: String,
+        threadID: String,
+        attachments: [GroupRoomAttachment] = []
+    ) async throws -> GroupSendResult {
         if let operation = groupChatOperations.send {
+            groupChatOperations.sendAttachments?(attachments)
             return try await operation(client, roomID, eventID, text, threadID)
         }
-        return try await client.groupsSend(roomID: roomID, eventID: eventID, text: text, threadID: threadID)
+        return try await client.groupsSend(
+            roomID: roomID, eventID: eventID, text: text, threadID: threadID, attachments: attachments
+        )
+    }
+
+    func groupsAttachmentUpload(
+        _ client: HermesClient, roomID: String, uploadID: String, kind: String, name: String, mime: String, dataBase64: String
+    ) async throws -> GroupRoomAttachment {
+        if let operation = groupChatOperations.uploadAttachment {
+            return try await operation(client, roomID, uploadID, kind, name, mime, dataBase64)
+        }
+        return try await client.groupsAttachmentUpload(
+            roomID: roomID, uploadID: uploadID, kind: kind, name: name, mime: mime, dataBase64: dataBase64
+        )
+    }
+
+    func groupsAttachmentDownload(
+        _ client: HermesClient, roomID: String, eventID: String, attachmentID: String, size: Int = 0
+    ) async throws -> String {
+        if let operation = groupChatOperations.downloadAttachment {
+            return try await operation(client, roomID, eventID, attachmentID, size)
+        }
+        return try await client.groupsAttachmentDownload(
+            roomID: roomID, eventID: eventID, attachmentID: attachmentID, size: size
+        )
     }
 
     private func groupsCreate(_ client: HermesClient, roomID: String, name: String, members: [[String: Any]])
@@ -13605,6 +13828,7 @@ final class AppState: ObservableObject {
         groupRoomEpoch &+= 1
         groupRoomPollTask?.cancel()
         groupRoomPollTask = nil
+        activeRoomLogRead = nil
         activeRoomSurface = nil
         chatErrorBehindRoom = nil
         activeRoomReplay = GroupRoomReplay(roomID: "")
@@ -13838,6 +14062,68 @@ final class AppState: ObservableObject {
         return rooms
     }
 
+    /// Opens the room a notification names (issue 2064), as Hermes lists
+    /// it: the list on hand when it has the room, else read again first.
+    /// A room the list still lacks is asked about itself, since a list kept
+    /// from before a read that failed, or the first page of a long one,
+    /// doesn't prove it gone. Only Hermes saying so (or hosting no rooms)
+    /// drops the tap; a list or room that can't be read yet is tried again.
+    func openNotificationRoom(_ roomID: String) async -> NotificationOpenOutcome {
+        guard let client, isConnected else { return .retry }
+        let dashboardID = activeDashboardID
+        // A chat or room opened while Hermes is asked owns the screen: the
+        // tap is dropped, not opened over it.
+        let viewport = chatViewportTransitionGeneration
+        let roomEpoch = groupRoomEpoch
+        var superseded: Bool { chatViewportTransitionGeneration != viewport || groupRoomEpoch != roomEpoch }
+        if !groupRoomsListed || !groupRooms.contains(where: { $0.roomID == roomID }) {
+            if groupCapabilities == nil {
+                await refreshGroupChatSupport()
+            } else {
+                await refreshGroupRooms()
+            }
+            guard !Task.isCancelled, activeDashboardID == dashboardID else { return .retry }
+            if superseded { return .failed }
+        }
+        var listed = groupRooms.first(where: { $0.roomID == roomID })
+        if listed == nil {
+            if groupChatPhase == .gatewayUnsupported {
+                errorMessage = AppLocalization.string("That chat is no longer available.")
+                return .failed
+            }
+            // No list read yet: the room opens from it once one is.
+            guard groupRoomsListed, self.client === client, isConnected else { return .retry }
+            do {
+                let (state, _) = try await groupsState(client, roomID: roomID)
+                guard !Task.isCancelled, activeDashboardID == dashboardID else { return .retry }
+                if superseded { return .failed }
+                listed = state
+            } catch {
+                guard !Task.isCancelled, activeDashboardID == dashboardID else { return .retry }
+                // Not the old tap's error over what opened since.
+                if superseded { return .failed }
+                guard HermesClient.isRoomNotFoundError(error) else { return .retry }
+            }
+        }
+        guard let room = listed, !room.isDisbanded else {
+            errorMessage = AppLocalization.string("That chat is no longer available.")
+            return .failed
+        }
+        showSidebar = false
+        roomFoundGoneOnOpen = nil
+        await openGroupRoom(room)
+        guard !Task.isCancelled else { return .retry }
+        if activeRoomSurface?.room.roomID == roomID { return .opened }
+        // Gone between the lookup and the open's own read, which closes with
+        // nothing said; unless a room, chat or dashboard opened since.
+        if let gone = roomFoundGoneOnOpen, gone.roomID == roomID, gone.epoch == groupRoomEpoch,
+           chatViewportTransitionGeneration == viewport, activeDashboardID == dashboardID,
+           activeRoomSurface == nil, errorMessage == nil {
+            errorMessage = AppLocalization.string("That chat is no longer available.")
+        }
+        return .failed
+    }
+
     /// Open a hosted room. Loads the room's authoritative state, replays a
     /// bounded tail of the log, and starts incremental polling. The CURRENT
     /// session selection is left untouched: opening a room takes the
@@ -13880,6 +14166,7 @@ final class AppState: ObservableObject {
 
         groupRoomEpoch &+= 1
         let epoch = groupRoomEpoch
+        roomFoundGoneOnOpen = nil
         groupRoomPollTask?.cancel()
         // The room banner renders the shared errorMessage: a stale session
         // error must not greet the user inside the room.
@@ -13896,6 +14183,7 @@ final class AppState: ObservableObject {
             roomQuoteRequest = nil
             roomDropRequest = nil
         }
+        activeRoomLogRead = nil
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: room)
         activeRoomReplay = keptRoomReplays[Self.roomKey(dashboardID: dashboardID, roomID: room.roomID)]
             ?? GroupRoomReplay(roomID: room.roomID)
@@ -13928,6 +14216,7 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch else { return }
             if state.isDisbanded {
                 closeGoneRoomSurface()
+                roomFoundGoneOnOpen = (room.roomID, groupRoomEpoch)
                 await refreshGroupRooms()
                 return
             }
@@ -13948,6 +14237,7 @@ final class AppState: ObservableObject {
             var replay = GroupRoomReplay(roomID: room.roomID)
             replay.adoptInitialTail(page: page)
             activeRoomReplay = replay
+            activeRoomLogRead = room.roomID
             settlePendingRoomSend(from: replay.events)
             startRoomPolling()
         } catch is CancellationError {
@@ -13958,6 +14248,7 @@ final class AppState: ObservableObject {
                 // The room vanished between the roster and the open: no
                 // poller, no haunted surface — back to the roster.
                 closeGoneRoomSurface()
+                roomFoundGoneOnOpen = (room.roomID, groupRoomEpoch)
                 await refreshGroupRooms()
                 return
             }
@@ -14003,6 +14294,8 @@ final class AppState: ObservableObject {
         let before = roomSurfaceShows
         roomViewsShowing[id] = shows
         if shows != nil { roomScreenLeft = false } else if roomViewsShowing.isEmpty { roomScreenLeft = true }
+        // Whether its notifications are read goes with it (issue 2064).
+        if before != roomSurfaceShows { updateChatOnScreen() }
         guard !before, roomSurfaceShows, activeRoomSurface != nil else { return }
         let epoch = groupRoomEpoch
         Task { @MainActor [weak self] in await self?.pollActiveRoomOnce(epoch: epoch) }
@@ -14043,6 +14336,8 @@ final class AppState: ObservableObject {
                 activeRoomReplay.adopt(page: page)
                 settlePendingRoomSend(from: fresh)
             }
+            // A room whose open read failed is read once a poll catches it up.
+            activeRoomLogRead = surface.room.roomID
             rereadActiveRoomPeopleForPosts(fresh)
             readActiveRoomLooksIfDue()
             // Driver status tracks the DRIVER, not the log: refresh even on
@@ -14092,9 +14387,14 @@ final class AppState: ObservableObject {
     /// `threadID` is a reply's: the message goes in the thread it answers.
     /// Otherwise it opens a thread of its own, so the host can route it.
     @discardableResult
-    func sendGroupRoomMessage(_ rawText: String, threadID: String? = nil) async -> Bool {
+    func sendGroupRoomMessage(
+        _ rawText: String,
+        threadID: String? = nil,
+        attachments: [GroupRoomAttachment] = []
+    ) async -> Bool {
         let text = rawText.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return false }
+        // Files alone are a message too; a retry brings the pending ones.
+        guard !text.isEmpty || !attachments.isEmpty || groupRoomOutbox.pending?.text == text else { return false }
         if activeRoomSurface?.copy != nil { return await postInActiveRoomCopy(text) }
         guard let surface = activeRoomSurface, surface.copy == nil, let client, isConnected,
               groupCapabilities?.supports("groups.send") == true,
@@ -14110,7 +14410,7 @@ final class AppState: ObservableObject {
             return false
         }
         let epoch = groupRoomEpoch
-        let logical = groupRoomOutbox.beginSend(text: text, threadID: threadID) {
+        let logical = groupRoomOutbox.beginSend(text: text, threadID: threadID, attachments: attachments) {
             "conduit-\(UUID().uuidString.lowercased())"
         }
         pendingRoomMessage = groupRoomOutbox.pending
@@ -14137,7 +14437,8 @@ final class AppState: ObservableObject {
                 roomID: surface.room.roomID,
                 eventID: logical.eventID,
                 text: logical.text,
-                threadID: logical.threadID ?? GroupRoomSurface.threadID(forEventID: logical.eventID)
+                threadID: logical.threadID ?? GroupRoomSurface.threadID(forEventID: logical.eventID),
+                attachments: logical.attachments
             )
             // A non-throwing groups.send is a delivered event: upstream
             // `methods_groups.py` answers `accepted: true` for a fresh or an
@@ -14236,6 +14537,7 @@ final class AppState: ObservableObject {
             guard groupRoomEpoch == epoch else { return }
             fresh.adoptInitialTail(page: tail)
             activeRoomReplay = fresh
+            activeRoomLogRead = state.roomID
             settlePendingRoomSend(from: fresh.events)
         } catch {
             // A failed resync keeps the current transcript; the next poll's
@@ -14643,6 +14945,8 @@ final class AppState: ObservableObject {
         parkActiveRoomSend()
         activeRoomSendInFlight = false
         roomQuoteRequest = nil
+        // Someone else hosts it: no notification of yours names it.
+        activeRoomLogRead = nil
         activeRoomSurface = GroupRoomSurface(dashboardID: dashboardID, room: copy.room, copy: copy)
         activeRoomReplay = GroupRoomReplay(roomID: copy.roomID)
         activeRoomDriverStatus = copy.state
@@ -16224,8 +16528,9 @@ final class AppState: ObservableObject {
             followOwedPostConnectBootstrapPurpose(continuationPurpose, for: client)
             isConnected = true
             isConnecting = false
-            // A fresh healthy session never inherits an older banner error.
-            errorMessage = nil
+            // A fresh healthy session never inherits an older banner error;
+            // a failed send's reason stays until the next send or its chat.
+            if errorMessage == nil || errorMessage != sendFailureShown { errorMessage = nil }
             lastConnectionFailure = nil
             reconnectAttempts = 0
             connectedAt = Date()
@@ -16376,7 +16681,9 @@ final class AppState: ObservableObject {
         connection != nil
             && !isConnected
             && (lastConnectionFailure != nil
-                || (!(errorMessage ?? "").isEmpty && !isHoldingQuietReconnectFailure))
+                || (!(errorMessage ?? "").isEmpty && !isHoldingQuietReconnectFailure
+                    // A failed send's reason isn't the connection's.
+                    && errorMessage != sendFailureShown))
     }
 
     /// A failed renewal is being kept quiet: an older, unrelated message
@@ -16670,6 +16977,8 @@ final class AppState: ObservableObject {
         // sign-in never crosses the server-identity boundary, so without
         // this the previous session's room would be restored as it was.
         invalidateGroupChatState()
+        // And the boards its replies named, with any read still out.
+        resetLineBoards()
         botRosterRetry.succeeded()
         // Background jobs keep running on the server as ordinary chats; the
         // signed-out ledger just stops following them.
@@ -16985,6 +17294,9 @@ final class AppState: ObservableObject {
         SavedDashboardRegistryStore.save(registry)
         // The old address's host reported them; the new one reports its own.
         forgetRelayGatewayIDs(of: id)
+        // Who manages the plugin goes with the host: a moved entry's new host
+        // says for itself. Signing out keeps it (same host).
+        NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
         return registry.dashboards[index]
     }
 
@@ -17238,6 +17550,7 @@ final class AppState: ObservableObject {
         // An open call transcript is the outgoing dashboard's, and its fetch
         // still in flight must not open one over the next.
         dismissChatCallTranscript()
+        retireCronJobsForDashboardSwitch()
     }
 
     /// The dashboard a request was sent to, through which bridge. Its
@@ -17359,6 +17672,9 @@ final class AppState: ObservableObject {
         SavedDashboardRegistryStore.save(registry)
         removeDashboardScopedPresentation(id)
         forgetRelayGatewayIDs(of: id)
+        // Who manages the plugin goes with the host: a moved entry's new host
+        // says for itself. Signing out keeps it (same host).
+        NotifierPluginStatus.Remembered.remember(nil, for: id, in: defaults)
         // Log to Hermes events waiting for it, and its inbox keys.
         ShortcutInboxQueue.forgetDashboard(id)
         // Location, health and phone sharing bound to it.
@@ -17729,10 +18045,12 @@ final class AppState: ObservableObject {
 
     /// Server-unreachable failures that leave the saved offline copy on
     /// screen instead of sending the user to sign-in. Authentication
-    /// failures always go to sign-in.
+    /// failures always go to sign-in. A server that refuses this network
+    /// (an IP allowlist, issue #2092) is unreachable from here too: signing
+    /// in again can't get past it.
     static func failureKeepsOfflineChat(_ failure: ConnectionFailure) -> Bool {
         switch failure {
-        case .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline, .dashboardUnavailable:
+        case .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline, .dashboardUnavailable, .accessDenied:
             return true
         default:
             return false
@@ -21860,7 +22178,9 @@ final class AppState: ObservableObject {
             // including the typed classification Repair Connection seeds
             // from: a successful reconnect makes any previous failure stale,
             // so a LATER unrelated failure must route repair from itself.
-            errorMessage = nil
+            // A failed send's reason stays: its words are back in the
+            // composer, and it goes with the next send or its chat.
+            if errorMessage == nil || errorMessage != sendFailureShown { errorMessage = nil }
             chatErrorBehindRoom = nil
             lastConnectionFailure = nil
             reconnectAttempts = 0
@@ -25037,6 +25357,17 @@ final class AppState: ObservableObject {
         finishChatViewportTransition(generation: transitionGeneration)
     }
 
+    /// The V2 Scheduled tab's read: the jobs it draws and their
+    /// notifications. The cron-session history `refreshCronContent` also
+    /// fills is the legacy drawer's Cron tab, which shows those rows; the
+    /// V2 tab shows none, so it does not pay for a catalogue read on every
+    /// switch to it.
+    func refreshScheduledContent() async {
+        async let jobsRefresh: Void = loadCronJobs()
+        async let notificationsRefresh: Void = refreshCronNotifications()
+        _ = await (jobsRefresh, notificationsRefresh)
+    }
+
     /// The Cron tab presents two independent server-backed surfaces: the job
     /// definitions and the cron-session history. Refresh them together so a
     /// newly completed run is visible without visiting the Sessions tab first.
@@ -25745,11 +26076,12 @@ final class AppState: ObservableObject {
         return .saved(warning: warnings.isEmpty ? nil : warnings.joined(separator: " "), needsModel: needsModel)
     }
 
-    /// A just-created bot's Bot Chat, opened, and with `introduces` its
-    /// first turn: Desktop's kickoff ("Hey, tell me about yourself!"), sent
-    /// only into the new bot's own empty chat.
+    /// A just-created bot's Bot Chat, opened as from the list that marked
+    /// it (`openBotChatFromList`), and with `introduces` its first turn:
+    /// Desktop's kickoff ("Hey, tell me about yourself!"), sent only into
+    /// the new bot's own empty chat.
     func openNewBotChat(for bot: BotProfile, introduces: Bool) async {
-        guard await openBotChat(for: bot), introduces,
+        guard await openBotChatFromList(bot), introduces,
               let sessionId = activeSessionId,
               botChatSessionProfiles[sessionId]?.caseInsensitiveCompare(bot.name) == .orderedSame,
               messages.isEmpty, !turnState.isRunning else { return }
@@ -26521,12 +26853,39 @@ final class AppState: ObservableObject {
         presentationMigrationSessionIDs: Set<String> = [],
         viewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
+        await openBotChatOutcome(
+            for: bot,
+            presentationMigrationSessionIDs: presentationMigrationSessionIDs,
+            viewportTransitionGeneration: viewportTransitionGeneration
+        ) == .opened
+    }
+
+    /// How a Bot Chat's open ended: `.failed` only when it didn't open and
+    /// nothing newer took over, so the chat on screen is still the one open
+    /// before this open began.
+    enum BotChatOpenOutcome: Equatable {
+        case opened, superseded, failed
+    }
+
+    /// `openBotChat`, saying whether a failed open was superseded. An open
+    /// that brings no navigation of its own (a tap, a link, a new bot)
+    /// begins one before Hermes' lookup, not after it: a newer tap then
+    /// supersedes this open even while its lookup is out, so the bot tapped
+    /// last is the one that opens, never the one whose lookup came back last.
+    func openBotChatOutcome(
+        for bot: BotProfile,
+        presentationMigrationSessionIDs: Set<String> = [],
+        viewportTransitionGeneration: UInt64? = nil
+    ) async -> BotChatOpenOutcome {
         guard let client, isConnected else {
             errorMessage = AppLocalization.string("Connect to Hermes to chat with bots.")
-            return false
+            return .failed
         }
         let flightKey = bot.name.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        if let flight = botChatOpenFlights[flightKey] {
+        // A flight whose navigation a newer one took over will stand down:
+        // a tap on its bot now opens on its own.
+        if let flight = botChatOpenFlights[flightKey],
+           viewportTransitionGeneration != nil || chatViewportTransitionIsCurrent(flight.transition) {
             let joined = await flight.task?.value ?? false
             // A notification that joined a flight its own newer transition
             // superseded would otherwise inherit that stand-down and do
@@ -26538,12 +26897,25 @@ final class AppState: ObservableObject {
                   chatViewportTransitionIsCurrent(generation: viewportTransitionGeneration),
                   isConnected, client === self.client,
                   botChatOpenFlights[flightKey] == nil else {
-                return joined
+                // A tap that joined: its chat opened, but a newer navigation
+                // since then owns the screen, so the tap doesn't act on it.
+                if joined {
+                    return chatViewportTransitionIsCurrent(viewportTransitionGeneration ?? flight.transition)
+                        ? .opened : .superseded
+                }
+                return chatViewportTransitionIsCurrent(flight.transition) ? .failed : .superseded
             }
+        }
+        let beganTransition = viewportTransitionGeneration == nil
+        let epoch = botRosterEpoch
+        let transition = viewportTransitionGeneration ?? beginExplicitChatViewportTransition()
+        if beganTransition {
+            botChatOnItsWay = BotChatOnItsWay(bot: bot.name, label: bot.displayLabel, transition: transition)
         }
         // The closure captures the box WEAKLY: a strong capture would form
         // a flight<->task retain cycle that outlives the map entry.
         let flight = BotChatOpenFlight()
+        flight.transition = transition
         let task = Task { @MainActor [weak self, weak flight] () -> Bool in
             // `flight` is retained strongly by the creating scope across
             // `await task.value`, so the weak capture only breaks the
@@ -26561,12 +26933,56 @@ final class AppState: ObservableObject {
                 bot,
                 client: client,
                 presentationMigrationSessionIDs: presentationMigrationSessionIDs,
-                viewportTransitionGeneration: viewportTransitionGeneration
+                viewportTransitionGeneration: transition
             )
         }
         flight.task = task
         botChatOpenFlights[flightKey] = flight
-        return await task.value
+        let opened = await task.value
+        if botChatOnItsWay?.transition == transition { botChatOnItsWay = nil }
+        if opened { return .opened }
+        guard chatViewportTransitionIsCurrent(generation: transition) else { return .superseded }
+        // Nothing replaced the chat on screen: its viewport goes on as it was.
+        if beganTransition { finishChatViewportTransition(generation: transition) }
+        // A server switch cancelled it: what it says is the outgoing
+        // server's, never the next one's (issue 2085).
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return .superseded }
+        return .failed
+    }
+
+    /// Opens `bot`'s Bot Chat for a list of bots (a Bots Home portrait or
+    /// its overview's Chat, a Bots list row, a new bot, Bots Home's voice
+    /// menu), which marked it with `beginOpeningBotChat` first; ends the
+    /// mark. The shell pushed the chat's screen as the list closed, over the
+    /// chat open before: an open that fails, while still the latest
+    /// navigation, goes back to the list rather than leave another chat
+    /// under this bot's tap. True when it opened.
+    @discardableResult
+    func openBotChatFromList(_ bot: BotProfile) async -> Bool {
+        let writes = errorMessageWrites
+        let epoch = botRosterEpoch
+        let outcome = await openBotChatOutcome(for: bot)
+        // A server switch retired the list's marks with the rest of Bot
+        // Mode's state: this open has no mark left to end, and a tap on the
+        // next server's list may have made one under the same name.
+        guard epoch == botRosterEpoch else { return outcome == .opened }
+        let pushed = botChatMarks[bot.name]?.pushed ?? false
+        // The list shows (it went back, or it never closed): the error
+        // shows with a chat's composer, which isn't there, so the list
+        // says it instead.
+        if outcome == .failed, pushed || showSidebar {
+            showSidebar = true
+            // This open's own error, even when it reads like the one
+            // already showing (a retry that failed the same way).
+            if let error = errorMessage, errorMessageWrites != writes {
+                botsListNotice = error
+                errorMessage = nil
+            } else {
+                botsListNotice = AppLocalization.string("Could not open \(bot.displayLabel)'s Bot Chat.")
+            }
+        }
+        endOpeningBotChat(bot.name)
+        return outcome == .opened
     }
 
     /// A bot open spans several awaited RPCs. Every step re-validates that
@@ -26595,12 +27011,15 @@ final class AppState: ObservableObject {
             }
         } catch {
             guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
-            return failBotChatOpen(bot, error: error, stage: .lookup)
+            return failBotChatOpen(bot, error: error, stage: .lookup, transition: viewportTransitionGeneration)
         }
-        guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
+        // A newer navigation took over while the lookup was out (another
+        // bot tapped): this open says nothing and makes nothing.
+        guard botOpenFenceIsCurrent(epoch: epoch, client: client),
+              chatViewportTransitionIsCurrent(viewportTransitionGeneration) else { return false }
         switch BotChatResolver.resolve(rows: rows, rosterCanonicalID: bot.canonicalSessionID) {
         case .failure(.unconfirmedAbsence):
-            refuseBotChatConfirmation(bot)
+            refuseBotChatConfirmation(bot, transition: viewportTransitionGeneration)
             return false
         case .success(.openExisting(let registryID, let resumeID)):
             return await openCanonicalBotChat(
@@ -26636,6 +27055,7 @@ final class AppState: ObservableObject {
         presentationMigrationSessionIDs: Set<String> = [],
         viewportTransitionGeneration: UInt64? = nil
     ) async -> Bool {
+        let writes = errorMessageWrites
         noteBotChatOpen([resumeID, registryID], bot: bot)
         let outcome = await performSessionOpen(
             resumeID,
@@ -26650,7 +27070,10 @@ final class AppState: ObservableObject {
         // not an error.
         if outcome == .failed, !Task.isCancelled,
            botOpenFenceIsCurrent(epoch: epoch, client: client),
-           errorMessage == nil {
+           // The open's own failure says more, even when its text matches
+           // the error already showing (a retry that failed the same way);
+           // an error from before it doesn't.
+           errorMessage == nil || errorMessageWrites == writes {
             errorMessage = AppLocalization.string(
                 "Could not open \(bot.displayLabel)'s Bot Chat."
             )
@@ -26758,7 +27181,7 @@ final class AppState: ObservableObject {
                 )
             }
             guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
-            return failBotChatOpen(bot, error: error, stage: .create)
+            return failBotChatOpen(bot, error: error, stage: .create, transition: viewportTransitionGeneration)
         }
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
         do {
@@ -26782,7 +27205,7 @@ final class AppState: ObservableObject {
                 )
             }
             guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
-            return failBotChatOpen(bot, error: error, stage: .title)
+            return failBotChatOpen(bot, error: error, stage: .title, transition: viewportTransitionGeneration)
         }
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
         noteBotChatOpen([created.sessionId], bot: bot)
@@ -26837,7 +27260,7 @@ final class AppState: ObservableObject {
             // A cancelled or server-switched flight abandons silently, like
             // every other stage; only a current flight speaks.
             guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
-            refuseBotChatConfirmation(bot)
+            refuseBotChatConfirmation(bot, transition: viewportTransitionGeneration)
             return false
         }
         guard botOpenFenceIsCurrent(epoch: epoch, client: client) else { return false }
@@ -26853,7 +27276,7 @@ final class AppState: ObservableObject {
                 viewportTransitionGeneration: viewportTransitionGeneration
             )
         }
-        refuseBotChatConfirmation(bot)
+        refuseBotChatConfirmation(bot, transition: viewportTransitionGeneration)
         return false
     }
 
@@ -26863,15 +27286,21 @@ final class AppState: ObservableObject {
         case title
     }
 
+    /// Publishes a failed open's reason, unless a newer navigation took
+    /// over from `transition` (another bot tapped): that one owns the
+    /// screen, and this open says nothing over it.
     private func failBotChatOpen(
         _ bot: BotProfile,
         error: Error,
-        stage: BotChatOpenStage
+        stage: BotChatOpenStage,
+        transition: UInt64?
     ) -> Bool {
         if HermesClient.isMissingRPCMethod(error) {
+            // True of the gateway whoever owns the screen.
             botModePhase = .gatewayUnsupported
+            guard chatViewportTransitionIsCurrent(transition) else { return false }
             errorMessage = AppLocalization.string("Update Hermes to use Bot Mode.")
-        } else if !Task.isCancelled {
+        } else if !Task.isCancelled, chatViewportTransitionIsCurrent(transition) {
             switch stage {
             case .lookup:
                 errorMessage = AppLocalization.string(
@@ -26890,7 +27319,8 @@ final class AppState: ObservableObject {
         return false
     }
 
-    private func refuseBotChatConfirmation(_ bot: BotProfile) {
+    private func refuseBotChatConfirmation(_ bot: BotProfile, transition: UInt64?) {
+        guard chatViewportTransitionIsCurrent(transition) else { return }
         errorMessage = AppLocalization.string(
             "Could not confirm \(bot.displayLabel)'s Bot Chat — not starting a new chat."
         )
@@ -27455,8 +27885,10 @@ final class AppState: ObservableObject {
 
     /// How a notification open ended, for the route that retries it (#789):
     /// `.retry` is a read or switch that can succeed once the connection or
-    /// the session catalog is ready; `.failed` already told the user why it
-    /// can't open, and retrying would only repeat that. `.unverified` is a
+    /// the session catalog is ready; `.failed` means don't retry and say no
+    /// more: usually the open already told the user why it can't, or
+    /// something opened since owns the screen (a room open a newer
+    /// navigation superseded). `.unverified` is a
     /// `.retry` whose failure has something to tell the user (the dashboard
     /// didn't connect, the workspace couldn't be checked): the route says it
     /// only once its window runs out, so a retry that passes shows no error.
@@ -27617,6 +28049,15 @@ final class AppState: ObservableObject {
                 errorMessage = AppLocalization.string("This notification predates multi-dashboard pairing. Update the notifier on the sending gateway and pair it again to continue.")
             }
             return .failed
+        }
+        // A turn's reply, failure, background task or approval in a group
+        // room this Hermes hosts opens the room, where an approval has its
+        // card: the chat it names is the bot's hidden one there, not a chat
+        // to open (issue 2064). Rooms are the dashboard's, whichever
+        // profile's bot it was, so no profile switch.
+        if let roomID = target.roomID {
+            traceStage = "group room"
+            return await openNotificationRoom(roomID)
         }
         // An approval one of your agents waits for in a room someone else
         // hosts: its notification names the hidden chat the turn runs in,
@@ -28998,7 +29439,9 @@ final class AppState: ObservableObject {
         // marks nothing: missing a mark costs one extra read, a wrong mark
         // hides the other device's turn.
         let isSlashCommand = runsSlashCommands && attachments.isEmpty && Self.parseSlashCommand(text) != nil
-        if sent, !isSlashCommand, activeSessionId == submissionContext.sessionID {
+        // One left waiting for a reconnect (keepComposerSendForReconnect)
+        // isn't Hermes' yet.
+        if sent, !isSlashCommand, activeSessionId == submissionContext.sessionID, pendingComposerSendOnScreen == nil {
             noteOpenChatSentHere()
         }
         return sent
@@ -29660,6 +30103,12 @@ final class AppState: ObservableObject {
         // already running; one that answered without Pulse ends the Pulse
         // this dashboard remembered.
         didSet {
+            // Before the host has answered, the manager it last reported.
+            let askedBefore = PluginUpdateAsk.managedAsk
+            PluginUpdateAsk.setActive(managedBy: notifierPlugin.managedBy ?? (notifierPlugin.state == .unknown
+                ? NotifierPluginStatus.Remembered.managedBy(for: activeDashboardID, in: defaults) : nil))
+            // The Watch words its plugin failures from the phone's shared context.
+            if PluginUpdateAsk.managedAsk != askedBefore { shareWatchCallVoices() }
             if oldValue.state != notifierPlugin.state {
                 updateChatOnScreen()
                 forgetPulseHomeIfGone()
@@ -29756,10 +30205,12 @@ final class AppState: ObservableObject {
         let generation = notifierPluginStatusGeneration
         let state: NotifierPluginStatus.State
         var runtime: NotifierPluginStatus.Runtime?
+        var managedBy: String?
         do {
             let response = try await bridge.requestJSON(path: NotifierPluginStatus.path)
             state = NotifierPluginStatus.state(from: response)
             runtime = NotifierPluginStatus.runtime(from: response)
+            managedBy = NotifierPluginStatus.managedBy(from: response)
         } catch {
             state = NotifierPluginStatus.state(from: error)
         }
@@ -29783,6 +30234,11 @@ final class AppState: ObservableObject {
             : nil
         notifierPlugin.state = state
         notifierPlugin.runtime = runtime
+        notifierPlugin.managedBy = NotifierPluginStatus.managedBy(
+            after: state, reported: managedBy,
+            before: notifierPlugin.managedBy ?? NotifierPluginStatus.Remembered.managedBy(for: activeDashboardID, in: defaults)
+        )
+        NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         Task { await refreshLatestNotifierPluginVersion() }
         clearSettledNotifierPluginUpdateOutcome()
@@ -29823,6 +30279,8 @@ final class AppState: ObservableObject {
         notifierPlugin.hostCopy = nil
         notifierPlugin.state = state
         notifierPlugin.runtime = NotifierPluginStatus.runtime(from: json)
+        notifierPlugin.managedBy = NotifierPluginStatus.managedBy(from: json)
+        NotifierPluginStatus.Remembered.remember(notifierPlugin.managedBy, for: activeDashboardID, in: defaults)
         linkedRoomInvitesReported(before: couldInviteLinkedPeople, approvals: couldAnswerRoomApprovals)
         clearSettledNotifierPluginUpdateOutcome()
     }
@@ -30262,13 +30720,15 @@ final class AppState: ObservableObject {
     static func chatTakeoverFailureMessage(_ error: Error) -> String {
         switch error {
         case ChatTakeoverError.pluginMissing:
-            return AppLocalization.string("Update the Conduit notifier plugin on your Hermes host to take chats over.")
+            return PluginUpdateAsk.text(AppLocalization.string("Update the Conduit notifier plugin on your Hermes host to take chats over."))
         case ChatTakeoverError.pluginOff(let remedy):
             return remedy
         case ChatTakeoverError.unsupported:
             return AppLocalization.string("This Hermes version can't hand a chat over.")
         case ChatTakeoverError.malformed:
-            return AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again.")
+            // A managed host's plugin isn't missing the route: keep the retry, name who updates it.
+            return PluginUpdateAsk.text(AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Update it on your Hermes host and try again."),
+                                        instead: AppLocalization.string("The Conduit notifier plugin gave an unexpected answer. Try again in a moment."))
         default:
             let detail = UserFacingError.message(for: error).trimmingCharacters(in: .whitespacesAndNewlines)
             guard !detail.isEmpty, !(error is DashboardTicketBridgeError) else {
@@ -30340,7 +30800,7 @@ final class AppState: ObservableObject {
         // Images staged for a Queue this Hermes refuses would ride on the
         // next turn instead, so they never go up.
         if queued, !attachments.isEmpty, client.refusesQueuedPrompts {
-            errorMessage = HermesClient.QueueUnsupportedError.attachmentsMessage
+            showSendFailure(HermesClient.QueueUnsupportedError.attachmentsMessage)
             return false
         }
         let joinsRunningTurn = queued && turnState.isRunning
@@ -30398,6 +30858,9 @@ final class AppState: ObservableObject {
         // Mid-turn ordering rule: the outgoing bubble must not land below a
         // still-live reasoning card's eventual commit.
         settleReasoningSegmentIntoTranscript()
+        // An earlier send's failure, shown under the composer, is over.
+        if errorMessage != nil { errorMessage = nil }
+        sendFailureShown = nil
         messages.append(userMessage)
         requestChatScrollToLatest()
         cacheMessagePresentation(for: [sessionId])
@@ -30486,7 +30949,10 @@ final class AppState: ObservableObject {
                         lostSessionIDs: submissionSessionIDs, using: client
                     )
                 }
-                errorMessage = AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))")
+                // A file can't wait as text: it comes back, and the
+                // reconnect starts now all the same.
+                noteDropFoundBySend(error, client: client)
+                showSendFailure(AppLocalization.string("Attachment failed: \(UserFacingError.message(for: error))"))
                 await recoverComposerSubmission(using: submissionContext)
                 return false
             }
@@ -30683,7 +31149,7 @@ final class AppState: ObservableObject {
             }
             if error is HermesClient.QueueUnsupportedError, !attachments.isEmpty {
                 guard isCurrentComposerSubmission(submissionContext) else { return false }
-                errorMessage = HermesClient.QueueUnsupportedError.attachmentsMessage
+                showSendFailure(HermesClient.QueueUnsupportedError.attachmentsMessage)
                 await recoverComposerSubmission(using: submissionContext)
                 return false
             }
@@ -30697,6 +31163,12 @@ final class AppState: ObservableObject {
                     text, attachments: attachments, context: submissionContext, queued: queued,
                     lostSessionIDs: submissionSessionIDs, using: client
                 )
+            }
+            if keepComposerSendForReconnect(
+                after: error, text: text, attachments: attachments, queued: queued,
+                surface: surface, rowID: userMessage.id, client: client
+            ) {
+                return true
             }
             if Self.isAmbiguousPromptDelivery(error) {
                 lifecycleLog.notice(
@@ -30875,7 +31347,7 @@ final class AppState: ObservableObject {
                 // failed send must not paint an error onto the session the
                 // user switched to while recovery was suspended.
                 if isCurrentComposerSubmission(submissionContext) {
-                    errorMessage = AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))")
+                    showSendFailure(AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))"))
                 }
                 if !reconnected, isCurrentComposerSubmission(submissionContext) {
                     await recoverComposerSubmission(using: submissionContext)
@@ -30893,7 +31365,7 @@ final class AppState: ObservableObject {
                         refusal, sessionID: sessionId, knownSessionIDs: submissionSessionIDs, refusedText: text
                     )
                 } else {
-                    errorMessage = AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))")
+                    showSendFailure(AppLocalization.string("Failed to send: \(UserFacingError.message(for: error))"))
                 }
             }
             await recoverComposerSubmission(using: submissionContext)
@@ -30917,6 +31389,68 @@ final class AppState: ObservableObject {
         case .redirected: return "redirected"
         case .queued: return "queued"
         }
+    }
+
+    /// A typed send `rpc` refused before writing it (`notConnected`): the
+    /// socket had closed under it, its close frame in before its receive
+    /// failed, so the drop wasn't known yet (issue 2095, a proxy closing
+    /// sockets with 1005 and 1013). Nothing left the phone, so rather than
+    /// come back to the composer the message waits in its chat as "Sends
+    /// when connected", and goes once the reconnect this starts has the
+    /// chat back. Text only, and only the composer's own: a call's, a
+    /// Shortcut's or a Queue send reports its own outcome. False, with
+    /// nothing changed but the drop noted, when it can't wait.
+    private func keepComposerSendForReconnect(
+        after error: Error,
+        text: String,
+        attachments: [Attachment],
+        queued: Bool,
+        surface: String?,
+        rowID: String,
+        client: HermesClient
+    ) -> Bool {
+        guard noteDropFoundBySend(error, client: client) else { return false }
+        guard attachments.isEmpty, !queued, surface == nil, submissionTurnSurface == nil,
+              !callSubmissionTexts.contains(text), composerWaitsForChat,
+              sendWhenConnected(text, replyReference: nil) else { return false }
+        // The waiting message shows in its place.
+        messages.removeAll { $0.id == rowID }
+        if let activeSessionId { cacheMessagePresentation(for: [activeSessionId]) }
+        lifecycleLog.notice("prompt.submit found no connection; the message waits for the reconnect")
+        return true
+    }
+
+    /// The failed send's error under the composer, which leaving its chat
+    /// clears: the composer shows `errorMessage` unlocked too.
+    var sendFailureShown: String?
+
+    /// A send that went through ends the failure line shown when it set
+    /// out, and only that line: another error, or a newer send's failure,
+    /// stays.
+    private func clearSendFailureAfterSend(_ failureBefore: String?) {
+        guard let failure = failureBefore, sendFailureShown == failure else { return }
+        if errorMessage == failure { errorMessage = nil }
+        sendFailureShown = nil
+    }
+
+    private func showSendFailure(_ message: String) {
+        errorMessage = message
+        sendFailureShown = message
+    }
+
+    /// A send's request `rpc` refused with `notConnected` on the current
+    /// client: the socket closed before its receive failed. The drop its
+    /// own close report would bring a moment later is acted on now; that
+    /// report, from this client, then finds it done. True when the error
+    /// was that refusal.
+    @discardableResult
+    private func noteDropFoundBySend(_ error: Error, client: HermesClient) -> Bool {
+        guard case HermesError.notConnected = error, self.client === client else { return false }
+        if isConnected {
+            noteConnectionStep("Send found the socket closed")
+            handleDisconnect()
+        }
+        return true
     }
 
     /// Which failures leave it genuinely unknown whether Hermes received the
@@ -33160,6 +33694,9 @@ final class AppState: ObservableObject {
         guard let client, let sessionId = activeSessionId else { return false }
         cancelChatResumeRestoration()
         let outboundText = mentionAnnotatedOutboundText(text)
+        // Only a failure already shown is this send's to clear; one a
+        // send made while this one was on its way stays.
+        let failureBefore = sendFailureShown
         let persistedTwinsBefore = persistedSteerIDs(matching: outboundText)
         do {
             if let steer = chatResumeLifecycleOperations.steer {
@@ -33191,6 +33728,7 @@ final class AppState: ObservableObject {
                 // when the agent next reaches a tool boundary, so without
                 // this the text just vanished from the composer.
                 appendLocalSteerMessage(outboundText, persistedTwinsBefore: persistedTwinsBefore)
+                clearSendFailureAfterSend(failureBefore)
             }
             // A successful steer is accepted by Hermes even if the user
             // switched sessions while the RPC was suspended. Apart from the
@@ -33229,6 +33767,9 @@ final class AppState: ObservableObject {
         // Fallbacks below re-enter `sendMessage` with the RAW text, which
         // annotates on its own; only the redirect itself sends this copy.
         let outboundText = mentionAnnotatedOutboundText(text)
+        // Only a failure already shown is this send's to clear; one a
+        // send made while this one was on its way stays.
+        let failureBefore = sendFailureShown
 
         do {
             let outcome: SessionRedirectOutcome
@@ -33241,6 +33782,7 @@ final class AppState: ObservableObject {
             case .redirected, .queued:
                 if isCurrentOrAliasedComposerSubmission(submissionContext) {
                     appendLocalUserMessage(outboundText)
+                    clearSendFailureAfterSend(failureBefore)
                 }
                 return true
             case .rejected:
@@ -36927,28 +37469,74 @@ final class AppState: ObservableObject {
     // MARK: - Scheduled jobs
 
     func loadCronJobs() async {
-        guard !cronJobsLoading else { return }
         let profile = activeProfile
         let generation = cronJobsGeneration
+        // One read at a time for the list as it is, on the connection and
+        // profile it is for: one an edit, a dashboard switch, a reconnect or
+        // a profile change made stale since doesn't hold the next back.
+        let owner = "\(generation)|\(profile)|"
+            + (dashboardTicketBridge.map { "\(ObjectIdentifier($0))" } ?? client.map { "c\(ObjectIdentifier($0))" } ?? "")
+        // The same list's read joins the one out: it runs on its own, so a
+        // Tasks tab whose task restarted mid-read (tab away and back) still
+        // sees it land, rather than finding it held and reading nothing.
+        if let running = cronJobsRead, running.owner == owner {
+            await running.task.value
+            return
+        }
+        // The read's own token, as an owner comes back (A, B, then A again)
+        // while an older read for it may still be out.
+        let token = UUID()
+        let task = Task<Void, Never> { [weak self] in
+            await self?.readCronJobs(token: token, profile: profile, generation: generation)
+        }
+        cronJobsRead = (owner, token, task)
         cronJobsLoading = true
-        defer { cronJobsLoading = false }
+        await task.value
+    }
+
+    private func readCronJobs(token: UUID, profile: String, generation: Int) async {
+        let startedBridge = dashboardTicketBridge
+        let startedClient = client
+        defer {
+            if cronJobsRead?.token == token {
+                cronJobsRead = nil
+                cronJobsLoading = false
+            }
+        }
 
         do {
             if let dashboardTicketBridge {
                 let result = try await dashboardTicketBridge.requestJSON(path: cronDashboardPath("/api/cron/jobs", profile: profile))
                 let values = result["_array"] as? [Any] ?? result["jobs"] as? [Any] ?? []
                 let jobs = values.compactMap(decodeCronJob)
-                guard profile == activeProfile, generation == cronJobsGeneration else { return }
+                guard profile == activeProfile, generation == cronJobsGeneration,
+                      self.dashboardTicketBridge === dashboardTicketBridge,
+                      cronJobsRead?.token == token else { return }
                 cronJobs = jobs.sorted { $0.displayName.localizedCaseInsensitiveCompare($1.displayName) == .orderedAscending }
             } else if let client {
                 let jobs = try await client.listCronJobs()
-                guard profile == activeProfile, self.client === client, generation == cronJobsGeneration else { return }
+                guard profile == activeProfile, self.client === client, generation == cronJobsGeneration,
+                      cronJobsRead?.token == token else { return }
                 cronJobs = jobs
             }
+        } catch is CancellationError {
+            return
         } catch {
-            guard profile == activeProfile else { return }
+            // A read the outgoing connection failed isn't the next one's to report.
+            guard profile == activeProfile, generation == cronJobsGeneration,
+                  dashboardTicketBridge === startedBridge, client === startedClient,
+                  cronJobsRead?.token == token else { return }
             errorMessage = AppLocalization.string("Could not load scheduled jobs: \(UserFacingError.message(for: error))")
         }
+    }
+
+    /// The jobs listed are the outgoing dashboard's: they go, and a read
+    /// still out for them commits nothing (issue 2094).
+    private func retireCronJobsForDashboardSwitch() {
+        cronJobsGeneration += 1
+        cronJobs = []
+        cronJobsRead = nil
+        cronJobsLoading = false
     }
 
     func loadCronRuns(for job: CronJob) async {
@@ -42074,7 +42662,11 @@ final class AppState: ObservableObject {
         let status = try await tokens.availability()
         noteWatchCallVoice(qwen ? .qwenLive : .geminiLive, ready: status.isAvailable, profile: profile)
         guard status.isAvailable else {
-            throw WatchDirectPrepareError(status.userFacingReason(for: provider) ?? GeminiLiveAvailability.notAvailable(for: provider))
+            // The reason is worded for the active host's plugin.
+            guard watchConnectionIsCurrent(connection) else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
+            throw WatchDirectPrepareError(PluginUpdateAsk.reason(status.userFacingReason(for: provider)) ?? GeminiLiveAvailability.notAvailable(for: provider))
         }
         let search = await searchLookup
         let memory = await memoryLookup
@@ -42181,6 +42773,10 @@ final class AppState: ObservableObject {
         let status = try await makeGPTLiveClient { profile }.availability(billing: .subscription)
         noteWatchCallVoice(.gptLive, ready: status.isAvailable, profile: profile)
         guard status.isAvailable else {
+            // The reason is worded for the active host's plugin.
+            guard watchConnectionIsCurrent(connection) else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
             throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("GPT-Live is not available on this Hermes server."))
         }
         let memory = await memoryLookup
@@ -42277,7 +42873,11 @@ final class AppState: ObservableObject {
         let status = try await makeGrokLiveClient { profile }.availability()
         noteWatchCallVoice(.grokLive, ready: status.isAvailable, profile: profile)
         guard case .available(_, let voice, _) = status else {
-            throw WatchDirectPrepareError(status.userFacingReason ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
+            // The reason is worded for the active host's plugin.
+            guard watchConnectionIsCurrent(connection) else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
+            throw WatchDirectPrepareError(PluginUpdateAsk.reason(status.userFacingReason) ?? AppLocalization.string("Grok Live is not available on this Hermes server."))
         }
         // xAI's own search (#598), as on the phone.
         let search = GeminiLiveSearchSource.grok
@@ -42380,7 +42980,11 @@ final class AppState: ObservableObject {
         let status = try await makeLocalLiveClient { profile }.status()
         noteWatchCallVoice(.localLive, ready: status.available, profile: profile)
         if let reason = LocalLiveClient.unavailableReason(status) {
-            throw WatchDirectPrepareError(reason)
+            // The reason is worded for the active host's plugin.
+            guard watchConnectionIsCurrent(connection) else {
+                throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
+            }
+            throw WatchDirectPrepareError(PluginUpdateAsk.reason(reason) ?? reason)
         }
         guard watchConnectionIsCurrent(connection) else {
             throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)

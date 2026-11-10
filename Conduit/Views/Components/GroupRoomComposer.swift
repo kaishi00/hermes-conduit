@@ -503,7 +503,7 @@ struct GroupRoomComposer: View {
                 }
             } else {
                 // Older plugins can't store a room's files; say what fixes it.
-                Text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats."))
+                Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.")))
             }
         } label: {
             Image(systemName: "plus")
@@ -680,9 +680,9 @@ struct GroupRoomComposer: View {
         let roomID = surface?.room.roomID
         uploadTask = Task {
             defer { isUploading = false }
-            let message: String
+            let message: AppState.RoomMessage
             do {
-                message = try await appState.roomMessageText(text, attachments: files)
+                message = try await appState.roomMessage(text, attachments: files)
             } catch {
                 // Left the room: the files stay in its draft.
                 if Task.isCancelled { return }
@@ -704,7 +704,11 @@ struct GroupRoomComposer: View {
                 draft = String(draft.dropFirst(typed.count)).trimmingCharacters(in: .whitespacesAndNewlines)
             }
             attachments.removeAll { file in files.contains { $0.id == file.id } }
-            let registered = await appState.sendGroupRoomMessage(message, threadID: sendsReply ? reply?.threadID : nil)
+            let registered = await appState.sendGroupRoomMessage(
+                message.text,
+                threadID: sendsReply ? reply?.threadID : nil,
+                attachments: message.attachments
+            )
             if registered {
                 files.forEach(ComposerBar.discardStagedFile)
             } else {
@@ -986,7 +990,7 @@ struct GroupRoomComposer: View {
     }
 
     private func importPhotos(_ items: [PhotosPickerItem]) {
-        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
         let roomID = surface?.room.roomID
         Task {
             var outcomes: [AttachmentStaging.StagedImport] = []
@@ -1009,7 +1013,7 @@ struct GroupRoomComposer: View {
             Haptics.error()
             return
         }
-        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
         let roomID = surface?.room.roomID
         Task {
             var outcomes: [AttachmentStaging.StagedImport] = []
@@ -1031,11 +1035,11 @@ struct GroupRoomComposer: View {
         // A disbanded room sends nothing, whichever target took the drop.
         guard !providers.isEmpty, surface?.room.isDisbanded == false else { return }
         guard appState.canAttachRoomFiles else {
-            composerError = AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.")
+            composerError = PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats."))
             Haptics.error()
             return
         }
-        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
         let roomID = surface?.room.roomID
         let files = providers.filter { !AttachmentDrop.isFolder($0) }
         let folders = files.count < providers.count ? AttachmentDrop.folderNames(in: providers) : nil
@@ -1046,7 +1050,7 @@ struct GroupRoomComposer: View {
     }
 
     private func importCapturedPhoto(_ image: UIImage) {
-        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
         let roomID = surface?.room.roomID
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
@@ -1066,7 +1070,7 @@ struct GroupRoomComposer: View {
             canStoreFiles: appState.canAttachRoomFiles,
             disbanded: surface?.room.isDisbanded != false
         ) else { return false }
-        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
         let roomID = surface?.room.roomID
         // Past the attachment limit it can't go as a file: the words go in
         // the field, as every paste did before.
@@ -1099,9 +1103,9 @@ struct GroupRoomComposer: View {
                     ComposerBar.discardStagedFile(old)
                     return
                 }
-                let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+                let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
                 guard PastedText.fits(edited, limitMegabytes: limit) else {
-                    composerError = GroupRoomFilesClient.tooLargeMessage(names: [PastedText.displayName], preference: attachmentLimitMegabytes)
+                    composerError = GroupRoomFilesClient.tooLargeMessage(names: [PastedText.displayName], preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
                     Haptics.error()
                     return
                 }
@@ -1120,7 +1124,7 @@ struct GroupRoomComposer: View {
                         attachments[index] = updated
                         ComposerBar.discardStagedFile(old)
                     case .tooLarge(let name):
-                        composerError = GroupRoomFilesClient.tooLargeMessage(names: [name], preference: attachmentLimitMegabytes)
+                        composerError = GroupRoomFilesClient.tooLargeMessage(names: [name], preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
                         Haptics.error()
                     case .failed(let name):
                         composerError = AppLocalization.string("Could not prepare \(name) for upload.")
@@ -1159,7 +1163,7 @@ struct GroupRoomComposer: View {
         }
         var messages: [String] = []
         if !oversized.isEmpty {
-            messages.append(GroupRoomFilesClient.tooLargeMessage(names: oversized, preference: attachmentLimitMegabytes))
+            messages.append(GroupRoomFilesClient.tooLargeMessage(names: oversized, preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes))
         }
         if !failed.isEmpty {
             let list = failed.joined(separator: ", ")

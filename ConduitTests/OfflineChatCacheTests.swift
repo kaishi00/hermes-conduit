@@ -1041,7 +1041,7 @@ final class OfflineChatCacheTests: XCTestCase {
     // MARK: - Unreachable server vs. sign-in
 
     func testUnreachableRestoreKeepsTheCopyInsteadOfSignIn() {
-        for failure: ConnectionFailure in [.offline, .hostNotFound, .unreachable, .connectionRefused, .timedOut, .dashboardUnavailable] {
+        for failure: ConnectionFailure in [.offline, .hostNotFound, .unreachable, .connectionRefused, .timedOut, .dashboardUnavailable, .accessDenied] {
             let (appState, store, dashboard) = makeAppState()
             seedCopy(store, dashboard: dashboard)
             appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
@@ -2508,6 +2508,79 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
     }
 
+    /// Issue 2095: a send `rpc` refused before writing it (the socket had
+    /// closed under it, its receive not failed yet) waits in its chat for
+    /// the reconnect it starts, rather than coming back to the composer.
+    func testASendThatFoundTheSocketClosedWaitsForTheReconnect() async throws {
+        let sent = SentPrompts()
+        var attempts = 0
+        let (appState, store, dashboard) = makeAppState(
+            lifecycleOperations: ChatResumeLifecycleOperations(sendPrompt: { _, sessionID, text in
+                attempts += 1
+                if attempts == 1 { throw HermesError.notConnected }
+                sent.prompts.append((sessionID, text))
+                return .accepted
+            }),
+            reconnectScheduler: { _, _ in {} }
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.sessions = [session("stored-a")]
+        appState.activeSessionId = "stored-a"
+        appState.isConnected = true
+
+        let went = await appState.submitComposer(text: "Hello")
+
+        XCTAssertTrue(went, "Kept, so the composer doesn't put the words back")
+        XCTAssertEqual(attempts, 1)
+        XCTAssertTrue(sent.prompts.isEmpty)
+        XCTAssertEqual(appState.pendingComposerSend?.draftText, "Hello")
+        XCTAssertFalse(appState.isConnected, "The drop is known at once")
+        XCTAssertEqual(appState.turnState, .reconnecting)
+        XCTAssertFalse(appState.messages.contains { $0.content == "Hello" }, "The waiting message shows in its place")
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+        await waitUntil { store.loadPendingSends(dashboardID: dashboard).count == 1 }
+    }
+
+    /// A send with a picture can't wait as text: it still comes back, and
+    /// says why.
+    func testAPictureWhoseUploadFoundTheSocketClosedSaysWhyUntilItsChatIsLeft() async throws {
+        var operations = ChatResumeLifecycleOperations(sendPrompt: { _, _, _ in .accepted })
+        // The upload is what finds the socket closed.
+        operations.uploadAttachment = { _, _, _ in throw HermesError.notConnected }
+        let (appState, _, _) = makeAppState(lifecycleOperations: operations, reconnectScheduler: { _, _ in {} })
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.sessions = [session("stored-a")]
+        appState.activeSessionId = "stored-a"
+        appState.isConnected = true
+        let photo = Attachment(
+            id: UUID().uuidString,
+            name: "photo.jpg",
+            uri: "file:///tmp/photo.jpg",
+            mimeType: "image/jpeg",
+            kind: .image
+        )
+
+        let went = await appState.submitComposer(text: "What is this?", attachments: [photo])
+
+        XCTAssertFalse(went)
+        XCTAssertNil(appState.pendingComposerSend)
+        XCTAssertFalse(appState.isConnected, "The reconnect starts all the same")
+        XCTAssertNotNil(appState.errorMessage, "Said under the composer, now shown while it's unlocked too")
+        let failure = try XCTUnwrap(appState.sendFailureShown)
+
+        // Leaving its chat takes the line with it.
+        appState.sessions.append(session("stored-b"))
+        appState.activeSessionId = "stored-b"
+        // The recovery's own sync may have said something since: that stays.
+        XCTAssertNotEqual(appState.errorMessage, failure)
+        XCTAssertNil(appState.sendFailureShown)
+    }
+
     /// Queue (#842): Hermes keeps the message as the next turn, so it goes
     /// even if the app closes. It is sent at once, marked queued, and the
     /// running reply goes on streaming meanwhile.
@@ -3096,7 +3169,8 @@ final class OfflineChatCacheTests: XCTestCase {
         store existingStore: OfflineChatCacheStore? = nil,
         configureDefaults: (UserDefaults) -> Void = { _ in },
         sessionCatalogLoader: ((Bool) async throws -> [SessionSummary])? = nil,
-        lifecycleOperations: ChatResumeLifecycleOperations = .live
+        lifecycleOperations: ChatResumeLifecycleOperations = .live,
+        reconnectScheduler: ChatResumeReconnectScheduler? = nil
     ) -> (AppState, OfflineChatCacheStore, UUID) {
         let defaults = makeScratchDefaults("OfflineChatCacheTests")
         configureDefaults(defaults)
@@ -3109,6 +3183,7 @@ final class OfflineChatCacheTests: XCTestCase {
             dashboardRegistry: registry,
             clearSessionPresentationCache: {},
             sessionCatalogLoader: sessionCatalogLoader,
+            reconnectScheduler: reconnectScheduler,
             chatResumeLifecycleOperations: lifecycleOperations,
             sessionPresentationCache: SessionPresentationCache(defaults: defaults),
             offlineChatCache: store

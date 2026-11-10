@@ -22,7 +22,9 @@
 //  writing it. From 0.98.0 an event or reminder Pulse would add is a
 //  suggestion on its own card, with Add and Not now, then how it went, and
 //  Undo once it's on the phone; this phone applies what it tapped without
-//  its own change card.
+//  its own change card. From 0.150.0 a card draws its pick under its words
+//  (PulseLookViews), Ask leaves the pick's words in the composer, and the
+//  morning brief is laid out from its parts.
 //  Pulse's own chat, where its hidden turns run, isn't shown: the cards are
 //  the way to answer it.
 //
@@ -125,6 +127,7 @@ struct V2PulsePage: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @EnvironmentObject private var appState: AppState
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
     /// On screen (not under a chat pushed over it): only then is it read and marked seen.
     @State private var isShown = false
     @ObservedObject var appLanguage = AppLanguageStore.shared
@@ -641,7 +644,11 @@ struct V2PulsePage: View {
                 .accessibilityLabel(AppLocalization.string("Fold the morning brief"))
                 .accessibilityIdentifier("pulse.brief.fold")
             }
-            if !brief.card.news.isEmpty {
+            // In its parts when the plugin sends them (0.150.0), else as Hermes wrote it.
+            if let parts = brief.card.look?.briefParts,
+               !(parts.summary.isEmpty && parts.today.isEmpty && parts.open.isEmpty && parts.held == 0) {
+                PulseBriefParts(summary: parts.summary, today: parts.today, open: parts.open, heldCount: parts.held)
+            } else if !brief.card.news.isEmpty {
                 Text(brief.card.formattedNews)
                     .scaledFont(.subheadline)
                     .foregroundStyle(Color.primary.opacity(0.86))
@@ -697,9 +704,16 @@ struct V2PulsePage: View {
                 sourceLink(card)
             } else {
                 topicLine(card)
-                Text(card.formattedNews)
-                    .scaledFont(.body)
-                    .fixedSize(horizontal: false, vertical: true)
+                if let look = card.look {
+                    // Held in the brief, a pick keeps the frame's headline and
+                    // sentence; its buttons stay the block's row.
+                    lookWords(card, look: look)
+                } else {
+                    Text(card.formattedNews)
+                        .scaledFont(.body)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                lookBody(card)
                 sourceLink(card)
                 whyNote(card)
                 actionRow(card)
@@ -873,7 +887,17 @@ struct V2PulsePage: View {
         actingCard == card.id || finishingCards.contains(card.id) || ratingCards.contains(card.id)
     }
 
-    private func cardView(_ card: PulseCard) -> some View {
+    @ViewBuilder private func cardView(_ card: PulseCard) -> some View {
+        // A card drawn from its pick (0.150.0) gets the Pulse frame: a short
+        // headline, the drawing, and its actions as a bar along the bottom.
+        if let look = card.look, !card.isProposal {
+            lookCardView(card, look: look)
+        } else {
+            wordsCardView(card)
+        }
+    }
+
+    private func wordsCardView(_ card: PulseCard) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             topicLine(card)
             if card.isProposal {
@@ -888,8 +912,10 @@ struct V2PulsePage: View {
                     .strikethrough(card.doneAt != nil)
                     .foregroundStyle(card.isCleared ? Color.secondary : Color.primary)
                     .fixedSize(horizontal: false, vertical: true)
+                lookBody(card)
             }
-            if !card.quote.isEmpty, !card.isCleared {
+            // A promise's look quotes its words already.
+            if !card.quote.isEmpty, !card.isCleared, !card.drawsPromise {
                 Text(verbatim: "“\(card.quote)”")
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
@@ -921,6 +947,161 @@ struct V2PulsePage: View {
         .opacity(card.isCleared ? 0.7 : 1)
     }
 
+    /// The Pulse frame (design D): what it's about and when, the pick's
+    /// headline and its one more sentence, what the pick draws, then the
+    /// actions as a full-width bar with the thumbs at its end.
+    private func lookCardView(_ card: PulseCard, look: PulseLook) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            VStack(alignment: .leading, spacing: 8) {
+                topicLine(card)
+                lookWords(card, look: look)
+                lookBody(card)
+                if !card.quote.isEmpty, !card.isCleared, !card.drawsPromise {
+                    Text(verbatim: "“\(card.quote)”")
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                sourceLink(card)
+                whyNote(card)
+                if card.isCleared {
+                    HStack(spacing: 8) {
+                        clearedLabel(card)
+                        Spacer(minLength: 0)
+                        clearedUndoButton(card)
+                    }
+                } else if untoldCards.contains(card.id) {
+                    Label(Self.untoldNote, systemImage: "exclamationmark.circle")
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.orange)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                if card.rating == "down", let reason = PulseDownReason(rawValue: card.reason),
+                   !(card.isAwayForWrongTime && card.isResting) {
+                    Text(verbatim: reason.title)
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .trailing)
+                }
+            }
+            .padding(EdgeInsets(top: 12, leading: 14, bottom: 14, trailing: 14))
+            if !card.isCleared, hasBarActions(card) {
+                actionBar(card)
+            }
+        }
+        .background(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .fill(.thinMaterial)
+        )
+        .clipShape(RoundedRectangle(cornerRadius: 22, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: 22, style: .continuous)
+                .strokeBorder(focusedCard == card.id ? Color.conduitAccent.opacity(0.8) : Color.white.opacity(0.14),
+                              lineWidth: focusedCard == card.id ? 1.5 : 1)
+        )
+        .opacity(card.isCleared ? 0.7 : 1)
+    }
+
+    /// The pick's headline in bold and its one more sentence under it (the
+    /// card's news when the pick has no headline).
+    @ViewBuilder private func lookWords(_ card: PulseCard, look: PulseLook) -> some View {
+        Group {
+            if look.line.isEmpty {
+                Text(card.formattedNews)
+            } else {
+                Text(PulseCard.formatted(look.line, markdown: card.kind != "followup"))
+            }
+        }
+        .scaledFont(.headline)
+        .strikethrough(card.doneAt != nil)
+        .foregroundStyle(card.isCleared ? Color.secondary : Color.primary)
+        .fixedSize(horizontal: false, vertical: true)
+        if !look.detail.isEmpty {
+            Text(PulseCard.formatted(look.detail, markdown: card.kind != "followup"))
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+        }
+    }
+
+    /// Whether the bar has anything in it: a lone hairline otherwise. It
+    /// reads the same choices `cardButtons` and `cardThumbs` draw from, so
+    /// a button added there can't leave the bar out or empty (issue 2099).
+    private func hasBarActions(_ card: PulseCard) -> Bool {
+        card.isRatable || shownButtons(card, untold: untoldCards.contains(card.id)).any
+    }
+
+    /// The buttons a card shows beside its thumbs.
+    private struct ShownButtons {
+        enum DoIt { case hidden, ask(PulseLook.Action), act }
+        var doIt: DoIt = .hidden
+        var done = false
+        var extras: [PulseLook.Action] = []
+        var later = false
+
+        var any: Bool {
+            if case .hidden = doIt { return done || !extras.isEmpty || later }
+            return true
+        }
+    }
+
+    private func shownButtons(_ card: PulseCard, untold: Bool) -> ShownButtons {
+        var shown = ShownButtons()
+        // A pick's Ask takes Do it's place, with its own words (0.150.0).
+        if !untold, let ask = card.look?.ask, appState.canAskFromPulseCard(card) {
+            shown.doIt = .ask(ask)
+        } else if !untold, appState.canActOnPulseCard(card) {
+            shown.doIt = .act
+        }
+        shown.done = appState.canMarkPulseCardDone(card)
+        shown.extras = card.look?.extraActions ?? []
+        shown.later = card.look?.offersLater == true && card.dismissedAt == nil && card.doneAt == nil && canDismiss
+        return shown
+    }
+
+    /// The frame's actions: each a full-width segment split by hairlines,
+    /// the thumbs at the end. Too many for one row, the thumbs go to a
+    /// row of their own, and past that the actions scroll.
+    @ViewBuilder private func actionBar(_ card: PulseCard) -> some View {
+        let untold = untoldCards.contains(card.id)
+        VStack(spacing: 0) {
+            Rectangle().fill(Color.primary.opacity(0.1)).frame(height: 1)
+            ViewThatFits(in: .horizontal) {
+                HStack(spacing: 0) {
+                    cardButtons(card, untold: untold, bar: true)
+                    if card.isRatable { cardThumbs(card).modifier(PulseBarDivider()) }
+                }
+                VStack(spacing: 0) {
+                    HStack(spacing: 0) { cardButtons(card, untold: untold, bar: true) }
+                    if card.isRatable {
+                        Rectangle().fill(Color.primary.opacity(0.1)).frame(height: 1)
+                        HStack(spacing: 0) { Spacer(minLength: 0); cardThumbs(card) }
+                    }
+                }
+                VStack(spacing: 0) {
+                    ScrollView(.horizontal, showsIndicators: false) {
+                        HStack(spacing: 0) { cardButtons(card, untold: untold, bar: true) }
+                    }
+                    if card.isRatable {
+                        Rectangle().fill(Color.primary.opacity(0.1)).frame(height: 1)
+                        HStack(spacing: 0) { Spacer(minLength: 0); cardThumbs(card) }
+                    }
+                }
+            }
+            // The first segment's hairline falls outside the card.
+            .padding(.leading, -1)
+        }
+    }
+
+    /// What the card's pick draws under its words (0.150.0): a date, the
+    /// days left, a job's runs, a promise, a status, steps or a card body.
+    @ViewBuilder private func lookBody(_ card: PulseCard) -> some View {
+        if let look = card.look, look.drawsBody {
+            // The whole card already steps back when cleared.
+            PulseLookBody(look: look)
+        }
+    }
+
     /// The coloured dot and what it's about, and when.
     private func topicLine(_ card: PulseCard) -> some View {
         let tint = PulseTopicTint.color(card)
@@ -933,7 +1114,12 @@ struct V2PulsePage: View {
                 .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(tint)
                 .accessibilityAddTraits(.isHeader)
-            if let created = card.createdAt {
+            // Rewritten since because the thing it follows changed (0.150.0): when, last.
+            if card.wasUpdated, let updated = card.updatedAt {
+                Text(verbatim: "· " + AppLocalization.string("Updated \(PulseTopicTint.stamp(updated))"))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+            } else if let created = card.createdAt {
                 Text(verbatim: "· " + PulseTopicTint.stamp(created))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
@@ -1056,16 +1242,48 @@ struct V2PulsePage: View {
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
                 }
-                HStack(spacing: 8) {
-                    if !untold, appState.canActOnPulseCard(card) { doItButton(card) }
-                    if appState.canMarkPulseCardDone(card) { doneButton(card) }
-                    Spacer(minLength: 0)
-                    if card.isRatable {
-                        thumb(card, up: true)
-                        thumb(card, up: false)
+                // One row when it fits; a pick's extra buttons can crowd a
+                // narrow phone or large text, so the thumbs then go below
+                // and the buttons scroll sideways.
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 8) {
+                        cardButtons(card, untold: untold)
+                        Spacer(minLength: 0)
+                        cardThumbs(card)
+                    }
+                    VStack(alignment: .leading, spacing: 8) {
+                        ScrollView(.horizontal, showsIndicators: false) {
+                            HStack(spacing: 8) { cardButtons(card, untold: untold) }
+                        }
+                        if card.isRatable {
+                            HStack(spacing: 8) { cardThumbs(card) }
+                        }
                     }
                 }
             }
+        }
+    }
+
+    @ViewBuilder
+    private func cardButtons(_ card: PulseCard, untold: Bool, bar: Bool = false) -> some View {
+        let shown = shownButtons(card, untold: untold)
+        switch shown.doIt {
+        case .ask(let ask): doItButton(card, ask: ask, bar: bar)
+        case .act: doItButton(card, bar: bar)
+        case .hidden: EmptyView()
+        }
+        if shown.done { doneButton(card, bar: bar) }
+        ForEach(Array(shown.extras.enumerated()), id: \.offset) { _, action in
+            pickActionButton(action, bar: bar)
+        }
+        if shown.later { laterButton(card, bar: bar) }
+    }
+
+    @ViewBuilder
+    private func cardThumbs(_ card: PulseCard) -> some View {
+        if card.isRatable {
+            thumb(card, up: true)
+            thumb(card, up: false)
         }
     }
 
@@ -1223,7 +1441,9 @@ struct V2PulsePage: View {
         }
     }
 
-    private func doItButton(_ card: PulseCard) -> some View {
+    /// Do it, or a pick's Ask (`ask`, 0.150.0): the same chat, with the
+    /// pick's words in the composer to change before sending.
+    private func doItButton(_ card: PulseCard, ask: PulseLook.Action? = nil, bar: Bool = false) -> some View {
         Button {
             Haptics.selection()
             if let refusal = appState.pulseNewChatRefusal(for: card) {
@@ -1237,7 +1457,7 @@ struct V2PulsePage: View {
             actingCard = card.id
             Task {
                 defer { if actingCard == card.id { actingCard = nil } }
-                let opened = await appState.actOnPulseCard(card)
+                let opened = await appState.actOnPulseCard(card, words: ask?.value)
                 guard appState.activeDashboardID == dashboard else { return }
                 if !opened {
                     showError(failure)
@@ -1262,35 +1482,78 @@ struct V2PulsePage: View {
             // Label's icon can take the tint, which is the button's own fill,
             // and vanish, leaving the title alone at the right.
             Label {
-                Text(AppLocalization.string("Do it"))
+                Text(verbatim: ask?.label ?? AppLocalization.string("Do it"))
             } icon: {
                 Image(systemName: "arrow.right.circle")
-                    .foregroundStyle(.white)
+                    .foregroundStyle(bar ? Color.conduitAccent : .white)
             }
             .labelStyle(.titleAndIcon)
-            .scaledFont(.footnote.weight(.semibold))
+            .scaledFont(bar ? .subheadline.weight(.semibold) : .footnote.weight(.semibold))
         }
-        .buttonStyle(.borderedProminent)
-        .controlSize(.small)
-        .tint(.conduitAccent)
-        .accessibilityHint(Text(appState.pulseCardHasChat(card)
-            ? AppLocalization.string("Opens the chat with this reminder ready to send")
-            : AppLocalization.string("Opens a new chat with this reminder ready to send")))
+        .modifier(PulseActionStyle(bar: bar, prominent: true, tint: .conduitAccent))
+        .accessibilityHint(Text(ask != nil
+            ? (appState.pulseCardHasChat(card)
+                ? AppLocalization.string("Opens the chat with these words to edit before sending")
+                : AppLocalization.string("Opens a new chat with these words to edit before sending"))
+            : (appState.pulseCardHasChat(card)
+                ? AppLocalization.string("Opens the chat with this reminder ready to send")
+                : AppLocalization.string("Opens a new chat with this reminder ready to send"))))
         .disabled(actingCard != nil || isBusy(card))
         .accessibilityIdentifier("pulse.card.do-it")
     }
 
-    private func doneButton(_ card: PulseCard) -> some View {
+    /// A pick's Open (its link) or Draft (its message, to share or copy).
+    @ViewBuilder private func pickActionButton(_ action: PulseLook.Action, bar: Bool = false) -> some View {
+        switch action.does {
+        case .open:
+            if let url = action.url {
+                Button {
+                    Haptics.selection()
+                    openURL(url)
+                } label: {
+                    Text(verbatim: action.label)
+                        .scaledFont(bar ? .subheadline.weight(.semibold) : .footnote.weight(.semibold))
+                }
+                .modifier(PulseActionStyle(bar: bar, prominent: false, tint: .conduitAccent))
+            }
+        case .draft:
+            ShareLink(item: action.value) {
+                Text(verbatim: action.label)
+                    .scaledFont(bar ? .subheadline.weight(.semibold) : .footnote.weight(.semibold))
+            }
+            .modifier(PulseActionStyle(bar: bar, prominent: false, tint: .conduitAccent))
+        case .ask, .done, .later:
+            EmptyView()
+        }
+    }
+
+    /// A pick's Later: Not now, as the card's swipe offers it.
+    private func laterButton(_ card: PulseCard, bar: Bool = false) -> some View {
+        Button {
+            guard !isBusy(card) else { return }
+            Haptics.light()
+            if canChooseRest {
+                restCard = card
+            } else {
+                dismiss(card, true)
+            }
+        } label: {
+            Text(AppLocalization.string("Not now"))
+                .scaledFont(bar ? .subheadline.weight(.semibold) : .footnote.weight(.semibold))
+        }
+        .modifier(PulseActionStyle(bar: bar, prominent: false, tint: .gray))
+        .disabled(isBusy(card))
+    }
+
+    private func doneButton(_ card: PulseCard, bar: Bool = false) -> some View {
         Button {
             Haptics.selection()
             markDone(card, true)
         } label: {
             Label(AppLocalization.string("Done"), systemImage: "checkmark.circle")
-                .scaledFont(.footnote.weight(.semibold))
+                .scaledFont(bar ? .subheadline.weight(.semibold) : .footnote.weight(.semibold))
         }
-        .buttonStyle(.bordered)
-        .controlSize(.small)
-        .tint(.conduitAccent)
+        .modifier(PulseActionStyle(bar: bar, prominent: false, tint: .conduitAccent))
         .accessibilityHint(Text(card.isFound
             ? AppLocalization.string("Tells Pulse this is taken care of, so the next report knows it's done")
             : AppLocalization.string("Tells Pulse this is taken care of, so it stops checking on it")))
@@ -1322,7 +1585,7 @@ struct V2PulsePage: View {
     private func load() async {
         let dashboard = appState.activeDashboardID
         do {
-            let loaded = try await client.feed(proposals: appState.pulseSuggests)
+            let loaded = try await client.feed(proposals: appState.pulseSuggests, looks: appState.pulseLooks)
             guard appState.activeDashboardID == dashboard else { return }
             page = loaded
             if newCards == nil, isShown {
@@ -2021,6 +2284,61 @@ struct PulseLeftOutSheet: View {
                 }
                 Haptics.error()
             }
+        }
+    }
+}
+
+/// A Pulse card's action: a small pill in a card of words, a full-width
+/// segment of the bar in the Pulse frame (design D).
+struct PulseActionStyle: ViewModifier {
+    let bar: Bool
+    let prominent: Bool
+    let tint: Color
+
+    func body(content: Content) -> some View {
+        if bar {
+            content
+                .buttonStyle(PulseBarButtonStyle(prominent: prominent, tint: tint))
+                .modifier(PulseBarDivider())
+        } else if prominent {
+            content
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .tint(tint)
+        } else {
+            content
+                .buttonStyle(.bordered)
+                .controlSize(.small)
+                .tint(tint)
+        }
+    }
+}
+
+/// One segment of the Pulse frame's bar: as wide as it can be, 44 pt tall.
+struct PulseBarButtonStyle: ButtonStyle {
+    let prominent: Bool
+    let tint: Color
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .lineLimit(2)
+            .multilineTextAlignment(.center)
+            .foregroundStyle(prominent ? tint : (tint == .gray ? Color.secondary : Color.primary.opacity(0.85)))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 6)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+            .background(configuration.isPressed ? Color.primary.opacity(0.08) : Color.clear)
+            .opacity(isEnabled ? 1 : 0.4)
+    }
+}
+
+/// The hairline before each segment of the bar.
+struct PulseBarDivider: ViewModifier {
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .leading) {
+            Rectangle().fill(Color.primary.opacity(0.1)).frame(width: 1)
         }
     }
 }

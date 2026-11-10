@@ -161,6 +161,15 @@ struct BotRosterView: View {
             ConnectionRepairSetupSheet(context: context)
                 .environmentObject(appState)
         }
+        // A Bot Chat opened from here that didn't open says why here.
+        .onChange(of: appState.botsListNotice, initial: true) { _, notice in
+            guard let notice else { return }
+            managementNotice = notice
+            appState.botsListNotice = nil
+        }
+        // Another dashboard's or profile's list: this one's notice isn't about it.
+        .onChange(of: appState.activeDashboardID) { _, _ in managementNotice = nil }
+        .onChange(of: appState.activeProfile) { _, _ in managementNotice = nil }
         .sheet(item: $overviewBot, onDismiss: {
             if let bot = editAfterOverview {
                 editAfterOverview = nil
@@ -181,8 +190,7 @@ struct BotRosterView: View {
                     // (Eric 2026-11-04), unless it opens beside the list.
                     if openBeside == nil { appState.botZoom.tap(bot.name) }
                     Task {
-                        if await !appState.openBotChat(for: bot) { appState.botZoom.openFailed(bot.name) }
-                        appState.endOpeningBotChat(bot.name)
+                        if await !appState.openBotChatFromList(bot) { appState.botZoom.openFailed(bot.name) }
                     }
                 },
                 onClose: { overviewBot = nil },
@@ -204,7 +212,6 @@ struct BotRosterView: View {
                 appState.beginOpeningBotChat(bot.name)
                 Task {
                     await appState.openNewBotChat(for: bot, introduces: introduces)
-                    appState.endOpeningBotChat(bot.name)
                 }
             }
             .environmentObject(appState)
@@ -1395,8 +1402,7 @@ private struct BotRosterRow: View {
             Haptics.light()
             appState.beginOpeningBotChat(bot.name)
             Task {
-                await appState.openBotChat(for: bot)
-                appState.endOpeningBotChat(bot.name)
+                await appState.openBotChatFromList(bot)
             }
         } label: {
             // V2: a chat-style row, no card. Picture, name and time, then

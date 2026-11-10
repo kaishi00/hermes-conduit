@@ -515,8 +515,7 @@ struct V2VoiceButton: View {
         Task { @MainActor in
             defer { isStarting = false }
             appState.beginOpeningBotChat(bot.name)
-            let opened = await appState.openBotChat(for: bot)
-            appState.endOpeningBotChat(bot.name)
+            let opened = await appState.openBotChatFromList(bot)
             // A failed open says why itself; a superseded one (a newer
             // navigation took over) is no failure, so nothing more is said.
             guard opened else { return }

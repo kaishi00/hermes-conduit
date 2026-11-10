@@ -151,7 +151,9 @@ struct V2ConversationScreen: View {
     private var workProfile: String? {
         appState.activeRoomSurface == nil && appState.servesBotWorkstreams ? appState.activeBotChatProfile : nil
     }
-    private var showsWorkPanel: Bool { workPanelOpen && fitsSidePanel && workProfile != nil }
+    private var showsWorkPanel: Bool {
+        workPanelOpen && fitsSidePanel && workProfile != nil && appState.botChatComingOverAnother == nil
+    }
 
     private var fitsSidePanel: Bool { ChatSidePanel.fits(width: screenWidth) }
     /// As wide as the user dragged it, less on a window without the room.
@@ -161,6 +163,8 @@ struct V2ConversationScreen: View {
     }
     private var showsSidePanel: Bool {
         sidePanelOpen && fitsSidePanel && appState.activeRoomSurface == nil && !showsWorkPanel
+            // The chat open before keeps its panels until the coming one lands.
+            && appState.botChatComingOverAnother == nil
     }
 
     private var parent: SessionSummary? {
@@ -230,6 +234,12 @@ struct V2ConversationScreen: View {
                 Color.clear
                     .onAppear { screenWidth = proxy.size.width }
                     .onChange(of: proxy.size.width) { _, width in screenWidth = width }
+                    // The chat open before's Work closes under a Bot Chat
+                    // on its way, and doesn't come back over the one that
+                    // lands. (Here, off the screen's long modifier chain.)
+                    .onChange(of: appState.botChatComingOverAnother) { _, coming in
+                        if coming != nil { workPanelOpen = false }
+                    }
             }
         }
         // A file path tapped in a reply: the Folder tab beside the chat, or
@@ -283,17 +293,21 @@ struct V2ConversationScreen: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
-        // The bot's overview and Edit Bot cover the chat too.
+        // The bot's overview and Edit Bot cover the chat too, and a room's
+        // settings, info, picture picker and disband prompt cover the room
+        // (issue 2064).
         .onChange(of: screenTarget != nil || artifactSessionIDs != nil || chatTitlePendingRename != nil
                   || chatTitlePendingDeletion != nil || editedBot != nil
-                  || (workPanelOpen && !fitsSidePanel && workProfile != nil)) { _, covered in
+                  || (workPanelOpen && !fitsSidePanel && workProfile != nil)
+                  || showsRoomSettings || showsRoomInfo || confirmsRoomDisband || choosesRoomPicture != nil) { _, covered in
             appState.chatCoveredBySheet = covered
             // What came in under the sheet is read once it closes (#1579).
             if !covered { appState.clearShownChatNotifications() }
         }
         .onDisappear { appState.chatCoveredBySheet = false }
         .sheet(isPresented: Binding(
-            get: { workPanelOpen && !fitsSidePanel && workProfile != nil },
+            // The chat open before's Work closes under a Bot Chat on its way.
+            get: { workPanelOpen && !fitsSidePanel && workProfile != nil && appState.botChatComingOverAnother == nil },
             set: { if !$0 { workPanelOpen = false } }
         ), onDismiss: {
             if let bot = editAfterOverview {
@@ -432,7 +446,17 @@ struct V2ConversationScreen: View {
                 // widens with the window, its text a size or more larger as
                 // it does; the backdrop still fills it.
                 .readableChatColumn()
+                // Under the cover, VoiceOver doesn't reach it either.
+                .accessibilityHidden(appState.botChatComingOverAnother != nil)
+            // A Bot Chat tapped in Bots is pushed before its open lands:
+            // the chat open before, another bot's, stays under a cover
+            // until then, and is never shown as the tapped bot's.
+            if appState.botChatComingOverAnother != nil {
+                BotChatComingCover(bot: appState.botChatOnItsWay?.bot)
+                    .transition(.opacity)
+            }
         }
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.botChatComingOverAnother)
         // The chat's column only: a drag in a panel beside it (Artifacts,
         // its divider, the Work panel's swipes) is that panel's.
         .simultaneousGesture(backSwipe, including: swipesBack ? .all : .subviews)
@@ -442,7 +466,10 @@ struct V2ConversationScreen: View {
     /// other chat, a room shown over the workstream (its Back leaves the
     /// room), or beside the list on a wide window, which has no Back.
     private var workstreamGoesBack: String? {
-        guard !shell.isSplit, appState.activeRoomSurface == nil else { return nil }
+        // Under a Bot Chat on its way, Back is the list's: it stands that
+        // open down, rather than open the hidden workstream's Bot Chat.
+        guard !shell.isSplit, appState.activeRoomSurface == nil,
+              appState.botChatComingOverAnother == nil else { return nil }
         return appState.activeWorkstream?.profile
     }
 
@@ -552,8 +579,17 @@ struct V2ConversationScreen: View {
                 .accessibilityIdentifier("conversation.chatListToggle")
             }
         }
+        // A Bot Chat on its way names its bot; the chat under the cover
+        // keeps its title and actions to itself.
+        if let coming = appState.botChatComingOverAnother {
+            ToolbarItem(placement: .principal) {
+                Text(coming)
+                    .scaledFont(.headline)
+                    .lineLimit(1)
+            }
+        }
         // Session-only controls: an open room owns the title and actions.
-        if appState.activeRoomSurface == nil {
+        if appState.activeRoomSurface == nil, appState.botChatComingOverAnother == nil {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
                     ChatTitleControl(
@@ -599,25 +635,27 @@ struct V2ConversationScreen: View {
         }
         // The big button does something else: a live call stays one
         // tap away up here.
-        if appState.activeRoomSurface == nil,
+        if appState.activeRoomSurface == nil, appState.botChatComingOverAnother == nil,
            ChatVoiceButtonAction.resolved(profile: appState.chatVoiceButtonOverride, app: appChatVoiceButton) != .liveCall {
             ToolbarItem(placement: .topBarTrailing) {
                 V2VoiceButton(context: .conversation, style: .toolbar)
             }
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            V2ConversationMenu(
-                onRename: { chatTitlePendingRename = $0 },
-                onDelete: { chatTitlePendingDeletion = $0 },
-                onShowRoomInfo: { showsRoomInfo = true },
-                onDisbandRoom: { confirmsRoomDisband = true },
-                onChooseRoomPicture: { choosesRoomPicture = $0 },
-                onRoomSettings: { showsRoomSettings = true },
-                onArtifacts: { openArtifacts(tab: .made) },
-                onEditBot: { editedBot = .edit($0) },
-                onScreen: { screenTarget = $0 },
-                screens: appState.botScreens
-            )
+        if appState.botChatComingOverAnother == nil {
+            ToolbarItem(placement: .topBarTrailing) {
+                V2ConversationMenu(
+                    onRename: { chatTitlePendingRename = $0 },
+                    onDelete: { chatTitlePendingDeletion = $0 },
+                    onShowRoomInfo: { showsRoomInfo = true },
+                    onDisbandRoom: { confirmsRoomDisband = true },
+                    onChooseRoomPicture: { choosesRoomPicture = $0 },
+                    onRoomSettings: { showsRoomSettings = true },
+                    onArtifacts: { openArtifacts(tab: .made) },
+                    onEditBot: { editedBot = .edit($0) },
+                    onScreen: { screenTarget = $0 },
+                    screens: appState.botScreens
+                )
+            }
         }
         // Artifacts beside the chat, on a window with room for both.
         if fitsSidePanel, appState.activeRoomSurface == nil {
@@ -637,7 +675,8 @@ struct V2ConversationScreen: View {
                         .modifier(V2PreGlassToolbarControl())
                 }
                 .keyboardShortcut("a", modifiers: [.command, .option])
-                .disabled(!shell.isTabActive)
+                // The cover hides the panel: it waits for the coming chat.
+                .disabled(!shell.isTabActive || appState.botChatComingOverAnother != nil)
                 .accessibilityLabel(showsSidePanel ? AppLocalization.string("Hide artifacts") : AppLocalization.string("Show artifacts"))
                 .accessibilityIdentifier("conversation.sidePanelToggle")
             }
@@ -938,4 +977,24 @@ private struct ArtifactSheetIDs: Identifiable {
     let id = UUID()
     let ids: [String]
     var tab: ArtifactsTab = .made
+}
+
+/// A Bot Chat's screen while its open is out and the active chat is still
+/// the one open before (`AppState.botChatComingOverAnother`): the bot's
+/// backdrop and that it's opening. It takes the taps, so nothing reaches
+/// the chat under it.
+private struct BotChatComingCover: View {
+    let bot: String?
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            V2Backdrop(glowProfile: bot)
+            ProgressView("Opening conversation…")
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.top, 60)
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
 }

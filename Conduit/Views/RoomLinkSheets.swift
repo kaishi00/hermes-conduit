@@ -368,7 +368,7 @@ struct RoomLinkOpenedSheet: View {
                         .foregroundStyle(.secondary)
                 }
             } else {
-                Label(AppLocalization.string("Update the Conduit plugin on your Hermes host to link with someone."), systemImage: "exclamationmark.triangle.fill")
+                Label(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to link with someone.")), systemImage: "exclamationmark.triangle.fill")
                     .scaledFont(.subheadline)
                     .foregroundStyle(.orange)
             }

@@ -485,6 +485,13 @@ struct V2Shell: View {
     }
 
     /// Whether the visible tab shows the conversation.
+    /// The chat's screen left both tabs (not moved from one to the other):
+    /// a Bot Chat still on its way stands down.
+    private func standDownIfChatLeft() {
+        guard !chatsPath.contains(.conversation), !botsPath.contains(.conversation) else { return }
+        appState.standDownBotChatOnItsWay()
+    }
+
     private var conversationVisible: Bool {
         switch selectedTab {
         case .chats: return chatsPath.last == .conversation
@@ -675,8 +682,17 @@ struct V2Shell: View {
             // Again once Hermes lists its rooms, whichever screen asked.
             .task(id: [appState.isConnected, appState.groupRoomsListed]) { await reopenRoomIfWaiting() }
             // A page tapped while a room waits takes the reader elsewhere too.
-            .onChange(of: chatsPath) { giveUpRoomIfLeft() }
-            .onChange(of: botsPath) { giveUpRoomIfLeft() }
+            .onChange(of: chatsPath) { old, new in
+                giveUpRoomIfLeft()
+                if old.contains(.conversation) { standDownIfChatLeft() }
+            }
+            // Back from a chat's screen while a Bot Chat is on its way (the
+            // edge swipe, Close beside the list): that open stands down
+            // rather than land behind the list.
+            .onChange(of: botsPath) { old, new in
+                giveUpRoomIfLeft()
+                if old.contains(.conversation) { standDownIfChatLeft() }
+            }
             .onChange(of: appState.isModalSheetPresented) { _, presented in
                 // A sheet's dismissal shows the chat again: what came in under
                 // it is read now (#1579).
@@ -1225,6 +1241,14 @@ struct V2Shell: View {
         chatsPath.removeAll()
         visitedTabs.insert(.chats)
         selectTab(.chats)
+        // The filter draws the cron-session rows, and the list's routine poll
+        // reuses a cached cron read for up to five minutes
+        // (SessionCatalogCache.fullHistoryRefreshInterval), so a run that
+        // finished since Chats last read would be missing from the list this
+        // tap asks for. Read the newest page and the cron rows on the tap,
+        // forcing both: older pages wait for the history's own interval, so a
+        // tap is not the pull's full walk.
+        Task { await appState.refreshNewestSessionCatalogPage() }
     }
 
     private func selectTab(_ tab: V2Tab) {

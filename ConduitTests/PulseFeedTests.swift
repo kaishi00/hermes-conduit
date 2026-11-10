@@ -852,6 +852,44 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default"))
     }
 
+    func testADueWithNoTimeIsDueByTheEndOfItsDay() throws {
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = try XCTUnwrap(TimeZone(identifier: "Europe/Paris"))
+        let found = try XCTUnwrap(PulseLook.day("2026-11-20", calendar: calendar))
+        XCTAssertFalse(found.hasTime)
+        let end = PulseLook.endOfDay(found.date, calendar: calendar)
+        XCTAssertEqual(calendar.startOfDay(for: end), found.date)
+        XCTAssertEqual(end.timeIntervalSince(found.date), 86_399)
+    }
+
+    func testAskFillsTheChatWithItsWordsAndNeedsAnAsk() async throws {
+        let state = try appState()
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"home_chat_id": "pulse_chat", "cards": [
+          {"id": 2, "kind": "noticed", "topic": "other", "level": "screen", "news": "The audit failed", "chat_id": "work",
+           "message_id": 42, "look": {"shape": "plain", "facts": {},
+           "actions": [{"label": "Retry", "does": "ask", "say": "Run the audit again"}]}},
+          {"id": 3, "kind": "noticed", "topic": "other", "level": "screen", "news": "No buttons", "chat_id": "work"}
+        ]}
+        """)))
+        state.setNotifierPluginStateForTesting(.reported(version: "0.150.0", capabilities: [
+            PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
+            PulseClient.foundActionsCapability
+        ]))
+        state.applyPulseFeed(page)
+        let asking = try XCTUnwrap(page.cards.first { $0.id == 2 })
+        let plain = try XCTUnwrap(page.cards.first { $0.id == 3 })
+        XCTAssertFalse(state.canAskFromPulseCard(plain))
+        let refused = await state.actOnPulseCard(plain, words: "Something else")
+        XCTAssertFalse(refused, "a card with no ask takes no words")
+        XCTAssertTrue(state.canAskFromPulseCard(asking))
+        state.activeSessionId = "work"
+        let opened = await state.actOnPulseCard(asking, words: "Run the audit again")
+        XCTAssertTrue(opened)
+        XCTAssertEqual(state.composerPrefillText, "Run the audit again", "the ask's words, not the card's reminder")
+        XCTAssertEqual(state.composerPrefillDraftKey, ComposerBar.composerDraftKey(for: "work", profile: "default"))
+    }
+
     func testOpeningACardsChatShowsTheMessageItCameFrom() throws {
         let state = try appState()
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
@@ -1771,5 +1809,149 @@ final class PulseFeedTests: XCTestCase {
             XCTAssertNotNil(PulseCardKind.lookedSource(label), label)
         }
         XCTAssertEqual(PulseCardKind.lookedSource("location"), AppLocalization.string("where you are"))
+    }
+
+    // MARK: Looks (0.150.0)
+
+    func testACardBringsItsLookAndAnOlderOneHasNone() throws {
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"cards": [
+          {"id": 7, "kind": "noticed", "level": "screen", "news": "Audit failed again", "created_at": 100,
+           "updated_at": 400, "subject": "job:default:41", "card_ref": "pc_7",
+           "look": {"shape": "runs", "line": "Audit failed again", "detail": "",
+                    "facts": {"job": "audit", "results": ["ok", "fail", "fail"]},
+                    "actions": [{"label": "Restart it", "does": "ask", "say": "Restart the audit job"},
+                                {"label": "Logs", "does": "open", "url": "https://example.com/logs"},
+                                {"label": "Again", "does": "ask", "say": "x"}]}},
+          {"id": 6, "kind": "noticed", "level": "screen", "news": "Kwan's birthday", "created_at": 90,
+           "look": {"shape": "date", "facts": {"day": "2026-11-13", "what": "birthday", "whose": "Kwan"},
+                    "actions": [{"label": "Bad", "does": "open", "url": "http://example.com"}]}},
+          {"id": 5, "kind": "followup", "level": "push", "news": "Old card", "created_at": 80}
+        ]}
+        """)))
+        let runs = page.cards[0]
+        XCTAssertEqual(runs.look?.body, .runs(job: "audit", results: [true, false, false]))
+        XCTAssertEqual(runs.look?.actions.map(\.does), [.ask, .open])  // one each, at most two
+        XCTAssertEqual(runs.look?.ask?.value, "Restart the audit job")
+        XCTAssertEqual(runs.look?.extraActions.map(\.label), ["Logs"])
+        XCTAssertEqual(runs.subject, "job:default:41")
+        XCTAssertTrue(runs.wasUpdated)
+        let date = try XCTUnwrap(page.cards[1].look)
+        guard case let .date(day, what, whose) = date.body else { return XCTFail("not a date") }
+        XCTAssertEqual(PulseLook.wireCalendar.dateComponents([.year, .month, .day], from: day),
+                       DateComponents(year: 2026, month: 11, day: 13))
+        XCTAssertEqual([what, whose], ["birthday", "Kwan"])
+        XCTAssertTrue(date.actions.isEmpty)  // only https links open
+        XCTAssertFalse(page.cards[1].wasUpdated)
+        XCTAssertNil(page.cards[2].look)
+        XCTAssertEqual(page.cards[2].subject, "")
+    }
+
+    func testAPromiseAndDraftLaterAndDoneActionsDecode() throws {
+        let look = try XCTUnwrap(PulseLook(json: try JSONSerialization.jsonObject(with: Data("""
+        {"shape": "promise", "facts": {"person": "Mara", "said": "I'll send the deck", "where": "Work", "when": "Fri"},
+         "actions": [{"label": "Draft a note", "does": "draft", "text": "Here's the deck"}, {"does": "later"}]}
+        """.utf8))))
+        XCTAssertEqual(look.body, .promise(said: "I'll send the deck", person: "Mara", place: "Work", when: "Fri"))
+        XCTAssertEqual(look.actions.map(\.does), [.draft, .later])
+        XCTAssertEqual(look.actions.first?.value, "Here's the deck")
+        XCTAssertTrue(look.offersLater)  // a Later with no label still offers Not now
+        XCTAssertNotNil(PulseLook.Action(json: ["does": "done"]))
+        XCTAssertNil(PulseLook.Action(json: ["does": "draft", "label": "Draft"]))  // a draft needs its words
+        XCTAssertNil(PulseLook.Action(json: ["does": "ask", "say": "x"]))  // an ask needs its label
+    }
+
+    func testADrawnBodyDrawsItsCardAndOneThatDoesntHoldUpDrawsPlain() throws {
+        func look(_ body: Any) -> PulseLook? {
+            PulseLook(json: ["shape": "drawn", "facts": ["body": body]])
+        }
+        guard case .drawn = look(["type": "place", "places": [["name": "Gare du Nord"]]])?.body else {
+            return XCTFail("a place card should draw")
+        }
+        XCTAssertEqual(look(["type": "weather", "places": [["name": "X"]]])?.body, .plain)
+    }
+
+    func testFactsThatDontHoldUpDrawPlain() throws {
+        func look(_ text: String) throws -> PulseLook? {
+            PulseLook(json: try JSONSerialization.jsonObject(with: Data(text.utf8)))
+        }
+        XCTAssertEqual(try look(#"{"shape": "due", "facts": {"due": "next week"}}"#)?.body, .plain)
+        XCTAssertEqual(try look(#"{"shape": "steps", "facts": {"names": ["a", "b"], "at": 5}}"#)?.body, .plain)
+        XCTAssertEqual(try look(#"{"shape": "sparkle", "facts": {}}"#)?.body, .plain)
+        XCTAssertEqual(try look(#"{"shape": "runs", "facts": {"job": "a", "results": ["ok", null, "fail"]}}"#)?.body, .plain)
+        // An empty name would shift "at" onto the wrong step.
+        XCTAssertEqual(try look(#"{"shape": "steps", "facts": {"names": ["", "Shipped", "Delivered"], "at": 1}}"#)?.body, .plain)
+        // A day with no time reads in whole days, never hours.
+        let calendar = PulseLook.wireCalendar
+        let noon = try XCTUnwrap(calendar.date(from: DateComponents(year: 2026, month: 11, day: 9, hour: 12)))
+        let today = calendar.startOfDay(for: noon)
+        XCTAssertEqual(PulseLook.relativeDay(today, now: noon), PulseLook.relativeDay(noon, now: noon))
+        XCTAssertNotEqual(PulseLook.relativeDay(today, now: noon),
+                          PulseLook.relativeDay(today.addingTimeInterval(86_400), now: noon))
+        XCTAssertEqual(try look(#"{"shape": "status", "facts": {"label": "Relay", "state": "ok"}}"#)?.body,
+                       .status(label: "Relay", state: .ok))
+        XCTAssertEqual(try look(#"{"shape": "steps", "facts": {"names": ["Ordered", "Shipped", "Delivered"], "at": 1}}"#)?.body,
+                       .steps(names: ["Ordered", "Shipped", "Delivered"], at: 1))
+        let due = try XCTUnwrap(try look(#"{"shape": "due", "facts": {"due": "2026-11-20T15:30", "noticed": "2026-10-28"}}"#))
+        guard case let .due(_, hasTime, noticed) = due.body else { return XCTFail("not due") }
+        XCTAssertTrue(hasTime)
+        XCTAssertNotNil(noticed)
+        XCTAssertNil(PulseLook.day("2026-02-30"))
+        XCTAssertNil(PulseLook.day("2026-11-20T25:00"))
+        XCTAssertNil(PulseLook.day("2026-11-junk-20"))
+        XCTAssertNil(PulseLook.day("2026-11-20T15:junk:30"))
+        XCTAssertNil(PulseLook.day("2026-11-20T"))
+        XCTAssertNil(try look(#"{"facts": {}}"#))
+    }
+
+    func testTheBriefComesInItsParts() throws {
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"cards": [{"id": 9, "kind": "brief", "level": "push", "news": "A light day.\\n- Dentist at 3", "created_at": 200,
+          "look": {"shape": "brief", "line": "A light day.", "actions": [],
+                   "facts": {"summary": "A light day.", "counts": {"today": 1, "open": 2, "held": 3},
+                             "today": ["Dentist at 3"], "open": ["Send Mara the deck", "Renew the passport"]}}}]}
+        """)))
+        let parts = try XCTUnwrap(page.cards[0].look?.briefParts)
+        XCTAssertEqual(parts.summary, "A light day.")
+        XCTAssertEqual(parts.today, ["Dentist at 3"])
+        XCTAssertEqual(parts.open, ["Send Mara the deck", "Renew the passport"])
+        XCTAssertEqual(parts.held, 3)
+    }
+
+    func testTheFeedAsksForLooksOnlyWhenThePluginHasThem() async throws {
+        var paths: [String] = []
+        let client = PulseClient { path, _, _ in
+            paths.append(path)
+            return ["ok": true, "cards": [Any](), "unseen": 0]
+        }
+        _ = try await client.feed(proposals: true, looks: true)
+        _ = try await client.feed(looks: true)
+        _ = try await client.feed()
+        XCTAssertEqual(paths, ["\(PulseClient.path)/feed?proposals=1&looks=1", "\(PulseClient.path)/feed?looks=1",
+                               "\(PulseClient.path)/feed"])
+        let state = try appState()
+        state.setNotifierPluginStateForTesting(.reported(version: "0.148.0", capabilities: [PulseClient.feedCapability]))
+        XCTAssertFalse(state.pulseLooks)
+        state.setNotifierPluginStateForTesting(.reported(version: "0.150.0", capabilities: [
+            PulseClient.feedCapability, PulseClient.looksCapability
+        ]))
+        XCTAssertTrue(state.pulseLooks)
+        XCTAssertTrue(PresentedScreensSync.features.contains("pulse-looks"))
+    }
+
+    func testAskNeedsAnAskAndAnOpenCard() throws {
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"cards": [
+          {"id": 3, "kind": "noticed", "level": "screen", "news": "Audit failed", "created_at": 100,
+           "look": {"shape": "plain", "facts": {}, "actions": [{"label": "Restart it", "does": "ask", "say": "Restart it"}]}},
+          {"id": 2, "kind": "noticed", "level": "screen", "news": "Audit failed", "created_at": 100, "done_at": 200,
+           "look": {"shape": "plain", "facts": {}, "actions": [{"label": "Restart it", "does": "ask", "say": "Restart it"}]}},
+          {"id": 1, "kind": "noticed", "level": "screen", "news": "Audit failed", "created_at": 100}
+        ]}
+        """)))
+        let state = try appState()
+        XCTAssertTrue(state.canAskFromPulseCard(page.cards[0]))
+        XCTAssertFalse(state.canAskFromPulseCard(page.cards[1]))
+        XCTAssertFalse(state.canAskFromPulseCard(page.cards[2]))
     }
 }

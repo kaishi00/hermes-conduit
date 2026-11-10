@@ -1255,8 +1255,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         // unless it opens beside the list, or doesn't open.
         if openBeside == nil { appState.botZoom.tap(bot.name) }
         Task {
-            if await !appState.openBotChat(for: bot) { appState.botZoom.openFailed(bot.name) }
-            appState.endOpeningBotChat(bot.name)
+            if await !appState.openBotChatFromList(bot) { appState.botZoom.openFailed(bot.name) }
         }
     }
 

@@ -443,6 +443,82 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.linkedRoomInviteRows, [], "the read from before the sign-out is dropped")
     }
 
+    /// An answer that lands after a disconnect cleared the invites leaves
+    /// them cleared, with no follow started (issue 2040).
+    @MainActor
+    func testAnAnswerLandingAfterADisconnectLeavesTheInvitesCleared() async throws {
+        let routes = InvitesRoutes(invites: [invitesInvite("conduit-1")])
+        routes.answered = invitesInvite("conduit-1", status: "joined")
+        let appState = invitesAppState(routes)
+        invitesConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(invitesPluginReport)
+        await invitesWait("the invites read", until: { appState.linkedRoomInviteRows.map(\.roomID) == ["conduit-1"] })
+        let invite = try XCTUnwrap(appState.linkedRoomInviteRows.first)
+        let agents = try XCTUnwrap(RoomInviteAgent.agents(for: [invitesBot("default")], choices: invite.choices))
+
+        let answering = Task { @MainActor in await appState.answerLinkedRoomInvite(invite, agents: agents) }
+        await invitesWait("the held answer", until: { routes.answeringHeld })
+        appState.disconnect()
+        XCTAssertNil(appState.linkedRoomInvites, "a disconnect clears them")
+        routes.releaseAnswer()
+        let result = await answering.value
+        XCTAssertEqual(result, .answered, "the host took it")
+        XCTAssertNil(appState.linkedRoomInvites, "the answer doesn't bring back a list of its own")
+        XCTAssertNil(appState.linkedRoomInviteFollow, "nor start following them again")
+    }
+
+    /// A 504 that lands after a disconnect cleared the invites starts no
+    /// follow either (issue 2040).
+    @MainActor
+    func testAStillSendingAnswerAfterADisconnectStartsNoFollow() async throws {
+        let routes = InvitesRoutes(invites: [invitesInvite("conduit-1")])
+        routes.answerTimesOut = true
+        let appState = invitesAppState(routes)
+        invitesConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(invitesPluginReport)
+        await invitesWait("the invites read", until: { appState.linkedRoomInviteRows.map(\.roomID) == ["conduit-1"] })
+        let invite = try XCTUnwrap(appState.linkedRoomInviteRows.first)
+        let agents = try XCTUnwrap(RoomInviteAgent.agents(for: [invitesBot("default")], choices: invite.choices))
+
+        let answering = Task { @MainActor in await appState.answerLinkedRoomInvite(invite, agents: agents) }
+        await invitesWait("the held answer", until: { routes.answeringHeld })
+        appState.disconnect()
+        routes.releaseAnswer()
+        let result = await answering.value
+        guard case .sending = result else { return XCTFail("a 504 is still sending: \(result)") }
+        XCTAssertNil(appState.linkedRoomInvites)
+        XCTAssertNil(appState.linkedRoomInviteFollow, "no follow for a list a disconnect cleared")
+    }
+
+    /// A disconnect while the 504's refresh is still out starts no follow
+    /// either.
+    @MainActor
+    func testADisconnectDuringTheTimedOutAnswersRefreshStartsNoFollow() async throws {
+        let routes = InvitesRoutes(invites: [invitesInvite("conduit-1")])
+        routes.answerTimesOut = true
+        let appState = invitesAppState(routes)
+        invitesConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(invitesPluginReport)
+        await invitesWait("the invites read", until: { appState.linkedRoomInviteRows.map(\.roomID) == ["conduit-1"] })
+        let invite = try XCTUnwrap(appState.linkedRoomInviteRows.first)
+        let agents = try XCTUnwrap(RoomInviteAgent.agents(for: [invitesBot("default")], choices: invite.choices))
+
+        let answering = Task { @MainActor in await appState.answerLinkedRoomInvite(invite, agents: agents) }
+        await invitesWait("the held answer", until: { routes.answeringHeld })
+        routes.holdsNextRead = true
+        routes.releaseAnswer()
+        await invitesWait("the held refresh", until: { routes.holding })
+        appState.disconnect()
+        routes.answerHeldRead()
+        let result = await answering.value
+        guard case .sending = result else { return XCTFail("a 504 is still sending: \(result)") }
+        XCTAssertNil(appState.linkedRoomInvites)
+        XCTAssertNil(appState.linkedRoomInviteFollow, "no follow for a list a disconnect cleared mid-refresh")
+    }
+
     /// An invite's notification opens its card once the plugin's status
     /// is in; one the plugin no longer lists says so, and one from a
     /// dashboard this device doesn't know opens nothing.
@@ -500,6 +576,12 @@ private final class InvitesRoutes {
     private(set) var draftsReads = 0
     private(set) var holding = false
     private var released = false
+    /// What an answer returns, once `releaseAnswer()` lets it.
+    var answered: [String: Any]?
+    /// The held answer ends in a 504: still going to the host.
+    var answerTimesOut = false
+    private(set) var answeringHeld = false
+    private var answerReleased = false
 
     init(invites: [[String: Any]]) {
         self.invites = invites
@@ -510,6 +592,15 @@ private final class InvitesRoutes {
             draftsReads += 1
             let starts: [String: Any] = ["available": true, "reason": NSNull()]
             return ["ok": true, "drafts": [[String: Any]](), "starts": starts]
+        }
+        if path == "\(RoomInvitesClient.path)/answer", method == "POST" {
+            answeringHeld = true
+            while !answerReleased, !Task.isCancelled {
+                try? await Task.sleep(for: .milliseconds(10))
+            }
+            answeringHeld = false
+            if answerTimesOut { throw DashboardTicketBridgeError.http(status: 504, detail: "") }
+            return ["ok": true, "invite": answered ?? [:]]
         }
         guard path == RoomInvitesClient.path, method == "GET" else { throw URLError(.fileDoesNotExist) }
         invitesReads += 1
@@ -528,5 +619,9 @@ private final class InvitesRoutes {
 
     func answerHeldRead() {
         released = true
+    }
+
+    func releaseAnswer() {
+        answerReleased = true
     }
 }

@@ -81,17 +81,12 @@ struct BotWorkSettingsView: View {
             if settings.isOn {
                 ConduitMenuPicker(
                     value: settings.policy,
-                    choices: [
-                        (id: BotWorkSettings.Policy.strict, title: AppLocalization.string("Only Coordinates")),
-                        (id: BotWorkSettings.Policy.lookups, title: AppLocalization.string("Also Looks Things Up")),
-                    ],
+                    choices: Self.policyChoices(settings),
                     onSelect: { binding(\.policy).wrappedValue = $0 }
                 ) {
                     Text(AppLocalization.string("What It Does Itself")).foregroundStyle(.secondary)
                 }
-                caption(settings.policy == .lookups
-                    ? AppLocalization.string("It can also search the web, past chats and skills itself before starting work. Quicker for simple questions, but small models pick the wrong way more often.")
-                    : AppLocalization.string("Anything that needs a tool goes to a workstream, so its Bot Chat stays free to talk."))
+                caption(Self.policyCaption(settings.policy, botName: botName))
                 Stepper(value: binding(\.maxRunning), in: 1...settings.maxRunningLimit) {
                     LabeledContent(AppLocalization.string("Running at Once")) {
                         Text(verbatim: "\(settings.maxRunning)")
@@ -155,6 +150,32 @@ struct BotWorkSettingsView: View {
                 }
                 caption(Self.approvalsCaption(settings, botName: botName))
             }
+        }
+    }
+
+    /// What the Bot Chat may do itself, by what the user notices rather than
+    /// by tools (Eric 2026-11-08, notifier issue 619). Everything Here only
+    /// where the plugin takes it.
+    static func policyChoices(_ settings: BotWorkSettings) -> [(id: BotWorkSettings.Policy, title: String)] {
+        var choices: [(id: BotWorkSettings.Policy, title: String)] = [
+            (id: .lookups, title: AppLocalization.string("Quick Things Here"))
+        ]
+        if settings.policies.contains(.open) || settings.policy == .open {
+            choices.append((id: .open, title: AppLocalization.string("Everything Here")))
+        }
+        choices.append((id: .strict, title: AppLocalization.string("Only Coordinates")))
+        return choices
+    }
+
+    /// What the chosen setting means, in what the user will notice.
+    static func policyCaption(_ policy: BotWorkSettings.Policy, botName: String) -> String {
+        switch policy {
+        case .open:
+            return AppLocalization.string("\(botName) does everything in its Bot Chat, and runs work in the background only when you ask or it’s clearly long. The chat is busy while it works.")
+        case .strict:
+            return AppLocalization.string("Everything but cards, maps, notifications, memories and its questions to you runs in the background, so its Bot Chat is always free to talk.")
+        case .lookups, .off:
+            return AppLocalization.string("\(botName) answers and does quick things in its Bot Chat. Anything that takes longer runs in the background, and you’re told there when it’s done.")
         }
     }
 

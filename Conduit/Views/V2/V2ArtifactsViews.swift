@@ -327,8 +327,8 @@ private struct ArtifactsList: View {
         // nothing can load yet.
         if !appState.notifierPlugin.mayServe(ArtifactsClient.capability) {
             unavailable(
-                title: Text("Update the Conduit plugin"),
-                detail: Text("Update the Conduit plugin on your Hermes host to see artifacts here. Settings › Conduit plugin can update it."),
+                title: Text(PluginUpdateAsk.title(AppLocalization.string("Update the Conduit plugin"))),
+                detail: Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to see artifacts here. Settings › Conduit plugin can update it."))),
                 symbol: "arrow.down.circle"
             )
         } else if items.isEmpty, loadedKey != currentKey, !appState.supportsArtifacts, !appState.isConnected,

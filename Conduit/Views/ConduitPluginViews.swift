@@ -20,12 +20,15 @@ enum NotifierPluginSummary {
         case .unknown:
             return AppLocalization.string("Not checked yet")
         case .predatesCapabilities:
-            if status.isNotServed { return AppLocalization.string("Installed but not running") }
+            // A managed host has the plugin; this dashboard doesn't run it.
+            if status.isNotServed || status.isManaged { return AppLocalization.string("Installed but not running") }
             return AppLocalization.string("Not installed or out of date")
         case .reported:
             let version = status.runningVersion ?? status.version ?? "?"
             if status.updateAvailable { return AppLocalization.string("\(version) · Update available") }
             if status.restartPending { return AppLocalization.string("\(version) · Restart to finish updating") }
+            // Not "up to date": a managed plugin can be behind; the host decides.
+            if status.isManaged { return AppLocalization.string("\(version) · Managed by the host") }
             return AppLocalization.string("\(version) · Up to date")
         }
     }
@@ -174,31 +177,38 @@ struct ConduitPluginSettingsDetail: View {
                                 .frame(maxWidth: .infinity, alignment: .leading)
                         }
                         .accessibilityElement(children: .combine)
-                        .accessibilityValue(Text(served ? AppLocalization.string("Supported") : AppLocalization.string("Update needed")))
+                        .accessibilityValue(Text(served
+                            ? AppLocalization.string("Supported")
+                            : status.isManaged ? AppLocalization.string("Not on this host") : AppLocalization.string("Update needed")))
                     }
                 }
             }
 
-            ConduitSettingsSection(title: AppLocalization.string("Do it manually"), symbol: "terminal", tint: .conduitAura) {
-                DisclosureGroup(isExpanded: $showsCommands) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        if status.isNotServed {
-                            NotificationSetupCommand(step: 1, title: AppLocalization.string("Turn on the notifier"), command: "hermes plugins enable conduit_push")
-                        } else if status.offersInstall {
-                            NotificationSetupCommand(step: 1, title: AppLocalization.string("Install the notifier"), command: "hermes plugins install \(NotifierPluginStatus.repository) --enable")
-                        } else {
-                            NotificationSetupCommand(step: 1, title: AppLocalization.string("Update the notifier"), command: "hermes plugins update conduit_push")
+            // A managed host's plugin is the host's to update: no commands
+            // that would replace the copy it pinned. Turning on a copy the
+            // dashboard doesn't run replaces nothing, so those steps stay.
+            if !status.isManaged || status.state == .predatesCapabilities {
+                ConduitSettingsSection(title: AppLocalization.string("Do it manually"), symbol: "terminal", tint: .conduitAura) {
+                    DisclosureGroup(isExpanded: $showsCommands) {
+                        VStack(alignment: .leading, spacing: 12) {
+                            if status.isNotServed || status.isManaged {
+                                NotificationSetupCommand(step: 1, title: AppLocalization.string("Turn on the notifier"), command: "hermes plugins enable conduit_push")
+                            } else if status.offersInstall {
+                                NotificationSetupCommand(step: 1, title: AppLocalization.string("Install the notifier"), command: "hermes plugins install \(NotifierPluginStatus.repository) --enable")
+                            } else {
+                                NotificationSetupCommand(step: 1, title: AppLocalization.string("Update the notifier"), command: "hermes plugins update conduit_push")
+                            }
+                            NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
+                            Text("Then restart the Hermes dashboard, so it serves the new plugin.")
+                                .scaledFont(.footnote)
+                                .foregroundStyle(.secondary)
                         }
-                        NotificationSetupCommand(step: 2, title: AppLocalization.string("Restart the gateway"), command: "hermes gateway restart")
-                        Text("Then restart the Hermes dashboard, so it serves the new plugin.")
+                        .padding(.top, 8)
+                    } label: {
+                        Text("Run these on the dashboard's host when Conduit can't update it, such as on an older Hermes.")
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
-                    .padding(.top, 8)
-                } label: {
-                    Text("Run these on the dashboard's host when Conduit can't update it, such as on an older Hermes.")
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.secondary)
                 }
             }
         }
@@ -206,7 +216,8 @@ struct ConduitPluginSettingsDetail: View {
         .notifierPluginUpdateConfirmation(isPresented: $confirming, install: isInstall(status))
         // The one-time manual update, and turning on an unserved copy: their
         // steps open by themselves.
-        .onChange(of: status.needsManualUpdate(after: update) || status.isNotServed, initial: true) { _, needed in
+        .onChange(of: status.needsManualUpdate(after: update) || status.isNotServed
+                   || (status.isManaged && status.state == .predatesCapabilities), initial: true) { _, needed in
             if needed { showsCommands = true }
         }
         // Asked again on every visit and dashboard switch.
@@ -226,6 +237,9 @@ struct ConduitPluginSettingsDetail: View {
     }
 
     private var noticeChannelDetail: String {
+        if appState.notifierPlugin.isManaged {
+            return AppLocalization.string("This dashboard's host keeps the plugin up to date, so Conduit doesn't ask to update it here. This choice is for your other dashboards.")
+        }
         guard appState.notifierPluginNoticeChannel.asksToUpdate else {
             return AppLocalization.string("Conduit doesn't ask you to update. New versions, security fixes included, wait here until you update. An update you start still asks for its restart.")
         }
@@ -258,13 +272,14 @@ struct ConduitPluginSettingsDetail: View {
                     ? AppLocalization.string("Couldn't reach this dashboard's notifier. Open this page again to retry.")
                     : AppLocalization.string("Connect to this dashboard to check its notifier.")
         case .predatesCapabilities:
-            if status.isNotServed {
+            if status.isNotServed || status.isManaged {
                 return AppLocalization.string("Installed on this dashboard's host, but the dashboard doesn't run it. Turn it on in Hermes, then restart the gateway and the dashboard.")
             }
             return AppLocalization.string("Missing or out of date on this dashboard's host, so features like taking chats over from Hermes Desktop won't work.")
         case .reported:
             if status.updateAvailable { return AppLocalization.string("Version \(status.offeredVersion) is available.") }
             if status.restartPending { return AppLocalization.string("The new plugin is on the host. Hermes needs a restart to use it.") }
+            if let managedBy = status.managedBy { return NotifierPluginStatus.managedText(managedBy) }
             return AppLocalization.string("Up to date on this dashboard's host")
         }
     }
@@ -284,16 +299,24 @@ private struct NotifierPluginUpdateConfirmation: ViewModifier {
     @Binding var isPresented: Bool
     let install: Bool
 
+    /// A managed host put the new plugin there itself: only the restarts
+    /// run, as `updateNotifierPlugin` runs them.
+    private var restartOnly: Bool { appState.notifierPlugin.updateRunsOnlyRestarts(install: install) }
+
     func body(content: Content) -> some View {
         content.confirmationDialog(
-            Text(AppLocalization.string("Update the Conduit plugin?")),
+            Text(restartOnly ? AppLocalization.string("Finish the update?") : AppLocalization.string("Update the Conduit plugin?")),
             isPresented: $isPresented,
             titleVisibility: .visible
         ) {
-            Button(AppLocalization.string("Update and Restart Hermes")) { appState.updateNotifierPlugin(install: install) }
+            Button(restartOnly ? AppLocalization.string("Restart Hermes") : AppLocalization.string("Update and Restart Hermes")) {
+                appState.updateNotifierPlugin(install: install)
+            }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: {
-            if !install && appState.notifierPlugin.reports(NotifierPluginUpdater.selfUpdateCapability) {
+            if restartOnly {
+                Text("The new plugin is already on the host. Hermes restarts its gateway and dashboard to run it, once running chats finish.")
+            } else if !install && appState.notifierPlugin.reports(NotifierPluginUpdater.selfUpdateCapability) {
                 Text("Hermes updates the plugin on the host, then restarts its gateway and dashboard once running chats finish. You can close Conduit: you'll get a notification when it's done.")
             } else {
                 Text("Hermes updates the plugin, then restarts its gateway and dashboard once running chats finish. Chats and messaging channels reconnect by themselves.")

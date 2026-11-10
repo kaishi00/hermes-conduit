@@ -141,17 +141,20 @@ enum RoomCopyText {
     }
 
     /// In the composer's place, when it can't be posted in: it's over, or
-    /// the plugin doesn't post (`canPost` false).
+    /// the plugin doesn't post (`canPost` false). One that's over asks for
+    /// no update, which wouldn't let anyone post in it (issue 2063).
     static func readOnly(for copy: RoomCopy, canPost: Bool) -> String {
         let host = copy.from.trimmingCharacters(in: .whitespacesAndNewlines)
-        if canPost {
+        if canPost || copy.isOver {
             return host.isEmpty
                 ? AppLocalization.string("Hosted elsewhere. You can read it here.")
                 : AppLocalization.string("Hosted by \(host). You can read it here.")
         }
         return host.isEmpty
-            ? AppLocalization.string("Hosted elsewhere. Update the Conduit plugin on your Hermes to post in it.")
-            : AppLocalization.string("Hosted by \(host). Update the Conduit plugin on your Hermes to post in it.")
+            ? PluginUpdateAsk.text(AppLocalization.string("Hosted elsewhere. Update the Conduit plugin on your Hermes to post in it."),
+                                   lead: AppLocalization.string("Hosted elsewhere."))
+            : PluginUpdateAsk.text(AppLocalization.string("Hosted by \(host). Update the Conduit plugin on your Hermes to post in it."),
+                                   lead: AppLocalization.string("Hosted by \(host)."))
     }
 
     static var deleteTitle: String { AppLocalization.string("Delete this room?") }

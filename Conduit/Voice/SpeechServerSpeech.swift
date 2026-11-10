@@ -465,7 +465,7 @@ struct SpeechServerVoiceStatus: Equatable {
     var readFailed = false
 
     static var pluginMissingReason: String {
-        AppLocalization.string("Update the Conduit plugin on your Hermes host to have your speech server speak the replies.")
+        PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to have your speech server speak the replies."))
     }
 
     static var pluginMissing: SpeechServerVoiceStatus {
