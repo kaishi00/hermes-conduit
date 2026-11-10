@@ -16665,7 +16665,9 @@ final class AppState: ObservableObject {
         connection != nil
             && !isConnected
             && (lastConnectionFailure != nil
-                || (!(errorMessage ?? "").isEmpty && !isHoldingQuietReconnectFailure))
+                || (!(errorMessage ?? "").isEmpty && !isHoldingQuietReconnectFailure
+                    // A failed send's reason isn't the connection's.
+                    && errorMessage != sendFailureShown))
     }
 
     /// A failed renewal is being kept quiet: an older, unrelated message
@@ -31406,6 +31408,15 @@ final class AppState: ObservableObject {
     /// clears: the composer shows `errorMessage` unlocked too.
     var sendFailureShown: String?
 
+    /// A send that went through ends the failure line shown when it set
+    /// out, and only that line: another error, or a newer send's failure,
+    /// stays.
+    private func clearSendFailureAfterSend(_ failureBefore: String?) {
+        guard let failure = failureBefore, sendFailureShown == failure else { return }
+        if errorMessage == failure { errorMessage = nil }
+        sendFailureShown = nil
+    }
+
     private func showSendFailure(_ message: String) {
         errorMessage = message
         sendFailureShown = message
@@ -33667,6 +33678,9 @@ final class AppState: ObservableObject {
         guard let client, let sessionId = activeSessionId else { return false }
         cancelChatResumeRestoration()
         let outboundText = mentionAnnotatedOutboundText(text)
+        // Only a failure already shown is this send's to clear; one a
+        // send made while this one was on its way stays.
+        let failureBefore = sendFailureShown
         let persistedTwinsBefore = persistedSteerIDs(matching: outboundText)
         do {
             if let steer = chatResumeLifecycleOperations.steer {
@@ -33698,6 +33712,7 @@ final class AppState: ObservableObject {
                 // when the agent next reaches a tool boundary, so without
                 // this the text just vanished from the composer.
                 appendLocalSteerMessage(outboundText, persistedTwinsBefore: persistedTwinsBefore)
+                clearSendFailureAfterSend(failureBefore)
             }
             // A successful steer is accepted by Hermes even if the user
             // switched sessions while the RPC was suspended. Apart from the
@@ -33736,6 +33751,9 @@ final class AppState: ObservableObject {
         // Fallbacks below re-enter `sendMessage` with the RAW text, which
         // annotates on its own; only the redirect itself sends this copy.
         let outboundText = mentionAnnotatedOutboundText(text)
+        // Only a failure already shown is this send's to clear; one a
+        // send made while this one was on its way stays.
+        let failureBefore = sendFailureShown
 
         do {
             let outcome: SessionRedirectOutcome
@@ -33748,6 +33766,7 @@ final class AppState: ObservableObject {
             case .redirected, .queued:
                 if isCurrentOrAliasedComposerSubmission(submissionContext) {
                     appendLocalUserMessage(outboundText)
+                    clearSendFailureAfterSend(failureBefore)
                 }
                 return true
             case .rejected:

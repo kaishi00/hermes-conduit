@@ -229,7 +229,7 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertFalse(prompt.isDeclined(by: "Abbrechen bitte nicht"))
         XCTAssertFalse(prompt.isDeclined(by: "거절할까요"))
         XCTAssertFalse(prompt.isDeclined(by: "취소할까요"))
-        for yes in ["No send it", "No wait send it", "No go ahead", "No wait, go ahead", "No do it", "No, do it"] {
+        for yes in ["No send it", "No wait send it", "No go ahead", "No wait, go ahead", "No do it", "No, do it", "Um no do it"] {
             XCTAssertFalse(prompt.isDeclined(by: yes), yes)
         }
         XCTAssertFalse(prompt.isDeclined(by: "不，发吧"))

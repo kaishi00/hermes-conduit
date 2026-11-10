@@ -428,7 +428,8 @@ struct PresentedConfirm: Identifiable, Equatable {
             !words(in: clause).allSatisfy { politeWords.contains($0) } && VoiceCallDecisionOutcome.isYes(clause)
         }
         if let first = clauses.first {
-            let said = words(in: first)
+            // A filler before the no ("um no do it") is skipped too.
+            let said = words(in: first).drop(while: { VoiceThreadRouting.fillers.contains($0) })
             let rest = said.drop(while: { bareNos.contains($0) || VoiceThreadRouting.fillers.contains($0) || noTurnArounds.contains($0) })
             // "No don't send it" and "no do not send it" stay a decline;
             // "no do it" is "no, do it" without the comma (issue 2057).

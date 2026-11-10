@@ -172,10 +172,15 @@ extension AppState {
                 // "plugin missing" names who keeps it up to date rather than
                 // asking for an update (issue 2063). Only while the answer is
                 // still the active dashboard's and nothing newer knows more.
-                if bridge === dashboardTicketBridge, dashboardID == activeDashboardID, notifierPlugin.state == .unknown {
+                // An answer that says nothing (state unknown) keeps what's remembered.
+                if state != .unknown, bridge === dashboardTicketBridge, dashboardID == activeDashboardID,
+                   notifierPlugin.state == .unknown {
                     let managedBy = NotifierPluginStatus.managedBy(from: response)
                     NotifierPluginStatus.Remembered.remember(managedBy, for: dashboardID, in: appDefaults)
+                    let askedBefore = PluginUpdateAsk.managedAsk
                     PluginUpdateAsk.setActive(managedBy: managedBy)
+                    // The Watch words its plugin failures from the phone's shared context.
+                    if PluginUpdateAsk.managedAsk != askedBefore { shareWatchCallVoices() }
                 }
             } catch {
                 state = NotifierPluginStatus.state(from: error)
