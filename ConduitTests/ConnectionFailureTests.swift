@@ -23,7 +23,8 @@ final class ConnectionFailureTests: XCTestCase {
     }
 
     func testNativeSignInFailuresNeverClaimBadCredentials() {
-        XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.requestFailed(status: 401)), .unexpectedServerResponse)
+        XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.requestFailed(status: 401)), .accessDenied)
+        XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.requestFailed(status: 403)), .accessDenied)
         XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.requestFailed(status: 503)), .dashboardUnavailable)
         XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.tokenResponseMalformed), .unexpectedServerResponse)
         XCTAssertEqual(ConnectionFailureClassifier.classify(NativeOAuthError.timedOut), .unknown)
@@ -443,16 +444,47 @@ final class ConnectionFailureTests: XCTestCase {
     }
 
     func testProviderDiscoveryFailureDoesNotImplyBadCredentials() {
-        // A 401/403 during provider discovery is a misrouted or odd
-        // deployment, not evidence the credentials are wrong.
+        // Discovery asks for no credentials, so a 401/403 there is never
+        // evidence the credentials are wrong.
         for status in [401, 403, 404] {
             let presentation = ConnectionFailurePresentation.presenting(
                 ConnectionFailureClassifier.classify(
                     AuthClientError.providerDiscoveryFailed(status: status, detail: "HTTP \(status)")
                 )
             )
-            XCTAssertEqual(presentation.title, "Unexpected response")
+            XCTAssertNotEqual(presentation.classifiedFailure, .authenticationRejected)
             XCTAssertNotEqual(presentation.helpDestination, .credentials)
+        }
+    }
+
+    func testProviderDiscoveryRefusalSaysTheServerRefusedThisDevice() {
+        // Issue #2092: a proxy's IP allowlist answers discovery with 403
+        // off-network. That's a refusal, not a wrong address, and the copy
+        // points at the network rather than at the dashboard URL.
+        for status in [401, 403] {
+            let failure = ConnectionFailureClassifier.classify(
+                AuthClientError.providerDiscoveryFailed(status: status, detail: "HTTP \(status)")
+            )
+            XCTAssertEqual(failure, .accessDenied, "\(status)")
+            let presentation = ConnectionFailurePresentation.presenting(failure)
+            XCTAssertEqual(presentation.title, "Server refused access")
+            XCTAssertTrue(presentation.message.contains("refused this device"))
+            XCTAssertFalse(presentation.message.contains("points at a Hermes dashboard"))
+            XCTAssertEqual(presentation.helpDestination, .network)
+            XCTAssertTrue(presentation.offersRecoveryActions)
+        }
+        // A 404 still says the address may not be a Hermes dashboard.
+        XCTAssertEqual(
+            ConnectionFailureClassifier.classify(AuthClientError.providerDiscoveryFailed(status: 404, detail: "HTTP 404")),
+            .unexpectedServerResponse
+        )
+        // A ticket mint's 401/403 is Hermes refusing a session, not the
+        // network: it keeps the unexpected-response copy.
+        for status in [401, 403] {
+            XCTAssertEqual(
+                ConnectionFailureClassifier.classify(DashboardTicketBridgeError.http(status: status, detail: "")),
+                .unexpectedServerResponse
+            )
         }
     }
 

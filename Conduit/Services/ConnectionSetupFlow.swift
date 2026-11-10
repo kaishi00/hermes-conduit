@@ -243,7 +243,7 @@ struct ConnectionSetupFlow: Equatable {
         // all start at the address editor. A throttled login in particular
         // must never route toward another login.
         case .invalidAddress, .insecureTransport, .hostNotFound, .unreachable,
-             .connectionRefused, .timedOut, .offline, .rateLimited,
+             .connectionRefused, .timedOut, .offline, .rateLimited, .accessDenied,
              .dashboardUnavailable, .unexpectedServerResponse:
             return details
         // No strong diagnosis (or none retained): the seeded staged test is

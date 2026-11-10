@@ -1041,7 +1041,7 @@ final class OfflineChatCacheTests: XCTestCase {
     // MARK: - Unreachable server vs. sign-in
 
     func testUnreachableRestoreKeepsTheCopyInsteadOfSignIn() {
-        for failure: ConnectionFailure in [.offline, .hostNotFound, .unreachable, .connectionRefused, .timedOut, .dashboardUnavailable] {
+        for failure: ConnectionFailure in [.offline, .hostNotFound, .unreachable, .connectionRefused, .timedOut, .dashboardUnavailable, .accessDenied] {
             let (appState, store, dashboard) = makeAppState()
             seedCopy(store, dashboard: dashboard)
             appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
