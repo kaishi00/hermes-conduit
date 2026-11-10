@@ -645,8 +645,10 @@ final class MessageReadAloudController: ObservableObject {
             _ = try await stream.finish()
             guard isCurrent(generation) else { return }
             speechStream = nil
-            // A message waits: the session stays up into its stream.
-            if !queue.isEmpty { holdSessionForNext() }
+            // Held through the drain, as a room's next message may arrive
+            // while this one still sounds; `settle` lets it go when nothing
+            // waits by then.
+            holdSessionForNext()
             try playback.finish()
             await playback.drain()
             guard isCurrent(generation) else { return }
@@ -772,6 +774,9 @@ final class MessageReadAloudController: ObservableObject {
                 _ = try await stream.finish()
                 guard isCurrent(generation) else { return }
                 speechStream = nil
+                // A room message may be waiting behind the reply, or
+                // arrive as it drains.
+                holdSessionForNext()
                 try playback.finish()
                 await playback.drain()
                 guard isCurrent(generation) else { return }

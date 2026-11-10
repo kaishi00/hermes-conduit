@@ -1050,7 +1050,7 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertTrue((gateway.streams.last?.appended.joined() ?? "").contains("It's sunny."))
         XCTAssertFalse((gateway.streams.last?.appended.joined() ?? "").contains("Let me check"))
         // Issue 2148: the session was held across the tool, and goes with the turn.
-        XCTAssertEqual(playback.sessionHolds, 1)
+        XCTAssertGreaterThanOrEqual(playback.sessionHolds, 1)
         XCTAssertEqual(playback.sessionsHeld, 0)
     }
 
@@ -1203,6 +1203,31 @@ final class MessageReadAloudControllerTests: XCTestCase {
         XCTAssertEqual(nowPlaying.endCount, 1)
     }
 
+    /// A room message that arrives while the one before still sounds is
+    /// held into all the same (#2162 review).
+    func testAMessageArrivingDuringTheDrainIsHeldInto() async throws {
+        let playback = MockReadAloudPlayback()
+        playback.blockDrain = true
+        let gateway = MockReadAloudGateway()
+        gateway.blocksFinish = true
+        let nowPlaying = MockReadAloudNowPlaying()
+        let controller = makeController(playback: playback, gateway: gateway, nowPlaying: nowPlaying)
+
+        controller.enqueue(messageID: "room:r:1", content: "First bot.") { true }
+        await waitUntil { gateway.streams.first?.finishCount == 1 }
+        try gateway.streams.first?.emitPCMForTest()
+        gateway.streams.first?.releaseFinishForTest()
+        await waitUntil { playback.drainCount == 1 }
+        XCTAssertEqual(playback.sessionsHeld, 1, "held through the drain")
+
+        controller.enqueue(messageID: "room:r:2", content: "Second bot.") { true }
+        playback.blockDrain = false
+        playback.releaseDrainForTest()
+        await waitUntil { gateway.openCount == 2 }
+        XCTAssertEqual(playback.sessionsHeld, 1, "still held while the second opens")
+        XCTAssertEqual(nowPlaying.endCount, 0)
+    }
+
     /// The next message in another bot's voice readies its gateway, which
     /// stops the controller: the hold carries over all the same.
     func testTheSessionHoldCarriesIntoAnotherBotsVoice() async throws {
@@ -1240,7 +1265,7 @@ final class MessageReadAloudControllerTests: XCTestCase {
         await waitUntil { gateway.streams.first?.finishCount == 1 }
         gateway.streams.first?.releaseFinishForTest()
         await waitUntil { controller.state == .idle }
-        XCTAssertEqual(playback.sessionHolds, 0, "nothing waits, so nothing is held")
+        XCTAssertEqual(playback.sessionsHeld, 0, "nothing waits, so the hold goes with it")
 
         controller.enqueue(messageID: "room:r:2", content: "First bot.") { true }
         controller.enqueue(messageID: "room:r:3", content: "Second bot.") { true }
@@ -1390,6 +1415,14 @@ private final class MockReadAloudPlayback: SpeechPlaybackService {
     func resume() {
         resumeCount += 1
         isPaused = false
+    }
+
+    /// The audio still playing out finishes.
+    func releaseDrainForTest() {
+        isPlaying = false
+        let waiter = drainWaiter
+        drainWaiter = nil
+        waiter?.resume()
     }
 
     /// Models a route change restarting the stream mid-pause.
