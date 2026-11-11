@@ -941,8 +941,18 @@ enum PhoneChangeWording {
     static func shortcutSummary(_ fields: PhoneChangeFields) -> String {
         let name = fields.shortcut ?? AppLocalization.string("Shortcut")
         guard let input = fields.input?.trimmingCharacters(in: .whitespacesAndNewlines), !input.isEmpty else { return name }
-        let preview = input.count > 120 ? String(input.prefix(120)) + "…" : input
+        let preview = input.count > shortcutPreviewChars ? String(input.prefix(shortcutPreviewChars)) + "…" : input
         return "\(name) · “\(preview)”"
+    }
+
+    static let shortcutPreviewChars = 120
+
+    /// A shortcut's whole input, when the line cuts it short: the card
+    /// lets the user read all of it before Run.
+    static func longShortcutInput(_ fields: PhoneChangeFields) -> String? {
+        guard let input = fields.input?.trimmingCharacters(in: .whitespacesAndNewlines),
+              input.count > shortcutPreviewChars else { return nil }
+        return input
     }
 
     static func symbol(_ kind: PhoneChange.Kind) -> String {
@@ -964,6 +974,8 @@ struct PhoneChangeCard: View {
     let prompt: PhoneChangePrompt
     let waiting: Int
     let answer: (Bool) -> Void
+    /// A long shortcut input, shown whole before the user taps Run.
+    @State private var showsFullInput = false
 
     var body: some View {
         let change = prompt.change
@@ -974,6 +986,23 @@ struct PhoneChangeCard: View {
             if !detail.isEmpty {
                 Text(detail)
                     .scaledFont(.subheadline)
+            }
+            if change.kind == .runShortcut, let input = PhoneChangeWording.longShortcutInput(change.fields) {
+                if showsFullInput {
+                    ScrollView {
+                        Text(verbatim: input)
+                            .scaledFont(.caption)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 220)
+                }
+                Button(showsFullInput ? AppLocalization.string("Show less") : AppLocalization.string("Show all")) {
+                    showsFullInput.toggle()
+                }
+                .scaledFont(.caption)
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("phone.change.full-input")
             }
             if let calendar = prompt.calendarTitle, change.kind.isAddition {
                 Text(AppLocalization.string("In \(calendar)"))

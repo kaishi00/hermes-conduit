@@ -5624,7 +5624,7 @@ errors (a run's failures reach Hermes as the change's note)
 
 **Rulings**
 - Hermes runs only shortcuts the user listed in Conduit, by name: the host refuses any other name, and the phone checks the name against its own list again before it runs one (2026-11-10, Eric's go on agent-run Shortcuts, notifier #696, #2165).
-- iOS runs another app's shortcut only through the Shortcuts app's x-callback-url, which opens only for an app on screen, so a run waits on its card until the user taps Run. Run without asking runs it straight away only while Conduit is open, and otherwise leaves the card; it never covers calendar or alarm changes, which keep Add without asking (2026-11-10, #2165).
+- iOS runs another app's shortcut only through the Shortcuts app's x-callback-url, which opens only for an app on screen, so a run waits on its card until the user taps Run; the card shows the start of its input and, when that cuts it short, Show all reveals the whole of it first. Run without asking runs it straight away only while Conduit is open, and otherwise leaves the card; it never covers calendar or alarm changes, which keep Add without asking (2026-11-10, #2165).
 - A live call can list or dismiss a run but not approve it: a call from the lock screen, the Watch or CarPlay can't open the Shortcuts app (2026-11-10, #2165).
 - Cancelled in Shortcuts reports as dismissed; an error, or no answer from Shortcuts within 10 minutes, reports as failed with why. A run waits on the host for an hour, not a day like other changes, since it's asked for now. What a run gave back goes only to the sharing that asked: turned off since (even if back on to the same host), or with Shortcuts off, it's dropped (2026-11-10, notifier #696, #2165).
 
