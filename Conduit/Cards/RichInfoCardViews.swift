@@ -725,6 +725,9 @@ struct RichStepsCard: View {
     }
 
     @ObservedObject private var memory = RichStepsMemory.shared
+    /// The notifications-off line is looked up, so it follows the App
+    /// Language here rather than through SwiftUI's locale.
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
 
     private var key: String { RichStepsMemory.key(for: card) }
 }
