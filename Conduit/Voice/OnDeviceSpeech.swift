@@ -182,8 +182,8 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     /// Moves every finished sentence out of `text`, one string each, leaving
     /// the unfinished tail. A sentence ends at . ! ? … followed by whitespace
     /// (so "3.5" isn't split), or right after a line break or a CJK full
-    /// stop. A period after a list number or a short abbreviation ("1.",
-    /// "Dr.", "e.g.") doesn't end one, so it's said with what follows, and
+    /// stop. A period after a list number, a title or an abbreviation
+    /// ("1.", "Dr.", "e.g.") doesn't end one, so it's said with what follows, and
     /// nothing inside a Markdown link does, so the link reaches
     /// PreviewText whole and its address isn't read.
     static func takeCompleteSentences(from text: inout String) -> [String] {
@@ -228,18 +228,23 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     }
 
     /// Whether the word just before a period is a list number ("1", "12"),
-    /// one or two letters ("Dr", "No"), or letters each followed by a period
-    /// ("e.g", "U.S"). A domain, a file name or a decimal ends its sentence.
+    /// a title ("Dr", "Mrs"), an initial ("J"), or letters each followed by
+    /// a period ("e.g", "U.S"). Any other word ends its sentence, short ones
+    /// ("do it.") and domains, file names and decimals included.
     private static func endsAbbreviation(_ before: Substring) -> Bool {
-        let word = before.split(whereSeparator: { $0.isWhitespace }).last ?? ""
+        let word = (before.split(whereSeparator: { $0.isWhitespace }).last ?? "")
+            .drop(while: { !$0.isLetter && !$0.isNumber })
         guard !word.isEmpty else { return false }
         if word.allSatisfy(\.isNumber) { return word.count <= 3 }
         if word.contains(".") {
             return word.split(separator: ".", omittingEmptySubsequences: false)
                 .allSatisfy { $0.count == 1 && $0.allSatisfy(\.isLetter) }
         }
-        return word.count <= 2 && word.allSatisfy(\.isLetter)
+        if word.count == 1, let letter = word.first, letter.isUppercase { return true }
+        return titles.contains(word.lowercased())
     }
+
+    private static let titles: Set<String> = ["mr", "mrs", "ms", "dr", "prof", "st", "jr", "sr", "vs"]
 
     /// The reply's language, so a German answer gets a German voice even
     /// with the app in English. Nil when the text is too short to tell.

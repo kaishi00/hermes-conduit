@@ -287,6 +287,12 @@ extension HermesVoiceGatewayTimeoutTests {
             "The site is example.com.", "The value is 3.5.", "Open notes.md."
         ])
 
+        // A short word still ends its sentence.
+        var short = "I can do it. You can do it. Ask J. Doe. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &short), [
+            "I can do it.", "You can do it.", "Ask J. Doe."
+        ])
+
         // A link stays whole, so its address is dropped rather than read.
         var link = "Read [part one. And two](https://example.com/a. b). Next one. Tail"
         XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &link), [
