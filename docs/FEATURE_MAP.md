@@ -581,7 +581,7 @@ the notifier README's session route and CHANGELOG.md
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-11, #PRNUM (added: the briefing as a seeded item within one Codex token budget, notifier #719).
+**Checked:** 2026-11-11, #2232 (added: the briefing as a seeded item within one Codex token budget, notifier #719).
 
 ## Starting a call
 
@@ -4693,7 +4693,7 @@ in `bridgeStarted`) · docs/VOICE_SETTINGS.md
 - Gemini Live sends no turn detection events and GPT-Live's turns run over WebRTC, so neither has turn steps; Gemini Live has no trace; the Watch has no trace to show.
 - Every trace keeps only the last call, in memory until the app restarts (its steps also go to the system log, which keeps them longer), and nothing joins a call from Hermes, its saved call and the host's session request (#1611 asked for an alias).
 
-**Checked:** 2026-11-11, #PRNUM (the trace says when the host cut the briefing to fit, notifier #719); 2026-11-01, #1612 (GPT-Live's startup steps, from issue 1611); 2026-10-28, #1424.
+**Checked:** 2026-11-11, #2232 (the trace says when the host cut the briefing to fit, notifier #719); 2026-11-01, #1612 (GPT-Live's startup steps, from issue 1611); 2026-10-28, #1424.
 
 ## Narrated actions left out of speech
 
