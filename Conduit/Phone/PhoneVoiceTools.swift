@@ -636,7 +636,8 @@ enum PhoneVoiceTools {
         if let repeats = change.fields.repeats { entry["repeats"] = repeats }
         if let seconds = change.fields.seconds { entry["seconds"] = seconds }
         if let shortcut = change.fields.shortcut { entry["shortcut"] = shortcut }
-        if let name = change.fields.personName { entry["person"] = name }
+        // The person the phone will change, as it has them; Hermes' name only when it can't tell.
+        if let name = prompt.personName ?? change.fields.personName { entry["person"] = name }
         if let edit = change.fields.contact?.summary, !edit.isEmpty { entry["contact"] = edit }
         if let input = change.fields.input { entry["input"] = String(input.prefix(300)) }
         if let alarm = prompt.alarmTitle { entry["alarm"] = alarm }

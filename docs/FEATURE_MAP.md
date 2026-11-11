@@ -5589,13 +5589,13 @@ change needed)
 
 **Rulings**
 - A contact change always waits on a card (or the user's yes in a call), even with Add without asking on, and only a picked person can be changed or deleted, by the id the host shared (2026-11-10, Eric's go on contact edits, #2165).
-- A change or delete goes to that person's own contact card; a new contact joins the picked people with the relation Hermes gave, a deleted one leaves them, and a changed one is read again, so the next upload tells Hermes. Phones and emails, when a change names them, replace the card's whole list; a list with entries but none usable changes nothing, so a bad number never wipes the card. The card names the person as the phone has them, not as Hermes wrote it (2026-11-10, #2165).
+- A change or delete goes to that person's own contact card; a new contact joins the picked people with the relation Hermes gave, a deleted one leaves them, and a changed one is read again, so the next upload tells Hermes. Phones and emails, when a change names them, replace the card's whole list; a list with entries but none usable changes nothing, so a bad number never wipes the card. The card and a live call name the person as the phone has them, not as Hermes wrote it (2026-11-10, #2165).
 - Changing contacts needs Contacts access (limited is enough for the picked people and new contacts); turning it on, or turning sharing on with it chosen, asks once, and without access a yes fails and points to the Settings app (2026-11-10, #2165).
 
 **Open gaps**
 - Not tried on a device: a write under limited access, and a linked (unified) contact's update (#2165).
 
-**Checked:** 2026-11-10, #2165 (added with the notifier's contact changes).
+**Checked:** 2026-11-11, #2168 (a live call names the contact as the phone has them; the card's name tested); 2026-11-10, #2165 (added with the notifier's contact changes).
 
 ## Shortcuts Hermes can run
 
@@ -5635,7 +5635,7 @@ errors (a run's failures reach Hermes as the change's note)
 - Not tried on a device: the x-callback round trip, a shortcut that asks the user something mid-run, and the 10-minute wait (#2165).
 - iOS has no list of the user's shortcuts for an app to read, so names are typed and a typo only shows when a run fails.
 
-**Checked:** 2026-11-10, #2165 (added with notifier #696).
+**Checked:** 2026-11-11, #2168 (tests for a late result after sharing turns off and on, and for the run-without-asking report); 2026-11-10, #2165 (added with notifier #696).
 
 ## Steps in a turn
 
