@@ -1878,7 +1878,12 @@ struct ComposerBar: View, Equatable {
         var restoredIntoField = false
         for request in appState.composerRestoreRequests where request.dashboardID == appState.activeDashboardID {
             if restoreRequest(request, belongsTo: loadedDraftKey) {
-                restoredIntoField = true
+                // Only a send's own words can be the refused message: a
+                // shared draft, a dictation retry or a waiting message's
+                // Edit is never sent on its own.
+                if request.sharedDraftID == nil, request.dictationClipID == nil, !request.focuses {
+                    restoredIntoField = true
+                }
                 let restored = ComposerDraft(text: text, attachments: attachments, replyReference: replyReference)
                     .restoring(request.draft)
                 // Put back, not typed: a "/cmd" draft opens no suggestions.

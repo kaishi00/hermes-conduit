@@ -30613,8 +30613,11 @@ final class AppState: ObservableObject {
                     // Bound to the chat that refused it: one opened before
                     // the send starts gets nothing, and the words go back.
                     let context = self.composerSubmissionContext()
+                    let clearCount = self.composerDraftStore.clearCount
                     self.dismissChatTakeover()
-                    Task { @MainActor [weak self] in await self?.sendHeldTakeoverMessage(held, context: context) }
+                    Task { @MainActor [weak self] in
+                        await self?.sendHeldTakeoverMessage(held, context: context, clearCount: clearCount)
+                    }
                     return
                 }
                 // Not from here right now (another chat is open, or the
@@ -30688,9 +30691,14 @@ final class AppState: ObservableObject {
     /// instead of looping. A sign-out while it was on its way wiped the
     /// drafts and the waiting messages' files: the outgoing user's words
     /// don't come back.
-    private func sendHeldTakeoverMessage(_ held: ChatTakeoverHeldMessage, context: ComposerSubmissionContext) async {
+    /// `clearCount`: the draft store's, when the takeover finished.
+    private func sendHeldTakeoverMessage(
+        _ held: ChatTakeoverHeldMessage,
+        context: ComposerSubmissionContext,
+        clearCount: UInt64
+    ) async {
+        guard composerDraftStore.clearCount == clearCount else { return }
         lifecycleLog.notice("took the chat over; sending the refused message again")
-        let clearCount = composerDraftStore.clearCount
         if await submitComposer(text: held.text, attachments: held.restore.draft.attachments, context: context) {
             if let pending = held.restore.pending { removePendingComposerSendFile(pending) }
             return
@@ -30919,6 +30927,7 @@ final class AppState: ObservableObject {
     func dismissChatTakeover() {
         chatTakeoverTask?.cancel()
         chatTakeoverTask = nil
+        chatTakeoverKeepsRefusedWords = nil
         chatTakeover = nil
     }
 
