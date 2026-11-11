@@ -206,12 +206,23 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
                     }
                 }
             } else if addressDepth > 0 {
-                // An address can hold parentheses of its own ("a_(b)").
-                if character == "(" { addressDepth += 1 } else if character == ")" { addressDepth -= 1 }
+                // An address can hold parentheses of its own ("a_(b)"); an
+                // escaped one ("a\\(b") is just a character.
+                if character == "\\", next < text.endIndex {
+                    next = text.index(after: next)
+                } else if character == "(" {
+                    addressDepth += 1
+                } else if character == ")" {
+                    addressDepth -= 1
+                }
             } else if character == "[", opensLink(text[next...]) {
                 inLinkText = true
             } else if "。！？".contains(character) || character.isNewline {
                 ends = true
+                // 「你好。」 keeps its closing quote.
+                if !character.isNewline {
+                    while next < text.endIndex, sentenceClosers.contains(text[next]) { next = text.index(after: next) }
+                }
             } else if ".!?…".contains(character) {
                 var end = next
                 while end < text.endIndex, sentenceClosers.contains(text[end]) { end = text.index(after: end) }

@@ -335,6 +335,15 @@ extension HermesVoiceGatewayTimeoutTests {
             "See [the docs. More](https://example.com)."
         ])
 
+        var escaped = "[guide](https://example.com/a\\(b). Next one. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &escaped), [
+            "[guide](https://example.com/a\\(b).", "Next one."
+        ])
+
+        // A CJK sentence keeps its closing quote.
+        var cjkQuote = "「你好。」下一句。尾"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &cjkQuote), ["「你好。」", "下一句。"])
+
         // A stray bracket holds only for a link's length, and not at all
         // once a "]" without "(" shows it isn't a link.
         let long = String(repeating: "More words here. ", count: 15)
