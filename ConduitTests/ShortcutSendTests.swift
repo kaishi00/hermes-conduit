@@ -596,6 +596,23 @@ extension ScreenQuestionTests {
         XCTAssertEqual(noChat, .chatUnavailable)
         let unconfirmed = await refusal(pick("nia"))
         XCTAssertEqual(unconfirmed, .chatUnconfirmed)
+
+        // A backend bound to another dashboard (a widget Do it whose dashboard
+        // was switched away) makes no chat and sends nothing.
+        let elsewhere = appState.makeShortcutSendBackend(onlyOn: UUID())
+        let chat = VoiceThreadTarget(runtimeSessionID: "r", storedSessionID: "r", title: "Card", profile: "default")
+        let attempts: [@MainActor () async throws -> Void] = [
+            { _ = try await elsewhere.createChat("default", "Card") },
+            { _ = try await elsewhere.submit(chat, "r", "Do it") },
+        ]
+        for attempt in attempts {
+            do {
+                try await attempt()
+                XCTFail("ran on another dashboard")
+            } catch {
+                XCTAssertEqual(error as? ShortcutSendError, .chatOnAnotherDashboard)
+            }
+        }
     }
 
     // MARK: - The named chat is the chat on screen

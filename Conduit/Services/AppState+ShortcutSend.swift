@@ -41,10 +41,17 @@ extension AppState {
         return client != nil
     }
 
-    func makeShortcutSendBackend() -> ShortcutSendBackend {
+    /// With `dashboardID`, every chat it makes and every send stops with
+    /// `chatOnAnotherDashboard` once that dashboard is no longer the active
+    /// one, checked again after each wait before it picks the chat or sends.
+    func makeShortcutSendBackend(onlyOn dashboardID: UUID? = nil) -> ShortcutSendBackend {
         // The error a failed composer try left, for the run to clear once
         // its retry lands.
         let failedTry = ShortcutFailedTry()
+        let stayOnDashboard: @MainActor () throws -> Void = { [weak self] in
+            guard let dashboardID else { return }
+            guard self?.activeDashboardID == dashboardID else { throw ShortcutSendError.chatOnAnotherDashboard }
+        }
         return ShortcutSendBackend(
             connect: { [weak self] deadline in
                 await self?.connectForBackgroundRun(deadline: deadline) ?? false
@@ -85,11 +92,13 @@ extension AppState {
                 }
             },
             createChat: { [weak self] profile, title in
+                try stayOnDashboard()
                 guard let self, let client = self.client else { throw HermesError.notConnected }
                 let inUse = self.profilesMatch(profile, self.activeProfile)
                 // As a chat started from the composer: the profile's default
                 // model, not the open chat's (#916).
                 let created = try await client.createSession(inProfile: inUse ? nil : profile)
+                try stayOnDashboard()
                 if let returned = created.profile, !self.profilesMatch(returned, profile) {
                     throw HermesError.invalidResponse
                 }
@@ -106,6 +115,7 @@ extension AppState {
                 return try await self.reopenVoiceThreadRuntime(self.scopedShortcutChat(chat))
             },
             submit: { [weak self] chat, runtimeID, text in
+                try stayOnDashboard()
                 guard let self, self.client != nil else { throw HermesError.notConnected }
                 let scoped = self.scopedShortcutChat(chat)
                 // Shortcut text is literal: "/…" never runs a composer command.
@@ -119,6 +129,7 @@ extension AppState {
                     guard await self.voiceThreadRuntimeIsLive(runtimeID, profile: scoped.profile) else {
                         throw RpcError(code: 4001, message: "session not found")
                     }
+                    try stayOnDashboard()
                     // A turn the composer finds running is never steered or
                     // interrupted from here: it declines and the gateway queues.
                     self.submissionTurnSurface = (text, .shortcut)
@@ -144,6 +155,7 @@ extension AppState {
                 // joins the turn running.
                 await self.reportTurnSurface(.shortcut, runtimeSessionID: runtimeID, text: text)?.value
                 do {
+                    try stayOnDashboard()
                     return try await self.sendShortcutPrompt(runtimeID, text: text)
                 } catch {
                     self.discardTurnSurface(runtimeSessionID: runtimeID, text: text, after: error)

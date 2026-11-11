@@ -1976,7 +1976,7 @@ README.md
 **Code**
 - Widget: `ConduitWidgets/PulseWidget.swift` (the view and its reads: the feed with `looks=1` where served, Next look from Pulse's state when nothing is open, every 30 minutes and on each reload), `ConduitWidgets/PulseWidgetRunner.swift` (the widget's stand-in for Do it's runner), `ConduitWidgets/Info.plist` (ATS as the app's, for http Tailscale hosts), `ConduitWidgets/ConduitWidgets.entitlements` (both App Groups)
 - Shared: `Shared/Widgets/PulseWidgetFeed.swift` (PulseWidgetAccess, its Keychain item in the notifications group, and the rows from the feed), `Shared/Widgets/PulseWidgetSnapshot.swift` (the last good read with sent rows and a button's note, the store, the tap's link), `Shared/Widgets/PulseWidgetIntents.swift` (Done and Not now from the widget to the host; Do it as a LiveActivityIntent, run in the app), `Shared/Location/LocationHostClient.swift` (requests with a host pass)
-- App: `Conduit/Services/AppState+PulseWidget.swift` (savePulseWidgetAccess at each connect, return to the screen and token rotation, only while a Pulse widget is on the Home Screen; Do it's send; the tap), `Conduit/Services/AppState+Location.swift` (dashboardHostPass), `Conduit/Services/AppState+ShortcutSend.swift` (connectForBackgroundRun), `Conduit/Services/PulseFeed.swift` and `Conduit/Views/V2/V2PulsePage.swift` (a change of open cards reloads the widget), `Conduit/Services/AppState+WidgetLaunch.swift` (the tap's route)
+- App: `Conduit/Services/AppState+PulseWidget.swift` (savePulseWidgetAccess at each connect, return to the screen and token rotation, only while a Pulse widget is on the Home Screen; Do it's send; the tap), `Conduit/Services/AppState+Location.swift` (dashboardHostPass), `Conduit/Services/AppState+ShortcutSend.swift` (connectForBackgroundRun; makeShortcutSendBackend(onlyOn:), which binds Do it to its dashboard), `Conduit/Services/PulseFeed.swift` and `Conduit/Views/V2/V2PulsePage.swift` (a change of open cards reloads the widget), `Conduit/Services/AppState+WidgetLaunch.swift` (the tap's route)
 - Push: `ConduitNotificationService/NotificationService.swift` and `Shared/Notifications/PulseNotifications.swift` (a verified Pulse push reloads the widget)
 - Tests: `ConduitTests/PulseFeedTests.swift` (rows and buttons against the screen's, capability names, a new chat's title), `ConduitTests/WidgetSnapshotTests.swift` (the link, sent rows and notes, a button with no pass)
 
@@ -1991,7 +1991,7 @@ README.md
 - Not tried on a device: a press with Conduit not running, a token that expires, and a push's reload.
 - A card rewritten in place (Updated) shows in the widget at the next push or periodic reload, not at once from the app.
 
-**Checked:** 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
+**Checked:** 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed, checked again after each wait in the send); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
 
 ## Artifacts
 
