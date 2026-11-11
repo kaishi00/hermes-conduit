@@ -54,7 +54,7 @@ struct BotSkillsView: View {
         .navigationTitle(AppLocalization.string("Skills"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            guard let detailsProfile, details == nil, !detailsRead else { return }
+            guard let detailsProfile, details == nil, !detailsRead, !skillsSkipped else { return }
             details = appState.keptBotSkillDetails(profile: detailsProfile)
         }
         .task {
@@ -93,7 +93,7 @@ struct BotSkillsView: View {
                 }
             }
         } else {
-            let shown = BotSkillGrouping.grouped(capabilities.skills, details: [], query: query).flatMap(\.rows)
+            let shown = BotSkillGrouping.matching(capabilities.skills, query: query)
             if shown.isEmpty {
                 Text(AppLocalization.string("No skills match."))
                     .foregroundStyle(.secondary)
