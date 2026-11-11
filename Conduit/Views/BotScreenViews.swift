@@ -373,9 +373,7 @@ private struct BotScreenContent: View {
     /// that used it last (the plugin's hold; Eric 2026-11-05).
     @ViewBuilder private var useLine: some View {
         if let controlling = use?.controlling {
-            Text(controlling.isChat(in: target.chatSessionIDs)
-                ? AppLocalization.string("This chat is using the screen")
-                : AppLocalization.string("\(BotScreenUse.name(of: controlling)) is using the screen"))
+            Text(BotScreenUse.controllingLine(controlling, openChat: target.chatSessionIDs))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         } else if let last = use?.last, let at = last.at {

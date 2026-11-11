@@ -840,12 +840,15 @@ private struct V2ConversationMenu: View {
     /// ordinary chat runs under (issue 2132). Not a room's (its bots may be
     /// another host's) or a saved copy's (no host to ask).
     private var screenProfile: String? {
-        guard appState.activeRoomSurface == nil else { return nil }
-        if let profile = appState.activeBotChatProfile ?? appState.activeWorkstream?.profile { return profile }
-        guard appState.offlineChatPresentation == nil,
-              let sessionID = appState.activeSessionId, !sessionID.isEmpty else { return nil }
-        if let profile = appState.activeChatSessionSummary?.profile, !profile.isEmpty { return profile }
-        return appState.activeProfile
+        BotScreenUse.menuProfile(
+            inRoom: appState.activeRoomSurface != nil,
+            botChatProfile: appState.activeBotChatProfile,
+            workstreamProfile: appState.activeWorkstream?.profile,
+            savedCopy: appState.offlineChatPresentation != nil,
+            sessionID: appState.activeSessionId,
+            rowProfile: appState.activeChatSessionSummary?.profile,
+            activeProfile: appState.activeProfile
+        )
     }
 
     /// The bot whose chat this is, once the roster has it.

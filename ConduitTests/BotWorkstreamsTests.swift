@@ -1638,6 +1638,30 @@ extension BotModeTests {
         XCTAssertEqual(BotScreenUse.name(of: controlling), "Trip plans")
         XCTAssertEqual(BotScreenUse.name(of: controlling, openChat: ["s1"]), AppLocalization.string("this chat"))
         XCTAssertEqual(BotScreenUse.name(of: try XCTUnwrap(use.last), openChat: ["s1"]), "W1")
+        XCTAssertEqual(BotScreenUse.controllingLine(controlling, openChat: ["s1"]),
+                       AppLocalization.string("This chat is using the screen"))
+        XCTAssertEqual(BotScreenUse.controllingLine(controlling),
+                       AppLocalization.string("\("Trip plans") is using the screen"))
+    }
+
+    /// Which bot's screen a chat's menu opens (issue 2132): a Bot Chat's or
+    /// workstream's bot, an ordinary chat's profile, never a room or a saved copy.
+    func testBotScreenMenuProfile() {
+        func profile(inRoom: Bool = false, botChat: String? = nil, workstream: String? = nil, savedCopy: Bool = false,
+                     session: String? = "s1", row: String? = nil) -> String? {
+            BotScreenUse.menuProfile(inRoom: inRoom, botChatProfile: botChat, workstreamProfile: workstream,
+                                     savedCopy: savedCopy, sessionID: session, rowProfile: row, activeProfile: "work")
+        }
+        XCTAssertEqual(profile(botChat: "furina"), "furina")
+        XCTAssertEqual(profile(workstream: "furina"), "furina")
+        XCTAssertEqual(profile(row: "furina"), "furina")
+        XCTAssertEqual(profile(row: ""), "work")
+        XCTAssertEqual(profile(), "work")
+        XCTAssertNil(profile(inRoom: true, botChat: "furina"))
+        XCTAssertNil(profile(inRoom: true))
+        XCTAssertNil(profile(savedCopy: true))
+        XCTAssertNil(profile(session: nil))
+        XCTAssertNil(profile(session: ""))
     }
 
     func testBotScreenKeysyms() {
