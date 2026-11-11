@@ -709,7 +709,9 @@ final class BotScreenModel: ObservableObject {
     /// has taken it since (the full screen opening or closing).
     func pageGone(_ gone: BotScreenPage) {
         guard page == nil || page === gone else { return }
+        // Before the next page is ready, nothing attaches to the gone one.
         detach()
+        page = nil
     }
 
     /// Whether a page message is about the stream now open: each attach

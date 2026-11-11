@@ -4226,6 +4226,7 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(full.stops, 0, "The replaced page going away leaves the new one's stream")
         model.pageGone(full)
         XCTAssertEqual(full.stops, 1, "The page drawing it going away ends the stream")
+        XCTAssertNil(model.page, "Nothing attaches to a gone page before the next is ready")
     }
 
     /// Portrait on an iPhone but for a bot's screen in full screen; the iPad turns everywhere.

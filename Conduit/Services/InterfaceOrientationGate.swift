@@ -24,7 +24,9 @@ enum InterfaceOrientationGate {
     static func allowLandscape() {
         landscapeHolders += 1
         guard landscapeHolders == 1 else { return }
-        apply(turnTo: .landscapeRight)
+        // The side the phone is already turned to, if it's sideways. A device
+        // turned left shows the interface turned right.
+        apply(turnTo: UIDevice.current.orientation == .landscapeRight ? .landscapeLeft : .landscapeRight)
     }
 
     /// It closed: back to portrait once none is open.

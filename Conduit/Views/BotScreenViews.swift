@@ -428,27 +428,30 @@ private struct BotScreenContent: View {
     /// Round buttons beside the screen when it's wide, above it when it's tall.
     private func fullScreenControls(wide: Bool) -> some View {
         let buttons = Group {
+            // Exit always works, even while a takeover or hand back is on its way.
             fullScreenButton(AppLocalization.string("Exit Full Screen"), systemImage: "xmark") {
                 showsFullScreen = false
             }
-            if model.iHold {
-                fullScreenButton(AppLocalization.string("Hand Back"), systemImage: "arrow.uturn.backward", tint: .red) {
-                    Haptics.light()
-                    Task { await model.handBack() }
+            Group {
+                if model.iHold {
+                    fullScreenButton(AppLocalization.string("Hand Back"), systemImage: "arrow.uturn.backward", tint: .red) {
+                        Haptics.light()
+                        Task { await model.handBack() }
+                    }
+                    fullScreenButton(fullScreenTyping ? AppLocalization.string("Hide Keyboard") : AppLocalization.string("Type on the screen"),
+                                     systemImage: "keyboard", selected: fullScreenTyping) {
+                        fullScreenTyping.toggle()
+                    }
+                } else {
+                    fullScreenButton(AppLocalization.string("Take Over"), systemImage: "hand.raised") {
+                        Haptics.light()
+                        Task { await model.takeOver() }
+                    }
+                    .disabled(model.stream != .live)
                 }
-                fullScreenButton(fullScreenTyping ? AppLocalization.string("Hide Keyboard") : AppLocalization.string("Type on the screen"),
-                                 systemImage: "keyboard", selected: fullScreenTyping) {
-                    fullScreenTyping.toggle()
-                }
-            } else {
-                fullScreenButton(AppLocalization.string("Take Over"), systemImage: "hand.raised") {
-                    Haptics.light()
-                    Task { await model.takeOver() }
-                }
-                .disabled(model.stream != .live)
             }
+            .disabled(model.isBusy)
         }
-        .disabled(model.isBusy)
         return Group {
             if wide {
                 VStack(spacing: 12) { buttons; Spacer(minLength: 0) }
