@@ -407,7 +407,8 @@ final class MessageReadAloudController: ObservableObject {
         continuation.yield(.text(text))
         startOperation(
             messageID: Self.liveMessageID(sessionID: reply.sessionID),
-            title: ReadAloudNowPlaying.title(for: text)
+            title: ReadAloudNowPlaying.title(for: text),
+            traceLabel: "a reply as it streams"
         ) { [weak self] generation in
             await self?.runLivePlayback(generation: generation, items: items)
         }
@@ -471,6 +472,7 @@ final class MessageReadAloudController: ObservableObject {
     /// safe to call mid-operation: a superseded operation cannot observe
     /// this stop and resurrect playback.
     func stop() {
+        LiveCallTrace.readAloud.note("Stopped")
         liveReply?.continuation?.finish()
         liveReply = nil
         queue = []
@@ -496,6 +498,7 @@ final class MessageReadAloudController: ObservableObject {
         guard case .playing = state else { return false }
         guard !isPaused else { return true }
         guard betweenSegments || playback.pause() else { return false }
+        LiveCallTrace.readAloud.note("Paused")
         isPaused = true
         nowPlaying.setPaused(true)
         let delay = pausedStopDelay
@@ -533,6 +536,7 @@ final class MessageReadAloudController: ObservableObject {
             return false
         }
         playback.resume()
+        LiveCallTrace.readAloud.note("Resumed")
         isPaused = false
         pausedStopTask?.cancel()
         pausedStopTask = nil
@@ -545,6 +549,7 @@ final class MessageReadAloudController: ObservableObject {
     /// media does; Resume picks it up on the new route. Any other route
     /// change plays on (#1641). Internal for tests.
     func routeChanged(reason: AVAudioSession.RouteChangeReason) {
+        LiveCallTrace.readAloud.note("Route change (\(Self.traceName(of: reason))), now \(Self.traceRoute())")
         guard reason == .oldDeviceUnavailable else { return }
         if case .preparing = state {
             pauseWhenAudioStarts = operationGeneration
@@ -594,7 +599,7 @@ final class MessageReadAloudController: ObservableObject {
     }
 
     private func startPlayback(messageID: String, content: String) {
-        startOperation(messageID: messageID, title: ReadAloudNowPlaying.title(for: content)) { [weak self] generation in
+        startOperation(messageID: messageID, title: ReadAloudNowPlaying.title(for: content), traceLabel: "\(content.count) characters") { [weak self] generation in
             await self?.runPlayback(generation: generation, content: content)
         }
     }
@@ -602,6 +607,7 @@ final class MessageReadAloudController: ObservableObject {
     private func startOperation(
         messageID: String,
         title: String,
+        traceLabel: String,
         run: @escaping @MainActor (UInt64) async -> Void
     ) {
         operationGeneration &+= 1
@@ -609,6 +615,7 @@ final class MessageReadAloudController: ObservableObject {
         state = .preparing(messageID: messageID)
         nowPlayingTitle = title
         speed = ReadAloudSpeed.closest(to: playbackRate())
+        LiveCallTrace.readAloud.begin("Read Aloud", first: "Reading \(traceLabel) at \(String(format: "%gx", speed.rawValue)), on \(Self.traceRoute())")
         nowReading = NowReading(messageID: messageID, title: nowPlayingTitle)
         endBackgroundActivity = beginBackgroundActivity { [weak self] in
             // Time ran out before any audio: the app is about to suspend
@@ -640,6 +647,7 @@ final class MessageReadAloudController: ObservableObject {
                 return
             }
             speechStream = stream
+            LiveCallTrace.readAloud.note("Speaking with \(Self.traceEngine(of: stream))")
             // A reply that is all action or emoji is read as written rather
             // than not at all.
             let spoken = SpokenTextFilter.filter(content)
@@ -655,6 +663,7 @@ final class MessageReadAloudController: ObservableObject {
             try playback.finish()
             await playback.drain()
             guard isCurrent(generation) else { return }
+            LiveCallTrace.readAloud.note("Played to the end")
             settle(.idle)
             startNextQueued()
         } catch {
@@ -666,6 +675,7 @@ final class MessageReadAloudController: ObservableObject {
             speechStream = nil
             stream?.cancel()
             if isCancellation(error) {
+                LiveCallTrace.readAloud.note("Speech ended early (cancelled)")
                 // The stream died on its own (or was stopped); settle back to
                 // idle so the message is tappable again.
                 playback.stop()
@@ -752,6 +762,7 @@ final class MessageReadAloudController: ObservableObject {
                             return
                         }
                         speechStream = stream
+                        LiveCallTrace.readAloud.note("Speaking with \(Self.traceEngine(of: stream))")
                         open = stream
                     }
                     try await open?.append(text)
@@ -784,6 +795,7 @@ final class MessageReadAloudController: ObservableObject {
                 await playback.drain()
                 guard isCurrent(generation) else { return }
             }
+            LiveCallTrace.readAloud.note("Played to the end")
             settle(.idle)
             startNextQueued()
         } catch {
@@ -806,6 +818,7 @@ final class MessageReadAloudController: ObservableObject {
 
     private func transitionToPlaying(generation: UInt64) {
         guard isCurrent(generation) else { return }
+        if case .preparing = state { LiveCallTrace.readAloud.note("First audio") }
         // The stream sounding holds the session itself now; Now Playing,
         // kept through the gap, is retitled below.
         releaseSessionHold(endingNowPlaying: false)
@@ -867,6 +880,11 @@ final class MessageReadAloudController: ObservableObject {
     /// Ends the operation: the background activity it held is released with
     /// the state change, on every terminal path.
     private func settle(_ terminal: State) {
+        if case .failed = terminal {
+            LiveCallTrace.readAloud.end("Ended with an error")
+        } else {
+            LiveCallTrace.readAloud.end("Ended")
+        }
         // Nothing waits to be read: the session goes as the reading did.
         // Readying the next one may stop the controller, which keeps it.
         if queue.isEmpty, !carryingSessionHold { releaseSessionHold() }
@@ -930,6 +948,36 @@ final class MessageReadAloudController: ObservableObject {
         if let urlError = error as? URLError, urlError.code == .cancelled { return true }
         let nsError = error as NSError
         return nsError.domain == NSURLErrorDomain && nsError.code == NSURLErrorCancelled
+    }
+
+    /// Read Aloud's trace (issue 1641): which engine speaks, by its kind.
+    static func traceEngine(of stream: VoiceSpeechStream) -> String {
+        switch stream {
+        case is OnDeviceSpeechStream: "the iPhone voice"
+        case is HermesSpeechStream: "Hermes speech"
+        case is SpeechServerSpeechStream: "the speech server"
+        case is FallbackSpeechStream: "Hermes speech or the speech server, the iPhone voice if it fails first"
+        default: String(describing: type(of: stream))
+        }
+    }
+
+    /// The outputs playing now, by kind ("Speaker", "BluetoothA2DPOutput").
+    private static func traceRoute() -> String {
+        let outputs = AVAudioSession.sharedInstance().currentRoute.outputs.map(\.portType.rawValue)
+        return outputs.isEmpty ? "no output" : outputs.joined(separator: " + ")
+    }
+
+    private static func traceName(of reason: AVAudioSession.RouteChangeReason) -> String {
+        switch reason {
+        case .newDeviceAvailable: "new device"
+        case .oldDeviceUnavailable: "device gone"
+        case .categoryChange: "category change"
+        case .override: "override"
+        case .wakeFromSleep: "wake from sleep"
+        case .noSuitableRouteForCategory: "no suitable route"
+        case .routeConfigurationChange: "configuration change"
+        default: "reason \(reason.rawValue)"
+        }
     }
 
     private func isCurrent(_ generation: UInt64) -> Bool {
