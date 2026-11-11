@@ -1751,9 +1751,9 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testPhotoAccessTakenAwayBetweenPartsSendsTheRestWithoutPhotos() async throws {
-        // 5,000 events and a calendar fill more than one part; the photo goes in the last.
+        // Events with long notes fill more than one part; the photo goes in the last.
         let source = FakePhoneCalendarSource()
-        source.events = (0..<5_000).map { phoneEvent("e_\($0)", "Meeting \($0)") }
+        source.events = longPhoneEvents()
         let photos = FakePhonePhotoSource()
         photos.entries = [["id": "ph_0000000000000001", "taken": "2026-10-12T15:00:00Z", "labels": ["beach"]]]
         let host = FakePhoneHost()
@@ -1792,7 +1792,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
         // Three parts: access goes after the first, the host takes the
         // second (Photos off, so it drops the descriptions) and refuses the third.
-        source.events = (0..<10_000).map { phoneEvent("e_\($0)", "Meeting \($0)") }
+        source.events = longPhoneEvents()
         let before = host.batches.count
         host.failIngest = 3
         let failed = await engine.sync(deadline: .distantFuture) { [unowned photos] path, method, body in
@@ -1860,6 +1860,17 @@ extension HermesVoiceGatewayTimeoutTests {
         var preferences = PhoneSyncPreferences(calendar: .full, reminders: true, status: true, focus: true)
         preferences.destination = PhoneSyncDestination(dashboardID: UUID(), profile: "default", host: "hermes.local")
         return preferences
+    }
+
+    /// As many events as a pass reads, each with the longest notes: about
+    /// three parts' worth of bytes.
+    private func longPhoneEvents() -> [[String: Any]] {
+        let notes = String(repeating: "n", count: PhoneSyncLimits.notesChars)
+        return (0..<PhoneSyncLimits.maxEvents).map { index in
+            var event = phoneEvent("e_\(index)", "Meeting \(index)")
+            event["notes"] = notes
+            return event
+        }
     }
 
     private func phoneEvent(_ id: String, _ title: String) -> [String: Any] {
