@@ -123,6 +123,11 @@ extension AppState {
     /// it now. The widget then shows the row as sent, or why it wasn't.
     func runPulseWidgetAction(_ action: PulseWidgetAction, card id: Int, dashboardID: UUID) async {
         guard action == .doIt else { return }
+        // A second press while it sends, or on a row already sent, sends nothing.
+        if let kept = pulseWidgetStore?.read(), kept.dashboardID == dashboardID,
+           kept.cards.first(where: { $0.id == id })?.sentAt != nil { return }
+        guard pulseWidgetDoItsRunning.insert(id).inserted else { return }
+        defer { pulseWidgetDoItsRunning.remove(id) }
         // As a shortcut's run: it may reconnect on its own while it lasts.
         shortcutSendsRunning += 1
         defer { endShortcutSend() }
