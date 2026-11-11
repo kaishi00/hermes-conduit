@@ -4254,6 +4254,12 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(width(956, kept: 440), 956, "Never opened")
         XCTAssertEqual(width(956, kept: nil, holders: 1), 956, "Nothing laid out yet")
         XCTAssertEqual(width(1180, kept: 820, idiom: .pad, holders: 1), 1180, "An iPad follows its window")
+        // What the screens wait out before they take up the window's width.
+        XCTAssertEqual(InterfaceOrientationGate.holdLeft(landscapeHolders: 1, sinceClosed: nil), .infinity)
+        XCTAssertEqual(InterfaceOrientationGate.holdLeft(landscapeHolders: 1, sinceClosed: 9), .infinity, "Opened again")
+        XCTAssertEqual(InterfaceOrientationGate.holdLeft(landscapeHolders: 0, sinceClosed: 0.5) ?? 0, 1.5, accuracy: 0.001)
+        XCTAssertNil(InterfaceOrientationGate.holdLeft(landscapeHolders: 0, sinceClosed: 2), "Turned back")
+        XCTAssertNil(InterfaceOrientationGate.holdLeft(landscapeHolders: 0, sinceClosed: nil), "Never opened")
     }
 
     func testABotScreenStoppedStreamsMessagesAreStale() {

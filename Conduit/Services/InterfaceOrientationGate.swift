@@ -57,23 +57,35 @@ enum InterfaceOrientationGate {
                     sinceClosed: lastClosed.map { Date().timeIntervalSince($0) })
     }
 
-    /// Returns once the screens under a full screen may follow the window
-    /// again, so a width that changed meanwhile (a Duo folded) is taken up
-    /// even if it doesn't change again (Greptile on #2229). Only waits on
-    /// an iPhone while one is open or the phone is turning back.
-    static func layoutReleased() async {
-        while !Task.isCancelled, landscapeHolders > 0
-                || lastClosed.map({ Date().timeIntervalSince($0) < turnBackTime }) == true {
-            try? await Task.sleep(for: .milliseconds(250))
-        }
-    }
-
     static func layoutWidth(live: CGFloat, kept: CGFloat?, idiom: UIUserInterfaceIdiom,
                             landscapeHolders: Int, sinceClosed: TimeInterval?) -> CGFloat {
-        guard idiom == .phone, let kept, kept > 0, kept != live else { return live }
-        if landscapeHolders > 0 { return kept }
-        if let sinceClosed, sinceClosed < turnBackTime { return kept }
-        return live
+        guard idiom == .phone, let kept, kept > 0,
+              holdLeft(landscapeHolders: landscapeHolders, sinceClosed: sinceClosed) != nil else { return live }
+        return kept
+    }
+
+    /// How much longer the screens under it keep their width: for as long
+    /// as one is open, then the rest of the turn back; nil once they follow
+    /// the window again.
+    static var holdLeft: TimeInterval? {
+        holdLeft(landscapeHolders: landscapeHolders, sinceClosed: lastClosed.map { Date().timeIntervalSince($0) })
+    }
+
+    static func holdLeft(landscapeHolders: Int, sinceClosed: TimeInterval?) -> TimeInterval? {
+        if landscapeHolders > 0 { return .infinity }
+        guard let sinceClosed, sinceClosed < turnBackTime else { return nil }
+        return turnBackTime - sinceClosed
+    }
+
+    /// Returns once the screens under a full screen may follow the window
+    /// again, so a width that changed meanwhile (a Duo folded) is taken up
+    /// even if it doesn't change again (Greptile on #2229). While one is
+    /// open it looks again every half second; as the phone turns back it
+    /// sleeps once, to the end of it.
+    static func layoutReleased() async {
+        while !Task.isCancelled, let left = holdLeft {
+            try? await Task.sleep(for: .seconds(left.isFinite ? left : 0.5))
+        }
     }
 
     private static func apply(turnTo orientation: UIInterfaceOrientationMask) {
