@@ -54,7 +54,12 @@ struct PulseWidgetProvider: TimelineProvider {
     static func read(store: PulseWidgetStore? = PulseWidgetStore.production,
                      access: PulseWidgetAccess? = PulseWidgetKeychain.load(),
                      currentAccess: () -> PulseWidgetAccess? = PulseWidgetKeychain.load) async -> PulseWidgetSnapshot? {
-        guard let access else { return nil }
+        guard let access else {
+            // Conduit took the pass away: nothing of it stays on disk, even
+            // a read that finished just as it went.
+            store?.remove()
+            return nil
+        }
         // The last good read for this dashboard, read again after each
         // request: Do it, Done or Not now may have written meanwhile.
         var previous: PulseWidgetSnapshot? {
