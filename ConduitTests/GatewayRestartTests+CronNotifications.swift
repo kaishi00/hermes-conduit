@@ -81,6 +81,14 @@ extension GatewayRestartTests {
         ].joined(separator: "\n"))
         XCTAssertEqual(report.preview.components(separatedBy: "\n").prefix(4), ["quiz.png", "Quiz: kapott?", "mit leer.pdf", "plugin.png"])
         XCTAssertEqual(CronBotChatReport(job: "News", report: "Rain at 9.").shown, "Rain at 9.")
+        // Two quoted references on a line stay as written, and a backtick
+        // line inside a tilde fence doesn't close it.
+        let twoFiles = "@file:\"/tmp/a.pdf\" @file:\"/tmp/b.pdf\""
+        XCTAssertEqual(CronBotChatReport(job: "Q", report: twoFiles).shown, twoFiles)
+        XCTAssertEqual(
+            CronBotChatReport(job: "Q", report: "~~~\n```\n@image:/in/code.png\n~~~\n@image:/after.png").shown,
+            "~~~\n```\n@image:/in/code.png\n~~~\nMEDIA:`/after.png`"
+        )
     }
 
     func testABotChatReportReadsAsTheJobAndItsReport() {

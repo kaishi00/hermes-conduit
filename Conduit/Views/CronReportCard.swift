@@ -30,11 +30,15 @@ struct CronBotChatReport: Equatable {
     /// sentence or in fenced code stays as written.
     var shown: String {
         guard report.contains("@image:") || report.contains("@file:") else { return report }
-        var fenced = false
+        var openFence: MarkdownFence?
         return report.components(separatedBy: "\n").map { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") { fenced.toggle(); return line }
-            guard !fenced, let path = Self.referencePath(trimmed) else { return line }
+            if let fence = openFence {
+                if fence.closes(trimmed) { openFence = nil }
+                return line
+            }
+            if let fence = MarkdownFence.opening(trimmed) { openFence = fence; return line }
+            guard let path = Self.referencePath(trimmed) else { return line }
             return ToolResultPresentation.mediaTag(for: path)
         }.joined(separator: "\n")
     }
@@ -55,6 +59,8 @@ struct CronBotChatReport: Equatable {
         var value = String(line.dropFirst(prefix.count))
         if value.count >= 2, let first = value.first, first == value.last, "`\"'".contains(first) {
             value = String(value.dropFirst().dropLast())
+            // Two quoted references on one line are two files, not one path.
+            guard !value.contains(first) else { return nil }
         } else if value.contains(where: \.isWhitespace) {
             return nil
         }
