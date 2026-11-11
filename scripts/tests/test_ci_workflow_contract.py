@@ -629,6 +629,9 @@ class NightlyWorkflowTests(unittest.TestCase):
         self.assertIn("SPEC: project-tests.yml", timing)
         self.assertIn("uses: actions/cache/restore@v5", timing)
         self.assertNotIn("actions/cache/save", timing)
+        self.assertLess(timing.index("actions/cache/restore@v5"),
+                        timing.index("bash scripts/ci-hosted-build.sh"),
+                        "the cache is restored before the build")
         self.assertIn("            ${{ steps.cache-key.outputs.prefix }}-\n"
                       "            ${{ steps.cache-key.outputs.xcode-prefix }}-\n", timing)
 

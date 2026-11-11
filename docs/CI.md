@@ -109,8 +109,10 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   misses the cache and builds clean. The nightly timing repeats build
   `project-tests.yml` too and restore the slim cache without saving it
   (since 2026-11-11: their clean full builds ran 1162-1590 s beside the unit
-  shards and outran the 1200 s budget on 11-09 and 11-11); the nightly UI
-  jobs never restore one.
+  shards and outran the 1200 s budget on 11-09 and 11-11). A night with a
+  new Xcode build has no slim cache yet, so its timing repeats still build
+  clean, now without the Watch app and extensions; the nightly UI jobs never
+  restore one.
 - **Packages from the restored checkout.** When the restored DerivedData
   holds the WebRTC checkout (the only package), the build passes
   `-skipPackageUpdates` and resolves from it instead of the network. A new
