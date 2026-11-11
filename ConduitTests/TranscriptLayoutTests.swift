@@ -145,6 +145,13 @@ final class TranscriptLayoutTests: XCTestCase {
         XCTAssertEqual(cell.preferredLayoutAttributesFitting(narrower).size.height, ideal, accuracy: 1,
                        "At another width it measures again")
 
+        try XCTUnwrap(cell.hosting).rootView.resized(CGSize(width: width, height: 300))
+        var larger = TranscriptCellEnvironment(EnvironmentValues(), disclosure: nil)
+        larger.dynamicTypeSize = .accessibility3
+        cell.updateEnvironment(larger)
+        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, ideal, accuracy: 1,
+                       "In another environment (a text size) it measures again until it reports")
+
         cell.host(root("a"), rowID: "a", in: parent)
         XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, ideal, accuracy: 1,
                        "Drawing something else, it measures again until it reports")
