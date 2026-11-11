@@ -758,7 +758,7 @@ not needed) · text: no Settings caption or doc describes the bar's place
 - The tabs stand in the strip whenever the window has one: a phone window whose safe area has a side inset of 72 pt or more on one side and none on the other (the Duo's is 84 pt). A landscape iPhone's sensor insets both sides, and an iPad or Mac window has none, so they keep the floating bar (Eric, 2026-11-07, #1945, picked from four mockups: option D, a tester's ask to put the bar under the wifi and battery).
 - They stand at the strip's foot, the main button under them, so they never reach the status icons at its top (the outer screen's end about 152 pt down; the simulator took taps everywhere below them and draws nothing else there, 2026-11-07).
 - They take the column iOS's own controls stand in: 50 pt wide, 24 pt in from the screen's edge (centered 49 pt from it, as the clock is), icons only with each tab's name as its accessibility label and large content viewer, and the main button a 50 pt circle. On a real Duo iOS also stands window controls in the strip (a close and arrange capsule and a "…" circle, 50 pt wide, down to about 332 pt on the outer screen) that the simulator never draws: the labelled 72 pt bar ran into the "…" circle and looked chunkier than them (issue 2118, a tester's screenshots, 2026-11-10). The icon-only bar starts about 387 pt down (the simulator), clear of them.
-- Any page pushed over a tab's root on one column hides them (a chat, Pulse, a project, Artifacts), unlike the floating bar, which stays over a project or Artifacts: iOS lays a pushed page's Back and its search button out in the same strip, over the tabs and the main button (the simulator, 2026-11-07, #1945). Beside the list they stay. The screens keep no clearance, and no bottom edge, under a bar while the tabs are in the strip.
+- Any page pushed over a tab's root on one column hides them (a chat, Pulse, a project, Artifacts), unlike the floating bar, which stays over a project or Artifacts: iOS lays a pushed page's Back and its toolbar buttons out in the same strip, over the tabs and the main button (the simulator, 2026-11-07, #1945); a page's search sits under its title (see Search on a page under the tabs). Beside the list they stay. The screens keep no clearance, and no bottom edge, under a bar while the tabs are in the strip.
 
 **Open gaps**
 - Not seen on a Duo yet: the inner screen's strip (the simulator can't unfold from the command line) and a finger's taps in the strip on hardware wait on TestFlight.
@@ -776,11 +776,14 @@ where the bar and the main button cover it.
 · Apps in Connectors (done) · the shared Model page, from Settings, a bot,
 Kanban or delegation (done) · Artifacts pushed in Chats or Bots (done) · a chat's
 Artifacts sheet (done: the same list, the field under its title too) · the
-Artifacts panel beside a chat (not needed: its own field) · a Duo's status strip (done: the
+Artifacts panel beside a chat (not needed: its own field) · the Kanban
+model override sheet (done: it shows the shared Model page, the field under
+its title too) · a Duo's status strip (done: the
 field is no toolbar button there) · Add a provider and the Kanban task
 composer's pickers (not needed: sheets, no tabs over them) · the drawer
-shell's lists (not needed: no tab bar) · the Chats list's own search and the
-Tasks board's (not needed: their own fields in the page) · Watch and CarPlay (not needed: no
+shell's lists (not needed: no tab bar) · the Chats list's, the Tasks board's
+and the Capabilities page's own search (not needed: their own fields in the
+page) · Watch and CarPlay (not needed: no
 such pages) · text: no caption or doc says where the field sits
 
 **Code**
@@ -789,7 +792,7 @@ such pages) · text: no caption or doc says where the field sits
 - Tests: `scripts/tests/test_page_search_source_contract.py` (a bare `.searchable` only for the sheets' and the drawer shell's prompts it lists)
 
 **Rulings**
-- A page that can show with the tabs up searches through pageSearchable: the field under the title, always shown, never at the screen's foot (a tester's screenshot of the Skill Hub, 2026-11-11, #2180). A sheet keeps iOS's own place, except a chat's Artifacts sheet, which draws the pushed list.
+- A page that can show with the tabs up searches through pageSearchable: the field under the title, always shown, never at the screen's foot (a tester's screenshot of the Skill Hub, 2026-11-11, #2180). A sheet keeps iOS's own place, except one that shows a shared page (a chat's Artifacts sheet, the Kanban model override's Model page), which keeps the page's.
 
 **Open gaps**
 - Not yet seen on a device or simulator: the source check can't show where iOS draws the field.

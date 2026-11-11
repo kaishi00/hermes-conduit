@@ -31,13 +31,27 @@ BARE_SEARCH = {
     "Conduit/Views/Kanban/KanbanTaskComposerView.swift": ["Search skills", "Search tasks"],
 }
 
+# The pages that can show with the tabs up and search.
+PAGE_SEARCH = [
+    "Conduit/Views/Capabilities/SkillHubViews.swift",
+    "Conduit/Views/Capabilities/PluginCatalogViews.swift",
+    "Conduit/Views/Capabilities/HostedAppsViews.swift",
+    "Conduit/Views/ModelChooserPage.swift",
+    "Conduit/Views/V2/V2ArtifactsViews.swift",
+]
+
 
 class PageSearchSourceContractTests(unittest.TestCase):
     def test_page_search_sits_under_the_title(self):
         source = SHELL.read_text()
         start = source.index("func pageSearchable(")
-        body = source[start:source.index("\n    }\n", start)]
+        body = source[start:source.index("func ", start + 1)]
         self.assertIn("placement: .navigationBarDrawer(displayMode: .always)", body)
+
+    def test_the_pages_under_the_tabs_search_through_it(self):
+        for page in PAGE_SEARCH:
+            with self.subTest(page=page):
+                self.assertIn(".pageSearchable(", (ROOT / page).read_text())
 
     def test_only_screens_without_the_tabs_search_bare(self):
         found = {}
