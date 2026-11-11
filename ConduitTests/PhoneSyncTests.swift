@@ -1751,9 +1751,9 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testPhotoAccessTakenAwayBetweenPartsSendsTheRestWithoutPhotos() async throws {
-        // 5,000 events and a calendar fill more than one part; the photo goes in the last.
+        // Events with long notes fill more than one part; the photo goes in the last.
         let source = FakePhoneCalendarSource()
-        source.events = (0..<5_000).map { phoneEvent("e_\($0)", "Meeting \($0)") }
+        source.events = longPhoneEvents()
         let photos = FakePhonePhotoSource()
         photos.entries = [["id": "ph_0000000000000001", "taken": "2026-10-12T15:00:00Z", "labels": ["beach"]]]
         let host = FakePhoneHost()
@@ -1776,6 +1776,60 @@ extension HermesVoiceGatewayTimeoutTests {
             XCTAssertEqual((part["sharing"] as? [String: Any])?["photos"] as? Bool, false)
         }
         XCTAssertNil(engine.state.photoHashes, "The next pass sends descriptions again once access is back")
+    }
+
+    func testAPhotosOffPartTheHostTookThenARefusedPartSendsDescriptionsAgain() async throws {
+        let source = FakePhoneCalendarSource()
+        let photos = FakePhonePhotoSource()
+        photos.entries = [["id": "ph_0000000000000001", "taken": "2026-10-12T15:00:00Z", "labels": ["beach"]]]
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: source, photos: photos)
+        var preferences = phonePreferences()
+        preferences.photos = true
+        engine.savePreferences(preferences)
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertNotNil(engine.state.photoHashes)
+
+        // Three parts: access goes after the first, the host takes the
+        // second (Photos off, so it drops the descriptions) and refuses the third.
+        source.events = longPhoneEvents()
+        let before = host.batches.count
+        host.failIngest = 3
+        let failed = await engine.sync(deadline: .distantFuture) { [unowned photos] path, method, body in
+            let answer = try await host.handle(path: path, method: method, body: body)
+            if host.batches.count == before + 1 { photos.granted = .denied }
+            return answer
+        }
+        XCTAssertNotEqual(failed, .synced)
+        XCTAssertEqual(host.batches.count, before + 2)
+        XCTAssertNil(engine.state.photoHashes, "The host dropped the descriptions, so the phone forgets it sent them")
+
+        // Access back: the descriptions go again.
+        host.failIngest = nil
+        photos.granted = .full
+        let retried = host.batches.count
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let upserts = host.batches.dropFirst(retried).compactMap { ($0["photos"] as? [String: Any])?["upsert"] as? [[String: Any]] }
+        XCTAssertEqual(upserts.flatMap { $0 }.compactMap { $0["id"] as? String }, ["ph_0000000000000001"])
+        XCTAssertEqual((host.batches.dropFirst(retried).first { $0["photos"] != nil }?["photos"] as? [String: Any])?["full"] as? Bool,
+                       true, "Nothing recorded as sent: the host's photos are replaced whole")
+
+        // The host takes the Photos-off part but its answer is lost: the
+        // descriptions still go again once access is back.
+        photos.granted = .denied
+        let lostAt = host.batches.count
+        _ = await engine.sync(deadline: .distantFuture) { path, method, body in
+            let answer = try await host.handle(path: path, method: method, body: body)
+            if host.batches.count == lostAt + 1 { throw URLError(.networkConnectionLost) }
+            return answer
+        }
+        XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["photos"] as? Bool, false)
+        XCTAssertNil(engine.state.photoHashes)
+        photos.granted = .full
+        let again = host.batches.count
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let resent = host.batches.dropFirst(again).compactMap { ($0["photos"] as? [String: Any])?["upsert"] as? [[String: Any]] }
+        XCTAssertEqual(resent.flatMap { $0 }.compactMap { $0["id"] as? String }, ["ph_0000000000000001"])
     }
 
     // MARK: Helpers
@@ -1806,6 +1860,17 @@ extension HermesVoiceGatewayTimeoutTests {
         var preferences = PhoneSyncPreferences(calendar: .full, reminders: true, status: true, focus: true)
         preferences.destination = PhoneSyncDestination(dashboardID: UUID(), profile: "default", host: "hermes.local")
         return preferences
+    }
+
+    /// As many events as a pass reads, each with the longest notes: about
+    /// three parts' worth of bytes.
+    private func longPhoneEvents() -> [[String: Any]] {
+        let notes = String(repeating: "n", count: PhoneSyncLimits.notesChars)
+        return (0..<PhoneSyncLimits.maxEvents).map { index in
+            var event = phoneEvent("e_\(index)", "Meeting \(index)")
+            event["notes"] = notes
+            return event
+        }
     }
 
     private func phoneEvent(_ id: String, _ title: String) -> [String: Any] {

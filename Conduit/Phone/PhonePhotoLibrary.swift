@@ -198,8 +198,9 @@ final class SystemPhotoLibrary: PhonePhotoSource {
             // A photo that couldn't be read (still in iCloud, Vision failed)
             // stays waiting for a later pass.
             let read = await Task.detached(priority: .utility, operation: { Self.look(at: asset.localID) }).value
-            // Turned off during the read: its outcome belongs to no pass.
-            guard generation == started else { break }
+            // Turned off, or access taken away in Settings, during the
+            // read: its outcome belongs to no pass.
+            guard generation == started, access.canRead else { break }
             guard let seen = read else {
                 unreadable[asset.localID] = Date()
                 continue

@@ -683,10 +683,13 @@ final class PhoneSyncEngine: ObservableObject {
         }
         if preferences.photos, self.preferences.photos, photoSource.access.canRead {
             let photos = photoSource.descriptions()
-            let section = await Self.diffInBackground(photos, against: state.photoHashes ?? [:], full: full,
+            // Nothing recorded as sent (first time, or after the host was
+            // told Photos is off): replace whatever the host has.
+            let photosFull = full || state.photoHashes == nil
+            let section = await Self.diffInBackground(photos, against: state.photoHashes ?? [:], full: photosFull,
                                                       truncated: false)
-            if full || !section.upsert.isEmpty || !section.delete.isEmpty {
-                let photos: [String: Any] = ["full": full, "upsert": section.upsert, "delete": section.delete]
+            if photosFull || !section.upsert.isEmpty || !section.delete.isEmpty {
+                let photos: [String: Any] = ["full": photosFull, "upsert": section.upsert, "delete": section.delete]
                 batch["photos"] = photos
             }
             newPhotoHashes = section.hashes
@@ -717,6 +720,14 @@ final class PhoneSyncEngine: ObservableObject {
                         part["sharing"] = sharing
                     }
                     newPhotoHashes = nil
+                }
+                // A part that says Photos is off may make the host drop its
+                // descriptions, whatever happens to its answer or the rest:
+                // forget what was sent, so the next pass with Photos on
+                // replaces them whole.
+                if (part["sharing"] as? [String: Any])?["photos"] as? Bool == false, state.photoHashes != nil {
+                    state.photoHashes = nil
+                    persist()
                 }
                 let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
                 part["batch_id"] = batchID
