@@ -16,14 +16,19 @@ import unittest
 ROOT = Path(__file__).resolve().parents[2]
 SHELL = ROOT / "Conduit/Views/V2/V2Shell.swift"
 
-# File -> how many bare `.searchable(` calls it may make, and why.
+# File -> the prompts of the bare `.searchable(` calls it may make, and why.
+# Matched by prompt, not by count, so a page's search can't take a sheet's place.
 BARE_SEARCH = {
     # The drawer shell (V2 off) has no tab bar.
-    "Conduit/Views/SidebarView.swift": 3,
+    "Conduit/Views/SidebarView.swift": [
+        "Search projects and pinned chats",
+        "Search archived conversations",
+        "Search scheduled jobs",
+    ],
     # Add a provider is a sheet.
-    "Conduit/Views/ProviderSettingsViews.swift": 1,
+    "Conduit/Views/ProviderSettingsViews.swift": ["Search providers"],
     # The task composer's skill and parent-task pickers are sheets.
-    "Conduit/Views/Kanban/KanbanTaskComposerView.swift": 2,
+    "Conduit/Views/Kanban/KanbanTaskComposerView.swift": ["Search skills", "Search tasks"],
 }
 
 
@@ -37,9 +42,12 @@ class PageSearchSourceContractTests(unittest.TestCase):
     def test_only_screens_without_the_tabs_search_bare(self):
         found = {}
         for path in sorted((ROOT / "Conduit").rglob("*.swift")):
-            count = len(re.findall(r"\.searchable\(", path.read_text()))
-            if count:
-                found[str(path.relative_to(ROOT))] = count
+            for line in path.read_text().splitlines():
+                if ".searchable(" in line:
+                    prompt = re.search(r'string\("([^"]+)"\)', line)
+                    found.setdefault(str(path.relative_to(ROOT)), []).append(
+                        prompt.group(1) if prompt else line.strip()
+                    )
         self.assertEqual(
             found,
             BARE_SEARCH,
