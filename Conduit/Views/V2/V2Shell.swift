@@ -742,10 +742,14 @@ struct V2Shell: View {
                 // in the tab it belongs in, rather than leave the list under
                 // a chat nobody can see.
                 if old != nil, new == nil {
-                    let toChat = appState.roomClosedForChat && conversationVisible
+                    let handoff = conversationVisible ? appState.roomHandedTo : AppState.RoomHandoff.none
                     if chatsPath.last == .conversation { chatsPath.removeLast() }
                     if botsPath.last == .conversation { botsPath.removeLast() }
-                    if toChat, !appState.isVoiceCallScreenPresented { openConversation() }
+                    if handoff != AppState.RoomHandoff.none, !appState.isVoiceCallScreenPresented {
+                        // A new chat has no id yet, so the Bot Chat open
+                        // before the room would still place it in Bots.
+                        openConversation(ordinary: handoff == .newChat)
+                    }
                 } else if new != nil, !conversationVisible, !appState.isVoiceCallScreenPresented {
                     // A room opened without a row tap (just created) shows.
                     openConversation()
@@ -1209,10 +1213,12 @@ struct V2Shell: View {
     /// one of its workstreams) opened while Bots shows, otherwise in
     /// Sessions. Only one tab ever holds it, since both would show the same
     /// active session.
-    private func openConversation() {
+    /// `ordinary`: the chat on its way is an ordinary one whatever the
+    /// conversation on hand is (a new chat out of a room).
+    private func openConversation(ordinary: Bool = false) {
         let target = V2Tab.conversationTab(
             selected: selectedTab,
-            isBotsChat: appState.placesConversationAsBotChat,
+            isBotsChat: !ordinary && appState.placesConversationAsBotChat,
             fromBotsPage: botsPath.last == .pulse || botsPath.last == .artifacts
         )
         appState.botChatOpeningPlaced()

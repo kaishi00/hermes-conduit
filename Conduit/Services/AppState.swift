@@ -2621,12 +2621,22 @@ final class AppState: ObservableObject {
     /// behind it (a return to the app) would put its error in the room
     /// (#1459); it waits here and shows when the room closes back to the chat.
     private var chatErrorBehindRoom: String?
-    /// Whether the room last closed was closed by a chat opening in its
-    /// place (a session open or a new chat), so the shell shows that chat
-    /// where the room's screen was rather than dropping back to the list
-    /// (Group Info's Ask and Wrap Up landed on Bots Home). Every close sets
-    /// it, so it never outlives the close it describes.
-    private(set) var roomClosedForChat = false
+    /// What took the place of the room last closed: a chat opening (a
+    /// session open) or a new chat, which the shell shows where the room's
+    /// screen was rather than dropping back to the list (Group Info's Ask
+    /// and Wrap Up landed on Bots Home). Every close sets it, so it never
+    /// outlives the close it describes.
+    private(set) var roomHandedTo: RoomHandoff = .none
+
+    enum RoomHandoff: Equatable {
+        /// Back, a disband, a server change: the room's screen goes.
+        case none
+        /// A session open, whose id is already the active one: it places itself.
+        case openedChat
+        /// A new chat, which has no id until Hermes answers: always an
+        /// ordinary chat, in Sessions, whatever Bot Chat was open before.
+        case newChat
+    }
     /// The restore error the open chat's last failed resume showed, which a
     /// later resume of it that works clears (issue 2025).
     private var chatRestoreFailureShown: String?
@@ -13960,10 +13970,10 @@ final class AppState: ObservableObject {
     ///
     /// Parks the room's pending send by default (see `parkedRoomOutboxes`).
     ///
-    /// `forChat`: a chat is opening in the room's place (`roomClosedForChat`).
+    /// `handingTo`: what is opening in the room's place (`roomHandedTo`).
     private func closeRoomSurface(clearingRoomError: Bool = true, parkingPendingSend: Bool = true,
-                                  forChat: Bool = false) {
-        roomClosedForChat = forChat
+                                  handingTo: RoomHandoff = .none) {
+        roomHandedTo = handingTo
         if clearingRoomError, activeRoomSurface != nil {
             errorMessage = nil
         }
@@ -27957,7 +27967,7 @@ final class AppState: ObservableObject {
         // in the roster, resumable with one tap. The chat shows where the
         // room was.
         if activeRoomSurface != nil {
-            closeRoomSurface(forChat: true)
+            closeRoomSurface(handingTo: .openedChat)
         }
         let previousTurnState = turnState
         // The catalog-ownership guard protects ORDINARY opens from another
@@ -29061,7 +29071,7 @@ final class AppState: ObservableObject {
         // same as a session open: otherwise the room stays on screen while
         // the new session is adopted invisibly behind it.
         if activeRoomSurface != nil {
-            closeRoomSurface(forChat: true)
+            closeRoomSurface(handingTo: .newChat)
         }
         let transitionGeneration = beginExplicitChatViewportTransition(ownedBy: widgetLease)
         newSessionCreationsInFlight += 1

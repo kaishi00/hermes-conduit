@@ -297,7 +297,7 @@ extension GroupChatModelsTests {
         // Back from the room: no chat takes its place, so the shell drops its screen.
         appState.closeGroupRoom()
         XCTAssertNil(appState.activeRoomSurface)
-        XCTAssertFalse(appState.roomClosedForChat)
+        XCTAssertEqual(appState.roomHandedTo, AppState.RoomHandoff.none)
     }
 
     /// The app's steps behind a room's chat, recorded: the opens (a kept
@@ -357,6 +357,6 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.activeSessionId, "chat-new")
         XCTAssertNil(appState.botConversationProfileForTesting("chat-new"), "an ordinary chat, never a Bot Chat")
         XCTAssertNil(appState.activeRoomSurface)
-        XCTAssertTrue(appState.roomClosedForChat, "the chat shows where the room was, not Bots Home under it")
+        XCTAssertEqual(appState.roomHandedTo, .openedChat, "the chat shows where the room was, not Bots Home under it")
     }
 }
