@@ -40,6 +40,8 @@ extension AppState {
     static let phoneShortcutsCapability = "phone-shortcuts"
     /// Plugin 0.160.0: contacts Hermes asks to add, change or delete.
     static let phoneContactEditsCapability = "phone-contact-edits"
+    /// Plugin 0.161.0: photo descriptions Hermes searches, and a photo sent on a yes.
+    static let phonePhotosCapability = "phone-photos"
     static let phoneSyncTaskIdentifier = "com.milim.relay.phone-sync"
     static let phoneChangesPushType = "phone.changes"
     static let phoneSyncLog = Logger(subsystem: "com.milim.relay", category: "phone-sync")
@@ -120,6 +122,8 @@ extension AppState {
         if choices.contactsEdit, phoneSync.contactsAccess == .notAsked {
             await phoneSync.requestContactsAccess()
         }
+        // A no to Photos still turns on the rest.
+        if choices.photos, !(await phoneSync.photoSource.requestAccess()).canRead { choices.photos = false }
         guard activeDashboardID == dashboardID, connection?.baseUrl == baseURL else {
             throw DashboardTicketBridgeError.notReady
         }
@@ -153,6 +157,11 @@ extension AppState {
         if choices.contactsEdit, !current.contactsEdit, phoneSync.contactsAccess == .notAsked {
             await phoneSync.requestContactsAccess()
         }
+        if choices.photos, !current.photos, !(await phoneSync.photoSource.requestAccess()).canRead {
+            throw PhoneSyncEngine.PhotosNotAllowed()
+        }
+        // Their descriptions stay on the phone only while Photos is on.
+        if !choices.photos, current.photos { phoneSync.photoSource.forget() }
         // A newer change, or turning sharing off, came in while iOS asked.
         guard mine == Self.phoneUpdateGeneration, phoneSync.preferences.destination == destination else { return }
         var preferences = choices

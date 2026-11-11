@@ -77,6 +77,7 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 - Apple Health data
 - Focus and phone status, alarms and timers, and contacts you pick, which Hermes can ask to add to or change
 - Shortcuts you list, which Hermes can ask to run, with what each gives back
+- Photos Hermes can search by descriptions made on your iPhone; a photo itself goes only when you tap Send on its card, and pictures from a chat save to a Hermes album
 - Ask Hermes about what's on your screen, or send anything from Shortcuts or the share sheet
 
 **Notifications and control**

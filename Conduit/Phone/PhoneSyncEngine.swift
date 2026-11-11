@@ -38,6 +38,11 @@ struct PhoneSyncState: Codable, Equatable {
     var contactsHash: String?
     /// Optional fields read as nil from a state file written before them.
     var shortcutsHash: String?
+    /// What the host has of each photo's description, by photo id.
+    var photoHashes: [String: String]?
+    /// Photos the user said yes to, by change id, waiting to go up: each
+    /// one's JPEG is in `PhoneSyncEngine.photoUploadsFolder`.
+    var photoUploads: [String]?
     var lastFullSync: Date?
     /// The time zone and sharing the last upload the host took reported,
     /// hashed, and when it went: a pass with nothing new sends nothing
@@ -69,6 +74,7 @@ struct PhoneSyncState: Codable, Equatable {
         alarmsHash = nil
         contactsHash = nil
         shortcutsHash = nil
+        photoHashes = nil
         lastFullSync = nil
         fingerprint = nil
         frameHash = nil
@@ -207,6 +213,7 @@ final class PhoneSyncEngine: ObservableObject {
     let alarmSource: PhoneAlarmSource
     let contactsSource: PhoneContactsSource
     let shortcutRunner: PhoneShortcutRunning
+    let photoSource: PhonePhotoSource
     /// Reports a run that went without asking as soon as it ends, as an
     /// answered card is: nothing else would send it while Conduit stays open.
     var onRanWithoutAsking: (@MainActor () async -> Void)?
@@ -241,6 +248,7 @@ final class PhoneSyncEngine: ObservableObject {
         alarmSource: PhoneAlarmSource = PhoneAlarmSources.system(),
         contactsSource: PhoneContactsSource = SystemContactsSource(),
         shortcutRunner: PhoneShortcutRunning? = nil,
+        photoSource: PhonePhotoSource? = nil,
         store: PhoneSyncStateStore = .standard,
         keys: PhoneSyncKeyStore = .keychain,
         defaults: UserDefaults = .standard,
@@ -253,6 +261,7 @@ final class PhoneSyncEngine: ObservableObject {
         self.alarmSource = alarmSource
         self.contactsSource = contactsSource
         self.shortcutRunner = shortcutRunner ?? PhoneShortcutRunner.shared
+        self.photoSource = photoSource ?? SystemPhotoLibrary.shared
         contactsAccess = contactsSource.access
         self.store = store
         self.keys = keys
@@ -393,6 +402,8 @@ final class PhoneSyncEngine: ObservableObject {
         }
         state.startOver()
         persist()
+        try? FileManager.default.removeItem(at: Self.photoUploadsFolder)
+        photoSource.forget()
         return deleted
     }
 
@@ -415,7 +426,9 @@ final class PhoneSyncEngine: ObservableObject {
             let (key, hostPending) = try await ensureKey(request: request)
             try checkTime(deadline)
             let pending = try await upload(preferences: preferences, key: key, hostPending: hostPending,
-                                           keepalive: keepalive, request: request)
+                                           keepalive: keepalive, deadline: deadline, request: request)
+            try checkTime(deadline)
+            try await uploadPhotos(preferences: preferences, key: key, request: request)
             try checkTime(deadline)
             if pending > 0 || !state.unreported.isEmpty || !prompts.isEmpty {
                 try await exchange(key: key, request: request)
@@ -509,7 +522,7 @@ final class PhoneSyncEngine: ObservableObject {
     /// Nothing changed: nothing goes (until the keepalive), and the count
     /// is the one the host's status gave.
     private func upload(preferences: PhoneSyncPreferences, key: PhoneSyncCrypto.SessionKey, hostPending: Int?,
-                        keepalive: TimeInterval, request: Request) async throws -> Int {
+                        keepalive: TimeInterval, deadline: Date = .distantFuture, request: Request) async throws -> Int {
         let currentNow = now()
         let full = state.fingerprint != preferences.fingerprint
             || state.lastFullSync.map { currentNow.timeIntervalSince($0) > PhoneSyncLimits.fullSyncInterval } ?? true
@@ -519,7 +532,8 @@ final class PhoneSyncEngine: ObservableObject {
             "time_zone": TimeZone.current.identifier,
             "sharing": Self.effectiveSharing(preferences, access: calendarSource.eventAccess,
                                              remindersAuthorized: calendarSource.remindersAuthorized,
-                                             alarmsAuthorized: alarmSource.authorized),
+                                             alarmsAuthorized: alarmSource.authorized,
+                                             photosAuthorized: photoSource.access.canRead),
         ]
         var newEventHashes = state.eventHashes
         var newReminderHashes = state.reminderHashes
@@ -529,6 +543,7 @@ final class PhoneSyncEngine: ObservableObject {
         var newAlarmsHash = state.alarmsHash
         var newContactsHash = state.contactsHash
         var newShortcutsHash = state.shortcutsHash
+        var newPhotoHashes = state.photoHashes
         var statusSent = false
 
         let readsEvents = preferences.calendar.reads && calendarSource.eventAccess == .full
@@ -638,6 +653,22 @@ final class PhoneSyncEngine: ObservableObject {
         } else {
             newShortcutsHash = nil
         }
+        if preferences.photos, photoSource.access.canRead {
+            // A few dozen more described each pass, newest first.
+            await photoSource.describeMore(budget: PhoneSyncLimits.photosPerPass,
+                                           until: min(deadline, now().addingTimeInterval(20)))
+            let photos = photoSource.descriptions()
+            let section = await Self.diffInBackground(photos, against: state.photoHashes ?? [:], full: full,
+                                                      truncated: false)
+            if full || !section.upsert.isEmpty || !section.delete.isEmpty {
+                let photos: [String: Any] = ["full": full, "upsert": section.upsert, "delete": section.delete]
+                batch["photos"] = photos
+            }
+            newPhotoHashes = section.hashes
+        } else {
+            // The host forgets them when they're no longer shared.
+            newPhotoHashes = nil
+        }
 
         let frame = Self.hash(Self.frame(of: batch))
         let send = ContextUploadPolicy.phoneIngestNeeded(
@@ -669,6 +700,7 @@ final class PhoneSyncEngine: ObservableObject {
         state.alarmsHash = newAlarmsHash
         state.contactsHash = newContactsHash
         state.shortcutsHash = newShortcutsHash
+        state.photoHashes = newPhotoHashes
         if statusSent { state.statusSentAt = currentNow }
         state.fingerprint = preferences.fingerprint
         if full { state.lastFullSync = currentNow }
@@ -708,7 +740,8 @@ final class PhoneSyncEngine: ObservableObject {
     /// emails go with full calendar access; "details" with full access or
     /// reminders (it also covers reminder notes).
     nonisolated static func effectiveSharing(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
-                                             remindersAuthorized: Bool, alarmsAuthorized: Bool = false) -> [String: Any] {
+                                             remindersAuthorized: Bool, alarmsAuthorized: Bool = false,
+                                             photosAuthorized: Bool = false) -> [String: Any] {
         var sharing = preferences.sharingJSON
         let calendar: PhoneCalendarAccess
         switch (preferences.calendar, access) {
@@ -726,6 +759,7 @@ final class PhoneSyncEngine: ObservableObject {
         sharing["reminders_read_only"] = reminders && preferences.remindersReadOnly
         if !calendar.reads, !reminders { sharing["details"] = false }
         sharing["alarms"] = preferences.alarms && alarmsAuthorized
+        sharing["photos"] = preferences.photos && photosAuthorized
         return sharing
     }
 
@@ -776,7 +810,7 @@ final class PhoneSyncEngine: ObservableObject {
         var deletes: [(section: String, list: String, item: Any)] = []
         var upserts: [(section: String, list: String, item: Any)] = []
         var later = batch.filter { frameKeys.contains($0.key) }
-        for section in ["events", "reminders"] {
+        for section in ["events", "reminders", "photos"] {
             guard var body = batch[section] as? [String: Any] else { continue }
             deletes += (body["delete"] as? [Any] ?? []).map { (section, "delete", $0) }
             upserts += (body["upsert"] as? [Any] ?? []).map { (section, "upsert", $0) }
@@ -874,6 +908,8 @@ final class PhoneSyncEngine: ObservableObject {
         var fresh: [PhoneChangePrompt] = []
         for change in changes {
             if applying.contains(change.id) { continue }
+            // Said yes to, and going up: no card again.
+            if state.photoUploads?.contains(change.id) == true { continue }
             if let known = state.answered[change.id] {
                 // Answered, but the report was lost: say it again.
                 if !state.unreported.contains(known) { state.unreported.append(known) }
@@ -938,7 +974,8 @@ final class PhoneSyncEngine: ObservableObject {
     }
 
     private func calendarTitle(for change: PhoneChange) -> String? {
-        guard !change.kind.isAlarm, change.kind != .runShortcut, !change.kind.isContact else { return nil }
+        guard !change.kind.isAlarm, change.kind != .runShortcut, !change.kind.isContact, change.kind != .sendPhoto
+        else { return nil }
         return calendarSource.calendarTitle(id: change.fields.calendarID ?? change.fields.listID, forEvents: change.kind.isEvent)
     }
 
@@ -963,6 +1000,7 @@ final class PhoneSyncEngine: ObservableObject {
         if kind.isAlarm { return "The user doesn't let Hermes set alarms on this iPhone" }
         if kind == .runShortcut { return "The user doesn't let Hermes run Shortcuts on this iPhone" }
         if kind.isContact { return "The user doesn't let Hermes change their contacts" }
+        if kind == .sendPhoto { return "The user doesn't share their photos with Hermes on this iPhone" }
         return kind.isEvent
             ? "The user doesn't let Hermes make this change to their calendar (read-only or not shared)"
             : "The user doesn't let Hermes change their reminders (read-only or not shared)"
@@ -986,6 +1024,10 @@ final class PhoneSyncEngine: ObservableObject {
         }
         if change.kind.isContact {
             await applyContact(change)
+            return
+        }
+        if change.kind == .sendPhoto {
+            await stagePhoto(change)
             return
         }
         do {
@@ -1144,6 +1186,102 @@ final class PhoneSyncEngine: ObservableObject {
         }
     }
 
+    // MARK: Photos
+
+    /// Where the pictures the user said yes to wait to go up. Not backed up;
+    /// gone when sharing is turned off.
+    nonisolated static var photoUploadsFolder: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return base.appendingPathComponent("PhoneSync", isDirectory: true)
+            .appendingPathComponent("PhotoUploads", isDirectory: true)
+    }
+
+    nonisolated static func photoUploadURL(_ changeID: String) -> URL {
+        // A change id is the host's ("ch_" and URL-safe characters).
+        let safe = changeID.filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }
+        return photoUploadsFolder.appendingPathComponent("\(safe).jpg")
+    }
+
+    /// The user said yes to a photo: its JPEG waits on disk for this
+    /// pass (or the next) to send it, so a lost connection doesn't lose
+    /// the yes. Sent only by the upload, never by the result alone.
+    private func stagePhoto(_ change: PhoneChange) async {
+        guard let photoID = change.photoID,
+              let data = await photoSource.jpeg(photoID: photoID, maxBytes: PhoneSyncLimits.photoFileBytes) else {
+            record(PhoneChangeResult(id: change.id, outcome: .failed,
+                                     note: "That photo isn't on this iPhone any more, or couldn't be read"))
+            return
+        }
+        // Turned off while it was read: nothing goes.
+        guard preferences.photos else {
+            record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.refusalNote(.sendPhoto)))
+            return
+        }
+        do {
+            try FileManager.default.createDirectory(at: Self.photoUploadsFolder, withIntermediateDirectories: true)
+            var folder = Self.photoUploadsFolder
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? folder.setResourceValues(values)
+            try data.write(to: Self.photoUploadURL(change.id), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            record(PhoneChangeResult(id: change.id, outcome: .failed, note: "The photo couldn't be saved for sending"))
+            return
+        }
+        var uploads = state.photoUploads ?? []
+        if !uploads.contains(change.id) { uploads.append(change.id) }
+        state.photoUploads = uploads
+        persist()
+    }
+
+    /// Sends each photo the user said yes to, one per upload, and records
+    /// how it went. A refusal (the host no longer waits for it, or won't
+    /// take it) answers that photo alone; a lost connection keeps it for
+    /// the next pass.
+    private func uploadPhotos(preferences: PhoneSyncPreferences, key: PhoneSyncCrypto.SessionKey,
+                              request: Request) async throws {
+        guard let uploads = state.photoUploads, !uploads.isEmpty else { return }
+        for changeID in uploads {
+            let file = Self.photoUploadURL(changeID)
+            guard preferences.photos, photoSource.access.canRead, let data = try? Data(contentsOf: file) else {
+                settlePhoto(PhoneChangeResult(id: changeID, outcome: .failed,
+                                         note: preferences.photos ? "The photo couldn't be read for sending"
+                                             : Self.refusalNote(.sendPhoto)))
+                continue
+            }
+            let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+            let batch: [String: Any] = [
+                "batch_id": batchID,
+                "sent_at": PhoneDates.format(now()),
+                "time_zone": TimeZone.current.identifier,
+                "sharing": Self.effectiveSharing(preferences, access: calendarSource.eventAccess,
+                                                 remindersAuthorized: calendarSource.remindersAuthorized,
+                                                 alarmsAuthorized: alarmSource.authorized, photosAuthorized: true),
+                "photo_files": [["change_id": changeID, "data": data.base64EncodedString()]],
+            ]
+            do {
+                let body = try await Self.sealBatch(batch, key: key, deviceID: state.deviceID, batchID: batchID)
+                let answer = try await request("\(Self.base)/ingest", "POST", body)
+                let sent = (answer["photos_sent"] as? [String] ?? []).contains(changeID)
+                settlePhoto(sent ? PhoneChangeResult(id: changeID, outcome: .applied)
+                       : PhoneChangeResult(id: changeID, outcome: .failed, note: "Hermes no longer waited for this photo"))
+            } catch DashboardTicketBridgeError.http(let status, let detail) where status == 400 || status == 413 {
+                settlePhoto(PhoneChangeResult(id: changeID, outcome: .failed, note: "The host refused the photo: \(detail)"))
+            }
+            // Anything else (no connection, the host away) throws: it stays
+            // for the next pass.
+        }
+    }
+
+    /// A photo answered (sent or refused): it waits no more.
+    private func settlePhoto(_ result: PhoneChangeResult) {
+        try? FileManager.default.removeItem(at: Self.photoUploadURL(result.id))
+        state.photoUploads?.removeAll { $0 == result.id }
+        if state.photoUploads?.isEmpty == true { state.photoUploads = nil }
+        record(result)
+    }
+
     private func record(_ result: PhoneChangeResult) {
         state.answered[result.id] = result
         state.unreported.append(result)
@@ -1222,6 +1360,13 @@ final class PhoneSyncEngine: ObservableObject {
             try await calendarSource.removeAdded(itemID: added.itemID, isEvent: added.isEvent, window: window)
         } catch {
             lastError = Self.describe(error)
+        }
+    }
+
+    /// Photos turned on without access to the library.
+    struct PhotosNotAllowed: LocalizedError {
+        var errorDescription: String? {
+            AppLocalization.string("Conduit can't see your photos. Allow Photos for Conduit in Settings to share them with Hermes.")
         }
     }
 

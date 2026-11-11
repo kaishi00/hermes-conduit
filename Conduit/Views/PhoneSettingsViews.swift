@@ -50,6 +50,9 @@ struct PhoneSettingsPage: View {
     private var showsShortcuts: Bool {
         appState.notifierPlugin.reports(AppState.phoneShortcutsCapability) || choices.shortcuts
     }
+    private var showsPhotos: Bool {
+        appState.notifierPlugin.reports(AppState.phonePhotosCapability) || choices.photos
+    }
     @State private var showsAddShortcut = false
     @State private var newShortcutName = ""
     @State private var newShortcutNote = ""
@@ -78,6 +81,7 @@ struct PhoneSettingsPage: View {
                 if showsAlarms { alarmsSection }
                 if showsPeople { peopleSection }
                 if showsShortcuts { shortcutsSection }
+                if showsPhotos { photosSection }
                 if preferences.isOn { voiceSection }
                 actionSection
             }
@@ -372,6 +376,35 @@ struct PhoneSettingsPage: View {
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Type its name exactly as the Shortcuts app shows it.")
+        }
+    }
+
+    private var photosSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Photos"), symbol: "photo.on.rectangle", tint: .conduitAccent) {
+            Toggle(isOn: binding(\.photos)) {
+                Label("Let Hermes search your photos", systemImage: "photo.on.rectangle")
+            }
+            .accessibilityIdentifier("settings.phone.photos")
+            Text("Conduit describes each photo on this iPhone, a few at a time while it's open: what's in it (Apple's on-device labels), words in the picture, the town or area, and when it was taken. Only that description goes to your Hermes host, for your newest 5,000 photos, never the photo itself.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+            Text("When Hermes wants to see a photo, it shows on a card and goes to your host only if you tap Send.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+            if choices.photos, preferences.photos {
+                let progress = engine.photoSource.progress
+                if progress.total > 0 {
+                    Text(AppLocalization.string("Photos described so far: \(Int(progress.described))"))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .monospacedDigit()
+                }
+                if engine.photoSource.access == .limited {
+                    Text("Conduit sees only the photos you chose for it. To let Hermes search them all, allow full access for Conduit in Settings.")
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
+            }
         }
     }
 
@@ -855,6 +888,7 @@ enum PhoneChangeWording {
         case .addContact: return AppLocalization.string("Hermes wants to add a contact")
         case .updateContact: return AppLocalization.string("Hermes wants to change a contact")
         case .deleteContact: return AppLocalization.string("Hermes wants to delete a contact")
+        case .sendPhoto: return AppLocalization.string("Hermes wants to see a photo")
         }
     }
 
@@ -895,6 +929,7 @@ enum PhoneChangeWording {
     static func detail(_ change: PhoneChange, personName: String? = nil) -> String {
         if change.kind == .setAlarm || change.kind == .setTimer { return alarmSummary(change.fields, kind: change.kind) }
         if change.kind == .runShortcut { return shortcutSummary(change.fields) }
+        if change.kind == .sendPhoto { return photoSummary(change.fields) }
         if change.kind.isContact {
             // Who it's about, then what changes (a new contact's name is in it).
             let edit = change.fields.contact?.summary ?? ""
@@ -934,7 +969,14 @@ enum PhoneChangeWording {
         case .addContact: return AppLocalization.string("Add")
         case .updateContact: return AppLocalization.string("Change")
         case .deleteContact: return AppLocalization.string("Delete")
+        case .sendPhoto: return AppLocalization.string("Send")
         }
+    }
+
+    /// When and where a photo was taken: "4 Aug 2026 · Lisbon, Portugal".
+    static func photoSummary(_ fields: PhoneChangeFields) -> String {
+        [fields.taken?.formatted(date: .abbreviated, time: .omitted), fields.place].compactMap { $0 }
+            .joined(separator: " · ")
     }
 
     /// A run in a line: the shortcut's name, and the start of its text.
@@ -958,6 +1000,7 @@ enum PhoneChangeWording {
     static func symbol(_ kind: PhoneChange.Kind) -> String {
         if kind == .setTimer { return "timer" }
         if kind == .runShortcut { return "square.2.layers.3d" }
+        if kind == .sendPhoto { return "photo" }
         if kind.isContact { return kind == .deleteContact ? "person.crop.circle.badge.minus" : "person.crop.circle.badge.plus" }
         if kind.isAlarm { return "alarm" }
         return kind.isEvent ? "calendar.badge.plus" : "checklist"
@@ -973,9 +1016,13 @@ enum PhoneChangeWording {
 struct PhoneChangeCard: View {
     let prompt: PhoneChangePrompt
     let waiting: Int
+    /// A photo Hermes asks for, from the library, so the user sees it before Send.
+    var photo: (@MainActor (String) async -> UIImage?)?
     let answer: (Bool) -> Void
     /// A long shortcut input, shown whole before the user taps Run.
     @State private var showsFullInput = false
+    @State private var picture: UIImage?
+    @State private var pictureMissing = false
 
     var body: some View {
         let change = prompt.change
@@ -1003,6 +1050,33 @@ struct PhoneChangeCard: View {
                 .scaledFont(.caption)
                 .buttonStyle(.borderless)
                 .accessibilityIdentifier("phone.change.full-input")
+            }
+            if change.kind == .sendPhoto {
+                Group {
+                    if let picture {
+                        Image(uiImage: picture)
+                            .resizable()
+                            .scaledToFit()
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                            .accessibilityLabel(Text(AppLocalization.string("The photo Hermes asks for")))
+                    } else if pictureMissing {
+                        Text(AppLocalization.string("This photo isn't on your iPhone any more."))
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        ProgressView()
+                            .frame(maxWidth: .infinity, minHeight: 80)
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: 260)
+                .task(id: prompt.id) {
+                    guard let id = change.photoID, let photo else {
+                        pictureMissing = true
+                        return
+                    }
+                    picture = await photo(id)
+                    pictureMissing = picture == nil
+                }
             }
             if let calendar = prompt.calendarTitle, change.kind.isAddition {
                 Text(AppLocalization.string("In \(calendar)"))
@@ -1098,7 +1172,8 @@ struct PhoneChangeOverlay: View {
     var body: some View {
         VStack(spacing: 8) {
             if let prompt = engine.prompts.first {
-                PhoneChangeCard(prompt: prompt, waiting: engine.prompts.count) { approve in
+                PhoneChangeCard(prompt: prompt, waiting: engine.prompts.count,
+                                photo: { [engine] id in await engine.photoSource.thumbnail(photoID: id, side: 260) }) { approve in
                     Task { await appState.answerPhoneChange(prompt, approve: approve) }
                 }
                 .transition(.move(edge: .top).combined(with: .opacity))

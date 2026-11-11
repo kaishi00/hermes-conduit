@@ -507301,6 +507301,908 @@
           }
         }
       }
+    },
+    "Hermes wants to see a photo" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes möchte ein Foto sehen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes quiere ver una foto"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes veut voir une photo"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes ingin melihat foto"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes vuole vedere una foto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesが写真を見たいと言っています"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 사진을 보고 싶어 해요"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes chce zobaczyć zdjęcie"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Hermes quer ver uma foto"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes хочет посмотреть фото"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bir fotoğrafı görmek istiyor"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 想看一张照片"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 想看一張照片"
+          }
+        }
+      }
+    },
+    "The photo Hermes asks for" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Foto, nach dem Hermes fragt"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La foto que pide Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La photo demandée par Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foto yang diminta Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La foto che Hermes chiede"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesが求めている写真"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 요청한 사진"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zdjęcie, o które prosi Hermes"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A foto que o Hermes pede"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Фото, которое просит Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in istediği fotoğraf"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 请求的照片"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 要求的照片"
+          }
+        }
+      }
+    },
+    "This photo isn't on your iPhone any more." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses Foto ist nicht mehr auf deinem iPhone."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta foto ya no está en tu iPhone."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cette photo n’est plus sur votre iPhone."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foto ini sudah tidak ada di iPhone Anda."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questa foto non è più sul tuo iPhone."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "この写真はもうiPhoneにありません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 사진은 더 이상 iPhone에 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tego zdjęcia nie ma już na Twoim iPhonie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Esta foto não está mais no seu iPhone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Этого фото больше нет на вашем iPhone."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu fotoğraf artık iPhone'unuzda değil."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这张照片已不在你的 iPhone 上。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這張照片已不在你的 iPhone 上。"
+          }
+        }
+      }
+    },
+    "Photos" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotos"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Photos"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foto"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "写真"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사진"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zdjęcia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Фото"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotoğraflar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "照片"
+          }
+        }
+      }
+    },
+    "Let Hermes search your photos" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes deine Fotos durchsuchen lassen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permitir que Hermes busque en tus fotos"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Laisser Hermes chercher dans vos photos"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan Hermes mencari di foto Anda"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consenti a Hermes di cercare nelle tue foto"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesに写真の検索を許可"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 사진을 검색하도록 허용"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pozwól Hermesowi przeszukiwać zdjęcia"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Deixar o Hermes pesquisar suas fotos"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешить Hermes искать в ваших фото"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in fotoğraflarınızda arama yapmasına izin ver"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "让 Hermes 搜索你的照片"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "讓 Hermes 搜尋你的照片"
+          }
+        }
+      }
+    },
+    "Conduit describes each photo on this iPhone, a few at a time while it's open: what's in it (Apple's on-device labels), words in the picture, the town or area, and when it was taken. Only that description goes to your Hermes host, for your newest 5,000 photos, never the photo itself." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit beschreibt jedes Foto auf diesem iPhone, ein paar auf einmal, solange die App geöffnet ist: was darauf zu sehen ist (Apples Labels auf dem Gerät), Wörter im Bild, Ort oder Gegend und wann es aufgenommen wurde. Nur diese Beschreibung geht an deinen Hermes-Host, für deine neuesten 5.000 Fotos, nie das Foto selbst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit describe cada foto en este iPhone, unas pocas cada vez mientras está abierto: lo que aparece (las etiquetas de Apple en el dispositivo), las palabras de la imagen, la ciudad o zona y cuándo se tomó. Solo esa descripción va a tu host de Hermes, para tus 5000 fotos más recientes, nunca la foto en sí."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit décrit chaque photo sur cet iPhone, quelques-unes à la fois tant qu’il est ouvert : ce qu’elle montre (les étiquettes d’Apple sur l’appareil), les mots dans l’image, la ville ou la zone et quand elle a été prise. Seule cette description va à votre hôte Hermes, pour vos 5 000 photos les plus récentes, jamais la photo elle-même."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit mendeskripsikan setiap foto di iPhone ini, sedikit demi sedikit saat aplikasi terbuka: isinya (label Apple di perangkat), kata-kata di gambar, kota atau area, dan kapan foto diambil. Hanya deskripsi itu yang dikirim ke host Hermes Anda, untuk 5.000 foto terbaru, tidak pernah fotonya sendiri."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit descrive ogni foto su questo iPhone, poche alla volta mentre è aperto: cosa c’è (le etichette di Apple sul dispositivo), le parole nell’immagine, la città o la zona e quando è stata scattata. Al tuo host Hermes va solo quella descrizione, per le tue 5.000 foto più recenti, mai la foto stessa."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitは開いている間、このiPhoneの写真を少しずつ説明します。写っているもの（Appleのデバイス上のラベル）、画像内の文字、町や地域、撮影日時です。Hermesホストに送られるのはその説明だけで、最新の5,000枚が対象です。写真そのものは送られません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit은 앱이 열려 있는 동안 이 iPhone의 사진을 조금씩 설명해요. 사진에 담긴 것(Apple의 기기 내 라벨), 사진 속 글자, 도시나 지역, 찍은 시간이에요. Hermes 호스트에는 최신 사진 5,000장에 대한 이 설명만 전송되고, 사진 자체는 절대 전송되지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit opisuje każde zdjęcie na tym iPhonie, po kilka naraz, gdy jest otwarty: co na nim jest (etykiety Apple tworzone na urządzeniu), słowa na zdjęciu, miasto lub okolicę i kiedy zostało zrobione. Do hosta Hermes trafia tylko ten opis, dla 5000 najnowszych zdjęć, nigdy samo zdjęcie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit descreve cada foto neste iPhone, algumas por vez enquanto está aberto: o que aparece nela (os rótulos da Apple no dispositivo), palavras na imagem, a cidade ou região e quando foi tirada. Só essa descrição vai para o seu host do Hermes, para as suas 5.000 fotos mais recentes, nunca a foto em si."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit описывает каждое фото на этом iPhone, понемногу, пока приложение открыто: что на нём (метки Apple на устройстве), слова на снимке, город или район и когда оно снято. На ваш хост Hermes уходит только это описание, для 5000 последних фото, а не само фото."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit, açıkken bu iPhone'daki her fotoğrafı birkaçar birkaçar tanımlar: içinde ne olduğu (Apple'ın cihaz üzerindeki etiketleri), resimdeki sözcükler, şehir veya bölge ve ne zaman çekildiği. Hermes sunucunuza yalnızca bu tanım gider, en yeni 5.000 fotoğrafınız için; fotoğrafın kendisi asla gitmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 打开时会在这台 iPhone 上逐步描述每张照片：照片内容（Apple 的设备端标签）、图中的文字、所在城镇或地区以及拍摄时间。只有这些描述会发送到你的 Hermes 主机，涵盖你最新的 5000 张照片，照片本身绝不会发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 開啟時會在這部 iPhone 上逐步描述每張照片：照片內容（Apple 的裝置端標籤）、圖中的文字、所在城鎮或地區以及拍攝時間。只有這些描述會傳送到你的 Hermes 主機，涵蓋你最新的 5000 張照片，照片本身絕不會傳送。"
+          }
+        }
+      }
+    },
+    "When Hermes wants to see a photo, it shows on a card and goes to your host only if you tap Send." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn Hermes ein Foto sehen möchte, erscheint es auf einer Karte und geht nur an deinen Host, wenn du auf „Senden“ tippst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuando Hermes quiere ver una foto, aparece en una tarjeta y solo va a tu host si tocas Enviar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quand Hermes veut voir une photo, elle s’affiche sur une carte et n’est envoyée à votre hôte que si vous touchez Envoyer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat Hermes ingin melihat foto, foto itu muncul di kartu dan hanya dikirim ke host Anda jika Anda mengetuk Kirim."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando Hermes vuole vedere una foto, compare su una scheda e va al tuo host solo se tocchi Invia."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesが写真を見たいときは、カードに表示され、「送信」をタップした場合にのみホストに送られます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 사진을 보고 싶어 하면 카드에 표시되고, 보내기를 탭할 때만 호스트로 전송돼요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy Hermes chce zobaczyć zdjęcie, pojawia się ono na karcie i trafia do hosta tylko po stuknięciu Wyślij."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando o Hermes quer ver uma foto, ela aparece em um cartão e só vai para o seu host se você tocar em Enviar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда Hermes хочет посмотреть фото, оно появляется на карточке и уходит на ваш хост, только если вы нажмёте «Отправить»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes bir fotoğrafı görmek istediğinde fotoğraf bir kartta görünür ve yalnızca Gönder'e dokunursanız sunucunuza gider."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当 Hermes 想看一张照片时，它会显示在卡片上，只有你轻点“发送”后才会发送到你的主机。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當 Hermes 想看一張照片時，它會顯示在卡片上，只有你點一下「傳送」後才會傳送到你的主機。"
+          }
+        }
+      }
+    },
+    "Photos described so far: %lld" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bisher beschriebene Fotos: %lld"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotos descritas hasta ahora: %lld"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Photos décrites jusqu’ici : %lld"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foto yang sudah dideskripsikan: %lld"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Foto descritte finora: %lld"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これまでに説明した写真：%lld"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "지금까지 설명한 사진: %lld"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Opisane dotąd zdjęcia: %lld"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotos descritas até agora: %lld"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Описано фото: %lld"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Şimdiye kadar tanımlanan fotoğraflar: %lld"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已描述的照片：%lld"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已描述的照片：%lld"
+          }
+        }
+      }
+    },
+    "Conduit sees only the photos you chose for it. To let Hermes search them all, allow full access for Conduit in Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit sieht nur die Fotos, die du dafür ausgewählt hast. Damit Hermes alle durchsuchen kann, erlaube Conduit in den Einstellungen vollen Zugriff."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit solo ve las fotos que elegiste para él. Para que Hermes busque en todas, permite el acceso completo a Conduit en Ajustes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit ne voit que les photos que vous avez choisies pour lui. Pour que Hermes puisse toutes les chercher, autorisez l’accès complet pour Conduit dans Réglages."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit hanya melihat foto yang Anda pilih untuknya. Agar Hermes dapat mencari semuanya, izinkan akses penuh untuk Conduit di Pengaturan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit vede solo le foto che hai scelto per lui. Per consentire a Hermes di cercarle tutte, consenti l’accesso completo a Conduit in Impostazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitが見られるのは、選択した写真だけです。Hermesがすべての写真を検索できるようにするには、「設定」でConduitにフルアクセスを許可してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit은 선택한 사진만 볼 수 있어요. Hermes가 모든 사진을 검색하게 하려면 설정에서 Conduit에 전체 접근을 허용하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit widzi tylko zdjęcia wybrane dla niego. Aby Hermes mógł przeszukiwać wszystkie, zezwól Conduit na pełny dostęp w Ustawieniach."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit vê apenas as fotos que você escolheu para ele. Para o Hermes pesquisar todas, permita acesso total ao Conduit em Ajustes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit видит только выбранные для него фото. Чтобы Hermes мог искать во всех, разрешите Conduit полный доступ в Настройках."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit yalnızca onun için seçtiğiniz fotoğrafları görür. Hermes'in hepsinde arama yapabilmesi için Ayarlar'da Conduit'e tam erişim verin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 只能看到你为它选择的照片。要让 Hermes 搜索所有照片，请在“设置”中允许 Conduit 完全访问。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 只能看到你為它選擇的照片。若要讓 Hermes 搜尋所有照片，請在「設定」中允許 Conduit 完整取用。"
+          }
+        }
+      }
+    },
+    "Conduit can't see your photos. Allow Photos for Conduit in Settings to share them with Hermes." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit kann deine Fotos nicht sehen. Erlaube Conduit in den Einstellungen den Zugriff auf Fotos, um sie mit Hermes zu teilen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no puede ver tus fotos. Permite el acceso a Fotos para Conduit en Ajustes para compartirlas con Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit ne peut pas voir vos photos. Autorisez Photos pour Conduit dans Réglages pour les partager avec Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak dapat melihat foto Anda. Izinkan Foto untuk Conduit di Pengaturan agar dapat membagikannya dengan Hermes."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non può vedere le tue foto. Consenti l’accesso a Foto per Conduit in Impostazioni per condividerle con Hermes."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitは写真を見ることができません。Hermesと共有するには、「設定」でConduitに写真へのアクセスを許可してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit이 사진을 볼 수 없어요. Hermes와 공유하려면 설정에서 Conduit의 사진 접근을 허용하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie widzi Twoich zdjęć. Zezwól Conduit na dostęp do Zdjęć w Ustawieniach, aby udostępniać je Hermesowi."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não consegue ver suas fotos. Permita o acesso a Fotos para o Conduit em Ajustes para compartilhá-las com o Hermes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit не видит ваши фото. Разрешите Conduit доступ к Фото в Настройках, чтобы делиться ими с Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit fotoğraflarınızı göremiyor. Hermes ile paylaşmak için Ayarlar'da Conduit'e Fotoğraflar erişimi verin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法查看你的照片。请在“设置”中允许 Conduit 访问照片，以便与 Hermes 共享。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 無法查看你的照片。請在「設定」中允許 Conduit 取用照片，以便與 Hermes 分享。"
+          }
+        }
+      }
+    },
+    "Save to Hermes Album" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Im Hermes-Album sichern"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Guardar en el álbum Hermes"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enregistrer dans l’album Hermes"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Simpan ke Album Hermes"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salva nell’album Hermes"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesアルバムに保存"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 앨범에 저장"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zapisz w albumie Hermes"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Salvar no Álbum Hermes"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сохранить в альбом Hermes"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes Albümüne Kaydet"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存储到 Hermes 相簿"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "儲存到 Hermes 相簿"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

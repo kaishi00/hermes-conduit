@@ -802,6 +802,95 @@
         }
       }
     },
+    "NSPhotoLibraryUsageDescription" : {
+      "extractionState" : "manual",
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wenn du deine Fotos mit Hermes teilst, beschreibt Conduit sie auf diesem iPhone und sendet nur die Beschreibungen an deinen eigenen Hermes-Server; ein Foto selbst geht nur, wenn du auf seiner Karte auf „Senden“ tippst. Conduit sichert damit auch Bilder in deinem Hermes-Album. Nichts geht an den Entwickler von Conduit."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "When you share your photos with Hermes, Conduit describes them on this iPhone and sends only the descriptions to your own Hermes server; a photo itself goes only when you tap Send on its card. Conduit also uses it to save pictures to your Hermes album. Nothing goes to Conduit's developer."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cuando compartes tus fotos con Hermes, Conduit las describe en este iPhone y solo envía las descripciones a tu propio servidor de Hermes; una foto solo se envía cuando tocas Enviar en su tarjeta. Conduit también lo usa para guardar imágenes en tu álbum Hermes. Nada va al desarrollador de Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quand vous partagez vos photos avec Hermes, Conduit les décrit sur cet iPhone et n’envoie que les descriptions à votre propre serveur Hermes ; une photo n’est envoyée que si vous touchez Envoyer sur sa carte. Conduit s’en sert aussi pour enregistrer des images dans votre album Hermes. Rien n’est envoyé au développeur de Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Saat Anda membagikan foto dengan Hermes, Conduit mendeskripsikannya di iPhone ini dan hanya mengirim deskripsinya ke server Hermes Anda sendiri; foto itu sendiri hanya dikirim saat Anda mengetuk Kirim di kartunya. Conduit juga memakainya untuk menyimpan gambar ke album Hermes Anda. Tidak ada yang dikirim ke pengembang Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando condividi le tue foto con Hermes, Conduit le descrive su questo iPhone e invia solo le descrizioni al tuo server Hermes; una foto viene inviata solo quando tocchi Invia sulla sua scheda. Conduit lo usa anche per salvare immagini nel tuo album Hermes. Niente va allo sviluppatore di Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "写真をHermesと共有すると、ConduitはこのiPhone上で写真を説明し、その説明だけをあなた自身のHermesサーバに送ります。写真そのものは、カードで「送信」をタップしたときだけ送られます。ConduitはHermesアルバムへの画像の保存にも使います。Conduitの開発者には何も送られません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사진을 Hermes와 공유하면 Conduit이 이 iPhone에서 사진을 설명하고 그 설명만 내 Hermes 서버로 보내요. 사진 자체는 카드에서 보내기를 탭할 때만 전송돼요. Conduit은 Hermes 앨범에 사진을 저장할 때도 이 권한을 사용해요. Conduit 개발자에게는 아무것도 전송되지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdy udostępniasz zdjęcia Hermesowi, Conduit opisuje je na tym iPhonie i wysyła tylko opisy na Twój własny serwer Hermes; samo zdjęcie trafia tam tylko po stuknięciu Wyślij na jego karcie. Conduit używa tego też do zapisywania obrazów w albumie Hermes. Nic nie trafia do twórcy Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Quando você compartilha suas fotos com o Hermes, o Conduit as descreve neste iPhone e envia só as descrições para o seu próprio servidor do Hermes; uma foto só vai quando você toca em Enviar no cartão dela. O Conduit também usa isso para salvar imagens no seu álbum Hermes. Nada vai para o desenvolvedor do Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Когда вы делитесь фото с Hermes, Conduit описывает их на этом iPhone и отправляет на ваш собственный сервер Hermes только описания; само фото уходит, только если вы нажмёте «Отправить» на его карточке. Conduit также использует это, чтобы сохранять изображения в альбом Hermes. Разработчику Conduit ничего не передаётся."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotoğraflarınızı Hermes ile paylaştığınızda Conduit onları bu iPhone'da tanımlar ve yalnızca tanımları kendi Hermes sunucunuza gönderir; fotoğrafın kendisi yalnızca kartında Gönder'e dokunduğunuzda gider. Conduit bunu resimleri Hermes albümünüze kaydetmek için de kullanır. Conduit'in geliştiricisine hiçbir şey gitmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "当你与 Hermes 共享照片时，Conduit 会在这台 iPhone 上描述照片，并只将描述发送到你自己的 Hermes 服务器；只有你在卡片上轻点“发送”时，照片本身才会发送。Conduit 也用它将图片存储到你的 Hermes 相簿。不会向 Conduit 的开发者发送任何内容。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "當你與 Hermes 分享照片時，Conduit 會在這部 iPhone 上描述照片，並只將描述傳送到你自己的 Hermes 伺服器；只有你在卡片上點一下「傳送」時，照片本身才會傳送。Conduit 也用它將圖片儲存到你的 Hermes 相簿。不會向 Conduit 的開發者傳送任何內容。"
+          }
+        }
+      }
+    },
     "NSRemindersFullAccessUsageDescription" : {
       "extractionState" : "manual",
       "localizations" : {
