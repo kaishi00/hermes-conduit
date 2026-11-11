@@ -307,6 +307,8 @@ struct GeminiLiveVoiceSheet: View {
             onToggleMute: { controller.setMicrophoneMuted(!controller.isMicrophoneMuted) },
             onToggleSpeaker: { controller.setSpeakerMuted(!controller.isSpeakerMuted) },
             onInterrupt: { controller.interruptSpeaking() },
+            // A call still waiting on Hermes has no chat to add a photo to.
+            onPhoto: isWaiting ? nil : { await appState.addVoicePhoto($0) },
             onEnd: onClose,
             onRetry: onRetry,
             // A call still waiting on Hermes has no mode to move yet.

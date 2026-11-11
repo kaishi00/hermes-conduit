@@ -21,6 +21,10 @@ enum LiveVoiceClientMessage: Equatable {
     /// Context the model keeps without answering it (#363): a turn typed in
     /// the attached chat.
     case contextNote(String)
+    /// A still JPEG the user showed the call (the call screen's Camera).
+    /// Gemini and Qwen see it with the user's next words; a session that
+    /// can't take a picture (Grok Live, Local Live) drops it.
+    case image(jpeg: Data)
     /// The answer to a function call.
     case toolResponse(id: String, name: String, result: [String: String], scheduling: GeminiLiveProtocol.Scheduling?)
 
@@ -140,6 +144,20 @@ enum GeminiLiveProtocol {
         ["realtimeInput": ["audioStreamEnd": true]]
     }
 
+    /// A still picture as one video frame, the way the Live API takes a
+    /// camera's: it joins the conversation without interrupting a reply,
+    /// and the model sees it with the user's next turn.
+    static func imageMessage(jpeg: Data) -> [String: Any] {
+        [
+            "realtimeInput": [
+                "video": [
+                    "mimeType": "image/jpeg",
+                    "data": jpeg.base64EncodedString(),
+                ],
+            ],
+        ]
+    }
+
     /// A text turn from the client (used for background-job updates whose
     /// function call is no longer open).
     static func textTurnMessage(_ text: String) -> [String: Any] {
@@ -198,6 +216,7 @@ enum GeminiLiveProtocol {
         case .audioStreamEnd: return audioStreamEndMessage()
         case .textTurn(let text): return textTurnMessage(text)
         case .contextNote(let text): return contextNoteMessage(text)
+        case .image(let jpeg): return imageMessage(jpeg: jpeg)
         case .toolResponse(let id, let name, let result, let scheduling):
             return toolResponseMessage(id: id, name: name, result: result, scheduling: scheduling)
         }

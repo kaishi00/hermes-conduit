@@ -258,6 +258,19 @@ struct VoiceConversationSheet: View {
                 .conduitGlassControl(cornerRadius: 17, tint: controller.isOutputMuted ? .orange.opacity(0.18) : .conduitAura.opacity(0.14))
                 .accessibilityHint("Mutes assistant audio without changing chat messages")
 
+                if let appState, showsPhoto {
+                    VoicePhotoButton(onPhoto: { await appState.addVoicePhoto($0) }) { open in
+                        Button(action: open) {
+                            Label(AppLocalization.string("Camera"), systemImage: "camera.fill")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6).frame(minHeight: 48)
+                        }
+                        .conduitGlassControl(cornerRadius: 17, tint: .conduitAura.opacity(0.14))
+                        .accessibilityLabel(AppLocalization.string("Take a photo"))
+                        .accessibilityHint(AppLocalization.string("Adds a photo to the chat for your next question"))
+                    }
+                }
+
                 if callSpeaker.isShown {
                     Button { VoiceAudioSessionCoordinator.shared.setNativeCallSpeaker(!callSpeaker.isOn) } label: {
                         Label(AppLocalization.string("Speaker"), systemImage: "speaker.wave.3.fill")
@@ -276,6 +289,10 @@ struct VoiceConversationSheet: View {
                 .foregroundStyle(.secondary)
         }
     }
+
+    /// The Camera, on a device that has one: the photo waits on the chat
+    /// for the next turn (`AppState.addVoicePhoto`).
+    private var showsPhoto: Bool { appState != nil && CameraCapture.isAvailable }
 
     private var profileDisplayName: String {
         if let appState { return appState.profileDisplayName(profile) }
@@ -722,6 +739,9 @@ extension VoiceConversationSheet {
                     : AppLocalization.string("Silence the assistant"),
                 action: { controller.setOutputMuted(!controller.isOutputMuted) }
             )
+            if let appState, showsPhoto {
+                LiveVoiceCallPhotoButton { await appState.addVoicePhoto($0) }
+            }
             LiveVoiceCallButton(
                 symbol: "text.bubble.fill",
                 title: AppLocalization.string("Transcript"),
@@ -739,8 +759,8 @@ extension VoiceConversationSheet {
             )
         }
         .frame(maxWidth: .infinity)
-        // Microphone, Silence, Transcript, End, and Speaker in a call.
-        .modifier(LiveVoiceCallButtonRowFit(slots: callSpeaker.isShown ? 5 : 4))
+        // Microphone, Silence, Transcript, End, the Camera, and Speaker in a call.
+        .modifier(LiveVoiceCallButtonRowFit(slots: 4 + (callSpeaker.isShown ? 1 : 0) + (showsPhoto ? 1 : 0)))
         .padding(.horizontal, 12)
         .padding(.top, 14)
         .padding(.bottom, 12)

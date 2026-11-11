@@ -514,8 +514,10 @@ struct MainView: View {
     private var voiceScreenshotBanner: some View {
         ScreenQuestionVoiceBanner(
             screenshot: appState.voiceScreenshot,
+            kind: appState.voiceScreenshotKind,
             onDiscard: appState.discardVoiceScreenshot,
-            onNewChat: appState.canMoveVoiceScreenshotToNewChat
+            // A photo was taken for the conversation's own chat.
+            onNewChat: appState.canMoveVoiceScreenshotToNewChat && appState.voiceScreenshotKind == .screenshot
                 ? { Task { await appState.moveVoiceScreenshotToNewChat() } }
                 : nil
         )
