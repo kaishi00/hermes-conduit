@@ -40240,8 +40240,15 @@ final class AppState: ObservableObject {
     /// 2206). A card Hermes still lists moves to that runtime, so the next
     /// try reaches it.
     private func refusalEndsDelegateAgent(_ agent: DelegateAgentActivity) async -> Bool {
-        guard let open = activeSessionId, open != agent.sessionId,
-              knownSessionIDs(for: open).contains(agent.sessionId) else { return true }
+        guard let open = activeSessionId, open != agent.sessionId else { return true }
+        // A resume's catalog row names the new runtime and the durable id,
+        // not the one the card was made under: the open chat's resume-wide
+        // aliases name it, and a card still kept is the open chat's own
+        // (keepDelegateAgents).
+        let aliases = knownSessionIDs(for: open).union(activeChatScrollSessionIdentity.equivalentSessionIDs)
+        guard aliases.contains(agent.sessionId)
+                || delegateAgents.contains(where: { $0.id == agent.id && $0.sessionId == agent.sessionId })
+        else { return true }
         guard let roster = await adoptDelegateRoster(for: open, retries: 0) else { return false }
         return !roster.contains { $0.id == agent.id }
     }
