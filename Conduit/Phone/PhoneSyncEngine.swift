@@ -677,7 +677,7 @@ final class PhoneSyncEngine: ObservableObject {
             await photoSource.describeMore(budget: PhoneSyncLimits.photosPerPass,
                                            until: min(deadline, now().addingTimeInterval(20)))
         }
-        if !self.preferences.photos, var sharing = batch["sharing"] as? [String: Any] {
+        if preferences.photos, !self.preferences.photos, var sharing = batch["sharing"] as? [String: Any] {
             sharing["photos"] = false
             batch["sharing"] = sharing
         }

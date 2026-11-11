@@ -5689,6 +5689,7 @@ capability, conduit_first's line, README, CHANGELOG and privacy policy
 **Open gaps**
 - Not tried on a device: Vision's captions on a real library, limited access, and saving to the Hermes album (#2171).
 - Settings reads the photo index on first draw; at 5000 photos that's a small JSON read on the main thread (#2177).
+- Turned off while a pass is already splitting or sending its upload, that pass's parts still carry the descriptions; the pass the switch starts tells the host Photos is off and it deletes them (#2177).
 
 **Checked:** 2026-11-11, #2177 (a Pulse approval never sends a photo; Photos turned off mid-pass describes and sends nothing more; the described count leaves out photos that never go; a failed album save buzzes; with notifier #701); 2026-11-11, #2171 (added with notifier #700).
 
