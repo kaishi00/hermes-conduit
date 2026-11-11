@@ -154,6 +154,8 @@ final class HermesVoiceGateway: VoiceGatewayService {
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void,
         onEncodedAudio: @escaping @MainActor (Data) throws -> Void
     ) async throws -> VoiceSpeechStream {
+        // The reading that asked, before any await lets a newer one begin.
+        let traceRun = LiveCallTrace.readAloud.run
         let ticket = try await bridge.mintTicket()
         let unauthorized: URLRequest
         do {
@@ -173,6 +175,7 @@ final class HermesVoiceGateway: VoiceGatewayService {
         task.resume()
         return HermesSpeechStream(
             task: task,
+            traceRun: traceRun,
             fallback: { [bridge, profile] text in
                 try await Self.loadFallbackAudio(bridge: bridge, profile: profile, text: text)
             },
@@ -319,6 +322,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
 
     init(
         task: any HermesSpeechSocket,
+        traceRun: Int? = nil,
         finishIdleTimeout: Duration = .seconds(20),
         keepaliveInterval: Duration = VoiceSocketKeepalive.interval,
         fallback: @escaping @MainActor (String) async throws -> Data,
@@ -327,7 +331,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
         onEncodedAudio: @escaping @MainActor (Data) throws -> Void
     ) {
         self.task = task
-        traceRun = LiveCallTrace.readAloud.run
+        self.traceRun = traceRun ?? LiveCallTrace.readAloud.run
         self.finishIdleTimeout = finishIdleTimeout
         self.keepaliveInterval = keepaliveInterval
         self.fallback = fallback

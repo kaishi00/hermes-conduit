@@ -675,7 +675,7 @@ extension AVSpeechPlaybackService: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor [weak self] in
             guard let self, self.encodedPlayer === player else { return }
-            self.trace("Played the clip to the end")
+            self.trace(flag ? "Played the clip to the end" : "The clip stopped early (it couldn't be decoded)")
             // Natural completion is terminal for the encoded path: stop()
             // clears the player, resumes drain waiters, and releases the
             // session lease.
