@@ -89,8 +89,10 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     func append(_ text: String) async throws {
         if terminal { throw terminalError ?? CancellationError() }
         pending += text
-        // Whole sentences start speaking while the rest of the reply streams in.
-        if let sentences = Self.takeCompleteSentences(from: &pending) { queue.append(sentences) }
+        // Whole sentences start speaking while the rest of the reply streams in,
+        // each its own utterance: a Premium voice given a long run of them can
+        // go quiet past the watchdog partway and lose the rest (issue 2191).
+        queue.append(contentsOf: Self.takeCompleteSentences(from: &pending))
         speakNext()
     }
 
@@ -177,28 +179,47 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         continuation?.resume(with: result)
     }
 
-    /// Moves every finished sentence out of `text`, leaving the unfinished
-    /// tail. A sentence ends at . ! ? … followed by whitespace (so "3.5"
-    /// isn't split), or right after a line break or a CJK full stop.
-    static func takeCompleteSentences(from text: inout String) -> String? {
-        var boundary: String.Index?
+    /// Moves every finished sentence out of `text`, one string each, leaving
+    /// the unfinished tail. A sentence ends at . ! ? … followed by whitespace
+    /// (so "3.5" isn't split), or right after a line break or a CJK full
+    /// stop. A period after a number or a word of one or two letters ("1.",
+    /// "Dr.", "e.g.") doesn't end one, so a list number or an abbreviation
+    /// is said with what follows rather than on its own.
+    static func takeCompleteSentences(from text: inout String) -> [String] {
+        var sentences: [String] = []
+        var start = text.startIndex
         var index = text.startIndex
         while index < text.endIndex {
             let character = text[index]
             let next = text.index(after: index)
-            if "。！？".contains(character) {
-                boundary = next
-            } else if character == "\n" {
-                boundary = next
-            } else if ".!?…".contains(character), next < text.endIndex, text[next].isWhitespace {
-                boundary = next
+            let ends: Bool
+            if "。！？".contains(character) || character.isNewline {
+                ends = true
+            } else if "!?…".contains(character) {
+                ends = next < text.endIndex && text[next].isWhitespace
+            } else if character == "." {
+                ends = next < text.endIndex && text[next].isWhitespace
+                    && !endsAbbreviation(text[start..<index])
+            } else {
+                ends = false
+            }
+            if ends {
+                let sentence = text[start..<next].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !sentence.isEmpty { sentences.append(sentence) }
+                start = next
             }
             index = next
         }
-        guard let boundary else { return nil }
-        let sentences = String(text[..<boundary]).trimmingCharacters(in: .whitespacesAndNewlines)
-        text = String(text[boundary...])
-        return sentences.isEmpty ? nil : sentences
+        if start > text.startIndex { text = String(text[start...]) }
+        return sentences
+    }
+
+    /// Whether the word just before a period is a number, an abbreviation
+    /// with periods of its own ("e.g"), or one or two letters ("Dr", "No").
+    private static func endsAbbreviation(_ before: Substring) -> Bool {
+        let word = before.split(whereSeparator: { $0.isWhitespace }).last ?? ""
+        guard !word.isEmpty else { return false }
+        return word.allSatisfy(\.isNumber) || word.contains(".") || word.count <= 2
     }
 
     /// The reply's language, so a German answer gets a German voice even
