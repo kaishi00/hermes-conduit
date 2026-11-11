@@ -38,8 +38,14 @@ struct CronBotChatReport: Equatable {
                 return line
             }
             if let fence = MarkdownFence.opening(trimmed) { openFence = fence; return line }
-            guard let path = Self.referencePath(trimmed) else { return line }
-            return ToolResultPresentation.mediaTag(for: path)
+            // Indentation and a list or quote marker before the reference
+            // stay, as the plugin keeps them; the transcript draws the tag
+            // after them.
+            let indent = String(line.prefix { $0 == " " || $0 == "\t" })
+            let marker = trimmed.range(of: #"^(?:[-*+]|\d{1,9}[.)]|>)\s+"#, options: .regularExpression)
+            let lead = indent + (marker.map { String(trimmed[$0]) } ?? "")
+            guard let path = Self.referencePath(marker.map { String(trimmed[$0.upperBound...]) } ?? trimmed) else { return line }
+            return lead + ToolResultPresentation.mediaTag(for: path)
         }.joined(separator: "\n")
     }
 
