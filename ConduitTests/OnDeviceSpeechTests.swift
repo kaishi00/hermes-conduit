@@ -388,6 +388,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(released.last, "Then more words follow.")
         XCTAssertEqual(unclosedTitle, "Tail")
 
+        // The stop the hold gives up on still ends its sentence.
+        var limitStop = "[x](https://example.com \"" + String(repeating: "a", count: 199) + ". Next one. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &limitStop).last, "Next one.")
+
         // A CJK sentence keeps its closing quote.
         var cjkQuote = "「你好。」下一句。尾"
         XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &cjkQuote), ["「你好。」", "下一句。"])

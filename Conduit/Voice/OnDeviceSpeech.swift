@@ -201,6 +201,12 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
             let character = text[index]
             var next = text.index(after: index)
             var ends = false
+            if titleCloser != nil, text.distance(from: titleStart, to: index) >= Self.linkHoldLimit {
+                // A title still open after a link's length never closed:
+                // give up the hold, and read this character as plain text.
+                titleCloser = nil
+                addressDepth = 0
+            }
             if inLinkText {
                 if character == "]" {
                     inLinkText = false
@@ -217,16 +223,11 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
                 // sentence after it until the reply ends.
                 if let closer = titleCloser {
                     // Inside a title ("a "One. Two")") a space, a stop or a
-                    // line break is just text. One still open after a
-                    // link's length never closed, so the hold gives up.
+                    // line break is just text.
                     if character == "\\", next < text.endIndex {
                         next = text.index(after: next)
                     } else if character == closer {
                         titleCloser = nil
-                    } else if text.distance(from: titleStart, to: index) >= Self.linkHoldLimit {
-                        titleCloser = nil
-                        addressDepth = 0
-                        ends = character.isNewline
                     }
                 } else if character == "\\", next < text.endIndex {
                     next = text.index(after: next)
