@@ -1983,6 +1983,38 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertTrue(PresentedScreensSync.features.contains("pulse-looks"))
     }
 
+    /// Eric, 2026-11-11: a value that moved and someone the user is waiting
+    /// on get card types of their own; facts that don't hold up draw plain.
+    func testANumberAndAWaitingOnDecodeAndDrawPlainWithoutTheirFacts() throws {
+        func look(_ text: String) throws -> PulseLook {
+            try XCTUnwrap(PulseLook(json: try JSONSerialization.jsonObject(with: Data(text.utf8))))
+        }
+        XCTAssertEqual(try look("""
+        {"shape": "number", "facts": {"label": "Disk on nas-01", "value": 91, "unit": "%", "was": 78, "limit": 90, "better": "down"}}
+        """).body, .number(label: "Disk on nas-01", value: 91, unit: "%", was: 78, limit: 90, better: .down))
+        XCTAssertEqual(try look("""
+        {"shape": "number", "facts": {"label": "Rent", "value": 1204.5, "better": "sideways", "was": true}}
+        """).body, .number(label: "Rent", value: 1204.5, unit: "", was: nil, limit: nil, better: nil))
+        XCTAssertEqual(try look(#"{"shape": "number", "facts": {"label": "Rent", "value": "a lot"}}"#).body, .plain)
+        XCTAssertEqual(try look(#"{"shape": "number", "facts": {"label": "", "value": 3}}"#).body, .plain)
+        let waiting = try look("""
+        {"shape": "waiting", "facts": {"person": "Dana", "what": "the signed lease", "since": "2026-11-04"}}
+        """)
+        guard case let .waiting(person, what, since) = waiting.body else { return XCTFail("not waiting") }
+        XCTAssertEqual([person, what], ["Dana", "the signed lease"])
+        XCTAssertEqual(PulseLook.wireCalendar.dateComponents([.year, .month, .day], from: try XCTUnwrap(since)),
+                       DateComponents(year: 2026, month: 11, day: 4))
+        XCTAssertEqual(try look(#"{"shape": "waiting", "facts": {"person": "Dana", "what": "a reply", "since": "soon"}}"#).body,
+                       .waiting(person: "Dana", what: "a reply", since: nil))
+        XCTAssertEqual(try look(#"{"shape": "waiting", "facts": {"person": "Dana"}}"#).body, .plain)
+        XCTAssertEqual(PulseLookBody.amount(91, "%"), 91.formatted(.number.locale(AppLocalization.formattingLocale)) + "%")
+        XCTAssertTrue(PulseLookBody.amount(3, "GB").hasSuffix(" GB"))
+        XCTAssertEqual(PulseLookStyle(.number(label: "x", value: 1, unit: "", was: nil, limit: nil, better: nil)).place, .lead)
+        XCTAssertEqual(PulseLookStyle(.waiting(person: "x", what: "y", since: nil)).place, .lead)
+        // The plugin offers them only to a Conduit that says it draws them.
+        XCTAssertTrue(PresentedScreensSync.features.contains("pulse-number-waiting"))
+    }
+
     func testAskNeedsAnAskAndAnOpenCard() throws {
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
         {"cards": [

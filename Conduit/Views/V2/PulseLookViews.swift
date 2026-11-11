@@ -10,8 +10,9 @@
 //  something due as a countdown over a bar from when it was noticed, a
 //  job's runs as blocks across the top, a promise in the words it was
 //  made, a status as its state writ large on a tinted card, steps as a
-//  checklist, and a card body as a chat draws a conduit_show card. Plain
-//  words draw nothing more.
+//  checklist, a value large with how it moved, who the user is waiting on
+//  and for how long, and a card body as a chat draws a conduit_show card.
+//  Plain words draw nothing more.
 //
 
 import SwiftUI
@@ -55,6 +56,10 @@ struct PulseLookStyle {
             }
         case .steps:
             return (.teal, "checklist", .under)
+        case .number:
+            return (.indigo, "number", .lead)
+        case .waiting:
+            return (.pink, "person.badge.clock", .lead)
         case .drawn:
             return (.conduitAccent, "", .under)
         case .brief, .plain:
@@ -94,6 +99,10 @@ struct PulseLookBody: View {
                 status(label, state: state)
             case let .steps(names, at):
                 checklist(names, at: at)
+            case let .number(label, value, unit, was, limit, better):
+                number(label, value: value, unit: unit, was: was, limit: limit, better: better)
+            case let .waiting(person, what, since):
+                waiting(person, what: what, since: since)
             case let .drawn(card):
                 RichCardView(card: card)
             case .brief, .plain:
@@ -217,6 +226,98 @@ struct PulseLookBody: View {
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// The value leads the card, large, with how it moved from the earlier
+    /// one: green when it went the good way, red when it went the other,
+    /// grey when which way is good wasn't said. A limit it's past the wrong
+    /// side of is red.
+    private func number(_ label: String, value: Double, unit: String, was: Double?, limit: Double?,
+                        better: PulseLook.Better?) -> some View {
+        let moved: Color = {
+            guard let was, let better, was != value else { return .secondary }
+            return (value > was) == (better == .up) ? .green : .red
+        }()
+        let past = limit.map { limit in
+            switch better {
+            case .down: value > limit
+            case .up: value < limit
+            case nil: false
+            }
+        } ?? false
+        let amount = Text(verbatim: Self.amount(value, unit))
+            .scaledFont(.title.weight(.bold))
+            .foregroundStyle(tint)
+        let change = was.flatMap { was in was == value ? nil : HStack(alignment: .firstTextBaseline, spacing: 3) {
+            Image(systemName: value > was ? "arrow.up" : "arrow.down")
+                .accessibilityHidden(true)
+            Text(AppLocalization.string("from \(Self.amount(was, unit))"))
+        }
+        .scaledFont(.subheadline.weight(.semibold))
+        .foregroundStyle(moved) }
+        return VStack(alignment: .leading, spacing: 4) {
+            // How it moved goes under the value when a large text size
+            // leaves no room beside it, rather than both breaking.
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    amount
+                    change
+                    Spacer(minLength: 0)
+                }
+                VStack(alignment: .leading, spacing: 2) {
+                    amount.fixedSize(horizontal: false, vertical: true)
+                    change.fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            HStack(spacing: 0) {
+                Text(verbatim: label)
+                    .foregroundStyle(.secondary)
+                if let limit {
+                    Text(verbatim: " · ")
+                        .foregroundStyle(.secondary)
+                    Text(AppLocalization.string("Limit \(Self.amount(limit, unit))"))
+                        .foregroundStyle(past ? Color.red : Color.secondary)
+                }
+            }
+            .scaledFont(.caption)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// A number in the app's language with its unit: a percent or a degree
+    /// right after it, any other unit after a space.
+    static func amount(_ value: Double, _ unit: String) -> String {
+        let number = value.formatted(.number.precision(.fractionLength(0...2)).locale(AppLocalization.formattingLocale))
+        guard !unit.isEmpty else { return number }
+        return unit == "%" || unit.hasPrefix("°") ? number + unit : number + " " + unit
+    }
+
+    /// Who the user is waiting on leads the card, then what, then since
+    /// when and how long that is.
+    private func waiting(_ person: String, what: String, since: Date?) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: style.symbol)
+                .scaledFont(.title2.weight(.semibold))
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: person)
+                    .scaledFont(.title3.weight(.bold))
+                    .foregroundStyle(tint)
+                Text(verbatim: what)
+                    .scaledFont(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+                if let since {
+                    Text(AppLocalization.string("Since \(since.formatted(.dateTime.weekday(.abbreviated).day().month().locale(AppLocalization.formattingLocale))) · \(PulseLook.relativeDay(since))"))
+                        .scaledFont(.caption.weight(.semibold))
+                        .foregroundStyle(tint)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             }
             Spacer(minLength: 0)
         }
