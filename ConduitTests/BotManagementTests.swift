@@ -366,6 +366,9 @@ extension BotModeTests {
         XCTAssertEqual(BotSkillGrouping.grouped(skills, details: details, query: "diagram").flatMap(\.rows).map(\.name), ["Excalidraw"], "a search reads descriptions")
         XCTAssertEqual(BotSkillGrouping.grouped(skills, details: details, query: "software").flatMap(\.rows).map(\.name), ["plan"], "and categories")
         XCTAssertTrue(BotSkillGrouping.grouped(skills, details: details, query: "zzz").isEmpty)
+        XCTAssertEqual(BotSkillGrouping.grouped(skills, details: details, query: "software-development").flatMap(\.rows).map(\.name), ["plan"], "and Hermes' own spelling of them")
+        XCTAssertEqual(BotSkillGrouping.matching(skills, query: "NOTES").map(\.name), ["my-notes"], "with no list, one filtered list")
+        XCTAssertEqual(BotSkillGrouping.matching(skills, query: " ").count, 4)
     }
 
     func testEveryMCPServerOffSendsAnEmptyList() {

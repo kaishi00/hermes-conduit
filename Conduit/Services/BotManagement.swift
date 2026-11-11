@@ -718,6 +718,18 @@ struct BotSkillGroup: Identifiable, Equatable {
 }
 
 enum BotSkillGrouping {
+    /// The skills `query` matches by name, label or description, in order:
+    /// the Skills page with no dashboard list to group them by.
+    static func matching(_ skills: [BotCapability], query: String) -> [BotCapability] {
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !query.isEmpty else { return skills }
+        return skills.filter {
+            $0.name.localizedCaseInsensitiveContains(query)
+                || ($0.label ?? "").localizedCaseInsensitiveContains(query)
+                || $0.description.localizedCaseInsensitiveContains(query)
+        }
+    }
+
     /// The skills by category, A-Z by shown name, each A-Z as given, with
     /// the description the dashboard gives where the row has none. Only
     /// the skills `query` matches (name, label, description or category).
@@ -743,6 +755,7 @@ enum BotSkillGrouping {
                     || (skill.label ?? "").localizedCaseInsensitiveContains(query)
                     || skill.description.localizedCaseInsensitiveContains(query)
                     || title.localizedCaseInsensitiveContains(query)
+                    || detail?.category?.localizedCaseInsensitiveContains(query) == true
                 guard matches else { continue }
             }
             groups[title, default: []].append(skill)

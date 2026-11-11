@@ -54,7 +54,7 @@ struct BotSkillsView: View {
         .navigationTitle(AppLocalization.string("Skills"))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
-            guard let detailsProfile, details == nil, !detailsRead else { return }
+            guard let detailsProfile, details == nil, !detailsRead, !skillsSkipped else { return }
             details = appState.keptBotSkillDetails(profile: detailsProfile)
         }
         .task {
@@ -77,23 +77,32 @@ struct BotSkillsView: View {
                     .foregroundStyle(.secondary)
             }
             ForEach(groups) { group in
-                SettingsFoldRow(
-                    title: group.title,
-                    detail: BotCapabilities.onSummary(group.rows),
-                    isOn: Binding(
-                        get: { searching || open.contains(group.title) },
-                        set: { isOpen in
-                            if isOpen { open.insert(group.title) } else { open.remove(group.title) }
-                        }
-                    )
-                )
-                .disabled(searching)
-                if searching || open.contains(group.title) {
+                if searching {
+                    // A search shows every group it matches, open: the
+                    // name is a plain label then, not a fold to tap.
+                    Text(verbatim: group.title)
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityAddTraits(.isHeader)
                     rows(group.rows)
+                } else {
+                    SettingsFoldRow(
+                        title: group.title,
+                        detail: BotCapabilities.onSummary(group.rows),
+                        isOn: Binding(
+                            get: { open.contains(group.title) },
+                            set: { isOpen in
+                                if isOpen { open.insert(group.title) } else { open.remove(group.title) }
+                            }
+                        )
+                    )
+                    if open.contains(group.title) {
+                        rows(group.rows)
+                    }
                 }
             }
         } else {
-            let shown = BotSkillGrouping.grouped(capabilities.skills, details: [], query: query).flatMap(\.rows)
+            let shown = BotSkillGrouping.matching(capabilities.skills, query: query)
             if shown.isEmpty {
                 Text(AppLocalization.string("No skills match."))
                     .foregroundStyle(.secondary)
