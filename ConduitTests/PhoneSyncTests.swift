@@ -1811,6 +1811,25 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         let upserts = host.batches.dropFirst(retried).compactMap { ($0["photos"] as? [String: Any])?["upsert"] as? [[String: Any]] }
         XCTAssertEqual(upserts.flatMap { $0 }.compactMap { $0["id"] as? String }, ["ph_0000000000000001"])
+        XCTAssertEqual((host.batches.dropFirst(retried).first { $0["photos"] != nil }?["photos"] as? [String: Any])?["full"] as? Bool,
+                       true, "Nothing recorded as sent: the host's photos are replaced whole")
+
+        // The host takes the Photos-off part but its answer is lost: the
+        // descriptions still go again once access is back.
+        photos.granted = .denied
+        let lostAt = host.batches.count
+        _ = await engine.sync(deadline: .distantFuture) { path, method, body in
+            let answer = try await host.handle(path: path, method: method, body: body)
+            if host.batches.count == lostAt + 1 { throw URLError(.networkConnectionLost) }
+            return answer
+        }
+        XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["photos"] as? Bool, false)
+        XCTAssertNil(engine.state.photoHashes)
+        photos.granted = .full
+        let again = host.batches.count
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let resent = host.batches.dropFirst(again).compactMap { ($0["photos"] as? [String: Any])?["upsert"] as? [[String: Any]] }
+        XCTAssertEqual(resent.flatMap { $0 }.compactMap { $0["id"] as? String }, ["ph_0000000000000001"])
     }
 
     // MARK: Helpers
