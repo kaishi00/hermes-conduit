@@ -2136,6 +2136,28 @@ final class PulseFeedTests: XCTestCase {
     }
 
     /// A Do it from no chat starts a chat named for the card, not "Shortcut: …".
+    func testPulseWidgetDoItRunsOncePerCardAndDashboard() throws {
+        let state = try appState()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = PulseWidgetStore(directory: directory)
+        state.pulseWidgetStoreOverride = store
+        let dashboard = UUID(), other = UUID()
+        let sent = PulseWidgetCard(id: 4, heading: "Promise", headline: "Sent", sentence: "", offersDone: true,
+                                   offersDoIt: true, offersLater: true, sentAt: Date())
+        try store.write(PulseWidgetSnapshot(dashboardID: dashboard, appLanguage: "en", cards: [sent], openCount: 1,
+                                            nextLookAt: nil, quietUntil: nil))
+        // A row the widget shows as sent sends nothing; on another dashboard that card id is another card.
+        XCTAssertFalse(state.beginPulseWidgetDoIt(card: 4, dashboardID: dashboard))
+        XCTAssertTrue(state.beginPulseWidgetDoIt(card: 4, dashboardID: other))
+        // A second press while the first sends is refused, on that dashboard only.
+        XCTAssertTrue(state.beginPulseWidgetDoIt(card: 5, dashboardID: dashboard))
+        XCTAssertFalse(state.beginPulseWidgetDoIt(card: 5, dashboardID: dashboard))
+        XCTAssertTrue(state.beginPulseWidgetDoIt(card: 5, dashboardID: other))
+        state.pulseWidgetDoItsRunning.remove(PulseWidgetLink(dashboardID: dashboard, card: 5))
+        XCTAssertTrue(state.beginPulseWidgetDoIt(card: 5, dashboardID: dashboard))
+    }
+
     func testShortcutSendNamesANewChatAsAsked() async throws {
         var created: String?
         let backend = ShortcutSendBackend(

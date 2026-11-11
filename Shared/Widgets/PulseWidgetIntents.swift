@@ -92,7 +92,7 @@ enum PulseWidgetHostActions {
         let kept = store?.read()
         let language = kept?.appLanguage ?? "system"
         guard let access, access.dashboardID == dashboardID else {
-            note(WidgetLocalization.string("Open Conduit to refresh", language: language), kept: kept, store: store)
+            note(WidgetLocalization.string(PulseWidgetNote.openConduit, language: language), kept: kept, store: store)
             return
         }
         let path: String
@@ -115,15 +115,14 @@ enum PulseWidgetHostActions {
             guard let kept = store?.read(), kept.dashboardID == dashboardID else { return }
             try? store?.write(kept.with(cards: kept.cards.filter { $0.id != card }, note: .some(nil)))
         } catch LocationHostError.signInRequired {
-            note(WidgetLocalization.string("Open Conduit to refresh", language: language), kept: store?.read(), store: store)
+            note(WidgetLocalization.string(PulseWidgetNote.openConduit, language: language), kept: store?.read(), store: store)
         } catch {
-            note(WidgetLocalization.string("Conduit couldn't reach Hermes. Open Conduit and check the connection.",
-                                           language: language), kept: store?.read(), store: store)
+            note(WidgetLocalization.string(PulseWidgetNote.unreachable, language: language), kept: store?.read(), store: store)
         }
     }
 
     private static func note(_ text: String, kept: PulseWidgetSnapshot?, store: PulseWidgetStore?) {
         guard let kept else { return }
-        try? store?.write(kept.with(note: .some(text), noteAt: Date()))
+        try? store?.write(kept.with(note: .some(text), noteAt: Date(), answeredByRead: true))
     }
 }

@@ -86,16 +86,12 @@ struct PulseWidgetProvider: TimelineProvider {
             // this answer is no longer the widget's to show.
             guard currentAccess()?.dashboardID == access.dashboardID else { return nil }
             // It reached the host: a note that it couldn't is answered.
-            snapshot = snapshot.merging(previous, answered: [
-                WidgetLocalization.string("Open Conduit to refresh", language: language),
-                WidgetLocalization.string("Conduit couldn't reach Hermes. Open Conduit and check the connection.",
-                                          language: language),
-            ])
+            snapshot = snapshot.merging(previous)
             try? store?.write(snapshot)
             return snapshot
         } catch LocationHostError.signInRequired {
-            let note = WidgetLocalization.string("Open Conduit to refresh", language: language)
-            return previous?.with(note: .some(note))
+            let note = WidgetLocalization.string(PulseWidgetNote.openConduit, language: language)
+            return previous?.with(note: .some(note), answeredByRead: true)
         } catch {
             return previous
         }

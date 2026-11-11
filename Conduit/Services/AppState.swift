@@ -927,8 +927,8 @@ final class AppState: ObservableObject {
     /// The open cards the Pulse widget last had reloaded for, by id and
     /// when each came: a feed read that changes them reloads it.
     var pulseWidgetCardsSeen: [Int: Double]?
-    /// The cards a Pulse widget Do it is sending now, so a second press waits for nothing.
-    var pulseWidgetDoItsRunning: Set<Int> = []
+    /// The cards a Pulse widget Do it is sending now, by dashboard, so a second press sends nothing.
+    var pulseWidgetDoItsRunning: Set<PulseWidgetLink> = []
     // MARK: Shared drafts (AppState+ShareDraft.swift)
     /// Test seam: the share inbox in place of the App Group's.
     var shareDraftInboxOverride: ShareDraftInbox?

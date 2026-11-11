@@ -123,11 +123,8 @@ extension AppState {
     /// it now. The widget then shows the row as sent, or why it wasn't.
     func runPulseWidgetAction(_ action: PulseWidgetAction, card id: Int, dashboardID: UUID) async {
         guard action == .doIt else { return }
-        // A second press while it sends, or on a row already sent, sends nothing.
-        if let kept = pulseWidgetStore?.read(), kept.dashboardID == dashboardID,
-           kept.cards.first(where: { $0.id == id })?.sentAt != nil { return }
-        guard pulseWidgetDoItsRunning.insert(id).inserted else { return }
-        defer { pulseWidgetDoItsRunning.remove(id) }
+        guard beginPulseWidgetDoIt(card: id, dashboardID: dashboardID) else { return }
+        defer { pulseWidgetDoItsRunning.remove(PulseWidgetLink(dashboardID: dashboardID, card: id)) }
         // As a shortcut's run: it may reconnect on its own while it lasts.
         shortcutSendsRunning += 1
         defer { endShortcutSend() }
@@ -147,6 +144,15 @@ extension AppState {
         }
         guard let note, let store = pulseWidgetStore, let kept = store.read(), kept.dashboardID == dashboardID else { return }
         if (try? store.write(kept.with(note: .some(note), noteAt: Date()))) == true { reloadPulseWidget() }
+    }
+
+    /// Whether a widget Do it may send: not while one for the same card on
+    /// the same dashboard is sending, nor on a row the widget shows as sent.
+    /// Reserves the card when it may; the caller frees it.
+    func beginPulseWidgetDoIt(card id: Int, dashboardID: UUID) -> Bool {
+        if let kept = pulseWidgetStore?.read(), kept.dashboardID == dashboardID,
+           kept.cards.first(where: { $0.id == id })?.sentAt != nil { return false }
+        return pulseWidgetDoItsRunning.insert(PulseWidgetLink(dashboardID: dashboardID, card: id)).inserted
     }
 
     /// iOS gives an intent about 30 seconds.
