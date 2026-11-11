@@ -177,9 +177,13 @@ enum GatewayMediaTags {
     /// preview or a Desktop card is named the same way (#1522).
     static func namingFiles(in text: String) -> String {
         rewritingTags(in: TranscriptDirectives.naming(in: text)) { path, alt in
-            let name = path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
-            return (alt.map { $0 + " " } ?? "") + "(a file in the chat: \(name))"
+            (alt.map { $0 + " " } ?? "") + "(a file in the chat: \(fileName(of: path)))"
         }
+    }
+
+    /// A delivered file's name, never its path on the host.
+    static func fileName(of path: String) -> String {
+        path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
     }
 
     private static func rewritingTags(in text: String, media: (_ path: String, _ alt: String?) -> String?) -> String {

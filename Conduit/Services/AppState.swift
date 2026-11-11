@@ -21174,7 +21174,7 @@ final class AppState: ObservableObject {
         // Agents this chat started that are still running: a chat opened
         // (or reconnected) after they began never saw them start.
         let resumedSessionID = result.sessionId
-        Task { [weak self] in await self?.adoptDelegateRoster(for: resumedSessionID) }
+        Task { [weak self] in _ = await self?.adoptDelegateRoster(for: resumedSessionID) }
         chatCards.applyServerPlan(
             result.snapshot.todoState,
             for: chatCardsChat(including: [result.sessionId, result.storedSessionId])
@@ -40201,17 +40201,45 @@ final class AppState: ObservableObject {
     /// socket was down, so no `subagent.*` frame of theirs reached it, and
     /// the chat would read as finished while they work (issue 2142).
     /// Gateways without `subagent.list` leave the cards as they are.
-    func adoptDelegateRoster(for sessionID: String) async {
-        guard let client, !sessionID.isEmpty else { return }
-        guard let roster = try? await client.subagentRoster(sessionId: sessionID) else { return }
+    /// A read that failed on the way (not Hermes' own answer) is tried once
+    /// more while the chat is still the open one: with no cards, the chat
+    /// would show no waiting line until an agent's next frame.
+    @discardableResult
+    func adoptDelegateRoster(for sessionID: String, retries: Int = 1) async -> [DelegateAgentActivity]? {
+        guard let client, !sessionID.isEmpty else { return nil }
         // The answer is about the chat it was asked for, on the connection
         // that asked: another chat opened meanwhile keeps its own cards.
-        guard self.client === client, let open = activeSessionId,
-              knownSessionIDs(for: open).contains(sessionID) else { return }
+        let stillOpen: () -> Bool = { [weak self] in
+            guard let self, self.client === client, let open = self.activeSessionId else { return false }
+            return self.knownSessionIDs(for: open).contains(sessionID)
+        }
+        let roster: [DelegateAgentActivity]
+        do {
+            roster = try await client.subagentRoster(sessionId: sessionID)
+        } catch {
+            guard retries > 0, !(error is RpcError) else { return nil }
+            try? await Task.sleep(for: .seconds(3))
+            guard stillOpen() else { return nil }
+            return await adoptDelegateRoster(for: sessionID, retries: retries - 1)
+        }
+        guard stillOpen() else { return nil }
         let adopted = DelegateAgentActivity.adopting(delegateAgents, roster: roster)
-        guard adopted != delegateAgents else { return }
-        delegateAgents = adopted
-        setActiveAgents(DelegateAgentActivity.activeCount(adopted))
+        if adopted != delegateAgents {
+            delegateAgents = adopted
+            setActiveAgents(DelegateAgentActivity.activeCount(adopted))
+        }
+        return roster
+    }
+
+    /// Whether Hermes still lists `agent` under the open chat's runtime,
+    /// when the card is from an earlier one: a refused Steer or Stop there
+    /// is about the old runtime, not proof the agent ended (issue 2206).
+    /// The card moves to the runtime Hermes has, so the next try reaches it.
+    private func delegateAgentListedUnderOpenRuntime(_ agent: DelegateAgentActivity) async -> Bool {
+        guard let open = activeSessionId, open != agent.sessionId,
+              knownSessionIDs(for: open).contains(agent.sessionId),
+              let roster = await adoptDelegateRoster(for: open, retries: 0) else { return false }
+        return roster.contains { $0.id == agent.id }
     }
 
     /// How many delegate agents of the open chat are still queued or
@@ -40243,8 +40271,10 @@ final class AppState: ObservableObject {
         }
         // A client swapped during the call answered for another connection.
         guard self.client === client else { return .failed }
-        if !queued { endDelegateAgent(agent) }
-        return queued ? .done : .notRunning
+        if queued { return .done }
+        if await delegateAgentListedUnderOpenRuntime(agent) { return .failed }
+        endDelegateAgent(agent)
+        return .notRunning
     }
 
     /// Stops one running delegate agent (#820). The card shows it stopped
@@ -40260,6 +40290,7 @@ final class AppState: ObservableObject {
         }
         // A client swapped during the call answered for another connection.
         guard self.client === client else { return .failed }
+        if !found, await delegateAgentListedUnderOpenRuntime(agent) { return .failed }
         endDelegateAgent(agent, as: found ? .interrupted : .completed)
         return found ? .done : .notRunning
     }

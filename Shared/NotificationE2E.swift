@@ -762,15 +762,47 @@ struct RoomHandoffs: Codable, Equatable {
     private static let key = "conduit.notifications.roomHandoffs"
     private static let lock = NSLock()
 
-    /// `record` on the list kept in the app group, one handoff at a time.
-    static func record(_ id: String, thread: String, defaults: UserDefaults?, now: Date = Date()) -> [String] {
+    /// `record` on the list kept in the app group, one handoff at a time,
+    /// and the time it was noted at. The time is taken inside the lock, so
+    /// the list's order is the handoffs' order: one recorded after this one
+    /// is never also earlier than it (issue 2117).
+    static func record(
+        _ id: String, thread: String, defaults: UserDefaults?, now: () -> Date = { Date() }
+    ) -> (earlier: [String], at: Date) {
         lock.withLock {
+            let at = now()
             var handoffs = defaults?.data(forKey: key)
                 .flatMap { try? JSONDecoder().decode(RoomHandoffs.self, from: $0) } ?? RoomHandoffs()
-            let earlier = handoffs.record(id, thread: thread, now: now)
+            let earlier = handoffs.record(id, thread: thread, now: at)
             if let data = try? JSONEncoder().encode(handoffs) { defaults?.set(data, forKey: key) }
-            return earlier
+            return (earlier, at)
         }
+    }
+
+    /// A notification Notification Center shows, as a room push weighs it.
+    struct Shown: Equatable {
+        let id: String
+        let date: Date
+        /// Whether the push's note says it replaces this one (same room).
+        let sameRoom: Bool
+    }
+
+    /// What a room push recorded at `recordedAt` removes of what's shown
+    /// (`gone`), and which of the handoffs it waits on haven't shown yet
+    /// (`waiting`). Never its own (`own`), which a timeout may already have
+    /// shown, nor one handed over (`newer`) or shown after it: a lookup
+    /// slower than the newer push's wait lands after that one showed, and
+    /// its newer reply stays (issue 2070). A `pending` handoff goes once it
+    /// shows, unless it is newer.
+    static func replacing(
+        _ shown: [Shown], own: String, newer: Set<String>, recordedAt: Date, pending: Set<String>
+    ) -> (gone: Set<String>, waiting: Set<String>) {
+        let ids = Set(shown.map(\.id))
+        let earlier = shown
+            .filter { $0.id != own && !newer.contains($0.id) && $0.date < recordedAt && $0.sameRoom }
+            .map(\.id)
+        let gone = Set(earlier).union(pending.intersection(ids).subtracting(newer)).subtracting([own])
+        return (gone, pending.subtracting(ids))
     }
 
     /// `handedOver` on the list kept in the app group.

@@ -1859,7 +1859,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(PulseLook.wireCalendar.dateComponents([.year, .month, .day], from: day),
                        DateComponents(year: 2026, month: 11, day: 13))
         XCTAssertEqual([what, whose], ["birthday", "Kwan"])
-        XCTAssertTrue(date.actions.isEmpty)  // only https links open
+        XCTAssertTrue(date.actions.isEmpty)  // a plain http link never opens
         XCTAssertFalse(page.cards[1].wasUpdated)
         XCTAssertNil(page.cards[2].look)
         XCTAssertEqual(page.cards[2].subject, "")
@@ -1877,6 +1877,19 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertNotNil(PulseLook.Action(json: ["does": "done"]))
         XCTAssertNil(PulseLook.Action(json: ["does": "draft", "label": "Draft"]))  // a draft needs its words
         XCTAssertNil(PulseLook.Action(json: ["does": "ask", "say": "x"]))  // an ask needs its label
+    }
+
+    func testAnOpenActionTakesTheLinksAChatCardOpens() {
+        // Issue 2125: the plugin's pick check allows the chat cards' open
+        // schemes, so a Call or Maps button survives on the phone too.
+        for url in ["tel:+15551234567", "maps:https://maps.apple.com/?q=coffee", "mailto:mara@example.com",
+                    "sms:+15551234567", "calshow:800000000", "x-apple-reminderkit://REMCDReminder/1", "https://example.com"] {
+            let action = PulseLook.Action(json: ["label": "Go", "does": "open", "url": url])
+            XCTAssertNotNil(action?.url, url)
+        }
+        for url in ["http://example.com", "javascript:alert(1)", "file:///etc/hosts", "tel:+1 555"] {
+            XCTAssertNil(PulseLook.Action(json: ["label": "Go", "does": "open", "url": url]), url)
+        }
     }
 
     func testADrawnBodyDrawsItsCardAndOneThatDoesntHoldUpDrawsPlain() throws {

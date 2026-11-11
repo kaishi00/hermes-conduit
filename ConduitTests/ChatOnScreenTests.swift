@@ -219,8 +219,11 @@ final class ChatOnScreenTests: XCTestCase {
         let suite = "RoomHandoffs-\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
         defer { defaults.removePersistentDomain(forName: suite) }
-        XCTAssertEqual(RoomHandoffs.record("a", thread: "room:d:r1", defaults: defaults, now: start), [])
-        XCTAssertEqual(RoomHandoffs.record("b", thread: "room:d:r1", defaults: defaults, now: start.addingTimeInterval(0.1)), ["a"])
+        let first = RoomHandoffs.record("a", thread: "room:d:r1", defaults: defaults, now: { start })
+        XCTAssertEqual(first.earlier, [])
+        XCTAssertEqual(first.at, start, "The time the handoff was noted at")
+        XCTAssertEqual(RoomHandoffs.record("b", thread: "room:d:r1", defaults: defaults,
+                                           now: { start.addingTimeInterval(0.1) }).earlier, ["a"])
 
         // Issue 2070: a's lookup, slower than b's wait, lands after b showed.
         // b was handed over after a, so a leaves it; b finds nothing newer.
@@ -229,6 +232,25 @@ final class ChatOnScreenTests: XCTestCase {
                                                defaults: defaults), [])
         XCTAssertEqual(RoomHandoffs.handedOver(in: "room:d:r2", after: start, except: "a", defaults: defaults), [],
                        "Another room's is its own")
+    }
+
+    /// What a room push removes of what's shown (issue 2117).
+    func testARoomPushRemovesOnlyEarlierShownNotificationsOfItsRoom() {
+        let at = Date(timeIntervalSince1970: 1_000)
+        func shown(_ id: String, _ offset: TimeInterval, sameRoom: Bool = true) -> RoomHandoffs.Shown {
+            RoomHandoffs.Shown(id: id, date: at.addingTimeInterval(offset), sameRoom: sameRoom)
+        }
+        let picked = RoomHandoffs.replacing(
+            [shown("old", -5), shown("own", 0.2), shown("later", 0.5), shown("newer", -1),
+             shown("other", -5, sameRoom: false), shown("a", 0.3)],
+            own: "own", newer: ["newer"], recordedAt: at, pending: ["a", "b"]
+        )
+        XCTAssertEqual(picked.gone, ["old", "a"],
+                       "Its own, one shown after it, a newer handoff and another room's stay; a pending one goes once shown")
+        XCTAssertEqual(picked.waiting, ["b"], "One not shown yet is still waited on")
+        let newerPending = RoomHandoffs.replacing([shown("b", 0.4)], own: "own", newer: ["b"], recordedAt: at, pending: ["b"])
+        XCTAssertEqual(newerPending.gone, [], "A pending handoff that is newer stays")
+        XCTAssertEqual(newerPending.waiting, [])
     }
 
     func testARunningTurnDoesNotCountAsSomeoneLooking() {

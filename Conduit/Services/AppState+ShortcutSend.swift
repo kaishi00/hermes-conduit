@@ -130,29 +130,35 @@ extension AppState {
                         throw RpcError(code: 4001, message: "session not found")
                     }
                     try stayOnDashboard()
-                    // A turn the composer finds running is never steered or
-                    // interrupted from here: it declines and the gateway queues.
-                    self.submissionTurnSurface = (text, .shortcut)
-                    defer { self.submissionTurnSurface = nil }
-                    // Whether the composer wrote the error, even one reading
-                    // the same as a banner already on screen.
-                    var wroteError = false
-                    let errorWrites = self.$errorMessage.dropFirst().sink { wroteError = $0 != nil }
-                    let sent = await self.submitComposer(text: text, onBusy: {})
-                    errorWrites.cancel()
-                    if sent {
-                        // Admitted behind a turn a restart cut off: no reply
-                        // comes until the chat's card is answered.
-                        if self.client?.chatIsHeldByLostTurn(runtimeID) == true { return .queued }
-                        return .accepted
+                    // The check waited: a chat opened meanwhile never takes this
+                    // text in its composer. Hermes takes it below instead.
+                    if self.isOpenChat(scoped), self.activeSessionId == runtimeID, !self.isBusy {
+                        // A turn the composer finds running is never steered or
+                        // interrupted from here: it declines and the gateway queues.
+                        self.submissionTurnSurface = (text, .shortcut)
+                        defer { self.submissionTurnSurface = nil }
+                        // Whether the composer wrote the error, even one reading
+                        // the same as a banner already on screen.
+                        var wroteError = false
+                        let errorWrites = self.$errorMessage.dropFirst().sink { wroteError = $0 != nil }
+                        let sent = await self.submitComposer(text: text, onBusy: {})
+                        errorWrites.cancel()
+                        if sent {
+                            // Admitted behind a turn a restart cut off: no reply
+                            // comes until the chat's card is answered.
+                            if self.client?.chatIsHeldByLostTurn(runtimeID) == true { return .queued }
+                            return .accepted
+                        }
+                        // A runtime that died after the check (or a check that
+                        // couldn't read): the composer showed "Failed to send".
+                        if wroteError, let error = self.errorMessage { failedTry.error = error }
                     }
-                    // A runtime that died after the check (or a check that
-                    // couldn't read): the composer showed "Failed to send".
-                    if wroteError, let error = self.errorMessage { failedTry.error = error }
                 }
                 // Off screen, a turn running there, or a composer that couldn't
                 // take it (still synchronizing): Hermes takes it, queues it or
                 // joins the turn running.
+                // A run that has left the dashboard reports no turn surface.
+                try stayOnDashboard()
                 await self.reportTurnSurface(.shortcut, runtimeSessionID: runtimeID, text: text)?.value
                 do {
                     try stayOnDashboard()

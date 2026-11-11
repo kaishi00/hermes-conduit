@@ -88,6 +88,11 @@ extension GatewayRestartTests {
         XCTAssertEqual(marked.preview.components(separatedBy: "\n").first, "a.png")
         let bracketMath = "\\[\n@image:/x.png\n\\]\n@image:/after.png"
         XCTAssertEqual(CronBotChatReport(job: "Q", report: bracketMath).shown, "\\[\n@image:/x.png\n\\]\nMEDIA:`/after.png`")
+        // A CRLF report reads as an LF one: the fence closes, the bare
+        // reference after it is a picture.
+        let crlf = CronBotChatReport.parse("[Cron job \"Q\" report: shown in the chat, no reply asked for]\r\n```\r\n@image:/in/code.png\r\n```\r\n@image:/after.png\r\n")
+        XCTAssertEqual(crlf?.job, "Q")
+        XCTAssertEqual(crlf?.shown, "```\n@image:/in/code.png\n```\nMEDIA:`/after.png`")
         // Two references on a line, quoted or run together, stay as written.
         for twoFiles in ["@file:\"/tmp/a.pdf\" @file:\"/tmp/b.pdf\"", "@file:/tmp/a.pdf,@file:/tmp/b.pdf"] {
             XCTAssertEqual(CronBotChatReport(job: "Q", report: twoFiles).shown, twoFiles)

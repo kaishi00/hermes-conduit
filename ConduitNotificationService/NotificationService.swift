@@ -127,8 +127,7 @@ final class NotificationService: UNNotificationServiceExtension {
         _ content: UNMutableNotificationContent, note: [String: String], thread: String, request: UNNotificationRequest
     ) {
         content.threadIdentifier = thread
-        let now = Date()
-        let pending = RoomHandoffs.record(request.identifier, thread: thread, defaults: NotificationSharedSettings.defaults, now: now)
+        let (pending, now) = RoomHandoffs.record(request.identifier, thread: thread, defaults: NotificationSharedSettings.defaults)
         Self.replaceEarlier(
             in: note, thread: thread, own: request.identifier, recordedAt: now, pending: Set(pending),
             until: now.addingTimeInterval(RoomHandoffs.wait)
@@ -136,12 +135,10 @@ final class NotificationService: UNNotificationServiceExtension {
     }
 
     /// Removes the room's notifications already shown, and those `pending`
-    /// once they show (two bots finishing together), until `deadline`.
-    /// Never this push's own (`own`), which a timeout may already have shown,
-    /// nor one handed over or shown after it (`recordedAt`): a lookup slower
-    /// than the newer push's wait lands after that one showed, and its newer
-    /// reply stays (issue 2070). Its showing time keeps it once its handoff
-    /// has aged out of the list, on a lookup stalled past the window.
+    /// once they show (two bots finishing together), until `deadline`, as
+    /// `RoomHandoffs.replacing` picks them. A newer one's showing time keeps
+    /// it once its handoff has aged out of the list, on a lookup stalled
+    /// past the window.
     private static func replaceEarlier(
         in note: [String: String], thread: String, own: String, recordedAt: Date, pending: Set<String>,
         until deadline: Date, then: @escaping () -> Void
@@ -151,17 +148,16 @@ final class NotificationService: UNNotificationServiceExtension {
             let newer = RoomHandoffs.handedOver(
                 in: thread, after: recordedAt, except: own, defaults: NotificationSharedSettings.defaults
             )
-            let shown = Set(delivered.map(\.request.identifier))
-            let earlier = delivered
-                .filter {
-                    $0.request.identifier != own && !newer.contains($0.request.identifier)
-                        && $0.date < recordedAt
-                        && ReadChatHint.replaces(note, delivered: $0.request.content.userInfo)
-                }
-                .map(\.request.identifier)
-            let gone = Set(earlier).union(pending.intersection(shown))
+            let shown = delivered.map {
+                RoomHandoffs.Shown(
+                    id: $0.request.identifier, date: $0.date,
+                    sameRoom: ReadChatHint.replaces(note, delivered: $0.request.content.userInfo)
+                )
+            }
+            let (gone, waiting) = RoomHandoffs.replacing(
+                shown, own: own, newer: newer, recordedAt: recordedAt, pending: pending
+            )
             if !gone.isEmpty { center.removeDeliveredNotifications(withIdentifiers: Array(gone)) }
-            let waiting = pending.subtracting(shown)
             guard !waiting.isEmpty, Date() < deadline else { return then() }
             DispatchQueue.global().asyncAfter(deadline: .now() + 0.15) {
                 Self.replaceEarlier(
