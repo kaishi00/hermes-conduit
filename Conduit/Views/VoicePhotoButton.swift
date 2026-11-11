@@ -22,16 +22,23 @@ struct VoicePhotoButton<Face: View>: View {
     @State private var showsCamera = false
     @State private var target: VoicePhotoTarget?
     @State private var failure: String?
+    /// A photo still saving: the Camera waits for it, so a second one
+    /// can't land before it and be replaced by it.
+    @State private var isAdding = false
 
     var body: some View {
         face({
+            guard !isAdding else { return }
             target = appState.voicePhotoTarget
             showsCamera = true
         })
+            .disabled(isAdding)
             .fullScreenCover(isPresented: $showsCamera) {
                 CameraCapture { image in
                     guard let target else { return }
+                    isAdding = true
                     Task { @MainActor in
+                        defer { isAdding = false }
                         failure = await appState.addVoicePhoto(image, for: target)
                         if failure == nil { Haptics.selection() }
                     }
