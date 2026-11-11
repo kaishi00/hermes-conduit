@@ -1625,6 +1625,21 @@ extension BotModeTests {
         XCTAssertNil(BotScreenUse(nil))
     }
 
+    /// Opened from a chat's menu (issue 2132), the sheet names that chat as
+    /// "this chat" whatever its kind; any other chat keeps its own name.
+    func testBotScreenUseNamesTheOpenChat() throws {
+        let use = try XCTUnwrap(BotScreenUse([
+            "controlling": ["session_id": "s1", "kind": "chat", "title": "Trip plans"],
+            "last": ["session_id": "w1", "kind": "workstream", "ref": "W1"],
+        ]))
+        let controlling = try XCTUnwrap(use.controlling)
+        XCTAssertTrue(controlling.isChat(in: ["s1", "durable-1"]))
+        XCTAssertFalse(controlling.isChat(in: []))
+        XCTAssertEqual(BotScreenUse.name(of: controlling), "Trip plans")
+        XCTAssertEqual(BotScreenUse.name(of: controlling, openChat: ["s1"]), AppLocalization.string("this chat"))
+        XCTAssertEqual(BotScreenUse.name(of: try XCTUnwrap(use.last), openChat: ["s1"]), "W1")
+    }
+
     func testBotScreenKeysyms() {
         XCTAssertEqual(BotScreenKey.keysym(for: "a"), 0x61)
         XCTAssertEqual(BotScreenKey.keysym(for: "é"), 0xE9)
