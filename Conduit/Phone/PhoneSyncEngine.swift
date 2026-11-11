@@ -717,17 +717,18 @@ final class PhoneSyncEngine: ObservableObject {
                         part["sharing"] = sharing
                     }
                     newPhotoHashes = nil
-                    // The host drops its descriptions on this part; a later
-                    // part refused mustn't leave the phone thinking they're there.
-                    if state.photoHashes != nil {
-                        state.photoHashes = nil
-                        persist()
-                    }
                 }
                 let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
                 part["batch_id"] = batchID
                 let body = try await Self.sealBatch(part, key: key, deviceID: state.deviceID, batchID: batchID)
                 let answer = try await request("\(Self.base)/ingest", "POST", body)
+                // The host took a part that says Photos is off, so it dropped
+                // its descriptions: a later part refused mustn't leave the
+                // phone thinking they're still there.
+                if (part["sharing"] as? [String: Any])?["photos"] as? Bool == false, state.photoHashes != nil {
+                    state.photoHashes = nil
+                    persist()
+                }
                 pending = (answer["pending"] as? NSNumber)?.intValue ?? 0
             }
             state.frameHash = frame

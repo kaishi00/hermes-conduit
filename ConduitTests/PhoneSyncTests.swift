@@ -1778,6 +1778,41 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(engine.state.photoHashes, "The next pass sends descriptions again once access is back")
     }
 
+    func testAPhotosOffPartTheHostTookThenARefusedPartSendsDescriptionsAgain() async throws {
+        let source = FakePhoneCalendarSource()
+        let photos = FakePhonePhotoSource()
+        photos.entries = [["id": "ph_0000000000000001", "taken": "2026-10-12T15:00:00Z", "labels": ["beach"]]]
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: source, photos: photos)
+        var preferences = phonePreferences()
+        preferences.photos = true
+        engine.savePreferences(preferences)
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertNotNil(engine.state.photoHashes)
+
+        // Three parts: access goes after the first, the host takes the
+        // second (Photos off, so it drops the descriptions) and refuses the third.
+        source.events = (0..<10_000).map { phoneEvent("e_\($0)", "Meeting \($0)") }
+        let before = host.batches.count
+        host.failIngest = 3
+        let failed = await engine.sync(deadline: .distantFuture) { [unowned photos] path, method, body in
+            let answer = try await host.handle(path: path, method: method, body: body)
+            if host.batches.count == before + 1 { photos.granted = .denied }
+            return answer
+        }
+        XCTAssertNotEqual(failed, .synced)
+        XCTAssertEqual(host.batches.count, before + 2)
+        XCTAssertNil(engine.state.photoHashes, "The host dropped the descriptions, so the phone forgets it sent them")
+
+        // Access back: the descriptions go again.
+        host.failIngest = nil
+        photos.granted = .full
+        let retried = host.batches.count
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let upserts = host.batches.dropFirst(retried).compactMap { ($0["photos"] as? [String: Any])?["upsert"] as? [[String: Any]] }
+        XCTAssertEqual(upserts.flatMap { $0 }.compactMap { $0["id"] as? String }, ["ph_0000000000000001"])
+    }
+
     // MARK: Helpers
 
     private func makePhoneEngine(source: FakePhoneCalendarSource,
