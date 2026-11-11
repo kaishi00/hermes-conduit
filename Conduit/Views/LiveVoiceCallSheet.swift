@@ -54,9 +54,9 @@ struct LiveVoiceCallSheet: View {
     /// Nil for an engine that is only interrupted by speaking over it: the
     /// sheet then has no Interrupt button.
     var onInterrupt: (() -> Void)?
-    /// The Camera: puts a photo on the call's chat (`AppState.addVoicePhoto`),
-    /// answering what to tell the user when it couldn't. Nil shows none.
-    var onPhoto: (@MainActor (UIImage) async -> String?)? = nil
+    /// Shows the Camera, which puts a photo on the call's chat
+    /// (`AppState.addVoicePhoto`).
+    var showsCamera = false
     let onEnd: () -> Void
     let onRetry: () -> Void
     /// The voice mode menu under the title, and Switch voice on a failed
@@ -507,8 +507,8 @@ struct LiveVoiceCallSheet: View {
                     )
                     .disabled(!canInterrupt)
                 }
-                if showsPhoto, let onPhoto {
-                    LiveVoiceCallPhotoButton(onPhoto: onPhoto)
+                if showsPhoto {
+                    LiveVoiceCallPhotoButton(appState: appState)
                         .disabled(!canMute)
                 }
             }
@@ -544,7 +544,7 @@ struct LiveVoiceCallSheet: View {
 
     /// The Camera, on a device that has one.
     private var showsPhoto: Bool {
-        onPhoto != nil && CameraCapture.isAvailable
+        showsCamera && CameraCapture.isAvailable
     }
 }
 

@@ -11,25 +11,28 @@
 import SwiftUI
 import UIKit
 
-/// Opens the camera from its face and hands the photo to `onPhoto`, which
-/// answers with what to tell the user when the photo couldn't be added.
+/// Opens the camera from its face and hands the photo to `appState`, with
+/// the conversation it was opened for; an alert says why when the photo
+/// couldn't be added.
 struct VoicePhotoButton<Face: View>: View {
-    let onPhoto: @MainActor (UIImage) async -> String?
+    let appState: AppState
     /// The button's look; call `open` to bring up the camera.
     @ViewBuilder let face: (_ open: @escaping () -> Void) -> Face
 
     @State private var showsCamera = false
+    @State private var target: VoicePhotoTarget?
     @State private var failure: String?
 
-    /// No camera, no button (the simulator, a Mac).
-    static var isAvailable: Bool { CameraCapture.isAvailable }
-
     var body: some View {
-        face({ showsCamera = true })
+        face({
+            target = appState.voicePhotoTarget
+            showsCamera = true
+        })
             .fullScreenCover(isPresented: $showsCamera) {
                 CameraCapture { image in
+                    guard let target else { return }
                     Task { @MainActor in
-                        failure = await onPhoto(image)
+                        failure = await appState.addVoicePhoto(image, for: target)
                         if failure == nil { Haptics.selection() }
                     }
                 }
@@ -48,10 +51,10 @@ struct VoicePhotoButton<Face: View>: View {
 
 /// The Camera in a call's row of round buttons.
 struct LiveVoiceCallPhotoButton: View {
-    let onPhoto: @MainActor (UIImage) async -> String?
+    let appState: AppState
 
     var body: some View {
-        VoicePhotoButton(onPhoto: onPhoto) { open in
+        VoicePhotoButton(appState: appState) { open in
             LiveVoiceCallButton(
                 symbol: "camera.fill",
                 title: AppLocalization.string("Camera"),

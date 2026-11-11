@@ -259,7 +259,7 @@ struct VoiceConversationSheet: View {
                 .accessibilityHint("Mutes assistant audio without changing chat messages")
 
                 if let appState, showsPhoto {
-                    VoicePhotoButton(onPhoto: { await appState.addVoicePhoto($0) }) { open in
+                    VoicePhotoButton(appState: appState) { open in
                         Button(action: open) {
                             Label(AppLocalization.string("Camera"), systemImage: "camera.fill")
                                 .frame(maxWidth: .infinity)
@@ -740,7 +740,7 @@ extension VoiceConversationSheet {
                 action: { controller.setOutputMuted(!controller.isOutputMuted) }
             )
             if let appState, showsPhoto {
-                LiveVoiceCallPhotoButton { await appState.addVoicePhoto($0) }
+                LiveVoiceCallPhotoButton(appState: appState)
             }
             LiveVoiceCallButton(
                 symbol: "text.bubble.fill",

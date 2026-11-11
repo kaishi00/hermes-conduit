@@ -14,14 +14,31 @@
 
 import UIKit
 
+/// Where a voice screen's photo goes, settled when the Camera opens: a
+/// chat or call that changes while the camera is up or the photo saves
+/// doesn't get it.
+struct VoicePhotoTarget: Equatable {
+    let chat: String?
+    let dashboard: UUID?
+    let callThread: VoiceThreadTarget?
+}
+
 extension AppState {
+    /// The conversation a Camera tap belongs to.
+    var voicePhotoTarget: VoicePhotoTarget {
+        VoicePhotoTarget(chat: activeSessionId, dashboard: activeDashboardID, callThread: voiceBackgroundJobSupervisor.liveThread)
+    }
+
     /// The voice screens' Camera: puts the photo on the conversation's
-    /// chat. Returns what to tell the user when it couldn't, nil when it's
-    /// there.
-    func addVoicePhoto(_ image: UIImage) async -> String? {
+    /// chat as it was when the Camera opened (`target`). Returns what to
+    /// tell the user when it couldn't, nil when it's there.
+    func addVoicePhoto(_ image: UIImage, for target: VoicePhotoTarget) async -> String? {
         let limit = AttachmentSizeLimit.clampedMegabytes(
             UserDefaults.standard.integer(forKey: AttachmentSizeLimit.preferenceKey)
         )
+        let classicChat = target.chat
+        let dashboard = target.dashboard
+        let callThread = target.callThread
         // The model's small copy is made off the main thread with the photo.
         let wantsFrame = livePhotoController != nil
         let (outcome, frame) = await Task.detached(priority: .userInitiated) {
@@ -37,11 +54,15 @@ extension AppState {
         case .failed:
             return AppLocalization.string("Conduit couldn't save the photo. Try again.")
         }
+        guard activeDashboardID == dashboard else {
+            Self.deleteStagedScreenshot(photo)
+            return Self.voicePhotoNoChatMessage
+        }
         if isLiveVoiceCallActive {
-            return await addPhotoToLiveCall(photo, frame: frame)
+            return await addPhotoToLiveCall(photo, frame: frame, thread: callThread, dashboard: dashboard)
         }
         // Classic voice talks in the chat on screen: its next turn carries it.
-        guard isVoiceInUse, let sessionID = activeSessionId, activeRoomSurface == nil else {
+        guard isVoiceInUse, let sessionID = activeSessionId, sessionID == classicChat, activeRoomSurface == nil else {
             Self.deleteStagedScreenshot(photo)
             return Self.voicePhotoNoChatMessage
         }
@@ -64,8 +85,8 @@ extension AppState {
     /// Only a turn sent from the chat on screen carries an attachment, so
     /// the call's chat comes on screen first, as for a screenshot. A call
     /// with no chat yet, or one whose chat can't open, keeps nothing.
-    private func addPhotoToLiveCall(_ photo: Attachment, frame: Data?) async -> String? {
-        guard let thread = voiceBackgroundJobSupervisor.liveThread else {
+    private func addPhotoToLiveCall(_ photo: Attachment, frame: Data?, thread: VoiceThreadTarget?, dashboard: UUID?) async -> String? {
+        guard let thread else {
             Self.deleteStagedScreenshot(photo)
             return AppLocalization.string("The photo goes to the call's chat. Ask for something first, so the call has a chat, then add it.")
         }
@@ -73,7 +94,7 @@ extension AppState {
             _ = await openSession(thread.storedSessionID ?? thread.runtimeSessionID)
         }
         // The call may have ended, or moved on, while the chat opened.
-        guard isLiveVoiceCallActive, voiceBackgroundJobSupervisor.liveThread == thread,
+        guard isLiveVoiceCallActive, activeDashboardID == dashboard, voiceBackgroundJobSupervisor.liveThread == thread,
               isOpenChat(thread), let sessionID = activeSessionId else {
             Self.deleteStagedScreenshot(photo)
             return Self.voicePhotoNoChatMessage

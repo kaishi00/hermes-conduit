@@ -1443,12 +1443,18 @@ final class AppStateScreenQuestionTests: XCTestCase {
             context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
         }
 
-        let refused = await harness.appState.addVoicePhoto(image)
+        let refused = await harness.appState.addVoicePhoto(image, for: harness.appState.voicePhotoTarget)
         XCTAssertNotNil(refused, "No voice conversation is running")
         XCTAssertNil(harness.appState.pendingScreenshot(forSession: "composer-origin"))
 
         harness.appState.showVoiceSheet = true
-        let failure = await harness.appState.addVoicePhoto(image)
+        // Opened for another chat: this one doesn't take it.
+        let elsewhere = VoicePhotoTarget(chat: "other-chat", dashboard: harness.appState.activeDashboardID, callThread: nil)
+        let moved = await harness.appState.addVoicePhoto(image, for: elsewhere)
+        XCTAssertNotNil(moved)
+        XCTAssertNil(harness.appState.pendingScreenshot(forSession: "composer-origin"))
+
+        let failure = await harness.appState.addVoicePhoto(image, for: harness.appState.voicePhotoTarget)
         XCTAssertNil(failure)
         let photo = try XCTUnwrap(harness.appState.pendingScreenshot(forSession: "composer-origin"))
         addTeardownBlock { AppState.deleteStagedScreenshot(photo) }
