@@ -233,7 +233,12 @@ struct V2ConversationScreen: View {
             GeometryReader { proxy in
                 Color.clear
                     .onAppear { screenWidth = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, width in screenWidth = width }
+                    // An iPhone turned sideways for a bot's screen in full
+                    // screen keeps its Work panel where it was: moving it
+                    // closed the screen opened from it.
+                    .onChange(of: proxy.size.width) { _, width in
+                        screenWidth = InterfaceOrientationGate.layoutWidth(live: width, kept: screenWidth)
+                    }
                     // The chat open before's Work closes under a Bot Chat
                     // on its way, and doesn't come back over the one that
                     // lands. (Here, off the screen's long modifier chain.)

@@ -9,6 +9,11 @@ import UIKit
 enum InterfaceOrientationGate {
     /// The full screens that turn sideways now open.
     private(set) static var landscapeHolders = 0
+    /// When the last of them closed: the phone turns back after it.
+    private(set) static var lastClosed: Date?
+    /// Long enough for the phone to turn back to portrait once a full
+    /// screen closes.
+    static let turnBackTime: TimeInterval = 2
 
     static var supported: UIInterfaceOrientationMask {
         supported(idiom: UIDevice.current.userInterfaceIdiom, landscapeHolders: landscapeHolders)
@@ -34,7 +39,30 @@ enum InterfaceOrientationGate {
         guard landscapeHolders > 0 else { return }
         landscapeHolders -= 1
         guard landscapeHolders == 0 else { return }
+        lastClosed = Date()
         apply(turnTo: .portrait)
+    }
+
+    /// The width a screen under the full screen lays itself out by: on an
+    /// iPhone, the one it had before the phone turned (`kept`), while the
+    /// full screen is open and as the phone turns back. Turned sideways, an
+    /// iPhone's window is wide enough to split the tabs into columns and to
+    /// put a chat's Work panel beside it; either rebuilds the views the
+    /// bot's screen opened from, and its sheet and full screen closed with
+    /// them, back to the Bot Chat (Eric 2026-11-11). Its size is still the
+    /// window's, under the black.
+    static func layoutWidth(live: CGFloat, kept: CGFloat?) -> CGFloat {
+        layoutWidth(live: live, kept: kept, idiom: UIDevice.current.userInterfaceIdiom,
+                    landscapeHolders: landscapeHolders,
+                    sinceClosed: lastClosed.map { Date().timeIntervalSince($0) })
+    }
+
+    static func layoutWidth(live: CGFloat, kept: CGFloat?, idiom: UIUserInterfaceIdiom,
+                            landscapeHolders: Int, sinceClosed: TimeInterval?) -> CGFloat {
+        guard idiom == .phone, let kept, kept > 0, kept != live else { return live }
+        if landscapeHolders > 0 { return kept }
+        if let sinceClosed, sinceClosed < turnBackTime { return kept }
+        return live
     }
 
     private static func apply(turnTo orientation: UIInterfaceOrientationMask) {

@@ -462,6 +462,10 @@ struct V2Shell: View {
     @AppStorage(V2SplitLayout.listWidths.key) private var storedListWidth = Double(V2SplitLayout.listWidths.standard)
     /// The list's width while its line is dragged (`ColumnDivider`).
     @State private var draggedListWidth: CGFloat?
+    /// The window's width the tabs last laid out by: an iPhone turned
+    /// sideways for a bot's screen in full screen keeps it
+    /// (`InterfaceOrientationGate.layoutWidth`).
+    @State private var layoutWidth: CGFloat?
 
     /// - Parameters:
     ///   - conversationOnLeave: the window's record of the chat showing,
@@ -641,15 +645,22 @@ struct V2Shell: View {
     /// (`V2SplitLayout.listWidths`), less on a window without the room.
     private var sizedTabs: some View {
         GeometryReader { proxy in
-            let canSplit = V2SplitLayout.isSplit(width: proxy.size.width)
-            let split = V2SplitLayout.isSplit(width: proxy.size.width, showsList: chatListBeside)
-            let list = V2SplitLayout.ListColumn(window: proxy.size.width, stored: storedListWidth, dragged: draggedListWidth)
+            // Turned sideways for a bot's screen in full screen, an iPhone
+            // stays one column: splitting rebuilds the stacks, and the
+            // screen's sheet closed with them.
+            let width = InterfaceOrientationGate.layoutWidth(live: proxy.size.width, kept: layoutWidth)
+            let canSplit = V2SplitLayout.isSplit(width: width)
+            let split = V2SplitLayout.isSplit(width: width, showsList: chatListBeside)
+            let list = V2SplitLayout.ListColumn(window: width, stored: storedListWidth, dragged: draggedListWidth)
             let strip = V2StatusStrip(insets: proxy.safeAreaInsets, isPhone: UIDevice.current.userInterfaceIdiom == .phone)
             tabs(split: split, canSplit: canSplit, list: list)
                 // The bars and the screens' clearance under them read it
                 // from here together, so they change in the same pass.
                 .onChange(of: strip, initial: true) { _, strip in
                     if statusStrip != strip { statusStrip = strip }
+                }
+                .onChange(of: proxy.size.width, initial: true) { _, live in
+                    layoutWidth = InterfaceOrientationGate.layoutWidth(live: live, kept: layoutWidth)
                 }
                 // The window's side safe area as the shell has it, outside
                 // every stack: each tab's screens take it, or their
