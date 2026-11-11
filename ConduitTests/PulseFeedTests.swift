@@ -519,6 +519,9 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertNil(state.pulseDoItBot(for: fact), "a card from a chat opens that chat")
         XCTAssertNil(state.pulseDoItBot(for: date, in: .newChat), "a long press's New chat, this once")
         XCTAssertNil(state.pulseDoItBot(for: date, in: .bot("kai")))
+        // A long press's pick that's gone since says so, never a new chat.
+        XCTAssertEqual(state.pulseNewChatRefusal(for: date, in: .bot("kai")),
+                       AppLocalization.string("Could not open kai's Bot Chat."))
         // Offline, the Bot Chat's own words say so.
         state.isConnected = false
         XCTAssertEqual(state.pulseNewChatRefusal(for: date), AppLocalization.string("Connect to Hermes to chat with bots."))
@@ -533,6 +536,7 @@ final class PulseFeedTests: XCTestCase {
         state.setPulseDoItBot("kai")
         XCTAssertNil(state.pulseDoItBot)
         XCTAssertNil(state.pulseDoItBotUnconfirmed)
+        XCTAssertTrue(state.pulseDoItBotSaved, "Settings keeps its row, so New chat can clear it")
         XCTAssertNil(state.pulseNewChatRefusal(for: date))
         // Per dashboard, kept across a launch, and gone with its dashboard.
         state.setPulseDoItBot("atlas")

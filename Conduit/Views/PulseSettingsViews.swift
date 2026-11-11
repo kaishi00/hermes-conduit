@@ -73,7 +73,7 @@ struct PulseSettingsPage: View {
                 if state.enabled {
                     let budgets = appState.notifierPlugin.reports(PulseClient.nudgeCapability)
                     speakUpSection(state, budgets: budgets)
-                    if !appState.pulseDoItBotChoices.isEmpty { doItSection }
+                    if !appState.pulseDoItBotChoices.isEmpty || appState.pulseDoItBotSaved { doItSection }
                     let quiet = appState.notifierPlugin.reports(PulseClient.quietCapability)
                     let hours = appState.notifierPlugin.reports(PulseClient.hoursCapability)
                     if quiet || hours { quietSection(state, quiet: quiet, hours: hours) }

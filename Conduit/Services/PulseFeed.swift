@@ -1455,8 +1455,12 @@ extension AppState {
             return isConnected ? nil : AppLocalization.string("Connect to Hermes to chat with bots.")
         }
         // The bot Settings picked, while the bot list couldn't say whether
-        // it's still there: never a new chat in its place.
+        // it's still there, or one picked from the long press that's gone
+        // since: never a new chat in its place.
         if picked == nil, let name = pulseDoItBotUnconfirmed {
+            return AppLocalization.string("Could not open \(name)'s Bot Chat.")
+        }
+        if case .bot(let name) = picked {
             return AppLocalization.string("Could not open \(name)'s Bot Chat.")
         }
         if !profilesMatch(activeProfile, pulseHomeProfile), isVoiceCallInProgress {
@@ -1503,6 +1507,13 @@ extension AppState {
               let name = activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }),
               pulseDoItBot == nil, botModePhase != .available else { return nil }
         return name
+    }
+
+    /// Whether Settings > Pulse has a bot saved on this dashboard, a choice
+    /// now or not: its row stays so New chat can clear it.
+    var pulseDoItBotSaved: Bool {
+        notifierPlugin.reports(PulseClient.actedChatCapability)
+            && activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }) != nil
     }
 
     /// The bot whose Bot Chat Do it opens for `card`: none for a card with
