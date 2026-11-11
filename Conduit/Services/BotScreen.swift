@@ -134,6 +134,29 @@ struct BotScreenUse: Equatable {
                      at: at.map { Date(timeIntervalSince1970: $0) })
     }
 
+    /// The line saying which chat drives the screen now: "This chat" when
+    /// it's the chat the sheet opened from, else that chat by name.
+    static func controllingLine(_ entry: Entry, openChat: Set<String> = []) -> String {
+        entry.isChat(in: openChat)
+            ? AppLocalization.string("This chat is using the screen")
+            : AppLocalization.string("\(name(of: entry, openChat: openChat)) is using the screen")
+    }
+
+    /// Which bot's screen a chat's menu opens, or nil for none: a Bot
+    /// Chat's or a workstream's bot, else the profile an ordinary chat runs
+    /// under, its row's or the active one (issue 2132). Never a room's (its
+    /// bots may be another host's), a saved copy's (no host to ask) or no
+    /// chat at all.
+    static func menuProfile(inRoom: Bool, botChatProfile: String?, workstreamProfile: String?,
+                            savedCopy: Bool, sessionID: String?, rowProfile: String?,
+                            activeProfile: String) -> String? {
+        guard !inRoom else { return nil }
+        if let profile = botChatProfile ?? workstreamProfile { return profile }
+        guard !savedCopy, let sessionID, !sessionID.isEmpty else { return nil }
+        if let rowProfile, !rowProfile.isEmpty { return rowProfile }
+        return activeProfile
+    }
+
     /// How a chat holding the screen is named here: "this chat" when it's
     /// the chat the sheet opened from, else its ref, the Bot Chat, or its
     /// title.
