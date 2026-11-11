@@ -229,6 +229,11 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
                 } else if "\"'(".contains(character), index > start,
                           text[text.index(before: index)].isWhitespace {
                     titleCloser = character == "(" ? ")" : character
+                } else if character.isNewline || (character.isWhitespace && addressDepth > 1) {
+                    // A title follows the address itself, never an unclosed
+                    // "(" inside it, and a line break ends its sentence too.
+                    addressDepth = 0
+                    ends = character.isNewline
                 } else if character.isWhitespace {
                     // Nothing after it yet: a title may still be streaming in.
                     if let after = text[next...].first(where: { !$0.isWhitespace }),

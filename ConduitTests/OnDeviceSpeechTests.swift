@@ -347,6 +347,17 @@ extension HermesVoiceGatewayTimeoutTests {
             "See [x](https://example.com/a(b next.", "Then more."
         ])
 
+        var unclosedLine = "See [x](https://example.com/a(b\nNext one. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &unclosedLine), [
+            "See [x](https://example.com/a(b", "Next one."
+        ])
+
+        // An unclosed "(" can't be followed by a title, so its quote doesn't hold.
+        var unclosedQuote = "See [x](https://example.com/a(b \"你好。下一句。尾"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &unclosedQuote), [
+            "See [x](https://example.com/a(b \"你好。", "下一句。"
+        ])
+
         // A title's spaces and stops stay inside the link.
         var titled = "[x](https://example.com \"One Two. Three\") here. Next. Tail"
         XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &titled), [
