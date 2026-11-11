@@ -181,6 +181,24 @@ struct PulseWidgetStore {
         return true
     }
 
+    /// Reads the file, changes it and writes it back as one step, coordinated
+    /// with the other processes that write it (the widget's reads and buttons,
+    /// the app's Do it). A change made from an older read would undo theirs:
+    /// a Do it's sent mark lost lets the card be sent twice (issue 2213).
+    /// `change` gets what's saved now and returns what to save, or nil to
+    /// leave it. Whether the file changed, as `write`.
+    @discardableResult
+    func update(_ change: (PulseWidgetSnapshot?) -> PulseWidgetSnapshot?) -> Bool {
+        var changed = false
+        var coordinationError: NSError?
+        NSFileCoordinator(filePresenter: nil).coordinate(
+            writingItemAt: url, options: .forMerging, error: &coordinationError) { _ in
+            guard let next = change(read()) else { return }
+            changed = (try? write(next)) ?? false
+        }
+        return changed
+    }
+
     /// Whether there was one to remove.
     @discardableResult
     func remove() -> Bool {

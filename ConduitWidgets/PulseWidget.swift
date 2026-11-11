@@ -86,9 +86,16 @@ struct PulseWidgetProvider: TimelineProvider {
             // this answer is no longer the widget's to show.
             guard currentAccess()?.dashboardID == access.dashboardID else { return nil }
             // It reached the host: a note that it couldn't is answered.
-            snapshot = snapshot.merging(previous)
-            try? store?.write(snapshot)
-            return snapshot
+            // Merged with what's saved at the moment it's written, so a
+            // Do it's sent mark written during the request stays (issue 2213).
+            guard let store else { return snapshot.merging(previous) }
+            let fresh = snapshot
+            var merged = fresh.merging(previous)
+            store.update { kept in
+                merged = fresh.merging(kept?.dashboardID == access.dashboardID ? kept : nil)
+                return merged
+            }
+            return merged
         } catch LocationHostError.signInRequired {
             let note = WidgetLocalization.string(PulseWidgetNote.openConduit, language: language)
             return previous?.with(note: .some(note), answeredByRead: true)

@@ -361,4 +361,38 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertTrue(store.remove())
         XCTAssertNil(store.read())
     }
+
+    /// Issue 2213: a widget read that started before a Do it marked its row
+    /// merges with what's saved when it writes, so the mark stays and the
+    /// card can't be sent twice.
+    func testPulseWidgetStoreUpdateKeepsAMarkWrittenAfterAnEarlierRead() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = PulseWidgetStore(directory: directory)
+        let dashboard = UUID()
+        func card(_ sentAt: Date?) -> PulseWidgetCard {
+            var card = PulseWidgetCard(id: 1, heading: "Reply", headline: "Mara asked about lunch", sentence: "",
+                                       offersDone: true, offersDoIt: true, offersLater: true)
+            card.sentAt = sentAt
+            return card
+        }
+        func snapshot(_ sentAt: Date?) -> PulseWidgetSnapshot {
+            PulseWidgetSnapshot(dashboardID: dashboard, appLanguage: "en", cards: [card(sentAt)], openCount: 1,
+                                nextLookAt: nil, quietUntil: nil)
+        }
+        try store.write(snapshot(nil))
+        let earlier = store.read()   // the widget's read starts here
+        let sent = Date()
+        XCTAssertTrue(store.update { $0?.with(cards: [card(sent)]) })   // the app's Do it marks the row
+        let fromHost = snapshot(nil)
+        // The old way loses the mark: it merges with the earlier read.
+        XCTAssertNil(fromHost.merging(earlier).cards[0].sentAt)
+        // Merging inside the update sees the mark.
+        store.update { fromHost.merging($0) }
+        XCTAssertEqual(try XCTUnwrap(store.read()).cards[0].sentAt?.timeIntervalSince1970 ?? 0,
+                       sent.timeIntervalSince1970, accuracy: 0.001)
+        // Nil leaves the file as it is, and an unchanged snapshot isn't written again.
+        XCTAssertFalse(store.update { _ in nil })
+        XCTAssertFalse(store.update { $0 })
+    }
 }

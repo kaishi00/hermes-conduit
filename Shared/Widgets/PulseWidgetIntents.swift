@@ -92,7 +92,7 @@ enum PulseWidgetHostActions {
         let kept = store?.read()
         let language = kept?.appLanguage ?? "system"
         guard let access, access.dashboardID == dashboardID else {
-            note(WidgetLocalization.string(PulseWidgetNote.openConduit, language: language), kept: kept, store: store)
+            note(WidgetLocalization.string(PulseWidgetNote.openConduit, language: language), store: store)
             return
         }
         let path: String
@@ -112,17 +112,20 @@ enum PulseWidgetHostActions {
         do {
             _ = try await LocationHostClient.requestJSON(pass: access.pass, path: path, method: "POST", body: body)
             // What's saved now: a read or Do it may have written meanwhile.
-            guard let kept = store?.read(), kept.dashboardID == dashboardID else { return }
-            try? store?.write(kept.with(cards: kept.cards.filter { $0.id != card }, note: .some(nil)))
+            store?.update { kept in
+                guard let kept, kept.dashboardID == dashboardID else { return nil }
+                return kept.with(cards: kept.cards.filter { $0.id != card }, note: .some(nil))
+            }
         } catch LocationHostError.signInRequired {
-            note(WidgetLocalization.string(PulseWidgetNote.openConduit, language: language), kept: store?.read(), store: store)
+            note(WidgetLocalization.string(PulseWidgetNote.openConduit, language: language), store: store)
         } catch {
-            note(WidgetLocalization.string(PulseWidgetNote.unreachable, language: language), kept: store?.read(), store: store)
+            note(WidgetLocalization.string(PulseWidgetNote.unreachable, language: language), store: store)
         }
     }
 
-    private static func note(_ text: String, kept: PulseWidgetSnapshot?, store: PulseWidgetStore?) {
-        guard let kept else { return }
-        try? store?.write(kept.with(note: .some(text), noteAt: Date(), answeredByRead: true))
+    private static func note(_ text: String, store: PulseWidgetStore?) {
+        store?.update { kept in
+            kept?.with(note: .some(text), noteAt: Date(), answeredByRead: true)
+        }
     }
 }
