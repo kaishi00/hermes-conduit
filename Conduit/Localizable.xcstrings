@@ -508203,6 +508203,88 @@
           }
         }
       }
+    },
+    "To name the town or area, Conduit looks up the photo's location with Apple's map service. The description also says whether it's a favorite or a screenshot, and its size." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um Ort oder Gegend zu benennen, schlägt Conduit den Aufnahmeort des Fotos bei Apples Kartendienst nach. Die Beschreibung sagt außerdem, ob es ein Favorit oder ein Bildschirmfoto ist, und wie groß es ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para nombrar la ciudad o zona, Conduit consulta la ubicación de la foto en el servicio de mapas de Apple. La descripción también indica si es favorita o una captura de pantalla, y su tamaño."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour nommer la ville ou la zone, Conduit consulte le lieu de la photo auprès du service de cartes d’Apple. La description indique aussi s’il s’agit d’un favori ou d’une capture d’écran, et sa taille."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Untuk menamai kota atau area, Conduit mencari lokasi foto di layanan peta Apple. Deskripsi juga menyebut apakah foto itu favorit atau tangkapan layar, serta ukurannya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per indicare la città o la zona, Conduit cerca il luogo della foto con il servizio mappe di Apple. La descrizione dice anche se è un preferito o uno screenshot, e le sue dimensioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "町や地域の名前を付けるため、Conduitは写真の位置情報をAppleのマップサービスで調べます。説明には、お気に入りかスクリーンショットか、そしてサイズも含まれます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "도시나 지역 이름을 붙이기 위해 Conduit는 사진의 위치를 Apple 지도 서비스에서 조회해요. 설명에는 즐겨찾기인지 스크린샷인지와 크기도 들어가요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aby podać miasto lub okolicę, Conduit sprawdza lokalizację zdjęcia w usłudze map Apple. Opis mówi też, czy zdjęcie jest ulubione lub jest zrzutem ekranu, oraz jaki ma rozmiar."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para nomear a cidade ou região, o Conduit consulta a localização da foto no serviço de mapas da Apple. A descrição também diz se ela é favorita ou uma captura de tela, e o tamanho dela."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы назвать город или район, Conduit узнаёт место съёмки через картографический сервис Apple. В описании также указано, в избранном ли фото, скриншот ли это, и его размер."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Şehir veya bölgeyi adlandırmak için Conduit fotoğrafın konumunu Apple'ın harita hizmetinde arar. Tanım ayrıca fotoğrafın favori mi yoksa ekran görüntüsü mü olduğunu ve boyutunu da söyler."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "为了写出城镇或地区，Conduit 会通过 Apple 的地图服务查询照片的位置。描述还会说明它是否为个人收藏或截屏，以及它的尺寸。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "為了寫出城鎮或地區，Conduit 會透過 Apple 的地圖服務查詢照片的位置。描述也會說明它是否為喜好項目或截圖，以及它的尺寸。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

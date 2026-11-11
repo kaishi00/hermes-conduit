@@ -206,7 +206,9 @@ final class SystemPhotoLibrary: PhonePhotoSource {
             if index.places[key] == nil {
                 guard lookups < Self.placesPerPass, Date() < deadline else { continue }
                 lookups += 1
-                index.places[key] = await Self.place(latitude: latitude, longitude: longitude)
+                // No answer (offline, throttled, too slow): asked again next pass.
+                guard let found = await Self.place(latitude: latitude, longitude: longitude) else { continue }
+                index.places[key] = found
             }
             kept[position].place = index.places[key]?.name
             kept[position].zone = index.places[key]?.zone
@@ -361,18 +363,26 @@ final class SystemPhotoLibrary: PhonePhotoSource {
     }
 
     /// The town or area and country, and its time zone; an empty place when
-    /// the geocoder doesn't know or doesn't answer in time.
-    nonisolated static func place(latitude: Double, longitude: Double) async -> PhonePhotoPlace {
+    /// the geocoder knows nothing there, and nil when it failed or didn't
+    /// answer in time, so it's asked again later.
+    nonisolated static func place(latitude: Double, longitude: Double) async -> PhonePhotoPlace? {
         await withTaskGroup(of: PhonePhotoPlace?.self) { group in
             group.addTask {
                 let geocoder = CLGeocoder()
                 let location = CLLocation(latitude: latitude, longitude: longitude)
-                let placemark = try? await withTaskCancellationHandler {
-                    try await geocoder.reverseGeocodeLocation(location).first
-                } onCancel: {
-                    geocoder.cancelGeocode()
+                let placemarks: [CLPlacemark]
+                do {
+                    placemarks = try await withTaskCancellationHandler {
+                        try await geocoder.reverseGeocodeLocation(location)
+                    } onCancel: {
+                        geocoder.cancelGeocode()
+                    }
+                } catch let error as CLError where error.code == .geocodeFoundNoResult {
+                    return PhonePhotoPlace()
+                } catch {
+                    return nil
                 }
-                return placemark.map(Self.place(from:)) ?? PhonePhotoPlace()
+                return placemarks.first.map(Self.place(from:)) ?? PhonePhotoPlace()
             }
             group.addTask {
                 try? await Task.sleep(for: .seconds(3))
@@ -380,7 +390,7 @@ final class SystemPhotoLibrary: PhonePhotoSource {
             }
             let first = await group.next() ?? nil
             group.cancelAll()
-            return first ?? PhonePhotoPlace()
+            return first
         }
     }
 
@@ -407,12 +417,16 @@ enum PhonePhotoAlbum {
         } else {
             album = try await createAlbum()
         }
+        let queued = PhonePhotoBox<Bool>()
         try await PHPhotoLibrary.shared().performChanges {
             guard let created = PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: fileURL),
                   let placeholder = created.placeholderForCreatedAsset,
                   let request = PHAssetCollectionChangeRequest(for: album) else { return }
             request.addAssets([placeholder] as NSArray)
+            queued.value = true
         }
+        // Nothing was added: never reported as saved.
+        guard queued.value == true else { throw Failure.failed }
     }
 
     private static func existingAlbum() async throws -> PHAssetCollection? {

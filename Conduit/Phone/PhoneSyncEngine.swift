@@ -434,11 +434,21 @@ final class PhoneSyncEngine: ObservableObject {
             let pending = try await upload(preferences: preferences, key: key, hostPending: hostPending,
                                            keepalive: keepalive, deadline: deadline, request: request)
             try checkTime(deadline)
-            try await uploadPhotos(key: key, deadline: deadline, request: request)
+            // A picture the host can't take now never holds up the other
+            // changes: the exchange still runs, then the pass reports it.
+            var photoError: Error?
+            do {
+                try await uploadPhotos(key: key, deadline: deadline, request: request)
+            } catch where error is CancellationError || error is DeadlineReached {
+                throw error
+            } catch {
+                photoError = error
+            }
             try checkTime(deadline)
             if pending > 0 || !state.unreported.isEmpty || !prompts.isEmpty {
                 try await exchange(key: key, request: request)
             }
+            if let photoError { throw photoError }
             state.lastSync = now()
             return .synced
         } catch is CancellationError {
