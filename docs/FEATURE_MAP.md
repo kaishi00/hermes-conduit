@@ -5586,7 +5586,7 @@ change needed)
 
 **Rulings**
 - A contact change always waits on a card (or the user's yes in a call), even with Add without asking on, and only a picked person can be changed or deleted, by the id the host shared (2026-11-10, Eric's go on contact edits, #2165).
-- A change or delete goes to that person's own contact card; a new contact joins the picked people with the relation Hermes gave, a deleted one leaves them, and a changed one is read again, so the next upload tells Hermes. Phones and emails, when a change names them, replace the card's whole list; a list with entries but none usable changes nothing, so a bad number never wipes the card. The card names the person as the phone has them, not as Hermes wrote it (2026-11-10, #2165).
+- A change or delete goes to that person's own contact card; a new contact joins the picked people with the relation Hermes gave, a deleted one leaves them, and a changed one is read again, so the next upload tells Hermes. Phones and emails, when a change names them, replace the card's whole list; a list with entries but none usable changes nothing, so a bad number never wipes the card. The card and a live call name the person as the phone has them, not as Hermes wrote it (2026-11-10, #2165).
 - Changing contacts needs Contacts access (limited is enough for the picked people and new contacts); turning it on, or turning sharing on with it chosen, asks once, and without access a yes fails and points to the Settings app (2026-11-10, #2165).
 
 **Open gaps**
