@@ -293,10 +293,65 @@ extension HermesVoiceGatewayTimeoutTests {
             "I can do it.", "You can do it.", "Ask J. Doe."
         ])
 
-        // A link stays whole, so its address is dropped rather than read.
+        // A number closes a sentence unless it opens one as a list number;
+        // a lone capital stays an initial.
+        var numbers = "The total is 42. The next total is 50. My grade is A. Then restart. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &numbers), [
+            "The total is 42.", "The next total is 50.", "My grade is A. Then restart."
+        ])
+
+        // A degree is an abbreviation too.
+        var degree = "He has a Ph.D. in physics. Open My.md. Next. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &degree), [
+            "He has a Ph.D. in physics.", "Open My.md.", "Next."
+        ])
+
+        // Closing quotes stay on the sentence they end.
+        var quoted = "\"First sentence.\" \"Second sentence.\" Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &quoted), [
+            "\"First sentence.\"", "\"Second sentence.\""
+        ])
+
+        // A link stays whole, so its address is dropped rather than read:
+        // across a line break or a CJK stop, and with parentheses in it.
         var link = "Read [part one. And two](https://example.com/a. b). Next one. Tail"
         XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &link), [
             "Read [part one. And two](https://example.com/a. b).", "Next one."
+        ])
+        var spanning = "See [the docs\nfor details](https://example.com). Read [中文。更多](https://example.com). Done. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &spanning), [
+            "See [the docs\nfor details](https://example.com).", "Read [中文。更多](https://example.com).", "Done."
+        ])
+        var nested = "[guide](https://example.com/a_(b) \"First. Second\"). After. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &nested), [
+            "[guide](https://example.com/a_(b) \"First. Second\").", "After."
+        ])
+
+        // A link still streaming in waits for its address.
+        var streaming = "Done. See [the docs. More"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &streaming), ["Done."])
+        streaming += "](https://example.com). Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &streaming), [
+            "See [the docs. More](https://example.com)."
+        ])
+
+        var escaped = "[guide](https://example.com/a\\(b). Next one. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &escaped), [
+            "[guide](https://example.com/a\\(b).", "Next one."
+        ])
+
+        // A CJK sentence keeps its closing quote.
+        var cjkQuote = "「你好。」下一句。尾"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &cjkQuote), ["「你好。」", "下一句。"])
+
+        // A stray bracket holds only for a link's length, and not at all
+        // once a "]" without "(" shows it isn't a link.
+        let long = String(repeating: "More words here. ", count: 15)
+        var stray = "A stray [sic here. " + long + "Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &stray).first, "A stray [sic here.")
+        var bracketed = "See [1] for more. Then more. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &bracketed), [
+            "See [1] for more.", "Then more."
         ])
     }
 

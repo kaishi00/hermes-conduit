@@ -181,64 +181,101 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
 
     /// Moves every finished sentence out of `text`, one string each, leaving
     /// the unfinished tail. A sentence ends at . ! ? … followed by whitespace
-    /// (so "3.5" isn't split), or right after a line break or a CJK full
-    /// stop. A period after a list number, a title or an abbreviation
-    /// ("1.", "Dr.", "e.g.") doesn't end one, so it's said with what follows, and
-    /// nothing inside a Markdown link does, so the link reaches
-    /// PreviewText whole and its address isn't read.
+    /// (so "3.5" isn't split), with any closing quotes or brackets in
+    /// between kept on it, or right after a line break or a CJK full stop.
+    /// A period after a list number, a title or an abbreviation ("1.",
+    /// "Dr.", "e.g.") doesn't end one, so it's said with what follows, and
+    /// nothing inside a Markdown link does, so the link reaches PreviewText
+    /// whole and its address isn't read.
     static func takeCompleteSentences(from text: inout String) -> [String] {
         var sentences: [String] = []
         var start = text.startIndex
         var index = text.startIndex
-        var linkDepth = 0
-        var previous: Character?
+        var inLinkText = false
+        var addressDepth = 0
         while index < text.endIndex {
             let character = text[index]
-            let next = text.index(after: index)
-            let followedBySpace = next < text.endIndex && text[next].isWhitespace
-            let ends: Bool
-            if "。！？".contains(character) || character.isNewline {
+            var next = text.index(after: index)
+            var ends = false
+            if inLinkText {
+                if character == "]" {
+                    inLinkText = false
+                    if next < text.endIndex, text[next] == "(" {
+                        addressDepth = 1
+                        next = text.index(after: next)
+                    }
+                }
+            } else if addressDepth > 0 {
+                // An address can hold parentheses of its own ("a_(b)"); an
+                // escaped one ("a\\(b") is just a character.
+                if character == "\\", next < text.endIndex {
+                    next = text.index(after: next)
+                } else if character == "(" {
+                    addressDepth += 1
+                } else if character == ")" {
+                    addressDepth -= 1
+                }
+            } else if character == "[", opensLink(text[next...]) {
+                inLinkText = true
+            } else if "。！？".contains(character) || character.isNewline {
                 ends = true
-            } else if character == "[" || (character == "(" && previous == "]") {
-                linkDepth += 1
-                ends = false
-            } else if character == "]" || character == ")" {
-                linkDepth = max(0, linkDepth - 1)
-                ends = false
-            } else if linkDepth > 0 {
-                ends = false
-            } else if "!?…".contains(character) {
-                ends = followedBySpace
-            } else if character == "." {
-                ends = followedBySpace && !endsAbbreviation(text[start..<index])
-            } else {
-                ends = false
+                // 「你好。」 keeps its closing quote.
+                if !character.isNewline {
+                    while next < text.endIndex, sentenceClosers.contains(text[next]) { next = text.index(after: next) }
+                }
+            } else if ".!?…".contains(character) {
+                var end = next
+                while end < text.endIndex, sentenceClosers.contains(text[end]) { end = text.index(after: end) }
+                if end < text.endIndex, text[end].isWhitespace,
+                   character != "." || !endsAbbreviation(text[start..<index]) {
+                    ends = true
+                    next = end
+                }
             }
             if ends {
                 let sentence = text[start..<next].trimmingCharacters(in: .whitespacesAndNewlines)
                 if !sentence.isEmpty { sentences.append(sentence) }
                 start = next
-                linkDepth = 0
             }
-            previous = character
             index = next
         }
         if start > text.startIndex { text = String(text[start...]) }
         return sentences
     }
 
-    /// Whether the word just before a period is a list number ("1", "12"),
-    /// a title ("Dr", "Mrs"), an initial ("J"), or letters each followed by
-    /// a period ("e.g", "U.S"). Any other word ends its sentence, short ones
-    /// ("do it.") and domains, file names and decimals included.
+    /// Quotes and brackets that close a sentence after its last mark.
+    private static let sentenceClosers: Set<Character> = ["\"", "'", "\u{201D}", "\u{2019}", "\u{00BB}", ")", "]", "\u{300D}", "\u{300F}"]
+
+    /// Whether the "[" just before `rest` opens a link: its "](" comes
+    /// before any other "[". A link still streaming in (no "]" yet, or one
+    /// with its "(" still to come) holds too, so it isn't cut before its
+    /// address arrives, but only for a link's length: a stray bracket
+    /// ("[sic") doesn't hold sentences for long.
+    private static func opensLink(_ rest: Substring) -> Bool {
+        if let close = rest.range(of: "](") {
+            return !rest[..<close.lowerBound].contains("[")
+        }
+        guard rest.count < 200, !rest.contains("[") else { return false }
+        return !rest.dropLast().contains("]") && (rest.last == "]" || !rest.contains("]"))
+    }
+
+    /// Whether the word just before a period is a list number (a short
+    /// number opening its sentence: "1."), a title ("Dr", "Mrs"), an initial
+    /// ("J"), or short letter groups each followed by a period ("e.g", "U.S",
+    /// "Ph.D"). Any other
+    /// word ends its sentence: short ones ("do it."), a number closing one
+    /// ("costs 42."), domains, file names and decimals.
     private static func endsAbbreviation(_ before: Substring) -> Bool {
-        let word = (before.split(whereSeparator: { $0.isWhitespace }).last ?? "")
-            .drop(while: { !$0.isLetter && !$0.isNumber })
+        let words = before.split(whereSeparator: { $0.isWhitespace })
+        let word = (words.last ?? "").drop(while: { !$0.isLetter && !$0.isNumber })
         guard !word.isEmpty else { return false }
-        if word.allSatisfy(\.isNumber) { return word.count <= 3 }
+        if word.allSatisfy(\.isNumber) { return words.count == 1 && word.count <= 3 }
         if word.contains(".") {
-            return word.split(separator: ".", omittingEmptySubsequences: false)
-                .allSatisfy { $0.count == 1 && $0.allSatisfy(\.isLetter) }
+            // "e.g", "U.S", and degrees like "Ph.D" and "M.Sc".
+            let parts = word.split(separator: ".", omittingEmptySubsequences: false)
+            guard parts.allSatisfy({ (1...2).contains($0.count) && $0.allSatisfy(\.isLetter) }) else { return false }
+            // A degree's parts each start with a capital; "My.md" is a file.
+            return parts.allSatisfy { $0.count == 1 } || parts.allSatisfy { $0.first?.isUppercase == true }
         }
         if word.count == 1, let letter = word.first, letter.isUppercase { return true }
         return titles.contains(word.lowercased())
