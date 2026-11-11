@@ -183,10 +183,9 @@ struct ComposerPasteTextView: UIViewRepresentable {
         )
         // Layout is requested on text change and editability flip only;
         // bounds changes re-layout automatically through layoutSubviews.
-        if uiView.isEditable != enabled {
-            uiView.isEditable = enabled
-            uiView.setNeedsLayout()
-        }
+        // Off under focus, the field keeps the composer's wish for it and
+        // takes focus back once on again (issue 2208).
+        uiView.setTyping(enabled)
         uiView.editorIdentity = editorIdentity
         uiView.onContentHeightChange = { height in
             context.coordinator.updateMeasuredHeight(height)
@@ -195,6 +194,10 @@ struct ComposerPasteTextView: UIViewRepresentable {
         uiView.onPastedImageError = onPastedImageError
         uiView.onDroppedFiles = onDroppedFiles
         uiView.onLongTextPaste = onLongTextPaste
+        uiView.onFocusTakenWhileOff = { [weak coordinator = context.coordinator] in
+            guard let coordinator, coordinator.isActive, coordinator.parent.isFocused else { return }
+            coordinator.parent.isFocused = false
+        }
         uiView.returnKeySends = returnKeySends
         uiView.canSubmitFromReturn = canSubmitFromReturn
         uiView.onSubmitFromReturn = onSubmitFromReturn
@@ -251,7 +254,12 @@ struct ComposerPasteTextView: UIViewRepresentable {
         }
         func textViewDidEndEditing(_ textView: UITextView) {
             guard isActive, !isApplyingProgrammaticState else { return }
-            parent.isFocused = false
+            // Typing turned off under focus (a sync after the reply) keeps
+            // the wish, so a Mac's field is focused again once it's on
+            // (issue 2208).
+            if (textView as? ReturnKeyTextView)?.endedEditingLeavesField ?? true {
+                parent.isFocused = false
+            }
             flushPendingProgrammaticIfCompositionEnded(textView)
         }
 

@@ -530,9 +530,13 @@ struct VoiceSettingsView: View {
         case .denied:
             return setupStep(
                 AppLocalization.string("Microphone"),
-                detail: AppLocalization.string("Not allowed. Allow the microphone for Conduit in iPhone Settings."),
+                detail: SystemSettings.worded(
+                    iPhone: AppLocalization.string("Not allowed. Allow the microphone for Conduit in iPhone Settings."),
+                    iPad: AppLocalization.string("Not allowed. Allow the microphone for Conduit in iPad Settings."),
+                    mac: AppLocalization.string("Not allowed. Allow the microphone for Conduit in System Settings → Privacy & Security → Microphone.")
+                ),
                 state: .attention,
-                fix: (label: AppLocalization.string("Open Settings"), action: openSystemSettings)
+                fix: (label: AppLocalization.string("Open Settings"), action: { SystemSettings.open(.microphone) })
             )
         default:
             return setupStep(AppLocalization.string("Microphone"), detail: AppLocalization.string("iOS asks the first time you talk."), state: .pending)
@@ -555,9 +559,13 @@ struct VoiceSettingsView: View {
             case .permissionDenied:
                 return setupStep(
                     title,
-                    detail: AppLocalization.string("Speech Recognition isn't allowed. Allow it for Conduit in iPhone Settings, or choose a Hermes provider under Speech to text below."),
+                    detail: SystemSettings.worded(
+                        iPhone: AppLocalization.string("Speech Recognition isn't allowed. Allow it for Conduit in iPhone Settings, or choose a Hermes provider under Speech to text below."),
+                        iPad: AppLocalization.string("Speech Recognition isn't allowed. Allow it for Conduit in iPad Settings, or choose a Hermes provider under Speech to text below."),
+                        mac: AppLocalization.string("Speech Recognition isn't allowed. Allow it for Conduit in System Settings → Privacy & Security → Speech Recognition, or choose a Hermes provider under Speech to text below.")
+                    ),
                     state: .attention,
-                    fix: (label: AppLocalization.string("Open Settings"), action: openSystemSettings)
+                    fix: (label: AppLocalization.string("Open Settings"), action: { SystemSettings.open(.speechRecognition) })
                 )
             case .unsupported:
                 return setupStep(
@@ -1791,11 +1799,6 @@ struct VoiceSettingsView: View {
         if let descriptor = providers.first(where: { $0.descriptor.id == id })?.descriptor { return descriptor.displayName }
         if let descriptor = VoiceConfigurationParser.catalogDescriptor(id: id, kind: kind) { return descriptor.displayName }
         return id.isEmpty ? AppLocalization.string("Not chosen") : id.replacingOccurrences(of: "_", with: " ").capitalized
-    }
-
-    private func openSystemSettings() {
-        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-        UIApplication.shared.open(url)
     }
 
     private func load() async {

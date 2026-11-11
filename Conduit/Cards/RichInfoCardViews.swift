@@ -716,7 +716,7 @@ struct RichStepsCard: View {
                     RichStepRow(number: index + 1, step: step, key: key, title: card.title)
                 }
                 if memory.notificationsOff, card.steps.contains(where: { $0.timer != nil }) {
-                    Text("Notifications are off for Conduit in iPhone Settings.")
+                    Text(verbatim: SystemSettings.notificationsOffText)
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }

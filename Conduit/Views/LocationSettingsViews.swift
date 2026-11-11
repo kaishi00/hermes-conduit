@@ -305,8 +305,7 @@ struct LocationSettingsPage: View {
 
     private var openSettingsButton: some View {
         Button(AppLocalization.string("Open Settings")) {
-            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-            UIApplication.shared.open(url)
+            SystemSettings.open(.location)
         }
         .scaledFont(.subheadline)
     }

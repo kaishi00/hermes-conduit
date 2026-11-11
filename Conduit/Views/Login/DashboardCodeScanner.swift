@@ -167,8 +167,7 @@ struct DashboardCodeScannerSheet: View {
                 .fixedSize(horizontal: false, vertical: true)
             if opensSettings {
                 Button(AppLocalization.string("Open Settings")) {
-                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                    UIApplication.shared.open(url)
+                    SystemSettings.open(.camera)
                 }
                 .buttonStyle(.borderedProminent)
                 .buttonBorderShape(.capsule)

@@ -3477,10 +3477,10 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.keepsFocusAfterSend)
-- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView and Coordinator.deactivate, which pass the binding's focus to the field), `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView.setFocusIntent and didMoveToWindow: focus changes after the update that asked, and a field rebuilt with focus takes it once it's in the window; ReturnKeyTextEditor, rooms' field and the full editor, the same), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView and Coordinator.deactivate, which pass the binding's focus to the field), `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView.setFocusIntent and didMoveToWindow: focus changes after the update that asked, and a field rebuilt with focus takes it once it's in the window; setTyping, endedEditingLeavesField and onFocusTakenWhileOff: typing turned off under focus keeps the wish; ReturnKeyTextEditor, rooms' field and the full editor, the same), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send; focusesAfterFullEditor, read in the full editor sheet's onDismiss)
-- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow, testFocusChangesWaitUntilAfterTheUpdateThatAskedAndTheLastAskWins)
+- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow, testFocusChangesWaitUntilAfterTheUpdateThatAskedAndTheLastAskWins, testAFieldTurnedOffUnderFocusTakesItBackOnceOnUnlessAnotherFieldTookIt)
 
 **Rulings**
 - On a Mac, or on an iPad with a hardware keyboard, a send or Stop
@@ -3502,6 +3502,12 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   chat first, that focus doesn't follow it there (2026-10-30, #1527).
 - Opening a call from the composer still takes focus away on every device:
   the call has the screen (2026-10-30, #1527).
+- Typing turned off under focus (a chat's sync or reconnect after the
+  reply, a saved copy on screen) doesn't count as focus going: the field
+  keeps the composer's wish, turns off just after the update that asked,
+  and takes focus back once typing is on again, unless another text field
+  took focus meanwhile. On a Mac a sync once the reply came had let go of
+  the focus a send kept (2026-11-11, issue 2208, #PRNUM).
 - Every composer field takes or gives up focus just after the SwiftUI
   update that asked, never inside it, and several asks before then come to
   the last. Resigning inside the update asked the hosting view whether it
@@ -3516,8 +3522,13 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   transcript take focus from the field on a Mac. No test reaches
   `updateUIView` passing the binding's focus to the field (it needs a SwiftUI
   Context), so that link is checked on a device only.
+- A click on the transcript while typing is off (a sync) puts away no
+  focus, as the field has none then: once typing is on, the field takes
+  focus back. Another text field taking focus is the only move it notices.
+- Issue 2208's cause is read from the code, not traced on the reporter's
+  Mac: a sync or reconnect after the reply turning typing off.
 
-**Checked:** 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
+**Checked:** 2026-11-11, #PRNUM (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
@@ -7539,6 +7550,50 @@ Settings caption or doc gives the cadence)
 - A screen covered by a sheet still reads: the sheet doesn't tell the tab it covers.
 
 **Checked:** 2026-11-11, #2201 (added: the waiting line's roster read, gated as the open chat's check is: a hidden tab or a covered chat stops it, and showing it again reads at once); 2026-11-10, #2162 (a copy tick's approvals read moved into readRoomCopyApprovalsIfDue, with a test that a failed read retries next tick); 2026-11-10, #2159 (a room hosted elsewhere reads approvals each tick only while something moves, a quiet one every 15 s; the Link sheets' and Multiplayer's Link follows skip ticks in the background, as the join card's did); 2026-11-09, #2075 (a room under V2's Bot Chat cover stops polling; the legacy shell's doesn't); 2026-11-05, #1837 (added: hidden tabs stop the project page, open chat, room and bot work reads)
+
+## Allowing Conduit in Settings
+
+The words that say where to allow something for Conduit (notifications, the
+microphone, Speech Recognition, the camera, location, contacts) and the Open
+Settings buttons beside them, for the device Conduit runs on.
+
+**Siblings:** Finish setting up's notifications row · a steps card's
+notifications-off line · Settings > Notifications' Show Previews caption ·
+Voice's setup steps (microphone, Speech Recognition) and the voice modes'
+messages built from `VoiceAudioError.microphonePermissionDenied` and
+`VoiceSetupIssue.speechRecognitionDenied` · the camera notices (code scanner,
+chat composer, group rooms' composer) · Location sharing's access rows ·
+Phone > Contacts' access row · iPhone, iPad and Mac · not needed: CarPlay's
+and the Watch's short titles (`VoiceSetupIssue.carPlayTitleVariants`), which
+only show beside an iPhone
+
+**Code**
+- Words and links: `Conduit/Services/SystemSettings.swift` (worded, notificationsOffText, open, macURL)
+- Buttons and texts: `Conduit/Views/V2/V2FinishSetupCard.swift`, `Conduit/Cards/RichInfoCardViews.swift`, `Conduit/Views/AuxiliaryViews.swift` (Show Previews caption), `Conduit/Views/VoiceSettingsView.swift` (microphoneStep, speechToTextStep), `Conduit/Voice/VoiceTypes.swift`, `Conduit/Voice/VoiceSetupIssue.swift`, `Conduit/Views/Login/DashboardCodeScanner.swift`, `Conduit/Views/Components/ComposerBar.swift` (pasteErrorNotice), `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/PhoneSettingsViews.swift`
+- Tests: `ConduitTests/VoiceSetupIssueTests.swift` (testPermissionTextsAndSettingsLinksFollowTheDevice)
+
+**Rulings**
+- A text that names where to allow something names the device's own
+  settings: iPhone Settings, iPad Settings, or on a Mac the System Settings
+  pane (Notifications, or Privacy & Security and the permission). Texts that
+  say only "Settings" stay as they are (2026-11-11, issue 2208, #PRNUM).
+- On a Mac each Open Settings opens that pane of System Settings
+  (`x-apple.systempreferences:`); the iPad app's own settings URLs open its
+  settings window there (Touch Alternatives). Should macOS turn the link down,
+  the button opens the app's settings as before (2026-11-11, issue 2208, #PRNUM).
+
+**Open gaps**
+- Not yet seen on a Mac: that System Settings opens at each pane from the
+  iPad app, and Notifications at Conduit's row.
+- The voice download hints ("search iPhone Settings for Voices", Settings >
+  Voice > iPhone voice) still name the iPhone on an iPad and a Mac, and a
+  Mac keeps its voices under System Settings → Accessibility → Spoken
+  Content; they have no Open Settings button.
+- The System Settings search on a Mac shows a blank icon for Conduit
+  (issue 2208); the Dock, Finder and the Notifications list show it. Not
+  reproduced or explained yet.
+
+**Checked:** 2026-11-11, #PRNUM (new entry).
 
 ## Swiping list rows on a Mac
 

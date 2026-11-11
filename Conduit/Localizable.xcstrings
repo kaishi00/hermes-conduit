@@ -39827,6 +39827,170 @@
         }
       }
     },
+    "Allow Speech Recognition for Conduit in iPad Settings > Conduit, or choose another speech-to-text option in Settings > Voice." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaube die Spracherkennung für Conduit unter „iPad-Einstellungen“ > „Conduit“ oder wähle unter „Einstellungen“ > „Sprachmodus“ eine andere Option für Sprache zu Text."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permite el reconocimiento de voz para Conduit en Ajustes del iPad > Conduit, o elige otra opción de voz a texto en Ajustes > Voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorisez la reconnaissance vocale pour Conduit dans Réglages de l'iPad > Conduit, ou choisissez une autre option de transcription vocale dans Réglages > Voix."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan Pengenalan Ucapan untuk Conduit di Pengaturan iPad > Conduit, atau pilih opsi ucapan ke teks lain di Pengaturan > Suara."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consenti il riconoscimento vocale per Conduit in Impostazioni di iPad > Conduit, oppure scegli un'altra opzione di trascrizione vocale in Impostazioni > Voce."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPadの「設定」>「Conduit」で音声認識を許可するか、「設定」>「音声」で別の音声入力方法を選択してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPad ‘설정’ > ‘Conduit’에서 Conduit의 음성 인식을 허용하거나, ‘설정’ > ‘음성’에서 다른 음성 텍스트 변환 옵션을 선택하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zezwól Conduit na rozpoznawanie mowy w Ustawieniach iPada > Conduit lub wybierz inną opcję zamiany mowy na tekst w sekcji Ustawienia > Głos."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permita o Reconhecimento de Fala para o Conduit nos Ajustes do iPad > Conduit ou escolha outra opção de fala para texto em Ajustes > Voz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешите Conduit распознавание речи: «Настройки» iPad > Conduit. Или выберите другой вариант распознавания речи в разделе «Настройки › Голос»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPad Ayarları > Conduit bölümünde Conduit'e Konuşma Tanıma izni verin veya Ayarlar > Ses bölümünden başka bir konuşmadan metne seçeneği seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在 iPad「设置」>「Conduit」中允许语音识别，或在「设置」>「语音」中选择其他语音转文字方式。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在 iPad「設定」>「Conduit」中允許 Conduit 使用語音辨識，或在「設定」>「語音」中選擇其他語音轉文字選項。"
+          }
+        }
+      }
+    },
+    "Allow Speech Recognition for Conduit in System Settings → Privacy & Security → Speech Recognition, or choose another speech-to-text option in Settings > Voice." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erlaube die Spracherkennung für Conduit in den Systemeinstellungen → Datenschutz & Sicherheit → Spracherkennung, oder wähle unter „Einstellungen“ > „Sprachmodus“ eine andere Option für Sprache zu Text."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permite el reconocimiento de voz para Conduit en Ajustes del Sistema → Privacidad y seguridad → Reconocimiento de voz, o elige otra opción de voz a texto en Ajustes > Voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Autorisez la reconnaissance vocale pour Conduit dans Réglages Système → Confidentialité et sécurité → Reconnaissance vocale, ou choisissez une autre option de transcription vocale dans Réglages > Voix."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izinkan Pengenalan Ucapan untuk Conduit di Pengaturan Sistem → Privasi & Keamanan → Pengenalan Ucapan, atau pilih opsi ucapan-ke-teks lain di Pengaturan > Suara."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Consenti il riconoscimento vocale per Conduit in Impostazioni di Sistema → Privacy e sicurezza → Riconoscimento vocale, oppure scegli un'altra opzione di trascrizione vocale in Impostazioni > Voce."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システム設定 → プライバシーとセキュリティ → 音声認識でConduitを許可するか、「設定」>「音声」で別の音声入力方法を選択してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시스템 설정 → 개인정보 보호 및 보안 → 음성 인식에서 Conduit을 허용하거나, ‘설정’ > ‘음성’에서 다른 음성 텍스트 변환 옵션을 선택하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zezwól Conduit na rozpoznawanie mowy w Ustawieniach systemowych → Prywatność i ochrona → Rozpoznawanie mowy albo wybierz inną opcję zamiany mowy na tekst w Ustawieniach > Głos."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Permita o Reconhecimento de Fala para o Conduit em Ajustes do Sistema → Privacidade e Segurança → Reconhecimento de Fala, ou escolha outra opção de fala para texto em Ajustes > Voz."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разрешите Conduit распознавание речи в Системных настройках → Конфиденциальность и безопасность → Распознавание речи или выберите другой способ преобразования речи в текст в Настройках > Голос."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sistem Ayarları → Gizlilik ve Güvenlik → Konuşma Tanıma'dan Conduit'e izin verin veya Ayarlar > Ses'ten başka bir konuşmayı metne dönüştürme seçeneği seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请在“系统设置”→“隐私与安全性”→“语音识别”中允许 Conduit，或在“设置”>“语音”中选择其他语音转文字方式。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在「系統設定」→「隱私權與安全性」→「語音辨識」中允許 Conduit，或在「設定」>「語音」中選擇其他語音轉文字方式。"
+          }
+        }
+      }
+    },
     "Allow notifications in Settings to continue." : {
       "localizations" : {
         "de" : {
@@ -82138,6 +82302,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit 需要使用麥克風才能使用語音功能。請在 iPhone「設定」>「Conduit」中允許。"
+          }
+        }
+      }
+    },
+    "Conduit needs the microphone for voice. Allow it in iPad Settings > Conduit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit benötigt das Mikrofon für den Sprachmodus. Erlaube den Zugriff unter „iPad-Einstellungen“ > „Conduit“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit necesita el micrófono para la voz. Permítelo en Ajustes del iPad > Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit a besoin du micro pour la voix. Autorisez-le dans Réglages de l'iPad > Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit memerlukan mikrofon untuk suara. Izinkan di Pengaturan iPad > Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit ha bisogno del microfono per la voce. Consentilo in Impostazioni di iPad > Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitの音声機能にはマイクへのアクセスが必要です。iPadの「設定」>「Conduit」で許可してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit에서 음성을 사용하려면 마이크가 필요해요. iPad ‘설정’ > ‘Conduit’에서 허용하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit potrzebuje mikrofonu do obsługi głosu. Zezwól na to w Ustawieniach iPada > Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit precisa do microfone para a voz. Permita-o nos Ajustes do iPad > Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit нужен микрофон для голоса. Разрешите доступ в «Настройки» iPad > Conduit."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit'in ses için mikrofona ihtiyacı var. iPad Ayarları > Conduit bölümünden izin verin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音需要麦克风权限。请在 iPad「设置」>「Conduit」中允许。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 需要使用麥克風才能使用語音功能。請在 iPad「設定」>「Conduit」中允許。"
+          }
+        }
+      }
+    },
+    "Conduit needs the microphone for voice. Allow it in System Settings → Privacy & Security → Microphone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit braucht das Mikrofon für Sprache. Erlaube es in den Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit necesita el micrófono para la voz. Permítelo en Ajustes del Sistema → Privacidad y seguridad → Micrófono."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit a besoin du micro pour la voix. Autorisez-le dans Réglages Système → Confidentialité et sécurité → Micro."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit memerlukan mikrofon untuk suara. Izinkan di Pengaturan Sistem → Privasi & Keamanan → Mikrofon."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit ha bisogno del microfono per la voce. Consentilo in Impostazioni di Sistema → Privacy e sicurezza → Microfono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声にはマイクが必要です。システム設定 → プライバシーとセキュリティ → マイクでConduitを許可してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성을 사용하려면 마이크가 필요해요. 시스템 설정 → 개인정보 보호 및 보안 → 마이크에서 Conduit을 허용하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit potrzebuje mikrofonu do rozmów głosowych. Zezwól na to w Ustawieniach systemowych → Prywatność i ochrona → Mikrofon."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit precisa do microfone para voz. Permita em Ajustes do Sistema → Privacidade e Segurança → Microfone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit нужен микрофон для голоса. Разрешите его в Системных настройках → Конфиденциальность и безопасность → Микрофон."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit'in ses için mikrofona ihtiyacı var. Sistem Ayarları → Gizlilik ve Güvenlik → Mikrofon'dan izin verin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 需要麦克风才能使用语音。请在“系统设置”→“隐私与安全性”→“麦克风”中允许。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 需要麥克風才能使用語音。請在「系統設定」→「隱私權與安全性」→「麥克風」中允許。"
           }
         }
       }
@@ -222506,6 +222834,170 @@
         }
       }
     },
+    "Not allowed. Allow the microphone for Conduit in iPad Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht erlaubt. Erlaube das Mikrofon für Conduit in den iPad-Einstellungen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No permitido. Permite el acceso al micrófono para Conduit en los Ajustes del iPad."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non autorisé. Autorisez le micro pour Conduit dans les Réglages de l'iPad."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak diizinkan. Izinkan mikrofon untuk Conduit di Pengaturan iPad."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non consentito. Consenti l'accesso al microfono per Conduit nelle Impostazioni di iPad."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "許可されていません。iPadの「設定」でConduitにマイクへのアクセスを許可してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "허용되지 않았어요. iPad ‘설정’에서 Conduit의 마이크 접근을 허용하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak zgody. Zezwól aplikacji Conduit na dostęp do mikrofonu w Ustawieniach iPada."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não permitido. Permita o microfone para o Conduit nos Ajustes do iPad."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не разрешено. Разрешите Conduit доступ к микрофону в Настройках iPad."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İzin verilmedi. iPad Ayarları'nda Conduit için mikrofona izin verin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未允许。请在 iPad 设置中允许 Conduit 使用麦克风。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未允許。請在 iPad「設定」中允許 Conduit 使用麥克風。"
+          }
+        }
+      }
+    },
+    "Not allowed. Allow the microphone for Conduit in System Settings → Privacy & Security → Microphone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nicht erlaubt. Erlaube das Mikrofon für Conduit in den Systemeinstellungen → Datenschutz & Sicherheit → Mikrofon."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No permitido. Permite el micrófono para Conduit en Ajustes del Sistema → Privacidad y seguridad → Micrófono."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non autorisé. Autorisez le micro pour Conduit dans Réglages Système → Confidentialité et sécurité → Micro."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tidak diizinkan. Izinkan mikrofon untuk Conduit di Pengaturan Sistem → Privasi & Keamanan → Mikrofon."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non consentito. Consenti il microfono per Conduit in Impostazioni di Sistema → Privacy e sicurezza → Microfono."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "許可されていません。システム設定 → プライバシーとセキュリティ → マイクでConduitを許可してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "허용되지 않았어요. 시스템 설정 → 개인정보 보호 및 보안 → 마이크에서 Conduit을 허용하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Brak zgody. Zezwól Conduit na mikrofon w Ustawieniach systemowych → Prywatność i ochrona → Mikrofon."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Não permitido. Permita o microfone para o Conduit em Ajustes do Sistema → Privacidade e Segurança → Microfone."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Не разрешено. Разрешите Conduit доступ к микрофону в Системных настройках → Конфиденциальность и безопасность → Микрофон."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "İzin verilmedi. Sistem Ayarları → Gizlilik ve Güvenlik → Mikrofon'dan Conduit'e mikrofon izni verin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未允许。请在“系统设置”→“隐私与安全性”→“麦克风”中允许 Conduit 使用麦克风。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未允許。請在「系統設定」→「隱私權與安全性」→「麥克風」中允許 Conduit 使用麥克風。"
+          }
+        }
+      }
+    },
     "Not checked yet" : {
       "localizations" : {
         "de" : {
@@ -227510,6 +228002,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit 的通知已在 iPhone 設定中關閉。"
+          }
+        }
+      }
+    },
+    "Notifications are off for Conduit in iPad Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitteilungen für Conduit sind in den iPad-Einstellungen aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las notificaciones de Conduit están desactivadas en los Ajustes del iPad."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les notifications de Conduit sont désactivées dans les Réglages de l'iPad."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pemberitahuan untuk Conduit nonaktif di Pengaturan iPad."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le notifiche di Conduit sono disattivate nelle Impostazioni dell'iPad."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPadの設定でConduitの通知がオフになっています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPad 설정에서 Conduit 알림이 꺼져 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powiadomienia Conduit są wyłączone w Ustawieniach iPada."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As notificações do Conduit estão desativadas nos Ajustes do iPad."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уведомления Conduit выключены в настройках iPad."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bildirimleri iPad Ayarları'nda kapalı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 的通知已在 iPad 设置中关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 的通知已在 iPad 設定中關閉。"
+          }
+        }
+      }
+    },
+    "Notifications are off for Conduit in System Settings → Notifications." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mitteilungen für Conduit sind in den Systemeinstellungen → Mitteilungen aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Las notificaciones de Conduit están desactivadas en Ajustes del Sistema → Notificaciones."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les notifications de Conduit sont désactivées dans Réglages Système → Notifications."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pemberitahuan untuk Conduit nonaktif di Pengaturan Sistem → Pemberitahuan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le notifiche di Conduit sono disattivate in Impostazioni di Sistema → Notifiche."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "システム設定 → 通知でConduitの通知がオフになっています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "시스템 설정 → 알림에서 Conduit 알림이 꺼져 있어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Powiadomienia Conduit są wyłączone w Ustawieniach systemowych → Powiadomienia."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "As notificações do Conduit estão desativadas em Ajustes do Sistema → Notificações."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Уведомления Conduit выключены в Системных настройках → Уведомления."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit bildirimleri Sistem Ayarları → Bildirimler'de kapalı."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 的通知已在“系统设置”→“通知”中关闭。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 的通知已在「系統設定」→「通知」中關閉。"
           }
         }
       }
@@ -312770,6 +313426,170 @@
         }
       }
     },
+    "Speech Recognition isn't allowed. Allow it for Conduit in iPad Settings, or choose a Hermes provider under Speech to text below." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spracherkennung ist nicht erlaubt. Erlaube sie für Conduit in den iPad-Einstellungen oder wähle unten unter „Sprache zu Text“ einen Hermes-Anbieter."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El reconocimiento de voz no está permitido. Permítelo para Conduit en los Ajustes del iPad o elige un proveedor de Hermes en Voz a texto, más abajo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La reconnaissance vocale n'est pas autorisée. Autorisez-la pour Conduit dans les Réglages de l'iPad, ou choisissez un fournisseur Hermes sous Transcription vocale ci-dessous."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pengenalan Ucapan tidak diizinkan. Izinkan untuk Conduit di Pengaturan iPad, atau pilih penyedia Hermes di Ucapan ke teks di bawah."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il riconoscimento vocale non è consentito. Consentilo per Conduit nelle Impostazioni di iPad o scegli un provider Hermes in Trascrizione vocale qui sotto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声認識が許可されていません。iPadの「設定」でConduitに許可するか、下の「音声認識」でHermesのプロバイダを選択してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 인식이 허용되지 않았어요. iPad ‘설정’에서 Conduit에 허용하거나, 아래 ‘음성 텍스트 변환’에서 Hermes 제공자를 선택하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozpoznawanie mowy nie jest dozwolone. Zezwól na nie aplikacji Conduit w Ustawieniach iPada lub wybierz poniżej dostawcę Hermes w sekcji „Mowa na tekst”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Reconhecimento de Fala não está permitido. Permita-o para o Conduit nos Ajustes do iPad ou escolha um provedor do Hermes em Fala para texto abaixo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Распознавание речи не разрешено. Разрешите его для Conduit в Настройках iPad или выберите провайдера Hermes в разделе «Речь в текст» ниже."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma Tanıma'ya izin verilmedi. iPad Ayarları'nda Conduit için izin verin veya aşağıdaki Konuşmadan metne bölümünden bir Hermes sağlayıcısı seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未允许语音识别。请在 iPad 设置中为 Conduit 允许语音识别，或在下方“语音转文字”中选择 Hermes 提供商。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未允許語音辨識。請在 iPad「設定」中允許 Conduit 使用，或在下方的「語音轉文字」中選擇 Hermes 供應商。"
+          }
+        }
+      }
+    },
+    "Speech Recognition isn't allowed. Allow it for Conduit in System Settings → Privacy & Security → Speech Recognition, or choose a Hermes provider under Speech to text below." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Spracherkennung ist nicht erlaubt. Erlaube sie für Conduit in den Systemeinstellungen → Datenschutz & Sicherheit → Spracherkennung, oder wähle unten unter Sprache zu Text einen Hermes-Anbieter."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El reconocimiento de voz no está permitido. Permítelo para Conduit en Ajustes del Sistema → Privacidad y seguridad → Reconocimiento de voz, o elige un proveedor de Hermes en Voz a texto, abajo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La reconnaissance vocale n'est pas autorisée. Autorisez-la pour Conduit dans Réglages Système → Confidentialité et sécurité → Reconnaissance vocale, ou choisissez un fournisseur Hermes sous Transcription vocale ci-dessous."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pengenalan Ucapan tidak diizinkan. Izinkan untuk Conduit di Pengaturan Sistem → Privasi & Keamanan → Pengenalan Ucapan, atau pilih penyedia Hermes di Ucapan ke teks di bawah."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il riconoscimento vocale non è consentito. Consentilo per Conduit in Impostazioni di Sistema → Privacy e sicurezza → Riconoscimento vocale, oppure scegli un provider Hermes in Trascrizione vocale qui sotto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声認識が許可されていません。システム設定 → プライバシーとセキュリティ → 音声認識でConduitを許可するか、下の「音声認識」でHermesのプロバイダを選択してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 인식이 허용되지 않았어요. 시스템 설정 → 개인정보 보호 및 보안 → 음성 인식에서 Conduit을 허용하거나, 아래 ‘음성 텍스트 변환’에서 Hermes 제공자를 선택하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozpoznawanie mowy nie jest dozwolone. Zezwól na nie dla Conduit w Ustawieniach systemowych → Prywatność i ochrona → Rozpoznawanie mowy albo wybierz dostawcę Hermes w sekcji Mowa na tekst poniżej."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Reconhecimento de Fala não está permitido. Permita para o Conduit em Ajustes do Sistema → Privacidade e Segurança → Reconhecimento de Fala, ou escolha um provedor do Hermes em Fala para texto abaixo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Распознавание речи не разрешено. Разрешите его для Conduit в Системных настройках → Конфиденциальность и безопасность → Распознавание речи или выберите провайдера Hermes в разделе «Речь в текст» ниже."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma Tanıma'ya izin verilmedi. Sistem Ayarları → Gizlilik ve Güvenlik → Konuşma Tanıma'dan Conduit'e izin verin veya aşağıdaki Konuşmadan metne bölümünden bir Hermes sağlayıcısı seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未允许语音识别。请在“系统设置”→“隐私与安全性”→“语音识别”中允许 Conduit，或在下方“语音转文字”中选择一个 Hermes 提供商。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "未允許語音辨識。請在「系統設定」→「隱私權與安全性」→「語音辨識」中允許 Conduit，或在下方「語音轉文字」中選擇一個 Hermes 供應商。"
+          }
+        }
+      }
+    },
     "Speech Recognition permission is required for on-device transcription." : {
       "localizations" : {
         "de" : {
@@ -359286,6 +360106,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "如不想在鎖定畫面上顯示，請在 iOS「設定」>「通知」>「Conduit」中將「顯示預覽」設為「解鎖時」。"
+          }
+        }
+      }
+    },
+    "To keep them off the Lock Screen, set Show Previews to When Unlocked in System Settings → Notifications → Conduit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit sie nicht auf dem Sperrbildschirm erscheinen, stelle Vorschauen zeigen in den Systemeinstellungen → Mitteilungen → Conduit auf Wenn entsperrt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para que no aparezcan en la pantalla bloqueada, ajusta Mostrar previsualizaciones a Al desbloquear en Ajustes del Sistema → Notificaciones → Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour qu'elles n'apparaissent pas sur l'écran verrouillé, réglez Afficher les aperçus sur Si déverrouillé dans Réglages Système → Notifications → Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agar tidak tampil di Layar Terkunci, atur Tampilkan Pratinjau ke Saat Tidak Dikunci di Pengaturan Sistem → Pemberitahuan → Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per non mostrarle sulla schermata di blocco, imposta Mostra anteprime su Se sbloccato in Impostazioni di Sistema → Notifiche → Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ロック画面に表示しないようにするには、システム設定 → 通知 → Conduitで「プレビューを表示」を「ロックされていないときのみ」にしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "잠금 화면에 표시되지 않게 하려면 시스템 설정 → 알림 → Conduit에서 미리보기 표시를 '잠금 해제 시'로 설정하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aby nie pojawiały się na ekranie blokady, ustaw Pokazuj podglądy na Gdy odblokowany w Ustawieniach systemowych → Powiadomienia → Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para que não apareçam na Tela Bloqueada, defina Mostrar Pré-visualizações como Quando Desbloqueado em Ajustes do Sistema → Notificações → Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы они не показывались на экране блокировки, установите «Показ миниатюр» на «Без блокировки» в Системных настройках → Уведомления → Conduit."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kilitli Ekran'da görünmemeleri için Sistem Ayarları → Bildirimler → Conduit'te Önizlemeleri Göster'i Kilit Açıkken olarak ayarlayın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "若不想在锁定屏幕上显示，请在“系统设置”→“通知”→“Conduit”中将“显示预览”设为“解锁时”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "若不想在鎖定畫面上顯示，請在「系統設定」→「通知」→「Conduit」中將「顯示預覽」設為「解鎖時」。"
           }
         }
       }

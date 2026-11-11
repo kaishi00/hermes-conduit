@@ -367,8 +367,7 @@ struct GroupRoomComposer: View {
                 if error == ComposerBar.cameraAccessMessage {
                     Button(AppLocalization.string("Open Settings")) {
                         composerError = nil
-                        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                        UIApplication.shared.open(url)
+                        SystemSettings.open(.camera)
                     }
                     .scaledFont(.caption.weight(.semibold))
                 }
