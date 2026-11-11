@@ -15,13 +15,21 @@ enum PulseNotifications {
     /// gateway, to try again on.
     static let retryDashboardKey = "conduit_pulse_quiet_dashboard"
     static let retryGatewayKey = "conduit_pulse_quiet_gateway"
+    /// The Pulse widget's kind (ConduitWidgetKind.pulse, which this
+    /// extension doesn't compile): a Pulse push reloads it (issue 2190).
+    static let widgetKind = "com.milim.relay.widgets.pulse"
+
+    /// Whether a verified push is Pulse's (`title_label` pulse.<kind>).
+    static func isPulse(titleLabel: String?) -> Bool {
+        titleLabel?.hasPrefix("pulse.") == true
+    }
 
     /// Whether a verified push offers Quiet for today: a Pulse push
     /// (`title_label` pulse.<kind>) through a relay gateway whose host's
     /// plugin takes it (`quietGateways`, as NotificationSharedSettings keeps
     /// them).
     static func offersQuietToday(titleLabel: String?, gatewayID: String, quietGateways: Set<String>) -> Bool {
-        guard let titleLabel, titleLabel.hasPrefix("pulse.") else { return false }
+        guard isPulse(titleLabel: titleLabel) else { return false }
         let gateway = gatewayID.trimmingCharacters(in: .whitespacesAndNewlines)
         return !gateway.isEmpty && quietGateways.contains(gateway)
     }

@@ -2058,4 +2058,126 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertFalse(state.canAskFromPulseCard(page.cards[1]))
         XCTAssertFalse(state.canAskFromPulseCard(page.cards[2]))
     }
+
+    // MARK: The Pulse widget (issue 2190)
+
+    /// The widget reads the feed itself (PulseWidgetFeed): it lists the cards
+    /// the screen lists open, with the buttons the screen offers them.
+    func testPulseWidgetListsAndOffersWhatTheScreenDoes() throws {
+        let state = try appState()
+        let text = """
+        {"home_chat_id": "pulse_chat", "cards": [
+          {"id": 1, "kind": "followup", "level": "push", "title": "Draft the email", "news": "", "chat_id": "work",
+           "item_id": 9, "created_at": 100},
+          {"id": 2, "kind": "noticed", "topic": "deadline", "level": "screen", "news": "Insurance due", "item_id": 3,
+           "created_at": 300},
+          {"id": 3, "kind": "noticed", "topic": "fact", "level": "screen", "news": "The repo moved", "chat_id": "work",
+           "created_at": 200},
+          {"id": 4, "kind": "noticed", "topic": "date", "level": "brief", "news": "Held", "created_at": 400},
+          {"id": 5, "kind": "noticed", "topic": "promise", "level": "screen", "news": "Done one", "item_id": 1,
+           "done_at": 500, "created_at": 50},
+          {"id": 6, "kind": "noticed", "topic": "watch", "level": "screen", "news": "Put off", "item_id": 2,
+           "dismissed_at": 500, "rest_until": 900, "created_at": 60},
+          {"id": 7, "kind": "report", "level": "screen", "news": "Here's your report.", "created_at": 700},
+          {"id": 8, "kind": "noticed", "topic": "promise", "level": "screen", "news": "Ask instead", "item_id": 5,
+           "chat_id": "work", "created_at": 150,
+           "look": {"shape": "plain", "line": "**Ask** about it", "detail": "One more line",
+                    "actions": [{"does": "ask", "label": "Ask", "say": "How's it going?"}]}}
+        ]}
+        """
+        let feed = try json(text)
+        let page = try XCTUnwrap(PulseFeedPage(json: feed))
+        let dashboard = UUID()
+        let pass = LocationHostPass(dashboardID: dashboard, baseURL: "https://host", headers: [:], expiresAt: nil, savedAt: Date())
+        for capabilities in [
+            [PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.dismissCapability],
+            [PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.foundActionsCapability,
+             PulseClient.dismissCapability, PulseClient.restCapability, PulseClient.looksCapability],
+            [PulseClient.feedCapability],
+        ] {
+            state.setNotifierPluginStateForTesting(.reported(version: "0.162.0", capabilities: Set(capabilities)))
+            state.applyPulseFeed(page)
+            let access = PulseWidgetAccess(dashboardID: dashboard, pass: pass,
+                                           capabilities: PulseWidgetAccess.widgetCapabilities.filter(capabilities.contains).sorted())
+            let snapshot = try XCTUnwrap(PulseWidgetFeed.snapshot(from: feed, access: access, appLanguage: "en") { kind, topic in
+                PulseWidgetFeed.headingKey(kind: kind, topic: topic)
+            })
+            // Newest first; not done, put off, held for the brief, or a whole report.
+            XCTAssertEqual(snapshot.cards.map(\.id), [2, 3, 8, 1])
+            for row in snapshot.cards {
+                let card = try XCTUnwrap(page.cards.first { $0.id == row.id })
+                XCTAssertFalse(card.isCleared || card.isHeld || card.isProposal)
+                XCTAssertEqual(row.heading, card.heading, "card \(row.id)")
+                XCTAssertEqual(row.offersDone, state.canMarkPulseCardDone(card), "card \(row.id), \(capabilities)")
+                XCTAssertEqual(row.offersDoIt, state.canActOnPulseCard(card) && !state.canAskFromPulseCard(card),
+                               "card \(row.id), \(capabilities)")
+                XCTAssertEqual(row.offersLater, capabilities.contains(PulseClient.dismissCapability))
+            }
+        }
+        // A pick's headline and sentence, as plain words; else the card's words.
+        let rows = try XCTUnwrap(PulseWidgetFeed.snapshot(from: feed, access: PulseWidgetAccess(
+            dashboardID: dashboard, pass: pass, capabilities: []), appLanguage: "en") { _, _ in "" }).cards
+        XCTAssertEqual(rows.first { $0.id == 8 }?.headline, "Ask about it")
+        XCTAssertEqual(rows.first { $0.id == 8 }?.sentence, "One more line")
+        XCTAssertEqual(rows.first { $0.id == 1 }?.headline, "Draft the email")
+        XCTAssertEqual(rows.first { $0.id == 1 }?.sentence, "")
+    }
+
+    /// The widget's capability names are the plugin's, as the app reads them.
+    func testPulseWidgetCapabilitiesMatchTheApps() {
+        XCTAssertEqual(PulseWidgetAccess.looksCapability, PulseClient.looksCapability)
+        XCTAssertEqual(PulseWidgetAccess.doneCapability, PulseClient.doneCapability)
+        XCTAssertEqual(PulseWidgetAccess.foundActionsCapability, PulseClient.foundActionsCapability)
+        XCTAssertEqual(PulseWidgetAccess.dismissCapability, PulseClient.dismissCapability)
+        XCTAssertEqual(PulseWidgetAccess.restCapability, PulseClient.restCapability)
+        XCTAssertEqual(PulseWidgetFeed.base, PulseClient.path)
+        XCTAssertEqual(PulseWidgetKeychain.accessGroup, NotificationE2E.appGroup)
+        XCTAssertEqual(PulseNotifications.widgetKind, ConduitWidgetKind.pulse)
+    }
+
+    /// A Do it from no chat starts a chat named for the card, not "Shortcut: …".
+    func testPulseWidgetDoItRunsOncePerCardAndDashboard() throws {
+        let state = try appState()
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = PulseWidgetStore(directory: directory)
+        state.pulseWidgetStoreOverride = store
+        let dashboard = UUID(), other = UUID()
+        let sent = PulseWidgetCard(id: 4, heading: "Promise", headline: "Sent", sentence: "", offersDone: true,
+                                   offersDoIt: true, offersLater: true, sentAt: Date())
+        try store.write(PulseWidgetSnapshot(dashboardID: dashboard, appLanguage: "en", cards: [sent], openCount: 1,
+                                            nextLookAt: nil, quietUntil: nil))
+        // A row the widget shows as sent sends nothing; on another dashboard that card id is another card.
+        XCTAssertFalse(state.beginPulseWidgetDoIt(card: 4, dashboardID: dashboard))
+        XCTAssertTrue(state.beginPulseWidgetDoIt(card: 4, dashboardID: other))
+        // A second press while the first sends is refused, on that dashboard only.
+        XCTAssertTrue(state.beginPulseWidgetDoIt(card: 5, dashboardID: dashboard))
+        XCTAssertFalse(state.beginPulseWidgetDoIt(card: 5, dashboardID: dashboard))
+        XCTAssertTrue(state.beginPulseWidgetDoIt(card: 5, dashboardID: other))
+        state.pulseWidgetDoItsRunning.remove(PulseWidgetLink(dashboardID: dashboard, card: 5))
+        XCTAssertTrue(state.beginPulseWidgetDoIt(card: 5, dashboardID: dashboard))
+    }
+
+    func testShortcutSendNamesANewChatAsAsked() async throws {
+        var created: String?
+        let backend = ShortcutSendBackend(
+            connect: { _ in true },
+            activeProfile: { "default" },
+            createChat: { profile, title in
+                created = title
+                return VoiceThreadTarget(runtimeSessionID: "r1", storedSessionID: "s1", title: title, profile: profile)
+            },
+            resumeChat: { $0.runtimeSessionID },
+            reopenChat: { $0.runtimeSessionID },
+            submit: { _, _, _ in .accepted },
+            liveSessions: { _ in [] },
+            latestReply: { _ in nil }
+        )
+        var request = ShortcutSendRequest(text: "Pulse reminded me: renew it", chatName: nil, profile: "default",
+                                          waitsForAnswer: false)
+        request.newChatTitle = "Renew the insurance"
+        let outcome = try await ShortcutSender(backend: backend).send(request, deadline: Date().addingTimeInterval(20))
+        XCTAssertEqual(outcome, .sent)
+        XCTAssertEqual(created, "Renew the insurance")
+    }
 }

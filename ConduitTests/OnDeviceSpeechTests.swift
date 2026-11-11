@@ -364,6 +364,41 @@ extension HermesVoiceGatewayTimeoutTests {
             "[x](https://example.com \"One Two. Three\") here.", "Next."
         ])
 
+        var singleQuoted = "[x](https://example.com 'One Two. Three') here. Next. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &singleQuoted), [
+            "[x](https://example.com 'One Two. Three') here.", "Next."
+        ])
+
+        var parenTitled = "[x](https://example.com (One Two. Three)) here. Next. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &parenTitled), [
+            "[x](https://example.com (One Two. Three)) here.", "Next."
+        ])
+
+        // A title may run over a line break.
+        var twoLineTitle = "[x](https://example.com \"A title.\nOver two lines\") here. Next. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &twoLineTitle), [
+            "[x](https://example.com \"A title.\nOver two lines\") here.", "Next."
+        ])
+
+        // A title or address that never closes holds only for a link's length.
+        let longRest = String(repeating: "Then more words follow. ", count: 12)
+        var unclosedTitle = "[x](https://example.com \"Never closed. " + longRest + "Tail"
+        let released = OnDeviceSpeechStream.takeCompleteSentences(from: &unclosedTitle)
+        XCTAssertGreaterThan(released.count, 1)
+        XCTAssertEqual(released.last, "Then more words follow.")
+        XCTAssertEqual(unclosedTitle.trimmingCharacters(in: .whitespaces), "Tail")
+
+        var unclosedCJK = "見 [x](https://example.com/a(b" + String(repeating: "你好。", count: 80) + "尾"
+        let releasedCJK = OnDeviceSpeechStream.takeCompleteSentences(from: &unclosedCJK)
+        XCTAssertGreaterThan(releasedCJK.count, 1)
+        XCTAssertEqual(releasedCJK.last, "你好。")
+        XCTAssertEqual(unclosedCJK, "尾")
+
+        // The stop the hold gives up on still ends its sentence.
+        let beforeTitle = "](https://example.com \""
+        var limitStop = "[x" + beforeTitle + String(repeating: "a", count: 200 - beforeTitle.count) + ". Next one. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &limitStop).last, "Next one.")
+
         // A CJK sentence keeps its closing quote.
         var cjkQuote = "「你好。」下一句。尾"
         XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &cjkQuote), ["「你好。」", "下一句。"])

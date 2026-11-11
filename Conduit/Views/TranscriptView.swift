@@ -596,8 +596,8 @@ final class TranscriptCell: UICollectionViewCell {
     }
 
     /// The row's height at the cell's width, the gap above it included:
-    /// the height it reported drawing at this width, else its SwiftUI ideal
-    /// height (`drawnSize`).
+    /// the height it reported drawing at this width (`drawnSize`), else its
+    /// SwiftUI ideal height.
     override func preferredLayoutAttributesFitting(
         _ layoutAttributes: UICollectionViewLayoutAttributes
     ) -> UICollectionViewLayoutAttributes {

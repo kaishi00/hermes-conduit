@@ -42,7 +42,16 @@ struct RoomSetupState: Equatable {
         let id: String
         let label: String
         let description: String
+        /// A room's Look things up or Search my past chats uses it; the
+        /// rest run only where a room's Custom choice names their tools.
+        var lookup: Bool = false
+        /// Its tools rooms never run, such as `skill_manage` (plugin 0.163+).
+        var never: [String] = []
     }
+
+    /// The toolsets a plugin before 0.163 doesn't mark: its default ceiling,
+    /// which is what Look things up and Search my past chats use.
+    static let lookupToolsets: Set<String> = ["session_search", "vision", "web", "x_search"]
 
     /// Nothing needs doing and nothing blocks it.
     let ready: Bool
@@ -71,6 +80,11 @@ struct RoomSetupState: Equatable {
     let mcpChoices: [String]?
     /// The profile's approval mode (`manual`, `smart`, `off`).
     let approvals: String?
+
+    /// The choices rooms use without Custom, then the ones only a Custom
+    /// room does, each in the plugin's order.
+    var lookupChoices: [Choice] { choices.filter(\.lookup) }
+    var customChoices: [Choice] { choices.filter { !$0.lookup } }
 
     /// Each toolset's label, or its id when Hermes gave none.
     func label(of toolset: String) -> String {
@@ -201,7 +215,9 @@ struct RoomSetupClient {
             return RoomSetupState.Choice(
                 id: id,
                 label: object["label"] as? String ?? id,
-                description: object["description"] as? String ?? ""
+                description: object["description"] as? String ?? "",
+                lookup: object["lookup"] as? Bool ?? RoomSetupState.lookupToolsets.contains(id),
+                never: (object["never"] as? [String] ?? []).filter { !$0.isEmpty }
             )
         }
         return RoomSetupState(

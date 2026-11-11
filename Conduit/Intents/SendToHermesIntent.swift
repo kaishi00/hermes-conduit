@@ -32,6 +32,9 @@ struct ShortcutSendRequest: Equatable {
     /// picker). It wins over `chatName` and `profile`, and a run never makes
     /// a new chat for it.
     var chat: ShortcutPickedChat? = nil
+    /// The title a new chat gets in place of "Shortcut: …" (a Pulse
+    /// widget's Do it names its card).
+    var newChatTitle: String? = nil
 }
 
 /// A chat the action was given, as the widget snapshot names it.
@@ -261,7 +264,8 @@ struct ShortcutSender {
             runtimeID = resumed
             reused = true
         } else {
-            chat = try await backend.createChat(profile, name ?? Self.title(for: text))
+            chat = try await backend.createChat(profile, name ?? Self.cleaned(request.newChatTitle)
+                .map { String($0.prefix(80)) } ?? Self.title(for: text))
             runtimeID = chat.runtimeSessionID
         }
         if let name { chats.save(chat, named: name, profile: profile, at: backend.now()) }
