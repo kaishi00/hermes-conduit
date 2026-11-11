@@ -50,7 +50,7 @@ final class PhoneShortcutRunner: PhoneShortcutRunning {
 
     /// The longest a run is waited for: a shortcut can ask the user things.
     static let timeout: TimeInterval = 10 * 60
-    static let resultHost = "shortcut-result"
+    nonisolated static let resultHost = "shortcut-result"
 
     private var waiting: [String: CheckedContinuation<String?, Error>] = [:]
     private let open: @MainActor (URL) async -> Bool

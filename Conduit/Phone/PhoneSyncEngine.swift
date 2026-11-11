@@ -1100,7 +1100,7 @@ final class PhoneSyncEngine: ObservableObject {
     }
 
     /// Why a run failed, for Hermes (not UI copy, so not localized).
-    nonisolated static func shortcutNote(_ error: Error) -> String {
+    static func shortcutNote(_ error: Error) -> String {
         switch error as? PhoneShortcutError {
         case .couldNotOpen?: return "The Shortcuts app couldn't be opened"
         case .failed(let message)?: return message.map { "The shortcut stopped with an error: \($0)" } ?? "The shortcut stopped with an error"
