@@ -560,6 +560,26 @@ struct BotCapabilities: Equatable, Codable {
         return toolsets.filter(\.enabled).count > 1
     }
 
+    /// Turns one row of `list` on or off by name (Hermes' answer can
+    /// replace the kept lists under the rows, so never by position). The
+    /// last toolset on stays on: no tools would save as Hermes' defaults.
+    mutating func setEnabled(_ list: WritableKeyPath<BotCapabilities, [BotCapability]>, name: String, on: Bool) {
+        guard let index = self[keyPath: list].firstIndex(where: { $0.name == name }) else { return }
+        if list == \BotCapabilities.toolsets, !on, !canTurnOffToolset(at: index) { return }
+        self[keyPath: list][index].enabled = on
+    }
+
+    /// "12 of 20 on" for a list, or nil when it's empty: what Edit Bot's
+    /// Skills, Tools and MCP rows say beside their names.
+    static func onSummary(_ rows: [BotCapability]) -> String? {
+        guard !rows.isEmpty else { return nil }
+        // Both as text: a count of a count, which no language's plural
+        // follows.
+        let onText = String(rows.filter(\.enabled).count)
+        let allText = String(rows.count)
+        return AppLocalization.string("\(onText) of \(allText) on")
+    }
+
     /// The lists as Hermes holds them once it took `sections` (as
     /// `appliedSections` names them) of `edited`.
     func taking(_ sections: [String], from edited: BotCapabilities) -> BotCapabilities {
@@ -685,4 +705,50 @@ enum BotSaveResult: Equatable {
     /// the gateway's message.
     case confirmModel(String)
     case failed(String)
+}
+
+/// One category of a bot's skills on Edit Bot's Skills page, as Hermes
+/// files them (`skills/<category>/<skill>`).
+struct BotSkillGroup: Identifiable, Equatable {
+    /// The category as Conduit shows it ("Software Development").
+    let title: String
+    let rows: [BotCapability]
+
+    var id: String { title }
+}
+
+enum BotSkillGrouping {
+    /// The skills by category, A-Z by shown name, each A-Z as given, with
+    /// the description the dashboard gives where the row has none. Only
+    /// the skills `query` matches (name, label, description or category).
+    /// `details` are the dashboard's skills for the profile; a skill it
+    /// doesn't list (or names another way) goes under General, where
+    /// Hermes files a skill with no category.
+    static func grouped(_ skills: [BotCapability], details: [CapabilitySkill], query: String = "") -> [BotSkillGroup] {
+        var byName: [String: CapabilitySkill] = [:]
+        for detail in details {
+            byName[detail.name] = byName[detail.name] ?? detail
+            byName[detail.name.lowercased()] = byName[detail.name.lowercased()] ?? detail
+        }
+        let query = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        var groups: [String: [BotCapability]] = [:]
+        for var skill in skills {
+            let detail = byName[skill.name] ?? byName[skill.name.lowercased()]
+            if skill.description.isEmpty, let description = detail?.description {
+                skill.description = description
+            }
+            let title = CapabilitySkillOrdering.prettyCategory(detail?.category)
+            if !query.isEmpty {
+                let matches = skill.name.localizedCaseInsensitiveContains(query)
+                    || (skill.label ?? "").localizedCaseInsensitiveContains(query)
+                    || skill.description.localizedCaseInsensitiveContains(query)
+                    || title.localizedCaseInsensitiveContains(query)
+                guard matches else { continue }
+            }
+            groups[title, default: []].append(skill)
+        }
+        return groups
+            .map { BotSkillGroup(title: $0.key, rows: $0.value) }
+            .sorted { $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending }
+    }
 }

@@ -334,6 +334,38 @@ extension BotModeTests {
         capabilities.toolsets[1].enabled = false
         XCTAssertFalse(capabilities.canTurnOffToolset(at: 0), "no tools on would save as Hermes' defaults")
         XCTAssertTrue(capabilities.canTurnOffToolset(at: 1), "an off tool can always be turned back on")
+        capabilities.setEnabled(\.toolsets, name: "web", on: false)
+        XCTAssertTrue(capabilities.toolsets[0].enabled, "a switch keeps the last tool on too")
+        capabilities.setEnabled(\.toolsets, name: "terminal", on: true)
+        capabilities.setEnabled(\.toolsets, name: "web", on: false)
+        XCTAssertEqual(capabilities.toolsets.map(\.enabled), [false, true], "switches write by name")
+        capabilities.setEnabled(\.skills, name: "missing", on: true)
+        XCTAssertTrue(capabilities.skills.isEmpty, "a name Hermes' answer dropped writes nothing")
+    }
+
+    func testSkillsGroupByHermesCategoryWithDescriptions() {
+        let skills = [
+            BotCapability(name: "arxiv", enabled: true),
+            BotCapability(name: "Excalidraw", enabled: false),
+            BotCapability(name: "my-notes", enabled: true),
+            BotCapability(name: "plan", enabled: true),
+        ]
+        let details = [
+            CapabilitySkill(name: "arxiv", description: "Search papers", category: "research", enabled: true),
+            CapabilitySkill(name: "excalidraw", description: "Draw diagrams", category: "creative", enabled: false),
+            CapabilitySkill(name: "plan", description: "Plan work", category: "software-development", enabled: true),
+        ]
+        let groups = BotSkillGrouping.grouped(skills, details: details)
+        XCTAssertEqual(groups.map(\.title), ["Creative", "General", "Research", "Software Development"])
+        XCTAssertEqual(groups[0].rows.first?.description, "Draw diagrams", "names match without case")
+        XCTAssertEqual(groups[1].rows.map(\.name), ["my-notes"], "a skill the dashboard doesn't list goes under General")
+        XCTAssertEqual(BotCapabilities.onSummary(groups[0].rows), "0 of 1 on")
+        XCTAssertEqual(BotCapabilities.onSummary(skills), "3 of 4 on")
+        XCTAssertNil(BotCapabilities.onSummary([]))
+
+        XCTAssertEqual(BotSkillGrouping.grouped(skills, details: details, query: "diagram").flatMap(\.rows).map(\.name), ["Excalidraw"], "a search reads descriptions")
+        XCTAssertEqual(BotSkillGrouping.grouped(skills, details: details, query: "software").flatMap(\.rows).map(\.name), ["plan"], "and categories")
+        XCTAssertTrue(BotSkillGrouping.grouped(skills, details: details, query: "zzz").isEmpty)
     }
 
     func testEveryMCPServerOffSendsAnEmptyList() {

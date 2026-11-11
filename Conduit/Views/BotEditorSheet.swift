@@ -692,21 +692,46 @@ struct BotEditorSheet: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         } else if draft.capabilities != nil || shownKeptCapabilities != nil {
-            // One link for the kept lists and Hermes' answer, so a page open
-            // on the kept ones stays open as they become Hermes' own.
+            // One link per list, for the kept lists and Hermes' answer, so a
+            // page open on the kept ones stays open as they become Hermes'
+            // own. Each says how many are on (Eric, 2026-11-11).
+            let shown = draft.capabilities ?? shownKeptCapabilities ?? BotCapabilities()
+            let skillsSkipped = isCreating && draft.noSkills
             NavigationLink {
-                BotCapabilitiesView(
-                    capabilities: Binding(
-                        get: { draft.capabilities ?? shownKeptCapabilities ?? BotCapabilities() },
-                        set: { if draft.capabilities != nil { draft.capabilities = $0 } }
-                    ),
-                    skillsSkipped: isCreating && draft.noSkills,
+                BotSkillsView(
+                    capabilities: capabilitiesBinding,
+                    skillsSkipped: skillsSkipped,
                     sourceLabel: isCreating ? startFromLabel : nil,
+                    detailsProfile: isCreating ? capabilitySource : editedBot?.name,
+                    editable: draft.capabilities != nil
+                )
+            } label: {
+                SettingsLinkRow(
+                    title: AppLocalization.string("Skills"),
+                    value: skillsSkipped ? AppLocalization.string("None") : BotCapabilities.onSummary(shown.skills) ?? AppLocalization.string("None")
+                )
+            }
+            .buttonStyle(.plain)
+            NavigationLink {
+                BotToolsView(capabilities: capabilitiesBinding, editable: draft.capabilities != nil)
+            } label: {
+                SettingsLinkRow(
+                    title: AppLocalization.string("Tools"),
+                    value: BotCapabilities.onSummary(shown.toolsets) ?? AppLocalization.string("None")
+                )
+            }
+            .buttonStyle(.plain)
+            NavigationLink {
+                BotMcpServersView(
+                    capabilities: capabilitiesBinding,
                     mcpProfile: editedBot?.name,
                     editable: draft.capabilities != nil
                 )
             } label: {
-                SettingsLinkRow(title: AppLocalization.string("Skills, Tools and MCP"))
+                SettingsLinkRow(
+                    title: SettingsNames.mcp,
+                    value: BotCapabilities.onSummary(shown.mcpServers) ?? AppLocalization.string("None")
+                )
             }
             .buttonStyle(.plain)
             if draft.capabilities == nil, capabilitiesLoadFailed {
@@ -719,6 +744,15 @@ struct BotEditorSheet: View {
                 ProgressView()
             }
         }
+    }
+
+    /// The lists the Skills, Tools and MCP pages switch: Hermes' answer,
+    /// or the kept lists, read-only, until it comes.
+    private var capabilitiesBinding: Binding<BotCapabilities> {
+        Binding(
+            get: { draft.capabilities ?? shownKeptCapabilities ?? BotCapabilities() },
+            set: { if draft.capabilities != nil { draft.capabilities = $0 } }
+        )
     }
 
     private var capabilitiesFailure: some View {
