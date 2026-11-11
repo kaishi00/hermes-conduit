@@ -753,7 +753,7 @@ struct BotScreenWebView: UIViewRepresentable {
             call("conduitScreen.start({viewOnly: \(viewOnly), stream: \(tag)})")
         }
         func streamOpened() { call("conduitScreen.opened()") }
-        func streamData(_ data: Data) { call("conduitScreen.data('\(data.base64EncodedString())')") }
+        func streamData(base64: String) { call("conduitScreen.data('\(base64)')") }
         func streamClosed(code: Int) { call("conduitScreen.closed(\(code), '')") }
         func stopStream() { call("conduitScreen.stop()") }
         func setViewOnly(_ viewOnly: Bool) { call("conduitScreen.setViewOnly(\(viewOnly))") }

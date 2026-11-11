@@ -802,22 +802,15 @@ final class BotScreenModel: ObservableObject {
     private func opened(_ socket: any HermesWebSocket, generation: Int) {
         guard generation == attachGeneration, self.socket === socket else { return }
         page?.streamOpened()
-        receiveTask = Task { [weak self] in
-            while !Task.isCancelled {
-                do {
-                    let message = try await socket.receive()
-                    guard let self, !Task.isCancelled, generation == self.attachGeneration,
-                          self.socket === socket else { return }
-                    switch message {
-                    case .data(let data): self.page?.streamData(data)
-                    case .string(let text): self.page?.streamData(Data(text.utf8))
-                    @unknown default: break
-                    }
-                } catch {
-                    await MainActor.run { self?.ended(socket, generation: generation) }
-                    return
-                }
+        // Off the main actor: the socket is read and its bytes encoded there,
+        // and only the page's call comes here, once for what came meanwhile
+        // (issue 2216).
+        receiveTask = Task.detached { [weak self] in
+            await BotScreenStreamPump.run(receive: { try await socket.receive() }) { [weak self] pieces in
+                guard let self, generation == self.attachGeneration, self.socket === socket else { return }
+                for piece in pieces { self.page?.streamData(base64: piece) }
             }
+            await self?.ended(socket, generation: generation)
         }
     }
 
@@ -852,11 +845,86 @@ protocol BotScreenPage: AnyObject {
     /// Starts a stream the page tags its messages with (`tag`).
     func startStream(viewOnly: Bool, tag: Int)
     func streamOpened()
-    func streamData(_ data: Data)
+    /// The stream's next bytes, base64.
+    func streamData(base64: String)
     func streamClosed(code: Int)
     func stopStream()
     func setViewOnly(_ viewOnly: Bool)
     func sendKeysyms(_ keysyms: [Int])
+}
+
+/// A screen's stream bytes on their way from the socket to the page. RFB
+/// is one ordered byte stream, so what came since the last drain is handed
+/// on as one piece, cut only where it's too big for one page call.
+final class BotScreenStreamBuffer: @unchecked Sendable {
+    /// The most bytes one page call carries (about 1.4 MB of base64).
+    static let pieceBytes = 1 << 20
+
+    private let lock = NSLock()
+    private var pending = Data()
+    private let pieceBytes: Int
+
+    init(pieceBytes: Int = BotScreenStreamBuffer.pieceBytes) {
+        self.pieceBytes = max(1, pieceBytes)
+    }
+
+    func append(_ data: Data) {
+        lock.lock()
+        pending.append(data)
+        lock.unlock()
+    }
+
+    /// Everything since the last drain, in order, base64 in pieces of at
+    /// most `pieceBytes` bytes each; nothing when nothing came.
+    func drain() -> [String] {
+        lock.lock()
+        let bytes = pending
+        pending = Data()
+        lock.unlock()
+        return stride(from: 0, to: bytes.count, by: pieceBytes).map { offset in
+            let start = bytes.startIndex + offset
+            return bytes[start..<min(start + pieceBytes, bytes.endIndex)].base64EncodedString()
+        }
+    }
+}
+
+/// Reads a screen's stream and hands it to the page (issue 2216). The
+/// socket is read and its bytes encoded off the main actor; `deliver`, on
+/// the main actor, gets what came while it was busy in one go, in order,
+/// so a busy desktop's many small updates cost the page one call per turn
+/// of the main actor, not one per message.
+enum BotScreenStreamPump {
+    /// Returns once the socket fails (closed, or cancelled with the task),
+    /// after everything read before it was delivered.
+    static func run(receive: @escaping @Sendable () async throws -> URLSessionWebSocketTask.Message,
+                    buffer: BotScreenStreamBuffer = BotScreenStreamBuffer(),
+                    deliver: @escaping @MainActor @Sendable ([String]) -> Void) async {
+        // One wake waits at most: those that came while a delivery ran are
+        // all in the buffer for the next one.
+        let (wakes, signal) = AsyncStream.makeStream(of: Void.self, bufferingPolicy: .bufferingNewest(1))
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                defer { signal.finish() }
+                while !Task.isCancelled {
+                    guard let message = try? await receive() else { return }
+                    switch message {
+                    case .data(let data): buffer.append(data)
+                    case .string(let text): buffer.append(Data(text.utf8))
+                    @unknown default: continue
+                    }
+                    signal.yield()
+                }
+            }
+            group.addTask {
+                for await _ in wakes {
+                    let pieces = buffer.drain()
+                    if !pieces.isEmpty { await deliver(pieces) }
+                }
+                let rest = buffer.drain()
+                if !rest.isEmpty, !Task.isCancelled { await deliver(rest) }
+            }
+        }
+    }
 }
 
 /// Which bots' hosts can have a screen, as last read: a bot's Screen entries

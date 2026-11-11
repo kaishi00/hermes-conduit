@@ -1802,6 +1802,8 @@ private struct ProfileSettingsDetail: View {
                     .buttonStyle(.settingsPrimary)
                     .disabled(isSaving)
             }
+            // The profile's SOUL.md, on the page Edit Bot opens too.
+            ProfilePersonalitySection(profile: profile)
         }
         .navigationTitle("Profile")
         // A rename elsewhere (Edit Bot, the Profiles sheet) shows here
