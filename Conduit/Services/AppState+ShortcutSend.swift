@@ -34,8 +34,10 @@ extension AppState {
                 // at once rather than at the end of its backoff (#2164).
                 await self.checkQuietTransportOffScreen()
                 self.reconnectNowForWaitingVoice("Shortcut send waiting")
-                // Leave time to send once connected.
-                let wait = max(0, min(12, deadline.timeIntervalSinceNow - 8))
+                // Leave time to send once connected, but always wait a
+                // moment for the reconnect just started, within the run.
+                let left = max(0, deadline.timeIntervalSinceNow)
+                let wait = max(min(2, left), min(12, left - 8))
                 guard await CarPlayVoiceCoordinator.awaitConnection(of: self, timeout: .seconds(wait)) else { return false }
                 return self.client != nil
             },

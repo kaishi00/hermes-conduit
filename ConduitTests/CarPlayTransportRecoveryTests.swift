@@ -18,6 +18,8 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         var scheduledDelays: [TimeInterval] = []
         var operations: [@MainActor () async -> Void] = []
         var executedPurposes: [ChatResumeSyncPurpose] = []
+        /// What the executed cycle does, such as landing the connection.
+        var onExecute: (@MainActor () -> Void)?
     }
 
     private func makeAppState(recorder: ReconnectRecorder) -> AppState {
@@ -32,6 +34,7 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
             },
             reconnectExecutor: { purpose in
                 recorder.executedPurposes.append(purpose)
+                recorder.onExecute?()
             }
         )
         appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
@@ -464,9 +467,9 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         appState.handleScenePhase(.background)
         let request = ShortcutSendRequest(text: "Buy milk", chatName: nil, profile: nil, waitsForAnswer: false)
 
-        // A deadline that leaves no time to wait: the run gives up at once.
+        // A deadline already reached: the run gives up at once.
         do {
-            _ = try await appState.sendFromShortcut(request, deadline: Date().addingTimeInterval(8))
+            _ = try await appState.sendFromShortcut(request, deadline: Date())
             XCTFail("nothing connected")
         } catch {
             XCTAssertEqual(error as? ShortcutSendError, .notConnected)
@@ -490,6 +493,30 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         XCTAssertEqual(recorder.scheduledDelays.count, 1)
         await recorder.operations.first?()
         XCTAssertEqual(recorder.executedPurposes.count, 1, "the cycle runs while the shortcut does")
+    }
+
+    /// The run waits for the reconnect it started, and goes on once it lands.
+    func testShortcutSendInTheBackgroundGoesOnOnceTheReconnectLands() async {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.shortcutSendsRunning = 1
+        recorder.onExecute = {
+            appState.client = HermesClient(
+                connection: HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket"),
+                profile: "default"
+            )
+            appState.isConnected = true
+        }
+
+        let connect = appState.makeShortcutSendBackend().connect
+        let run = Task { @MainActor in await connect(Date().addingTimeInterval(20)) }
+        for _ in 0..<500 where recorder.operations.isEmpty { await Task.yield() }
+        await recorder.operations.first?()
+
+        let connected = await run.value
+        XCTAssertTrue(connected)
+        XCTAssertEqual(recorder.executedPurposes.count, 1, "the cycle ran during the send")
     }
 
     /// A socket that still looks open after the suspension, and has been

@@ -12222,7 +12222,8 @@ final class AppState: ObservableObject {
         // (watchdog: 0x8BADF00D). handleScenePhase(.active) re-establishes
         // the transport and syncs the session catalog on return. A connected
         // CarPlay Voice surface keeps the process foreground and admits the
-        // work as well (see canRunTransportRecovery).
+        // work as well, as do the other surfaces canRunTransportRecovery
+        // lists, a running shortcut send included.
         guard !Task.isCancelled, canRunTransportRecovery else { return nil }
         if let automaticReconnectOperationID,
            activeAutomaticReconnectOperation?.id != automaticReconnectOperationID {
@@ -21978,7 +21979,9 @@ final class AppState: ObservableObject {
         // recovery repairs that same conversation using .preserveCurrent;
         // .automaticReturn is used only when there is no current visible session
         // identity to preserve. A connected CarPlay Voice surface keeps the
-        // app on screen while the phone is locked, so it admits recovery too.
+        // app on screen while the phone is locked, so it admits recovery too,
+        // as do the other surfaces canRunTransportRecovery lists (locked
+        // voice, Watch and CallKit calls, a running shortcut send).
         guard canRunTransportRecovery else { return }
         if reconnectTask == nil {
             recoverySequence.clearQueuedReconnect()
@@ -22097,7 +22100,9 @@ final class AppState: ObservableObject {
         // This also makes the public reconnect() a no-op while the scene is
         // inactive/backgrounded — the retry is picked up on the next .active.
         // A connected CarPlay Voice surface is a foreground surface of its
-        // own (the phone is usually locked in a car), so it admits the cycle.
+        // own (the phone is usually locked in a car), so it admits the cycle,
+        // as do the other surfaces canRunTransportRecovery lists (locked
+        // voice, Watch and CallKit calls, a running shortcut send).
         guard canRunTransportRecovery else { return }
         if let reconnectExecutor {
             await reconnectExecutor(purpose)
