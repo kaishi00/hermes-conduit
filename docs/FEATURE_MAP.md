@@ -6011,7 +6011,7 @@ setup page (setup/index.html in hermes-conduit-website)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-07, #1956 (VoiceOver hears Restart Gateway's first step too: the status row announces it on appear while in progress); 2026-11-07, #1909 (Restart Gateway's "Letting running tasks finish…" names what it waits on and offers Restart now, from the Conduit plugin update entry's GatewayWaitView; Code); 2026-11-06, #1841 (Diagnostics & logs reads the gateway again when a restart ends, Settings' page included; Rulings, Code); 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
+**Checked:** 2026-11-11, #2183 (Settings home rows built as data and drawn per group, after a build 264 stack overflow; no behavior change); 2026-11-07, #1956 (VoiceOver hears Restart Gateway's first step too: the status row announces it on appear while in progress); 2026-11-07, #1909 (Restart Gateway's "Letting running tasks finish…" names what it waits on and offers Restart now, from the Conduit plugin update entry's GatewayWaitView; Code); 2026-11-06, #1841 (Diagnostics & logs reads the gateway again when a restart ends, Settings' page included; Rulings, Code); 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
 
 ## Another saved dashboard's address
 
