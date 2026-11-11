@@ -5716,7 +5716,7 @@ capability, conduit_first's line, README, CHANGELOG and privacy policy
 - Push titles: `Shared/Notifications/NotificationCopy.swift` (phoneTitle)
 - Voice: `Conduit/Phone/PhoneVoiceTools.swift` (runChanges, describe, note), `Conduit/Services/AppState+SpokenApprovals.swift` (spokenApprovalsWaiting)
 - Notifier: `notifier/phone_store.py` (_parse_photos, _parse_photo_files, _save_photo_files, _sweep_photo_files, photos), `notifier/phone_tool.py` (PHOTOS_TOOL, _photos, _photo_send), `notifier/dashboard/api/capabilities.py`
-- Tests: `ConduitTests/PhoneSyncTests.swift` (testPhonePhotosShareDescriptionsAndSendOnlyFromTheCard), `notifier/tests/test_phone.py`
+- Tests: `ConduitTests/PhoneSyncTests.swift` (testPhonePhotosShareDescriptionsAndSendOnlyFromTheCard, testPhotoAccessTakenAwayBetweenPartsSendsTheRestWithoutPhotos), `notifier/tests/test_phone.py`
 
 **Rulings**
 - Hermes searches descriptions made on the phone (Vision's labels, the text in the photo, the place and time); the descriptions go to the user's own host, and a picture goes only when the user taps Send on its card, never without asking and never by voice: a live call can list or dismiss a request, and Classic's spoken yes doesn't answer it. A Pulse card's approval doesn't send one either (2026-11-11, Eric chose "Ask on a card, then send"; notifier #700, #2171, #2177).

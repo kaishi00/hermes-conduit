@@ -717,6 +717,12 @@ final class PhoneSyncEngine: ObservableObject {
                         part["sharing"] = sharing
                     }
                     newPhotoHashes = nil
+                    // The host drops its descriptions on this part; a later
+                    // part refused mustn't leave the phone thinking they're there.
+                    if state.photoHashes != nil {
+                        state.photoHashes = nil
+                        persist()
+                    }
                 }
                 let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
                 part["batch_id"] = batchID
