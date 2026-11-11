@@ -364,6 +364,30 @@ extension HermesVoiceGatewayTimeoutTests {
             "[x](https://example.com \"One Two. Three\") here.", "Next."
         ])
 
+        var singleQuoted = "[x](https://example.com 'One Two. Three') here. Next. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &singleQuoted), [
+            "[x](https://example.com 'One Two. Three') here.", "Next."
+        ])
+
+        var parenTitled = "[x](https://example.com (One Two. Three)) here. Next. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &parenTitled), [
+            "[x](https://example.com (One Two. Three)) here.", "Next."
+        ])
+
+        // A title may run over a line break.
+        var twoLineTitle = "[x](https://example.com \"A title.\nOver two lines\") here. Next. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &twoLineTitle), [
+            "[x](https://example.com \"A title.\nOver two lines\") here.", "Next."
+        ])
+
+        // A title that never closes holds only for a link's length.
+        let longRest = String(repeating: "Then more words follow. ", count: 12)
+        var unclosedTitle = "[x](https://example.com \"Never closed. " + longRest + "Tail"
+        let released = OnDeviceSpeechStream.takeCompleteSentences(from: &unclosedTitle)
+        XCTAssertGreaterThan(released.count, 1)
+        XCTAssertEqual(released.last, "Then more words follow.")
+        XCTAssertEqual(unclosedTitle, "Tail")
+
         // A CJK sentence keeps its closing quote.
         var cjkQuote = "「你好。」下一句。尾"
         XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &cjkQuote), ["「你好。」", "下一句。"])

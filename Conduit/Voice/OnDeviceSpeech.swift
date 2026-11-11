@@ -186,7 +186,9 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     /// A period after a list number, a title or an abbreviation ("1.",
     /// "Dr.", "e.g.") doesn't end one, so it's said with what follows, and
     /// nothing inside a Markdown link does, so the link reaches PreviewText
-    /// whole and its address isn't read.
+    /// whole and its address isn't read. A malformed link gives up its hold:
+    /// an address at its first space not opening a title or at a line
+    /// break, a title still open after a link's length.
     static func takeCompleteSentences(from text: inout String) -> [String] {
         var sentences: [String] = []
         var start = text.startIndex
@@ -194,6 +196,7 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         var inLinkText = false
         var addressDepth = 0
         var titleCloser: Character?
+        var titleStart = text.startIndex
         while index < text.endIndex {
             let character = text[index]
             var next = text.index(after: index)
@@ -213,22 +216,24 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
                 // address ("a(b next."), which would otherwise hold every
                 // sentence after it until the reply ends.
                 if let closer = titleCloser {
-                    // Inside a title ("a "One. Two")") a space or a stop is
-                    // just text. A line break ends a title that never closed, and its sentence.
+                    // Inside a title ("a "One. Two")") a space, a stop or a
+                    // line break is just text. One still open after a
+                    // link's length never closed, so the hold gives up.
                     if character == "\\", next < text.endIndex {
                         next = text.index(after: next)
                     } else if character == closer {
                         titleCloser = nil
-                    } else if character.isNewline {
+                    } else if text.distance(from: titleStart, to: index) >= Self.linkHoldLimit {
                         titleCloser = nil
                         addressDepth = 0
-                        ends = true
+                        ends = character.isNewline
                     }
                 } else if character == "\\", next < text.endIndex {
                     next = text.index(after: next)
                 } else if "\"'(".contains(character), index > start,
                           text[text.index(before: index)].isWhitespace {
                     titleCloser = character == "(" ? ")" : character
+                    titleStart = index
                 } else if character.isNewline || (character.isWhitespace && addressDepth > 1) {
                     // A title follows the address itself, never an unclosed
                     // "(" inside it, and a line break ends its sentence too.
@@ -273,6 +278,9 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         return sentences
     }
 
+    /// How long, in characters, an unfinished link may hold sentences back.
+    private static let linkHoldLimit = 200
+
     /// Quotes and brackets that close a sentence after its last mark.
     private static let sentenceClosers: Set<Character> = ["\"", "'", "\u{201D}", "\u{2019}", "\u{00BB}", ")", "]", "\u{300D}", "\u{300F}"]
 
@@ -285,7 +293,7 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         if let close = rest.range(of: "](") {
             return !rest[..<close.lowerBound].contains("[")
         }
-        guard rest.count < 200, !rest.contains("[") else { return false }
+        guard rest.count < linkHoldLimit, !rest.contains("[") else { return false }
         return !rest.dropLast().contains("]") && (rest.last == "]" || !rest.contains("]"))
     }
 
