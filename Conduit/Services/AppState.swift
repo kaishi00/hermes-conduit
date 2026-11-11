@@ -27148,7 +27148,10 @@ final class AppState: ObservableObject {
         botChatOpenFlights[flightKey] = flight
         let opened = await task.value
         if botChatOnItsWay?.transition == transition { botChatOnItsWay = nil }
-        if opened { return .opened }
+        // As a tap that joined: a navigation newer than this open, in the hop
+        // back from its task, owns the screen, so the caller doesn't act on it
+        // (Pulse's Do it would leave its words in that other chat).
+        if opened { return chatViewportTransitionIsCurrent(generation: transition) ? .opened : .superseded }
         guard chatViewportTransitionIsCurrent(generation: transition) else { return .superseded }
         // Nothing replaced the chat on screen: its viewport goes on as it was.
         if beganTransition { finishChatViewportTransition(generation: transition) }
