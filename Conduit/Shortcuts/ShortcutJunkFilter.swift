@@ -49,19 +49,39 @@ enum ShortcutJunkFilter {
                                classify: @escaping @Sendable (String) async -> Bool? = ShortcutJunkFilter.classify) async -> Bool {
         guard isOn(in: defaults), kinds.contains(event.kind) else { return false }
         let text = prompt(for: event)
-        let verdict = await withTaskGroup(of: Bool?.self) { group in
-            group.addTask { await classify(text) }
-            group.addTask {
-                try? await Task.sleep(for: .seconds(timeout))
-                return nil
-            }
-            let first = await group.next() ?? nil
-            group.cancelAll()
-            return first
-        }
+        let verdict = await firstAnswer(within: timeout) { await classify(text) }
         guard verdict == true else { return false }
         noteLeftOut(in: defaults)
         return true
+    }
+
+    /// The model's answer, or nil once `seconds` pass. A task group would
+    /// wait for a model that doesn't stop when cancelled; this returns at
+    /// the deadline and leaves it to finish on its own.
+    static func firstAnswer(within seconds: TimeInterval,
+                            _ work: @escaping @Sendable () async -> Bool?) async -> Bool? {
+        let gate = AnswerGate()
+        return await withCheckedContinuation { continuation in
+            let model = Task {
+                let answer = await work()
+                await gate.finish(continuation, with: answer)
+            }
+            Task {
+                try? await Task.sleep(for: .seconds(seconds))
+                model.cancel()
+                await gate.finish(continuation, with: nil)
+            }
+        }
+    }
+
+    /// Resumes the run once, with whichever comes first.
+    private actor AnswerGate {
+        private var done = false
+        func finish(_ continuation: CheckedContinuation<Bool?, Never>, with answer: Bool?) {
+            guard !done else { return }
+            done = true
+            continuation.resume(returning: answer)
+        }
     }
 
     /// The event as the model reads it, each field cut short: a verdict

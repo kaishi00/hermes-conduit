@@ -336,9 +336,9 @@ struct PhoneChangeResult: Codable, Equatable {
     var result: String?
 
     static let resultChars = 4_000
-    /// What every shortcut in one exchange gave back, together, in UTF-8
-    /// bytes, so the sealed body stays under the host's 64 KiB cap (it
-    /// trims to the same).
+    /// What every shortcut in one exchange gave back, together, in the bytes
+    /// JSON writes, so the sealed body stays under the host's 64 KiB cap
+    /// (it trims to 16,000 UTF-8 bytes too).
     static let resultsBytes = 16_000
 
     /// Each result as the exchange sends it, later shortcuts' text cut once
@@ -350,7 +350,16 @@ struct PhoneChangeResult: Codable, Equatable {
             if let whole = item.result {
                 var text = ""
                 for character in whole.prefix(resultChars) {
-                    let size = String(character).utf8.count
+                    // Counted as JSON writes it: other control characters
+                    // (six bytes each escaped) are left out, as the host
+                    // drops them anyway.
+                    let size: Int
+                    switch character {
+                    case "\n", "\t", "\"", "\\": size = 2
+                    case "\r\n": size = 4
+                    case _ where character.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }): continue
+                    default: size = String(character).utf8.count
+                    }
                     guard size <= budget else { break }
                     text.append(character)
                     budget -= size

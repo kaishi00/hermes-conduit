@@ -1021,8 +1021,12 @@ final class PhoneSyncEngine: ObservableObject {
                                      note: "The user doesn't let Hermes run a shortcut by that name any more"))
             return
         }
+        // A run can take minutes: what it gave back goes only to the host
+        // that asked, and only while the user still lets Hermes run it.
+        let askedBy = state.deviceID
         do {
             let text = try await shortcutRunner.run(name: listed.name, input: change.fields.input)
+            guard state.deviceID == askedBy, preferences.shortcuts else { return }
             record(PhoneChangeResult(id: change.id, outcome: .applied,
                                      result: text.map { String($0.prefix(PhoneChangeResult.resultChars)) }))
         } catch PhoneShortcutError.cancelled {

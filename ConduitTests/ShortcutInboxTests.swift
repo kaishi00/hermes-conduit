@@ -125,6 +125,17 @@ extension HermesVoiceGatewayTimeoutTests {
         let off = await ShortcutJunkFilter.shouldLeaveOut(promo, defaults: defaults, classify: junk)
         XCTAssertFalse(off)
         XCTAssertEqual(ShortcutJunkFilter.leftOutCount(in: defaults), 1)
+        // A model that doesn't stop when cancelled still can't hold the run
+        // past the deadline.
+        let started = Date()
+        let stuck = await ShortcutJunkFilter.firstAnswer(within: 0.2) {
+            await withCheckedContinuation { done in
+                DispatchQueue.global().asyncAfter(deadline: .now() + 3) { done.resume() }
+            }
+            return true
+        }
+        XCTAssertNil(stuck)
+        XCTAssertLessThan(Date().timeIntervalSince(started), 2)
     }
 
     func testShortcutInboxDropsWhatLooksLikeASignInCode() {
