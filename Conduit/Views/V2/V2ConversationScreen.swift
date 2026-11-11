@@ -239,6 +239,14 @@ struct V2ConversationScreen: View {
                     .onChange(of: proxy.size.width) { _, width in
                         screenWidth = InterfaceOrientationGate.layoutWidth(live: width, kept: screenWidth)
                     }
+                    // Held: the window's width once the hold ends.
+                    .task(id: proxy.size.width) {
+                        let live = proxy.size.width
+                        guard live != screenWidth, screenWidth > 0 else { return }
+                        await InterfaceOrientationGate.layoutReleased()
+                        guard !Task.isCancelled else { return }
+                        screenWidth = InterfaceOrientationGate.layoutWidth(live: live, kept: screenWidth)
+                    }
                     // The chat open before's Work closes under a Bot Chat
                     // on its way, and doesn't come back over the one that
                     // lands. (Here, off the screen's long modifier chain.)

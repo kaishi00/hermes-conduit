@@ -662,6 +662,14 @@ struct V2Shell: View {
                 .onChange(of: proxy.size.width, initial: true) { _, live in
                     layoutWidth = InterfaceOrientationGate.layoutWidth(live: live, kept: layoutWidth)
                 }
+                // Held: the window's width once the hold ends.
+                .task(id: proxy.size.width) {
+                    let live = proxy.size.width
+                    guard let held = layoutWidth, held != live else { return }
+                    await InterfaceOrientationGate.layoutReleased()
+                    guard !Task.isCancelled else { return }
+                    layoutWidth = InterfaceOrientationGate.layoutWidth(live: live, kept: layoutWidth)
+                }
                 // The window's side safe area as the shell has it, outside
                 // every stack: each tab's screens take it, or their
                 // column's share of it, in place of what UIKit hands their

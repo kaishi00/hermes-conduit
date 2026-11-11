@@ -57,6 +57,17 @@ enum InterfaceOrientationGate {
                     sinceClosed: lastClosed.map { Date().timeIntervalSince($0) })
     }
 
+    /// Returns once the screens under a full screen may follow the window
+    /// again, so a width that changed meanwhile (a Duo folded) is taken up
+    /// even if it doesn't change again (Greptile on #2229). Only waits on
+    /// an iPhone while one is open or the phone is turning back.
+    static func layoutReleased() async {
+        while !Task.isCancelled, landscapeHolders > 0
+                || lastClosed.map({ Date().timeIntervalSince($0) < turnBackTime }) == true {
+            try? await Task.sleep(for: .milliseconds(250))
+        }
+    }
+
     static func layoutWidth(live: CGFloat, kept: CGFloat?, idiom: UIUserInterfaceIdiom,
                             landscapeHolders: Int, sinceClosed: TimeInterval?) -> CGFloat {
         guard idiom == .phone, let kept, kept > 0, kept != live else { return live }
