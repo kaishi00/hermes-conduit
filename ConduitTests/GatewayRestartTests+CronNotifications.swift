@@ -52,6 +52,37 @@ extension GatewayRestartTests {
         XCTAssertThrowsError(try CronNotificationsClient.parseChoices(["ok": true, "muted": [], "act": "a1"]))
     }
 
+    /// Issue 581: the plugin writes a delivered picture or file as the
+    /// `@image:`/`@file:` reference Hermes Desktop shows on the note's user
+    /// row; the card draws it as the transcript draws a `MEDIA:` tag, and
+    /// the folded card names it instead of showing its path.
+    func testABotChatReportDrawsItsPicturesAndFiles() {
+        let report = CronBotChatReport(job: "Quiz", report: [
+            "@image:/cards/quiz.png",
+            "Quiz: kapott?",
+            "@file:`/var/mit leer.pdf`",
+            "MEDIA:/old/plugin.png",
+            "See @image:/x.png here.",
+            "@file:/a b.pdf",
+            "```",
+            "@image:/example.png",
+            "```",
+        ].joined(separator: "\n"))
+        XCTAssertEqual(report.shown, [
+            "MEDIA:`/cards/quiz.png`",
+            "Quiz: kapott?",
+            "MEDIA:`/var/mit leer.pdf`",
+            "MEDIA:/old/plugin.png",
+            "See @image:/x.png here.",
+            "@file:/a b.pdf",
+            "```",
+            "@image:/example.png",
+            "```",
+        ].joined(separator: "\n"))
+        XCTAssertEqual(report.preview.components(separatedBy: "\n").prefix(4), ["quiz.png", "Quiz: kapott?", "mit leer.pdf", "plugin.png"])
+        XCTAssertEqual(CronBotChatReport(job: "News", report: "Rain at 9.").shown, "Rain at 9.")
+    }
+
     func testABotChatReportReadsAsTheJobAndItsReport() {
         let report = CronBotChatReport.parse(
             "[Cron job \"Morning news\" report: shown in the chat, no reply asked for]\n\nRain at 9.\n\n- Bring a coat"

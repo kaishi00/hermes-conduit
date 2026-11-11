@@ -20,6 +20,47 @@ struct CronBotChatReport: Equatable {
         let report = text.dropFirst(firstLine.count).trimmingCharacters(in: .whitespacesAndNewlines)
         return CronBotChatReport(job: job, report: report)
     }
+
+    /// The report as the card draws it: a picture or file the run delivered
+    /// on a line of its own becomes the `MEDIA:` tag the transcript draws
+    /// as that picture or file. The plugin writes it as an `@image:` or
+    /// `@file:` reference (notifier 0.161.1, issue 581), which Hermes
+    /// Desktop shows on the note's user row; an older plugin left the
+    /// run's own `MEDIA:` tag, which reads the same. A reference inside a
+    /// sentence or in fenced code stays as written.
+    var shown: String {
+        guard report.contains("@image:") || report.contains("@file:") else { return report }
+        var fenced = false
+        return report.components(separatedBy: "\n").map { line in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if trimmed.hasPrefix("```") || trimmed.hasPrefix("~~~") { fenced.toggle(); return line }
+            guard !fenced, let path = Self.referencePath(trimmed) else { return line }
+            return ToolResultPresentation.mediaTag(for: path)
+        }.joined(separator: "\n")
+    }
+
+    /// The report for the folded card: each delivered picture or file by
+    /// its name, never its path on the host.
+    var preview: String {
+        shown.components(separatedBy: "\n").map { line in
+            guard let path = GatewayMediaTags.soleMediaPath(line) else { return line }
+            return path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
+        }.joined(separator: "\n")
+    }
+
+    /// The path of a line that is only an `@image:` or `@file:` reference,
+    /// bare or quoted as Hermes quotes one (`format_reference_value`).
+    private static func referencePath(_ line: String) -> String? {
+        guard let prefix = ["@image:", "@file:"].first(where: line.hasPrefix) else { return nil }
+        var value = String(line.dropFirst(prefix.count))
+        if value.count >= 2, let first = value.first, first == value.last, "`\"'".contains(first) {
+            value = String(value.dropFirst().dropLast())
+        } else if value.contains(where: \.isWhitespace) {
+            return nil
+        }
+        guard !value.isEmpty, !value.contains("`"), !value.contains("\n") else { return nil }
+        return value
+    }
 }
 
 /// The report as a card in the Bot Chat: the job's name, the first lines,
@@ -27,6 +68,9 @@ struct CronBotChatReport: Equatable {
 struct CronReportCard: View {
     let report: CronBotChatReport
     let timestamp: String
+    /// Reads the pictures and files the report delivered from Hermes, as
+    /// a reply's are read. Nil leaves their tags as text.
+    let gatewayResolver: GatewayMediaDataURLResolver?
     /// The row's key in `disclosure`, so a rebuilt row stays open.
     let disclosureID: String
     @Environment(\.chatRowDisclosure) private var disclosure
@@ -69,11 +113,16 @@ struct CronReportCard: View {
                     }
                 }
                 if expanded {
-                    MarkdownText(source: report.report)
+                    MarkdownText(
+                        source: report.shown,
+                        gatewayMediaDataURL: gatewayResolver.map { resolver in
+                            { path in await resolver.dataURL(for: path) }
+                        }
+                    )
                         .scaledFont(.subheadline)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 } else if !report.report.isEmpty {
-                    Text(BotWorkLook.rendered(report.report))
+                    Text(BotWorkLook.rendered(report.preview))
                         .scaledFont(.subheadline)
                         .foregroundStyle(Color.primary)
                         .lineLimit(6)

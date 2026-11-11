@@ -2358,18 +2358,20 @@ notifications), with its footer · the report's card in the Bot Chat · the
 cron tool's result the model reads when it creates or edits such a job ·
 the job's own run, its push and its session, unchanged (Cron runs) · a Bot
 Chat in another profile (`bot-chat:<name>`), served by this process's
-gateway or another · Hermes Desktop (not needed: it shows the note as
-Hermes' local-chat note) · Watch and CarPlay (not needed: no transcript
+gateway or another · Hermes Desktop (it shows the note as Hermes'
+local-chat note, a picture or file the report delivered by the reference
+the plugin writes for it) · Watch and CarPlay (not needed: no transcript
 cards) · notifier README.md's Cron jobs delivered to a Bot Chat
 
 **Code**
-- Notifier: `notifier/cron_bot_chat.py` (install, show, the note's HEADER, annotate for the cron tool), `notifier/cron_store.py` (act, set_act, lets_act), `notifier/dashboard/api/notifications.py` (`act` and `shows_reports` on /cron/notifications), `notifier/dashboard/api/capabilities.py` (cron-bot-chat-reports), `notifier/__init__.py` (install, _transform_tool_result)
-- App: `Conduit/Services/CronNotifications.swift` (Choices with showsReports, choices, setActs), `Conduit/Services/AppState+CronNotifications.swift` (supportsCronBotChatReports, offersCronBotChatChoice, cronJobLetsBotAct, setCronJobLetsBotAct), `Conduit/Views/V2/CronJobEditorSheet.swift` (CronBotChoiceSection, deliversToBotChat, the editor's save, CronBlueprintForm's choice and create), `Conduit/Views/CronReportCard.swift` (CronBotChatReport, CronReportCard), `Conduit/Views/ChatView.swift` (the card in a system row)
-- Tests: notifier tests/test_cron_bot_chat.py and tests/test_cron_notifications.py; `ConduitTests/GatewayRestartTests+CronNotifications.swift` (testABotChatJobsChoiceIsReadSentAndOptional, testABotChatReportReadsAsTheJobAndItsReport)
+- Notifier: `notifier/cron_bot_chat.py` (install, show, the note's HEADER, reference_tags, annotate for the cron tool), `notifier/cron_store.py` (act, set_act, lets_act), `notifier/dashboard/api/notifications.py` (`act` and `shows_reports` on /cron/notifications), `notifier/dashboard/api/capabilities.py` (cron-bot-chat-reports), `notifier/__init__.py` (install, _transform_tool_result)
+- App: `Conduit/Services/CronNotifications.swift` (Choices with showsReports, choices, setActs), `Conduit/Services/AppState+CronNotifications.swift` (supportsCronBotChatReports, offersCronBotChatChoice, cronJobLetsBotAct, setCronJobLetsBotAct), `Conduit/Views/V2/CronJobEditorSheet.swift` (CronBotChoiceSection, deliversToBotChat, the editor's save, CronBlueprintForm's choice and create), `Conduit/Views/CronReportCard.swift` (CronBotChatReport with shown and preview, CronReportCard), `Conduit/Views/ChatView.swift` (the card in a system row)
+- Tests: notifier tests/test_cron_bot_chat.py and tests/test_cron_notifications.py; `ConduitTests/GatewayRestartTests+CronNotifications.swift` (testABotChatJobsChoiceIsReadSentAndOptional, testABotChatReportReadsAsTheJobAndItsReport, testABotChatReportDrawsItsPicturesAndFiles)
 
 **Rulings**
 - Each job has its own choice, Just show it by default, Let the bot act on it when picked (Eric, 2026-11-03: some people want the report in front of them without opening cron sessions, some want the bot to act on it). A job that isn't listed just shows, a new job included, and so does one the agent made.
 - Just show it writes the report into the Bot Chat as a note, the way Hermes writes a cron result into a local chat: no turn, no model call, no reply; the bot sees it as context on its next turn. Its first line names the job and says nobody asked for a reply, and Conduit shows it as a card: the job's name, the first six lines, all of it a tap away. The first line is a contract between the plugin's HEADER and CronBotChatReport: change both together.
+- A picture or file the report delivers on a line of its own (a `MEDIA:` tag) shows as that picture or file, never its path (issue 581). The note is a user row, where Hermes Desktop draws only references, so the plugin writes the line as `@image:` (an image extension, artifacts_index's) or `@file:`; Conduit's card draws either, and a `MEDIA:` tag from an older plugin, as the transcript draws a `MEDIA:` tag, and the folded card names the file. A tag inside a sentence, two on a line, one in fenced code, or a path that can't be quoted stays as written.
 - A failure report follows the same choice, and is dropped where the profile hides warning notifications, as Hermes drops its own.
 - The cron tool's result for such a job tells the model which it is, so it doesn't promise to act on a report it will only see.
 - Only a Hermes that can write the note gets it (the route's `shows_reports`; v0.22.5 can't, the canary from late October can). On one that can't, every job keeps Hermes' turn and the editor offers no choice, so it never says a report just shows when it won't.
@@ -2379,10 +2381,10 @@ cards) · notifier README.md's Cron jobs delivered to a Bot Chat
 - With no Bot Chat yet, a report has nowhere to show: the run records a delivery error (Hermes' turn would have made the chat).
 - A Bot Chat whose owner runs in another process, or refuses it (one made in an app that Hermes' door hasn't taken yet), gets the note straight in its history, waiting up to a minute for a running turn; an app already showing it sees the note on its next read.
 - The model can't change the choice itself; it tells the user to.
-- Tried on Hermes' canary (notifier upstream/test_cron_bot_chat.py) but not yet on a phone: the card in a real Bot Chat, and a report that arrives during a turn.
+- Tried on Hermes' canary (notifier upstream/test_cron_bot_chat.py) but not yet on a phone: the card in a real Bot Chat, a report that arrives during a turn, and a report's picture in the card and in Hermes Desktop.
 - Hermes' own side, unchanged by the plugin: in the canary test, a job that lets the bot act was refused (`runtime_coordination_required`, delivery failed) while a socket session that had resumed the Bot Chat held its writer.
 
-**Checked:** 2026-11-08, #2047 (the editor's save still sends a new job's Bot Chat choice when its reasoning edit fails, and one banner names each step not saved; see A scheduled job's model); 2026-11-05, #1793 (the job editor's delivery and When it runs built from Settings' pieces, see Sheets in Settings' look); 2026-11-03, #1703 (on main now, with notifier #519: the branch notes go and the notifier paths are checked; Eric: lookups is the default, with notifier 0.127.1, in the plugin and in Edit Bot > Work); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1690 (added, with notifier #518).
+**Checked:** 2026-11-11, #PRNUM (a report's delivered pictures and files show in Hermes Desktop and the card instead of their paths, with notifier #702, 0.161.1; issue 581); 2026-11-08, #2047 (the editor's save still sends a new job's Bot Chat choice when its reasoning edit fails, and one banner names each step not saved; see A scheduled job's model); 2026-11-05, #1793 (the job editor's delivery and When it runs built from Settings' pieces, see Sheets in Settings' look); 2026-11-03, #1703 (on main now, with notifier #519: the branch notes go and the notifier paths are checked; Eric: lookups is the default, with notifier 0.127.1, in the plugin and in Edit Bot > Work); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1690 (added, with notifier #518).
 
 ## A cron job's Run history
 
