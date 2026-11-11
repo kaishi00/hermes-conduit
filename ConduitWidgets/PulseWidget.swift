@@ -90,8 +90,11 @@ struct PulseWidgetProvider: TimelineProvider {
             // Do it's sent mark written during the request stays (issue 2213).
             guard let store else { return snapshot.merging(previous) }
             let fresh = snapshot
-            var merged = fresh.merging(previous)
+            var merged: PulseWidgetSnapshot?
             store.update { kept in
+                // Asked again once coordinated: a switch while it waited
+                // for another writer leaves the new dashboard's file alone.
+                guard currentAccess()?.dashboardID == access.dashboardID else { return nil }
                 merged = fresh.merging(kept?.dashboardID == access.dashboardID ? kept : nil)
                 return merged
             }

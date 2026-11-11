@@ -1988,7 +1988,7 @@ README.md
 - Do it on a card from no chat goes where Settings > Pulse > Do it says, as on the screen: a new chat, or the picked bot's Bot Chat, found as its Bots row finds it and sent to by that id, which acted names (Eric, 2026-11-11, #2211). The widget has no long press for another. As Send to Hermes, it never makes a bot's first Bot Chat off screen (it says to open it in Conduit), and while the bot list can't be read it says so rather than send to a new chat in the picked bot's place.
 - A pick's Ask isn't offered as Do it in the widget: its words are for the user to change before sending, and the widget has no composer; the card opens instead (#2194).
 - The rows are the screen's open cards: follow-ups and report items, not done, put off, held for the morning brief, a suggestion, or a whole report or brief (#2194).
-- Every write to the widget's saved read (the widget's reads, Done and Not now, the app's Do it mark and notes) reads what's saved and writes its change as one step, coordinated across the app and the widget, so one never undoes another's: a lost sent mark would let a card be sent twice (#2220, issue 2213).
+- Every write to the widget's saved read (the widget's reads, Done and Not now, the app's Do it mark and notes) reads what's saved and writes its change as one step, coordinated across the app and the widget (removing it too), so one never undoes another's: a lost sent mark would let a card be sent twice. The widget's read checks its pass again once coordinated, and a Done or Not now note lands only on the dashboard it was pressed on (#2220, issue 2213).
 
 **Open gaps**
 - Not tried on a device: a press with Conduit not running, a token that expires, and a push's reload.

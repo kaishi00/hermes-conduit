@@ -202,8 +202,16 @@ struct PulseWidgetStore {
     /// Whether there was one to remove.
     @discardableResult
     func remove() -> Bool {
-        guard fileManager.fileExists(atPath: url.path) else { return false }
-        return (try? fileManager.removeItem(at: url)) != nil
+        // Coordinated as update is, so a write already under way lands
+        // before the removal, never after it.
+        var removed = false
+        var coordinationError: NSError?
+        NSFileCoordinator(filePresenter: nil).coordinate(
+            writingItemAt: url, options: .forDeleting, error: &coordinationError) { url in
+            guard fileManager.fileExists(atPath: url.path) else { return }
+            removed = (try? fileManager.removeItem(at: url)) != nil
+        }
+        return removed
     }
 }
 
