@@ -3360,12 +3360,13 @@ is unchanged) · a running dictation (done, #1315: Return stops it; the
 Keyboard caption is unchanged, as it describes the option) · a suggestion
 list over the field, slash commands and mentions in chats, mentions in rooms
 (done, #1938: the arrows, Tab, Escape and a highlighted Return are the
-list's)
+list's) · ⌘Return, which sends whatever the setting says (done, #2224; see
+Keyboard shortcuts) and the Keyboard section's line on it
 
 **Code**
 - Policy: `Conduit/Views/Components/ComposerReturnKey.swift` (ComposerReturnKey), `Conduit/Views/Components/ComposerSuggestionKeys.swift` (a suggestion list's keys)
 - Key handling: `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView: the Return key command and pressesBegan; ReturnKeyTextEditor, the field rooms and the full editor use)
-- Chat composer: `Conduit/Views/Components/ComposerPasteTextView.swift` (ImagePasteTextView), `Conduit/Views/Components/ComposerBar.swift` (submitFromReturnKey, the full editor's)
+- Chat composer: `Conduit/Views/Components/ComposerPasteTextView.swift` (ImagePasteTextView), `Conduit/Views/Components/ComposerBar.swift` (submitFromReturnKey, the full editor's; returnKeysReachChat)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (field, submitFromReturnKey)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ComposerReturnKeySettings)
@@ -3396,7 +3397,52 @@ list's)
   command sending, Shift-Return and the IME's Return still reaching the
   text, in chats, rooms and the full editor; nor the suggestion lists' keys.
 
-**Checked:** 2026-11-11, #2223 (a pick puts the cursor after it, slash commands and mentions; issue 2048); 2026-11-07, #1938 (a suggestion list's keys: arrows, Tab, Escape, a highlighted Return; ComposerSuggestionKeys); 2026-10-30, #1527 (a Return send keeps the field's focus on a Mac or with a hardware keyboard, see Composer focus after a send; ImagePasteTextView takes focus once in the window); 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
+**Checked:** 2026-11-11, #2224 (⌘Return sends whatever the setting says, a priority key command beside plain Return's; Settings > Keyboard says so and opens the Keyboard Shortcuts sheet; neither Return nor ⌘Return sends from the field of a hidden tab's chat or one split Settings or a Bot Chat on its way covers, chats and rooms alike; see Keyboard shortcuts); 2026-11-11, #2223 (a pick puts the cursor after it, slash commands and mentions; issue 2048); 2026-11-07, #1938 (a suggestion list's keys: arrows, Tab, Escape, a highlighted Return; ComposerSuggestionKeys); 2026-10-30, #1527 (a Return send keeps the field's focus on a Mac or with a hardware keyboard, see Composer focus after a send; ImagePasteTextView takes focus once in the window); 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
+
+## Keyboard shortcuts
+
+Hardware-keyboard shortcuts on an iPad and a Mac (and an iPhone with a
+keyboard): the menu bar's commands, the keys a screen keeps for itself,
+⌘Return in the composer and the Keyboard Shortcuts sheet (issue 2219).
+
+**Siblings:** the menu bar on a Mac and an iPad (⌘N New Chat in place of
+New Window, ⌘, Settings, ⌘1 to ⌘4 the tabs, ⌘+ ⌘− ⌘0 the chat text size,
+⌘/ the sheet) · the iPad's ⌘-held overlay (the same items) · the V2 tab
+shell (the tabs) and the drawer shell (⌘, opens its Settings sheet; no tabs
+for ⌘1 to ⌘4) · a chat's ⌘. Stop (the composer's Stop) · the Chats list's ⌘F
+(Chats top bar and search) · a chat's ⌃⌘S chat list and ⌥⌘A artifacts ·
+⌘Return in every composer, a chat's, a room's and the full editor (Composer
+Return key) · Settings > Chat's text size slider and Sync across devices
+(the same preference) · Settings > Keyboard (its ⌘Return line and Keyboard
+Shortcuts button) · README · not needed: group rooms' ⌘. (a room has no Stop
+of its own), the model picker's, image gallery's and suggestion list's own
+keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
+
+**Code**
+- Catalog, commands and sheet: `Conduit/Services/KeyboardShortcuts.swift` (ConduitKeyboardShortcut, KeyboardCommands with nothingInFront, ConduitKeyboardCommands, KeyboardShortcutsSheet), `Conduit/ConduitApp.swift` (`.commands`)
+- Tabs and the sheet: `Conduit/Views/V2/V2Shell.swift` (tabRequests; isChatCovered and chatTakesKeys for a chat's own keys), `Conduit/Views/RootView.swift` (MainView: the drawer shell's ⌘,, the sheet on shortcutListRequests)
+- Screens' own: `Conduit/Views/ChatView.swift` (stopFromKeyboard), `Conduit/Views/V2/V2ChatsView.swift` (searchCommand), `Conduit/Views/V2/V2ConversationScreen.swift` (chat list and artifacts buttons)
+- ⌘Return: `Conduit/Views/Components/ReturnKeyTextView.swift` (commandReturnKeyCommand), `Conduit/Views/Components/ComposerReturnKey.swift` (commandReturnSends)
+- Settings: `Conduit/Views/AuxiliaryViews.swift` (ComposerReturnKeySettings)
+- Tests: `ConduitTests/ComposerReturnKeyTests.swift` (testCommandReturn…, testShortcutGlyphsAreWrittenInTheMenuBarsOrder, testNoTwoShortcutsShareAKey, testTextSize…), `scripts/tests/test_chats_search_command_source_contract.py`, `scripts/tests/test_keyboard_shortcut_gates_source_contract.py`
+
+**Rulings**
+- One catalog names every key; the menu, the screens' shortcuts and the sheet all read it, so the list shown can't drift from the keys that work (2026-11-11, #2224).
+- ⌘N is New Chat, never a new window: Conduit has one window (2026-11-11, #2224, issue 2219).
+- The tabs take ⌘1 to ⌘4 in the bar's order; Settings also takes ⌘, (2026-11-11, #2224).
+- Nothing acts behind a sheet, an alert or the call screen: every command, the text size included, and ⌘F check for a presented view controller first. ⌘/ is the exception only for its own sheet, which closes itself, from either way in (2026-11-11, #2224).
+- A chat's own keys (⌘., ⌃⌘S, ⌥⌘A, and Return and ⌘Return in its composer or a room's) reach it only while it's on screen: its tab shows and split Settings doesn't cover it (`V2ShellContext.chatTakesKeys`), since a hidden or covered chat stays mounted, keeps its field's focus, and a shortcut ignores opacity; ⌘., Return and ⌘Return also wait out a Bot Chat on its way over the chat, as ⌥⌘A does (2026-11-11, #2224 review).
+- The menus observe no state, so AppState's publishes never rebuild them; each command checks what it needs when pressed (2026-11-11, #2224).
+- ⌘Return sends whatever the Return key setting says, with Return's limits (no IME composing, the composer able to send a typed message) (2026-11-11, #2224).
+- ⌘. is Stop wherever the composer's Stop would stop (a turn, or the open workstream), a draft in the field or not, in the shown tab's chat only (2026-11-11, #2224).
+- ⌘. doesn't stop a running dictation: that stays with the composer's Stop and Return, which own the dictation (2026-11-11, #2224 review).
+- The sheet lists only the keys the current shell answers: the drawer shell shows Settings with ⌘, and leaves out ⌘1 to ⌘4, ⌃⌘S and ⌥⌘A (2026-11-11, #2224 review).
+
+**Open gaps**
+- Not yet tried on a device: the menus on a Mac and an iPad, and whether ⌘+ fires from ⌘= on a US layout (it's registered as "+").
+- No Back (⌘[) or next/previous chat: Back in a split window means different things per column. Left for the maintainer to decide.
+
+**Checked:** 2026-11-11, added at #2224.
 
 ## Slash commands
 
@@ -5242,10 +5288,9 @@ Sync across devices (the four Sessions bar preferences, as
 
 **Open gaps**
 - A launch whose layout differs from the last one seen still starts from the old layout, so the row can show for a frame or arrive a frame late: the iPad was rotated or profiles were added while Conduit was closed, or another iPad window in the other layout wrote the shared key last. Closing it needs the bar's choice before the first frame, which `ViewThatFits` doesn't expose.
-- ⌘F isn't gated behind the sheets and alerts this view presents (Archived, Pinned replies, Needs you, pinned order, repair, project creator, the two renames, the two deletes). `isShown` is the tab's active state and the navigation path only (`isRootCovered` in `Conduit/Views/V2/V2Shell.swift`), so with one of them up the key still moves focus to the field behind it. Closing it needs a shell-level "something is in front" notion; until then the shortcut is the list's alone, not the screen's.
 - In the one-row bar the field is the first row of a lazy List, so scrolled down the row isn't instantiated and the key does nothing, or focuses it late when the row is recycled. The stacked bar's field is in the bar itself and isn't affected. Both need a device or simulator to observe.
 
-**Checked:** 2026-11-10, #2126 (the bar never reports more width than it's offered, which sized the Duo's outer screen's Chats past its column; issue 2118); 2026-11-09, #2020 (the Sessions bar section and its resolve step: Profiles All or Current only, and the switches hiding Projects, Pulse and Artifacts); 2026-11-09, #1925 (⌘F opens the list's search and focuses the field, on any platform with a hardware keyboard: an iPad, a Mac, or an iPhone with one attached; through the magnifier's own opening path, and while the list is the screen, though not while a sheet or alert this view presents is in front, see Open gaps; the pending focus is set only for a closed stacked bar, every other case focuses the field on screen, and un-stacking hands the request to the list's field; Escape is deliberately not bound; Code and Tests); 2026-11-05, #1776 (each profile chip carries its count of chats waiting on you, and the filter menu opens Needs you; see Hermes is waiting on you); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-02, #1663 (a switch sends the new profile's first reads with its ticket, see A connection's first reads); 2026-11-01, #1619 (search leaves bot workstreams out, see Bot workstreams); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-10-28, #1452 (a switch keeps the open socket); 2026-10-28, #1447 (a switch takes the outgoing transcript off as the profile changes over, see A chat while it opens); 2026-10-28, #1443 (the strip shows the new profile's chats as soon as it's active); 2026-10-28, #1435 (profile chips and CarPlay's agent list keep a pick made during a switch); 2026-10-26, #1328 (the chip names Home apart from hidden projects); #1322 (the chip and filter pill also name hidden projects, "Project chats in Chats"); at #1319 (trailingControls' swapped voice steps aside beside a chat, see Voice beside the tabs); the match row at #1208, carried in #1229.
+**Checked:** 2026-11-11, #2224 (⌘F reads its key from the shortcut catalog and does nothing while a sheet, alert or the call screen is presented, `KeyboardCommands.nothingInFront`, closing that gap; see Keyboard shortcuts); 2026-11-10, #2126 (the bar never reports more width than it's offered, which sized the Duo's outer screen's Chats past its column; issue 2118); 2026-11-09, #2020 (the Sessions bar section and its resolve step: Profiles All or Current only, and the switches hiding Projects, Pulse and Artifacts); 2026-11-09, #1925 (⌘F opens the list's search and focuses the field, on any platform with a hardware keyboard: an iPad, a Mac, or an iPhone with one attached; through the magnifier's own opening path, and while the list is the screen, though not while a sheet or alert this view presents is in front, see Open gaps; the pending focus is set only for a closed stacked bar, every other case focuses the field on screen, and un-stacking hands the request to the list's field; Escape is deliberately not bound; Code and Tests); 2026-11-05, #1776 (each profile chip carries its count of chats waiting on you, and the filter menu opens Needs you; see Hermes is waiting on you); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-02, #1663 (a switch sends the new profile's first reads with its ticket, see A connection's first reads); 2026-11-01, #1619 (search leaves bot workstreams out, see Bot workstreams); 2026-11-01, #1631 (on the gateway's own listener this speaks the session authority's shapes, see Two Hermes servers); 2026-10-28, #1452 (a switch keeps the open socket); 2026-10-28, #1447 (a switch takes the outgoing transcript off as the profile changes over, see A chat while it opens); 2026-10-28, #1443 (the strip shows the new profile's chats as soon as it's active); 2026-10-28, #1435 (profile chips and CarPlay's agent list keep a pick made during a switch); 2026-10-26, #1328 (the chip names Home apart from hidden projects); #1322 (the chip and filter pill also name hidden projects, "Project chats in Chats"); at #1319 (trailingControls' swapped voice steps aside beside a chat, see Voice beside the tabs); the match row at #1208, carried in #1229.
 
 ## Project chats in Chats
 

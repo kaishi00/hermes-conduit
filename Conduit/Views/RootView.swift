@@ -148,6 +148,8 @@ struct MainView: View {
     /// The page Settings opens at next, for an in-app settings link.
     @State private var settingsOpensAt: ConduitAppLink.SettingsLink?
     @State private var chatTitlePendingRename: SessionSummary?
+    /// The Keyboard Shortcuts sheet, from ⌘/ (KeyboardShortcuts.swift).
+    @State private var showsKeyboardShortcuts = false
     @State private var chatTitlePendingDeletion: SessionSummary?
 
     private var sidebarPresentation: SidebarPresentation {
@@ -467,6 +469,21 @@ struct MainView: View {
             shouldPresentSettingsAfterSidebarDismissal = false
             settingsOpensAt = nil
             settingsPresentation = nil
+        }
+        // ⌘, in the drawer shell, which has no tabs: Settings' sheet. V2
+        // selects its tab (V2Shell).
+        .onReceive(KeyboardCommands.tabRequests) { tab in
+            guard !useV2Shell, tab == .settings, settingsPresentation == nil else { return }
+            presentSettings()
+        }
+        // ⌘/: the list of shortcuts, with nothing else in front. With the
+        // list up, the sheet closes itself (KeyboardShortcutsSheet).
+        .onReceive(KeyboardCommands.shortcutListRequests) { _ in
+            guard !showsKeyboardShortcuts, KeyboardCommands.nothingInFront else { return }
+            showsKeyboardShortcuts = true
+        }
+        .sheet(isPresented: $showsKeyboardShortcuts) {
+            KeyboardShortcutsSheet()
         }
         .onChange(of: appState.settingsLinkRequest) { _, page in
             // V2 opens the page in its Settings tab (V2Shell).

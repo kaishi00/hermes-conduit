@@ -135,6 +135,9 @@ struct V2ShellContext: Equatable {
         /// A switch picked from the profile strip is under way, from the
         /// first tap's fade-out until the switch is over.
         var isPickingProfile = false
+        /// Split, Settings shows in this tab's chat column over its chat,
+        /// which stays mounted and active underneath.
+        var isChatCovered = false
     }
 
     var pickProfile: (String) -> Void = { _ in }
@@ -164,6 +167,15 @@ struct V2ShellContext: Equatable {
         get { values.isRootCovered }
         set { values.isRootCovered = newValue }
     }
+
+    var isChatCovered: Bool {
+        get { values.isChatCovered }
+        set { values.isChatCovered = newValue }
+    }
+
+    /// A chat's own keyboard shortcuts (⌘., ⌃⌘S, ⌥⌘A) reach it: its tab
+    /// shows and Settings doesn't cover it (KeyboardShortcuts.swift).
+    var chatTakesKeys: Bool { isTabActive && !isChatCovered }
 
     var isSplit: Bool {
         get { values.isSplit }
@@ -826,6 +838,12 @@ struct V2Shell: View {
                 visitedTabs.insert(.settings)
                 selectTab(.settings)
             }
+            // ⌘1 to ⌘4 and ⌘, (KeyboardShortcuts.swift); nothing is in
+            // front, which the command checked.
+            .onReceive(KeyboardCommands.tabRequests) { tab in
+                visitedTabs.insert(tab)
+                selectTab(tab)
+            }
             .onChange(of: appState.kanbanTaskOpenRequest) { _, request in
                 // Tasks › Board opens the task and clears the request.
                 guard request != nil else { return }
@@ -897,6 +915,7 @@ struct V2Shell: View {
                             $0.hasChatBeside = chatBeside
                             $0.showsChatRows = V2SplitLayout.showsChatRows(split: split, path: path(of: tab))
                             $0.hasChatVoiceBeside = chatVoiceBeside
+                            $0.isChatCovered = !chatShown
                         }
                         // The opened tab shows at once and the one left
                         // hides at once. A fade read as slow, and a slide

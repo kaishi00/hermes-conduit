@@ -561,6 +561,8 @@ struct V2ConversationScreen: View {
         if shell.canSplit {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
+                    // Its shortcut, too, does nothing behind a sheet.
+                    guard KeyboardCommands.nothingInFront else { return }
                     Haptics.light()
                     chatListBeside.toggle()
                 } label: {
@@ -573,8 +575,8 @@ struct V2ConversationScreen: View {
                 // iPadOS's own sidebar shortcut. A tab kept behind the
                 // selected one still holds its chat, and a shortcut
                 // ignores opacity and hit testing: only the shown tab's.
-                .keyboardShortcut("s", modifiers: [.command, .control])
-                .disabled(!shell.isTabActive)
+                .keyboardShortcut(ConduitKeyboardShortcut.chatList.shortcut)
+                .disabled(!shell.chatTakesKeys)
                 .accessibilityLabel(shell.isSplit ? AppLocalization.string("Hide chat list") : AppLocalization.string("Show chat list"))
                 .accessibilityIdentifier("conversation.chatListToggle")
             }
@@ -661,6 +663,7 @@ struct V2ConversationScreen: View {
         if fitsSidePanel, appState.activeRoomSurface == nil {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    guard KeyboardCommands.nothingInFront else { return }
                     Haptics.light()
                     if showsSidePanel {
                         sidePanelOpen = false
@@ -674,9 +677,9 @@ struct V2ConversationScreen: View {
                         .frame(width: 40, height: 40)
                         .modifier(V2PreGlassToolbarControl())
                 }
-                .keyboardShortcut("a", modifiers: [.command, .option])
+                .keyboardShortcut(ConduitKeyboardShortcut.artifacts.shortcut)
                 // The cover hides the panel: it waits for the coming chat.
-                .disabled(!shell.isTabActive || appState.botChatComingOverAnother != nil)
+                .disabled(!shell.chatTakesKeys || appState.botChatComingOverAnother != nil)
                 .accessibilityLabel(showsSidePanel ? AppLocalization.string("Hide artifacts") : AppLocalization.string("Show artifacts"))
                 .accessibilityIdentifier("conversation.sidePanelToggle")
             }

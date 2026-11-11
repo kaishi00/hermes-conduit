@@ -30,9 +30,16 @@ class ChatsSearchCommandSourceContractTests(unittest.TestCase):
 
     def test_the_shortcut_is_command_f_on_the_chats_view(self):
         command = block(self.source, "searchCommand")
-        self.assertIn('keyboardShortcut("f", modifiers: .command)', command)
+        self.assertIn("keyboardShortcut(ConduitKeyboardShortcut.search.shortcut)", command)
+        catalog = (ROOT / "Conduit/Services/KeyboardShortcuts.swift").read_text()
+        self.assertIn('case .search: return "f"', catalog)
         self.assertIn("focusSearchFromKeyboard()", command)
         self.assertIn(".background { searchCommand }", self.source)
+
+    def test_nothing_presented_in_front_takes_the_key(self):
+        # Issue 2219: a sheet or alert over the list keeps the key away.
+        body = block(self.source, "focusSearchFromKeyboard")
+        self.assertIn("guard isShown, KeyboardCommands.nothingInFront else { return }", body)
 
     def test_the_pending_flag_is_only_set_for_a_closed_stacked_bar(self):
         body = block(self.source, "focusSearchFromKeyboard")

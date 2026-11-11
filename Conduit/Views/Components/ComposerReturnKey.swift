@@ -57,6 +57,13 @@ enum ComposerReturnKey {
         return .submit
     }
 
+    /// ⌘Return sends whatever the setting says (issue 2219), with the same
+    /// limits: never while an IME composes, never when the composer can't
+    /// send a typed message.
+    static func commandReturnSends(hasMarkedText: Bool, canSubmit: Bool) -> Bool {
+        !hasMarkedText && canSubmit
+    }
+
     /// Whether the composer's currently valid action may be triggered from
     /// Return. Only typed-message actions qualify. A running response with an
     /// empty composer is stop-only; Return must never act as the Stop button.
