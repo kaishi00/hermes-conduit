@@ -670,6 +670,41 @@ Conduit sends" preview, docs/VOICE_SETTINGS.md, the notifier README
 
 **Checked:** 2026-11-04, #1769 (added: GPT-Live's opening is Conduit's turn everywhere, notifier #548).
 
+## Showing a voice conversation a photo
+
+The voice screens' Camera: a photo taken mid-conversation joins the
+conversation's chat for the next request to Hermes, and Gemini and Qwen see
+it themselves. Ask Hermes About Screen's screenshot in a call works the same
+way.
+
+**Siblings:** each voice mode (Gemini Live and Qwen Live see the picture;
+GPT-Live, Grok Live and Local Live hand questions about it to Hermes; Classic
+voice's next turn carries it) · a call from Hermes (the same call screen) ·
+Ask Hermes About Screen's screenshot (the same waiting picture, notes and
+banner) · the composer, which shows the waiting photo as it does a screenshot
+(see Attaching files) · what models read: the quiet notes and the call's
+instructions · README.md's voice features. Not the Apple Watch or CarPlay:
+neither has a camera surface.
+
+**Code**
+- The button: `Conduit/Views/VoicePhotoButton.swift` (VoicePhotoButton, LiveVoiceCallPhotoButton), `Conduit/Views/LiveVoiceCallSheet.swift` (onPhoto, showsPhoto), `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Views/VoiceConversationSheet.swift` (Classic, both layouts)
+- Where it goes: `Conduit/Services/AppState+VoicePhoto.swift` (addVoicePhoto), `Conduit/Services/AppState+ScreenQuestion.swift` (SharedPictureKind, setPendingScreenshot, pendingScreenshotEntry, voiceScreenshotKind), `Conduit/Services/AppState.swift` (submitComposer takes the waiting picture; liveVoiceThreadInstructions)
+- What the call hears: `Conduit/Voice/VoiceBackgroundJobs.swift` (notePhotoShared, notePhotoMissedModel, retractScreenshotNote and their prompts)
+- The model's copy: `Conduit/Voice/LiveVoicePhoto.swift` (LiveVoicePhotoFrame), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (canShowPhoto, showPhoto), `Shared/GeminiLive/GeminiLiveProtocol.swift` (LiveVoiceClientMessage.image, imageMessage), `Shared/GeminiLive/QwenLiveSocket.swift` (input_image_buffer.append), `Shared/GrokLive/GrokLiveProtocol.swift` and `Shared/LocalLive/LocalLiveSession.swift` (dropped)
+- The banner: `Conduit/Views/ScreenQuestionViews.swift` (ScreenQuestionVoiceBanner's kind), `Conduit/Views/RootView.swift`
+- Tests: `ConduitTests/AppStateScreenQuestionTests.swift`, `ConduitTests/QwenLiveVoiceTests.swift`, `ConduitTests/GrokLiveVoiceTests.swift`, `ConduitTests/ComposerCameraCaptureTests.swift`
+
+**Rulings**
+- One path for every mode, plus the picture where the provider takes one: the photo always waits on the conversation's chat, so Hermes sees it with the next turn, and Gemini and Qwen are also sent it (Eric, 2026-11-11, #2243). GPT-Live takes no images (OpenAI lists image input for gpt-live-1 as not supported) and xAI documents none, so those calls hear that Hermes has it and must not guess what it shows.
+- The model's copy is a JPEG of at most 1280 px and 190 KB (Qwen refuses one over 256 KB in Base64), sent at once as a `realtimeInput.video` frame: it interrupts no reply, and the model sees it with the user's next words. Qwen's adapter makes it `input_image_buffer.append`, after a short silence when no audio went yet. The quiet note goes first. A frame that never reaches the socket corrects the note, whether the model has heard it yet or not.
+- Only a turn sent from the chat on screen carries a picture, so the call's chat opens first. A call with no chat yet, or whose chat (a Bot Chat elsewhere) can't open, keeps nothing and says why in an alert over the call. A call still waiting on Hermes shows no Camera.
+- A photo is the conversation's own: the banner says "Asking about this photo" and offers no New Chat. A newer photo or screenshot on the chat replaces it, and removing it gets a photo-worded note. A new connection's instructions say the model can't see a waiting photo, since that connection was never sent it.
+
+**Open gaps**
+- Not device-tested yet: whether the camera, opened mid-call, leaves the call's audio alone (photo mode records no audio), and how Gemini 3.8 Live and Qwen Omni answer about a frame.
+
+**Checked:** 2026-11-11, #2243 (added).
+
 ## The language a live call speaks
 
 Which language a live model talks in: the user's, from its first words,
@@ -1563,6 +1598,9 @@ Hermes calls · tools and jobs · consent · saved transcripts · notifier token
   "Audio route, Speaker and mute", "Talking over Hermes", "Live-call sends on
   a slow connection"), which apply to Qwen as to Gemini. Provider consent and
   history stay separate.
+- A photo from the call screen's Camera reaches Qwen as Gemini's video
+  frame, which the adapter turns into `input_image_buffer.append` (see
+  Showing a voice conversation a photo).
 
 **Open gaps**
 - Real credentials, entitlement, voice availability and Watch background
@@ -1571,7 +1609,7 @@ Hermes calls · tools and jobs · consent · saved transcripts · notifier token
   `Conduit/Services/AppState+ScreenQuestion.swift` (ScreenQuestionVoiceRouting.liveEngines)
   lists GPT-Live, Gemini and Grok only, until Qwen is device-tested there.
 
-**Checked:** 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1424 (QwenLiveSocket traces turn detection and speech start and end); 2026-10-26, #1247 (the Watch broker's token answers keep Conduit running through BackgroundTaskHold); 2026-10-25, voice.qwen.* and save_calls naming Qwen, the Watch's qwen_live_token, a token minted after consent was withdrawn, provider precedence and the screen-question gap, at #1182, carried in #1235; 2026-10-24, #1182: independent provider routes and regression tests.
+**Checked:** 2026-11-11, #2243 (a photo from the call screen's Camera goes to Qwen's image buffer); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1424 (QwenLiveSocket traces turn detection and speech start and end); 2026-10-26, #1247 (the Watch broker's token answers keep Conduit running through BackgroundTaskHold); 2026-10-25, voice.qwen.* and save_calls naming Qwen, the Watch's qwen_live_token, a token minted after consent was withdrawn, provider precedence and the screen-question gap, at #1182, carried in #1235; 2026-10-24, #1182: independent provider routes and regression tests.
 
 ## Texting someone for the user
 
@@ -2704,7 +2742,9 @@ chips · Hermes' own room attachments (`groups.attachment.upload`, `groups.send`
 as a chat's, pictures to a model without vision through the auxiliary
 vision model · the notifier's `/room-files` routes
 and their README section · the notifier's room reading for your private
-chats (`notifier/room_reading.py`, which names a message's attachments)
+chats (`notifier/room_reading.py`, which names a message's attachments) · a voice
+screen's Camera, whose photo waits in the chat's composer as a screenshot does
+(see Showing a voice conversation a photo)
 
 | Way in | Chat composer and its full editor | Group room and its full editor |
 |---|---|---|
@@ -2746,7 +2786,7 @@ chats (`notifier/room_reading.py`, which names a message's attachments)
 - A file over 16 MB sent into a room someone else hosts stays on the home's host: a guest's room draws it as a chip with the unavailable mark (a lone picture, its name with the mark), and their agents get the home's path.
 - A picture over 16 MB in a room shows as unavailable (by its name when it's the message's only one); Conduit stages photos as JPEG well under that. Any other file over 16 MB doesn't open from a room, nor from a chat: both read sent files as data URLs (a room takes up to 50 MB).
 
-**Checked:** 2026-11-10, #2100 (issue 2059: a room attachment Hermes answers with over 16 MB, or not as base64 media, is gone, as the plugin's room-file read; uploads and the chat composer needed no change); 2026-11-09, #2044 (a room someone else hosts draws its pictures and opens its files from your own host's copy, carried over the Link; notifier #629); 2026-11-09, #2055 (without the plugin, the 8 files and 25 MB a message are checked before any upload, a file Hermes never takes named ahead of them, and the total named as a total; no connection says to connect; a test holds the sender's Hermes pictures kept as they upload); 2026-11-08, #2045 (a room reads each file only where its host takes that read, so an older plugin's file stays a name beside Hermes' attachments; a still-sending message's attachment reads by its own event id; a linked room's files go through the plugin, as Hermes' peer route fails a guest's turn on attachments; a person's message drawn on the members' side shows its attachments; a room's files go as Hermes' own attachments, so bots without vision see pictures through the auxiliary vision model; notifier room reading names them); 2026-11-08, #2043 (other files sent into a room open and play as a chat's; notifier #628); 2026-11-08, #2036 (pictures sent into a room show as pictures, issue 2035; notifier #625); 2026-11-05, #1821 (a dropped picture whose file fails is taken as its image object; pictures without a bitmap are drawn before they're written); 2026-11-04, #1766 (the "Drop to attach" outline clears when a drag ends on the field); 2026-11-03, #1695 (a file dropped on a composer field attaches instead of hanging the drop, issue 1689); 2026-11-02, #1631 (pictures reach the reply on the gateway's own listener; see Two Hermes servers); 2026-10-29, #1515 (long pastes become text attachments); 2026-10-28, #1422 (folder drops say why they aren't attached).
+**Checked:** 2026-11-11, #2243 (a voice screen's Camera photo waits in the composer as a screenshot does; the staging needed no change); 2026-11-10, #2100 (issue 2059: a room attachment Hermes answers with over 16 MB, or not as base64 media, is gone, as the plugin's room-file read; uploads and the chat composer needed no change); 2026-11-09, #2044 (a room someone else hosts draws its pictures and opens its files from your own host's copy, carried over the Link; notifier #629); 2026-11-09, #2055 (without the plugin, the 8 files and 25 MB a message are checked before any upload, a file Hermes never takes named ahead of them, and the total named as a total; no connection says to connect; a test holds the sender's Hermes pictures kept as they upload); 2026-11-08, #2045 (a room reads each file only where its host takes that read, so an older plugin's file stays a name beside Hermes' attachments; a still-sending message's attachment reads by its own event id; a linked room's files go through the plugin, as Hermes' peer route fails a guest's turn on attachments; a person's message drawn on the members' side shows its attachments; a room's files go as Hermes' own attachments, so bots without vision see pictures through the auxiliary vision model; notifier room reading names them); 2026-11-08, #2043 (other files sent into a room open and play as a chat's; notifier #628); 2026-11-08, #2036 (pictures sent into a room show as pictures, issue 2035; notifier #625); 2026-11-05, #1821 (a dropped picture whose file fails is taken as its image object; pictures without a bitmap are drawn before they're written); 2026-11-04, #1766 (the "Drop to attach" outline clears when a drag ends on the field); 2026-11-03, #1695 (a file dropped on a composer field attaches instead of hanging the drop, issue 1689); 2026-11-02, #1631 (pictures reach the reply on the gateway's own listener; see Two Hermes servers); 2026-10-29, #1515 (long pastes become text attachments); 2026-10-28, #1422 (folder drops say why they aren't attached).
 
 ## A chat while it opens
 
