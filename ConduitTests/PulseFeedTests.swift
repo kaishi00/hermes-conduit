@@ -2017,6 +2017,28 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertTrue(PulseLookBody.amount(3, "GB").hasSuffix(" GB"))
         XCTAssertEqual(PulseLookStyle(.number(label: "x", value: 1, unit: "", was: nil, limit: nil, better: nil)).place, .lead)
         XCTAssertEqual(PulseLookStyle(.waiting(person: "x", what: "y", since: nil)).place, .lead)
+        // Which way a number moved, and whether it's past its limit, is
+        // judged in one place; VoiceOver hears what the arrow's colour shows.
+        XCTAssertEqual(PulseLookStyle.move(value: 91, was: 78, better: .down), .bad)
+        XCTAssertEqual(PulseLookStyle.move(value: 329.99, was: 399.99, better: .down), .good)
+        XCTAssertEqual(PulseLookStyle.move(value: 5, was: 3, better: .up), .good)
+        XCTAssertEqual(PulseLookStyle.move(value: 5, was: 3, better: nil), .unsaid)
+        XCTAssertNil(PulseLookStyle.move(value: 5, was: 5, better: .up))
+        XCTAssertNil(PulseLookStyle.move(value: 5, was: nil, better: .up))
+        XCTAssertTrue(PulseLookStyle.pastLimit(value: 91, limit: 90, better: .down))
+        XCTAssertFalse(PulseLookStyle.pastLimit(value: 89, limit: 90, better: .down))
+        XCTAssertTrue(PulseLookStyle.pastLimit(value: 3, limit: 5, better: .up))
+        XCTAssertFalse(PulseLookStyle.pastLimit(value: 91, limit: 90, better: nil))
+        XCTAssertFalse(PulseLookStyle.pastLimit(value: 91, limit: nil, better: .down))
+        let was = PulseLookBody.amount(78, "%")
+        XCTAssertEqual(PulseLookBody.spokenChange(value: 91, was: 78, unit: "%", move: .bad),
+                       AppLocalization.string("Up from \(was), worse"))
+        XCTAssertEqual(PulseLookBody.spokenChange(value: 60, was: 78, unit: "%", move: .good),
+                       AppLocalization.string("Down from \(was), better"))
+        XCTAssertEqual(PulseLookBody.spokenChange(value: 60, was: 78, unit: "%", move: .unsaid),
+                       AppLocalization.string("Down from \(was)"))
+        XCTAssertEqual(PulseLookBody.spokenLimit(90, unit: "%", past: true),
+                       AppLocalization.string("Past the limit of \(PulseLookBody.amount(90, "%"))"))
         // The plugin offers them only to a Conduit that says it draws them.
         XCTAssertTrue(PresentedScreensSync.features.contains("pulse-more-shapes"))
     }

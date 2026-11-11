@@ -80,6 +80,24 @@ struct PulseLookStyle {
         if case .status = body { return true }
         return false
     }
+
+    /// How a number moved from what it was: the good way, the other way,
+    /// or, when which way is good wasn't said, only that it moved.
+    enum Move: Equatable { case good, bad, unsaid }
+
+    /// nil when there's no earlier value, or it's the same one.
+    static func move(value: Double, was: Double?, better: PulseLook.Better?) -> Move? {
+        guard let was, was != value else { return nil }
+        guard let better else { return .unsaid }
+        return (value > was) == (better == .up) ? .good : .bad
+    }
+
+    /// Whether a number is on the wrong side of its limit; never when
+    /// which way is good wasn't said.
+    static func pastLimit(value: Double, limit: Double?, better: PulseLook.Better?) -> Bool {
+        guard let limit, let better else { return false }
+        return better == .down ? value > limit : value < limit
+    }
 }
 
 struct PulseLookBody: View {
@@ -248,17 +266,9 @@ struct PulseLookBody: View {
     /// side of is red.
     private func number(_ label: String, value: Double, unit: String, was: Double?, limit: Double?,
                         better: PulseLook.Better?) -> some View {
-        let moved: Color = {
-            guard let was, let better, was != value else { return .secondary }
-            return (value > was) == (better == .up) ? .green : .red
-        }()
-        let past = limit.map { limit in
-            switch better {
-            case .down: value > limit
-            case .up: value < limit
-            case nil: false
-            }
-        } ?? false
+        let move = PulseLookStyle.move(value: value, was: was, better: better)
+        let moved: Color = move == .good ? .green : move == .bad ? .red : .secondary
+        let past = PulseLookStyle.pastLimit(value: value, limit: limit, better: better)
         let amount = Text(verbatim: Self.amount(value, unit))
             .scaledFont(.title.weight(.bold))
             .foregroundStyle(tint)
@@ -268,7 +278,11 @@ struct PulseLookBody: View {
             Text(AppLocalization.string("from \(Self.amount(was, unit))"))
         }
         .scaledFont(.subheadline.weight(.semibold))
-        .foregroundStyle(moved) }
+        .foregroundStyle(moved)
+        // The arrow and its colour say which way and whether that's good
+        // only to the eye: VoiceOver hears it in words.
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(Text(verbatim: Self.spokenChange(value: value, was: was, unit: unit, move: move ?? .unsaid))) }
         return VStack(alignment: .leading, spacing: 4) {
             // How it moved goes under the value when a large text size
             // leaves no room beside it, rather than both breaking.
@@ -291,12 +305,34 @@ struct PulseLookBody: View {
                         .foregroundStyle(.secondary)
                     Text(AppLocalization.string("Limit \(Self.amount(limit, unit))"))
                         .foregroundStyle(past ? Color.red : Color.secondary)
+                        .accessibilityLabel(Text(verbatim: Self.spokenLimit(limit, unit: unit, past: past)))
                 }
             }
             .scaledFont(.caption)
             .fixedSize(horizontal: false, vertical: true)
         }
         .accessibilityElement(children: .combine)
+    }
+
+    /// How a number moved from what it was, in words: which way, and
+    /// whether that's the good way when the card knows.
+    static func spokenChange(value: Double, was: Double, unit: String, move: PulseLookStyle.Move) -> String {
+        let from = amount(was, unit)
+        switch (value > was, move) {
+        case (true, .good): return AppLocalization.string("Up from \(from), better")
+        case (true, .bad): return AppLocalization.string("Up from \(from), worse")
+        case (true, .unsaid): return AppLocalization.string("Up from \(from)")
+        case (false, .good): return AppLocalization.string("Down from \(from), better")
+        case (false, .bad): return AppLocalization.string("Down from \(from), worse")
+        case (false, .unsaid): return AppLocalization.string("Down from \(from)")
+        }
+    }
+
+    /// A number's limit in words, saying so when the number is past it (the
+    /// card shows that only by turning the limit red).
+    static func spokenLimit(_ limit: Double, unit: String, past: Bool) -> String {
+        past ? AppLocalization.string("Past the limit of \(amount(limit, unit))")
+            : AppLocalization.string("Limit \(amount(limit, unit))")
     }
 
     /// A number in the app's language with its unit: a percent or a degree
@@ -347,7 +383,7 @@ struct PulseLookBody: View {
                     .scaledFont(.title3.weight(.bold))
                     .foregroundStyle(tint)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(verbatim: AppLocalization.string("You asked: \(asked)") + " · " + place)
+                Text(AppLocalization.string("You asked: \(asked) · \(place)"))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
