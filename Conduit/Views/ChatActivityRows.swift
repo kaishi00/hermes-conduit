@@ -426,6 +426,62 @@ struct ChatWorkingLine: View {
     }
 }
 
+/// The line a chat shows once its own turn has ended while delegate
+/// agents it started still work (issue 2142): how many it waits for, and
+/// that Hermes goes on when they finish. The turn isn't running, so the
+/// agent's mark rests and nothing counts up. A tap opens the Delegate
+/// agents sheet. While it shows it asks Hermes now and then which agents
+/// still run, so an end the chat never heard of doesn't leave it waiting.
+struct ChatAwaitingAgentsLine: View {
+    let count: Int
+    let showAgents: () -> Void
+    /// Reads the agents Hermes still has (AppState.refreshDelegateAgents).
+    let refresh: () async -> Void
+    /// Between two reads of the roster.
+    static let refreshInterval: Duration = .seconds(15)
+    @Environment(\.chatRowState) private var rowState
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        let lineLimit = dynamicTypeSize.isAccessibilitySize ? nil : 1 as Int?
+        Button {
+            Haptics.selection()
+            showAgents()
+        } label: {
+            HStack(spacing: 9) {
+                ConduitAgentMark(identity: rowState.agentIdentity, glow: rowState.agentGlowTint)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(AppLocalization.string("Waiting for \(count) background agents"))
+                        .scaledFont(.subheadline.weight(.medium))
+                        .foregroundStyle(.primary)
+                        .lineLimit(lineLimit)
+                    Text("Will resume when that work finishes")
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(lineLimit)
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "person.2")
+                    .scaledFont(.footnote.weight(.semibold))
+                    .foregroundStyle(Color.conduitAccent)
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityElement(children: .combine)
+        .accessibilityHint("Shows the delegate agents")
+        .task {
+            while !Task.isCancelled {
+                try? await Task.sleep(for: Self.refreshInterval)
+                guard !Task.isCancelled else { return }
+                await refresh()
+            }
+        }
+    }
+}
+
 // MARK: - Runs of steps
 
 /// One thinking or tool step of a run, as the run's card needs it.

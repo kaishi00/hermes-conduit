@@ -107,7 +107,8 @@ struct ChatView: View {
             isBusy: appState.isBusy,
             repliesElsewhere: appState.activeChatRepliesElsewhere,
             isShown: appState.savedCopyScrollSessionKey == nil,
-            working: working
+            working: working,
+            agentsAwaited: appState.backgroundAgentsAwaited
         )
     }
 
@@ -556,6 +557,12 @@ struct ChatView: View {
                 isThinking: line.isThinking,
                 startedAt: line.startedAt,
                 repliesElsewhere: line.repliesElsewhere
+            )
+        case .awaitingAgents(let count):
+            ChatAwaitingAgentsLine(
+                count: count,
+                showAgents: { appState.showAgentsSheet = true },
+                refresh: { [weak appState = appState] in await appState?.refreshDelegateAgents() }
             )
         case .pendingSend(let pending):
             PendingComposerSendBubble(pending: pending)

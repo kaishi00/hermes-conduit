@@ -632,6 +632,48 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertNil(b.model)
     }
 
+    /// Issue 2142: a chat opened while its delegate agents run never saw
+    /// them start, so Hermes' roster (`subagent.list`) gives it their cards.
+    func testARosterRowIsTheCardItsEventsWouldHaveMade() throws {
+        func row(_ json: String) throws -> [String: AnyCodable]? {
+            try JSONDecoder().decode(AnyCodable.self, from: Data(json.utf8)).objectValue
+        }
+        let running = try XCTUnwrap(DelegateAgentActivity(
+            rosterRow: row(#"{"subagent_id": "a", "goal": "Research", "model": "glm", "status": "running", "last_tool": "web_search", "depth": 0}"#),
+            sessionId: "s1"
+        ))
+        XCTAssertEqual(running.id, "a")
+        XCTAssertEqual(running.goal, "Research")
+        XCTAssertEqual(running.model, "glm")
+        XCTAssertEqual(running.status, .running)
+        XCTAssertEqual(running.currentTool, "web_search")
+        XCTAssertEqual(running.sessionId, "s1")
+        XCTAssertTrue(running.hasGatewayID, "the roster can end it later")
+
+        let queued = try XCTUnwrap(DelegateAgentActivity(rosterRow: row(#"{"subagent_id": "b", "status": "queued", "model": ""}"#), sessionId: "s1"))
+        XCTAssertEqual(queued.status, .queued)
+        XCTAssertNil(queued.model)
+        let unnamed = try XCTUnwrap(DelegateAgentActivity(rosterRow: row(#"{"subagent_id": "c", "status": "thinking"}"#), sessionId: "s1"))
+        XCTAssertEqual(unnamed.status, .running, "the roster lists the agents Hermes still has")
+        let timedOut = try XCTUnwrap(DelegateAgentActivity(rosterRow: row(#"{"subagent_id": "d", "status": "timeout"}"#), sessionId: "s1"))
+        XCTAssertEqual(timedOut.status, .failed)
+        XCTAssertNil(DelegateAgentActivity(rosterRow: try row(#"{"subagent_id": "", "goal": "g"}"#), sessionId: "s1"))
+        XCTAssertNil(DelegateAgentActivity(rosterRow: nil, sessionId: "s1"))
+    }
+
+    func testARosterAddsOnlyTheAgentsTheChatHasNoCardFor() {
+        func agent(_ id: String, _ status: DelegateAgentActivity.Status, goal: String = "g") -> DelegateAgentActivity {
+            DelegateAgentActivity(id: id, goal: goal, status: status, taskCount: 1, taskIndex: 0, stream: [], hasGatewayID: true, sessionId: "s1")
+        }
+        let cards = [agent("a", .completed, goal: "as its events left it")]
+        let adopted = DelegateAgentActivity.adopting(cards, roster: [agent("a", .running), agent("b", .running), agent("c", .queued)])
+        XCTAssertEqual(adopted.map(\.id), ["a", "b", "c"])
+        XCTAssertEqual(adopted[0], cards[0], "an end the chat heard stands over a roster read before it")
+        XCTAssertEqual(DelegateAgentActivity.activeCount(adopted), 2, "queued and running both keep the chat waiting")
+        XCTAssertEqual(DelegateAgentActivity.adopting(cards, roster: []), cards)
+        XCTAssertEqual(DelegateAgentActivity.activeCount(cards), 0)
+    }
+
     func testFirstReportedEndWins() {
         let done = DelegateAgentActivity(id: "a", goal: "g", status: .completed, taskCount: 1, taskIndex: 0, stream: [])
         let lateFail = DelegateAgentActivity(id: "a", goal: "g", status: .failed, taskCount: 1, taskIndex: 0, stream: [])

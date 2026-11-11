@@ -431,7 +431,7 @@ final class TranscriptLayout: UICollectionViewLayout {
     static func estimatedHeight(of row: TranscriptRow, width: CGFloat) -> CGFloat {
         TranscriptPerf.note(.rowHeightEstimate)
         switch row.kind {
-        case .loadEarlier, .savedCopyStatus, .thinking, .working, .streaming:
+        case .loadEarlier, .savedCopyStatus, .thinking, .working, .awaitingAgents, .streaming:
             return rowGap + 44
         case .empty:
             return rowGap + 320
