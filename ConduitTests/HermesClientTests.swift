@@ -4245,7 +4245,7 @@ final class HermesClientTests: XCTestCase {
         func width(_ live: CGFloat, kept: CGFloat?, idiom: UIUserInterfaceIdiom = .phone,
                    holders: Int = 0, sinceClosed: TimeInterval? = nil) -> CGFloat {
             InterfaceOrientationGate.layoutWidth(live: live, kept: kept, idiom: idiom,
-                                                 landscapeHolders: holders, sinceClosed: sinceClosed)
+                                                 holders: holders, sinceClosed: sinceClosed)
         }
         XCTAssertEqual(width(956, kept: 440, holders: 1), 440, "Open: the portrait width")
         XCTAssertEqual(width(956, kept: 440, sinceClosed: 0.3), 440, "Turning back after it closed")
@@ -4255,11 +4255,11 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(width(956, kept: nil, holders: 1), 956, "Nothing laid out yet")
         XCTAssertEqual(width(1180, kept: 820, idiom: .pad, holders: 1), 1180, "An iPad follows its window")
         // What the screens wait out before they take up the window's width.
-        XCTAssertEqual(InterfaceOrientationGate.holdLeft(landscapeHolders: 1, sinceClosed: nil), .infinity)
-        XCTAssertEqual(InterfaceOrientationGate.holdLeft(landscapeHolders: 1, sinceClosed: 9), .infinity, "Opened again")
-        XCTAssertEqual(InterfaceOrientationGate.holdLeft(landscapeHolders: 0, sinceClosed: 0.5) ?? 0, 1.5, accuracy: 0.001)
-        XCTAssertNil(InterfaceOrientationGate.holdLeft(landscapeHolders: 0, sinceClosed: 2), "Turned back")
-        XCTAssertNil(InterfaceOrientationGate.holdLeft(landscapeHolders: 0, sinceClosed: nil), "Never opened")
+        XCTAssertEqual(InterfaceOrientationGate.holdLeft(holders: 1, sinceClosed: nil), .infinity)
+        XCTAssertEqual(InterfaceOrientationGate.holdLeft(holders: 1, sinceClosed: 9), .infinity, "Opened again")
+        XCTAssertEqual(InterfaceOrientationGate.holdLeft(holders: 0, sinceClosed: 0.5) ?? 0, 1.5, accuracy: 0.001)
+        XCTAssertNil(InterfaceOrientationGate.holdLeft(holders: 0, sinceClosed: 2), "Turned back")
+        XCTAssertNil(InterfaceOrientationGate.holdLeft(holders: 0, sinceClosed: nil), "Never opened")
     }
 
     func testABotScreenStoppedStreamsMessagesAreStale() {

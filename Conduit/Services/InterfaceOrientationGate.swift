@@ -9,7 +9,12 @@ import UIKit
 enum InterfaceOrientationGate {
     /// The full screens that turn sideways now open.
     private(set) static var landscapeHolders = 0
-    /// When the last of them closed: the phone turns back after it.
+    /// The bot's screens open (a sheet, its full screen inside it): while
+    /// one is, the screens under it keep their width, so Exit Full Screen
+    /// with the phone still turning back, or a Duo folded meanwhile, can't
+    /// rebuild the views the sheet opened from either (DeepSeek on #2229).
+    private(set) static var layoutHolders = 0
+    /// When the last full screen or sheet closed: the phone turns back after it.
     private(set) static var lastClosed: Date?
     /// Long enough for the phone to turn back to portrait once a full
     /// screen closes.
@@ -43,9 +48,21 @@ enum InterfaceOrientationGate {
         apply(turnTo: .portrait)
     }
 
-    /// The width a screen under the full screen lays itself out by: on an
+    /// A bot's screen opened: the screens under it keep their width.
+    static func holdLayout() {
+        layoutHolders += 1
+    }
+
+    /// It closed: they follow the window again once the phone has turned back.
+    static func releaseLayout() {
+        guard layoutHolders > 0 else { return }
+        layoutHolders -= 1
+        if layoutHolders == 0 { lastClosed = Date() }
+    }
+
+    /// The width a screen under a bot's screen lays itself out by: on an
     /// iPhone, the one it had before the phone turned (`kept`), while the
-    /// full screen is open and as the phone turns back. Turned sideways, an
+    /// screen (its sheet or full screen) is open and as the phone turns back. Turned sideways, an
     /// iPhone's window is wide enough to split the tabs into columns and to
     /// put a chat's Work panel beside it; either rebuilds the views the
     /// bot's screen opened from, and its sheet and full screen closed with
@@ -53,26 +70,26 @@ enum InterfaceOrientationGate {
     /// window's, under the black.
     static func layoutWidth(live: CGFloat, kept: CGFloat?) -> CGFloat {
         layoutWidth(live: live, kept: kept, idiom: UIDevice.current.userInterfaceIdiom,
-                    landscapeHolders: landscapeHolders,
+                    holders: landscapeHolders + layoutHolders,
                     sinceClosed: lastClosed.map { Date().timeIntervalSince($0) })
     }
 
     static func layoutWidth(live: CGFloat, kept: CGFloat?, idiom: UIUserInterfaceIdiom,
-                            landscapeHolders: Int, sinceClosed: TimeInterval?) -> CGFloat {
+                            holders: Int, sinceClosed: TimeInterval?) -> CGFloat {
         guard idiom == .phone, let kept, kept > 0,
-              holdLeft(landscapeHolders: landscapeHolders, sinceClosed: sinceClosed) != nil else { return live }
+              holdLeft(holders: holders, sinceClosed: sinceClosed) != nil else { return live }
         return kept
     }
 
     /// How much longer the screens under it keep their width: for as long
-    /// as one is open, then the rest of the turn back; nil once they follow
-    /// the window again.
+    /// as a bot's screen or its full screen is open, then the rest of the
+    /// turn back; nil once they follow the window again.
     static var holdLeft: TimeInterval? {
-        holdLeft(landscapeHolders: landscapeHolders, sinceClosed: lastClosed.map { Date().timeIntervalSince($0) })
+        holdLeft(holders: landscapeHolders + layoutHolders, sinceClosed: lastClosed.map { Date().timeIntervalSince($0) })
     }
 
-    static func holdLeft(landscapeHolders: Int, sinceClosed: TimeInterval?) -> TimeInterval? {
-        if landscapeHolders > 0 { return .infinity }
+    static func holdLeft(holders: Int, sinceClosed: TimeInterval?) -> TimeInterval? {
+        if holders > 0 { return .infinity }
         guard let sinceClosed, sinceClosed < turnBackTime else { return nil }
         return turnBackTime - sinceClosed
     }

@@ -25,8 +25,15 @@ struct BotScreenSheet: View {
             // The screen covers the open chat from wherever it opened (the
             // chat's menu, a Work panel card, Bots Home): what arrives
             // meanwhile hasn't been read, and closing it reads it (#1579).
-            .onAppear { appState.botScreenSheetsOpen += 1 }
+            // While it's open the screens under it keep their width, so
+            // turning the phone for its full screen doesn't rebuild the
+            // views it opened from (`InterfaceOrientationGate.layoutWidth`).
+            .onAppear {
+                appState.botScreenSheetsOpen += 1
+                InterfaceOrientationGate.holdLayout()
+            }
             .onDisappear {
+                InterfaceOrientationGate.releaseLayout()
                 appState.botScreenSheetsOpen = max(0, appState.botScreenSheetsOpen - 1)
                 if appState.botScreenSheetsOpen == 0 { appState.clearShownChatNotifications() }
             }
