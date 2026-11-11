@@ -1991,7 +1991,7 @@ README.md
 - Not tried on a device: a press with Conduit not running, a token that expires, and a push's reload.
 - A card rewritten in place (Updated) shows in the widget at the next push or periodic reload, not at once from the app.
 
-**Checked:** 2026-11-11, #2194 (issue 2190).
+**Checked:** 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
 
 ## Artifacts
 
