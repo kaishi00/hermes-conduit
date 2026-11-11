@@ -188,7 +188,8 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     /// nothing inside a Markdown link does, so the link reaches PreviewText
     /// whole and its address isn't read. A malformed link gives up its hold:
     /// an address at its first space not opening a title or at a line
-    /// break, a title still open after a link's length.
+    /// break, and an address or title still open a link's length after its
+    /// "](".
     static func takeCompleteSentences(from text: inout String) -> [String] {
         var sentences: [String] = []
         var start = text.startIndex
@@ -196,14 +197,15 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         var inLinkText = false
         var addressDepth = 0
         var titleCloser: Character?
-        var titleStart = text.startIndex
+        var holdEnd = text.endIndex
         while index < text.endIndex {
             let character = text[index]
             var next = text.index(after: index)
             var ends = false
-            if titleCloser != nil, text.distance(from: titleStart, to: index) >= Self.linkHoldLimit {
-                // A title still open after a link's length never closed:
-                // give up the hold, and read this character as plain text.
+            if addressDepth > 0, index >= holdEnd {
+                // An address or title still open a link's length after its
+                // "](" never closed: give up the hold, and read this
+                // character as plain text.
                 titleCloser = nil
                 addressDepth = 0
             }
@@ -212,6 +214,7 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
                     inLinkText = false
                     if next < text.endIndex, text[next] == "(" {
                         addressDepth = 1
+                        holdEnd = text.index(index, offsetBy: Self.linkHoldLimit, limitedBy: text.endIndex) ?? text.endIndex
                         next = text.index(after: next)
                     }
                 }
@@ -234,7 +237,6 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
                 } else if "\"'(".contains(character), index > start,
                           text[text.index(before: index)].isWhitespace {
                     titleCloser = character == "(" ? ")" : character
-                    titleStart = index
                 } else if character.isNewline || (character.isWhitespace && addressDepth > 1) {
                     // A title follows the address itself, never an unclosed
                     // "(" inside it, and a line break ends its sentence too.
