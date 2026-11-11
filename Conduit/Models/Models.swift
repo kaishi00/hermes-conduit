@@ -1108,6 +1108,7 @@ extension DelegateAgentActivity {
         let named = row["status"]?.stringValue?.lowercased() ?? ""
         let status: Status = named == "pending" ? .queued
             : ["error", "timeout"].contains(named) ? .failed
+            : ["cancelled", "canceled", "stopped"].contains(named) ? .interrupted
             : Status(rawValue: named) ?? .running
         self.init(
             id: id,

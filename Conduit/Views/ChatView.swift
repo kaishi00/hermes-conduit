@@ -667,8 +667,10 @@ struct ChatView: View {
             // Hermes is asked which still run, at once and then now and
             // then, so an end this chat never heard of doesn't leave it
             // waiting. Only while the chat shows, as the check above.
-            .task(id: "\(appState.activeSessionId ?? "")|\(appState.backgroundAgentsAwaited > 0)|\(scenePhase == .active)|\(appState.showSidebar && !shell.hasChatBeside)|\(shell.isTabActive)") {
+            // Nor under a saved copy of another chat, which draws no line.
+            .task(id: "\(appState.activeSessionId ?? "")|\(appState.backgroundAgentsAwaited > 0)|\(scenePhase == .active)|\(appState.showSidebar && !shell.hasChatBeside)|\(shell.isTabActive)|\(appState.savedCopyScrollSessionKey == nil)") {
                 guard appState.backgroundAgentsAwaited > 0, scenePhase == .active,
+                      appState.savedCopyScrollSessionKey == nil,
                       !appState.showSidebar || shell.hasChatBeside, shell.isTabActive else { return }
                 while !Task.isCancelled {
                     await appState.refreshDelegateAgents()

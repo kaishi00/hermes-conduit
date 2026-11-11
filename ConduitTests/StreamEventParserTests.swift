@@ -657,6 +657,8 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(unnamed.status, .running, "the roster lists the agents Hermes still has")
         let timedOut = try XCTUnwrap(DelegateAgentActivity(rosterRow: row(#"{"subagent_id": "d", "status": "timeout"}"#), sessionId: "s1"))
         XCTAssertEqual(timedOut.status, .failed)
+        let cancelled = try XCTUnwrap(DelegateAgentActivity(rosterRow: row(#"{"subagent_id": "e", "status": "cancelled"}"#), sessionId: "s1"))
+        XCTAssertEqual(cancelled.status, .interrupted, "an ended agent the roster still lists doesn't keep the chat waiting")
         XCTAssertNil(DelegateAgentActivity(rosterRow: try row(#"{"subagent_id": "", "goal": "g"}"#), sessionId: "s1"))
         XCTAssertNil(DelegateAgentActivity(rosterRow: nil, sessionId: "s1"))
     }
