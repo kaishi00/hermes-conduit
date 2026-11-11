@@ -322,8 +322,14 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertNil(merged.cards[1].sentAt)
         XCTAssertNil(merged.cards[2].sentAt)
         XCTAssertEqual(merged.note, "Couldn't reach Hermes")
-        // A read that reached the host answers a note that it couldn't.
-        XCTAssertNil(fresh.merging(previous, now: now, answered: ["Couldn't reach Hermes"]).note)
+        // A read that reached the host answers the widget's own couldn't-reach note, not Do it's.
+        let unreached = previous.with(note: .some("Couldn't reach Hermes"), noteAt: now.addingTimeInterval(-60),
+                                      answeredByRead: true)
+        XCTAssertNil(fresh.merging(unreached, now: now).note)
+        XCTAssertTrue(try JSONDecoder().decode(PulseWidgetSnapshot.self, from: JSONEncoder().encode(unreached))
+            .noteAnsweredByRead)
+        // A later edit that keeps the note keeps what kind it is.
+        XCTAssertTrue(unreached.with(cards: [row(1)]).noteAnsweredByRead)
         // A quarter of an hour on, the note is gone.
         XCTAssertNil(fresh.merging(previous, now: now.addingTimeInterval(16 * 60)).note)
         // Another dashboard's read keeps nothing.

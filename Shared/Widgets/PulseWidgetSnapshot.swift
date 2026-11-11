@@ -58,9 +58,13 @@ struct PulseWidgetSnapshot: Codable, Equatable {
     /// opening to sign in again, and since when.
     let note: String?
     let noteAt: Date?
+    /// The note says the widget couldn't reach the host, or must sign in
+    /// again: a read that reaches the host answers it. Do it's notes stay.
+    let noteAnsweredByRead: Bool
 
     init(dashboardID: UUID, appLanguage: String, cards: [PulseWidgetCard], openCount: Int,
-         nextLookAt: Date?, quietUntil: Date?, note: String? = nil, noteAt: Date? = nil) {
+         nextLookAt: Date?, quietUntil: Date?, note: String? = nil, noteAt: Date? = nil,
+         noteAnsweredByRead: Bool = false) {
         schemaVersion = Self.currentSchemaVersion
         self.dashboardID = dashboardID
         self.appLanguage = appLanguage
@@ -71,14 +75,14 @@ struct PulseWidgetSnapshot: Codable, Equatable {
         self.quietUntil = quietUntil
         self.note = note.flatMap { $0.isEmpty ? nil : String($0.prefix(200)) }
         self.noteAt = self.note == nil ? nil : noteAt
+        self.noteAnsweredByRead = self.note != nil && noteAnsweredByRead
     }
 
     /// A fresh read, with what the last one kept that a read can't know:
     /// the rows Do it sent in the last day that are still open, and a
-    /// button's note from the last quarter hour, unless it's one of
-    /// `answered` (a read that reached the host answers "couldn't reach").
-    func merging(_ previous: PulseWidgetSnapshot?, now: Date = Date(),
-                 answered: Set<String> = []) -> PulseWidgetSnapshot {
+    /// button's note from the last quarter hour, unless a read reaching
+    /// the host answers it (`noteAnsweredByRead`).
+    func merging(_ previous: PulseWidgetSnapshot?, now: Date = Date()) -> PulseWidgetSnapshot {
         guard let previous, previous.dashboardID == dashboardID else { return self }
         let sent = Dictionary(previous.cards.compactMap { card in card.sentAt.map { (card.id, $0) } },
                               uniquingKeysWith: { first, _ in first })
@@ -90,25 +94,28 @@ struct PulseWidgetSnapshot: Codable, Equatable {
             return card
         }
         let recent = note == nil && previous.noteAt.map { now.timeIntervalSince($0) < Self.noteLifetime } == true
-            && !answered.contains(previous.note ?? "")
+            && !previous.noteAnsweredByRead
         return with(cards: kept, note: recent ? .some(previous.note) : nil, noteAt: recent ? previous.noteAt : nil)
     }
 
-    /// The same, with these changed. `note: .some(nil)` takes the note off.
+    /// The same, with these changed. `note: .some(nil)` takes the note off;
+    /// a new note is Do it's (kept through reads) unless `answeredByRead`.
     func with(cards: [PulseWidgetCard]? = nil, openCount: Int? = nil, nextLookAt: Date?? = nil,
-              note: String?? = nil, noteAt: Date? = nil) -> PulseWidgetSnapshot {
+              note newNote: String?? = nil, noteAt: Date? = nil, answeredByRead: Bool = false) -> PulseWidgetSnapshot {
         let cards = cards ?? self.cards
-        let note = note ?? self.note
+        let note = newNote ?? self.note
+        let answered = newNote == nil ? noteAnsweredByRead : answeredByRead
         return PulseWidgetSnapshot(
             dashboardID: dashboardID, appLanguage: appLanguage, cards: cards,
             openCount: openCount ?? max(self.openCount - (self.cards.count - cards.count), cards.count),
             nextLookAt: nextLookAt ?? self.nextLookAt, quietUntil: quietUntil,
-            note: note, noteAt: noteAt ?? self.noteAt ?? (note == nil ? nil : Date())
+            note: note, noteAt: noteAt ?? self.noteAt ?? (note == nil ? nil : Date()), noteAnsweredByRead: answered
         )
     }
 
     private enum CodingKeys: String, CodingKey {
         case schemaVersion, dashboardID, appLanguage, cards, openCount, nextLookAt, quietUntil, note, noteAt
+        case noteAnsweredByRead
     }
 
     init(from decoder: Decoder) throws {
@@ -126,9 +133,16 @@ struct PulseWidgetSnapshot: Codable, Equatable {
             nextLookAt: try values.decodeIfPresent(Date.self, forKey: .nextLookAt),
             quietUntil: try values.decodeIfPresent(Date.self, forKey: .quietUntil),
             note: try values.decodeIfPresent(String.self, forKey: .note),
-            noteAt: try values.decodeIfPresent(Date.self, forKey: .noteAt)
+            noteAt: try values.decodeIfPresent(Date.self, forKey: .noteAt),
+            noteAnsweredByRead: try values.decodeIfPresent(Bool.self, forKey: .noteAnsweredByRead) ?? false
         )
     }
+}
+
+/// The widget's own notes, as keys of the app's catalog.
+enum PulseWidgetNote {
+    static let openConduit = "Open Conduit to refresh"
+    static let unreachable = "Conduit couldn't reach Hermes. Open Conduit and check the connection."
 }
 
 /// The Pulse widget's file, beside the launcher's in the widgets' App Group.
@@ -178,7 +192,7 @@ struct PulseWidgetStore {
 /// A tap on the Pulse widget: the Pulse screen, at a card when one was
 /// tapped, on the dashboard the widget showed.
 /// `conduit://widget/pulse?dashboard=<uuid>[&card=<id>]`.
-struct PulseWidgetLink: Equatable {
+struct PulseWidgetLink: Hashable {
     let dashboardID: UUID
     let card: Int?
 
