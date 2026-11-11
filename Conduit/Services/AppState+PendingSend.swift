@@ -228,13 +228,18 @@ extension AppState {
         title: String,
         stoppedQuietly: Bool
     ) {
-        composerRestoreRequests.append(ComposerRestoreRequest(
+        let request = ComposerRestoreRequest(
             dashboardID: dashboardID,
             key: key,
             draft: draft,
             focuses: false,
             pending: nil
-        ))
+        )
+        // Refused because another app held the chat, which Conduit is now
+        // taking over on its own: it keeps the words and sends them itself
+        // (issue 2140).
+        if !stoppedQuietly, keepsWordsForChatTakeover(request) { return }
+        composerRestoreRequests.append(request)
         // Another dashboard or profile on screen: its composer's notices
         // are about its own chats.
         guard stoppedQuietly, dashboardID == activeDashboardID, key.profile == activeProfile else { return }
@@ -346,14 +351,17 @@ extension AppState {
         let onScreen = isOnScreen(pending)
         // Its chat went while it was being sent: as when it's handed back.
         let chatIsGone = !onScreen && pendingComposerSendChatIsGone(pending)
-        composerRestoreRequests.append(
-            restoreRequest(
-                for: pending,
-                key: chatIsGone ? durableComposerDraftKeyOnScreen : submittedDraftKey,
-                redirects: chatIsGone,
-                focuses: false
-            )
+        let request = restoreRequest(
+            for: pending,
+            key: chatIsGone ? durableComposerDraftKeyOnScreen : submittedDraftKey,
+            redirects: chatIsGone,
+            focuses: false
         )
+        // Refused because another app held the chat, which Conduit is now
+        // taking over on its own: it keeps the message, file and all, and
+        // sends it itself (issue 2140).
+        if !mayHaveGone, keepsWordsForChatTakeover(request) { return }
+        composerRestoreRequests.append(request)
         if !onScreen, !mayHaveGone, pending.dashboardID == activeDashboardID, pending.profile == activeProfile {
             composerNotice = pendingComposerSendNotice(for: pending, onScreen: onScreen, chatIsGone: chatIsGone)
         }

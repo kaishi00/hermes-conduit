@@ -1304,10 +1304,13 @@ struct ComposerBar: View, Equatable {
     }
 
     /// The chat is Conduit's now: send the refused draft again, exactly as
-    /// the Send button would. When that can't happen here (another chat is
-    /// open, the composer isn't offering Send, or its draft isn't the refused
-    /// message, as after a refused voice turn), the ready notice stays and
-    /// asks the user to send again.
+    /// the Send button would. After a takeover the user tapped, or one
+    /// whose kept message Conduit couldn't send itself (another chat was
+    /// open, or the composer was locked), so its words came back here. When
+    /// that can't happen here (another chat is open, the composer isn't
+    /// offering Send, or its draft isn't the refused message, as after a
+    /// refused voice turn), the ready notice stays and asks the user to send
+    /// again.
     private func resendAfterChatTakeover() {
         guard let takeover = appState.activeChatTakeover, takeover.phase == .ready,
               case .send = action else { return }
@@ -1872,8 +1875,15 @@ struct ComposerBar: View, Equatable {
     /// otherwise into their chat's stored draft.
     private func applyComposerRestoreRequests() {
         guard let loadedDraftKey else { return }
+        var restoredIntoField = false
         for request in appState.composerRestoreRequests where request.dashboardID == appState.activeDashboardID {
             if restoreRequest(request, belongsTo: loadedDraftKey) {
+                // Only a send's own words can be the refused message: a
+                // shared draft, a dictation retry or a waiting message's
+                // Edit is never sent on its own.
+                if request.sharedDraftID == nil, request.dictationClipID == nil, !request.focuses {
+                    restoredIntoField = true
+                }
                 let restored = ComposerDraft(text: text, attachments: attachments, replyReference: replyReference)
                     .restoring(request.draft)
                 // Put back, not typed: a "/cmd" draft opens no suggestions.
@@ -1894,6 +1904,10 @@ struct ComposerBar: View, Equatable {
             }
             appState.consumeComposerRestoreRequest(request.id)
         }
+        // A refused message can come back in the same update its takeover
+        // finished in, after the ready token's change found the field empty:
+        // it goes now that it's here (issue 2140).
+        if restoredIntoField { resendAfterChatTakeover() }
     }
 
     private func restoreRequest(_ request: ComposerRestoreRequest, belongsTo key: ComposerDraftKey) -> Bool {
