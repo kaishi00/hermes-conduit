@@ -1458,7 +1458,11 @@ struct VoiceSettingsView: View {
             IPhoneVoiceSettingsView(onPickedAppLanguageVoice: {
                 if actions.runTTSTest != nil, !isRunningTest { runTest(kind: .tts) }
             })
-            Text(AppLocalization.string("Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search iPhone Settings for “Voices” to download them."))
+            Text(verbatim: SystemSettings.worded(
+                iPhone: AppLocalization.string("Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search iPhone Settings for “Voices” to download them."),
+                iPad: AppLocalization.string("Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search iPad Settings for “Voices” to download them."),
+                mac: AppLocalization.string("Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search System Settings for “Voices” to download them.")
+            ))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }

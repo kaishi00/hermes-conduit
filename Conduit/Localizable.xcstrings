@@ -5643,6 +5643,170 @@
         }
       }
     },
+    "Only a screen-reader voice for %@ is installed on this iPad, so replies sound robotic. To download a natural one, search iPad Settings for “Voices”; it shows up here once it's done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für %@ ist auf diesem iPad nur eine Bildschirmleser-Stimme installiert, daher klingen Antworten roboterhaft. Suche zum Laden einer natürlichen Stimme in den iPad-Einstellungen nach „Stimmen“; sobald sie fertig ist, erscheint sie hier."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este iPad solo tiene una voz de lector de pantalla para %@, así que las respuestas suenan robóticas. Para descargar una natural, busca «Voces» en Ajustes del iPad; aparecerá aquí cuando termine."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet iPad n'a qu'une voix de lecteur d'écran pour %@, les réponses sonnent donc robotiques. Pour télécharger une voix naturelle, cherche « Voix » dans Réglages ; elle apparaîtra ici une fois prête."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPad ini hanya punya suara pembaca layar untuk %@, jadi balasan terdengar seperti robot. Untuk mengunduh suara yang alami, cari “Suara” di Pengaturan iPad; suara itu muncul di sini setelah selesai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su questo iPad c'è solo una voce per lettore di schermo per %@, quindi le risposte suonano robotiche. Per scaricarne una naturale, cerca “Voci” in Impostazioni; comparirà qui appena pronta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPadには%@のスクリーンリーダー用の声しかないため、返信はロボットのような声になります。自然な声をダウンロードするには、iPadの「設定」で「声」を検索してください。完了するとここに表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 iPad에는 %@ 화면 읽기용 음성만 있어 답장이 로봇처럼 들립니다. 자연스러운 음성을 다운로드하려면 iPad 설정에서 '음성'을 검색하세요. 완료되면 여기에 표시됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten iPad ma dla języka %@ tylko głos czytnika ekranu, więc odpowiedzi brzmią jak robot. Aby pobrać naturalny głos, wyszukaj „Głosy” w Ustawieniach iPada; pojawi się tutaj po pobraniu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este iPad só tem uma voz de leitor de tela para %@, então as respostas soam robóticas. Para baixar uma natural, busque “Vozes” nos Ajustes do iPad; ela aparece aqui quando terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На этом iPad для языка «%@» есть только голос для чтения с экрана, поэтому ответы звучат как робот. Чтобы загрузить естественный голос, найдите «Голоса» через поиск в Настройках iPad; он появится здесь, когда загрузится."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu iPad'de %@ için yalnızca ekran okuyucu sesi var, bu yüzden yanıtlar robot gibi duyuluyor. Doğal bir ses indirmek için iPad Ayarlar'da “Sesler” diye arayın; bittiğinde burada görünür."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 iPad 只有%@的屏幕阅读器声音，所以回复听起来像机器人。要下载自然的声音，请在 iPad 的“设置”中搜索“声音”，下载完成后会显示在这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台 iPad 只有%@的螢幕閱讀器聲音，因此回覆聽起來像機器人。要下載自然的聲音，請在 iPad 的「設定」中搜尋「聲音」，完成後會顯示在這裡。"
+          }
+        }
+      }
+    },
+    "Only a screen-reader voice for %@ is installed on this Mac, so replies sound robotic. To download a natural one, search System Settings for “Voices”; it shows up here once it's done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für %@ ist auf diesem Mac nur eine Bildschirmleser-Stimme installiert, daher klingen Antworten roboterhaft. Suche zum Laden einer natürlichen Stimme in den Systemeinstellungen nach „Stimmen“; sobald sie fertig ist, erscheint sie hier."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este Mac solo tiene una voz de lector de pantalla para %@, así que las respuestas suenan robóticas. Para descargar una natural, busca «Voces» en Ajustes del Sistema; aparecerá aquí cuando termine."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce Mac n'a qu'une voix de lecteur d'écran pour %@, les réponses sonnent donc robotiques. Pour télécharger une voix naturelle, cherche « Voix » dans Réglages Système ; elle apparaîtra ici une fois prête."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac ini hanya punya suara pembaca layar untuk %@, jadi balasan terdengar seperti robot. Untuk mengunduh suara yang alami, cari “Suara” di Pengaturan Sistem; suara itu muncul di sini setelah selesai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su questo Mac c'è solo una voce per lettore di schermo per %@, quindi le risposte suonano robotiche. Per scaricarne una naturale, cerca “Voci” in Impostazioni di Sistema; comparirà qui appena pronta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このMacには%@のスクリーンリーダー用の声しかないため、返信はロボットのような声になります。自然な声をダウンロードするには、「システム設定」で「声」を検索してください。完了するとここに表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac에는 %@ 화면 읽기용 음성만 있어 답장이 로봇처럼 들립니다. 자연스러운 음성을 다운로드하려면 시스템 설정에서 '음성'을 검색하세요. 완료되면 여기에 표시됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten Mac ma dla języka %@ tylko głos czytnika ekranu, więc odpowiedzi brzmią jak robot. Aby pobrać naturalny głos, wyszukaj „Głosy” w Ustawieniach systemowych; pojawi się tutaj po pobraniu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este Mac só tem uma voz de leitor de tela para %@, então as respostas soam robóticas. Para baixar uma natural, busque “Vozes” nos Ajustes do Sistema; ela aparece aqui quando terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На этом Mac для языка «%@» есть только голос для чтения с экрана, поэтому ответы звучат как робот. Чтобы загрузить естественный голос, найдите «Голоса» через поиск в Системных настройках; он появится здесь, когда загрузится."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Mac'te %@ için yalnızca ekran okuyucu sesi var, bu yüzden yanıtlar robot gibi duyuluyor. Doğal bir ses indirmek için Sistem Ayarları'nda “Sesler” diye arayın; bittiğinde burada görünür."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 Mac 只有%@的屏幕阅读器声音，所以回复听起来像机器人。要下载自然的声音，请在 “系统设置”中搜索“声音”，下载完成后会显示在这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台 Mac 只有%@的螢幕閱讀器聲音，因此回覆聽起來像機器人。要下載自然的聲音，請在 「系統設定」中搜尋「聲音」，完成後會顯示在這裡。"
+          }
+        }
+      }
+    },
     "No voice for %@ is installed on this iPhone yet. To download one, search iPhone Settings for “Voices”." : {
       "localizations" : {
         "de" : {
@@ -5721,6 +5885,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "這部 iPhone 尚未安裝%@的聲音。要下載，請在 iPhone 的「設定」中搜尋「聲音」。"
+          }
+        }
+      }
+    },
+    "No voice for %@ is installed on this iPad yet. To download one, search iPad Settings for “Voices”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für %@ ist auf diesem iPad noch keine Stimme installiert. Suche zum Laden in den iPad-Einstellungen nach „Stimmen“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este iPad aún no tiene ninguna voz para %@. Para descargar una, busca «Voces» en Ajustes del iPad."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune voix pour %@ n'est encore installée sur cet iPad. Pour en télécharger une, cherche « Voix » dans Réglages."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum ada suara untuk %@ yang terpasang di iPad ini. Untuk mengunduhnya, cari “Suara” di Pengaturan iPad."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su questo iPad non c'è ancora nessuna voce per %@. Per scaricarne una, cerca “Voci” in Impostazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPadには%@の声がまだインストールされていません。ダウンロードするには、iPadの「設定」で「声」を検索してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 iPad에는 아직 %@ 음성이 설치되어 있지 않습니다. 다운로드하려면 iPad 설정에서 '음성'을 검색하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na tym iPadzie nie ma jeszcze głosu dla języka %@. Aby go pobrać, wyszukaj „Głosy” w Ustawieniach iPada."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ainda não há nenhuma voz para %@ instalada neste iPad. Para baixar uma, busque “Vozes” nos Ajustes do iPad."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На этом iPad пока нет голоса для языка «%@». Чтобы загрузить его, найдите «Голоса» через поиск в Настройках iPad."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu iPad'de %@ için henüz yüklü bir ses yok. İndirmek için iPad Ayarlar'da “Sesler” diye arayın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 iPad 还没有安装%@的声音。要下载，请在 iPad 的“设置”中搜索“声音”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台 iPad 尚未安裝%@的聲音。要下載，請在 iPad 的「設定」中搜尋「聲音」。"
+          }
+        }
+      }
+    },
+    "No voice for %@ is installed on this Mac yet. To download one, search System Settings for “Voices”." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Für %@ ist auf diesem Mac noch keine Stimme installiert. Suche zum Laden in den Systemeinstellungen nach „Stimmen“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este Mac aún no tiene ninguna voz para %@. Para descargar una, busca «Voces» en Ajustes del Sistema."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aucune voix pour %@ n'est encore installée sur ce Mac. Pour en télécharger une, cherche « Voix » dans Réglages Système."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belum ada suara untuk %@ yang terpasang di Mac ini. Untuk mengunduhnya, cari “Suara” di Pengaturan Sistem."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su questo Mac non c'è ancora nessuna voce per %@. Per scaricarne una, cerca “Voci” in Impostazioni di Sistema."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このMacには%@の声がまだインストールされていません。ダウンロードするには、「システム設定」で「声」を検索してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac에는 아직 %@ 음성이 설치되어 있지 않습니다. 다운로드하려면 시스템 설정에서 '음성'을 검색하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na tym Macu nie ma jeszcze głosu dla języka %@. Aby go pobrać, wyszukaj „Głosy” w Ustawieniach systemowych."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ainda não há nenhuma voz para %@ instalada neste Mac. Para baixar uma, busque “Vozes” nos Ajustes do Sistema."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На этом Mac пока нет голоса для языка «%@». Чтобы загрузить его, найдите «Голоса» через поиск в Системных настройках."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Mac'te %@ için henüz yüklü bir ses yok. İndirmek için Sistem Ayarları'nda “Sesler” diye arayın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 Mac 还没有安装%@的声音。要下载，请在 “系统设置”中搜索“声音”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台 Mac 尚未安裝%@的聲音。要下載，請在 「系統設定」中搜尋「聲音」。"
           }
         }
       }
@@ -6135,6 +6463,170 @@
         }
       }
     },
+    "This iPad has no Enhanced or Premium voice for %@ yet, so replies use a basic one. To download one, search iPad Settings for “Voices”; it shows up here once it's done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieses iPad hat noch keine erweiterte oder Premium-Stimme für %@, daher klingen Antworten einfach. Suche zum Laden in den iPad-Einstellungen nach „Stimmen“; sobald sie fertig ist, erscheint sie hier."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este iPad aún no tiene una voz mejorada o Premium para %@, así que las respuestas usan una básica. Para descargar una, busca «Voces» en Ajustes del iPad; aparecerá aquí cuando termine."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cet iPad n'a pas encore de voix améliorée ou Premium pour %@, les réponses utilisent donc une voix basique. Pour en télécharger une, cherche « Voix » dans Réglages ; elle apparaîtra ici une fois prête."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "iPad ini belum punya suara Ditingkatkan atau Premium untuk %@, jadi balasan memakai suara dasar. Untuk mengunduhnya, cari “Suara” di Pengaturan iPad; suara itu muncul di sini setelah selesai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo iPad non ha ancora una voce migliorata o Premium per %@, quindi le risposte usano una voce di base. Per scaricarne una, cerca “Voci” in Impostazioni; comparirà qui appena pronta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このiPadには%@の拡張またはプレミアムの声がまだないため、返信は基本の声で読み上げられます。ダウンロードするには、iPadの「設定」で「声」を検索してください。完了するとここに表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 iPad에는 아직 %@ 향상된 음성이나 프리미엄 음성이 없어 답장이 기본 음성으로 읽힙니다. 다운로드하려면 iPad 설정에서 '음성'을 검색하세요. 완료되면 여기에 표시됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten iPad nie ma jeszcze rozszerzonego ani Premium głosu dla języka %@, więc odpowiedzi czyta głos podstawowy. Aby go pobrać, wyszukaj „Głosy” w Ustawieniach iPada; pojawi się tutaj po pobraniu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este iPad ainda não tem uma voz Aprimorada ou Premium para %@, então as respostas usam uma básica. Para baixar uma, busque “Vozes” nos Ajustes do iPad; ela aparece aqui quando terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На этом iPad пока нет улучшенного или премиум-голоса для языка «%@», поэтому ответы читает простой голос. Чтобы загрузить голос, найдите «Голоса» через поиск в Настройках iPad; он появится здесь, когда загрузится."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu iPad'de %@ için henüz Geliştirilmiş ya da Premium ses yok, bu yüzden yanıtlar temel bir sesle okunuyor. İndirmek için iPad Ayarlar'da “Sesler” diye arayın; bittiğinde burada görünür."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 iPad 还没有%@的增强或优质声音，所以回复使用基础声音。要下载，请在 iPad 的“设置”中搜索“声音”，下载完成后会显示在这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台 iPad 尚未有%@的增強或高品質聲音，因此回覆使用基本聲音。要下載，請在 iPad 的「設定」中搜尋「聲音」，完成後會顯示在這裡。"
+          }
+        }
+      }
+    },
+    "This Mac has no Enhanced or Premium voice for %@ yet, so replies use a basic one. To download one, search System Settings for “Voices”; it shows up here once it's done." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dieser Mac hat noch keine erweiterte oder Premium-Stimme für %@, daher klingen Antworten einfach. Suche zum Laden in den Systemeinstellungen nach „Stimmen“; sobald sie fertig ist, erscheint sie hier."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este Mac aún no tiene una voz mejorada o Premium para %@, así que las respuestas usan una básica. Para descargar una, busca «Voces» en Ajustes del Sistema; aparecerá aquí cuando termine."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ce Mac n'a pas encore de voix améliorée ou Premium pour %@, les réponses utilisent donc une voix basique. Pour en télécharger une, cherche « Voix » dans Réglages Système ; elle apparaîtra ici une fois prête."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac ini belum punya suara Ditingkatkan atau Premium untuk %@, jadi balasan memakai suara dasar. Untuk mengunduhnya, cari “Suara” di Pengaturan Sistem; suara itu muncul di sini setelah selesai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questo Mac non ha ancora una voce migliorata o Premium per %@, quindi le risposte usano una voce di base. Per scaricarne una, cerca “Voci” in Impostazioni di Sistema; comparirà qui appena pronta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このMacには%@の拡張またはプレミアムの声がまだないため、返信は基本の声で読み上げられます。ダウンロードするには、「システム設定」で「声」を検索してください。完了するとここに表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 Mac에는 아직 %@ 향상된 음성이나 프리미엄 음성이 없어 답장이 기본 음성으로 읽힙니다. 다운로드하려면 시스템 설정에서 '음성'을 검색하세요. 완료되면 여기에 표시됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ten Mac nie ma jeszcze rozszerzonego ani Premium głosu dla języka %@, więc odpowiedzi czyta głos podstawowy. Aby go pobrać, wyszukaj „Głosy” w Ustawieniach systemowych; pojawi się tutaj po pobraniu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Este Mac ainda não tem uma voz Aprimorada ou Premium para %@, então as respostas usam uma básica. Para baixar uma, busque “Vozes” nos Ajustes do Sistema; ela aparece aqui quando terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На этом Mac пока нет улучшенного или премиум-голоса для языка «%@», поэтому ответы читает простой голос. Чтобы загрузить голос, найдите «Голоса» через поиск в Системных настройках; он появится здесь, когда загрузится."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu Mac'te %@ için henüz Geliştirilmiş ya da Premium ses yok, bu yüzden yanıtlar temel bir sesle okunuyor. İndirmek için Sistem Ayarları'nda “Sesler” diye arayın; bittiğinde burada görünür."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这台 Mac 还没有%@的增强或优质声音，所以回复使用基础声音。要下载，请在 “系统设置”中搜索“声音”，下载完成后会显示在这里。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這台 Mac 尚未有%@的增強或高品質聲音，因此回覆使用基本聲音。要下載，請在 「系統設定」中搜尋「聲音」，完成後會顯示在這裡。"
+          }
+        }
+      }
+    },
     "Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search iPhone Settings for “Voices” to download them." : {
       "localizations" : {
         "de" : {
@@ -6213,6 +6705,170 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "Conduit 會使用為回覆語言安裝的最佳聲音，或你選擇的聲音。Siri 本身的聲音不開放給 App，高品質聲音最接近：在 iPhone 的「設定」中搜尋「聲音」即可下載。"
+          }
+        }
+      }
+    },
+    "Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search iPad Settings for “Voices” to download them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nutzt die beste installierte Stimme für die Sprache der Antwort oder die, die du wählst. Siris eigene Stimmen stehen Apps nicht zur Verfügung, Premium-Stimmen kommen ihnen am nächsten: Suche in den iPad-Einstellungen nach „Stimmen“, um sie zu laden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit usa la mejor voz instalada para el idioma de la respuesta, o la que elijas. Las voces de Siri no están disponibles para las apps; las voces Premium son las más parecidas: busca «Voces» en Ajustes del iPad para descargarlas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit utilise la meilleure voix installée pour la langue de la réponse, ou celle que tu choisis. Les voix de Siri ne sont pas accessibles aux apps ; les voix Premium s'en rapprochent le plus : cherche « Voix » dans Réglages pour les télécharger."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit memakai suara terbaik yang terpasang untuk bahasa balasan, atau yang Anda pilih. Suara Siri tidak tersedia untuk app, dan suara Premium paling mendekati: cari “Suara” di Pengaturan iPad untuk mengunduhnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit usa la voce migliore installata per la lingua della risposta, o quella che scegli. Le voci di Siri non sono disponibili per le app; le voci Premium sono le più simili: cerca “Voci” in Impostazioni per scaricarle."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitは返信の言語に合う、インストール済みの最も良い声か、選んだ声を使います。Siri自体の声はアプリから使えません。最も近いのはプレミアムの声です。iPadの「設定」で「声」を検索してダウンロードできます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit는 답장 언어에 맞는 가장 좋은 설치된 음성이나 직접 고른 음성을 사용합니다. Siri 자체 음성은 앱에서 쓸 수 없으며, 프리미엄 음성이 가장 비슷합니다. iPad 설정에서 '음성'을 검색해 다운로드하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit używa najlepszego zainstalowanego głosu dla języka odpowiedzi albo tego, który wybierzesz. Głosy Siri nie są dostępne dla aplikacji, a najbliżej nich są głosy Premium: wyszukaj „Głosy” w Ustawieniach iPada, aby je pobrać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit usa a melhor voz instalada para o idioma da resposta, ou a que você escolher. As vozes da Siri não estão disponíveis para apps, e as vozes Premium são as mais próximas: busque “Vozes” nos Ajustes do iPad para baixá-las."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit использует лучший установленный голос для языка ответа или выбранный вами. Голоса Siri приложениям недоступны, ближе всего к ним премиум-голоса: найдите «Голоса» через поиск в Настройках iPad, чтобы загрузить их."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit, yanıtın dili için yüklü en iyi sesi ya da sizin seçtiğinizi kullanır. Siri'nin kendi sesleri uygulamalara açık değildir; en yakını Premium seslerdir: indirmek için iPad Ayarlar'da “Sesler” diye arayın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 会使用为回复语言安装的最佳声音，或你选择的声音。Siri 自己的声音不对 app 开放，优质声音最接近：在 iPad 的“设置”中搜索“声音”即可下载。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 會使用為回覆語言安裝的最佳聲音，或你選擇的聲音。Siri 本身的聲音不開放給 App，高品質聲音最接近：在 iPad 的「設定」中搜尋「聲音」即可下載。"
+          }
+        }
+      }
+    },
+    "Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search System Settings for “Voices” to download them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nutzt die beste installierte Stimme für die Sprache der Antwort oder die, die du wählst. Siris eigene Stimmen stehen Apps nicht zur Verfügung, Premium-Stimmen kommen ihnen am nächsten: Suche in den Systemeinstellungen nach „Stimmen“, um sie zu laden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit usa la mejor voz instalada para el idioma de la respuesta, o la que elijas. Las voces de Siri no están disponibles para las apps; las voces Premium son las más parecidas: busca «Voces» en Ajustes del Sistema para descargarlas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit utilise la meilleure voix installée pour la langue de la réponse, ou celle que tu choisis. Les voix de Siri ne sont pas accessibles aux apps ; les voix Premium s'en rapprochent le plus : cherche « Voix » dans Réglages Système pour les télécharger."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit memakai suara terbaik yang terpasang untuk bahasa balasan, atau yang Anda pilih. Suara Siri tidak tersedia untuk app, dan suara Premium paling mendekati: cari “Suara” di Pengaturan Sistem untuk mengunduhnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit usa la voce migliore installata per la lingua della risposta, o quella che scegli. Le voci di Siri non sono disponibili per le app; le voci Premium sono le più simili: cerca “Voci” in Impostazioni di Sistema per scaricarle."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitは返信の言語に合う、インストール済みの最も良い声か、選んだ声を使います。Siri自体の声はアプリから使えません。最も近いのはプレミアムの声です。「システム設定」で「声」を検索してダウンロードできます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit는 답장 언어에 맞는 가장 좋은 설치된 음성이나 직접 고른 음성을 사용합니다. Siri 자체 음성은 앱에서 쓸 수 없으며, 프리미엄 음성이 가장 비슷합니다. 시스템 설정에서 '음성'을 검색해 다운로드하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit używa najlepszego zainstalowanego głosu dla języka odpowiedzi albo tego, który wybierzesz. Głosy Siri nie są dostępne dla aplikacji, a najbliżej nich są głosy Premium: wyszukaj „Głosy” w Ustawieniach systemowych, aby je pobrać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit usa a melhor voz instalada para o idioma da resposta, ou a que você escolher. As vozes da Siri não estão disponíveis para apps, e as vozes Premium são as mais próximas: busque “Vozes” nos Ajustes do Sistema para baixá-las."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit использует лучший установленный голос для языка ответа или выбранный вами. Голоса Siri приложениям недоступны, ближе всего к ним премиум-голоса: найдите «Голоса» через поиск в Системных настройках, чтобы загрузить их."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit, yanıtın dili için yüklü en iyi sesi ya da sizin seçtiğinizi kullanır. Siri'nin kendi sesleri uygulamalara açık değildir; en yakını Premium seslerdir: indirmek için Sistem Ayarları'nda “Sesler” diye arayın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 会使用为回复语言安装的最佳声音，或你选择的声音。Siri 自己的声音不对 app 开放，优质声音最接近：在 “系统设置”中搜索“声音”即可下载。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 會使用為回覆語言安裝的最佳聲音，或你選擇的聲音。Siri 本身的聲音不開放給 App，高品質聲音最接近：在 「系統設定」中搜尋「聲音」即可下載。"
           }
         }
       }

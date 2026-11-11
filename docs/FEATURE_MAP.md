@@ -7563,20 +7563,24 @@ Voice's setup steps (microphone, Speech Recognition) and the voice modes'
 messages built from `VoiceAudioError.microphonePermissionDenied` and
 `VoiceSetupIssue.speechRecognitionDenied` · the camera notices (code scanner,
 chat composer, group rooms' composer) · Location sharing's access rows ·
-Phone > Contacts' access row · iPhone, iPad and Mac · not needed: CarPlay's
+Phone > Contacts' access row · Settings > Voice's iPhone voice hints
+(no voice, only a screen-reader voice, no Enhanced or Premium one, and the
+caption under them: where to download voices) · iPhone, iPad and Mac · not needed: CarPlay's
 and the Watch's short titles (`VoiceSetupIssue.carPlayTitleVariants`), which
 only show beside an iPhone
 
 **Code**
 - Words and links: `Conduit/Services/SystemSettings.swift` (worded, notificationsOffText, open, macURL)
-- Buttons and texts: `Conduit/Views/V2/V2FinishSetupCard.swift`, `Conduit/Cards/RichInfoCardViews.swift`, `Conduit/Views/AuxiliaryViews.swift` (Show Previews caption), `Conduit/Views/VoiceSettingsView.swift` (microphoneStep, speechToTextStep), `Conduit/Voice/VoiceTypes.swift`, `Conduit/Voice/VoiceSetupIssue.swift`, `Conduit/Views/Login/DashboardCodeScanner.swift`, `Conduit/Views/Components/ComposerBar.swift` (pasteErrorNotice), `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/PhoneSettingsViews.swift`
+- Buttons and texts: `Conduit/Views/V2/V2FinishSetupCard.swift`, `Conduit/Cards/RichInfoCardViews.swift`, `Conduit/Views/AuxiliaryViews.swift` (Show Previews caption), `Conduit/Views/VoiceSettingsView.swift` (microphoneStep, speechToTextStep, the iPhone voice caption), `Conduit/Views/IPhoneVoiceSettingsView.swift` (the download hints), `Conduit/Voice/VoiceTypes.swift`, `Conduit/Voice/VoiceSetupIssue.swift`, `Conduit/Views/Login/DashboardCodeScanner.swift`, `Conduit/Views/Components/ComposerBar.swift` (pasteErrorNotice), `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/PhoneSettingsViews.swift`
 - Tests: `ConduitTests/VoiceSetupIssueTests.swift` (testPermissionTextsAndSettingsLinksFollowTheDevice)
 
 **Rulings**
 - A text that names where to allow something names the device's own
   settings: iPhone Settings, iPad Settings, or on a Mac the System Settings
   pane (Notifications, or Privacy & Security and the permission). Texts that
-  say only "Settings" stay as they are (2026-11-11, issue 2208, #2210).
+  say only "Settings" stay as they are; the voice download hints say
+  "this iPad" or "this Mac" and search that device's settings for Voices
+  (2026-11-11, issue 2208, #2210).
 - On a Mac each Open Settings opens that pane of System Settings
   (`x-apple.systempreferences:`); the iPad app's own settings URLs open its
   settings window there (Touch Alternatives). Should macOS turn the link down,
@@ -7585,10 +7589,6 @@ only show beside an iPhone
 **Open gaps**
 - Not yet seen on a Mac: that System Settings opens at each pane from the
   iPad app, and Notifications at Conduit's row.
-- The voice download hints ("search iPhone Settings for Voices", Settings >
-  Voice > iPhone voice) still name the iPhone on an iPad and a Mac, and a
-  Mac keeps its voices under System Settings → Accessibility → Spoken
-  Content; they have no Open Settings button.
 - The System Settings search on a Mac shows a blank icon for Conduit
   (issue 2208); the Dock, Finder and the Notifications list show it. Not
   reproduced or explained yet.
