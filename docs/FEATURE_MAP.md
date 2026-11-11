@@ -8038,7 +8038,7 @@ notifier README's "Where in Conduit a message was sent"
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-11, #2230 (issue 2222: a send whose dashboard was switched away discards nothing, at every send site; Rulings; the plugin needed no change); 2026-11-11, #2218 (issue 2205: a Shortcut or widget send that has left its dashboard reports no turn surface; see Send to Hermes); 2026-11-11, #2173 (opens from an ordinary chat's ⋯ menu, issue 2132; "this chat" in the sheet's who-uses line; Rulings); 2026-11-08, #1987 with notifier #613 (a failed discard is tried again, a discard before its report holds the hash; notifier issue 610; Rulings, Code); 2026-11-05, #1815 with notifier #556 (the turn's tools read how its message was entered, turn_entry; Siblings, Code); 2026-11-02, #1631 (entry seeded with the discard; notifier #504).
+**Checked:** 2026-11-11, #2237 (each retry of a discard checks the dashboard again, so a switch while it waits ends it; issue 2222 follow-up); 2026-11-11, #2230 (issue 2222: a send whose dashboard was switched away discards nothing, at every send site; Rulings; the plugin needed no change); 2026-11-11, #2218 (issue 2205: a Shortcut or widget send that has left its dashboard reports no turn surface; see Send to Hermes); 2026-11-11, #2173 (opens from an ordinary chat's ⋯ menu, issue 2132; "this chat" in the sheet's who-uses line; Rulings); 2026-11-08, #1987 with notifier #613 (a failed discard is tried again, a discard before its report holds the hash; notifier issue 610; Rulings, Code); 2026-11-05, #1815 with notifier #556 (the turn's tools read how its message was entered, turn_entry; Siblings, Code); 2026-11-02, #1631 (entry seeded with the discard; notifier #504).
 
 ## Back-deployed Foundation API in shipped targets
 

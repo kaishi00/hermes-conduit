@@ -54,9 +54,9 @@ extension AppState {
     /// go is tried again after `TurnSurface.discardRetryDelays` (notifier
     /// issue 610). A plugin without the route keeps the report until it goes
     /// stale. `dashboardID` is the dashboard active when the report was
-    /// made: once another is active, nothing is discarded anywhere, so the
-    /// text never reaches a host it wasn't sent to and the new dashboard
-    /// holds no hash for it (issue 2222).
+    /// made: once another is active, nothing is discarded anywhere, a retry
+    /// included, so the text never reaches a host it wasn't sent to and the
+    /// new dashboard holds no hash for it (issue 2222).
     func discardTurnSurface(runtimeSessionID: String, text: String, after error: Error, reportedOn dashboardID: UUID?) {
         guard activeDashboardID == dashboardID else { return }
         guard !Self.isAmbiguousPromptDelivery(error) else { return }
@@ -73,11 +73,13 @@ extension AppState {
             }
         }
         let delays = turnSurfaceDiscardRetryDelays ?? TurnSurface.discardRetryDelays
-        Task { @MainActor in
+        Task { @MainActor [weak self] in
             for delay in [Duration.zero] + delays {
                 if delay > .zero {
                     do { try await Task.sleep(for: delay) } catch { return }
                 }
+                // A switch while it waited: nothing more goes anywhere.
+                guard let self, self.activeDashboardID == dashboardID else { return }
                 do {
                     try await send(body)
                     return
