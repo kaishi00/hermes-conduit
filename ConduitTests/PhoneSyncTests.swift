@@ -1681,6 +1681,25 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_photo"])
         XCTAssertEqual(PhoneChangeWording.headline(engine.prompts[0].change), "Hermes wants to see a photo")
 
+        // Neither a voice call nor a Pulse card sends it, before or after it arrives; a call can dismiss one.
+        let changesTool = try XCTUnwrap(PhoneVoiceTools.tools(for: preferences, access: .full, remindersAuthorized: true)
+            .first { $0.name == PhoneVoiceTools.changesTool })
+        let voiceAnswer: (PhoneChangePrompt, Bool) async -> Void = { prompt, approve in await engine.answer(prompt, approve: approve) }
+        let spoken = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_photo"], engine: engine,
+                                               confirmed: { _, _ in true }, lastUserTurn: { (UUID(), "yes") }, answer: voiceAnswer)
+        XCTAssertNotNil(spoken["error"])
+        await engine.approveFromCard("ch_photo")
+        await engine.approveFromCard("ch_early")
+        host.changes.append(["id": "ch_early", "kind": "send_photo", "auto": false, "target": ["photo_id": "ph_0000000000000001"]])
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(Set(engine.prompts.map(\.id)), ["ch_photo", "ch_early"])
+        XCTAssertNil(host.batches.first { $0["photo_files"] != nil })
+        let dismissed = await PhoneVoiceTools.run(changesTool, arguments: ["action": "dismiss", "id": "ch_early"], engine: engine,
+                                                  confirmed: { _, _ in true }, answer: voiceAnswer)
+        XCTAssertNil(dismissed["error"])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_photo"])
+        host.changes = [host.changes[0]]
+
         // Yes: the picture goes in an upload of its own, and Hermes hears it went.
         photos.jpegs["ph_0000000000000001"] = Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3])
         await engine.answer(engine.prompts[0], approve: true)

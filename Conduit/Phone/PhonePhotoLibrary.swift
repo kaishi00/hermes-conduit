@@ -155,8 +155,10 @@ final class SystemPhotoLibrary: PhonePhotoSource {
     }
 
     var progress: (described: Int, total: Int) {
+        // Counted as the host gets them: a photo dated before 2000 never goes.
         let index = loaded()
-        return (index.entries.count, max(index.total, index.entries.count))
+        let described = index.entries.lazy.filter { $0.at >= PhonePhotoEntry.earliest }.count
+        return (described, max(index.total, described))
     }
 
     func descriptions() -> [[String: Any]] {
