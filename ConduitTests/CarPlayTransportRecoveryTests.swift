@@ -18,6 +18,8 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         var scheduledDelays: [TimeInterval] = []
         var operations: [@MainActor () async -> Void] = []
         var executedPurposes: [ChatResumeSyncPurpose] = []
+        /// What the executed cycle does, such as landing the connection.
+        var onExecute: (@MainActor () -> Void)?
     }
 
     private func makeAppState(recorder: ReconnectRecorder) -> AppState {
@@ -32,6 +34,7 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
             },
             reconnectExecutor: { purpose in
                 recorder.executedPurposes.append(purpose)
+                recorder.onExecute?()
             }
         )
         appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
@@ -451,5 +454,122 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
 
         XCTAssertEqual(checks, 1)
         XCTAssertTrue(resolved.allSatisfy { $0 === client })
+    }
+
+    // MARK: Shortcut sends (#2164)
+
+    /// A Send to Hermes run with Conduit in the background: the socket died
+    /// while Conduit was suspended, and nothing else may reconnect it. The
+    /// run reconnects at once, and only while it lasts.
+    func testShortcutSendInTheBackgroundReconnectsADeadTransport() async {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        let request = ShortcutSendRequest(text: "Buy milk", chatName: nil, profile: nil, waitsForAnswer: false)
+
+        // A deadline already reached: the run gives up at once.
+        do {
+            _ = try await appState.sendFromShortcut(request, deadline: Date())
+            XCTFail("nothing connected")
+        } catch {
+            XCTAssertEqual(error as? ShortcutSendError, .notConnected)
+        }
+
+        XCTAssertFalse(recorder.scheduledDelays.isEmpty, "the run starts the reconnect itself")
+        XCTAssertLessThanOrEqual(recorder.scheduledDelays.first ?? .infinity, 0.1, "not at the end of a backoff")
+        XCTAssertEqual(appState.shortcutSendsRunning, 0, "the run's permission ends with it")
+        await recorder.operations.first?()
+        XCTAssertTrue(recorder.executedPurposes.isEmpty, "a cycle that comes due after the run waits for the phone")
+    }
+
+    func testShortcutSendRunningAdmitsTheReconnectCycle() async {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.shortcutSendsRunning = 1
+
+        appState.recoverTransportForCarPlayIfNeeded()
+
+        XCTAssertEqual(recorder.scheduledDelays.count, 1)
+        await recorder.operations.first?()
+        XCTAssertEqual(recorder.executedPurposes.count, 1, "the cycle runs while the shortcut does")
+    }
+
+    /// The run waits for the reconnect it started, and goes on once it lands.
+    func testShortcutSendInTheBackgroundGoesOnOnceTheReconnectLands() async {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.shortcutSendsRunning = 1
+        recorder.onExecute = {
+            appState.client = HermesClient(
+                connection: HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket"),
+                profile: "default"
+            )
+            appState.isConnected = true
+        }
+
+        let connect = appState.makeShortcutSendBackend().connect
+        let run = Task { @MainActor in await connect(Date().addingTimeInterval(20)) }
+        for _ in 0..<500 where recorder.operations.isEmpty { await Task.yield() }
+        await recorder.operations.first?()
+
+        let connected = await run.value
+        XCTAssertTrue(connected)
+        XCTAssertEqual(recorder.executedPurposes.count, 1, "the cycle ran during the send")
+    }
+
+    /// A connect the run started outlives the run: it may run on until it
+    /// settles, so it never leaves Conduit "connecting" with nothing
+    /// running, for the next run to wait on in vain.
+    func testAConnectUnderWayRunsOnAfterTheRunUntilItSettles() async {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.shortcutSendsRunning = 1
+        appState.isConnecting = true
+
+        appState.endShortcutSend()
+
+        XCTAssertEqual(appState.shortcutSendsRunning, 0)
+        XCTAssertTrue(appState.isShortcutSendRunning, "the connect under way may still finish")
+        appState.isConnecting = false
+        for _ in 0..<500 where appState.shortcutConnectHeld { await Task.yield() }
+        XCTAssertFalse(appState.isShortcutSendRunning, "settled, the phone's gate is back")
+    }
+
+    func testARunWithNothingUnderWayEndsAtOnce() {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.shortcutSendsRunning = 1
+
+        appState.endShortcutSend()
+
+        XCTAssertFalse(appState.isShortcutSendRunning)
+    }
+
+    /// A socket that still looks open after the suspension, and has been
+    /// quiet, is checked before the run sends, as a call's request is.
+    func testShortcutSendChecksAQuietSocketOffScreen() async {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket"),
+            profile: "default"
+        )
+        appState.isConnected = true
+        var checks = 0
+        appState.quietTransportLiveness = { _ in
+            checks += 1
+            return true
+        }
+
+        let connected = await appState.makeShortcutSendBackend().connect(Date().addingTimeInterval(20))
+
+        XCTAssertTrue(connected)
+        XCTAssertEqual(checks, 1)
+        XCTAssertTrue(recorder.scheduledDelays.isEmpty, "a socket that answers needs no reconnect")
     }
 }

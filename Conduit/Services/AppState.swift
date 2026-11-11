@@ -6193,6 +6193,54 @@ final class AppState: ObservableObject {
     /// CarPlay reporting Voice unavailable.
     private var canRunTransportRecovery: Bool {
         isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive || isNativeHermesCallActive
+            || isShortcutSendRunning
+    }
+    /// Shortcut sends running now (Send to Hermes, and Siri's "Ask ‹chat›",
+    /// which runs it). A shortcut runs with Conduit in the background or
+    /// not running at all, so while one runs it may reconnect on its own,
+    /// as a call does, and only for the time of the run (#2164).
+    var shortcutSendsRunning = 0
+    /// A connect a run started, let finish after the run ended. Cut off at
+    /// its next step it would leave Conduit "connecting" with nothing
+    /// running, which only the phone coming on screen repairs, and every
+    /// later run would wait on it in vain.
+    var shortcutConnectHeld = false
+    var isShortcutSendRunning: Bool { shortcutSendsRunning > 0 || shortcutConnectHeld }
+    /// How long a connect may run on after its run. A test seam.
+    var shortcutConnectHoldLimit: Duration = .seconds(60)
+
+    /// A shortcut run ended. A connect still under way runs on, until it
+    /// lands or fails (or the limit passes), so it settles its own state.
+    func endShortcutSend() {
+        shortcutSendsRunning -= 1
+        guard shortcutSendsRunning == 0, isConnecting, !isConnected, !shortcutConnectHeld else { return }
+        shortcutConnectHeld = true
+        let limit = shortcutConnectHoldLimit
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { @MainActor in
+                    for await connecting in self.$isConnecting.values where !connecting { return }
+                }
+                group.addTask { try? await Task.sleep(for: limit) }
+                await group.next()
+                group.cancelAll()
+            }
+            self.shortcutConnectHeld = false
+        }
+    }
+
+    /// A connect cut off off screen after its socket opened (the app left,
+    /// or a call ended, at its next step) leaves the socket unpublished:
+    /// Conduit reads as disconnected over a live socket until the phone
+    /// comes on screen and publishes it. A shortcut run off screen publishes
+    /// it the same way, then checks it like any quiet socket (#2164). The
+    /// bootstrap that connect owes still waits for the phone.
+    func publishOpenSocketOffScreen() {
+        guard !isSceneActive, !isConnected, let client, client.isConnected else { return }
+        noteConnectionStep("Open socket published for a shortcut")
+        isConnected = true
+        isConnecting = false
     }
     /// A transport whose handshake completed but whose post-connect bootstrap
     /// (profiles, Bot Mode roster, catalog sync + resume) was abandoned
@@ -12224,7 +12272,8 @@ final class AppState: ObservableObject {
         // (watchdog: 0x8BADF00D). handleScenePhase(.active) re-establishes
         // the transport and syncs the session catalog on return. A connected
         // CarPlay Voice surface keeps the process foreground and admits the
-        // work as well (see canRunTransportRecovery).
+        // work as well, as do the other surfaces canRunTransportRecovery
+        // lists, a running shortcut send included.
         guard !Task.isCancelled, canRunTransportRecovery else { return nil }
         if let automaticReconnectOperationID,
            activeAutomaticReconnectOperation?.id != automaticReconnectOperationID {
@@ -21980,7 +22029,9 @@ final class AppState: ObservableObject {
         // recovery repairs that same conversation using .preserveCurrent;
         // .automaticReturn is used only when there is no current visible session
         // identity to preserve. A connected CarPlay Voice surface keeps the
-        // app on screen while the phone is locked, so it admits recovery too.
+        // app on screen while the phone is locked, so it admits recovery too,
+        // as do the other surfaces canRunTransportRecovery lists (locked
+        // voice, Watch and CallKit calls, a running shortcut send).
         guard canRunTransportRecovery else { return }
         if reconnectTask == nil {
             recoverySequence.clearQueuedReconnect()
@@ -22099,7 +22150,9 @@ final class AppState: ObservableObject {
         // This also makes the public reconnect() a no-op while the scene is
         // inactive/backgrounded — the retry is picked up on the next .active.
         // A connected CarPlay Voice surface is a foreground surface of its
-        // own (the phone is usually locked in a car), so it admits the cycle.
+        // own (the phone is usually locked in a car), so it admits the cycle,
+        // as do the other surfaces canRunTransportRecovery lists (locked
+        // voice, Watch and CallKit calls, a running shortcut send).
         guard canRunTransportRecovery else { return }
         if let reconnectExecutor {
             await reconnectExecutor(purpose)
@@ -42597,8 +42650,9 @@ final class AppState: ObservableObject {
     func recoverTransportForCarPlayIfNeeded(immediately: Bool = false) {
         // A conversation kept running while locked relies on the transport
         // the same way, and so do a call the Apple Watch started and a call
-        // from Hermes answered in CallKit.
-        guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive || isNativeHermesCallActive,
+        // from Hermes answered in CallKit, and a shortcut send running.
+        guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive || isNativeHermesCallActive
+                || isShortcutSendRunning,
               !isSceneActive,
               connection != nil,
               !isConnected,
@@ -42702,7 +42756,8 @@ final class AppState: ObservableObject {
     /// worked (#1362). The phone coming on screen pings first and
     /// reconnects a socket that doesn't answer; so does this, for a socket
     /// that has been quiet, and the request then waits for the reconnect as
-    /// after any drop. Requests at the same time share one check.
+    /// after any drop. Requests at the same time share one check. A
+    /// shortcut send off screen checks the same way before it sends (#2164).
     func checkQuietTransportOffScreen() async {
         if let running = quietTransportCheckTask {
             await running.value
