@@ -192,6 +192,25 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         XCTAssertEqual(recorder.discards, [])
     }
 
+    func testADiscardAfterADashboardSwitchGoesNowhere() async {
+        // Issue 2222: a send that failed because its dashboard was switched
+        // away mustn't hand its text to the dashboard now active.
+        let recorder = TurnSurfaceRecorder()
+        let harness = makeHarness(recorder: recorder)
+        let appState = harness.appState
+
+        appState.discardTurnSurface(runtimeSessionID: "rt-left", text: "yes",
+                                    after: ShortcutSendError.chatOnAnotherDashboard, reportedOn: UUID())
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(recorder.discardTries, 0, "Reported on another dashboard: nothing discarded on this one")
+
+        appState.discardTurnSurface(runtimeSessionID: "rt-stayed", text: "yes",
+                                    after: RpcError(code: 4001, message: "invalid_params"),
+                                    reportedOn: appState.activeDashboardID)
+        for _ in 0..<50 where recorder.discards.isEmpty { await Task.yield() }
+        XCTAssertEqual(recorder.discards.count, 1, "Still on the dashboard it reported to")
+    }
+
     func testASendWhoseReplyWasLostKeepsItsReport() async {
         let recorder = TurnSurfaceRecorder()
         recorder.sendError = URLError(.networkConnectionLost)

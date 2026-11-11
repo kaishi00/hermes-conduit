@@ -159,12 +159,14 @@ extension AppState {
                 // joins the turn running.
                 // A run that has left the dashboard reports no turn surface.
                 try stayOnDashboard()
+                let reportedOn = self.activeDashboardID
                 await self.reportTurnSurface(.shortcut, runtimeSessionID: runtimeID, text: text)?.value
                 do {
                     try stayOnDashboard()
                     return try await self.sendShortcutPrompt(runtimeID, text: text)
                 } catch {
-                    self.discardTurnSurface(runtimeSessionID: runtimeID, text: text, after: error)
+                    // A run that has left the dashboard discards nothing either.
+                    self.discardTurnSurface(runtimeSessionID: runtimeID, text: text, after: error, reportedOn: reportedOn)
                     throw error
                 }
             },

@@ -53,8 +53,12 @@ extension AppState {
     /// only lost (it may have started). Never waited on; one that fails to
     /// go is tried again after `TurnSurface.discardRetryDelays` (notifier
     /// issue 610). A plugin without the route keeps the report until it goes
-    /// stale.
-    func discardTurnSurface(runtimeSessionID: String, text: String, after error: Error) {
+    /// stale. `dashboardID` is the dashboard active when the report was
+    /// made: once another is active, nothing is discarded anywhere, so the
+    /// text never reaches a host it wasn't sent to and the new dashboard
+    /// holds no hash for it (issue 2222).
+    func discardTurnSurface(runtimeSessionID: String, text: String, after error: Error, reportedOn dashboardID: UUID?) {
+        guard activeDashboardID == dashboardID else { return }
         guard !Self.isAmbiguousPromptDelivery(error) else { return }
         let body = TurnSurface.discardBody(runtimeSessionID: runtimeSessionID, text: text)
         let send: ([String: Any]) async throws -> Void

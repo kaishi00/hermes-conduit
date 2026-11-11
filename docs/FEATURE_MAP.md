@@ -7950,6 +7950,7 @@ notifier README's "Where in Conduit a message was sent"
 - A send waits for the report at most `TurnSurface.wait`, then goes anyway; a report that misses its send is cancelled, so it can't label the next turn (#888).
 - Every send site that reports drops its report when the send fails (refused, or never sent: a busy chat, a failed read), so the same words sent from another client in that chat don't take its line; a send whose reply was only lost keeps it, since its turn may have started. A plugin without `turn-surface-discard` keeps the report until it goes stale (2026-11-02, #1631, notifier #504).
 - A discard that fails to go (no answer, a 408 or 429, a 5xx, sign-in) is tried again after 1, 3 and 9 seconds; one the plugin refused (any other 4xx), an oversized answer, or one the old dashboard answered after a switch isn't. A discard that reaches the plugin before its report (the report was slow, the send failed fast) holds the text's hash for a minute, and the report is dropped as it lands; the same words sent again within that minute have no line (notifier issue 610, Eric 2026-11-08, #1987 with notifier #613).
+- A send whose dashboard was switched away before its discard discards nothing, on either dashboard: every send site passes the dashboard active at its report, and the discard goes only while that one is still active. The old dashboard's report goes stale, and the new one never sees the text or holds its hash (issue 2222, PRNUM).
 
 **Open gaps**
 - None known.
