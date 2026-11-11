@@ -449,6 +449,81 @@ final class ChatScrollHostedTests: XCTestCase {
         }
     }
 
+    func testTheBlankWatchLogsItsLayoutCheckBeforeItSavesTheTrace() throws {
+        // The second blank check in a row logs what the transcript held and
+        // whether a layout pass drew the rows, then saves: the saved trace
+        // copies the recorder as it stands, so both must be in it. Drawn
+        // again, the next check says so, once.
+        let mounted = try mount(Self.transcript(0..<40))
+        let collectionView = try XCTUnwrap(mounted.scrollView as? TranscriptCollectionView)
+        let controller = try XCTUnwrap(collectionView.delegate as? TranscriptViewController)
+        var blankLinesAtSave: [String]?
+        var saves = 0
+        func blankLines() -> [String] {
+            ChatViewportTrace.shared.entries.map(\.text).filter { $0.hasPrefix("blank screen") }
+        }
+        let before = blankLines().count
+        let watch = TranscriptBlankWatch(controller: controller) {
+            saves += 1
+            blankLinesAtSave = Array(blankLines().dropFirst(before))
+        }
+
+        let cells = collectionView.visibleCells.compactMap { $0 as? TranscriptCell }
+        XCTAssertFalse(cells.isEmpty)
+        for cell in cells { cell.hosting?.view.isHidden = true }
+        watch.check()
+        XCTAssertEqual(saves, 0, "one blank check isn't a blank screen")
+        watch.check()
+        for cell in cells { cell.hosting?.view.isHidden = false }
+
+        XCTAssertEqual(saves, 1)
+        let saved = try XCTUnwrap(blankLinesAtSave)
+        XCTAssertEqual(saved.count, 5, "\(saved)")
+        XCTAssertTrue(
+            saved.last?.hasPrefix("blank screen after a layout pass: ") == true,
+            "the layout check is in the saved trace: \(saved)"
+        )
+        // Whole, with the time a trace puts before each line.
+        let time = String(format: "%.3f ", CFAbsoluteTimeGetCurrent())
+        for line in saved {
+            XCTAssertLessThanOrEqual(time.count + line.count, ChatViewportTrace.maxLineLength, line)
+        }
+
+        // Off screen, nothing is checked: the count starts over without
+        // saying the rows were drawn, and a save takes two fresh checks.
+        for cell in cells { cell.hosting?.view.isHidden = true }
+        let frame = collectionView.frame
+        collectionView.frame.size.height = 0
+        watch.check()
+        collectionView.frame = frame
+        collectionView.layoutIfNeeded()
+        let afterSkip = blankLines().count
+        XCTAssertFalse(blankLines().dropFirst(before).contains { $0.hasPrefix("blank screen drawn again") }, "a skipped check isn't a recovery")
+        let shown = collectionView.visibleCells.compactMap { $0 as? TranscriptCell }
+        for cell in shown { cell.hosting?.view.isHidden = true }
+        watch.check()
+        XCTAssertEqual(saves, 1, "one fresh blank check isn't a blank screen")
+        watch.check()
+        XCTAssertEqual(saves, 2)
+        for cell in shown + cells { cell.hosting?.view.isHidden = false }
+
+        watch.check()
+        XCTAssertEqual(blankLines().dropFirst(afterSkip).last, "blank screen drawn again after 2 checks")
+        XCTAssertEqual(blankLines().dropFirst(before).filter { $0.hasPrefix("blank screen drawn again") }.count, 1)
+
+        // Long row ids keep their tails, so four fit a line.
+        XCTAssertEqual(TranscriptBlankWatch.shortID("0123456789abcdefghij"), "abcdefghij")
+        let longRows = (0..<4).map { TranscriptRowFrame(id: "a-long-stored-row-id-\($0)-abcdefghij", minY: 12_345, maxY: 23_456) }
+        let longLines = TranscriptBlankWatch.describe(
+            .init(rowsOnScreen: longRows, cells: (0..<4).map { "abcdefghi\($0) view h 1234.5" }),
+            collectionView: collectionView, scroller: mounted.scroller
+        )
+        for line in longLines.suffix(2) {
+            XCTAssertLessThanOrEqual(time.count + line.count, ChatViewportTrace.maxLineLength, line)
+            XCTAssertEqual(line.components(separatedBy: ", ").count, 4, line)
+        }
+    }
+
     func testARunningReplyOpenedAgainShowsWhatWasWrittenAtOnce() throws {
         // Opening a chat whose reply is still running seeds the live bubble
         // with everything written so far. It must not be typed out again:

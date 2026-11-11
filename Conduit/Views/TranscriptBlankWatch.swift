@@ -26,11 +26,17 @@ final class TranscriptBlankWatch {
     static let blankChecks = 2
 
     private weak var controller: TranscriptViewController?
+    private let save: @MainActor () -> Void
     private var timer: Timer?
     private var blankRun = 0
 
-    init(controller: TranscriptViewController) {
+    /// `save` saves the blank trace; a test passes its own.
+    init(
+        controller: TranscriptViewController,
+        save: @escaping @MainActor () -> Void = { ChatViewportWatch.shared.blankScreen() }
+    ) {
         self.controller = controller
+        self.save = save
     }
 
     func start() {
@@ -53,9 +59,14 @@ final class TranscriptBlankWatch {
     func check() {
         guard let controller else { stop(); return }
         let collectionView = controller.collectionView
+        // Off screen or in the background, nothing was checked: start over
+        // without saying the rows were drawn.
         guard collectionView.window != nil, collectionView.bounds.height > 0,
-              UIApplication.shared.applicationState == .active,
-              let finding = Self.finding(in: collectionView, layout: controller.layout) else {
+              UIApplication.shared.applicationState == .active else {
+            blankRun = 0
+            return
+        }
+        guard let finding = Self.finding(in: collectionView, layout: controller.layout) else {
             if blankRun >= Self.blankChecks {
                 ChatViewportTrace.shared.log("blank screen drawn again after \(blankRun) checks")
             }
@@ -73,7 +84,7 @@ final class TranscriptBlankWatch {
         collectionView.layoutIfNeeded()
         let drawn = Self.finding(in: collectionView, layout: controller.layout) == nil
         ChatViewportTrace.shared.log("blank screen after a layout pass: \(drawn ? "drawn" : "still blank")")
-        ChatViewportWatch.shared.blankScreen()
+        save()
     }
 
     /// What a blank transcript holds: rows crossing what the reader sees,
@@ -95,7 +106,7 @@ final class TranscriptBlankWatch {
         var cells: [String] = []
         for case let cell as TranscriptCell in collectionView.visibleCells where cell.frame.intersects(seen) {
             guard let reason = emptiness(of: cell) else { return nil }
-            cells.append("\(cell.hostedRowID ?? "none") \(reason)")
+            cells.append("\(cell.hostedRowID.map(shortID) ?? "none") \(reason)")
         }
         return Finding(rowsOnScreen: rows, cells: cells)
     }
@@ -114,8 +125,14 @@ final class TranscriptBlankWatch {
         return nil
     }
 
+    /// A row id's last 10 characters, so four rows or cells fit a line.
+    static func shortID(_ id: String) -> String {
+        String(id.suffix(10))
+    }
+
     /// The trace's lines: the transcript's geometry and state, then the
-    /// rows and cells, each line in the relay's 160 characters.
+    /// rows and cells, each line in the relay's 160 characters with the
+    /// time the trace puts before it.
     static func describe(
         _ finding: Finding,
         collectionView: UICollectionView,
@@ -142,7 +159,7 @@ final class TranscriptBlankWatch {
                 collectionView.layer.needsLayout() ? 1 : 0, speed, collectionView.isHidden ? 1 : 0, collectionView.alpha
             ),
         ]
-        let rows = finding.rowsOnScreen.prefix(4).map { String(format: "%@ %.0f-%.0f", $0.id, $0.minY, $0.maxY) }
+        let rows = finding.rowsOnScreen.prefix(4).map { String(format: "%@ %.0f-%.0f", shortID($0.id), $0.minY, $0.maxY) }
         lines.append("blank screen rows: " + rows.joined(separator: ", "))
         lines.append("blank screen cells: " + (finding.cells.isEmpty ? "none" : finding.cells.prefix(4).joined(separator: ", ")))
         return lines
