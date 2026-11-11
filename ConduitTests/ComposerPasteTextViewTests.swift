@@ -1050,6 +1050,19 @@ final class ComposerPasteTextViewTests: XCTestCase {
         XCTAssertFalse(isFocused)
         settleFocus()
         XCTAssertFalse(field.isFirstResponder)
+
+        // On again with the restore still queued, then another field takes
+        // focus: the queued restore leaves it there.
+        field.setFocusIntent(true)
+        settleFocus()
+        field.setTyping(false)
+        settleFocus()
+        field.setTyping(true)
+        XCTAssertTrue(other.becomeFirstResponder())
+        XCTAssertFalse(isFocused)
+        settleFocus()
+        XCTAssertFalse(field.isFirstResponder)
+        XCTAssertTrue(other.isFirstResponder)
     }
 
     /// Lets the focus change queued after an update run.

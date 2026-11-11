@@ -3511,8 +3511,8 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   keeps the composer's wish, turns off just after the update that asked,
   and takes focus back once typing is on again, unless another text field
   took focus meanwhile or the keyboard was put away (a tap on the
-  transcript or a row, a profile switch, the plan strip where it puts the
-  keyboard away on a compact iPhone: `ReturnKeyTextView.putAwayFocus`), as
+  transcript or a row, a profile switch, the plan strip where an on-screen
+  keyboard is up, no Mac and no hardware keyboard: `ReturnKeyTextView.putAwayFocus`), as
   the transcript ruling has it. Elsewhere the plan strip leaves focus alone
   (issue 1510), so a waiting wish stays too. A wish whose restore is
   queued when the keyboard is put away is dropped as well. On a Mac a sync once the reply came had let go of
@@ -3536,7 +3536,7 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 - Issue 2208's cause is read from the code, not traced on the reporter's
   Mac: a sync or reconnect after the reply turning typing off.
 
-**Checked:** 2026-11-11, #2217 (a wish whose restore is queued drops when the keyboard is put away; the plan strip ruling narrowed to compact iPhones); 2026-11-11, #2210 (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
+**Checked:** 2026-11-11, #2217 (a wish whose restore is queued drops when the keyboard is put away; the plan strip puts a waiting wish away only where an on-screen keyboard is up, as the Plan card ruling has it); 2026-11-11, #2210 (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
@@ -7605,7 +7605,7 @@ only show beside an iPhone
   (issue 2208); the Dock, Finder and the Notifications list show it. Not
   reproduced or explained yet.
 
-**Checked:** 2026-11-11, #2210 (new entry).
+**Checked:** 2026-11-11, #2217 (docs/VOICE_SETTINGS.md's Mac hint says to search System Settings for "Voices", as the hints in the app already did); 2026-11-11, #2210 (new entry).
 
 ## Swiping list rows on a Mac
 
