@@ -6039,7 +6039,7 @@ README.md (Cloudflare Access) · the notifier's support page · the website's
 setup page (setup/index.html in hermes-conduit-website)
 
 **Code**
-- Rows and page: `Conduit/Views/AuxiliaryViews.swift` (v2Sections, SettingsHome, GatewaySettingsDetail and its title)
+- Rows and page: `Conduit/Views/AuxiliaryViews.swift` (SettingsHome: v2Groups, classicGroups and their row views, GatewaySettingsDetail and its title)
 - Chat's sheet and Diagnostics & logs: `Conduit/Views/ChatSupportSheets.swift` (GatewayDiagnosticsSheet and its Placement), `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Services/AppState.swift` (refreshGatewayDiagnostics), `Conduit/Services/AppState+GatewayRestart.swift`
 - Restart Gateway's progress: `Conduit/Views/GatewayRestartViews.swift` (GatewayRestartStatusView, GatewayWaitView: what a draining restart waits on and Restart now, shared with the plugin update)
 - Sign-in screen's link: `Conduit/Views/Login/LoginScreens.swift` (LoginDiagnosticsLink, LoginFlowPresentations), `Conduit/Views/Login/LoginFlowModel.swift` (showsDiagnostics)
@@ -6053,7 +6053,7 @@ setup page (setup/index.html in hermes-conduit-website)
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-07, #1956 (VoiceOver hears Restart Gateway's first step too: the status row announces it on appear while in progress); 2026-11-07, #1909 (Restart Gateway's "Letting running tasks finish…" names what it waits on and offers Restart now, from the Conduit plugin update entry's GatewayWaitView; Code); 2026-11-06, #1841 (Diagnostics & logs reads the gateway again when a restart ends, Settings' page included; Rulings, Code); 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
+**Checked:** 2026-11-11, #2183 (Settings home rows built as data and drawn per group, after a build 264 stack overflow; no behavior change); 2026-11-07, #1956 (VoiceOver hears Restart Gateway's first step too: the status row announces it on appear while in progress); 2026-11-07, #1909 (Restart Gateway's "Letting running tasks finish…" names what it waits on and offers Restart now, from the Conduit plugin update entry's GatewayWaitView; Code); 2026-11-06, #1841 (Diagnostics & logs reads the gateway again when a restart ends, Settings' page included; Rulings, Code); 2026-11-05, #1840 (Diagnostics & logs opens while disconnected and from the sign-in screen; Siblings, Code, Rulings); 2026-10-26, at #1298.
 
 ## Another saved dashboard's address
 
