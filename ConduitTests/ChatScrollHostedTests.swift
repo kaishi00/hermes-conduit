@@ -426,6 +426,29 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertTrue(checked.value, "the block queued after the report ran")
     }
 
+    func testTheBlankWatchFindsRowsOnScreenThatNoCellDraws() throws {
+        // Issue 1942: a chat that showed its title and composer and none of
+        // its rows. The watch finds nothing while the rows on screen are
+        // drawn, and finds the rows, and why each cell draws nothing, once
+        // none is.
+        let mounted = try mount(Self.transcript(0..<40))
+        let collectionView = try XCTUnwrap(mounted.scrollView as? TranscriptCollectionView)
+        XCTAssertNil(TranscriptBlankWatch.finding(in: collectionView, layout: mounted.layout), "the rows on screen are drawn")
+
+        let cells = collectionView.visibleCells.compactMap { $0 as? TranscriptCell }
+        XCTAssertFalse(cells.isEmpty)
+        for cell in cells { cell.hosting?.view.isHidden = true }
+        defer { for cell in cells { cell.hosting?.view.isHidden = false } }
+        let finding = try XCTUnwrap(TranscriptBlankWatch.finding(in: collectionView, layout: mounted.layout), "no row on screen is drawn")
+        XCTAssertFalse(finding.rowsOnScreen.isEmpty)
+        XCTAssertTrue(finding.cells.allSatisfy { $0.hasSuffix("view hidden") }, "\(finding.cells)")
+        let lines = TranscriptBlankWatch.describe(finding, collectionView: collectionView, scroller: mounted.scroller)
+        XCTAssertEqual(lines.count, 4)
+        for line in lines {
+            XCTAssertEqual(ChatViewportTrace.sanitized(line), line, "only the relay's characters: \(line)")
+        }
+    }
+
     func testARunningReplyOpenedAgainShowsWhatWasWrittenAtOnce() throws {
         // Opening a chat whose reply is still running seeds the live bubble
         // with everything written so far. It must not be typed out again:
