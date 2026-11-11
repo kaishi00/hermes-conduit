@@ -16,8 +16,8 @@ enum InterfaceOrientationGate {
     private(set) static var layoutHolders = 0
     /// When the last full screen or sheet closed: the phone turns back after it.
     private(set) static var lastClosed: Date?
-    /// Long enough for the phone to turn back to portrait once a full
-    /// screen closes.
+    /// Long enough for the phone to turn back to portrait once the last
+    /// full screen or sheet closes.
     static let turnBackTime: TimeInterval = 2
 
     static var supported: UIInterfaceOrientationMask {
@@ -94,7 +94,7 @@ enum InterfaceOrientationGate {
         return turnBackTime - sinceClosed
     }
 
-    /// Returns once the screens under a full screen may follow the window
+    /// Returns once the screens under a bot's screen may follow the window
     /// again, so a width that changed meanwhile (a Duo folded) is taken up
     /// even if it doesn't change again (Greptile on #2229). While one is
     /// open it looks again every half second; as the phone turns back it
