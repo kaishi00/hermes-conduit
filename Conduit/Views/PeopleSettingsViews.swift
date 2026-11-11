@@ -736,8 +736,10 @@ struct RoomSetupSection: View {
     /// The MCP servers picked, on a plugin that can name them.
     @State private var pickedServers: Set<String> = []
     @State private var editing = false
-    /// Whether the Custom-only tools are unfolded.
+    /// Whether the Custom-only tools, and what Set up does, are unfolded.
     @State private var showsCustomTools = false
+    @State private var showsSetupSteps = false
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// A Set up is on its way, for this profile or the one shown before:
     /// one at a time, as the plugin does them.
     @State private var working = false
@@ -878,20 +880,16 @@ struct RoomSetupSection: View {
                 Label(AppLocalization.string("Not ready for rooms yet"), systemImage: "exclamationmark.circle")
                     .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.orange)
-                DisclosureGroup(AppLocalization.string("What Set up does")) {
-                    VStack(alignment: .leading, spacing: 6) {
-                        Text(AppLocalization.string("Rooms reach your agents through Hermes' API server. For \(profileName), Set up will:"))
+                foldButton(AppLocalization.string("What Set up does"), isOn: $showsSetupSteps)
+                if showsSetupSteps {
+                    Text(AppLocalization.string("Rooms reach your agents through Hermes' API server. For \(profileName), Set up will:"))
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                    ForEach(PeopleSettingsText.setupLines(state, profileName: profileName), id: \.self) { line in
+                        Label(line, systemImage: "checkmark")
                             .scaledFont(.footnote)
-                            .foregroundStyle(.secondary)
-                        ForEach(PeopleSettingsText.setupLines(state, profileName: profileName), id: \.self) { line in
-                            Label(line, systemImage: "checkmark")
-                                .scaledFont(.footnote)
-                        }
                     }
-                    .padding(.top, 4)
                 }
-                .scaledFont(.footnote)
-                .tint(.conduitAccent)
                 if let error = state.apiServer.error {
                     Text(verbatim: AppLocalization.string("The API server didn't start the last time: \(error)"))
                         .scaledFont(.footnote)
@@ -943,28 +941,16 @@ struct RoomSetupSection: View {
             }
             if !state.customChoices.isEmpty {
                 // Only a room set to Custom uses these, so they're folded away.
-                DisclosureGroup(isExpanded: $showsCustomTools) {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(AppLocalization.string("A room uses these only when its Custom choice names their tools."))
-                            .scaledFont(.caption)
-                            .foregroundStyle(.secondary)
-                        ForEach(state.customChoices) { choice in
-                            toolToggle(choice)
-                        }
-                    }
-                    .padding(.top, 6)
-                } label: {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(AppLocalization.string("Only for rooms set to Custom"))
-                            .scaledFont(.subheadline)
-                        if let on = PeopleSettingsText.customOn(state, picked: picked) {
-                            Text(verbatim: on)
-                                .scaledFont(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                foldButton(AppLocalization.string("Only for rooms set to Custom"),
+                           detail: PeopleSettingsText.customOn(state, picked: picked), isOn: $showsCustomTools)
+                if showsCustomTools {
+                    Text(AppLocalization.string("A room uses these only when its Custom choice names their tools."))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                    ForEach(state.customChoices) { choice in
+                        toolToggle(choice)
                     }
                 }
-                .tint(.conduitAccent)
             }
             Text(AppLocalization.string("Each room's choices work within these. Tools added later, by a plugin, an MCP server or a Hermes update, stay out of rooms until you add them here."))
                 .scaledFont(.caption)
@@ -992,6 +978,37 @@ struct RoomSetupSection: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// A row that folds what follows it. Not a DisclosureGroup: outside a
+    /// List it indents its rows without narrowing them, so their switches
+    /// ran off the card (as Settings > Phone found).
+    private func foldButton(_ title: String, detail: String? = nil, isOn: Binding<Bool>) -> some View {
+        Button {
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { isOn.wrappedValue.toggle() }
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: title)
+                        .scaledFont(.subheadline)
+                        .foregroundStyle(.primary)
+                    if let detail {
+                        Text(verbatim: detail)
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .scaledFont(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isOn.wrappedValue ? 90 : 0))
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(Text(isOn.wrappedValue ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")))
     }
 
     private func toolToggle(_ choice: RoomSetupState.Choice) -> some View {
