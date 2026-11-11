@@ -5592,7 +5592,7 @@ change needed)
 **Open gaps**
 - Not tried on a device: a write under limited access, and a linked (unified) contact's update (#2165).
 
-**Checked:** 2026-11-10, #2165 (added with the notifier's contact changes).
+**Checked:** 2026-11-11, #NNNN (a live call names the contact as the phone has them; the card's name tested); 2026-11-10, #2165 (added with the notifier's contact changes).
 
 ## Shortcuts Hermes can run
 
@@ -5632,7 +5632,7 @@ errors (a run's failures reach Hermes as the change's note)
 - Not tried on a device: the x-callback round trip, a shortcut that asks the user something mid-run, and the 10-minute wait (#2165).
 - iOS has no list of the user's shortcuts for an app to read, so names are typed and a typo only shows when a run fails.
 
-**Checked:** 2026-11-10, #2165 (added with notifier #696).
+**Checked:** 2026-11-11, #NNNN (tests for a late result after sharing turns off and on, and for the run-without-asking report); 2026-11-10, #2165 (added with notifier #696).
 
 ## Steps in a turn
 
