@@ -1038,6 +1038,31 @@ final class ComposerPasteTextViewTests: XCTestCase {
         field.setTyping(true)
         settleFocus()
         XCTAssertFalse(field.isFirstResponder)
+
+        // On again with the restore still queued, then the keyboard is put
+        // away: the queued restore doesn't take focus back.
+        field.setFocusIntent(true)
+        settleFocus()
+        field.setTyping(false)
+        settleFocus()
+        field.setTyping(true)
+        ReturnKeyTextView.putAwayFocus()
+        XCTAssertFalse(isFocused)
+        settleFocus()
+        XCTAssertFalse(field.isFirstResponder)
+
+        // On again with the restore still queued, then another field takes
+        // focus: the queued restore leaves it there.
+        field.setFocusIntent(true)
+        settleFocus()
+        field.setTyping(false)
+        settleFocus()
+        field.setTyping(true)
+        XCTAssertTrue(other.becomeFirstResponder())
+        XCTAssertFalse(isFocused)
+        settleFocus()
+        XCTAssertFalse(field.isFirstResponder)
+        XCTAssertTrue(other.isFirstResponder)
     }
 
     /// Lets the focus change queued after an update run.

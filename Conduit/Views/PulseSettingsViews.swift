@@ -73,6 +73,7 @@ struct PulseSettingsPage: View {
                 if state.enabled {
                     let budgets = appState.notifierPlugin.reports(PulseClient.nudgeCapability)
                     speakUpSection(state, budgets: budgets)
+                    if !appState.pulseDoItBotChoices.isEmpty || appState.pulseDoItBotSaved { doItSection }
                     let quiet = appState.notifierPlugin.reports(PulseClient.quietCapability)
                     let hours = appState.notifierPlugin.reports(PulseClient.hoursCapability)
                     if quiet || hours { quietSection(state, quiet: quiet, hours: hours) }
@@ -302,6 +303,41 @@ struct PulseSettingsPage: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    /// Where Do it (and a pick's Ask) goes for a card from no chat (0.164.0): a new chat,
+    /// or a bot's Bot Chat. Kept on this phone, per dashboard; the widget's
+    /// Do it follows it too.
+    private var doItSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Do it"), symbol: "arrow.right.circle", tint: .conduitAccent) {
+            ConduitMenuPicker(
+                value: appState.pulseDoItBot?.name ?? appState.pulseDoItBotSavedName ?? "",
+                choices: doItChoices,
+                onSelect: { picked in
+                    Haptics.selection()
+                    appState.setPulseDoItBot(picked.isEmpty ? nil : picked)
+                }
+            ) {
+                Text("Cards from no chat").foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("settings.pulse.do-it-bot")
+            Text("Where Do it opens for a card that came from no chat, such as one from your calendar: a new chat, or a bot's Bot Chat. The widget's Do it goes there too. Long-press Do it to pick another for one card.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// New chat and the bots Do it can open; a saved bot that isn't one now
+    /// (hidden, gone, or the list not read yet) stays listed by its name, so
+    /// the row never says New chat while Do it would go back to that bot.
+    private var doItChoices: [(id: String, title: String)] {
+        let bots = appState.pulseDoItBotChoices.map { (id: $0.name, title: $0.displayLabel) }
+        var choices = [(id: "", title: AppLocalization.string("New chat"))] + bots
+        if let saved = appState.pulseDoItBotSavedName, !bots.contains(where: { $0.id == saved }) {
+            let known = appState.botRoster.first { $0.name == saved }
+            choices.append((id: saved, title: known?.displayLabel ?? saved))
+        }
+        return choices
     }
 
     /// Quiet times (0.80.2, `quiet`): the days of the week Pulse keeps to

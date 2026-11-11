@@ -1987,6 +1987,11 @@ final class AppState: ObservableObject {
             || (botModePhase == .available && botRosterVerifiedForCurrentConnection)
     }
 
+    /// The bot list was read on this connection, or the gateway can't host
+    /// bots: what it leaves out is gone, so the widget's Do it doesn't read
+    /// it again for a saved bot it lacks.
+    var pulseDoItBotRosterRead: Bool { botEvidenceIsAvailable }
+
     /// Refuses a push whose target is bot-owned, with copy that matches how
     /// confident the match is: ownership folds case, so an exact spelling IS that
     /// bot's profile while a case-only match may be an unrelated workspace that
@@ -2738,6 +2743,26 @@ final class AppState: ObservableObject {
     private(set) lazy var pulseRememberedProfiles: [String: String] =
         defaults.dictionary(forKey: Self.pulseProfilesKey) as? [String: String] ?? [:]
     static let pulseProfilesKey = "conduit.pulse.homeProfiles"
+    /// The bot whose Bot Chat Do it and Ask open for a Pulse card from no
+    /// chat, per dashboard (`pulseDoItBot`); none for a new chat.
+    private(set) lazy var pulseDoItBots: [String: String] =
+        defaults.dictionary(forKey: Self.pulseDoItBotsKey) as? [String: String] ?? [:]
+    static let pulseDoItBotsKey = "conduit.pulse.doItBots"
+
+    /// Sets where Do it goes for a card from no chat on this dashboard:
+    /// `bot`'s Bot Chat, or a new chat for nil.
+    func setPulseDoItBot(_ bot: String?) {
+        guard let key = activeDashboardID?.uuidString, pulseDoItBots[key] != bot else { return }
+        var bots = pulseDoItBots
+        bots[key] = bot
+        storePulseDoItBots(bots)
+    }
+
+    private func storePulseDoItBots(_ bots: [String: String]) {
+        objectWillChange.send()
+        pulseDoItBots = bots
+        defaults.set(bots, forKey: Self.pulseDoItBotsKey)
+    }
 
     func rememberPulseHome(_ chat: String?, profile: String?) {
         guard let key = activeDashboardID?.uuidString else { return }
@@ -2754,6 +2779,8 @@ final class AppState: ObservableObject {
 
     /// A removed dashboard's Pulse chat goes with it.
     func forgetPulseHome(of dashboardID: UUID) {
+        var bots = pulseDoItBots
+        if bots.removeValue(forKey: dashboardID.uuidString) != nil { storePulseDoItBots(bots) }
         var profiles = pulseRememberedProfiles
         if profiles.removeValue(forKey: dashboardID.uuidString) != nil { storePulseProfiles(profiles) }
         var homes = pulseRememberedHomes
@@ -27143,7 +27170,10 @@ final class AppState: ObservableObject {
         botChatOpenFlights[flightKey] = flight
         let opened = await task.value
         if botChatOnItsWay?.transition == transition { botChatOnItsWay = nil }
-        if opened { return .opened }
+        // As a tap that joined: a navigation newer than this open, in the hop
+        // back from its task, owns the screen, so the caller doesn't act on it
+        // (Pulse's Do it would leave its words in that other chat).
+        if opened { return chatViewportTransitionIsCurrent(generation: transition) ? .opened : .superseded }
         guard chatViewportTransitionIsCurrent(generation: transition) else { return .superseded }
         // Nothing replaced the chat on screen: its viewport goes on as it was.
         if beganTransition { finishChatViewportTransition(generation: transition) }
@@ -40249,7 +40279,9 @@ final class AppState: ObservableObject {
         guard aliases.contains(agent.sessionId)
                 || delegateAgents.contains(where: { $0.id == agent.id && $0.sessionId == agent.sessionId })
         else { return true }
-        guard let roster = await adoptDelegateRoster(for: open, retries: 0) else { return false }
+        guard let roster = await adoptDelegateRoster(for: open, retries: 0),
+              // Resumed again meanwhile: that roster is an earlier runtime's.
+              activeSessionId == open else { return false }
         return !roster.contains { $0.id == agent.id }
     }
 
