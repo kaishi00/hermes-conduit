@@ -3350,13 +3350,16 @@ list's)
   Escape closes the list. Return with nothing highlighted keeps its own job,
   so `/status` and Return still sends; Shift and an IME's composition keep
   the keys the text's (2026-11-07, #1938, issue 1576).
+- A pick from a suggestion list, by click, tap or key, puts the cursor
+  after what it inserted, its trailing space included, so the next word
+  follows it (2026-11-11, #2223, issue 2048).
 
 **Open gaps**
 - Not yet checked on a Mac or an iPad with a keyboard: the Return key
   command sending, Shift-Return and the IME's Return still reaching the
   text, in chats, rooms and the full editor; nor the suggestion lists' keys.
 
-**Checked:** 2026-11-07, #1938 (a suggestion list's keys: arrows, Tab, Escape, a highlighted Return; ComposerSuggestionKeys); 2026-10-30, #1527 (a Return send keeps the field's focus on a Mac or with a hardware keyboard, see Composer focus after a send; ImagePasteTextView takes focus once in the window); 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
+**Checked:** 2026-11-11, #2223 (a pick puts the cursor after it, slash commands and mentions; issue 2048); 2026-11-07, #1938 (a suggestion list's keys: arrows, Tab, Escape, a highlighted Return; ComposerSuggestionKeys); 2026-10-30, #1527 (a Return send keeps the field's focus on a Mac or with a hardware keyboard, see Composer focus after a send; ImagePasteTextView takes focus once in the window); 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
 
 ## Slash commands
 
@@ -3390,13 +3393,13 @@ commands" (not needed, still true)
 
 **Rulings**
 - A command Hermes refuses for app chats is hidden, not shown as unavailable, unless Conduit has a route of its own; typed anyway it goes to Hermes, whose refusal says what to use (2026-10-21, #1082).
-- Picking a suggestion only inserts it; sending runs it. `/reload-mcp` asks before it reloads, as Hermes' own clients do: Hermes' words plus "Send /reload-mcp now to reload."; now, yes, once, approve and always go ahead, always also turning the question off where Hermes keeps that setting (`hermes dashboard`; the listener refuses the key, so it isn't sent there) (Eric picked building both reload routes, 2026-11-07, #1938).
+- Picking a suggestion only inserts it, the cursor after it (2026-11-11, #2223, issue 2048); sending runs it. `/reload-mcp` asks before it reloads, as Hermes' own clients do: Hermes' words plus "Send /reload-mcp now to reload."; now, yes, once, approve and always go ahead, always also turning the question off where Hermes keeps that setting (`hermes dashboard`; the listener refuses the key, so it isn't sent there) (Eric picked building both reload routes, 2026-11-07, #1938).
 - A Hermes without `reload.mcp` or `skills.reload` gets the command through `slash.exec`, as before (2026-11-07, #1938).
 
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-07, #1938 (added: reload-mcp and reload-skills routed, keyboard selection on the list; Hermes' new terminal-only `/rewind` hidden, the parity check clean against Hermes canary a08f2418).
+**Checked:** 2026-11-11, #2223 (a pick puts the cursor after it, issue 2048); 2026-11-07, #1938 (added: reload-mcp and reload-skills routed, keyboard selection on the list; Hermes' new terminal-only `/rewind` hidden, the parity check clean against Hermes canary a08f2418).
 
 ## Composer at rest and expanded
 
