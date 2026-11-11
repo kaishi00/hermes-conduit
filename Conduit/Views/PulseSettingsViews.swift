@@ -311,9 +311,8 @@ struct PulseSettingsPage: View {
     private var doItSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Do it"), symbol: "arrow.right.circle", tint: .conduitAccent) {
             ConduitMenuPicker(
-                value: appState.pulseDoItBot?.name ?? "",
-                choices: [(id: "", title: AppLocalization.string("New chat"))]
-                    + appState.pulseDoItBotChoices.map { (id: $0.name, title: $0.displayLabel) },
+                value: appState.pulseDoItBot?.name ?? appState.pulseDoItBotSavedName ?? "",
+                choices: doItChoices,
                 onSelect: { picked in
                     Haptics.selection()
                     appState.setPulseDoItBot(picked.isEmpty ? nil : picked)
@@ -326,6 +325,18 @@ struct PulseSettingsPage: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// New chat and the bots Do it can open; a saved bot that isn't one now
+    /// (hidden, gone, or the list not read yet) stays listed by its name, so
+    /// the row never says New chat while Do it would go back to that bot.
+    private var doItChoices: [(id: String, title: String)] {
+        let bots = appState.pulseDoItBotChoices.map { (id: $0.name, title: $0.displayLabel) }
+        var choices = [(id: "", title: AppLocalization.string("New chat"))] + bots
+        if let saved = appState.pulseDoItBotSavedName, !bots.contains(where: { $0.id == saved }) {
+            choices.append((id: saved, title: saved))
+        }
+        return choices
     }
 
     /// Quiet times (0.80.2, `quiet`): the days of the week Pulse keeps to

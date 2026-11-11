@@ -537,6 +537,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertNil(state.pulseDoItBot)
         XCTAssertNil(state.pulseDoItBotUnconfirmed)
         XCTAssertTrue(state.pulseDoItBotSaved, "Settings keeps its row, so New chat can clear it")
+        XCTAssertEqual(state.pulseDoItBotSavedName, "kai", "and shows it there, not New chat, while it stays saved")
         XCTAssertNil(state.pulseNewChatRefusal(for: date))
         // Per dashboard, kept across a launch, and gone with its dashboard.
         state.setPulseDoItBot("atlas")

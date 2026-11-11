@@ -1521,9 +1521,13 @@ extension AppState {
 
     /// Whether Settings > Pulse has a bot saved on this dashboard, a choice
     /// now or not: its row stays so New chat can clear it.
-    var pulseDoItBotSaved: Bool {
-        notifierPlugin.reports(PulseClient.actedChatCapability)
-            && activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }) != nil
+    var pulseDoItBotSaved: Bool { pulseDoItBotSavedName != nil }
+
+    /// The bot Settings > Pulse has saved on this dashboard, a choice now or
+    /// not, for its row to show rather than New chat while it stays saved.
+    var pulseDoItBotSavedName: String? {
+        guard notifierPlugin.reports(PulseClient.actedChatCapability) else { return nil }
+        return activeDashboardID.flatMap { pulseDoItBots[$0.uuidString] }
     }
 
     /// The bot whose Bot Chat Do it opens for `card`: none for a card with
