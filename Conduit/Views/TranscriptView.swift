@@ -156,15 +156,25 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         collectionView.addGestureRecognizer(tap)
     }
 
+    /// Saves a chat trace when rows on screen aren't drawn (issue 1942).
+    private lazy var blankWatch = TranscriptBlankWatch(controller: self)
+
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        blankWatch.start()
         dropParkedIfIdle()
         // Fingers on the transcript and the swipe back over it, in the
         // recorder (issue 1687).
         TranscriptTouchTrace.watch(collectionView, navigationController: navigationController)
     }
 
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        blankWatch.stop()
+    }
+
     func detach() {
+        blankWatch.stop()
         scroller.detach(collectionView)
         TranscriptTouchTrace.unwatch(collectionView)
         attached = false
