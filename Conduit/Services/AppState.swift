@@ -6191,7 +6191,48 @@ final class AppState: ObservableObject {
     /// not running at all, so while one runs it may reconnect on its own,
     /// as a call does, and only for the time of the run (#2164).
     var shortcutSendsRunning = 0
-    var isShortcutSendRunning: Bool { shortcutSendsRunning > 0 }
+    /// A connect a run started, let finish after the run ended. Cut off at
+    /// its next step it would leave Conduit "connecting" with nothing
+    /// running, which only the phone coming on screen repairs, and every
+    /// later run would wait on it in vain.
+    var shortcutConnectHeld = false
+    var isShortcutSendRunning: Bool { shortcutSendsRunning > 0 || shortcutConnectHeld }
+    /// How long a connect may run on after its run. A test seam.
+    var shortcutConnectHoldLimit: Duration = .seconds(60)
+
+    /// A shortcut run ended. A connect still under way runs on, until it
+    /// lands or fails (or the limit passes), so it settles its own state.
+    func endShortcutSend() {
+        shortcutSendsRunning -= 1
+        guard shortcutSendsRunning == 0, isConnecting, !isConnected, !shortcutConnectHeld else { return }
+        shortcutConnectHeld = true
+        let limit = shortcutConnectHoldLimit
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await withTaskGroup(of: Void.self) { group in
+                group.addTask { @MainActor in
+                    for await connecting in self.$isConnecting.values where !connecting { return }
+                }
+                group.addTask { try? await Task.sleep(for: limit) }
+                await group.next()
+                group.cancelAll()
+            }
+            self.shortcutConnectHeld = false
+        }
+    }
+
+    /// A connect cut off off screen after its socket opened (the app left,
+    /// or a call ended, at its next step) leaves the socket unpublished:
+    /// Conduit reads as disconnected over a live socket until the phone
+    /// comes on screen and publishes it. A shortcut run off screen publishes
+    /// it the same way, then checks it like any quiet socket (#2164). The
+    /// bootstrap that connect owes still waits for the phone.
+    func publishOpenSocketOffScreen() {
+        guard !isSceneActive, !isConnected, let client, client.isConnected else { return }
+        noteConnectionStep("Open socket published for a shortcut")
+        isConnected = true
+        isConnecting = false
+    }
     /// A transport whose handshake completed but whose post-connect bootstrap
     /// (profiles, Bot Mode roster, catalog sync + resume) was abandoned
     /// because the scene went inactive mid-connect — e.g. the Face ID

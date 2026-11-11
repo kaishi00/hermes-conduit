@@ -519,6 +519,36 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
         XCTAssertEqual(recorder.executedPurposes.count, 1, "the cycle ran during the send")
     }
 
+    /// A connect the run started outlives the run: it may run on until it
+    /// settles, so it never leaves Conduit "connecting" with nothing
+    /// running, for the next run to wait on in vain.
+    func testAConnectUnderWayRunsOnAfterTheRunUntilItSettles() async {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.shortcutSendsRunning = 1
+        appState.isConnecting = true
+
+        appState.endShortcutSend()
+
+        XCTAssertEqual(appState.shortcutSendsRunning, 0)
+        XCTAssertTrue(appState.isShortcutSendRunning, "the connect under way may still finish")
+        appState.isConnecting = false
+        for _ in 0..<500 where appState.shortcutConnectHeld { await Task.yield() }
+        XCTAssertFalse(appState.isShortcutSendRunning, "settled, the phone's gate is back")
+    }
+
+    func testARunWithNothingUnderWayEndsAtOnce() {
+        let recorder = ReconnectRecorder()
+        let appState = makeAppState(recorder: recorder)
+        appState.handleScenePhase(.background)
+        appState.shortcutSendsRunning = 1
+
+        appState.endShortcutSend()
+
+        XCTAssertFalse(appState.isShortcutSendRunning)
+    }
+
     /// A socket that still looks open after the suspension, and has been
     /// quiet, is checked before the run sends, as a call's request is.
     func testShortcutSendChecksAQuietSocketOffScreen() async {

@@ -16,7 +16,7 @@ extension AppState {
     func sendFromShortcut(_ request: ShortcutSendRequest, deadline: Date) async throws -> ShortcutSendOutcome {
         // Off screen, the run may reconnect on its own while it lasts (#2164).
         shortcutSendsRunning += 1
-        defer { shortcutSendsRunning -= 1 }
+        defer { endShortcutSend() }
         releaseLaunchDashboardChoice(for: "a shortcut")
         return try await ShortcutSender(backend: makeShortcutSendBackend()).send(request, deadline: deadline)
     }
@@ -32,6 +32,7 @@ extension AppState {
                 // socket die while it was suspended: a quiet one is checked
                 // first, as a call's request is, and a dead one reconnects
                 // at once rather than at the end of its backoff (#2164).
+                self.publishOpenSocketOffScreen()
                 await self.checkQuietTransportOffScreen()
                 self.reconnectNowForWaitingVoice("Shortcut send waiting")
                 // Leave time to send once connected, but always wait a
