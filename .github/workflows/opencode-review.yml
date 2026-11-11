@@ -28,7 +28,8 @@ jobs:
   # docs and config files (Markdown, text, JSON, YAML, TOML; not .github/,
   # opencode.json, or manifests that declare code or dependencies) to GLM-5.3-Flash
   # alone. A manual run, or adding run-review to a fork's PR, always reviews.
-  # GLM-5.3-Flash (GATE_REVIEWER) reviews first, in the review job; the other
+  # GLM-5.3-Flash (GATE_REVIEWER, falling back to Step 5 Preview when GLM
+  # can't review) reviews first, in the review job; the other
   # reviewers run in second-review only when its verdict isn't
   # REQUEST_CHANGES, so they argue a PR isn't ready rather than repeat the
   # blockers GLM already found.
@@ -93,7 +94,8 @@ jobs:
                {"name": "Beam", "model": "commandcode/reflection/beam:free", "key": "COMMANDCODE_API_KEY"},
                {"name": "Beam", "model": "commandcode/reflection/beam:free", "key": "COMMANDCODE_API_KEY_2"}]},
              {"reviewer": "GLM-5.3-Flash", "chain": [
-               {"name": "GLM-5.3-Flash", "model": "zai-custom/glm-5.3-flash", "key": "ZAI_API_KEY"}]}]
+               {"name": "GLM-5.3-Flash", "model": "zai-custom/glm-5.3-flash", "key": "ZAI_API_KEY"},
+               {"name": "Step 5 Preview", "model": "stepfun/step-5-preview", "key": "STEPFUN_API_KEY"}]}]
           DOCS_REVIEWER: GLM-5.3-Flash
           GATE_REVIEWER: GLM-5.3-Flash
           CHANGE_ID_PY: |
@@ -559,6 +561,7 @@ jobs:
           COMMANDCODE_API_KEY: ${{ secrets.COMMANDCODE_API_KEY }}
           COMMANDCODE_API_KEY_2: ${{ secrets.COMMANDCODE_API_KEY_2 }}
           ZAI_API_KEY: ${{ secrets.ZAI_API_KEY }}
+          STEPFUN_API_KEY: ${{ secrets.STEPFUN_API_KEY }}
           # The run's own token: this repo only, the job's permissions above,
           # and it expires when the run ends.
           GITHUB_TOKEN: ${{ github.token }}
@@ -582,7 +585,7 @@ jobs:
             # Only the attempt's own key reaches opencode, under the variable
             # its provider reads in opencode.json.
             declare -A keys
-            for k in OPENCODE_GO_API_KEY OPENCODE_GO_API_KEY_2 COMMANDCODE_API_KEY COMMANDCODE_API_KEY_2 ZAI_API_KEY; do
+            for k in OPENCODE_GO_API_KEY OPENCODE_GO_API_KEY_2 COMMANDCODE_API_KEY COMMANDCODE_API_KEY_2 ZAI_API_KEY STEPFUN_API_KEY; do
               keys[$k]=${!k:-}
               unset "$k"
             done
