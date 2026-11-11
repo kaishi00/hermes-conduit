@@ -125,6 +125,8 @@
 	<string>Conduit uses the microphone for voice conversations and foreground wake phrases.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>Conduit saves images and videos from your chats to Photos when you choose Save in the share sheet.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>When you share your photos with Hermes, Conduit describes them on this iPhone and sends only the descriptions to your own Hermes server; a photo itself goes only when you tap Send on its card. Conduit also uses it to save pictures to your Hermes album. Nothing goes to Conduit's developer.</string>
 	<key>NSRemindersFullAccessUsageDescription</key>
 	<string>When you share reminders, Conduit sends the lists you choose to your own Hermes server so your agent can see what's on them, and adds or completes reminders when you approve them. Nothing goes to Conduit's developer.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

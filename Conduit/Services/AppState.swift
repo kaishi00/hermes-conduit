@@ -6206,26 +6206,20 @@ final class AppState: ObservableObject {
     /// later run would wait on it in vain.
     var shortcutConnectHeld = false
     var isShortcutSendRunning: Bool { shortcutSendsRunning > 0 || shortcutConnectHeld }
-    /// How long a connect may run on after its run. A test seam.
-    var shortcutConnectHoldLimit: Duration = .seconds(60)
 
-    /// A shortcut run ended. A connect still under way runs on, until it
-    /// lands or fails (or the limit passes), so it settles its own state.
+    /// A shortcut run ended. A connect still under way runs on until it
+    /// lands or fails, however long that takes, so it settles its own state:
+    /// a time limit would cut a slow one off and leave the same "connecting"
+    /// behind. The hold starts nothing new, since every reconnect path waits
+    /// while a connect is under way; the phone coming on screen settles it
+    /// too.
     func endShortcutSend() {
         shortcutSendsRunning -= 1
         guard shortcutSendsRunning == 0, isConnecting, !isConnected, !shortcutConnectHeld else { return }
         shortcutConnectHeld = true
-        let limit = shortcutConnectHoldLimit
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask { @MainActor in
-                    for await connecting in self.$isConnecting.values where !connecting { return }
-                }
-                group.addTask { try? await Task.sleep(for: limit) }
-                await group.next()
-                group.cancelAll()
-            }
+            for await connecting in self.$isConnecting.values where !connecting { break }
             self.shortcutConnectHeld = false
         }
     }
@@ -30551,8 +30545,17 @@ final class AppState: ObservableObject {
 
     /// The refused chat's takeover offer or progress. The composer shows it
     /// only while that chat is the active one.
-    @Published private(set) var chatTakeover: ChatTakeoverState?
+    @Published private(set) var chatTakeover: ChatTakeoverState? {
+        didSet { returnHeldTakeoverMessageIfEnded() }
+    }
     private var chatTakeoverTask: Task<Void, Never>?
+    /// The refused typed message an automatic takeover keeps and sends
+    /// itself once the chat is Conduit's (issue 2140).
+    private var chatTakeoverHeldMessage: ChatTakeoverHeldMessage?
+    /// The automatic takeover a typed send's refusal just started: the
+    /// words that come back from that send are kept for it rather than put
+    /// back in the composer.
+    private var chatTakeoverKeepsRefusedWords: String?
     private var chatTakeoverReadyCount = 0
     static let chatTakeoverPollInterval: Duration = .seconds(3)
     /// How long Conduit waits for the other app's running turn to finish.
@@ -30609,6 +30612,7 @@ final class AppState: ObservableObject {
         }
         chatTakeoverTask?.cancel()
         chatTakeoverTask = nil
+        chatTakeoverKeepsRefusedWords = nil
         errorMessage = nil
         chatTakeover = ChatTakeoverState(
             sessionID: sessionID, sessionIDs: ids, surface: details.surface, refusedText: refusedText,
@@ -30661,6 +30665,27 @@ final class AppState: ObservableObject {
             if !Task.isCancelled { self.chatTakeoverTask = nil }
             guard let phase, !Task.isCancelled,
                   self.chatTakeover?.sessionID == waiting.sessionID else { return }
+            // A typed message this takeover kept goes now, sent by Conduit
+            // rather than left for the composer to find (issue 2140).
+            if phase == .ready, let held = self.chatTakeoverHeldMessage, held.sessionID == waiting.sessionID {
+                self.chatTakeoverHeldMessage = nil
+                if self.canSendHeldTakeoverMessage(held) {
+                    // Bound to the chat that refused it: one opened before
+                    // the send starts gets nothing, and the words go back.
+                    let context = self.composerSubmissionContext()
+                    let clearCount = self.composerDraftStore.clearCount
+                    self.dismissChatTakeover()
+                    Task { @MainActor [weak self] in
+                        await self?.sendHeldTakeoverMessage(held, context: context, clearCount: clearCount)
+                    }
+                    return
+                }
+                // Not from here right now (another chat is open, or the
+                // composer is locked while the chat syncs): the words go
+                // back, and the composer sends them once it can, as after
+                // a takeover the user asked for.
+                self.composerRestoreRequests.append(held.restore)
+            }
             var settled = waiting
             settled.surface = self.chatTakeover?.surface ?? waiting.surface
             settled.phase = phase
@@ -30674,6 +30699,77 @@ final class AppState: ObservableObject {
             }
             self.chatTakeover = settled
         }
+    }
+
+    /// Keeps the words of the typed message whose refusal started the
+    /// automatic takeover, instead of putting them back in the composer:
+    /// Conduit sends them itself once the chat is its own, as a call does
+    /// its request (#1061). Before, the composer resent only when its
+    /// field still held exactly that message, so words that came back
+    /// anywhere else were lost behind "Send your message again" (issue
+    /// 2140). True when kept; they go back if the takeover doesn't happen.
+    func keepsWordsForChatTakeover(_ request: ComposerRestoreRequest) -> Bool {
+        guard chatTakeoverHeldMessage == nil, let takeover = chatTakeover,
+              chatTakeoverKeepsRefusedWords == takeover.sessionID, takeover.phase == .waiting else { return false }
+        let draft = request.draft
+        let outbound = ComposerReplyReference.outboundText(
+            draft.text.trimmingCharacters(in: .whitespacesAndNewlines),
+            hasAttachments: !draft.attachments.isEmpty,
+            replyingTo: draft.replyReference
+        )
+        guard takeover.isRefusedMessage(outbound, hasAttachments: !draft.attachments.isEmpty) else { return false }
+        chatTakeoverKeepsRefusedWords = nil
+        chatTakeoverHeldMessage = ChatTakeoverHeldMessage(
+            sessionID: takeover.sessionID, sessionIDs: takeover.sessionIDs, text: takeover.refusedText, restore: request
+        )
+        return true
+    }
+
+    /// The kept words go back to the composer once their takeover ends
+    /// without the chat becoming Conduit's: it failed, can't happen here,
+    /// was dismissed, or a profile or dashboard switch or another refusal
+    /// replaced it.
+    private func returnHeldTakeoverMessageIfEnded() {
+        guard let held = chatTakeoverHeldMessage else { return }
+        if let takeover = chatTakeover, takeover.sessionID == held.sessionID, takeover.phase == .waiting { return }
+        chatTakeoverHeldMessage = nil
+        composerRestoreRequests.append(held.restore)
+    }
+
+    /// The kept message can go from here: its chat is the one open and the
+    /// composer would send.
+    private func canSendHeldTakeoverMessage(_ held: ChatTakeoverHeldMessage) -> Bool {
+        guard composerIsEnabled, let current = activeSessionId else { return false }
+        let ids = Set(held.sessionIDs)
+        if ids.contains(current) { return true }
+        return canonicalSessionID(for: current).map(ids.contains) == true
+    }
+
+    /// Sends the kept message as the composer would have, into the chat
+    /// that refused it. One that doesn't go comes back to the composer like
+    /// any send that didn't; refused again, the composer offers the button
+    /// instead of looping. A sign-out while it was on its way wiped the
+    /// drafts and the waiting messages' files: the outgoing user's words
+    /// don't come back.
+    /// `clearCount`: the draft store's, when the takeover finished.
+    private func sendHeldTakeoverMessage(
+        _ held: ChatTakeoverHeldMessage,
+        context: ComposerSubmissionContext,
+        clearCount: UInt64
+    ) async {
+        guard composerDraftStore.clearCount == clearCount else { return }
+        lifecycleLog.notice("took the chat over; sending the refused message again")
+        if await submitComposer(text: held.text, attachments: held.restore.draft.attachments, context: context) {
+            if let pending = held.restore.pending { removePendingComposerSendFile(pending) }
+            return
+        }
+        guard composerDraftStore.clearCount == clearCount else { return }
+        if let pending = held.restore.pending,
+           !pendingComposerSendFiles(dashboardID: pending.dashboardID).contains(where: { $0.id == pending.id })
+            || composerRestoreRequests.contains(where: { $0.pending?.id == pending.id }) {
+            return
+        }
+        composerRestoreRequests.append(held.restore)
     }
 
     /// Who the plugin says holds the chat while Conduit waits. Hermes'
@@ -30892,6 +30988,7 @@ final class AppState: ObservableObject {
     func dismissChatTakeover() {
         chatTakeoverTask?.cancel()
         chatTakeoverTask = nil
+        chatTakeoverKeepsRefusedWords = nil
         chatTakeover = nil
     }
 
@@ -31547,14 +31644,18 @@ final class AppState: ObservableObject {
                 }
             }
             await recoverComposerSubmission(using: submissionContext)
-            // Automatic takeover starts once the refused draft is back in
-            // the composer, which sends it again when the chat is Conduit's.
+            // Automatic takeover starts once the chat has synced. The
+            // composer's words for this send come back while it runs, and
+            // Conduit keeps them and sends them when the chat is its own.
             // A call's request is taken over and sent again by the call.
             if !callSubmissionTexts.contains(text), surface != Self.spokenPromptSurface,
                chatTakeoverMatches(sessionId), activeChatTakeover?.phase == .offered,
                takesOverChatsAutomatically, chatTakeoverAutomaticSessionID != chatTakeoverGuardKey(sessionId) {
                 chatTakeoverAutomaticSessionID = chatTakeoverGuardKey(sessionId)
                 takeOverChat()
+                // The words this send hands back are kept for it, and sent
+                // once the chat is Conduit's (issue 2140).
+                if chatTakeover?.phase == .waiting { chatTakeoverKeepsRefusedWords = chatTakeover?.sessionID }
             }
             return false
         }

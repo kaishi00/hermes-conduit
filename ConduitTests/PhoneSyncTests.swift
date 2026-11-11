@@ -11,6 +11,7 @@
 
 import CryptoKit
 import EventKit
+import UIKit
 import XCTest
 @testable import Conduit
 
@@ -1068,15 +1069,21 @@ extension HermesVoiceGatewayTimeoutTests {
         preferences.shortcutsRunWithoutAsking = true
         engine.savePreferences(preferences)
         runner.onScreen = false
+        // A run without asking reports as soon as it ends, with no other sync to carry it.
+        engine.onRanWithoutAsking = { _ = await engine.sync(deadline: .distantFuture, request: host.handle) }
         host.changes = [["id": "ch_auto", "kind": "run_shortcut", "auto": true, "fields": ["shortcut": "Log Water"]]]
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_auto"])
         XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["shortcuts_auto"] as? Bool, true)
         runner.onScreen = true
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
-        for _ in 0..<20 where runner.runs.count < 2 { await Task.yield() }
+        for _ in 0..<200 where !host.reported.contains(where: { $0["id"] as? String == "ch_auto" }) { await Task.yield() }
         XCTAssertEqual(runner.runs.count, 2)
         XCTAssertTrue(engine.prompts.isEmpty)
+        XCTAssertTrue(host.reported.contains { $0["id"] as? String == "ch_auto" }, "Reported by the run's own pass")
+        engine.onRanWithoutAsking = nil
+        preferences.shortcutsRunWithoutAsking = false
+        engine.savePreferences(preferences)
 
         // Cancelled in Shortcuts: Hermes hears the user said no.
         runner.failure = .cancelled
@@ -1084,6 +1091,20 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         await engine.answer(try XCTUnwrap(engine.prompts.first), approve: true)
         XCTAssertEqual(engine.state.answered["ch_cancel"]?.outcome, .dismissed)
+
+        // Sharing turned off and on again while a run is going: what it gave
+        // back belongs to the sharing that asked, so it's dropped.
+        runner.failure = nil
+        host.changes = [["id": "ch_late", "kind": "run_shortcut", "auto": false, "fields": ["shortcut": "Log Water"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let late = try XCTUnwrap(engine.prompts.first { $0.id == "ch_late" })
+        runner.whileRunning = {
+            _ = await engine.turnOff(deleteFromHost: nil)
+            engine.savePreferences(preferences)
+        }
+        await engine.answer(late, approve: true)
+        runner.whileRunning = nil
+        XCTAssertNil(engine.state.answered["ch_late"], "A late result never reaches the new sharing")
 
         // Turned off: refused, and the list stops going.
         preferences.shortcuts = false
@@ -1138,8 +1159,7 @@ extension HermesVoiceGatewayTimeoutTests {
         }
     }
 
-    /// Contacts Hermes asks to add, change or delete: never without a card,
-    /// on the picked person's own card, and the picked people follow.
+    /// A contact change's phones or emails with nothing usable in them.
     func testAContactListWithNothingUsableChangesNothing() {
         // Nothing dialable or addressable: the card's lists stay as they are.
         let junk = PhoneContactEdit(json: ["nickname": "Jo", "phones": [["number": "call me"]], "emails": [["address": "nope"]]])
@@ -1154,6 +1174,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(mixed?.phones?.count, 1)
     }
 
+    /// Contacts Hermes asks to add, change or delete: never without a card,
+    /// on the picked person's own card, and the picked people follow.
     func testPhoneContactChangesAskThenFollowThePickedPeople() async throws {
         let contacts = FakePhoneContactsSource()
         let host = FakePhoneHost()
@@ -1174,7 +1196,7 @@ extension HermesVoiceGatewayTimeoutTests {
                         "phones": [["number": "+1 555 0100", "label": "work"]]]],
             ["id": "ch_change", "kind": "update_contact", "target": ["contact_id": "p_sam"],
              "fields": ["nickname": "Sammy", "relation": "partner", "name": "Sam Lee"]],
-            ["id": "ch_delete", "kind": "delete_contact", "target": ["contact_id": "p_alex"], "fields": ["name": "Alex Kim"]],
+            ["id": "ch_delete", "kind": "delete_contact", "target": ["contact_id": "p_alex"], "fields": ["name": "Alexandra"]],
             ["id": "ch_bad", "kind": "update_contact", "target": ["contact_id": "p_sam"], "fields": ["name": "Sam Lee"]],
         ]
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
@@ -1182,6 +1204,12 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(contacts.changes.isEmpty)
         XCTAssertEqual(PhoneChangeWording.detail(engine.prompts[1].change), "Sam Lee → “Sammy” · partner")
         XCTAssertTrue(PhoneChangeWording.isRemoval(engine.prompts[2].change.kind))
+        // The card and a call name the person the phone will delete, not the name Hermes sent.
+        XCTAssertEqual(engine.prompts[2].personName, "Alex Kim")
+        XCTAssertEqual(PhoneChangeWording.detail(engine.prompts[2].change, personName: engine.prompts[2].personName), "Alex Kim")
+        XCTAssertEqual(PhoneVoiceTools.describe(engine.prompts[2])["person"] as? String, "Alex Kim")
+        XCTAssertEqual(PhoneVoiceTools.describe(engine.prompts[0])["person"] as? String, "Jo Park",
+                       "A new contact the phone has no card for yet goes by the name Hermes gave")
 
         // Without Contacts access, a yes fails and says why.
         await engine.answer(engine.prompts[0], approve: true)
@@ -1622,12 +1650,77 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(SpokenApprovals.answer("Yes", waiting: SpokenApprovals.Waiting(phoneChanges: ["ch_1", "ch_2"])))
     }
 
+    func testPhonePhotosShareDescriptionsAndSendOnlyFromTheCard() async throws {
+        let photos = FakePhonePhotoSource()
+        photos.entries = [
+            ["id": "ph_0000000000000001", "taken": "2026-10-12T15:00:00Z", "labels": ["beach", "dog"], "place": "Brighton"],
+        ]
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: FakePhoneCalendarSource(), photos: photos)
+        var preferences = phonePreferences()
+        preferences.photos = true
+        engine.savePreferences(preferences)
+
+        // The descriptions go, never a picture.
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["photos"] as? Bool, true)
+        let section = try XCTUnwrap(host.batches.last?["photos"] as? [String: Any])
+        XCTAssertEqual((section["upsert"] as? [[String: Any]])?.first?["id"] as? String, "ph_0000000000000001")
+        XCTAssertNil(host.batches.last?["photo_files"])
+        XCTAssertEqual(photos.described, 1)
+        let sent = host.batches.count
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertNil(host.batches.dropFirst(sent).first { $0["photos"] != nil }, "Unchanged descriptions don't go again")
+
+        // Asked: always a card, even with Add without asking; never a spoken yes.
+        preferences.autoAdd = true
+        engine.savePreferences(preferences)
+        host.changes = [["id": "ch_photo", "kind": "send_photo", "auto": true, "target": ["photo_id": "ph_0000000000000001"],
+                         "fields": ["taken": "2026-10-12T15:00:00Z", "place": "Brighton"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_photo"])
+        XCTAssertEqual(PhoneChangeWording.headline(engine.prompts[0].change), "Hermes wants to see a photo")
+
+        // Yes: the picture goes in an upload of its own, and Hermes hears it went.
+        photos.jpegs["ph_0000000000000001"] = Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3])
+        await engine.answer(engine.prompts[0], approve: true)
+        XCTAssertTrue(engine.prompts.isEmpty)
+        host.changes = []
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let file = try XCTUnwrap(host.batches.compactMap { $0["photo_files"] as? [[String: Any]] }.first?.first)
+        XCTAssertEqual(file["change_id"] as? String, "ch_photo")
+        XCTAssertEqual(file["data"] as? String, Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]).base64EncodedString())
+        XCTAssertEqual(host.reported.first { $0["id"] as? String == "ch_photo" }?["outcome"] as? String, "applied")
+        XCTAssertFalse(FileManager.default.fileExists(atPath: PhoneSyncEngine.photoUploadURL("ch_photo").path))
+
+        // Gone from the library: Hermes hears why, and nothing goes.
+        host.changes = [["id": "ch_gone", "kind": "send_photo", "auto": false, "target": ["photo_id": "ph_ffffffffffffffff"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        await engine.answer(try XCTUnwrap(engine.prompts.first), approve: true)
+        XCTAssertEqual(engine.state.answered["ch_gone"]?.outcome, .failed)
+
+        // Turned off: asked photos are refused, the descriptions stop and are forgotten.
+        preferences.photos = false
+        engine.savePreferences(preferences)
+        host.changes = [["id": "ch_off", "kind": "send_photo", "auto": false, "target": ["photo_id": "ph_0000000000000001"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertTrue(engine.prompts.isEmpty)
+        XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["photos"] as? Bool, false)
+        _ = await engine.turnOff(deleteFromHost: nil)
+        XCTAssertTrue(photos.forgotten)
+
+        // A photo request names its photo.
+        XCTAssertEqual(PhoneChange(json: ["id": "ch_x", "kind": "send_photo", "target": ["photo_id": "ph_1"]])?.kind, .sendPhoto)
+        XCTAssertNil(PhoneChange(json: ["id": "ch_y", "kind": "send_photo"]))
+    }
+
     // MARK: Helpers
 
     private func makePhoneEngine(source: FakePhoneCalendarSource,
                                  alarms: PhoneAlarmSource = FakePhoneAlarmSource(),
                                  contacts: PhoneContactsSource = FakePhoneContactsSource(),
                                  shortcuts: PhoneShortcutRunning? = nil,
+                                 photos: PhonePhotoSource? = nil,
                                  folder given: URL? = nil, defaults givenDefaults: UserDefaults? = nil,
                                  keys box: PhoneKeyBox = PhoneKeyBox(),
                                  now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_760_400_000) }) -> PhoneSyncEngine {
@@ -1640,7 +1733,8 @@ extension HermesVoiceGatewayTimeoutTests {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .gmt
         return PhoneSyncEngine(calendarSource: source, statusSource: FakePhoneStatusSource(), alarmSource: alarms,
-                               contactsSource: contacts, shortcutRunner: shortcuts ?? FakePhoneShortcutRunner(), store: PhoneSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                               contactsSource: contacts, shortcutRunner: shortcuts ?? FakePhoneShortcutRunner(),
+                               photoSource: photos ?? FakePhonePhotoSource(), store: PhoneSyncStateStore(url: folder.appendingPathComponent("state.json")),
                                keys: keys, defaults: defaults, calendar: calendar, now: now)
     }
 
@@ -1661,6 +1755,8 @@ private final class FakePhoneShortcutRunner: PhoneShortcutRunning {
     var onScreen = true
     var results: [String: String] = [:]
     var failure: PhoneShortcutError?
+    /// What happens while the shortcut runs, before it answers.
+    var whileRunning: (@MainActor () async -> Void)?
     private(set) var runs: [(name: String, input: String?)] = []
 
     var canRun: Bool { onScreen }
@@ -1668,8 +1764,30 @@ private final class FakePhoneShortcutRunner: PhoneShortcutRunning {
     func run(name: String, input: String?) async throws -> String? {
         guard onScreen else { throw PhoneShortcutError.notOnScreen }
         runs.append((name, input))
+        if let whileRunning { await whileRunning() }
         if let failure { throw failure }
         return results[name]
+    }
+}
+
+@MainActor
+private final class FakePhonePhotoSource: PhonePhotoSource {
+    var granted: PhonePhotoAccess = .full
+    var entries: [[String: Any]] = []
+    var jpegs: [String: Data] = [:]
+    private(set) var described = 0
+    private(set) var forgotten = false
+
+    var access: PhonePhotoAccess { granted }
+    func requestAccess() async -> PhonePhotoAccess { granted }
+    func describeMore(budget: Int, until deadline: Date) async { described = min(entries.count, described + budget) }
+    func descriptions() -> [[String: Any]] { Array(entries.prefix(described)) }
+    var progress: (described: Int, total: Int) { (described, entries.count) }
+    func thumbnail(photoID: String, side: CGFloat) async -> UIImage? { nil }
+    func jpeg(photoID: String, maxBytes: Int) async -> Data? { jpegs[photoID] }
+    func forget() {
+        forgotten = true
+        described = 0
     }
 }
 
@@ -1883,7 +2001,9 @@ private final class FakePhoneHost {
                 throw DashboardTicketBridgeError.http(status: 413, detail: "At most 5000 items per batch")
             }
             batches.append(batch)
-            return ["ok": true, "pending": changes.count]
+            // phone_store: a picture the host waits for is taken.
+            let files = (batch["photo_files"] as? [[String: Any]] ?? []).compactMap { $0["change_id"] as? String }
+            return ["ok": true, "pending": changes.count, "photos_sent": files]
         }
         if path == "\(base)/exchange" {
             let op = try XCTUnwrap(body["op"] as? String)

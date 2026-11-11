@@ -835,12 +835,20 @@ private struct V2ConversationMenu: View {
     let onScreen: (BotScreenTarget) -> Void
     @ObservedObject var screens: BotScreenSupport
 
-    /// The bot whose screen this chat can open: a Bot Chat's or a
-    /// workstream's, once its host said it can have one.
+    /// The bot whose screen this chat can open, once its host said it can
+    /// have one: a Bot Chat's or a workstream's bot, else the profile an
+    /// ordinary chat runs under (issue 2132). Not a room's (its bots may be
+    /// another host's) or a saved copy's (no host to ask).
     private var screenProfile: String? {
-        guard appState.activeRoomSurface == nil,
-              let profile = appState.activeBotChatProfile ?? appState.activeWorkstream?.profile else { return nil }
-        return profile
+        BotScreenUse.menuProfile(
+            inRoom: appState.activeRoomSurface != nil,
+            botChatProfile: appState.activeBotChatProfile,
+            workstreamProfile: appState.activeWorkstream?.profile,
+            savedCopy: appState.offlineChatPresentation != nil,
+            sessionID: appState.activeSessionId,
+            rowProfile: appState.activeChatSessionSummary?.profile,
+            activeProfile: appState.activeProfile
+        )
     }
 
     /// The bot whose chat this is, once the roster has it.
@@ -895,7 +903,8 @@ private struct V2ConversationMenu: View {
                     Button {
                         onScreen(BotScreenTarget(profile: profile,
                                                  botName: appState.botWork.snapshot(profile)?.botName
-                                                     ?? appState.profileDisplayName(profile)))
+                                                     ?? appState.profileDisplayName(profile),
+                                                 chatSessionIDs: appState.activeSessionId.map { appState.chatOwnSessionIDs(for: $0) } ?? []))
                     } label: {
                         Label(AppLocalization.string("Bot's Screen"), systemImage: "display")
                     }

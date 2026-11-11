@@ -300,6 +300,11 @@ enum PhoneVoiceTools {
             if action == "approve", prompt.change.kind == .runShortcut {
                 return ["error": "A shortcut runs only from its card on the iPhone's screen. Tell the user it's waiting there."]
             }
+            // A photo goes only once the user has seen it, on its card.
+            if action == "approve", prompt.change.kind == .sendPhoto {
+                return ["error": "A photo is sent only from its card on the iPhone's screen, where the user sees it. "
+                    + "Tell the user it's waiting there."]
+            }
             // Applying one takes the user's own yes, as a change made here does.
             if action == "approve", !(await confirmed(prompt.change.kind == .cancelAlarm, arrivalTurns[prompt.id])) {
                 return ["error": "Not approved: the user's own last words weren't a yes. Say back the change and approve "
@@ -636,9 +641,12 @@ enum PhoneVoiceTools {
         if let repeats = change.fields.repeats { entry["repeats"] = repeats }
         if let seconds = change.fields.seconds { entry["seconds"] = seconds }
         if let shortcut = change.fields.shortcut { entry["shortcut"] = shortcut }
-        if let name = change.fields.personName { entry["person"] = name }
+        // The person the phone will change, as it has them; Hermes' name only when it can't tell.
+        if let name = prompt.personName ?? change.fields.personName { entry["person"] = name }
         if let edit = change.fields.contact?.summary, !edit.isEmpty { entry["contact"] = edit }
         if let input = change.fields.input { entry["input"] = String(input.prefix(300)) }
+        if let taken = change.fields.taken { entry["taken"] = PhoneDates.format(taken) }
+        if let place = change.fields.place { entry["place"] = place }
         if let alarm = prompt.alarmTitle { entry["alarm"] = alarm }
         if let reason = change.reason { entry["reason"] = reason }
         return entry
@@ -649,6 +657,9 @@ enum PhoneVoiceTools {
         let entry = describe(prompt)
         let data = (try? JSONSerialization.data(withJSONObject: entry, options: [.sortedKeys])) ?? Data()
         let details = String(data: data, encoding: .utf8) ?? ""
+        if prompt.change.kind == .sendPhoto {
+            return "[Hermes is asking for a photo from this iPhone: \(details). At the next natural pause, tell the user in a sentence that it's waiting on the iPhone's screen, where they can see it and send it or not. You can't send it. Don't interrupt the user for it.]"
+        }
         return "[Hermes is asking for a change on this iPhone: \(details). At the next natural pause, tell the user in a sentence and ask whether to go ahead; then call \(changesTool) with approve or dismiss and its id. Don't interrupt the user for it.]"
     }
 
