@@ -280,6 +280,18 @@ extension HermesVoiceGatewayTimeoutTests {
             "First one.", "Second one!", "Third?", "A list:", "1. Ask Dr. Lee, e.g. by mail."
         ])
         XCTAssertEqual(text, " Then wait")
+
+        // A domain, a decimal or a file name still ends its sentence.
+        var dotted = "The site is example.com. The value is 3.5. Open notes.md. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &dotted), [
+            "The site is example.com.", "The value is 3.5.", "Open notes.md."
+        ])
+
+        // A link stays whole, so its address is dropped rather than read.
+        var link = "Read [part one. And two](https://example.com/a. b). Next one. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &link), [
+            "Read [part one. And two](https://example.com/a. b).", "Next one."
+        ])
     }
 
     func testALongReadAloudReplySpeaksSentenceBySentence() async throws {

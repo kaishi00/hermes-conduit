@@ -182,24 +182,35 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     /// Moves every finished sentence out of `text`, one string each, leaving
     /// the unfinished tail. A sentence ends at . ! ? … followed by whitespace
     /// (so "3.5" isn't split), or right after a line break or a CJK full
-    /// stop. A period after a number or a word of one or two letters ("1.",
-    /// "Dr.", "e.g.") doesn't end one, so a list number or an abbreviation
-    /// is said with what follows rather than on its own.
+    /// stop. A period after a list number or a short abbreviation ("1.",
+    /// "Dr.", "e.g.") doesn't end one, so it's said with what follows, and
+    /// nothing inside a Markdown link does, so the link reaches
+    /// PreviewText whole and its address isn't read.
     static func takeCompleteSentences(from text: inout String) -> [String] {
         var sentences: [String] = []
         var start = text.startIndex
         var index = text.startIndex
+        var linkDepth = 0
+        var previous: Character?
         while index < text.endIndex {
             let character = text[index]
             let next = text.index(after: index)
+            let followedBySpace = next < text.endIndex && text[next].isWhitespace
             let ends: Bool
             if "。！？".contains(character) || character.isNewline {
                 ends = true
+            } else if character == "[" || (character == "(" && previous == "]") {
+                linkDepth += 1
+                ends = false
+            } else if character == "]" || character == ")" {
+                linkDepth = max(0, linkDepth - 1)
+                ends = false
+            } else if linkDepth > 0 {
+                ends = false
             } else if "!?…".contains(character) {
-                ends = next < text.endIndex && text[next].isWhitespace
+                ends = followedBySpace
             } else if character == "." {
-                ends = next < text.endIndex && text[next].isWhitespace
-                    && !endsAbbreviation(text[start..<index])
+                ends = followedBySpace && !endsAbbreviation(text[start..<index])
             } else {
                 ends = false
             }
@@ -207,19 +218,27 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
                 let sentence = text[start..<next].trimmingCharacters(in: .whitespacesAndNewlines)
                 if !sentence.isEmpty { sentences.append(sentence) }
                 start = next
+                linkDepth = 0
             }
+            previous = character
             index = next
         }
         if start > text.startIndex { text = String(text[start...]) }
         return sentences
     }
 
-    /// Whether the word just before a period is a number, an abbreviation
-    /// with periods of its own ("e.g"), or one or two letters ("Dr", "No").
+    /// Whether the word just before a period is a list number ("1", "12"),
+    /// one or two letters ("Dr", "No"), or letters each followed by a period
+    /// ("e.g", "U.S"). A domain, a file name or a decimal ends its sentence.
     private static func endsAbbreviation(_ before: Substring) -> Bool {
         let word = before.split(whereSeparator: { $0.isWhitespace }).last ?? ""
         guard !word.isEmpty else { return false }
-        return word.allSatisfy(\.isNumber) || word.contains(".") || word.count <= 2
+        if word.allSatisfy(\.isNumber) { return word.count <= 3 }
+        if word.contains(".") {
+            return word.split(separator: ".", omittingEmptySubsequences: false)
+                .allSatisfy { $0.count == 1 && $0.allSatisfy(\.isLetter) }
+        }
+        return word.count <= 2 && word.allSatisfy(\.isLetter)
     }
 
     /// The reply's language, so a German answer gets a German voice even
