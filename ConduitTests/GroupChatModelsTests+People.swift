@@ -239,6 +239,32 @@ extension GroupChatModelsTests {
         XCTAssertNil(try RoomSetupClient.parseState(blocked).apiServer.error)
     }
 
+    func testRoomSetupGroupsTheToolsRoomsUseFromTheCustomOnes() throws {
+        // A plugin before 0.163 marks none: its default ceiling is what rooms look things up with.
+        let older = try RoomSetupClient.parseState(peopleSetupAnswer())
+        XCTAssertEqual(older.lookupChoices.map(\.id), ["web", "vision", "x_search"])
+        XCTAssertEqual(older.customChoices, [])
+
+        var answer = peopleSetupAnswer()
+        let choices: [[String: Any]] = [
+            ["id": "web", "label": "Web search", "description": "", "lookup": true, "never": [String]()],
+            ["id": "skills", "label": "Skills", "description": "", "lookup": false, "never": ["skill_manage"]],
+            ["id": "terminal", "label": "Terminal", "description": "", "lookup": false, "never": [String]()],
+        ]
+        answer["choices"] = choices
+        let state = try RoomSetupClient.parseState(answer)
+        XCTAssertEqual(state.lookupChoices.map(\.id), ["web"])
+        XCTAssertEqual(state.customChoices.map(\.id), ["skills", "terminal"])
+        XCTAssertEqual(state.customChoices.first?.never, ["skill_manage"])
+        XCTAssertEqual(PeopleSettingsText.never(state.customChoices[0]),
+                       AppLocalization.string("Never in rooms: \("skill_manage")"))
+        XCTAssertNil(PeopleSettingsText.never(state.customChoices[1]))
+        // The folded group still says which of its tools are on.
+        XCTAssertNil(PeopleSettingsText.customOn(state, picked: ["web"]))
+        XCTAssertEqual(PeopleSettingsText.customOn(state, picked: ["web", "terminal"]),
+                       AppLocalization.string("On: \("Terminal")"))
+    }
+
     @MainActor
     func testRoomSetupPostsTheCeilingAndInterruptToTheProfile() async throws {
         var asked: [(path: String, method: String, body: [String: Any]?)] = []

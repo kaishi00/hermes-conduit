@@ -77,6 +77,22 @@ enum PeopleSettingsText {
         return AppLocalization.string("MCP servers too: \(list), in rooms whose Custom choice names their tools.")
     }
 
+    /// The Custom-only toolsets picked, or nil with none: shown on the
+    /// folded group so what's on there isn't hidden.
+    static func customOn(_ state: RoomSetupState, picked: Set<String>) -> String? {
+        let labels = state.customChoices.filter { picked.contains($0.id) }.map(\.label)
+        guard !labels.isEmpty else { return nil }
+        let list = labels.formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
+        return AppLocalization.string("On: \(list)")
+    }
+
+    /// The tools of a toolset rooms never run, or nil with none.
+    static func never(_ choice: RoomSetupState.Choice) -> String? {
+        guard !choice.never.isEmpty else { return nil }
+        let list = choice.never.formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
+        return AppLocalization.string("Never in rooms: \(list)")
+    }
+
     /// Four fingerprint words, as both sides read them out.
     static func words(_ words: [String]) -> String {
         words.joined(separator: " · ")
@@ -720,6 +736,8 @@ struct RoomSetupSection: View {
     /// The MCP servers picked, on a plugin that can name them.
     @State private var pickedServers: Set<String> = []
     @State private var editing = false
+    /// Whether the Custom-only tools are unfolded.
+    @State private var showsCustomTools = false
     /// A Set up is on its way, for this profile or the one shown before:
     /// one at a time, as the plugin does them.
     @State private var working = false
@@ -855,13 +873,25 @@ struct RoomSetupSection: View {
             .disabled(working)
         } else {
             if !state.ready {
-                Text(AppLocalization.string("Rooms reach your agents through Hermes' API server. For \(profileName), Set up will:"))
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.secondary)
-                ForEach(PeopleSettingsText.setupLines(state, profileName: profileName), id: \.self) { line in
-                    Label(line, systemImage: "checkmark")
-                        .scaledFont(.footnote)
+                // One status line; what Set up does is folded under it, so
+                // the tools below aren't buried under setup steps.
+                Label(AppLocalization.string("Not ready for rooms yet"), systemImage: "exclamationmark.circle")
+                    .scaledFont(.subheadline.weight(.semibold))
+                    .foregroundStyle(.orange)
+                DisclosureGroup(AppLocalization.string("What Set up does")) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(AppLocalization.string("Rooms reach your agents through Hermes' API server. For \(profileName), Set up will:"))
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
+                        ForEach(PeopleSettingsText.setupLines(state, profileName: profileName), id: \.self) { line in
+                            Label(line, systemImage: "checkmark")
+                                .scaledFont(.footnote)
+                        }
+                    }
+                    .padding(.top, 4)
                 }
+                .scaledFont(.footnote)
+                .tint(.conduitAccent)
                 if let error = state.apiServer.error {
                     Text(verbatim: AppLocalization.string("The API server didn't start the last time: \(error)"))
                         .scaledFont(.footnote)
@@ -903,26 +933,38 @@ struct RoomSetupSection: View {
         VStack(alignment: .leading, spacing: 10) {
             Text(AppLocalization.string("Tools rooms may let \(profileName) use"))
                 .scaledFont(.subheadline.weight(.semibold))
-            ForEach(state.choices) { choice in
-                Toggle(isOn: Binding(
-                    get: { picked.contains(choice.id) },
-                    set: { on in
-                        Haptics.selection()
-                        if on { picked.insert(choice.id) } else { picked.remove(choice.id) }
+            if !state.lookupChoices.isEmpty {
+                Text(AppLocalization.string("Rooms that look things up or search past chats use these."))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+                ForEach(state.lookupChoices) { choice in
+                    toolToggle(choice)
+                }
+            }
+            if !state.customChoices.isEmpty {
+                // Only a room set to Custom uses these, so they're folded away.
+                DisclosureGroup(isExpanded: $showsCustomTools) {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(AppLocalization.string("A room uses these only when its Custom choice names their tools."))
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                        ForEach(state.customChoices) { choice in
+                            toolToggle(choice)
+                        }
                     }
-                )) {
+                    .padding(.top, 6)
+                } label: {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(verbatim: choice.label)
+                        Text(AppLocalization.string("Only for rooms set to Custom"))
                             .scaledFont(.subheadline)
-                        if !choice.description.isEmpty {
-                            Text(verbatim: choice.description)
+                        if let on = PeopleSettingsText.customOn(state, picked: picked) {
+                            Text(verbatim: on)
                                 .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                         }
                     }
                 }
                 .tint(.conduitAccent)
-                .disabled(working)
             }
             Text(AppLocalization.string("Each room's choices work within these. Tools added later, by a plugin, an MCP server or a Hermes update, stay out of rooms until you add them here."))
                 .scaledFont(.caption)
@@ -950,6 +992,33 @@ struct RoomSetupSection: View {
                     .foregroundStyle(.secondary)
             }
         }
+    }
+
+    private func toolToggle(_ choice: RoomSetupState.Choice) -> some View {
+        Toggle(isOn: Binding(
+            get: { picked.contains(choice.id) },
+            set: { on in
+                Haptics.selection()
+                if on { picked.insert(choice.id) } else { picked.remove(choice.id) }
+            }
+        )) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: choice.label)
+                    .scaledFont(.subheadline)
+                if !choice.description.isEmpty {
+                    Text(verbatim: choice.description)
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                if let never = PeopleSettingsText.never(choice) {
+                    Label(never, systemImage: "nosign")
+                        .scaledFont(.caption)
+                        .foregroundStyle(.tertiary)
+                }
+            }
+        }
+        .tint(.conduitAccent)
+        .disabled(working)
     }
 
     /// Reads what the host needs. The tools picked follow what it saved,
