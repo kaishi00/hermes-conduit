@@ -297,7 +297,7 @@ Text: the section's captions and README.md's Capabilities line (done)
 **Open gaps**
 - None.
 
-**Checked:** 2026-11-08, #2024 (SVG logos drew blank: the snapshot view took the status bar's safe-area inset; an app's page stopped spinning on a kept copy no read would replace); 2026-11-08, #2019 (a sign-in gives up an outage after two minutes, issue 2013; unread rules hold new accounts and keep the last rules read, issue 2014; Rulings); 2026-11-08, #2011 (README's shared Capabilities line also names each plugin's own settings; this entry's part unchanged); 2026-11-08, #2006 (a retry waits for a given-up try's settle; Rulings); 2026-11-08, #2001 (a sign-in over a reconnect, issue 1997; rules not read said so, issue 1998; Code, Rulings); 2026-11-08, #1993 (Safari's close fallback fenced per close); 2026-11-08, #1988 (the chat card's gap closed; Browse Apps lists a chat's suggestions first; #1982's review: logo renders, give-up, Safari's dismissal, logo retries); 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
+**Checked:** 2026-11-11, #2185 (Browse Apps' search goes through the shared pageSearchable, unchanged on screen; see Search on a page under the tabs); 2026-11-08, #2024 (SVG logos drew blank: the snapshot view took the status bar's safe-area inset; an app's page stopped spinning on a kept copy no read would replace); 2026-11-08, #2019 (a sign-in gives up an outage after two minutes, issue 2013; unread rules hold new accounts and keep the last rules read, issue 2014; Rulings); 2026-11-08, #2011 (README's shared Capabilities line also names each plugin's own settings; this entry's part unchanged); 2026-11-08, #2006 (a retry waits for a given-up try's settle; Rulings); 2026-11-08, #2001 (a sign-in over a reconnect, issue 1997; rules not read said so, issue 1998; Code, Rulings); 2026-11-08, #1993 (Safari's close fallback fenced per close); 2026-11-08, #1988 (the chat card's gap closed; Browse Apps lists a chat's suggestions first; #1982's review: logo renders, give-up, Safari's dismissal, logo retries); 2026-11-08, #1982 (the section, Browse Apps, the app page, the name sheet and the logos)
 
 ## Things Hermes connects from a chat
 
@@ -758,13 +758,13 @@ not needed) · text: no Settings caption or doc describes the bar's place
 - The tabs stand in the strip whenever the window has one: a phone window whose safe area has a side inset of 72 pt or more on one side and none on the other (the Duo's is 84 pt). A landscape iPhone's sensor insets both sides, and an iPad or Mac window has none, so they keep the floating bar (Eric, 2026-11-07, #1945, picked from four mockups: option D, a tester's ask to put the bar under the wifi and battery).
 - They stand at the strip's foot, the main button under them, so they never reach the status icons at its top (the outer screen's end about 152 pt down; the simulator took taps everywhere below them and draws nothing else there, 2026-11-07).
 - They take the column iOS's own controls stand in: 50 pt wide, 24 pt in from the screen's edge (centered 49 pt from it, as the clock is), icons only with each tab's name as its accessibility label and large content viewer, and the main button a 50 pt circle. On a real Duo iOS also stands window controls in the strip (a close and arrange capsule and a "…" circle, 50 pt wide, down to about 332 pt on the outer screen) that the simulator never draws: the labelled 72 pt bar ran into the "…" circle and looked chunkier than them (issue 2118, a tester's screenshots, 2026-11-10). The icon-only bar starts about 387 pt down (the simulator), clear of them.
-- Any page pushed over a tab's root on one column hides them (a chat, Pulse, a project, Artifacts), unlike the floating bar, which stays over a project or Artifacts: iOS lays a pushed page's Back and its search button out in the same strip, over the tabs and the main button (the simulator, 2026-11-07, #1945). Beside the list they stay. The screens keep no clearance, and no bottom edge, under a bar while the tabs are in the strip.
+- Any page pushed over a tab's root on one column hides them (a chat, Pulse, a project, Artifacts), unlike the floating bar, which stays over a project or Artifacts: iOS lays a pushed page's Back and its toolbar buttons out in the same strip, over the tabs and the main button (the simulator, 2026-11-07, #1945); a page's search sits under its title (see Search on a page under the tabs). Beside the list they stay. The screens keep no clearance, and no bottom edge, under a bar while the tabs are in the strip.
 
 **Open gaps**
 - Not seen on a Duo yet: the inner screen's strip (the simulator can't unfold from the command line) and a finger's taps in the strip on hardware wait on TestFlight.
 - Settings' pages aren't in a tab path, so the tabs stay beside a pushed Settings page; its Back sits above them. A page's search field sits under its title, not in the strip (see Search on a page under the tabs).
 
-**Checked:** 2026-11-11, #2180 (a Settings page's search sits under its title, so it never stands over the main button; gap closed). Earlier 2026-11-10, #2126 (the tabs and the main button take iOS's 50 pt control column, icons only, below the window controls; issue 2118). Earlier 2026-11-07, added at #1945.
+**Checked:** 2026-11-11, #2185 (the pushed-page ruling cites toolbar buttons, not a search button); 2026-11-11, #2180 (a Settings page's search sits under its title, so it never stands over the main button; gap closed). Earlier 2026-11-10, #2126 (the tabs and the main button take iOS's 50 pt control column, icons only, below the window controls; issue 2118). Earlier 2026-11-07, added at #1945.
 
 ## Search on a page under the tabs
 
@@ -774,26 +774,30 @@ where the bar and the main button cover it.
 
 **Siblings:** the Skill Hub (done) · the Plugin catalog's Browse All (done)
 · Apps in Connectors (done) · the shared Model page, from Settings, a bot,
-Kanban or delegation (done) · Artifacts pushed in Chats or Bots (done; the
-panel beside a chat has its own field) · a Duo's status strip (done: the
+Kanban or delegation (done) · Artifacts pushed in Chats or Bots (done) · a chat's
+Artifacts sheet (done: the same list, the field under its title too) · the
+Artifacts panel beside a chat (not needed: its own field) · the Kanban
+model override sheet (done: it shows the shared Model page, the field under
+its title too) · a Duo's status strip (done: the
 field is no toolbar button there) · Add a provider and the Kanban task
 composer's pickers (not needed: sheets, no tabs over them) · the drawer
-shell's lists (not needed: no tab bar) · the Chats list's own search (not
-needed: its own field in the top bar) · Watch and CarPlay (not needed: no
+shell's lists (not needed: no tab bar) · the Chats list's, the Tasks board's
+and the Capabilities page's own search (not needed: their own fields in the
+page) · Watch and CarPlay (not needed: no
 such pages) · text: no caption or doc says where the field sits
 
 **Code**
 - `Conduit/Views/V2/V2Shell.swift` (pageSearchable)
 - Users: `Conduit/Views/Capabilities/SkillHubViews.swift`, `Conduit/Views/Capabilities/PluginCatalogViews.swift`, `Conduit/Views/Capabilities/HostedAppsViews.swift`, `Conduit/Views/ModelChooserPage.swift`, `Conduit/Views/V2/V2ArtifactsViews.swift`
-- Tests: `scripts/tests/test_page_search_source_contract.py` (a bare `.searchable` only in the sheets and the drawer shell it lists)
+- Tests: `scripts/tests/test_page_search_source_contract.py` (a bare `.searchable` only for the sheets' and the drawer shell's prompts it lists)
 
 **Rulings**
-- A page that can show with the tabs up searches through pageSearchable: the field under the title, always shown, never at the screen's foot (a tester's screenshot of the Skill Hub, 2026-11-11, #2180). A sheet keeps iOS's own place.
+- A page that can show with the tabs up searches through pageSearchable: the field under the title, always shown, never at the screen's foot (a tester's screenshot of the Skill Hub, 2026-11-11, #2180). A sheet keeps iOS's own place, except one that shows a shared page (a chat's Artifacts sheet, the Kanban model override's Model page), which keeps the page's.
 
 **Open gaps**
 - Not yet seen on a device or simulator: the source check can't show where iOS draws the field.
 
-**Checked:** 2026-11-11, added at #2180.
+**Checked:** 2026-11-11, #2185 (the sheets that show a shared page, the board's and Capabilities' own fields, the test by prompt); added at #2180.
 
 ## The open chat in the list beside it
 
@@ -1993,7 +1997,7 @@ the chat's `MEDIA:` file cards (see Files Hermes attaches) · the notifier's art
 **Open gaps**
 - Group rooms' messages aren't listed: a room has no Artifacts list, and its members' replies stay out of the Artifacts page.
 
-**Checked:** 2026-11-09, #2076 (the toggle waits and the panels stay hidden under a Bot Chat on its way, from #2075); 2026-11-06, #1884 (carries #1879, and closes its file-card gap: a `MEDIA:` card for a Markdown file opens the same reader; the reader's pictures page through the file's own); 2026-11-06, #1879 (a Markdown artifact opens in the Markdown reader, with Show Source and the Open In/Share handoff; Windows and Mac names, the 16 MB ceiling and the Quick Look fallback; code, tests and map); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`, a chat opened from Artifacts pushed in Bots stays in Bots, under the page; from Sessions unchanged); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home's Artifacts shortcut opens the page, and a bot's overview lists its whole profile's, Show in Chat closing the overview first); 2026-11-01, #1619 (Artifacts and the Work panel share the column beside the chat); 2026-10-31, #1584 (from #1582's review, a deleted chat's rows leave the profile's kept list, and offline a list kept empty says so); 2026-10-31, #1582 (a list opens on what it listed last time, and a deleted chat takes its own; the update notice waits for the plugin to rule artifacts out, kept rows or none, and a list whose plugin never answered asks it again); 2026-10-29, #1491 (a picture opens in the picture viewer and pages through the list's pictures); 2026-10-29, #1492 (the panel's width drags); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1399 (the panel and the Folder tab); #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
+**Checked:** 2026-11-11, #2185 (the pushed list's and the chat's sheet's search sit under the title, see Search on a page under the tabs; the panel's own field unchanged); 2026-11-09, #2076 (the toggle waits and the panels stay hidden under a Bot Chat on its way, from #2075); 2026-11-06, #1884 (carries #1879, and closes its file-card gap: a `MEDIA:` card for a Markdown file opens the same reader; the reader's pictures page through the file's own); 2026-11-06, #1879 (a Markdown artifact opens in the Markdown reader, with Show Source and the Open In/Share handoff; Windows and Mac names, the 16 MB ceiling and the Quick Look fallback; code, tests and map); 2026-11-03, #1703 (the `bot-workstreams` qualifiers go now that Bot Mode is on main); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1679 (on `bot-workstreams`, a chat opened from Artifacts pushed in Bots stays in Bots, under the page; from Sessions unchanged); 2026-11-03, #1678 (on `bot-workstreams`, Bots Home's Artifacts shortcut opens the page, and a bot's overview lists its whole profile's, Show in Chat closing the overview first); 2026-11-01, #1619 (Artifacts and the Work panel share the column beside the chat); 2026-10-31, #1584 (from #1582's review, a deleted chat's rows leave the profile's kept list, and offline a list kept empty says so); 2026-10-31, #1582 (a list opens on what it listed last time, and a deleted chat takes its own; the update notice waits for the plugin to rule artifacts out, kept rows or none, and a list whose plugin never answered asks it again); 2026-10-29, #1491 (a picture opens in the picture viewer and pages through the list's pictures); 2026-10-29, #1492 (the panel's width drags); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, #1399 (the panel and the Folder tab); #1272 with notifier #376; the sheet's ids at #1218; the page and Show in Chat at #1203; opens and reloads at #1191.
 
 ## Workspace files
 
@@ -4177,7 +4181,7 @@ pickers)
 **Open gaps**
 - A hardware keyboard connected while the sheet is open doesn't turn on the highlight until the sheet opens again.
 
-**Checked:** 2026-11-08, #1992 (every setting's Model page searches, hidden models marked Hidden); 2026-11-08, #1984 (the search sits under the current model card, which now says a switch's error or deferral in place of the matches' own status rows; matching unchanged); 2026-11-05, #1823 (#1816 checked here: the search and its highlight kept through the read again and Refresh models, see Model lists Hermes is still fetching); 2026-11-05, #1787 (the menus' models sit under their provider's submenu; a bot's picker closes its providers but its search still lists every match); 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
+**Checked:** 2026-11-11, #2185 (the page's search sits under its title, the Kanban model sheet's too; see Search on a page under the tabs); 2026-11-08, #1992 (every setting's Model page searches, hidden models marked Hidden); 2026-11-08, #1984 (the search sits under the current model card, which now says a switch's error or deferral in place of the matches' own status rows; matching unchanged); 2026-11-05, #1823 (#1816 checked here: the search and its highlight kept through the read again and Refresh models, see Model lists Hermes is still fetching); 2026-11-05, #1787 (the menus' models sit under their provider's submenu; a bot's picker closes its providers but its search still lists every match); 2026-10-31, #1567 (the sheet and a bot's picker search the models kept from Hermes' last answer until it answers, their matches waiting for it like their rows, and the sheet says a failed read under its matches); 2026-10-27, at #1395.
 
 ## Model lists grouped by provider
 
