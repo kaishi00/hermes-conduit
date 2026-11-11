@@ -241,20 +241,28 @@ extension GroupChatModelsTests {
 
     func testRoomSetupGroupsTheToolsRoomsUseFromTheCustomOnes() throws {
         // A plugin before 0.163 marks none: its default ceiling is what rooms look things up with.
-        let older = try RoomSetupClient.parseState(peopleSetupAnswer())
-        XCTAssertEqual(older.lookupChoices.map(\.id), ["web", "vision", "x_search"])
-        XCTAssertEqual(older.customChoices, [])
+        var olderAnswer = peopleSetupAnswer()
+        var olderChoices = olderAnswer["choices"] as? [[String: Any]] ?? []
+        olderChoices.append(["id": "session_search", "label": "Session Search", "description": ""])
+        olderChoices.append(["id": "terminal", "label": "Terminal", "description": ""])
+        olderAnswer["choices"] = olderChoices
+        let older = try RoomSetupClient.parseState(olderAnswer)
+        XCTAssertEqual(older.lookupChoices.map(\.id), ["web", "vision", "x_search", "session_search"])
+        XCTAssertEqual(older.customChoices.map(\.id), ["terminal"])
 
         var answer = peopleSetupAnswer()
         let choices: [[String: Any]] = [
             ["id": "web", "label": "Web search", "description": "", "lookup": true, "never": [String]()],
             ["id": "skills", "label": "Skills", "description": "", "lookup": false, "never": ["skill_manage"]],
             ["id": "terminal", "label": "Terminal", "description": "", "lookup": false, "never": [String]()],
+            // The plugin's mark wins over the older plugins' default ceiling, either way.
+            ["id": "vision", "label": "Vision", "description": "", "lookup": false, "never": [String]()],
+            ["id": "browser", "label": "Browser", "description": "", "lookup": true, "never": [String]()],
         ]
         answer["choices"] = choices
         let state = try RoomSetupClient.parseState(answer)
-        XCTAssertEqual(state.lookupChoices.map(\.id), ["web"])
-        XCTAssertEqual(state.customChoices.map(\.id), ["skills", "terminal"])
+        XCTAssertEqual(state.lookupChoices.map(\.id), ["web", "browser"])
+        XCTAssertEqual(state.customChoices.map(\.id), ["skills", "terminal", "vision"])
         XCTAssertEqual(state.customChoices.first?.never, ["skill_manage"])
         XCTAssertEqual(PeopleSettingsText.never(state.customChoices[0]),
                        AppLocalization.string("Never in rooms: \("skill_manage")"))
