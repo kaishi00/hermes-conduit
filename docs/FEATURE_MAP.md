@@ -3536,7 +3536,7 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 - Issue 2208's cause is read from the code, not traced on the reporter's
   Mac: a sync or reconnect after the reply turning typing off.
 
-**Checked:** 2026-11-11, #PRNUM (a wish whose restore is queued drops when the keyboard is put away; the plan strip ruling narrowed to compact iPhones); 2026-11-11, #2210 (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
+**Checked:** 2026-11-11, #2217 (a wish whose restore is queued drops when the keyboard is put away; the plan strip ruling narrowed to compact iPhones); 2026-11-11, #2210 (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
