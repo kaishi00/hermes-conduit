@@ -152,6 +152,9 @@ struct PhoneChangePrompt: Identifiable, Equatable {
     var calendarTitle: String?
     /// The alarm a cancellation is about, by name and time.
     var alarmTitle: String?
+    /// The picked person a contact change or deletion is about, by the
+    /// name the phone knows them by, not the one Hermes sent.
+    var personName: String?
     var id: String { change.id }
 }
 
@@ -901,7 +904,7 @@ final class PhoneSyncEngine: ObservableObject {
                 }
             } else {
                 fresh.append(PhoneChangePrompt(change: change, calendarTitle: calendarTitle(for: change),
-                                               alarmTitle: alarmTitle(for: change)))
+                                               alarmTitle: alarmTitle(for: change), personName: personName(for: change)))
             }
         }
         // One approved on a card while this ran gets no card: the pass the
@@ -937,6 +940,12 @@ final class PhoneSyncEngine: ObservableObject {
     private func calendarTitle(for change: PhoneChange) -> String? {
         guard !change.kind.isAlarm, change.kind != .runShortcut, !change.kind.isContact else { return nil }
         return calendarSource.calendarTitle(id: change.fields.calendarID ?? change.fields.listID, forEvents: change.kind.isEvent)
+    }
+
+    /// The picked person a change or deletion names, as the phone has them.
+    private func personName(for change: PhoneChange) -> String? {
+        guard change.kind.isContact, change.kind != .addContact, let id = change.contactID else { return nil }
+        return people.first { $0.id == id }?.name
     }
 
     private func alarmTitle(for change: PhoneChange) -> String? {
@@ -1029,23 +1038,39 @@ final class PhoneSyncEngine: ObservableObject {
         }
         // A run can take minutes: what it gave back goes only to the host
         // that asked, and only while the user still lets Hermes run it.
-        let askedBy = state.deviceID
+        // Sharing turned off and on again, even to the same host, is
+        // another sharing: the device id survives that, the count doesn't.
+        let askedBy = ShortcutAsker(device: state.deviceID, turnOffs: turnOffs, destination: preferences.destination)
         do {
             let text = try await shortcutRunner.run(name: listed.name, input: change.fields.input)
-            guard state.deviceID == askedBy, preferences.shortcuts else { return }
+            guard stillAsked(by: askedBy) else { return }
             record(PhoneChangeResult(id: change.id, outcome: .applied,
                                      result: text.map { String($0.prefix(PhoneChangeResult.resultChars)) }))
         } catch PhoneShortcutError.cancelled {
-            guard state.deviceID == askedBy, preferences.shortcuts else { return }
+            guard stillAsked(by: askedBy) else { return }
             record(PhoneChangeResult(id: change.id, outcome: .dismissed, note: "The user cancelled the shortcut"))
         } catch {
             // Not on screen: no answer yet, so the card comes back on the
             // next exchange.
             if case .notOnScreen? = error as? PhoneShortcutError { return }
-            guard state.deviceID == askedBy, preferences.shortcuts else { return }
+            guard stillAsked(by: askedBy) else { return }
             record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.shortcutNote(error)))
             lastError = Self.describe(error)
         }
+    }
+
+    /// The sharing a shortcut run was asked in.
+    private struct ShortcutAsker {
+        var device: String
+        var turnOffs: Int
+        var destination: PhoneSyncDestination?
+    }
+
+    /// Whether the sharing that asked for a run is still the one on, and
+    /// still lets Hermes run shortcuts.
+    private func stillAsked(by asker: ShortcutAsker) -> Bool {
+        state.deviceID == asker.device && turnOffs == asker.turnOffs
+            && preferences.destination == asker.destination && preferences.shortcuts
     }
 
     /// Adds a contact, or changes or deletes a picked person's card. A new

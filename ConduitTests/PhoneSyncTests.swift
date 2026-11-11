@@ -1140,6 +1140,20 @@ extension HermesVoiceGatewayTimeoutTests {
 
     /// Contacts Hermes asks to add, change or delete: never without a card,
     /// on the picked person's own card, and the picked people follow.
+    func testAContactListWithNothingUsableChangesNothing() {
+        // Nothing dialable or addressable: the card's lists stay as they are.
+        let junk = PhoneContactEdit(json: ["nickname": "Jo", "phones": [["number": "call me"]], "emails": [["address": "nope"]]])
+        XCTAssertNil(junk?.phones)
+        XCTAssertNil(junk?.emails)
+        // An empty list is a deliberate clear.
+        let cleared = PhoneContactEdit(json: ["phones": [[String: Any]](), "emails": [[String: Any]]()])
+        XCTAssertEqual(cleared?.phones, [])
+        XCTAssertEqual(cleared?.emails, [])
+        // Usable entries are kept, bad ones dropped.
+        let mixed = PhoneContactEdit(json: ["phones": [["number": "+1 555 0100"], ["number": "call me"]]])
+        XCTAssertEqual(mixed?.phones?.count, 1)
+    }
+
     func testPhoneContactChangesAskThenFollowThePickedPeople() async throws {
         let contacts = FakePhoneContactsSource()
         let host = FakePhoneHost()

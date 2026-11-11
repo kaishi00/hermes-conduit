@@ -504568,84 +504568,84 @@
         }
       }
     },
-    "Add shortcuts from the Shortcuts app by name, with a note on what each does. Hermes can ask to run one, with some text as its input, and gets back the text it ends with. A run opens the Shortcuts app, so it happens with Conduit open: Hermes' request waits on a card until you tap Run." : {
+    "Add shortcuts from the Shortcuts app by name, with a note on what each does. Hermes can ask to run one, with some text as its input, and gets back the text it ends with. A run opens the Shortcuts app, so it happens with Conduit open: Hermes' request waits on a card until you tap Run. With Run without asking on, it runs straight away when Conduit is open." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Füge Kurzbefehle aus der Kurzbefehle-App mit Namen hinzu, mit einer Notiz, was jeder tut. Hermes kann bitten, einen mit etwas Text als Eingabe auszuführen, und bekommt den Text zurück, mit dem er endet. Eine Ausführung öffnet die Kurzbefehle-App, deshalb passiert sie bei geöffnetem Conduit: Die Bitte von Hermes wartet auf einer Karte, bis du auf „Ausführen“ tippst."
+            "value" : "Füge Kurzbefehle aus der Kurzbefehle-App mit Namen hinzu, mit einer Notiz, was jeder tut. Hermes kann bitten, einen mit etwas Text als Eingabe auszuführen, und bekommt den Text zurück, mit dem er endet. Eine Ausführung öffnet die Kurzbefehle-App, deshalb passiert sie bei geöffnetem Conduit: Die Bitte von Hermes wartet auf einer Karte, bis du auf „Ausführen“ tippst. Mit „Ohne Nachfrage ausführen“ läuft er sofort, wenn Conduit offen ist."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Añade atajos de la app Atajos por su nombre, con una nota sobre lo que hace cada uno. Hermes puede pedir ejecutar uno, con un texto como entrada, y recibe el texto con el que termina. Una ejecución abre la app Atajos, así que ocurre con Conduit abierto: la petición de Hermes espera en una tarjeta hasta que toques Ejecutar."
+            "value" : "Añade atajos de la app Atajos por su nombre, con una nota sobre lo que hace cada uno. Hermes puede pedir ejecutar uno, con un texto como entrada, y recibe el texto con el que termina. Una ejecución abre la app Atajos, así que ocurre con Conduit abierto: la petición de Hermes espera en una tarjeta hasta que toques Ejecutar. Con «Ejecutar sin preguntar» activado, se ejecuta al momento si Conduit está abierto."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ajoutez des raccourcis de l'app Raccourcis par leur nom, avec une note sur ce que fait chacun. Hermes peut demander d'en exécuter un, avec un texte en entrée, et reçoit le texte qu'il renvoie à la fin. Une exécution ouvre l'app Raccourcis, elle se fait donc avec Conduit ouvert : la demande de Hermes attend sur une carte jusqu'à ce que vous touchiez Exécuter."
+            "value" : "Ajoutez des raccourcis de l'app Raccourcis par leur nom, avec une note sur ce que fait chacun. Hermes peut demander d'en exécuter un, avec un texte en entrée, et reçoit le texte qu'il renvoie à la fin. Une exécution ouvre l'app Raccourcis, elle se fait donc avec Conduit ouvert : la demande de Hermes attend sur une carte jusqu'à ce que vous touchiez Exécuter. Avec « Exécuter sans demander », il s’exécute aussitôt quand Conduit est ouvert."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Tambahkan pintasan dari app Pintasan menurut namanya, dengan catatan tentang fungsi masing-masing. Hermes dapat meminta menjalankan salah satunya, dengan teks sebagai input, dan menerima teks yang dihasilkannya di akhir. Menjalankan pintasan membuka app Pintasan, jadi ini terjadi saat Conduit terbuka: permintaan Hermes menunggu di kartu sampai Anda mengetuk Jalankan."
+            "value" : "Tambahkan pintasan dari app Pintasan menurut namanya, dengan catatan tentang fungsi masing-masing. Hermes dapat meminta menjalankan salah satunya, dengan teks sebagai input, dan menerima teks yang dihasilkannya di akhir. Menjalankan pintasan membuka app Pintasan, jadi ini terjadi saat Conduit terbuka: permintaan Hermes menunggu di kartu sampai Anda mengetuk Jalankan. Dengan Jalankan tanpa bertanya aktif, pintasan langsung berjalan saat Conduit terbuka."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aggiungi scorciatoie dall'app Comandi per nome, con una nota su cosa fa ciascuna. Hermes può chiedere di eseguirne una, con del testo come input, e riceve il testo con cui termina. Un'esecuzione apre l'app Comandi, quindi avviene con Conduit aperto: la richiesta di Hermes attende su una scheda finché non tocchi Esegui."
+            "value" : "Aggiungi scorciatoie dall'app Comandi per nome, con una nota su cosa fa ciascuna. Hermes può chiedere di eseguirne una, con del testo come input, e riceve il testo con cui termina. Un'esecuzione apre l'app Comandi, quindi avviene con Conduit aperto: la richiesta di Hermes attende su una scheda finché non tocchi Esegui. Con «Esegui senza chiedere» attivo, parte subito quando Conduit è aperto."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "ショートカットAppのショートカットを名前で追加し、それぞれの働きをメモしておきます。Hermesはテキストを入力として渡してショートカットの実行を頼むことができ、最後に返されたテキストを受け取ります。実行するとショートカットAppが開くため、Conduitを開いているときに行われます。Hermesの依頼は「実行」をタップするまでカードで待ちます。"
+            "value" : "ショートカットAppのショートカットを名前で追加し、それぞれの働きをメモしておきます。Hermesはテキストを入力として渡してショートカットの実行を頼むことができ、最後に返されたテキストを受け取ります。実行するとショートカットAppが開くため、Conduitを開いているときに行われます。Hermesの依頼は「実行」をタップするまでカードで待ちます。「確認せずに実行」がオンなら、Conduitを開いているときはすぐに実行されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "단축어 앱의 단축어를 이름으로 추가하고 각각 무엇을 하는지 메모를 남기세요. Hermes는 텍스트를 입력으로 넣어 단축어 실행을 요청할 수 있고, 단축어가 끝에 돌려준 텍스트를 받습니다. 실행하면 단축어 앱이 열리므로 Conduit가 열려 있을 때 실행됩니다. Hermes의 요청은 실행을 탭할 때까지 카드에서 기다립니다."
+            "value" : "단축어 앱의 단축어를 이름으로 추가하고 각각 무엇을 하는지 메모를 남기세요. Hermes는 텍스트를 입력으로 넣어 단축어 실행을 요청할 수 있고, 단축어가 끝에 돌려준 텍스트를 받습니다. 실행하면 단축어 앱이 열리므로 Conduit가 열려 있을 때 실행됩니다. Hermes의 요청은 실행을 탭할 때까지 카드에서 기다립니다. 묻지 않고 실행이 켜져 있으면 Conduit가 열려 있을 때 바로 실행됩니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Dodawaj skróty z aplikacji Skróty po nazwie, z notatką, co każdy robi. Hermes może poprosić o uruchomienie jednego z nich, z tekstem jako danymi wejściowymi, i dostaje tekst, którym skrót się kończy. Uruchomienie otwiera aplikację Skróty, więc odbywa się przy otwartym Conduit: prośba Hermesa czeka na karcie, aż stukniesz Uruchom."
+            "value" : "Dodawaj skróty z aplikacji Skróty po nazwie, z notatką, co każdy robi. Hermes może poprosić o uruchomienie jednego z nich, z tekstem jako danymi wejściowymi, i dostaje tekst, którym skrót się kończy. Uruchomienie otwiera aplikację Skróty, więc odbywa się przy otwartym Conduit: prośba Hermesa czeka na karcie, aż stukniesz Uruchom. Gdy „Uruchamiaj bez pytania” jest włączone, skrót uruchamia się od razu przy otwartym Conduit."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Adicione atalhos do app Atalhos pelo nome, com uma nota sobre o que cada um faz. O Hermes pode pedir para executar um, com um texto como entrada, e recebe o texto com que ele termina. Uma execução abre o app Atalhos, então acontece com o Conduit aberto: o pedido do Hermes espera num cartão até você tocar em Executar."
+            "value" : "Adicione atalhos do app Atalhos pelo nome, com uma nota sobre o que cada um faz. O Hermes pode pedir para executar um, com um texto como entrada, e recebe o texto com que ele termina. Uma execução abre o app Atalhos, então acontece com o Conduit aberto: o pedido do Hermes espera num cartão até você tocar em Executar. Com “Executar sem perguntar” ativado, ele roda na hora quando o Conduit está aberto."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Добавляйте быстрые команды из приложения «Команды» по названию, с заметкой о том, что делает каждая. Hermes может попросить запустить одну из них с текстом на входе и получает текст, которым она заканчивается. Запуск открывает приложение «Команды», поэтому он происходит при открытом Conduit: просьба Hermes ждёт на карточке, пока вы не нажмёте «Запустить»."
+            "value" : "Добавляйте быстрые команды из приложения «Команды» по названию, с заметкой о том, что делает каждая. Hermes может попросить запустить одну из них с текстом на входе и получает текст, которым она заканчивается. Запуск открывает приложение «Команды», поэтому он происходит при открытом Conduit: просьба Hermes ждёт на карточке, пока вы не нажмёте «Запустить». Если включено «Запускать без вопроса», команда запускается сразу, когда Conduit открыт."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Kestirmeler uygulamasından kestirmeleri adıyla, her birinin ne yaptığına dair bir notla ekleyin. Hermes, girdi olarak bir metinle birini çalıştırmayı isteyebilir ve kestirmenin sonunda verdiği metni geri alır. Çalıştırma Kestirmeler uygulamasını açar, bu yüzden Conduit açıkken olur: Hermes'in isteği siz Çalıştır'a dokunana kadar bir kartta bekler."
+            "value" : "Kestirmeler uygulamasından kestirmeleri adıyla, her birinin ne yaptığına dair bir notla ekleyin. Hermes, girdi olarak bir metinle birini çalıştırmayı isteyebilir ve kestirmenin sonunda verdiği metni geri alır. Çalıştırma Kestirmeler uygulamasını açar, bu yüzden Conduit açıkken olur: Hermes'in isteği siz Çalıştır'a dokunana kadar bir kartta bekler. Sormadan çalıştır açıksa, Conduit açıkken hemen çalışır."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "按名称添加“快捷指令”App 中的快捷指令，并注明每个的作用。Hermes 可以请求运行其中一个，并以一段文本作为输入，然后取回它最后给出的文本。运行时会打开“快捷指令”App，因此需要在 Conduit 打开时进行：Hermes 的请求会在卡片上等待，直到你轻点“运行”。"
+            "value" : "按名称添加“快捷指令”App 中的快捷指令，并注明每个的作用。Hermes 可以请求运行其中一个，并以一段文本作为输入，然后取回它最后给出的文本。运行时会打开“快捷指令”App，因此需要在 Conduit 打开时进行：Hermes 的请求会在卡片上等待，直到你轻点“运行”。开启“运行前不询问”后，Conduit 打开时会立即运行。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "依名稱加入「捷徑」App 中的捷徑，並註明每個的用途。Hermes 可以要求執行其中一個，並以一段文字作為輸入，然後取回它最後提供的文字。執行時會打開「捷徑」App，因此需要在 Conduit 開啟時進行：Hermes 的要求會在卡片上等待，直到你點一下「執行」。"
+            "value" : "依名稱加入「捷徑」App 中的捷徑，並註明每個的用途。Hermes 可以要求執行其中一個，並以一段文字作為輸入，然後取回它最後提供的文字。執行時會打開「捷徑」App，因此需要在 Conduit 開啟時進行：Hermes 的要求會在卡片上等待，直到你點一下「執行」。開啟「執行前不詢問」後，Conduit 開啟時會立即執行。"
           }
         }
       }
@@ -505880,84 +505880,84 @@
         }
       }
     },
-    "Conduit needs Contacts access to change contacts. Allow it in Settings > Calendar & phone > People." : {
+    "Conduit needs Contacts access to change contacts. Allow it in the Settings app." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit braucht Zugriff auf Kontakte, um Kontakte zu ändern. Erlaube ihn unter Einstellungen > Kalender & Telefon > Personen."
+            "value" : "Conduit braucht Zugriff auf Kontakte, um Kontakte zu ändern. Erlaube ihn in der Einstellungen-App."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit necesita acceso a Contactos para cambiar contactos. Permítelo en Ajustes > Calendario y teléfono > Personas."
+            "value" : "Conduit necesita acceso a Contactos para cambiar contactos. Permítelo en la app Ajustes."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit a besoin d'accéder à Contacts pour modifier des contacts. Autorisez-le dans Réglages > Calendrier et téléphone > Personnes."
+            "value" : "Conduit a besoin d'accéder à Contacts pour modifier des contacts. Autorisez-le dans l’app Réglages."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit perlu akses Kontak untuk mengubah kontak. Izinkan di Pengaturan > Kalender & ponsel > Orang."
+            "value" : "Conduit perlu akses Kontak untuk mengubah kontak. Izinkan di app Pengaturan."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit ha bisogno dell'accesso a Contatti per modificare i contatti. Consentilo in Impostazioni > Calendario e telefono > Persone."
+            "value" : "Conduit ha bisogno dell'accesso a Contatti per modificare i contatti. Consentilo nell’app Impostazioni."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "連絡先を変更するには、Conduitに連絡先へのアクセスが必要です。設定 > カレンダーと電話 > 人 で許可してください。"
+            "value" : "連絡先を変更するには、Conduitに連絡先へのアクセスが必要です。設定アプリで許可してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "연락처를 변경하려면 Conduit에 연락처 접근 권한이 필요합니다. 설정 > 캘린더 및 전화 > 사람에서 허용하세요."
+            "value" : "연락처를 변경하려면 Conduit에 연락처 접근 권한이 필요합니다. 설정 앱에서 허용하세요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit potrzebuje dostępu do Kontaktów, aby zmieniać kontakty. Zezwól na niego w Ustawienia > Kalendarz i telefon > Osoby."
+            "value" : "Conduit potrzebuje dostępu do Kontaktów, aby zmieniać kontakty. Zezwól na niego w aplikacji Ustawienia."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Conduit precisa de acesso aos Contatos para alterar contatos. Permita em Ajustes > Calendário e telefone > Pessoas."
+            "value" : "O Conduit precisa de acesso aos Contatos para alterar contatos. Permita no app Ajustes."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Чтобы менять контакты, Conduit нужен доступ к «Контактам». Разрешите его в «Настройки» > «Календарь и телефон» > «Люди»."
+            "value" : "Чтобы менять контакты, Conduit нужен доступ к «Контактам». Разрешите его в приложении «Настройки»."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit'in kişileri değiştirmek için Kişiler erişimine ihtiyacı var. Ayarlar > Takvim ve telefon > Kişiler'den izin verin."
+            "value" : "Conduit'in kişileri değiştirmek için Kişiler erişimine ihtiyacı var. Ayarlar uygulamasından izin verin."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit 需要“通讯录”访问权限才能更改联系人。请在“设置”>“日历与手机”>“联系人”中允许。"
+            "value" : "Conduit 需要“通讯录”访问权限才能更改联系人。请在“设置”App 中允许。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit 需要「聯絡資訊」取用權限才能更改聯絡人。請在「設定」>「行事曆與手機」>「聯絡人」中允許。"
+            "value" : "Conduit 需要「聯絡資訊」取用權限才能更改聯絡人。請在「設定」App 中允許。"
           }
         }
       }
@@ -506974,84 +506974,84 @@
         }
       }
     },
-    "Apple Intelligence on this iPhone sorts notifications, messages and emails before they're logged. Marketing, newsletters, spam and app nudges stay on the phone. Anything from a person, bills, deliveries and alerts always go. When unsure, it logs it." : {
+    "When this is on, Apple Intelligence on this iPhone sorts notifications, messages and emails before they're logged and leaves out what looks like marketing, newsletters, spam or app nudges. It's told to keep anything from a person, bills, deliveries and alerts, but it can get one wrong. When it's unsure or takes too long, the event is logged." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple Intelligence sortiert auf diesem iPhone Mitteilungen, Nachrichten und E-Mails, bevor sie protokolliert werden. Werbung, Newsletter, Spam und Erinnerungen von Apps bleiben auf dem Telefon. Alles von Menschen, Rechnungen, Lieferungen und Warnungen geht immer mit. Im Zweifel wird es protokolliert."
+            "value" : "Wenn das an ist, sortiert Apple Intelligence auf diesem iPhone Mitteilungen, Nachrichten und E-Mails, bevor sie protokolliert werden, und lässt weg, was nach Werbung, Newslettern, Spam oder Erinnerungen von Apps aussieht. Alles von Menschen, Rechnungen, Lieferungen und Warnungen soll es behalten, aber es kann sich irren. Ist es unsicher oder dauert es zu lange, wird protokolliert."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple Intelligence en este iPhone clasifica notificaciones, mensajes y correos antes de registrarlos. El marketing, los boletines, el spam y los avisos de apps se quedan en el teléfono. Lo que venga de una persona, facturas, entregas y alertas siempre se envía. Si duda, lo registra."
+            "value" : "Si está activado, Apple Intelligence en este iPhone clasifica notificaciones, mensajes y correos antes de registrarlos y deja fuera lo que parece marketing, boletines, spam o avisos de apps. Tiene instrucciones de conservar lo que venga de una persona, facturas, entregas y alertas, pero puede equivocarse. Si duda o tarda demasiado, se registra."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple Intelligence trie sur cet iPhone les notifications, messages et e-mails avant qu'ils soient consignés. Le marketing, les newsletters, le spam et les relances d'apps restent sur le téléphone. Tout ce qui vient d'une personne, les factures, les livraisons et les alertes passent toujours. En cas de doute, il est consigné."
+            "value" : "Quand c’est activé, Apple Intelligence trie sur cet iPhone les notifications, messages et e-mails avant qu’ils soient consignés, et écarte ce qui ressemble à du marketing, des newsletters, du spam ou des relances d’apps. Il doit garder tout ce qui vient d’une personne, les factures, les livraisons et les alertes, mais peut se tromper. En cas de doute ou s’il tarde trop, l’événement est consigné."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple Intelligence di iPhone ini memilah notifikasi, pesan, dan email sebelum dicatat. Pemasaran, buletin, spam, dan ajakan aplikasi tetap di ponsel. Apa pun dari seseorang, tagihan, pengiriman, dan peringatan selalu dikirim. Jika ragu, tetap dicatat."
+            "value" : "Saat aktif, Apple Intelligence di iPhone ini memilah notifikasi, pesan, dan email sebelum dicatat, dan menyisihkan yang tampak seperti pemasaran, buletin, spam, atau ajakan aplikasi. Ia diminta menyimpan apa pun dari seseorang, tagihan, pengiriman, dan peringatan, tetapi bisa keliru. Jika ragu atau terlalu lama, peristiwa tetap dicatat."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple Intelligence su questo iPhone smista notifiche, messaggi ed email prima che vengano registrati. Marketing, newsletter, spam e solleciti delle app restano sul telefono. Tutto ciò che arriva da una persona, bollette, consegne e avvisi passa sempre. Nel dubbio, viene registrato."
+            "value" : "Quando è attivo, Apple Intelligence su questo iPhone smista notifiche, messaggi ed email prima che vengano registrati e lascia fuori ciò che sembra marketing, newsletter, spam o solleciti delle app. Deve tenere tutto ciò che arriva da una persona, bollette, consegne e avvisi, ma può sbagliare. Nel dubbio, o se ci mette troppo, l’evento viene registrato."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "このiPhoneのApple Intelligenceが、記録する前に通知、メッセージ、メールを仕分けます。マーケティング、ニュースレター、スパム、アプリからの誘いは電話に残ります。人からのもの、請求、配達、アラートは必ず送られます。迷ったときは記録します。"
+            "value" : "オンにすると、このiPhoneのApple Intelligenceが記録する前に通知、メッセージ、メールを仕分け、マーケティング、ニュースレター、スパム、アプリからの誘いに見えるものを除きます。人からのもの、請求、配達、アラートは残すよう指示されていますが、間違えることもあります。迷ったときや時間がかかりすぎたときは記録されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "이 iPhone의 Apple Intelligence가 기록하기 전에 알림, 메시지, 이메일을 분류합니다. 마케팅, 뉴스레터, 스팸, 앱의 재방문 유도는 휴대폰에 남습니다. 사람이 보낸 것, 청구서, 배송, 경고는 항상 전송됩니다. 확실하지 않으면 기록합니다."
+            "value" : "켜면 이 iPhone의 Apple Intelligence가 기록하기 전에 알림, 메시지, 이메일을 분류하고 마케팅, 뉴스레터, 스팸, 앱의 재방문 유도로 보이는 것을 뺍니다. 사람이 보낸 것, 청구서, 배송, 경고는 남기도록 되어 있지만 틀릴 수 있습니다. 확실하지 않거나 너무 오래 걸리면 기록됩니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple Intelligence na tym iPhonie sortuje powiadomienia, wiadomości i e-maile przed ich zapisaniem. Marketing, newslettery, spam i ponaglenia aplikacji zostają na telefonie. Wszystko od ludzi, rachunki, przesyłki i alerty zawsze trafiają dalej. W razie wątpliwości zapisuje."
+            "value" : "Gdy to jest włączone, Apple Intelligence na tym iPhonie sortuje powiadomienia, wiadomości i e-maile przed zapisaniem i pomija to, co wygląda na marketing, newslettery, spam lub ponaglenia aplikacji. Ma zachowywać wszystko od ludzi, rachunki, przesyłki i alerty, ale może się pomylić. Gdy nie ma pewności albo trwa to za długo, zdarzenie jest zapisywane."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A Apple Intelligence neste iPhone separa notificações, mensagens e e-mails antes de registrá-los. Marketing, newsletters, spam e lembretes de apps ficam no telefone. Qualquer coisa de uma pessoa, contas, entregas e alertas sempre vão. Na dúvida, registra."
+            "value" : "Quando ativado, a Apple Intelligence neste iPhone separa notificações, mensagens e e-mails antes de registrá-los e deixa de fora o que parece marketing, newsletters, spam ou lembretes de apps. Ela é instruída a manter qualquer coisa de uma pessoa, contas, entregas e alertas, mas pode errar. Na dúvida, ou se demorar demais, o evento é registrado."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Apple Intelligence на этом iPhone сортирует уведомления, сообщения и письма перед записью. Реклама, рассылки, спам и напоминания приложений остаются на телефоне. Всё от людей, счета, доставки и оповещения отправляются всегда. В сомнительных случаях записывает."
+            "value" : "Когда это включено, Apple Intelligence на этом iPhone сортирует уведомления, сообщения и письма перед записью и пропускает то, что похоже на рекламу, рассылки, спам или напоминания приложений. Ей велено сохранять всё от людей, счета, доставки и оповещения, но она может ошибиться. Если она не уверена или думает слишком долго, событие записывается."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Bu iPhone'daki Apple Intelligence, bildirimleri, mesajları ve e-postaları kaydedilmeden önce ayıklar. Pazarlama, bültenler, spam ve uygulama hatırlatmaları telefonda kalır. Bir kişiden gelen her şey, faturalar, teslimatlar ve uyarılar her zaman gider. Emin olmadığında kaydeder."
+            "value" : "Açıkken bu iPhone'daki Apple Intelligence bildirimleri, mesajları ve e-postaları kaydedilmeden önce ayıklar ve pazarlama, bülten, spam ya da uygulama hatırlatması gibi görünenleri dışarıda bırakır. Bir kişiden gelen her şeyi, faturaları, teslimatları ve uyarıları tutması istenir ama yanılabilir. Emin olmadığında veya çok uzun sürdüğünde olay kaydedilir."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此 iPhone 上的 Apple Intelligence 会在记录前分拣通知、信息和邮件。营销、新闻通讯、垃圾信息和 App 的召回提醒会留在手机上。来自真人的内容、账单、快递和警报始终会发送。拿不准时会记录。"
+            "value" : "开启后，此 iPhone 上的 Apple Intelligence 会在记录前分拣通知、信息和邮件，并略过看起来像营销、新闻通讯、垃圾信息或 App 召回提醒的内容。它会尽量保留来自真人的内容、账单、快递和警报，但也可能判断错。拿不准或耗时太久时，会照常记录。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "此 iPhone 上的 Apple Intelligence 會在記錄前分類通知、訊息和郵件。行銷、電子報、垃圾訊息和 App 的召回提醒會留在手機上。來自真人的內容、帳單、包裹和警示一律會傳送。拿不準時會記錄。"
+            "value" : "開啟後，此 iPhone 上的 Apple Intelligence 會在記錄前分類通知、訊息和郵件，並略過看起來像行銷、電子報、垃圾訊息或 App 召回提醒的內容。它會盡量保留來自真人的內容、帳單、包裹和警示，但也可能判斷錯。拿不準或耗時太久時，會照常記錄。"
           }
         }
       }

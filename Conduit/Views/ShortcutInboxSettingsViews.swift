@@ -63,7 +63,7 @@ struct ShortcutInboxSettingsPage: View {
                     }
                     .onChange(of: leavesOutJunk) { _, on in ShortcutJunkFilter.setOn(on) }
                     .accessibilityIdentifier("settings.shortcut-inbox.junk")
-                    Text(AppLocalization.string("Apple Intelligence on this iPhone sorts notifications, messages and emails before they're logged. Marketing, newsletters, spam and app nudges stay on the phone. Anything from a person, bills, deliveries and alerts always go. When unsure, it logs it."))
+                    Text(AppLocalization.string("When this is on, Apple Intelligence on this iPhone sorts notifications, messages and emails before they're logged and leaves out what looks like marketing, newsletters, spam or app nudges. It's told to keep anything from a person, bills, deliveries and alerts, but it can get one wrong. When it's unsure or takes too long, the event is logged."))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                     if leavesOutJunk, junkLeftOut > 0 {

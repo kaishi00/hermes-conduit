@@ -311,7 +311,7 @@ struct PhoneSettingsPage: View {
                 Label("Let Hermes run shortcuts you list", systemImage: "square.2.layers.3d")
             }
             .accessibilityIdentifier("settings.phone.shortcuts")
-            Text("Add shortcuts from the Shortcuts app by name, with a note on what each does. Hermes can ask to run one, with some text as its input, and gets back the text it ends with. A run opens the Shortcuts app, so it happens with Conduit open: Hermes' request waits on a card until you tap Run.")
+            Text("Add shortcuts from the Shortcuts app by name, with a note on what each does. Hermes can ask to run one, with some text as its input, and gets back the text it ends with. A run opens the Shortcuts app, so it happens with Conduit open: Hermes' request waits on a card until you tap Run. With Run without asking on, it runs straight away when Conduit is open.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if choices.shortcuts {
@@ -892,14 +892,14 @@ enum PhoneChangeWording {
     }
 
     /// The item's title and time, as far as the change says.
-    static func detail(_ change: PhoneChange) -> String {
+    static func detail(_ change: PhoneChange, personName: String? = nil) -> String {
         if change.kind == .setAlarm || change.kind == .setTimer { return alarmSummary(change.fields, kind: change.kind) }
         if change.kind == .runShortcut { return shortcutSummary(change.fields) }
         if change.kind.isContact {
             // Who it's about, then what changes (a new contact's name is in it).
             let edit = change.fields.contact?.summary ?? ""
             if change.kind == .addContact { return edit }
-            return [change.fields.personName, edit.isEmpty ? nil : edit].compactMap { $0 }.joined(separator: " → ")
+            return [personName ?? change.fields.personName, edit.isEmpty ? nil : edit].compactMap { $0 }.joined(separator: " → ")
         }
         var parts: [String] = []
         if let title = change.fields.title, !title.isEmpty { parts.append(title) }
@@ -970,7 +970,7 @@ struct PhoneChangeCard: View {
         VStack(alignment: .leading, spacing: 10) {
             Label(PhoneChangeWording.headline(change), systemImage: PhoneChangeWording.symbol(change.kind))
                 .scaledFont(.subheadline.weight(.semibold))
-            let detail = prompt.alarmTitle ?? PhoneChangeWording.detail(change)
+            let detail = prompt.alarmTitle ?? PhoneChangeWording.detail(change, personName: prompt.personName)
             if !detail.isEmpty {
                 Text(detail)
                     .scaledFont(.subheadline)
@@ -1093,8 +1093,9 @@ struct PhoneChangeOverlay: View {
         .animation(.spring(duration: 0.3), value: engine.autoAdded?.id)
         .onChange(of: engine.prompts.first?.id) { _, id in
             // The card isn't modal: tell VoiceOver users Hermes is waiting.
-            guard id != nil, let change = engine.prompts.first?.change else { return }
-            let spoken = [PhoneChangeWording.headline(change), PhoneChangeWording.detail(change)].filter { !$0.isEmpty }
+            guard id != nil, let prompt = engine.prompts.first else { return }
+            let change = prompt.change
+            let spoken = [PhoneChangeWording.headline(change), prompt.alarmTitle ?? PhoneChangeWording.detail(change, personName: prompt.personName)].filter { !$0.isEmpty }
             UIAccessibility.post(notification: .announcement, argument: spoken.joined(separator: ". "))
         }
     }

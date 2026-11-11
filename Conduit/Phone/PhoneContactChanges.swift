@@ -36,22 +36,30 @@ struct PhoneContactEdit: Equatable {
         nickname = text("nickname", 120)
         organization = text("organization", 120)
         relation = text("relation", PhonePerson.relationLength)
-        phones = (json["phones"] as? [[String: Any]]).map { list in
-            Array(list.compactMap { entry -> PhonePerson.Phone? in
+        // A list with nothing usable in it changes nothing; only an empty one clears the card's.
+        phones = (json["phones"] as? [[String: Any]]).flatMap { list in
+            Self.usable(list, from: list.compactMap { entry -> PhonePerson.Phone? in
                 guard let number = (entry["number"] as? String).map(PhonePerson.plainNumber),
                       PhonePerson.isDialable(number) else { return nil }
                 return PhonePerson.Phone(number: number, label: entry["label"] as? String)
-            }.prefix(10))
+            })
         }
-        emails = (json["emails"] as? [[String: Any]]).map { list in
-            Array(list.compactMap { entry -> PhonePerson.Email? in
+        emails = (json["emails"] as? [[String: Any]]).flatMap { list in
+            Self.usable(list, from: list.compactMap { entry -> PhonePerson.Email? in
                 guard let address = entry["address"] as? String, address.contains("@"), !address.contains(" ") else { return nil }
                 return PhonePerson.Email(address: address, label: entry["label"] as? String)
-            }.prefix(10))
+            })
         }
         birthday = (json["birthday"] as? String).flatMap { Self.birthdayParts($0) != nil ? $0 : nil }
         guard givenName != nil || familyName != nil || nickname != nil || organization != nil || relation != nil
                 || phones != nil || emails != nil || birthday != nil else { return nil }
+    }
+
+    /// Up to ten of what was usable, or nil when a list that had entries had
+    /// none usable: replacing the card's list with nothing would wipe it.
+    private static func usable<T>(_ sent: [[String: Any]], from kept: [T]) -> [T]? {
+        if kept.isEmpty, !sent.isEmpty { return nil }
+        return Array(kept.prefix(10))
     }
 
     /// A new contact needs a name or a company.
@@ -127,7 +135,7 @@ enum PhoneContactChangeError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .noAccess: return AppLocalization.string("Conduit needs Contacts access to change contacts. Allow it in Settings > Calendar & phone > People.")
+        case .noAccess: return AppLocalization.string("Conduit needs Contacts access to change contacts. Allow it in the Settings app.")
         case .notFound: return AppLocalization.string("That contact isn't on this iPhone any more.")
         }
     }

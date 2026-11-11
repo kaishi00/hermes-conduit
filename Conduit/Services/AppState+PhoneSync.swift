@@ -116,6 +116,10 @@ extension AppState {
             // A no to alarms (or no AlarmKit) still turns on the rest the user agreed to.
             do { try await phoneSync.alarmSource.requestAccess() } catch is PhoneAlarmError { choices.alarms = false }
         }
+        // Changing contacts writes to them: ask for Contacts access once, as a change of choices does.
+        if choices.contactsEdit, phoneSync.contactsAccess == .notAsked {
+            await phoneSync.requestContactsAccess()
+        }
         guard activeDashboardID == dashboardID, connection?.baseUrl == baseURL else {
             throw DashboardTicketBridgeError.notReady
         }
