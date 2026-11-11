@@ -4229,6 +4229,55 @@ final class HermesClientTests: XCTestCase {
         XCTAssertNil(model.page, "Nothing attaches to a gone page before the next is ready")
     }
 
+    /// Issue 2216: a screen's stream reaches the page in order, what came
+    /// meanwhile in one piece, cut only past the most one page call carries.
+    func testABotScreenStreamsBytesReachThePageInOrderAndBatched() {
+        let buffer = BotScreenStreamBuffer(pieceBytes: 4)
+        XCTAssertEqual(buffer.drain(), [], "Nothing came, nothing to hand on")
+        buffer.append(Data([1, 2]))
+        buffer.append(Data([3]))
+        XCTAssertEqual(buffer.drain(), [Data([1, 2, 3]).base64EncodedString()], "Messages that came together are one call")
+        XCTAssertEqual(buffer.drain(), [], "A drain takes it all")
+        buffer.append(Data([4, 5, 6, 7, 8, 9]))
+        buffer.append(Data([10, 11, 12]))
+        XCTAssertEqual(buffer.drain(), [Data([4, 5, 6, 7]), Data([8, 9, 10, 11]), Data([12])].map { $0.base64EncodedString() },
+                       "Past the most one call carries, cut in order")
+    }
+
+    /// The pump reads off the main actor and hands everything read before
+    /// the socket ended to the page, in order, before it returns.
+    func testABotScreenStreamPumpDeliversEverythingInOrder() async {
+        final class Frames: @unchecked Sendable {
+            private let lock = NSLock()
+            private var left: [URLSessionWebSocketTask.Message]
+            init(_ frames: [URLSessionWebSocketTask.Message]) { left = frames }
+            func next() throws -> URLSessionWebSocketTask.Message {
+                lock.lock()
+                defer { lock.unlock() }
+                guard !left.isEmpty else { throw URLError(.networkConnectionLost) }
+                return left.removeFirst()
+            }
+        }
+        var expected = Data()
+        var messages: [URLSessionWebSocketTask.Message] = []
+        for index in 0..<200 {
+            let bytes = Data((0..<(index % 7 + 1)).map { UInt8((index + $0) % 256) })
+            expected.append(bytes)
+            messages.append(.data(bytes))
+        }
+        messages.append(.string("tail"))
+        expected.append(Data("tail".utf8))
+        @MainActor final class Calls { var pieces: [[String]] = [] }
+        let frames = Frames(messages)
+        let calls = Calls()
+        await BotScreenStreamPump.run(receive: { try frames.next() }) { pieces in calls.pieces.append(pieces) }
+        let delivered = calls.pieces
+        let received = delivered.flatMap { $0 }.reduce(into: Data()) { $0.append(Data(base64Encoded: $1)!) }
+        XCTAssertEqual(received, expected, "Every byte, in order")
+        XCTAssertLessThanOrEqual(delivered.count, messages.count)
+        XCTAssertFalse(delivered.contains { $0.isEmpty }, "No empty page calls")
+    }
+
     /// Portrait on an iPhone but for a bot's screen in full screen; the iPad turns everywhere.
     func testOnlyABotScreenInFullScreenTurnsAnIPhoneSideways() {
         XCTAssertEqual(InterfaceOrientationGate.supported(idiom: .phone, landscapeHolders: 0), .portrait)
@@ -5503,7 +5552,7 @@ private final class SilentBotScreenPage: BotScreenPage {
     var stops = 0
     func startStream(viewOnly: Bool, tag: Int) { started.append(tag) }
     func streamOpened() {}
-    func streamData(_ data: Data) {}
+    func streamData(base64: String) {}
     func streamClosed(code: Int) {}
     func stopStream() { stops += 1 }
     func setViewOnly(_ viewOnly: Bool) {}
