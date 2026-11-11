@@ -424,6 +424,16 @@ struct BotCapabilityRows: View, Equatable {
     /// on would save as Hermes' default tools.
     let keepsOneOn: Bool
     let onSet: (String, Bool) -> Void
+    /// Observed here: the equality skips a redraw from above, and the
+    /// locked row's hint must still follow an App Language switch.
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
+
+    init(rows: [BotCapability], editable: Bool, keepsOneOn: Bool, onSet: @escaping (String, Bool) -> Void) {
+        self.rows = rows
+        self.editable = editable
+        self.keepsOneOn = keepsOneOn
+        self.onSet = onSet
+    }
 
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.rows == rhs.rows && lhs.editable == rhs.editable && lhs.keepsOneOn == rhs.keepsOneOn
