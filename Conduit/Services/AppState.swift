@@ -21171,6 +21171,10 @@ final class AppState: ObservableObject {
             result.snapshot,
             for: result.sessionId
         )
+        // Agents this chat started that are still running: a chat opened
+        // (or reconnected) after they began never saw them start.
+        let resumedSessionID = result.sessionId
+        Task { [weak self] in await self?.adoptDelegateRoster(for: resumedSessionID) }
         chatCards.applyServerPlan(
             result.snapshot.todoState,
             for: chatCardsChat(including: [result.sessionId, result.storedSessionId])
@@ -40152,7 +40156,9 @@ final class AppState: ObservableObject {
             .map(\.sessionId))
         delegateAgentSeenAt = delegateAgentSeenAt.filter { id, _ in delegateAgents.contains { $0.id == id } }
         for sessionID in sessionIDs {
-            guard let liveIDs = try? await client.liveSubagentIDs(sessionId: sessionID) else { continue }
+            guard let roster = try? await client.subagentRoster(sessionId: sessionID),
+                  self.client === client else { continue }
+            let liveIDs = Set(roster.map(\.id))
             // A card's latest news is its last event, published or not.
             let seen = delegateAgents.map { agent -> DelegateAgentActivity in
                 var stamped = agent
@@ -40168,8 +40174,35 @@ final class AppState: ObservableObject {
             // Unchanged cards leave the gateway's own agent count alone.
             guard reconciled != seen else { continue }
             delegateAgents = reconciled
-            activeAgents = delegateAgents.filter { $0.status.isActive }.count
+            activeAgents = DelegateAgentActivity.activeCount(delegateAgents)
         }
+    }
+
+    /// Reads the delegate agents Hermes still has for the chat just opened
+    /// (`sessionID`, its live id) and gives each one this chat has no card
+    /// for a card: they were started before it was opened, or while the
+    /// socket was down, so no `subagent.*` frame of theirs reached it, and
+    /// the chat would read as finished while they work (issue 2142).
+    /// Gateways without `subagent.list` leave the cards as they are.
+    func adoptDelegateRoster(for sessionID: String) async {
+        guard let client, !sessionID.isEmpty else { return }
+        guard let roster = try? await client.subagentRoster(sessionId: sessionID) else { return }
+        // The answer is about the chat it was asked for, on the connection
+        // that asked: another chat opened meanwhile keeps its own cards.
+        guard self.client === client, let open = activeSessionId,
+              knownSessionIDs(for: open).contains(sessionID) else { return }
+        let adopted = DelegateAgentActivity.adopting(delegateAgents, roster: roster)
+        guard adopted != delegateAgents else { return }
+        delegateAgents = adopted
+        setActiveAgents(DelegateAgentActivity.activeCount(adopted))
+    }
+
+    /// How many delegate agents of the open chat are still queued or
+    /// running while its own turn has ended: the chat's waiting line
+    /// (issue 2142). The cards are the open conversation's only
+    /// (`keepDelegateAgents`), so another chat's agents never count here.
+    var backgroundAgentsAwaited: Int {
+        isBusy ? 0 : DelegateAgentActivity.activeCount(delegateAgents)
     }
 
     /// What a Steer or Stop on a delegate agent's card came to.

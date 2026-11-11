@@ -35,6 +35,9 @@ struct TranscriptRow: Identifiable, Equatable {
         case streaming(isActive: Bool)
         /// The running turn's working line.
         case working(TranscriptWorkingLine)
+        /// The chat's own turn has ended and this many of its delegate
+        /// agents still work in the background.
+        case awaitingAgents(Int)
         /// A message sent while the chat was on its way.
         case pendingSend(PendingComposerSend)
         /// A group room's row (GroupRoomTranscript).
@@ -49,6 +52,7 @@ struct TranscriptRow: Identifiable, Equatable {
     static let emptyID = "transcript-empty"
     static let streamingID = "streaming"
     static let workingID = "typing"
+    static let awaitingAgentsID = "awaiting-agents"
     static let pendingSendID = "pending-send"
 
     /// Whether `other` draws as this row does. One of the chat's rows is
@@ -196,10 +200,16 @@ struct TranscriptModel {
         var isShown = true
         /// The working line's tool and timer.
         var working = TranscriptWorkingLine()
+        /// The chat's delegate agents still queued or running
+        /// (AppState.backgroundAgentsAwaited).
+        var agentsAwaited = 0
 
         /// Its rows, in order: the open thinking card, the reply streaming
         /// in, and the working line while nothing streams yet or another
-        /// device gets the reply.
+        /// device gets the reply. Once the turn has ended, the waiting line
+        /// while its delegate agents still work: the turn isn't running
+        /// (Send stays Send), and Hermes starts the next one when they
+        /// finish.
         var rows: [TranscriptRow] {
             guard isShown else { return [] }
             var rows: [TranscriptRow] = []
@@ -214,6 +224,8 @@ struct TranscriptModel {
                 line.isThinking = shape.thinkingID != nil
                 line.repliesElsewhere = repliesElsewhere
                 rows.append(TranscriptRow(id: TranscriptRow.workingID, kind: .working(line)))
+            } else if !isBusy, !shape.streams, agentsAwaited > 0 {
+                rows.append(TranscriptRow(id: TranscriptRow.awaitingAgentsID, kind: .awaitingAgents(agentsAwaited)))
             }
             return rows
         }

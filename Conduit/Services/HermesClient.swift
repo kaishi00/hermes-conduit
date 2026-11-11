@@ -4175,18 +4175,18 @@ final class HermesClient: ObservableObject {
         }
     }
 
-    /// The `subagent_id`s Hermes still has running for one live session.
-    func liveSubagentIDs(sessionId: String) async throws -> Set<String> {
+    /// The delegate agents Hermes still has for one live session
+    /// (`subagent.list`), each as the card a `subagent.*` frame would have
+    /// made: a chat opened or reconnected while they run never saw those.
+    func subagentRoster(sessionId: String) async throws -> [DelegateAgentActivity] {
         let result = try await rpc("subagent.list", params: ["session_id": sessionId])
         guard let rows = result.objectValue?["subagents"]?.arrayValue else {
             throw HermesError.invalidResponse
         }
-        let ids = rows.compactMap { row in
-            row.objectValue?["subagent_id"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 }
-        }
+        let agents = rows.compactMap { DelegateAgentActivity(rosterRow: $0.objectValue, sessionId: sessionId) }
         // A row without an id could be any running agent: trust none of it.
-        guard ids.count == rows.count else { throw HermesError.invalidResponse }
-        return Set(ids)
+        guard agents.count == rows.count else { throw HermesError.invalidResponse }
+        return agents
     }
 
     /// Queues `text` into one running delegate agent (`subagent.steer`).

@@ -69,6 +69,27 @@ extension BotModeTests {
         XCTAssertEqual(snapshot.replacing(try XCTUnwrap(BotWorkItem(row: ["ref": "W9", "kind": "workstream"]))), snapshot)
     }
 
+    /// Issue 2142: a workstream whose turn ended while delegate agents it
+    /// started still run stays Working, and its card says what it waits for.
+    func testAWorkstreamWaitingForItsAgentsSaysSo() throws {
+        let waiting = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W1", "kind": "workstream", "status": "running", "agents": 2,
+            "checklist": [["step": "Find the cause", "state": "doing"]],
+        ]))
+        XCTAssertEqual(waiting.awaitedAgentCount, 2)
+        XCTAssertTrue(waiting.isWorking)
+        XCTAssertEqual(waiting.doing, AppLocalization.string("Waiting for \(2) background agents"))
+        let working = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W2", "kind": "workstream", "status": "running",
+            "checklist": [["step": "Find the cause", "state": "doing"]],
+        ]))
+        XCTAssertEqual(working.awaitedAgentCount, 0, "an older plugin names none")
+        XCTAssertEqual(working.doing, "Find the cause")
+        let done = try XCTUnwrap(BotWorkItem(row: ["ref": "W3", "kind": "workstream", "status": "done", "agents": 1]))
+        XCTAssertNil(done.doing)
+        XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "A1", "kind": "ask_out", "agents": 3])).awaitedAgentCount, 0)
+    }
+
     /// A workstream's worktree branch, for the user to merge.
     func testAWorkstreamsWorktreeBranchIsShown() throws {
         let branched = try XCTUnwrap(BotWorkItem(row: ["ref": "W3", "kind": "workstream", "status": "done",

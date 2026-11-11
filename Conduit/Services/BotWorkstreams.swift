@@ -106,6 +106,9 @@ struct BotWorkItem: Identifiable, Equatable {
     /// What it waits on the user to do on the bot's screen ("Sign in to
     /// GitHub"); empty when nothing.
     let screenAsk: String
+    /// Its own turn has ended and this many delegate agents it started
+    /// still run (plugin 0.162.1+): it stays Working, waiting for them.
+    let awaitedAgentCount: Int
 
     var id: String { ref }
 
@@ -143,6 +146,7 @@ struct BotWorkItem: Identifiable, Equatable {
         let used = (row["screen_used_at"] as? NSNumber)?.doubleValue ?? 0
         screenUsedAt = used > 0 ? Date(timeIntervalSince1970: used) : nil
         screenAsk = (row["screen_ask"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        awaitedAgentCount = kind == .workstream ? max(0, (row["agents"] as? NSNumber)?.intValue ?? 0) : 0
         room = kind == .workstream ? (row["room"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : ""
         actions = (row["actions"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         manage = (row["manage"] as? [String] ?? []).compactMap(Action.init(rawValue:))
@@ -174,10 +178,13 @@ struct BotWorkItem: Identifiable, Equatable {
         kind == .workstream && !isClosed && (status == "needs_you" || status == "interrupted" || !screenAsk.isEmpty)
     }
 
-    /// What it's doing now: its checklist's step in progress, else the tool
-    /// step it's on.
+    /// What it's doing now: waiting for the delegate agents it started,
+    /// else its checklist's step in progress, else the tool step it's on.
     var doing: String? {
         guard isWorking || status == "needs_you" else { return nil }
+        if isWorking, awaitedAgentCount > 0 {
+            return AppLocalization.string("Waiting for \(awaitedAgentCount) background agents")
+        }
         if let line = checklist.first(where: { $0.state == .doing }) { return line.text }
         return step.isEmpty ? nil : step
     }

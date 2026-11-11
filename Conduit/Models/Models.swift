@@ -1057,6 +1057,23 @@ struct DelegateAgentActivity: Identifiable, Equatable {
         return merged
     }
 
+    /// The cards with a roster's agents among them: one the chat has no
+    /// card for gets one (it was started before this chat was opened, or
+    /// while the socket was down), and a card it has is left as its own
+    /// events made it.
+    static func adopting(
+        _ agents: [DelegateAgentActivity],
+        roster: [DelegateAgentActivity]
+    ) -> [DelegateAgentActivity] {
+        let have = Set(agents.map(\.id))
+        return agents + roster.filter { !have.contains($0.id) }
+    }
+
+    /// How many of a chat's delegate agents are still queued or running.
+    static func activeCount(_ agents: [DelegateAgentActivity]) -> Int {
+        agents.reduce(0) { $1.status.isActive ? $0 + 1 : $0 }
+    }
+
     /// Agents a gateway roster no longer lists have ended; their
     /// `subagent.complete` was missed (app suspended, socket reconnect).
     /// Only running cards from `sessionId` with a gateway id and no event
@@ -1079,6 +1096,33 @@ struct DelegateAgentActivity: Identifiable, Equatable {
             ended.currentTool = nil
             return ended
         }
+    }
+}
+
+extension DelegateAgentActivity {
+    /// One `subagent.list` row as a card; nil for a row without an id. The
+    /// roster lists the agents Hermes still has, so a status it doesn't
+    /// name reads as running.
+    init?(rosterRow row: [String: AnyCodable]?, sessionId: String) {
+        guard let row, let id = row["subagent_id"]?.stringValue, !id.isEmpty else { return nil }
+        let named = row["status"]?.stringValue?.lowercased() ?? ""
+        let status: Status = named == "pending" ? .queued
+            : ["error", "timeout"].contains(named) ? .failed
+            : ["cancelled", "canceled", "stopped"].contains(named) ? .interrupted
+            : Status(rawValue: named) ?? .running
+        self.init(
+            id: id,
+            goal: row["goal"]?.stringValue ?? "",
+            model: row["model"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 },
+            status: status,
+            taskCount: 1,
+            taskIndex: 0,
+            currentTool: row["last_tool"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 },
+            summary: nil,
+            stream: [],
+            hasGatewayID: true,
+            sessionId: sessionId
+        )
     }
 }
 
