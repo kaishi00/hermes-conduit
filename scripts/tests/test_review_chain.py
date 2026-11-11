@@ -74,7 +74,8 @@ exit 0
 """
 
 KEYS = {"OPENCODE_GO_API_KEY": "go1", "OPENCODE_GO_API_KEY_2": "go2",
-        "COMMANDCODE_API_KEY": "cc1", "COMMANDCODE_API_KEY_2": "cc2", "ZAI_API_KEY": "zai"}
+        "COMMANDCODE_API_KEY": "cc1", "COMMANDCODE_API_KEY_2": "cc2", "ZAI_API_KEY": "zai",
+        "STEPFUN_API_KEY": "step"}
 
 
 def chain(name):
@@ -224,22 +225,41 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(labels, ["Review by DeepSeek V4.1 Flash."] * 4 + ["Review by Beam."])
 
     def test_the_last_model_isnt_cut_short(self):
-        # A chain of one has nothing to fall back to, so a slow GLM review
-        # gets the chain's whole budget, not REVIEW_MINUTES (1.8 s here).
-        tmp_runs = [("zai-custom/glm-5.3-flash", "zai", "slow")]
-        run, log, out = self.run_chain(reviewer="GLM-5.3-Flash", runs=tmp_runs, chain_minutes="0.2")
+        # Step 5 Preview is the gate chain's last model, so nothing would
+        # replace it: a slow review gets the rest of the chain's budget, not
+        # REVIEW_MINUTES (1.8 s here).
+        runs = [("zai-custom/glm-5.3-flash", "zai", "fail"), ("stepfun/step-5-preview", "step", "slow")]
+        run, log, out = self.run_chain(reviewer="GLM-5.3-Flash", runs=runs, chain_minutes="0.2")
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-        self.assertEqual(out["model"], "zai-custom/glm-5.3-flash")
+        self.assertEqual(out["model"], "stepfun/step-5-preview")
 
     def test_only_the_attempts_key_reaches_opencode(self):
         run, log, out = self.run_chain(codes=[("go1", 429)])
         self.assertEqual(self.reviews(log), [["go-custom/deepseek-v4.1-flash", "go2"]])
         self.assertFalse([line for line in log if line.startswith("leak ")], log)
 
-    def test_glm_is_a_chain_of_one(self):
+    def test_glm_reviews_when_it_can(self):
         run, log, out = self.run_chain(reviewer="GLM-5.3-Flash")
         self.assertEqual(self.reviews(log), [["zai-custom/glm-5.3-flash", "zai"]])
         self.assertEqual(out["model"], "zai-custom/glm-5.3-flash")
+        self.assertEqual(out["name"], "GLM-5.3-Flash")
+
+    def test_glm_falls_back_to_step_5_preview(self):
+        # Whatever stops GLM (a refused test request such as a usage
+        # limit, a failed review, or one past REVIEW_MINUTES), Step 5
+        # Preview reviews, and the label and outputs name it.
+        for case in ({"codes": [("zai", 429)]},
+                     {"runs": [("zai-custom/glm-5.3-flash", "zai", "fail")]},
+                     {"runs": [("zai-custom/glm-5.3-flash", "zai", "hang")]},
+                     {"unset": ["ZAI_API_KEY"]}):
+            with self.subTest(case=case):
+                run, log, out = self.run_chain(reviewer="GLM-5.3-Flash", **case)
+                self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+                self.assertEqual(self.reviews(log)[-1], ["stepfun/step-5-preview", "step"])
+                self.assertEqual(out["model"], "stepfun/step-5-preview")
+                self.assertEqual(out["name"], "Step 5 Preview")
+                labels = [line.split("label: ", 1)[1] for line in log if line.startswith("review ")]
+                self.assertEqual(labels[-1], "Review by Step 5 Preview.")
 
     def test_every_chain_model_is_in_opencode_json(self):
         with open(os.path.join(REPO_ROOT, "opencode.json"), encoding="utf-8") as fh:

@@ -55,6 +55,23 @@
         }
       }
     },
+    "stepfun": {
+      "npm": "@ai-sdk/openai-compatible",
+      "name": "StepFun",
+      "options": {
+        "baseURL": "https://api.stepfun.ai/step_plan/v1",
+        "apiKey": "{env:STEPFUN_API_KEY}"
+      },
+      "whitelist": ["step-5-preview"],
+      "models": {
+        "step-5-preview": {
+          "name": "Step 5 Preview",
+          "interleaved": {
+            "field": "reasoning_content"
+          }
+        }
+      }
+    },
     "zai-custom": {
       "npm": "@ai-sdk/openai-compatible",
       "name": "Z.ai",
