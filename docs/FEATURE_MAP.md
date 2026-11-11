@@ -3444,7 +3444,7 @@ keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
 - Not yet tried on a device: the menus on a Mac and an iPad, and whether ⌘+ fires from ⌘= on a US layout (it's registered as "+").
 - No Back (⌘[) or next/previous chat: Back in a split window means different things per column. Left for the maintainer to decide.
 
-**Checked:** 2026-11-11, #PRNUM (the sheet's Chats footer on where ⌃⌘S and ⌥⌘A work; the Return callbacks' live Bot Chat check); added at #2224.
+**Checked:** 2026-11-11, #2241 (the sheet's Chats footer on where ⌃⌘S and ⌥⌘A work; the Return callbacks' live Bot Chat check); added at #2224.
 
 ## Slash commands
 
