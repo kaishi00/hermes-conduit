@@ -126882,6 +126882,88 @@
         }
       }
     },
+    "Enable Speech Recognition in System Settings → Privacy & Security → Speech Recognition, then retry selecting \"On this iPhone\"." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aktiviere die Spracherkennung unter „Systemeinstellungen“ → „Datenschutz & Sicherheit“ → „Spracherkennung“ und wähle dann erneut „Auf diesem iPhone“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activa Reconocimiento de voz en Ajustes del Sistema → Privacidad y seguridad → Reconocimiento de voz y vuelve a seleccionar «En este iPhone»."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Activez la reconnaissance vocale dans Réglages Système → Confidentialité et sécurité → Reconnaissance vocale, puis sélectionnez à nouveau « Sur cet iPhone »."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nyalakan Pengenalan Ucapan di Pengaturan Sistem → Privasi & Keamanan → Pengenalan Ucapan, lalu coba pilih “Di iPhone ini” lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attiva Riconoscimento vocale in Impostazioni di Sistema → Privacy e sicurezza → Riconoscimento vocale, poi riprova a selezionare “Su questo iPhone”."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「システム設定」→「プライバシーとセキュリティ」→「音声認識」で音声認識を有効にしてから、もう一度「このiPhone上」を選択してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "‘시스템 설정’ → ‘개인정보 보호 및 보안’ → ‘음성 인식’에서 음성 인식을 켠 다음 ‘이 iPhone에서’를 다시 선택하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Włącz rozpoznawanie mowy w Ustawieniach systemowych → Prywatność i ochrona → Rozpoznawanie mowy, a następnie ponownie wybierz „Na tym iPhonie”."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ative o Reconhecimento de Fala em Ajustes do Sistema → Privacidade e Segurança → Reconhecimento de Fala e tente selecionar “Neste iPhone” novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Включите распознавание речи в «Системные настройки» → «Конфиденциальность и безопасность» → «Распознавание речи», затем снова выберите «На этом iPhone»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sistem Ayarları → Gizlilik ve Güvenlik → Konuşma Tanıma bölümünden Konuşma Tanıma'yı etkinleştirin, ardından “Bu iPhone'da” seçeneğini yeniden seçmeyi deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在「系统设置」→「隐私与安全性」→「语音识别」中启用语音识别，然后重新选择「在这台 iPhone 上」。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請在「系統設定」→「隱私權與安全性」→「語音辨識」中啟用語音辨識，然後再試著選擇「在這部 iPhone 上」。"
+          }
+        }
+      }
+    },
     "Enable notifications" : {
       "localizations" : {
         "de" : {
@@ -314406,6 +314488,88 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "語音辨識權限已遭拒。請在「設定」>「Conduit」>「語音辨識」中啟用。"
+          }
+        }
+      }
+    },
+    "Speech Recognition permission was denied. Please enable it in System Settings → Privacy & Security → Speech Recognition." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Berechtigung für Spracherkennung wurde verweigert. Aktiviere sie unter „Systemeinstellungen“ → „Datenschutz & Sicherheit“ → „Spracherkennung“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se denegó el permiso de Reconocimiento de voz. Actívalo en Ajustes del Sistema → Privacidad y seguridad → Reconocimiento de voz."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'autorisation de reconnaissance vocale a été refusée. Activez-la dans Réglages Système → Confidentialité et sécurité → Reconnaissance vocale."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Izin Pengenalan Ucapan ditolak. Aktifkan di Pengaturan Sistem → Privasi & Keamanan → Pengenalan Ucapan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "L'autorizzazione Riconoscimento vocale è stata negata. Attivala in Impostazioni di Sistema → Privacy e sicurezza → Riconoscimento vocale."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "音声認識の許可が拒否されました。「システム設定」→「プライバシーとセキュリティ」→「音声認識」で有効にしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "음성 인식 권한이 거부됐어요. ‘시스템 설정’ → ‘개인정보 보호 및 보안’ → ‘음성 인식’에서 켜세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Odmówiono zgody na rozpoznawanie mowy. Włącz ją w Ustawieniach systemowych → Prywatność i ochrona → Rozpoznawanie mowy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A permissão de Reconhecimento de Fala foi negada. Ative-a em Ajustes do Sistema → Privacidade e Segurança → Reconhecimento de Fala."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Доступ к распознаванию речи запрещён. Включите его в «Системные настройки» → «Конфиденциальность и безопасность» → «Распознавание речи»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Konuşma Tanıma izni reddedildi. Lütfen Sistem Ayarları → Gizlilik ve Güvenlik → Konuşma Tanıma bölümünden etkinleştirin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "语音识别权限已被拒绝。请在「系统设置」→「隐私与安全性」→「语音识别」中启用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "語音辨識權限已遭拒。請在「系統設定」→「隱私權與安全性」→「語音辨識」中啟用。"
           }
         }
       }

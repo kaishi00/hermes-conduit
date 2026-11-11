@@ -405,7 +405,7 @@ struct ComposerBar: View, Equatable {
 
     /// Roster bots matching a trailing `@query`, while the editor has focus.
     private var mentionCandidates: [MentionAutocomplete.Candidate] {
-        guard isFocused, mentionsDismissedFor != text,
+        guard isTyping, mentionsDismissedFor != text,
               let query = MentionAutocomplete.activeQuery(in: text) else { return [] }
         return MentionAutocomplete.filter(appState.composerMentionCandidates, query: query)
     }
@@ -522,7 +522,7 @@ struct ComposerBar: View, Equatable {
         .preference(key: V2ComposerExpandedKey.self, value: restsWhenIdle && !keepsVoiceButtonBeside && !rests)
         .preference(key: V2ComposerTypingKey.self, value: Self.hidesMinimisedCallBar(
             restsWhenIdle: restsWhenIdle,
-            isFocused: isFocused,
+            isFocused: isTyping,
             hasText: hasText,
             keepsFocusAfterSend: ComposerLayout.keepsFocusAfterSend()
         ))
@@ -991,11 +991,19 @@ struct ComposerBar: View, Equatable {
         Self.showsFullEditorButton(measuredHeight: composerTextHeight, restingHeight: restingTextHeight)
     }
 
+    /// The field has focus and takes text. While typing is off (a sync or
+    /// reconnect) the field keeps the wish for focus to take it back
+    /// (issue 2208), but nobody is typing: the call bar shows, mentions
+    /// hide and a resting composer may rest.
+    private var isTyping: Bool {
+        isFocused && appState.composerTakesText
+    }
+
     /// Anything that needs the full composer: focus, a draft, an
     /// attachment, a reply, dictation, steering a running turn, a notice, or
     /// a control's sheet. A running turn's Stop alone fits the resting bar.
     private var composerInUse: Bool {
-        let hasDraft = isFocused || hasText || !attachments.isEmpty || pendingScreenshot != nil
+        let hasDraft = isTyping || hasText || !attachments.isEmpty || pendingScreenshot != nil
             || replyReference != nil || isShowingFullEditor
         let isDictating = dictation.isDictating || dictation.isStarting || dictation.isTranscribing
         let turnControl = Self.turnControlExpandsComposer(action: action, restsWhenIdle: restsWhenIdle)

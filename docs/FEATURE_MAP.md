@@ -3477,7 +3477,7 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.keepsFocusAfterSend)
-- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView and Coordinator.deactivate, which pass the binding's focus to the field), `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView.setFocusIntent and didMoveToWindow: focus changes after the update that asked, and a field rebuilt with focus takes it once it's in the window; setTyping, endedEditingLeavesField and onFocusTakenWhileOff: typing turned off under focus keeps the wish; ReturnKeyTextEditor, rooms' field and the full editor, the same), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus while the field takes text: isTyping), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView and Coordinator.deactivate, which pass the binding's focus to the field), `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView.setFocusIntent and didMoveToWindow: focus changes after the update that asked, and a field rebuilt with focus takes it once it's in the window; setTyping, endedEditingLeavesField and onFocusTakenWhileOff: typing turned off under focus keeps the wish; ReturnKeyTextEditor, rooms' field and the full editor, the same), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send; focusesAfterFullEditor, read in the full editor sheet's onDismiss)
 - Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow, testFocusChangesWaitUntilAfterTheUpdateThatAskedAndTheLastAskWins, testAFieldTurnedOffUnderFocusTakesItBackOnceOnUnlessAnotherFieldTookIt)
@@ -3507,7 +3507,9 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   keeps the composer's wish, turns off just after the update that asked,
   and takes focus back once typing is on again, unless another text field
   took focus meanwhile. On a Mac a sync once the reply came had let go of
-  the focus a send kept (2026-11-11, issue 2208, #2210).
+  the focus a send kept. While it waits, nobody counts as typing: the
+  minimised call bar shows, mentions hide and a resting composer may rest
+  (2026-11-11, issue 2208, #2210).
 - Every composer field takes or gives up focus just after the SwiftUI
   update that asked, never inside it, and several asks before then come to
   the last. Resigning inside the update asked the hosting view whether it
@@ -7559,7 +7561,9 @@ Settings buttons beside them, for the device Conduit runs on.
 
 **Siblings:** Finish setting up's notifications row · a steps card's
 notifications-off line · Settings > Notifications' Show Previews caption ·
-Voice's setup steps (microphone, Speech Recognition) and the voice modes'
+Voice's setup steps (microphone, Speech Recognition), Apple speech's
+permission captions and its selection error (Settings > Voice, and AppState's
+setVoiceTranscriptionMode), and the voice modes'
 messages built from `VoiceAudioError.microphonePermissionDenied` and
 `VoiceSetupIssue.speechRecognitionDenied` · the camera notices (code scanner,
 chat composer, group rooms' composer) · Location sharing's access rows ·
@@ -7571,14 +7575,15 @@ only show beside an iPhone
 
 **Code**
 - Words and links: `Conduit/Services/SystemSettings.swift` (worded, notificationsOffText, open, macURL)
-- Buttons and texts: `Conduit/Views/V2/V2FinishSetupCard.swift`, `Conduit/Cards/RichInfoCardViews.swift`, `Conduit/Views/AuxiliaryViews.swift` (Show Previews caption), `Conduit/Views/VoiceSettingsView.swift` (microphoneStep, speechToTextStep, the iPhone voice caption), `Conduit/Views/IPhoneVoiceSettingsView.swift` (the download hints), `Conduit/Voice/VoiceTypes.swift`, `Conduit/Voice/VoiceSetupIssue.swift`, `Conduit/Views/Login/DashboardCodeScanner.swift`, `Conduit/Views/Components/ComposerBar.swift` (pasteErrorNotice), `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/PhoneSettingsViews.swift`
+- Buttons and texts: `Conduit/Views/V2/V2FinishSetupCard.swift`, `Conduit/Cards/RichInfoCardViews.swift`, `Conduit/Views/AuxiliaryViews.swift` (Show Previews caption), `Conduit/Views/VoiceSettingsView.swift` (microphoneStep, speechToTextStep, the Apple speech captions and selectProvider's testStatus, the iPhone voice caption), `Conduit/Services/AppState.swift` (setVoiceTranscriptionMode's denial), `Conduit/Views/IPhoneVoiceSettingsView.swift` (the download hints), `Conduit/Voice/VoiceTypes.swift`, `Conduit/Voice/VoiceSetupIssue.swift`, `Conduit/Views/Login/DashboardCodeScanner.swift`, `Conduit/Views/Components/ComposerBar.swift` (pasteErrorNotice), `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/PhoneSettingsViews.swift`
 - Tests: `ConduitTests/VoiceSetupIssueTests.swift` (testPermissionTextsAndSettingsLinksFollowTheDevice)
 
 **Rulings**
 - A text that names where to allow something names the device's own
   settings: iPhone Settings, iPad Settings, or on a Mac the System Settings
   pane (Notifications, or Privacy & Security and the permission). Texts that
-  say only "Settings" stay as they are; the voice download hints say
+  say only "Settings" stay as they are, unless they name an iPhone path a
+  Mac doesn't have (Settings > Conduit > Speech Recognition); the voice download hints say
   "this iPad" or "this Mac" and search that device's settings for Voices
   (2026-11-11, issue 2208, #2210).
 - On a Mac each Open Settings opens that pane of System Settings

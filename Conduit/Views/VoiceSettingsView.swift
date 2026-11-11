@@ -1489,11 +1489,19 @@ struct VoiceSettingsView: View {
             case .ready:
                 EmptyView()
             case .permissionRequired:
-                Text("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\".")
+                Text(verbatim: SystemSettings.worded(
+                    iPhone: AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."),
+                    iPad: AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."),
+                    mac: AppLocalization.string("Enable Speech Recognition in System Settings → Privacy & Security → Speech Recognition, then retry selecting \"On this iPhone\".")
+                ))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             case .permissionDenied:
-                Text("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition.")
+                Text(verbatim: SystemSettings.worded(
+                    iPhone: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    iPad: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    mac: AppLocalization.string("Speech Recognition permission was denied. Please enable it in System Settings → Privacy & Security → Speech Recognition.")
+                ))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
             case .unsupported:
@@ -1748,9 +1756,17 @@ struct VoiceSettingsView: View {
                 transcriptionModeChosen = true
                 testStatus = nil
             } else if case .permissionRequired = appleSpeechAvailability {
-                testStatus = AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\".")
+                testStatus = SystemSettings.worded(
+                    iPhone: AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."),
+                    iPad: AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."),
+                    mac: AppLocalization.string("Enable Speech Recognition in System Settings → Privacy & Security → Speech Recognition, then retry selecting \"On this iPhone\".")
+                )
             } else if case .permissionDenied = appleSpeechAvailability {
-                testStatus = AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition.")
+                testStatus = SystemSettings.worded(
+                    iPhone: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    iPad: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    mac: AppLocalization.string("Speech Recognition permission was denied. Please enable it in System Settings → Privacy & Security → Speech Recognition.")
+                )
             } else if case .unsupported = appleSpeechAvailability {
                 testStatus = AppLocalization.string("On-device speech recognition is not available for your current language locale.")
             }

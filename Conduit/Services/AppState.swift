@@ -42219,7 +42219,11 @@ final class AppState: ObservableObject {
         if mode == .appleOnDevice, !appleSpeechAvailability.canAttemptRecognition {
             switch appleSpeechAvailability {
             case .permissionDenied:
-                errorMessage = AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition.")
+                errorMessage = SystemSettings.worded(
+                    iPhone: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    iPad: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    mac: AppLocalization.string("Speech Recognition permission was denied. Please enable it in System Settings → Privacy & Security → Speech Recognition.")
+                )
             case .unsupported(let localeIdentifier):
                 let localeName = Locale.current.localizedString(forIdentifier: localeIdentifier) ?? localeIdentifier
                 errorMessage = AppLocalization.string("On-device speech recognition is not available for \(localeName).")
