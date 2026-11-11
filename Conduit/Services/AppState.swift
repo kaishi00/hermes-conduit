@@ -2621,6 +2621,12 @@ final class AppState: ObservableObject {
     /// behind it (a return to the app) would put its error in the room
     /// (#1459); it waits here and shows when the room closes back to the chat.
     private var chatErrorBehindRoom: String?
+    /// Whether the room last closed was closed by a chat opening in its
+    /// place (a session open or a new chat), so the shell shows that chat
+    /// where the room's screen was rather than dropping back to the list
+    /// (Group Info's Ask and Wrap Up landed on Bots Home). Every close sets
+    /// it, so it never outlives the close it describes.
+    private(set) var roomClosedForChat = false
     /// The restore error the open chat's last failed resume showed, which a
     /// later resume of it that works clears (issue 2025).
     private var chatRestoreFailureShown: String?
@@ -13953,7 +13959,11 @@ final class AppState: ObservableObject {
     /// room and surface over the session composer.
     ///
     /// Parks the room's pending send by default (see `parkedRoomOutboxes`).
-    private func closeRoomSurface(clearingRoomError: Bool = true, parkingPendingSend: Bool = true) {
+    ///
+    /// `forChat`: a chat is opening in the room's place (`roomClosedForChat`).
+    private func closeRoomSurface(clearingRoomError: Bool = true, parkingPendingSend: Bool = true,
+                                  forChat: Bool = false) {
+        roomClosedForChat = forChat
         if clearingRoomError, activeRoomSurface != nil {
             errorMessage = nil
         }
@@ -27944,9 +27954,10 @@ final class AppState: ObservableObject {
         // A session open takes the viewport back from any open room. A room
         // surface is presentation-only (never session state), so closing it
         // here cannot disturb the conversation being opened; the room stays
-        // in the roster, resumable with one tap.
+        // in the roster, resumable with one tap. The chat shows where the
+        // room was.
         if activeRoomSurface != nil {
-            closeRoomSurface()
+            closeRoomSurface(forChat: true)
         }
         let previousTurnState = turnState
         // The catalog-ownership guard protects ORDINARY opens from another
@@ -29050,7 +29061,7 @@ final class AppState: ObservableObject {
         // same as a session open: otherwise the room stays on screen while
         // the new session is adopted invisibly behind it.
         if activeRoomSurface != nil {
-            closeRoomSurface()
+            closeRoomSurface(forChat: true)
         }
         let transitionGeneration = beginExplicitChatViewportTransition(ownedBy: widgetLease)
         newSessionCreationsInFlight += 1

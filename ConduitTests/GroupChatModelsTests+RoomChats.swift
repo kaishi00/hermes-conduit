@@ -293,6 +293,11 @@ extension GroupChatModelsTests {
         let appState = try await postsOpenCopy(CopiesRoutes(copies: [copiesCopy()]), report: roomChatsPluginReport)
         XCTAssertTrue(appState.canOpenRoomChats)
         XCTAssertEqual(appState.activeRoomChatAgents.map(\.profile), ["research"])
+
+        // Back from the room: no chat takes its place, so the shell drops its screen.
+        appState.closeGroupRoom()
+        XCTAssertNil(appState.activeRoomSurface)
+        XCTAssertFalse(appState.roomClosedForChat)
     }
 
     /// The app's steps behind a room's chat, recorded: the opens (a kept
@@ -351,5 +356,7 @@ extension GroupChatModelsTests {
         XCTAssertEqual(steps.titles.map(\.id), ["run-new"])
         XCTAssertEqual(appState.activeSessionId, "chat-new")
         XCTAssertNil(appState.botConversationProfileForTesting("chat-new"), "an ordinary chat, never a Bot Chat")
+        XCTAssertNil(appState.activeRoomSurface)
+        XCTAssertTrue(appState.roomClosedForChat, "the chat shows where the room was, not Bots Home under it")
     }
 }

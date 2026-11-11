@@ -736,10 +736,16 @@ struct V2Shell: View {
             // ends that screen.
             .onChange(of: appState.activeRoomSurface?.room.roomID) { old, new in
                 // Leaving: whichever tab holds the room's screen, even one
-                // that isn't showing, drops it so it doesn't come back.
+                // that isn't showing, drops it so it doesn't come back. A
+                // chat opening in the room's place (Group Info's Ask and Wrap
+                // Up, a push or link tapped in the room) shows there instead,
+                // in the tab it belongs in, rather than leave the list under
+                // a chat nobody can see.
                 if old != nil, new == nil {
+                    let toChat = appState.roomClosedForChat && conversationVisible
                     if chatsPath.last == .conversation { chatsPath.removeLast() }
                     if botsPath.last == .conversation { botsPath.removeLast() }
+                    if toChat, !appState.isVoiceCallScreenPresented { openConversation() }
                 } else if new != nil, !conversationVisible, !appState.isVoiceCallScreenPresented {
                     // A room opened without a row tap (just created) shows.
                     openConversation()
