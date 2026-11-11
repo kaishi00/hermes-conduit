@@ -14,8 +14,8 @@ import UIKit
 /// do rows cross the part of the transcript the reader sees, and does a
 /// cell draw any of them? Two checks in a row with none drawn log what the
 /// transcript held (ChatViewportTrace) and save a `blank` chat trace
-/// (ChatViewportWatch). The next check lays the transcript out once and
-/// logs whether that drew the rows, which tells a pass UIKit never ran from
+/// (ChatViewportWatch), after laying the transcript out once and logging
+/// whether that drew the rows, which tells a pass UIKit never ran from
 /// cells it ran and left empty. Nothing else changes: the reader's offset,
 /// the rows and their cells are left as they are.
 @MainActor
@@ -63,17 +63,17 @@ final class TranscriptBlankWatch {
             return
         }
         blankRun += 1
-        if blankRun == Self.blankChecks {
-            for line in Self.describe(finding, collectionView: collectionView, scroller: controller.scroller) {
-                ChatViewportTrace.shared.log(line)
-            }
-            ChatViewportWatch.shared.blankScreen()
-        } else if blankRun == Self.blankChecks + 1 {
-            collectionView.setNeedsLayout()
-            collectionView.layoutIfNeeded()
-            let drawn = Self.finding(in: collectionView, layout: controller.layout) == nil
-            ChatViewportTrace.shared.log("blank screen after a layout pass: \(drawn ? "drawn" : "still blank")")
+        guard blankRun == Self.blankChecks else { return }
+        for line in Self.describe(finding, collectionView: collectionView, scroller: controller.scroller) {
+            ChatViewportTrace.shared.log(line)
         }
+        // Before the save, so the trace carries it: the save copies the
+        // recorder as it stands.
+        collectionView.setNeedsLayout()
+        collectionView.layoutIfNeeded()
+        let drawn = Self.finding(in: collectionView, layout: controller.layout) == nil
+        ChatViewportTrace.shared.log("blank screen after a layout pass: \(drawn ? "drawn" : "still blank")")
+        ChatViewportWatch.shared.blankScreen()
     }
 
     /// What a blank transcript holds: rows crossing what the reader sees,
