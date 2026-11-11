@@ -16,6 +16,12 @@ import os
 private let backgroundPushLogger = Logger(subsystem: "com.milim.relay", category: "BackgroundPush")
 
 final class ConduitAppDelegate: NSObject, UIApplicationDelegate, UNUserNotificationCenterDelegate {
+    // Portrait on an iPhone, but for a bot's screen in full screen.
+    func application(_ application: UIApplication,
+                     supportedInterfaceOrientationsFor window: UIWindow?) -> UIInterfaceOrientationMask {
+        MainActor.assumeIsolated { InterfaceOrientationGate.supported }
+    }
+
     func application(_ application: UIApplication, didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil) -> Bool {
         // A freeze saves what the chat did just before (#1533).
         MainThreadHangWatchdog.shared.start()

@@ -53,6 +53,17 @@ let channel = null;
 let rfb = null;
 let viewOnly = true;
 
+// Pinches and two-finger drags zoom and move the app's frame around the
+// screen (BotScreenZoomView), so noVNC's own gestures for them (a scroll
+// wheel and Ctrl-scroll on the desktop) never reach its canvas. Its taps,
+// drags and long presses still do.
+const appGestures = new Set(['pinch', 'twodrag']);
+for (const type of ['gesturestart', 'gesturemove', 'gestureend']) {
+  document.getElementById('screen').addEventListener(type, (event) => {
+    if (event.detail && appGestures.has(event.detail.type)) event.stopPropagation();
+  }, true);
+}
+
 window.conduitScreen = {
   start(options) {
     window.conduitScreen.stop();

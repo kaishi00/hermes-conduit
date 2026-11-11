@@ -3161,8 +3161,12 @@ installs its packages on the host, so nothing needs a terminal (Eric
 
 **Siblings:** the viewer sheet (status, install with its log and the host's
 sudo password, the sandbox image switch, Start Screen, the live screen,
+its pinch zoom, two-finger move and Show Whole Screen, Full Screen,
 Take Over and Hand Back, Hand Back for Them, Stop Screen, the type bar and its
-keys) · where it opens: a Bot Chat's and a workstream's ⋯ menu (Bot's
+keys) · the full screen (the screen filling the phone, turned sideways on an
+iPhone while it's open, zoomable, with Take Over, Hand Back and the type bar;
+the iPad turns everywhere already) · the zoom's gestures kept from the desktop
+(viewer.js leaves pinches and two-finger drags to the app) · where it opens: a Bot Chat's and a workstream's ⋯ menu (Bot's
 Screen), an ordinary chat's ⋯ menu, its profile's screen (issue 2132; not a
 room's or a saved copy's), the Bot Overview's header, a Work panel card's
 Open Screen (see Bot workstreams) · the sheet naming the chat it opened from
@@ -3179,7 +3183,7 @@ own Bot Screen panel (Hermes', not ours) · the sheet covering its chat, so repl
 needed: driving a desktop needs a screen to see it on)
 
 **Code**
-- App: `Conduit/Services/BotScreen.swift` (`BotScreenStatus`, `BotScreenLease`, `BotScreenUse` with `controllingLine` and `menuProfile`, `BotScreenKey`, `BotScreenModel`, which opens the stream itself and relays it to the page, `BotScreenSupport`), `Conduit/Views/BotScreenViews.swift` (`BotScreenTarget.chatSessionIDs`, `BotScreenSheet`, which counts itself in `botScreenSheetsOpen` while open, from the chat's menu, a Work panel card or Bots Home, `BotScreenWebView`, `BotScreenButton`), `Conduit/Services/HermesClient.swift` (`display`, `displayStreamRequest`, `respondToDisplaySudo`, the `display.*` events and `display.install.sudo`), `Conduit/Resources/BotScreen/BotScreenViewer.html` (noVNC 1.7.0, MPL-2.0, built by `scripts/bot-screen/build.sh` from `scripts/bot-screen/viewer.js`), `Conduit/Views/BotWorkViews.swift` (`BotWorkRow.screenBox`), `Conduit/Services/BotWorkstreams.swift` (`BotWorkItem.screen`, `screenUsedAt`, `screenAsk`; `BotWorkSnapshot.screen`), `Conduit/Views/V2/V2ConversationScreen.swift` (`V2ConversationMenu.screenProfile`, picked by `BotScreenUse.menuProfile`, and its screen sheet setting `chatCoveredBySheet`), `Conduit/Views/V2/V2BotsHome.swift` (`BotOverviewSheet`), `Conduit/Services/AppState.swift` (`botScreens`, reset in `invalidateBotModeState`; `chatCoveredBySheet`, `botScreenSheetsOpen`), `ConduitTests/BotWorkstreamsTests.swift`, `ConduitTests/HermesClientTests.swift` (the owed hand back)
+- App: `Conduit/Services/BotScreen.swift` (`BotScreenStatus`, `BotScreenLease`, `BotScreenUse` with `controllingLine` and `menuProfile`, `BotScreenKey`, `BotScreenModel`, which opens the stream itself and relays it to the page, `BotScreenSupport`), `Conduit/Views/BotScreenViews.swift` (`BotScreenTarget.chatSessionIDs`, `BotScreenSheet`, which counts itself in `botScreenSheetsOpen` while open, from the chat's menu, a Work panel card or Bots Home, its full screen, `BotScreenWebView`, `BotScreenZoomView`, `BotScreenButton`), `Conduit/Services/InterfaceOrientationGate.swift` with `Conduit/ConduitApp.swift` (`ConduitAppDelegate`'s supported orientations) and `Conduit/Info.plist` (landscape listed for the iPhone, allowed only by the gate), `Conduit/Services/HermesClient.swift` (`display`, `displayStreamRequest`, `respondToDisplaySudo`, the `display.*` events and `display.install.sudo`), `Conduit/Resources/BotScreen/BotScreenViewer.html` (noVNC 1.7.0, MPL-2.0, built by `scripts/bot-screen/build.sh` from `scripts/bot-screen/viewer.js`), `Conduit/Views/BotWorkViews.swift` (`BotWorkRow.screenBox`), `Conduit/Services/BotWorkstreams.swift` (`BotWorkItem.screen`, `screenUsedAt`, `screenAsk`; `BotWorkSnapshot.screen`), `Conduit/Views/V2/V2ConversationScreen.swift` (`V2ConversationMenu.screenProfile`, picked by `BotScreenUse.menuProfile`, and its screen sheet setting `chatCoveredBySheet`), `Conduit/Views/V2/V2BotsHome.swift` (`BotOverviewSheet`), `Conduit/Services/AppState.swift` (`botScreens`, reset in `invalidateBotModeState`; `chatCoveredBySheet`, `botScreenSheetsOpen`), `ConduitTests/BotWorkstreamsTests.swift`, `ConduitTests/HermesClientTests.swift` (the owed hand back)
 - Notifier: `notifier/screen_lock.py` (the hold file, conduit-screen.json in the bot's home), `notifier/work_tool.py` (`screen_block`, `screen_turn_ended`, `_watch_screen`, `SCREEN_BRIEF`, the `screen` ask in `work_progress`, `app_list`'s `screen`), `notifier/__init__.py` (`_pre_tool_call`, `_on_session_end`, `_subagent_start`), `notifier/tests/test_screen_lock.py`
 
 **Rulings**
@@ -3197,10 +3201,13 @@ needed: driving a desktop needs a screen to see it on)
 - A workstream that compacted mid-turn keeps its screen ask and its "drives the screen" on its card; the waiting list holds up to 20 per bot, one past that isn't promised a message, and a refused free-screen message is tried again after a growing pause (notifier #578).
 - The holder's own calls renew its hold at most every 30 seconds (`RENEW_S`, far inside the ten idle minutes), read without the lock, so a screen-driving turn doesn't rewrite the hold file on every click; taking it, a new holder or a new name (a renamed chat) still writes at once. The waiting watch reads the hold once a look (notifier issues 607 and 608, the plugin's choice, #1987 with notifier #613).
 
+- The screen zooms in the app, not on the desktop: a pinch and a two-finger drag zoom and move the viewer (one finger too while only watching), and the bot's desktop keeps its size, since the bot's own clicks and Hermes Desktop's view depend on it. Full Screen fills the phone and turns sideways with it on an iPhone, the only place the iPhone app leaves portrait (Eric 2026-11-11, #2172).
+- The sheet's screen and the full screen each have a page; the one ready last takes the stream (`pageReady`), and the one it replaced going away leaves it (`pageGone`), so only one draws it at a time (#2172, the app's choice).
+
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-11, #2176 (the menu's profile pick and the who-uses line moved into `BotScreenUse` and tested; no behavior change); 2026-11-11, #2173 (opens from an ordinary chat's ⋯ menu, issue 2132; "this chat" in the sheet's who-uses line; Rulings); 2026-11-08, #1987 with notifier #613 (the hold's renewals and the waiting watch's reads, notifier issues 607 and 608; Rulings; nothing the app shows changed); 2026-11-07, #1956 (the Screen button's own check runs while it's hidden, on a `ModifierHost`, so a Bot Overview opened before any chat checked shows it); 2026-11-06, #1872 (no stream opens in the background, issue 1870; Rulings); 2026-11-06, #1857 (with notifier #578: a screen ask and the card's controller across a compaction, the waiting list's per-bot cap and retry pause, a failed hand back sent again, stream messages tagged; no gaps left); 2026-11-05, #1832 (with notifier #559: the screen in the app, one chat driving it at a time, install from the phone)
+**Checked:** 2026-11-11, #2172 (pinch zoom and Full Screen, sideways on an iPhone; the notifier, its README, the Watch and CarPlay needed no change, the app's README says so); 2026-11-11, #2176 (the menu's profile pick and the who-uses line moved into `BotScreenUse` and tested; no behavior change); 2026-11-11, #2173 (opens from an ordinary chat's ⋯ menu, issue 2132; "this chat" in the sheet's who-uses line; Rulings); 2026-11-08, #1987 with notifier #613 (the hold's renewals and the waiting watch's reads, notifier issues 607 and 608; Rulings; nothing the app shows changed); 2026-11-07, #1956 (the Screen button's own check runs while it's hidden, on a `ModifierHost`, so a Bot Overview opened before any chat checked shows it); 2026-11-06, #1872 (no stream opens in the background, issue 1870; Rulings); 2026-11-06, #1857 (with notifier #578: a screen ask and the card's controller across a compaction, the waiting list's per-bot cap and retry pause, a failed hand back sent again, stream messages tagged; no gaps left); 2026-11-05, #1832 (with notifier #559: the screen in the app, one chat driving it at a time, install from the phone)
 
 ## Composer Return key
 
@@ -5661,7 +5668,8 @@ change card with the photo's thumbnail and its wording (PhoneChangeWording) ·
 the push title `phone.send_photo` (NotificationCopy) · the image viewer's
 share sheet (Save to Hermes album) · live voice's phone_changes tool (lists
 and dismisses a photo request, never approves one) · Classic voice's spoken
-yes (a photo card counts but no yes answers it) · Phone data sync with the
+yes (a photo card counts but no yes answers it) · a Pulse card's approval
+(never sends a photo: it waits on its own card) · Phone data sync with the
 host (the descriptions and the picture ride the same sealed upload) · the
 notifier's phone store (`photos`, `photo_files`, `send_photo`, the files kept
 a week), the conduit_photos tool and its description, the `phone-photos`
@@ -5679,16 +5687,18 @@ capability, conduit_first's line, README, CHANGELOG and privacy policy
 - Tests: `ConduitTests/PhoneSyncTests.swift` (testPhonePhotosShareDescriptionsAndSendOnlyFromTheCard), `notifier/tests/test_phone.py`
 
 **Rulings**
-- Hermes searches descriptions made on the phone (Vision's labels, the text in the photo, the place and time); the descriptions go to the user's own host, and a picture goes only when the user taps Send on its card, never without asking and never by voice: a live call can list or dismiss a request, and Classic's spoken yes doesn't answer it (2026-11-11, Eric chose "Ask on a card, then send"; notifier #700, #2171).
+- Hermes searches descriptions made on the phone (Vision's labels, the text in the photo, the place and time); the descriptions go to the user's own host, and a picture goes only when the user taps Send on its card, never without asking and never by voice: a live call can list or dismiss a request, and Classic's spoken yes doesn't answer it. A Pulse card's approval doesn't send one either (2026-11-11, Eric chose "Ask on a card, then send"; notifier #700, #2171, #2177).
 - Captions aren't made by Apple's on-device model, which takes no images and needs iOS 26; Vision runs on every supported phone (2026-11-11, #2171).
 - The card's Send waits until it shows that request's photo, and each request gets a card of its own, so the photo seen is the photo sent. Turning Photos off forgets the descriptions (a pass already running doesn't put them back) and drops pictures approved but not yet sent (2026-11-11, #2171).
-- An approved picture waits on the phone and goes in an upload of its own, at most about 1.4 MB as a JPEG; the host applies the request only when the picture arrives, keeps it a week, and drops it when photo sharing is turned off or the phone wiped. A lost connection keeps it for the next pass; a refusal fails it with why (2026-11-11, notifier #700, #2171).
+- An approved picture waits on the phone and goes in an upload of its own, at most about 1.4 MB as a JPEG; the host applies the request only when the picture arrives, keeps it a week, and drops it when photo sharing is turned off or the phone wiped. A lost connection keeps it for the next pass; a refusal fails it with why. A phone set up again keeps the pictures it sent until its first upload says what it shares; turning Photos off also forgets when and where an asked-for photo was taken (2026-11-11, notifier #700, #701, #2171).
 - The newest 5000 photos are described, 60 more each pass, newest first; with limited access, only the photos the user chose (2026-11-11, #2171).
 
 **Open gaps**
 - Not tried on a device: Vision's captions on a real library, limited access, and saving to the Hermes album (#2171).
+- Settings reads the photo index on first draw; at 5000 photos that's a small JSON read on the main thread (#2177).
+- Turned off while a part of an upload is already on its way, that part still carries descriptions; the parts after it go without them and say Photos is off, as does the pass the switch starts (#2177).
 
-**Checked:** 2026-11-11, #2171 (added with notifier #700).
+**Checked:** 2026-11-11, #2177 (a Pulse approval never sends a photo; Photos turned off mid-pass stops describing at once and later parts of its upload go without descriptions; the described count leaves out photos that never go; a failed album save buzzes; with notifier #701); 2026-11-11, #2171 (added with notifier #700).
 
 ## Steps in a turn
 
@@ -6187,7 +6197,8 @@ tool pictures) · the saved-chat copy · call job result sheets and the cards a
 voice model shows · group rooms · the Artifacts page, a chat's Artifacts sheet
 and the panel beside the chat · the Markdown reader (a Markdown artifact or file card) · the Folder tab · iPhone, iPad and Mac (the
 same viewer; keys and a trackpad on an iPad or Mac) · Quick Look, which still
-opens videos, audio and documents · README.md · text that describes it (the
+opens videos, audio and documents · Share's Save to Hermes Album (see Photos
+Hermes can search) · README.md · text that describes it (the
 pictures' VoiceOver hint "Opens full screen with save and share")
 
 **Code**
@@ -6213,7 +6224,7 @@ pictures' VoiceOver hint "Opens full screen with save and share")
 - An animated GIF plays at up to 120 frames, drawn small enough that its frames stay within 32 MB (the pager holds three pages); Quick Look played every frame at full size.
 - The Folder pages through its listed files only: a folder not opened in the tree isn't listed.
 
-**Checked:** 2026-11-09, #2044 (a room someone else hosts pages the pictures sent into it too, read from your own host's copy, see Pictures in messages); 2026-11-08, #2045 (a room's list pages through its messages' Hermes attachments, a scheduled post's left out as its bubble draws none); 2026-11-08, #2036 (a room's list leads each message with the pictures sent into it, read from the plugin's room files, see Pictures in messages); 2026-11-07, #1932 (the room gallery pages only a scheduled post's shown pictures); 2026-11-07, #1914 (a group room's list holds a bot's `MEDIA:` pictures too, each fetched through its own profile, see Pictures in messages); 2026-11-06, #1884 (the Markdown reader's pictures page through the file's own, not the chat's it opened over); 2026-11-05, #1803 (a tile of a message's picture grid opens the viewer as its picture did, the "+N" tile on its own picture, the rest paged to; Code); 2026-10-30, #1550 (a saved copy's pictures page through the chat's own list, from the rows drawn); 2026-10-29, #1491.
+**Checked:** 2026-11-11, #2177 (Share's sheet gains Save to Hermes Album, from #2171; a failed save buzzes; see Photos Hermes can search); 2026-11-09, #2044 (a room someone else hosts pages the pictures sent into it too, read from your own host's copy, see Pictures in messages); 2026-11-08, #2045 (a room's list pages through its messages' Hermes attachments, a scheduled post's left out as its bubble draws none); 2026-11-08, #2036 (a room's list leads each message with the pictures sent into it, read from the plugin's room files, see Pictures in messages); 2026-11-07, #1932 (the room gallery pages only a scheduled post's shown pictures); 2026-11-07, #1914 (a group room's list holds a bot's `MEDIA:` pictures too, each fetched through its own profile, see Pictures in messages); 2026-11-06, #1884 (the Markdown reader's pictures page through the file's own, not the chat's it opened over); 2026-11-05, #1803 (a tile of a message's picture grid opens the viewer as its picture did, the "+N" tile on its own picture, the rest paged to; Code); 2026-10-30, #1550 (a saved copy's pictures page through the chat's own list, from the rows drawn); 2026-10-29, #1491.
 
 ## Cards Hermes shows
 

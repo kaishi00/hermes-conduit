@@ -1681,6 +1681,25 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_photo"])
         XCTAssertEqual(PhoneChangeWording.headline(engine.prompts[0].change), "Hermes wants to see a photo")
 
+        // Neither a voice call nor a Pulse card sends it, before or after it arrives; a call can dismiss one.
+        let changesTool = try XCTUnwrap(PhoneVoiceTools.tools(for: preferences, access: .full, remindersAuthorized: true)
+            .first { $0.name == PhoneVoiceTools.changesTool })
+        let voiceAnswer: (PhoneChangePrompt, Bool) async -> Void = { prompt, approve in await engine.answer(prompt, approve: approve) }
+        let spoken = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_photo"], engine: engine,
+                                               confirmed: { _, _ in true }, lastUserTurn: { (UUID(), "yes") }, answer: voiceAnswer)
+        XCTAssertNotNil(spoken["error"])
+        await engine.approveFromCard("ch_photo")
+        await engine.approveFromCard("ch_early")
+        host.changes.append(["id": "ch_early", "kind": "send_photo", "auto": false, "target": ["photo_id": "ph_0000000000000001"]])
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(Set(engine.prompts.map(\.id)), ["ch_photo", "ch_early"])
+        XCTAssertNil(host.batches.first { $0["photo_files"] != nil })
+        let dismissed = await PhoneVoiceTools.run(changesTool, arguments: ["action": "dismiss", "id": "ch_early"], engine: engine,
+                                                  confirmed: { _, _ in true }, answer: voiceAnswer)
+        XCTAssertNil(dismissed["error"])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_photo"])
+        host.changes = [host.changes[0]]
+
         // Yes: the picture goes in an upload of its own, and Hermes hears it went.
         photos.jpegs["ph_0000000000000001"] = Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3])
         await engine.answer(engine.prompts[0], approve: true)
@@ -1698,6 +1717,21 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         await engine.answer(try XCTUnwrap(engine.prompts.first), approve: true)
         XCTAssertEqual(engine.state.answered["ch_gone"]?.outcome, .failed)
+
+        // Turned off while a pass runs: nothing more is described or sent, and the host hears it's off.
+        photos.entries.append(["id": "ph_0000000000000002", "taken": "2026-10-13T09:00:00Z", "labels": ["cat"]])
+        photos.whileDescribing = { [unowned engine, unowned photos] in
+            var off = engine.preferences
+            off.photos = false
+            engine.savePreferences(off)
+            photos.forget()
+        }
+        let beforeOff = host.batches.count
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        photos.whileDescribing = nil
+        let midPass = host.batches.dropFirst(beforeOff)
+        XCTAssertNil(midPass.first { $0["photos"] != nil })
+        XCTAssertEqual((midPass.last?["sharing"] as? [String: Any])?["photos"] as? Bool, false)
 
         // Turned off: asked photos are refused, the descriptions stop and are forgotten.
         preferences.photos = false
@@ -1780,7 +1814,12 @@ private final class FakePhonePhotoSource: PhonePhotoSource {
 
     var access: PhonePhotoAccess { granted }
     func requestAccess() async -> PhonePhotoAccess { granted }
-    func describeMore(budget: Int, until deadline: Date) async { described = min(entries.count, described + budget) }
+    /// What happens while a pass describes photos (the user turning Photos off).
+    var whileDescribing: (() -> Void)?
+    func describeMore(budget: Int, until deadline: Date) async {
+        whileDescribing?()
+        described = min(entries.count, described + budget)
+    }
     func descriptions() -> [[String: Any]] { Array(entries.prefix(described)) }
     var progress: (described: Int, total: Int) { (described, entries.count) }
     func thumbnail(photoID: String, side: CGFloat) async -> UIImage? { nil }

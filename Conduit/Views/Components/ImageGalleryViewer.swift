@@ -945,6 +945,7 @@ final class SaveToHermesAlbumActivity: UIActivity {
                 Haptics.success()
                 activityDidFinish(true)
             } catch {
+                Haptics.error()
                 activityDidFinish(false)
             }
         }

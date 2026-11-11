@@ -155,8 +155,10 @@ final class SystemPhotoLibrary: PhonePhotoSource {
     }
 
     var progress: (described: Int, total: Int) {
+        // Counted as the host gets them: a photo dated before 2000 never goes.
         let index = loaded()
-        return (index.entries.count, max(index.total, index.entries.count))
+        let described = index.entries.lazy.filter { $0.at >= PhonePhotoEntry.earliest }.count
+        return (described, max(index.total, described))
     }
 
     func descriptions() -> [[String: Any]] {
@@ -191,7 +193,8 @@ final class SystemPhotoLibrary: PhonePhotoSource {
         }
         index.total = assets.count
         for asset in waiting.prefix(budget) {
-            guard Date() < deadline, !Task.isCancelled else { break }
+            // Turned off meanwhile: stop reading photos, not just drop them.
+            guard Date() < deadline, !Task.isCancelled, generation == started else { break }
             // A photo that couldn't be read (still in iCloud, Vision failed)
             // stays waiting for a later pass.
             guard let seen = await Task.detached(priority: .utility, operation: { Self.look(at: asset.localID) }).value
@@ -215,7 +218,7 @@ final class SystemPhotoLibrary: PhonePhotoSource {
             }
             let key = PhonePhotoIndex.placeKey(latitude: latitude, longitude: longitude)
             if index.places[key] == nil {
-                guard lookups < Self.placesPerPass, Date() < deadline else { continue }
+                guard lookups < Self.placesPerPass, Date() < deadline, generation == started else { continue }
                 lookups += 1
                 // No answer (offline, throttled, too slow): asked again next pass.
                 guard let found = await Self.place(latitude: latitude, longitude: longitude) else { continue }

@@ -4207,6 +4207,35 @@ final class HermesClientTests: XCTestCase {
         model.detach()
     }
 
+    /// The sheet's screen and its full screen hand the stream between them:
+    /// the page ready last takes it, and the one it replaced going away
+    /// leaves it alone (Eric 2026-11-11).
+    func testABotScreensNewestPageTakesTheStream() async {
+        let model = BotScreenModel(profile: "furina", client: nil)
+        let sheet = SilentBotScreenPage()
+        let full = SilentBotScreenPage()
+        await model.pageReady(sheet)
+        XCTAssertTrue(model.page === sheet)
+        XCTAssertEqual(sheet.stops, 0)
+        let before = model.currentStreamTag
+        await model.pageReady(full)
+        XCTAssertTrue(model.page === full)
+        XCTAssertEqual(sheet.stops, 1, "The replaced page stops drawing")
+        XCTAssertFalse(model.isCurrent(before), "Its stream's late messages are stale")
+        model.pageGone(sheet)
+        XCTAssertEqual(full.stops, 0, "The replaced page going away leaves the new one's stream")
+        model.pageGone(full)
+        XCTAssertEqual(full.stops, 1, "The page drawing it going away ends the stream")
+        XCTAssertNil(model.page, "Nothing attaches to a gone page before the next is ready")
+    }
+
+    /// Portrait on an iPhone but for a bot's screen in full screen; the iPad turns everywhere.
+    func testOnlyABotScreenInFullScreenTurnsAnIPhoneSideways() {
+        XCTAssertEqual(InterfaceOrientationGate.supported(idiom: .phone, landscapeHolders: 0), .portrait)
+        XCTAssertEqual(InterfaceOrientationGate.supported(idiom: .phone, landscapeHolders: 1), .allButUpsideDown)
+        XCTAssertEqual(InterfaceOrientationGate.supported(idiom: .pad, landscapeHolders: 0), .all)
+    }
+
     func testABotScreenStoppedStreamsMessagesAreStale() {
         let model = BotScreenModel(profile: "furina", client: nil)
         let old = model.currentStreamTag
@@ -5471,11 +5500,12 @@ extension HermesClientTests {
 @MainActor
 private final class SilentBotScreenPage: BotScreenPage {
     var started: [Int] = []
+    var stops = 0
     func startStream(viewOnly: Bool, tag: Int) { started.append(tag) }
     func streamOpened() {}
     func streamData(_ data: Data) {}
     func streamClosed(code: Int) {}
-    func stopStream() {}
+    func stopStream() { stops += 1 }
     func setViewOnly(_ viewOnly: Bool) {}
     func sendKeysyms(_ keysyms: [Int]) {}
 }
