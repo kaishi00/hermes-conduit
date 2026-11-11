@@ -507395,7 +507395,7 @@
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zum Vergrößern zusammenziehen. Mit zwei Fingern ziehen, um sich umzusehen."
+            "value" : "Zum Vergrößern zwei Finger auseinanderziehen. Mit zwei Fingern ziehen, um sich umzusehen."
           }
         },
         "en" : {
@@ -507437,13 +507437,13 @@
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "핀치하여 확대하세요. 두 손가락으로 드래그해 둘러보세요."
+            "value" : "두 손가락을 벌려 확대하세요. 두 손가락으로 드래그해 둘러보세요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Zsuń palce, aby powiększyć. Przeciągnij dwoma palcami, aby się rozejrzeć."
+            "value" : "Rozsuń palce, aby powiększyć. Przeciągnij dwoma palcami, aby się rozejrzeć."
           }
         },
         "pt-BR" : {
@@ -507455,25 +507455,25 @@
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Сведите пальцы, чтобы увеличить. Перетаскивайте двумя пальцами, чтобы осмотреться."
+            "value" : "Разведите пальцы, чтобы увеличить. Перетаскивайте двумя пальцами, чтобы осмотреться."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Yakınlaştırmak için kıstırın. Etrafa bakmak için iki parmakla sürükleyin."
+            "value" : "Yakınlaştırmak için iki parmağınızı açın. Etrafa bakmak için iki parmakla sürükleyin."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "双指捏合以放大。用两根手指拖动以四处查看。"
+            "value" : "双指张开以放大。用两根手指拖动以四处查看。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "雙指捏合以放大。用兩根手指拖移以四處查看。"
+            "value" : "雙指張開以放大。用兩根手指拖移以四處查看。"
           }
         }
       }
@@ -507495,7 +507495,7 @@
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Mostrar pantalla completa"
+            "value" : "Mostrar toda la pantalla"
           }
         },
         "fr" : {

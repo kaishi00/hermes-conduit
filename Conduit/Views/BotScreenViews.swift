@@ -679,6 +679,7 @@ struct BotScreenWebView: UIViewRepresentable {
     }
 
     static func dismantleUIView(_ view: BotScreenZoomView, coordinator: Coordinator) {
+        coordinator.isGone = true
         coordinator.webView?.configuration.userContentController.removeScriptMessageHandler(forName: "screen")
         coordinator.model?.pageGone(coordinator)
     }
@@ -689,6 +690,8 @@ struct BotScreenWebView: UIViewRepresentable {
         weak var webView: WKWebView?
         var isZoomed: Binding<Bool>?
         var resetZoom = 0
+        /// Taken off the screen: a ready that lands after this takes nothing.
+        var isGone = false
         private var ready = false
 
         init(model: BotScreenModel) {
@@ -714,7 +717,12 @@ struct BotScreenWebView: UIViewRepresentable {
             switch body["type"] as? String {
             case "ready":
                 ready = true
-                if let model { Task { await model.pageReady(self) } }
+                if let model {
+                    Task {
+                        guard !self.isGone else { return }
+                        await model.pageReady(self)
+                    }
+                }
             case "send":
                 if let text = body["data"] as? String, let data = Data(base64Encoded: text) {
                     model?.pageSent(data, tag: tag)
@@ -864,12 +872,16 @@ final class BotScreenZoomView: UIView, UIGestureRecognizerDelegate {
 
     override func layoutSubviews() {
         super.layoutSubviews()
-        // A new size (the phone turned, the sheet grew) starts from the whole screen.
+        // A new size (the phone turned, the type bar opened) keeps the zoom
+        // and the same part of the desktop in view, scaled to the new frame.
         if bounds.size != laidOutSize {
+            let old = laidOutSize
             laidOutSize = bounds.size
-            scale = 1
-            offset = .zero
-            onZoomChange?(false)
+            if old.width > 0, old.height > 0, scale > 1.01 {
+                set(scale: scale, offset: CGPoint(x: offset.x * bounds.width / old.width,
+                                                  y: offset.y * bounds.height / old.height))
+                return
+            }
         }
         placeContent()
     }
