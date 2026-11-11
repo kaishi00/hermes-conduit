@@ -326,7 +326,8 @@ struct ChatView: View {
         .background {
             Button(ConduitKeyboardShortcut.stop.title) { stopFromKeyboard() }
                 .keyboardShortcut(ConduitKeyboardShortcut.stop.shortcut)
-                .disabled(!shell.chatTakesKeys)
+                // Nor the chat a Bot Chat on its way covers.
+                .disabled(!shell.chatTakesKeys || appState.botChatComingOverAnother != nil)
                 .frame(width: 0, height: 0)
                 .opacity(0)
                 .accessibilityHidden(true)

@@ -3357,7 +3357,7 @@ Keyboard shortcuts) and the Keyboard section's line on it
   command sending, Shift-Return and the IME's Return still reaching the
   text, in chats, rooms and the full editor; nor the suggestion lists' keys.
 
-**Checked:** 2026-11-11, #2224 (⌘Return sends whatever the setting says, a priority key command beside plain Return's; Settings > Keyboard says so and opens the Keyboard Shortcuts sheet; see Keyboard shortcuts); 2026-11-07, #1938 (a suggestion list's keys: arrows, Tab, Escape, a highlighted Return; ComposerSuggestionKeys); 2026-10-30, #1527 (a Return send keeps the field's focus on a Mac or with a hardware keyboard, see Composer focus after a send; ImagePasteTextView takes focus once in the window); 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
+**Checked:** 2026-11-11, #2224 (⌘Return sends whatever the setting says, a priority key command beside plain Return's; Settings > Keyboard says so and opens the Keyboard Shortcuts sheet; neither Return nor ⌘Return sends from the field of a hidden tab's chat or one split Settings covers, chats and rooms alike; see Keyboard shortcuts); 2026-11-07, #1938 (a suggestion list's keys: arrows, Tab, Escape, a highlighted Return; ComposerSuggestionKeys); 2026-10-30, #1527 (a Return send keeps the field's focus on a Mac or with a hardware keyboard, see Composer focus after a send; ImagePasteTextView takes focus once in the window); 2026-10-29, #1515 (the same fields take a long paste as an attachment, `onLongTextPaste`; Return unchanged); 2026-10-28, #1460 (inline prediction off on a Mac).
 
 ## Keyboard shortcuts
 
@@ -3391,7 +3391,7 @@ keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
 - ⌘N is New Chat, never a new window: Conduit has one window (2026-11-11, #2224, issue 2219).
 - The tabs take ⌘1 to ⌘4 in the bar's order; Settings also takes ⌘, (2026-11-11, #2224).
 - Nothing acts behind a sheet, an alert or the call screen: every command, the text size included, and ⌘F check for a presented view controller first. ⌘/ is the exception only for its own sheet, which closes itself, from either way in (2026-11-11, #2224).
-- A chat's own keys (⌘., ⌃⌘S, ⌥⌘A) reach it only while it's on screen: its tab shows and split Settings doesn't cover it (`V2ShellContext.chatTakesKeys`), since a hidden or covered chat stays mounted and a shortcut ignores opacity (2026-11-11, #2224 review).
+- A chat's own keys (⌘., ⌃⌘S, ⌥⌘A, and Return and ⌘Return in its composer or a room's) reach it only while it's on screen: its tab shows and split Settings doesn't cover it (`V2ShellContext.chatTakesKeys`), since a hidden or covered chat stays mounted, keeps its field's focus, and a shortcut ignores opacity; ⌘. also waits out a Bot Chat on its way over the chat, as ⌥⌘A does (2026-11-11, #2224 review).
 - The menus observe no state, so AppState's publishes never rebuild them; each command checks what it needs when pressed (2026-11-11, #2224).
 - ⌘Return sends whatever the Return key setting says, with Return's limits (no IME composing, the composer able to send a typed message) (2026-11-11, #2224).
 - ⌘. is Stop wherever the composer's Stop would stop (a turn, or the open workstream), a draft in the field or not, in the shown tab's chat only (2026-11-11, #2224).

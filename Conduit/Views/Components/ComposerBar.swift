@@ -103,6 +103,9 @@ struct ComposerBar: View, Equatable {
     @State private var focusesAfterFullEditor = false
     /// V2's conversation: rest as a slim bar until the composer is used.
     @Environment(\.v2ComposerRests) private var restsWhenIdle
+    /// A hidden tab's chat, or one split Settings covers, keeps its field
+    /// (and its focus): Return and ⌘Return don't send from it.
+    @Environment(\.v2Shell) private var shell
     /// A Mac, or an iPad with the room: V2's composer keeps its controls
     /// showing, the big voice button beside it (#1483).
     @Environment(\.composerStaysExpanded) private var staysExpanded
@@ -878,7 +881,7 @@ struct ComposerBar: View, Equatable {
                 // May lag one render behind fast typing; the safe
                 // failure mode is newline insertion, and
                 // submitFromReturnKey() re-checks the live gate.
-                canSubmitFromReturn: ComposerReturnKey.canSubmit(action: action) || dictationHoldsSendSlot,
+                canSubmitFromReturn: shell.chatTakesKeys && (ComposerReturnKey.canSubmit(action: action) || dictationHoldsSendSlot),
                 onSubmitFromReturn: { submitFromReturnKey() },
                 suggestionKeys: suggestionKeys,
                 onUserEdit: {

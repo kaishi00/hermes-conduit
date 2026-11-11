@@ -561,6 +561,8 @@ struct V2ConversationScreen: View {
         if shell.canSplit {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
+                    // Its shortcut, too, does nothing behind a sheet.
+                    guard KeyboardCommands.nothingInFront else { return }
                     Haptics.light()
                     chatListBeside.toggle()
                 } label: {
@@ -661,6 +663,7 @@ struct V2ConversationScreen: View {
         if fitsSidePanel, appState.activeRoomSurface == nil {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    guard KeyboardCommands.nothingInFront else { return }
                     Haptics.light()
                     if showsSidePanel {
                         sidePanelOpen = false
