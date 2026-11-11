@@ -663,7 +663,6 @@ final class MessageReadAloudController: ObservableObject {
             try playback.finish()
             await playback.drain()
             guard isCurrent(generation) else { return }
-            LiveCallTrace.readAloud.note("Played to the end")
             settle(.idle)
             startNextQueued()
         } catch {
@@ -795,7 +794,6 @@ final class MessageReadAloudController: ObservableObject {
                 await playback.drain()
                 guard isCurrent(generation) else { return }
             }
-            LiveCallTrace.readAloud.note("Played to the end")
             settle(.idle)
             startNextQueued()
         } catch {
@@ -956,7 +954,7 @@ final class MessageReadAloudController: ObservableObject {
         case is OnDeviceSpeechStream: "the iPhone voice"
         case is HermesSpeechStream: "Hermes speech"
         case is SpeechServerSpeechStream: "the speech server"
-        case is FallbackSpeechStream: "Hermes speech or the speech server, the iPhone voice if it fails first"
+        case let fallback as FallbackSpeechStream: "\(fallback.primaryName), the iPhone voice if it fails first"
         default: String(describing: type(of: stream))
         }
     }

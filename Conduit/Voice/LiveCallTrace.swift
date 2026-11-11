@@ -43,6 +43,10 @@ final class LiveCallTrace {
     private let noun: String
     /// Steps are taken from `begin` until `end`.
     private(set) var isOpen = false
+    /// Which run is open, counted by `begin`: a speech stream keeps the one
+    /// it was opened in, so a stream a stopped reading left behind never
+    /// notes into the next one.
+    private(set) var run = 0
     private var startedAt = Date()
     private(set) var steps: [String] = []
     private var droppedSteps = 0
@@ -57,6 +61,7 @@ final class LiveCallTrace {
         startedAt = date
         steps = []
         droppedSteps = 0
+        run += 1
         isOpen = true
         note(label ?? "Starting \(noun)", at: date)
     }
@@ -67,8 +72,9 @@ final class LiveCallTrace {
         isOpen = false
     }
 
-    func note(_ label: String, at date: Date = Date()) {
-        guard name != nil, isOpen else { return }
+    /// A step of `run` only, when given: nothing once another run began.
+    func note(_ label: String, run: Int? = nil, at date: Date = Date()) {
+        guard name != nil, isOpen, run == nil || run == self.run else { return }
         if steps.count >= Self.maximumSteps {
             steps.remove(at: Self.keptFirstSteps)
             droppedSteps += 1

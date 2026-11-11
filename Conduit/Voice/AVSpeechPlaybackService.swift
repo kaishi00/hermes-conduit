@@ -309,7 +309,8 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         // An odd tail is invalid PCM16 and is intentionally discarded rather
         // than shifted into the next response.
         discardRemainder()
-        trace("All speech in: \(pendingBuffers) chunks, \(String(format: "%.1f", scheduledSeconds)) s left to play" + (interruptedStandaloneStream ? ", but playback was interrupted" : ""))
+        let left = queuedBuffers.reduce(0) { $0 + Double($1.frameLength) / $1.format.sampleRate }
+        trace("All speech in: \(queuedBuffers.count) chunks, \(String(format: "%.1f", left)) s left to play" + (interruptedStandaloneStream ? ", but playback was interrupted" : ""))
         // Standalone speech that a phone call or a lost route ended after
         // its last chunk didn't play out: Read Aloud settles as it would on
         // a refused chunk, and the speech test can't report a pass.
@@ -674,6 +675,7 @@ extension AVSpeechPlaybackService: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor [weak self] in
             guard let self, self.encodedPlayer === player else { return }
+            self.trace("Played the clip to the end")
             // Natural completion is terminal for the encoded path: stop()
             // clears the player, resumes drain waiters, and releases the
             // session lease.

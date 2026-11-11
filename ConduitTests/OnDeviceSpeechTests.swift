@@ -437,7 +437,16 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testReadAloudTraceSaysHowTheReplyWasSplitWithoutItsWords() async throws {
         let trace = LiveCallTrace.readAloud
+        // A stream a stopped reading left behind notes nothing into the next.
+        let stale = OnDeviceSpeechStream(
+            synthesizer: FakeSpeechSynthesizer(),
+            fallbackLanguage: "en",
+            onStart: { _ in },
+            onPCM16: { _, _ in }
+        )
         trace.begin("Read Aloud", first: "Reading 61 characters at 1x, on Speaker")
+        try await stale.append("An older reading. ")
+        stale.cancel()
         defer { trace.end("Ended") }
         let synthesizer = FakeSpeechSynthesizer()
         let stream = OnDeviceSpeechStream(
