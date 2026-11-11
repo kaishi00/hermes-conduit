@@ -40223,7 +40223,9 @@ final class AppState: ObservableObject {
             return await adoptDelegateRoster(for: sessionID, retries: retries - 1)
         }
         guard stillOpen() else { return nil }
-        let adopted = DelegateAgentActivity.adopting(delegateAgents, roster: roster)
+        // Only the runtime the chat has now moves cards: a late answer about
+        // an earlier one never moves them back.
+        let adopted = DelegateAgentActivity.adopting(delegateAgents, roster: roster, moving: activeSessionId == sessionID)
         if adopted != delegateAgents {
             delegateAgents = adopted
             setActiveAgents(DelegateAgentActivity.activeCount(adopted))
@@ -40231,15 +40233,17 @@ final class AppState: ObservableObject {
         return roster
     }
 
-    /// Whether Hermes still lists `agent` under the open chat's runtime,
-    /// when the card is from an earlier one: a refused Steer or Stop there
-    /// is about the old runtime, not proof the agent ended (issue 2206).
-    /// The card moves to the runtime Hermes has, so the next try reaches it.
-    private func delegateAgentListedUnderOpenRuntime(_ agent: DelegateAgentActivity) async -> Bool {
+    /// Whether a refused Steer or Stop may end `agent`'s card. A card from
+    /// an earlier runtime of the open chat ends only when the roster of the
+    /// runtime Hermes has now doesn't list it: the refusal was about the old
+    /// runtime, and a roster that couldn't be read proves nothing (issue
+    /// 2206). A card Hermes still lists moves to that runtime, so the next
+    /// try reaches it.
+    private func refusalEndsDelegateAgent(_ agent: DelegateAgentActivity) async -> Bool {
         guard let open = activeSessionId, open != agent.sessionId,
-              knownSessionIDs(for: open).contains(agent.sessionId),
-              let roster = await adoptDelegateRoster(for: open, retries: 0) else { return false }
-        return roster.contains { $0.id == agent.id }
+              knownSessionIDs(for: open).contains(agent.sessionId) else { return true }
+        guard let roster = await adoptDelegateRoster(for: open, retries: 0) else { return false }
+        return !roster.contains { $0.id == agent.id }
     }
 
     /// How many delegate agents of the open chat are still queued or
@@ -40272,7 +40276,7 @@ final class AppState: ObservableObject {
         // A client swapped during the call answered for another connection.
         guard self.client === client else { return .failed }
         if queued { return .done }
-        if await delegateAgentListedUnderOpenRuntime(agent) { return .failed }
+        guard await refusalEndsDelegateAgent(agent), self.client === client else { return .failed }
         endDelegateAgent(agent)
         return .notRunning
     }
@@ -40290,7 +40294,9 @@ final class AppState: ObservableObject {
         }
         // A client swapped during the call answered for another connection.
         guard self.client === client else { return .failed }
-        if !found, await delegateAgentListedUnderOpenRuntime(agent) { return .failed }
+        if !found {
+            guard await refusalEndsDelegateAgent(agent), self.client === client else { return .failed }
+        }
         endDelegateAgent(agent, as: found ? .interrupted : .completed)
         return found ? .done : .notRunning
     }

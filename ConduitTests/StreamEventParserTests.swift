@@ -682,6 +682,8 @@ final class StreamEventParserTests: XCTestCase {
         let moved = DelegateAgentActivity.adopting([agent("b", .running, goal: "kept")], roster: [resumed])
         XCTAssertEqual(moved.map(\.sessionId), ["s2"])
         XCTAssertEqual(moved.first?.goal, "kept")
+        let notMoved = DelegateAgentActivity.adopting([agent("b", .running)], roster: [resumed], moving: false)
+        XCTAssertEqual(notMoved.map(\.sessionId), ["s1"], "an earlier runtime's roster moves no card")
     }
 
     func testFirstReportedEndWins() {

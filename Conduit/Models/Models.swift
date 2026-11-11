@@ -1064,11 +1064,15 @@ struct DelegateAgentActivity: Identifiable, Equatable {
     /// read for: a card kept from before a resume would otherwise ask
     /// about, steer or stop its agent under a runtime Hermes has moved on
     /// from (issue 2206).
+    /// A roster of a runtime that's no longer the chat's own (`moving`
+    /// false) adds cards but moves none.
     static func adopting(
         _ agents: [DelegateAgentActivity],
-        roster: [DelegateAgentActivity]
+        roster: [DelegateAgentActivity],
+        moving: Bool = true
     ) -> [DelegateAgentActivity] {
-        let listedIn = Dictionary(roster.map { ($0.id, $0.sessionId) }, uniquingKeysWith: { first, _ in first })
+        let listedIn = moving
+            ? Dictionary(roster.map { ($0.id, $0.sessionId) }, uniquingKeysWith: { first, _ in first }) : [:]
         let moved = agents.map { agent -> DelegateAgentActivity in
             guard let session = listedIn[agent.id], !session.isEmpty, session != agent.sessionId else { return agent }
             var moved = agent
