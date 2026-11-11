@@ -177,14 +177,14 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testGPTLiveContextAppendsAreChunkedToFiveHundredBytesOnCharacterBoundaries() throws {
-        let reply = GPTLiveProtocol.contextAppendMessages("All green.", channel: .speakable, delegationID: "del_1")
+        let reply = GPTLiveProtocol.contextAppendMessages("All green.", channel: .speakable, delegationID: "del_1", dialect: .frameless)
         XCTAssertEqual(reply.count, 1)
         XCTAssertEqual(reply[0]["type"] as? String, "delegation.context.append")
         XCTAssertEqual(reply[0]["delegation_item_id"] as? String, "del_1")
         XCTAssertEqual(reply[0]["channel"] as? String, "speakable")
         XCTAssertEqual((reply[0]["content"] as? [[String: Any]])?.first?["type"] as? String, "input_text")
 
-        let session = GPTLiveProtocol.contextAppendMessages("note", channel: .commentary)
+        let session = GPTLiveProtocol.contextAppendMessages("note", channel: .commentary, dialect: .frameless)
         XCTAssertEqual(session.first?["type"] as? String, "session.context.append")
         XCTAssertNil(session.first?["delegation_item_id"])
 
@@ -1306,7 +1306,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(controller.phase, .listening)
         XCTAssertEqual(session.microphoneEnabled, true)
         XCTAssertEqual(session.appended.first?.text, "[rules]")
-        XCTAssertEqual(session.appended.first?.channel, .commentary)
+        XCTAssertEqual(session.appended.first?.channel, .instructions, "The session turns it into the call's own append")
 
         controller.setMicrophoneMuted(true)
         XCTAssertEqual(session.microphoneEnabled, false)
@@ -4588,19 +4588,72 @@ extension HermesVoiceGatewayTimeoutTests {
     }
 
     func testGPTLiveAPIAppendsAreCommentaryOrThinkingWithANullDelegationForTheSession() throws {
-        let said = GPTLiveProtocol.contextAppendMessages("Hermes found it.", channel: .speakable, delegationID: "dlg_1", dialect: .api)
+        let said = GPTLiveProtocol.contextAppendMessages("Hermes found it.", channel: .speakable, delegationID: "dlg_1", dialect: .ga)
         XCTAssertEqual(said.count, 1)
         XCTAssertEqual(said[0]["type"] as? String, "session.commentary.append")
         XCTAssertEqual(said[0]["content"] as? String, "Hermes found it.")
         XCTAssertEqual(said[0]["delegation_id"] as? String, "dlg_1")
 
-        let quiet = GPTLiveProtocol.contextAppendMessages("Job 1 is running.", channel: .commentary, dialect: .api)
+        let quiet = GPTLiveProtocol.contextAppendMessages("Job 1 is running.", channel: .commentary, dialect: .ga)
         XCTAssertEqual(quiet[0]["type"] as? String, "session.thinking.append")
         let encoded = try GPTLiveProtocol.encode(quiet[0])
         XCTAssertTrue(encoded.contains(#""delegation_id":null"#), encoded)
 
-        let long = GPTLiveProtocol.contextAppendMessages(String(repeating: "a", count: 1_200), channel: .speakable, dialect: .api)
+        let long = GPTLiveProtocol.contextAppendMessages(String(repeating: "a", count: 1_200), channel: .speakable, dialect: .ga)
         XCTAssertEqual(long.count, 3, "Chunked like the subscription's appends")
+    }
+
+    func testGPTLiveInstructionsAppendOnTheGAEventsAndGoAsCommentaryOnTheFramelessOnes() {
+        // Issue 2236: Codex's GA endpoint refuses session.context.append and
+        // takes the briefing only as session.instructions.append.
+        let ga = GPTLiveProtocol.contextAppendMessages(String(repeating: "r", count: 700), channel: .instructions, delegationID: "dlg_1", dialect: .ga)
+        XCTAssertEqual(ga.count, 2, "Chunked like every append")
+        XCTAssertEqual(ga[0]["type"] as? String, "session.instructions.append")
+        XCTAssertEqual(ga[0]["content"] as? String, String(repeating: "r", count: 500))
+        XCTAssertNil(ga[0]["delegation_id"], "Instructions belong to the session, never a delegation")
+
+        let frameless = GPTLiveProtocol.contextAppendMessages("[rules]", channel: .instructions, delegationID: "del_1", dialect: .frameless)
+        XCTAssertEqual(frameless.first?["type"] as? String, "session.context.append")
+        XCTAssertEqual(frameless.first?["channel"] as? String, "commentary")
+        XCTAssertNil(frameless.first?["delegation_item_id"])
+
+        XCTAssertEqual(GPTLiveProtocol.Dialect(.subscription), .frameless)
+        XCTAssertEqual(GPTLiveProtocol.Dialect(.subscription, gaEvents: true), .ga)
+        XCTAssertEqual(GPTLiveProtocol.Dialect(.api), .ga)
+    }
+
+    func testGPTLiveSubscriptionOnTheGAEndpointSpeaksGAEventsAndSendsTheBriefingAfterTheStart() async throws {
+        let response: [String: Any] = [
+            "ok": true, "auth": "subscription", "events": "ga", "briefing_applied": true,
+            "session": ["id": "rtc_1"], "transport": ["type": "webrtc", "sdp": "v=0 answer"],
+        ]
+        let answer = try GPTLiveClient.answer(from: response)
+        XCTAssertTrue(answer.gaEvents)
+        XCTAssertFalse(try GPTLiveClient.answer(from: response.merging(["events": "frameless"]) { $1 }).gaEvents)
+        XCTAssertTrue(GPTLiveSession.answerStep(answer).contains("ChatGPT plan, GA events"), GPTLiveSession.answerStep(answer))
+
+        let client = FakeGPTLiveClient()
+        client.answerResult = .success(answer)
+        let (session, peer) = makeGPTSession(client: client)
+        var events: [GPTLiveProtocol.ServerEvent] = []
+        session.onEvent = { events.append($0) }
+        session.start()
+        await settle()
+        XCTAssertEqual(session.billing, .subscription)
+        XCTAssertEqual(session.dialect, .ga)
+        XCTAssertFalse(session.briefingApplied, "The GA endpoint drops the request's instructions, whatever the host says")
+        peer.deliver(["type": "session.started", "session": ["id": "rtc_1"]])
+        XCTAssertEqual(session.state, .ready)
+
+        XCTAssertTrue(session.appendContext("[rules]", channel: .instructions, delegationID: nil))
+        XCTAssertEqual(peer.sent.last?["type"] as? String, "session.instructions.append")
+        XCTAssertTrue(session.appendContext("note", channel: .commentary, delegationID: nil))
+        XCTAssertEqual(peer.sent.last?["type"] as? String, "session.thinking.append")
+
+        peer.deliver(["type": "session.input_transcript.delta", "delta": "hola"])
+        peer.deliver(["type": "session.output_transcript.delta", "delta": "Hola."])
+        XCTAssertTrue(events.contains(.turnDone(role: "user", transcript: "hola")), "Turns are made from the deltas: \(events)")
+        session.stop()
     }
 
     func testGPTLiveTurnAssemblerEndsATurnWhenTheOtherSpeakerStartsOrTheModelDelegates() {

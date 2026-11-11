@@ -33,7 +33,8 @@ protocol GPTLiveSessionControlling: AnyObject {
     var isReady: Bool { get }
     /// Set when the host didn't use the voice the user chose.
     var voiceNote: String? { get }
-    /// True when the host already gave the model the briefing.
+    /// True when the host already gave the model the briefing (never on
+    /// Codex's GA endpoint, which drops it).
     var briefingApplied: Bool { get }
     /// True when the host already made the model greet first.
     var greetingApplied: Bool { get }
@@ -695,11 +696,14 @@ final class GPTLiveConversationController: ObservableObject {
             startCallLimitIfNeeded()
             session?.setMicrophoneEnabled(!isMicrophoneMuted && endRequestedAt == nil)
             session?.setSpeakerEnabled(!isSpeakerMuted)
-            // Given with the call when the host takes it there: appended after
-            // the call starts, the model answers each piece out loud.
+            // Given with the call when the host takes it there. Otherwise
+            // it's appended after the call starts: as instructions on the GA
+            // events (Codex's GA endpoint drops the request's own, issue
+            // 2236), as commentary on the frameless ones, where the model
+            // may answer each piece out loud.
             if session?.briefingApplied != true {
                 let text = briefing()
-                let sent = session?.appendContext(text, channel: .commentary, delegationID: nil) == true
+                let sent = session?.appendContext(text, channel: .instructions, delegationID: nil) == true
                 trace(sent
                     ? "Briefing sent after the start: \(text.unicodeScalars.count) characters"
                     : "Briefing not sent after the start")

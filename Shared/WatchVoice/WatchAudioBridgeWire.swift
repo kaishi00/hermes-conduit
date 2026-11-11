@@ -248,6 +248,13 @@ enum WatchAudioBridgeWire {
         /// Local Live: the Hermes chat the call's turns run in, which a
         /// rejoin names to carry on there.
         var sessionID: String? = nil
+        /// GPT-Live: the host started the session on Codex's GA endpoint
+        /// (`events: "ga"`), which speaks the GA Live events and drops the
+        /// briefing the request carried (issue 2236).
+        var gaEvents: Bool = false
+
+        /// The event set a GPT-Live session on this start speaks.
+        var gptLiveDialect: GPTLiveProtocol.Dialect { GPTLiveProtocol.Dialect(.subscription, gaEvents: gaEvents) }
     }
 
     /// Whether the Watch sends its own opening turn (a call Hermes placed
@@ -285,7 +292,8 @@ enum WatchAudioBridgeWire {
                 outputRate: object["output_rate"] as? Int ?? 24_000,
                 briefingApplied: object["briefing_applied"] as? Bool ?? false,
                 greetingApplied: object["greeting_applied"] as? Bool ?? false,
-                sessionID: (object["session_id"] as? String).flatMap { $0.isEmpty ? nil : $0 }
+                sessionID: (object["session_id"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+                gaEvents: object["events"] as? String == "ga"
             ))
         case "ended":
             return .ended(reason: object["reason"] as? String)

@@ -231,6 +231,10 @@ final class WatchBridgeCallModel: ObservableObject {
     /// line counts as handled when it lands, so it isn't sent again.
     private var openLineDelegated = false
     private var assistantLine = ""
+    /// Builds the turns the GA events don't end themselves (issue 2236),
+    /// and when its open turn last grew, for `tick` to end a quiet one.
+    private var turns = GPTLiveProtocol.TurnAssembler()
+    private var turnGrewAt: TimeInterval?
     /// When GPT-Live's transcript of the user's last turn came.
     private var heardAt: TimeInterval?
     private var lastModelTurnEndedAt: TimeInterval?
@@ -643,6 +647,8 @@ final class WatchBridgeCallModel: ObservableObject {
         self.stream = stream
         live = false
         started = nil
+        turns = GPTLiveProtocol.TurnAssembler()
+        turnGrewAt = nil
         socketOpenedAt = nil
         startSentAt = nil
         connectStartedAt = now
@@ -833,6 +839,12 @@ final class WatchBridgeCallModel: ObservableObject {
                let opening = openingTurn ?? greeting.map(LiveVoiceGreeting.turn) {
                 pendingSends.insert(Pending(text: opening, channel: .speakable, delegationID: nil), at: 0)
             }
+            // Codex's GA endpoint drops the briefing the start carried, so
+            // each session it starts, a rejoin's too, gets it as
+            // instructions first, as on the iPhone (issue 2236).
+            if info.gaEvents, let briefing, !briefing.isEmpty {
+                pendingSends.insert(Pending(text: briefing, channel: .instructions, delegationID: nil), at: 0)
+            }
             flushPending()
         case .ended(let reason):
             note("bridgeEnded", ["reason": reason as Any, "asked": endRequestedAt != nil, "connection": connection])
@@ -872,6 +884,26 @@ final class WatchBridgeCallModel: ObservableObject {
             events[type, default: 0] += 1
         }
         guard let event = GPTLiveProtocol.decode(text) else { return }
+        guard started?.gptLiveDialect == .ga else {
+            handleEngineEvent(event)
+            return
+        }
+        for assembled in turns.receive(event) { handleEngineEvent(assembled) }
+        switch event {
+        case .inputTranscript, .outputTranscript: turnGrewAt = now
+        default: if !turns.hasOpenTurn { turnGrewAt = nil }
+        }
+    }
+
+    /// Ends the open GA turn once the talk has gone quiet for a moment.
+    private func endQuietTurnIfDue(at time: TimeInterval) {
+        guard let grewAt = turnGrewAt, turns.hasOpenTurn else { return }
+        guard time - grewAt >= turns.openTurnQuietInterval / .seconds(1) else { return }
+        turnGrewAt = nil
+        if let done = turns.flush() { handleEngineEvent(done) }
+    }
+
+    private func handleEngineEvent(_ event: GPTLiveProtocol.ServerEvent) {
         switch event {
         case .sessionStarted:
             break
@@ -1552,7 +1584,7 @@ final class WatchBridgeCallModel: ObservableObject {
                 kept.append(item)
                 continue
             }
-            guard item.channel == .commentary || quiet else {
+            guard item.channel != .speakable || quiet else {
                 kept.append(item)
                 continue
             }
@@ -1567,7 +1599,8 @@ final class WatchBridgeCallModel: ObservableObject {
                 // Only its first result waited on the user, as on the phone.
                 delegationUserLines[asked] = nil
             }
-            for message in GPTLiveProtocol.contextAppendMessages(text, channel: item.channel, delegationID: delegationID) {
+            let dialect = started?.gptLiveDialect ?? .frameless
+            for message in GPTLiveProtocol.contextAppendMessages(text, channel: item.channel, delegationID: delegationID, dialect: dialect) {
                 sendEvent(message)
             }
         }
@@ -1810,6 +1843,7 @@ final class WatchBridgeCallModel: ObservableObject {
             finish(nil)
             return
         }
+        endQuietTurnIfDue(at: at)
         endAfterGoodbyeIfDue(at: at)
         reactivateIfDue()
         audio.checkPlayback()
