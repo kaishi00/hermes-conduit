@@ -320,12 +320,13 @@ struct ChatView: View {
             ComposerBar(appState: appState).equatable()
         }
         // ⌘. stops the reply, as the composer's Stop does, a draft in the
-        // field or not. Only the shown tab's chat: a hidden tab keeps its
-        // screens mounted, and a shortcut ignores opacity.
+        // field or not. Only the chat on screen: a hidden tab keeps its
+        // screens mounted, split Settings covers the chat without taking it
+        // down, and a shortcut ignores opacity.
         .background {
             Button(ConduitKeyboardShortcut.stop.title) { stopFromKeyboard() }
                 .keyboardShortcut(ConduitKeyboardShortcut.stop.shortcut)
-                .disabled(!shell.isTabActive)
+                .disabled(!shell.chatTakesKeys)
                 .frame(width: 0, height: 0)
                 .opacity(0)
                 .accessibilityHidden(true)

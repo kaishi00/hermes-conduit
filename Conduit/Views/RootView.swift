@@ -476,14 +476,11 @@ struct MainView: View {
             guard !useV2Shell, tab == .settings, settingsPresentation == nil else { return }
             presentSettings()
         }
-        // ⌘/: the list of shortcuts, or away again. Opens only with nothing
-        // else in front; its own sheet is the one thing that may be.
+        // ⌘/: the list of shortcuts, with nothing else in front. With the
+        // list up, the sheet closes itself (KeyboardShortcutsSheet).
         .onReceive(KeyboardCommands.shortcutListRequests) { _ in
-            if showsKeyboardShortcuts {
-                showsKeyboardShortcuts = false
-            } else if KeyboardCommands.nothingInFront {
-                showsKeyboardShortcuts = true
-            }
+            guard !showsKeyboardShortcuts, KeyboardCommands.nothingInFront else { return }
+            showsKeyboardShortcuts = true
         }
         .sheet(isPresented: $showsKeyboardShortcuts) {
             KeyboardShortcutsSheet()

@@ -3380,7 +3380,7 @@ keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
 
 **Code**
 - Catalog, commands and sheet: `Conduit/Services/KeyboardShortcuts.swift` (ConduitKeyboardShortcut, KeyboardCommands with nothingInFront, ConduitKeyboardCommands, KeyboardShortcutsSheet), `Conduit/ConduitApp.swift` (`.commands`)
-- Tabs and the sheet: `Conduit/Views/V2/V2Shell.swift` (tabRequests), `Conduit/Views/RootView.swift` (MainView: the drawer shell's ⌘,, the sheet on shortcutListRequests)
+- Tabs and the sheet: `Conduit/Views/V2/V2Shell.swift` (tabRequests; isChatCovered and chatTakesKeys for a chat's own keys), `Conduit/Views/RootView.swift` (MainView: the drawer shell's ⌘,, the sheet on shortcutListRequests)
 - Screens' own: `Conduit/Views/ChatView.swift` (stopFromKeyboard), `Conduit/Views/V2/V2ChatsView.swift` (searchCommand), `Conduit/Views/V2/V2ConversationScreen.swift` (chat list and artifacts buttons)
 - ⌘Return: `Conduit/Views/Components/ReturnKeyTextView.swift` (commandReturnKeyCommand), `Conduit/Views/Components/ComposerReturnKey.swift` (commandReturnSends)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ComposerReturnKeySettings)
@@ -3390,7 +3390,8 @@ keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
 - One catalog names every key; the menu, the screens' shortcuts and the sheet all read it, so the list shown can't drift from the keys that work (2026-11-11, #2224).
 - ⌘N is New Chat, never a new window: Conduit has one window (2026-11-11, #2224, issue 2219).
 - The tabs take ⌘1 to ⌘4 in the bar's order; Settings also takes ⌘, (2026-11-11, #2224).
-- Nothing acts behind a sheet, an alert or the call screen: every command and ⌘F check for a presented view controller first. ⌘/ is the exception only for its own sheet, which it closes (2026-11-11, #2224).
+- Nothing acts behind a sheet, an alert or the call screen: every command, the text size included, and ⌘F check for a presented view controller first. ⌘/ is the exception only for its own sheet, which closes itself, from either way in (2026-11-11, #2224).
+- A chat's own keys (⌘., ⌃⌘S, ⌥⌘A) reach it only while it's on screen: its tab shows and split Settings doesn't cover it (`V2ShellContext.chatTakesKeys`), since a hidden or covered chat stays mounted and a shortcut ignores opacity (2026-11-11, #2224 review).
 - The menus observe no state, so AppState's publishes never rebuild them; each command checks what it needs when pressed (2026-11-11, #2224).
 - ⌘Return sends whatever the Return key setting says, with Return's limits (no IME composing, the composer able to send a typed message) (2026-11-11, #2224).
 - ⌘. is Stop wherever the composer's Stop would stop (a turn, or the open workstream), a draft in the field or not, in the shown tab's chat only (2026-11-11, #2224).

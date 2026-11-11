@@ -143,8 +143,13 @@ enum KeyboardCommands {
         shortcutListRequests.send(())
     }
 
-    /// ⌘+, ⌘− and ⌘0: the chat text size Settings > Chat sets, a step at a
-    /// time. Written where Settings writes it, so Sync across devices
+    /// ⌘+, ⌘− and ⌘0, with nothing in front.
+    static func changeChatTextSize(by step: Int) {
+        guard nothingInFront else { return }
+        stepChatTextSize(by: step)
+    }
+
+    /// The chat text size Settings > Chat sets, a step at a time. Written where Settings writes it, so Sync across devices
     /// shares it as it shares the slider's.
     static func stepChatTextSize(by step: Int, defaults: UserDefaults = .standard) {
         let next = chatTextSize(after: ChatTypography.stored(in: defaults), step: step)
@@ -184,11 +189,11 @@ struct ConduitKeyboardCommands: Commands {
                 }
             }
             Divider()
-            Button(ConduitKeyboardShortcut.biggerText.title) { KeyboardCommands.stepChatTextSize(by: 1) }
+            Button(ConduitKeyboardShortcut.biggerText.title) { KeyboardCommands.changeChatTextSize(by: 1) }
                 .keyboardShortcut(ConduitKeyboardShortcut.biggerText.shortcut)
-            Button(ConduitKeyboardShortcut.smallerText.title) { KeyboardCommands.stepChatTextSize(by: -1) }
+            Button(ConduitKeyboardShortcut.smallerText.title) { KeyboardCommands.changeChatTextSize(by: -1) }
                 .keyboardShortcut(ConduitKeyboardShortcut.smallerText.shortcut)
-            Button(ConduitKeyboardShortcut.normalText.title) { KeyboardCommands.stepChatTextSize(by: 0) }
+            Button(ConduitKeyboardShortcut.normalText.title) { KeyboardCommands.changeChatTextSize(by: 0) }
                 .keyboardShortcut(ConduitKeyboardShortcut.normalText.shortcut)
             Divider()
         }
@@ -239,6 +244,8 @@ struct KeyboardShortcutsSheet: View {
             }
             .navigationTitle(AppLocalization.string("Keyboard Shortcuts"))
             .navigationBarTitleDisplayMode(.inline)
+            // ⌘/ closes it, from ⌘/ or from Settings > Keyboard alike.
+            .onReceive(KeyboardCommands.shortcutListRequests) { _ in dismiss() }
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button(AppLocalization.string("Done")) { dismiss() }
