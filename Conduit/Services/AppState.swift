@@ -921,6 +921,12 @@ final class AppState: ObservableObject {
     var widgetBotEvidenceIsAvailable: Bool { botEvidenceIsAvailable }
     var widgetSnapshotStoreOverride: WidgetSnapshotStore?
     var widgetSnapshotReloadOverride: (() -> Void)?
+    /// The Pulse widget's file and reload, for tests (AppState+PulseWidget).
+    var pulseWidgetStoreOverride: PulseWidgetStore?
+    var pulseWidgetReloadOverride: (() -> Void)?
+    /// The open cards the Pulse widget last had reloaded for, by id and
+    /// when each came: a feed read that changes them reloads it.
+    var pulseWidgetCardsSeen: [Int: Double]?
     // MARK: Shared drafts (AppState+ShareDraft.swift)
     /// Test seam: the share inbox in place of the App Group's.
     var shareDraftInboxOverride: ShareDraftInbox?
@@ -6196,9 +6202,10 @@ final class AppState: ObservableObject {
             || isShortcutSendRunning
     }
     /// Shortcut sends running now (Send to Hermes, and Siri's "Ask ‹chat›",
-    /// which runs it). A shortcut runs with Conduit in the background or
-    /// not running at all, so while one runs it may reconnect on its own,
-    /// as a call does, and only for the time of the run (#2164).
+    /// which runs it), and the Pulse widget's buttons (issue 2190). A
+    /// shortcut runs with Conduit in the background or not running at all,
+    /// so while one runs it may reconnect on its own, as a call does, and
+    /// only for the time of the run (#2164).
     var shortcutSendsRunning = 0
     /// A connect a run started, let finish after the run ended. Cut off at
     /// its next step it would leave Conduit "connecting" with nothing
@@ -22588,6 +22595,8 @@ final class AppState: ObservableObject {
             // its own now, as after Conduit was stopped.
             returnPendingComposerSendAfterLongAbsence()
             widgetLaunchCoordinator.readinessChanged()
+            // A Pulse widget added since gets what it reads Pulse with.
+            Task { await savePulseWidgetAccess() }
             // A sign-out that couldn't reach Hermes tries again.
             serverSignOutQueue.retryPending()
             // A draft shared from another app opens its chat (#812).
@@ -30432,6 +30441,8 @@ final class AppState: ObservableObject {
         Task { await runHealthSync(reason: .connected) }
         // Location waiting to go to this host, and its host pass.
         Task { await locationHostConnected() }
+        // The Pulse widget reads Pulse with its own pass (issue 2190).
+        Task { await savePulseWidgetAccess() }
         Task { await runPhoneSync(reason: .connected) }
         // Log to Hermes events that waited for this host.
         Task { await drainShortcutInbox() }
