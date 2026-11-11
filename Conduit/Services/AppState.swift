@@ -30610,8 +30610,11 @@ final class AppState: ObservableObject {
             if phase == .ready, let held = self.chatTakeoverHeldMessage, held.sessionID == waiting.sessionID {
                 self.chatTakeoverHeldMessage = nil
                 if self.canSendHeldTakeoverMessage(held) {
+                    // Bound to the chat that refused it: one opened before
+                    // the send starts gets nothing, and the words go back.
+                    let context = self.composerSubmissionContext()
                     self.dismissChatTakeover()
-                    Task { @MainActor [weak self] in await self?.sendHeldTakeoverMessage(held) }
+                    Task { @MainActor [weak self] in await self?.sendHeldTakeoverMessage(held, context: context) }
                     return
                 }
                 // Not from here right now (another chat is open, or the
@@ -30679,13 +30682,22 @@ final class AppState: ObservableObject {
         return canonicalSessionID(for: current).map(ids.contains) == true
     }
 
-    /// Sends the kept message as the composer would have. One that doesn't
-    /// go comes back to the composer like any send that didn't; refused
-    /// again, the composer offers the button instead of looping.
-    private func sendHeldTakeoverMessage(_ held: ChatTakeoverHeldMessage) async {
+    /// Sends the kept message as the composer would have, into the chat
+    /// that refused it. One that doesn't go comes back to the composer like
+    /// any send that didn't; refused again, the composer offers the button
+    /// instead of looping. A sign-out while it was on its way wiped the
+    /// drafts and the waiting messages' files: the outgoing user's words
+    /// don't come back.
+    private func sendHeldTakeoverMessage(_ held: ChatTakeoverHeldMessage, context: ComposerSubmissionContext) async {
         lifecycleLog.notice("took the chat over; sending the refused message again")
-        if await submitComposer(text: held.text, attachments: held.restore.draft.attachments) {
+        let clearCount = composerDraftStore.clearCount
+        if await submitComposer(text: held.text, attachments: held.restore.draft.attachments, context: context) {
             if let pending = held.restore.pending { removePendingComposerSendFile(pending) }
+            return
+        }
+        guard composerDraftStore.clearCount == clearCount else { return }
+        if let pending = held.restore.pending,
+           !pendingComposerSendFiles(dashboardID: pending.dashboardID).contains(where: { $0.id == pending.id }) {
             return
         }
         composerRestoreRequests.append(held.restore)
