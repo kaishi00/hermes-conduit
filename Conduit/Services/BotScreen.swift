@@ -106,6 +106,10 @@ struct BotScreenUse: Equatable {
         let title: String
         let label: String
         let at: Date?
+
+        /// Whether this is the chat with these ids (the one the sheet
+        /// opened from).
+        func isChat(in ids: Set<String>) -> Bool { ids.contains(sessionID) }
     }
 
     let controlling: Entry?
@@ -130,9 +134,11 @@ struct BotScreenUse: Equatable {
                      at: at.map { Date(timeIntervalSince1970: $0) })
     }
 
-    /// How a chat holding the screen is named here: its ref, the Bot Chat,
-    /// or its title.
-    static func name(of entry: Entry) -> String {
+    /// How a chat holding the screen is named here: "this chat" when it's
+    /// the chat the sheet opened from, else its ref, the Bot Chat, or its
+    /// title.
+    static func name(of entry: Entry, openChat: Set<String> = []) -> String {
+        if entry.isChat(in: openChat) { return AppLocalization.string("this chat") }
         switch entry.kind {
         case "workstream" where !entry.ref.isEmpty: return entry.ref
         case "bot_chat": return AppLocalization.string("the Bot Chat")

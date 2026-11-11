@@ -5,6 +5,9 @@ import WebKit
 struct BotScreenTarget: Identifiable, Equatable {
     let profile: String
     let botName: String
+    /// The ids of the chat it opened from, when it opened from a chat's
+    /// menu, so the sheet can say that chat is the one using the screen.
+    var chatSessionIDs: Set<String> = []
     var id: String { profile }
 }
 
@@ -370,11 +373,13 @@ private struct BotScreenContent: View {
     /// that used it last (the plugin's hold; Eric 2026-11-05).
     @ViewBuilder private var useLine: some View {
         if let controlling = use?.controlling {
-            Text(AppLocalization.string("\(BotScreenUse.name(of: controlling)) is using the screen"))
+            Text(controlling.isChat(in: target.chatSessionIDs)
+                ? AppLocalization.string("This chat is using the screen")
+                : AppLocalization.string("\(BotScreenUse.name(of: controlling)) is using the screen"))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         } else if let last = use?.last, let at = last.at {
-            Text(AppLocalization.string("Nobody is using it now. Last used by \(BotScreenUse.name(of: last)), \(at.formatted(.relative(presentation: .named)))."))
+            Text(AppLocalization.string("Nobody is using it now. Last used by \(BotScreenUse.name(of: last, openChat: target.chatSessionIDs)), \(at.formatted(.relative(presentation: .named)))."))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
