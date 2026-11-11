@@ -821,6 +821,7 @@ final class WatchBridgeCallModel: ObservableObject {
                 "outputRate": info.outputRate,
                 "briefingApplied": info.briefingApplied,
                 "greetingApplied": info.greetingApplied,
+                "gaEvents": info.gaEvents,
             ])
             // The host's rates are fixed for wire version 1; other rates
             // would play at the wrong speed and send mis-framed audio.
@@ -841,9 +842,14 @@ final class WatchBridgeCallModel: ObservableObject {
             }
             // Codex's GA endpoint drops the briefing the start carried, so
             // each session it starts, a rejoin's too, gets it as
-            // instructions first, as on the iPhone (issue 2236).
+            // instructions first, as on the iPhone (issue 2236). Sent here,
+            // ahead of anything pending, and left out of the backlog count:
+            // a long briefing is dozens of appends at once, which would read
+            // as a socket that stopped taking text.
             if info.gaEvents, let briefing, !briefing.isEmpty {
-                pendingSends.insert(Pending(text: briefing, channel: .instructions, delegationID: nil), at: 0)
+                for message in GPTLiveProtocol.contextAppendMessages(briefing, channel: .instructions, dialect: .ga) {
+                    sendEvent(message, counted: false)
+                }
             }
             flushPending()
         case .ended(let reason):
@@ -1093,8 +1099,14 @@ final class WatchBridgeCallModel: ObservableObject {
         }
     }
 
-    private func sendEvent(_ message: [String: Any]) {
+    /// `counted: false` keeps a one-off burst (the GA briefing) out of
+    /// the backlog check.
+    private func sendEvent(_ message: [String: Any], counted: Bool = true) {
         guard let text = try? GPTLiveProtocol.encode(message) else { return }
+        guard counted else {
+            send(Data(text.utf8), kind: .event)
+            return
+        }
         eventsInFlight += 1
         let number = connection
         send(Data(text.utf8), kind: .event) { [weak self] _ in
@@ -1584,7 +1596,7 @@ final class WatchBridgeCallModel: ObservableObject {
                 kept.append(item)
                 continue
             }
-            guard item.channel != .speakable || quiet else {
+            guard item.channel == .commentary || quiet else {
                 kept.append(item)
                 continue
             }
@@ -2031,6 +2043,8 @@ final class WatchBridgeCallModel: ObservableObject {
         userLine = ""
         openLineDelegated = false
         assistantLine = ""
+        turns = GPTLiveProtocol.TurnAssembler()
+        turnGrewAt = nil
         heardAt = nil
         lastModelTurnEndedAt = nil
         endRequestedAt = nil

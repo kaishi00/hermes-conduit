@@ -573,7 +573,7 @@ the notifier README's session route and CHANGELOG.md
 - The briefing: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefing, maxBriefingCharacters, the late-briefing fallback where `briefingApplied` is false)
 - The answer: `Conduit/Voice/GPTLive/GPTLiveClient.swift` (briefingApplied, briefingClipped, gaEvents), `Conduit/Voice/GPTLive/GPTLiveSession.swift` (answerStep, dialect, dropsRequestBriefing)
 - The event sets: `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` (Dialect, contextAppendMessages and its `.instructions` channel, TurnAssembler)
-- The Watch: `Shared/WatchVoice/WatchAudioBridgeWire.swift` (briefingApplied, gaEvents, gptLiveDialect), `ConduitWatch/WatchBridgeCallModel.swift` (the GA briefing on `.started`, turns, endQuietTurnIfDue), `notifier/dashboard/api/watch_audio.py`
+- The Watch: `Shared/WatchVoice/WatchAudioBridgeWire.swift` (briefingApplied, gaEvents, gptLiveDialect), `ConduitWatch/WatchBridgeCallModel.swift` (the GA briefing sent on `.started` outside the backlog count, turns, endQuietTurnIfDue), `notifier/dashboard/api/watch_audio.py`
 - Tests: `ConduitTests/GPTLiveVoiceTests.swift` (testGPTLiveSubscriptionOnTheGAEndpointSpeaksGAEventsAndSendsTheBriefingAfterTheStart, testGPTLiveInstructionsAppendOnTheGAEventsAndGoAsCommentaryOnTheFramelessOnes), `ConduitTests/WatchAudioBridgeTests.swift`
 - Host: `notifier/dashboard/api/gpt_live.py` (CODEX_ITEMS_MAX_TOKENS, _seeded_items, _clip_block, create_gpt_live_session), `notifier/tests/test_gpt_live.py` (test_seeded_items_never_exceed_the_codex_budget)
 
