@@ -464,9 +464,6 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertNil(bodies[1]["chat"], "a new chat is found by its subject: none named")
     }
 
-    /// Settings > Pulse's bot for cards from no chat, per dashboard, offered
-    /// only by a plugin that reads the chat Do it names, and a long press's
-    /// pick for one card over it.
     /// A gateway that can't host bots has answered: a bot saved for Do it
     /// isn't there, so Do it starts a new chat rather than waiting on a list
     /// that never comes (#2211's review).
@@ -496,6 +493,9 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(state.pulseDoItBotSavedName, "atlas", "Settings still shows it, to clear")
     }
 
+    /// Settings > Pulse's bot for cards from no chat, per dashboard, offered
+    /// only by a plugin that reads the chat Do it names, and a long press's
+    /// pick for one card over it.
     func testDoItGoesToTheBotPickedForCardsFromNoChat() async throws {
         let suite = "PulseFeedTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
@@ -533,7 +533,7 @@ final class PulseFeedTests: XCTestCase {
         """)))
         state.applyPulseFeed(page)
         let date = page.cards[0], fact = page.cards[1]
-        let older = [PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
+        let older: Set<String> = [PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
                      PulseClient.foundActionsCapability]
         state.setNotifierPluginStateForTesting(.reported(version: "0.163.2", capabilities: older))
         // A plugin that doesn't read the chat Do it names: no bots offered, a new chat as before.
@@ -541,7 +541,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertTrue(state.pulseDoItBotChoices.isEmpty)
         XCTAssertNil(state.pulseDoItBot(for: date))
         state.setNotifierPluginStateForTesting(.reported(version: "0.164.0",
-                                                         capabilities: older + [PulseClient.actedChatCapability]))
+                                                         capabilities: older.union([PulseClient.actedChatCapability])))
         // Every bot the Bots list shows; a hidden one isn't a choice.
         XCTAssertEqual(state.pulseDoItBotChoices.map(\.name), ["atlas"])
         XCTAssertEqual(state.pulseDoItBot(for: date)?.name, "atlas")
