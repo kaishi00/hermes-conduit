@@ -2074,6 +2074,19 @@ extension View {
     }
 }
 
+extension View {
+    /// A page's search field, under its title and always shown. iOS 26 puts
+    /// a pushed page's search at the foot of an iPhone screen, behind the
+    /// floating tab bar and the main button, where it can't be seen or
+    /// tapped, and in a Duo's status strip over the tabs. Every page that
+    /// can show with the tabs up (Settings' pages, Artifacts, the Model
+    /// page) searches here instead; a sheet, with no tabs over it, keeps
+    /// iOS's own place (`scripts/tests/test_page_search_source_contract.py`).
+    func pageSearchable(text: Binding<String>, prompt: Text) -> some View {
+        searchable(text: text, placement: .navigationBarDrawer(displayMode: .always), prompt: prompt)
+    }
+}
+
 private struct V2TabBarClearance: ViewModifier {
     @Environment(\.v2TabBarClearance) private var height
 

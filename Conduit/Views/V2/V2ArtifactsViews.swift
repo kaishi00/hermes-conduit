@@ -1050,7 +1050,7 @@ private struct ArtifactsListChrome: ViewModifier {
             content
         } else {
             content
-                .searchable(text: $query, prompt: Text("Search names and chats"))
+                .pageSearchable(text: $query, prompt: Text("Search names and chats"))
                 .toolbar {
                     if offersMissing {
                         ToolbarItem(placement: .topBarTrailing) {

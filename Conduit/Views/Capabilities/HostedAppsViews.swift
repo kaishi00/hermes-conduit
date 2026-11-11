@@ -241,7 +241,7 @@ struct HostedAppsDirectoryPage: View {
                 }
             }
         }
-        .searchable(text: $query, placement: .navigationBarDrawer(displayMode: .always), prompt: Text(AppLocalization.string("Search apps")))
+        .pageSearchable(text: $query, prompt: Text(AppLocalization.string("Search apps")))
         .navigationTitle(AppLocalization.string("Apps"))
     }
 }

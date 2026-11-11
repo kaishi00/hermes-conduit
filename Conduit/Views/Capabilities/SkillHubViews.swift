@@ -96,7 +96,7 @@ struct SkillHubBrowsePage: View {
             }
         }
         .navigationTitle(Text("Skill Hub"))
-        .searchable(text: $query, prompt: Text("Search skills"))
+        .pageSearchable(text: $query, prompt: Text("Search skills"))
         .task(id: store.profile) {
             if store.skillHub == nil || store.showsKept.contains(.skillHub) { await store.loadSkillHub() }
         }
