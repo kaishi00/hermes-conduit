@@ -216,8 +216,8 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     }
 
     /// The tag a detected language is spoken by. Cantonese ("yue") goes to
-    /// zh-HK, the tag iOS gives its Cantonese voices, so it reaches them and
-    /// a Traditional Chinese pick.
+    /// zh-HK, so it reaches Cantonese voices (iOS tags them zh-HK or yue, both
+    /// under Traditional Chinese's key) and a Traditional Chinese pick.
     nonisolated static func detectedTag(_ raw: String) -> String {
         raw.lowercased() == "yue" ? "zh-HK" : raw
     }

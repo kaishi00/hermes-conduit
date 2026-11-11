@@ -125,8 +125,11 @@ struct IPhoneVoiceSettingsView: View {
 
     private func title(for voice: IPhoneVoiceOption, showsRegion: Bool = false) -> String {
         var name = voice.name
-        if showsRegion, let region = Locale(identifier: voice.language).region?.identifier,
-           let regionName = displayLocale.localizedString(forRegionCode: region) {
+        if IPhoneVoices.isCantonese(voice.language) {
+            // Listed with Traditional Chinese's Mandarin voices: say which speaks Cantonese.
+            name += " · " + (displayLocale.localizedString(forLanguageCode: "yue") ?? "Cantonese")
+        } else if showsRegion, let region = Locale(identifier: voice.language).region?.identifier,
+                  let regionName = displayLocale.localizedString(forRegionCode: region) {
             name += " · " + regionName
         }
         switch voice.quality {

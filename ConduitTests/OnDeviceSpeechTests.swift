@@ -145,6 +145,44 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(IPhoneVoices.languageKey("zh-Hant-CN"), "zh-TW")
     }
 
+    func testAPickedYueCantoneseVoiceSpeaksTraditionalReplies() throws {
+        // iOS tags newer Cantonese voices yue (Wing), not zh-HK: they join
+        // Traditional Chinese, where replies look, instead of a key of their own.
+        XCTAssertEqual(IPhoneVoices.languageKey("yue"), "zh-TW")
+        XCTAssertEqual(IPhoneVoices.languageKey("yue-CN"), "zh-TW")
+        XCTAssertEqual(IPhoneVoices.languageKey("yue-Hant-HK"), "zh-TW")
+        XCTAssertEqual(IPhoneVoices.languageKey("yue-Hans-CN"), "zh-CN")
+        XCTAssertTrue(IPhoneVoices.isCantonese("yue-CN"))
+        let mandarinTW = iPhoneVoice("meijia", "Meijia", "zh-TW", quality: 2)
+        let wing = iPhoneVoice("wing", "Wing", "yue-CN", quality: 2)
+        // language(of:) tags a Traditional reply zh-TW, a Cantonese one zh-HK.
+        XCTAssertEqual(IPhoneVoices.pick([mandarinTW, wing], wanted: "zh-TW", chosen: "wing", region: "HK", systemDefault: nil), wing)
+        XCTAssertEqual(IPhoneVoices.pick([mandarinTW, wing], wanted: "zh-TW", chosen: nil, region: "HK", systemDefault: nil), mandarinTW)
+        XCTAssertEqual(IPhoneVoices.pick([mandarinTW, wing], wanted: "zh-HK", chosen: nil, region: "HK", systemDefault: nil), wing)
+
+        // A pick an earlier build saved under its own yue key still counts,
+        // until a Traditional Chinese pick replaces it.
+        let suite = "IPhoneVoicesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(["yue": "wing"], forKey: IPhoneVoices.choicesKey)
+        XCTAssertEqual(IPhoneVoices.chosenVoice(for: "zh-TW", defaults: defaults), "wing")
+        XCTAssertEqual(IPhoneVoices.chosenVoice(for: "yue", defaults: defaults), "wing")
+        XCTAssertNil(IPhoneVoices.chosenVoice(for: "zh-CN", defaults: defaults))
+        IPhoneVoices.setChosenVoice(nil, for: "zh-TW", defaults: defaults)
+        XCTAssertNil(IPhoneVoices.chosenVoice(for: "zh-TW", defaults: defaults))
+    }
+
+    func testVoiceNamesDropTheQualityIOSAdds() {
+        // iOS names Enhanced and Premium voices with their quality, in the
+        // iPhone's language; Settings adds its own.
+        XCTAssertEqual(IPhoneVoices.plainName("Wing (Enhanced)", quality: 2), "Wing")
+        XCTAssertEqual(IPhoneVoices.plainName("Wing (高音質)", quality: 2), "Wing")
+        XCTAssertEqual(IPhoneVoices.plainName("Kyoko（拡張）", quality: 2), "Kyoko")
+        XCTAssertEqual(IPhoneVoices.plainName("Zoe", quality: 3), "Zoe")
+        XCTAssertEqual(IPhoneVoices.plainName("Fred (Basic)", quality: 1), "Fred (Basic)")
+    }
+
     @MainActor
     func testALanguageWithNoInstalledVoiceUsesIOSsOwn() {
         let saved = IPhoneVoices.readInstalled
