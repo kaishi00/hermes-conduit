@@ -26107,6 +26107,52 @@ final class AppState: ObservableObject {
         keptRead(BotProfileDetails.self, KeptRoute.botDetails, profile: bot.name)
     }
 
+    /// Settings > Edit profile > Personality: the profile's SOUL.md, read
+    /// and kept as Edit Bot reads it, so both open on the same copy.
+    func loadProfileSoul(_ profile: String) async -> String? {
+        await readBotDetails(profile: profile)?.soul
+    }
+
+    /// What Edit Bot or Edit profile kept of the profile's SOUL.md.
+    func keptProfileSoul(_ profile: String) -> String? {
+        keptRead(BotProfileDetails.self, KeptRoute.botDetails, profile: profile)?.soul
+    }
+
+    /// Whether Settings > Edit profile can edit the profile's SOUL.md: it's
+    /// written as Edit Bot writes it, through the bot-profile calls.
+    var canEditProfileSoul: Bool {
+        botModePhase == .available && isConnected
+    }
+
+    /// Edit profile's Personality save: only the SOUL, as Edit Bot's
+    /// `profiles.configure` writes it, kept for both to open on next.
+    /// Returns a message when it was not saved.
+    func saveProfileSoul(_ soul: String, profile: String) async -> String? {
+        guard let client, isConnected else {
+            return AppLocalization.string("Connect to Hermes to change the personality.")
+        }
+        let owner = currentDashboardRuntimeOwner()
+        let result: AnyCodable
+        do {
+            if let configure = chatResumeLifecycleOperations.configureBotSections {
+                result = try await configure(client, profile, ["soul": soul])
+            } else {
+                result = try await client.configureBotProfile(name: profile, soul: soul)
+            }
+        } catch {
+            return AppLocalization.string("The personality was not saved: \(UserFacingError.message(for: error))")
+        }
+        guard client === self.client else {
+            // Conduit moved to another Hermes mid-save: its outcome is unknown.
+            return AppLocalization.string("The personality was not saved.")
+        }
+        guard BotConfigureSections.failed(in: result, among: ["soul"]).isEmpty else {
+            return AppLocalization.string("The personality was not saved.")
+        }
+        keepBotDetailsWritten(profile, on: owner) { $0.soul = soul }
+        return nil
+    }
+
     /// `profiles.describe` of a profile, kept in that profile's answers for
     /// the bot editor to open on (#1533), so a deleted bot takes its own.
     private func readBotDetails(profile: String) async -> BotProfileDetails? {

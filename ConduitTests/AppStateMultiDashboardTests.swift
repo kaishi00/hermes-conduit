@@ -3087,6 +3087,57 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(saved.soul, written.soul)
     }
 
+    /// Settings > Edit profile > Personality reads and keeps the profile's
+    /// SOUL as Edit Bot does, so both open on the same copy; a save writes
+    /// the SOUL alone and is what both open on next, and one Hermes turns
+    /// down says so and keeps the SOUL it had.
+    func testEditProfileSavesTheSoulEditBotShows() async throws {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac])
+        let details = BotProfileDetails(
+            description: "", soul: "You are Hermes.", provider: "openrouter", model: "kimi-k2",
+            capabilities: BotCapabilities()
+        )
+        let hermes = BotEditorHermes(details: details, setup: BotMcpSetupSnapshot(catalog: [], servers: [:]))
+        var operations = ChatResumeLifecycleOperations()
+        operations.describeBotProfile = { _, profile in try await hermes.describe(profile) }
+        operations.configureBotSections = { _, _, sections in hermes.configure(sections) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: registry,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: operations,
+            groupChatOperations: .live,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+            profileAppearanceStore: makeAppearanceStore()
+        )
+        connectRoster(appState, to: mac)
+
+        XCTAssertNil(appState.keptProfileSoul("default"), "Nothing kept yet")
+        let loaded = await appState.loadProfileSoul("default")
+        XCTAssertEqual(loaded, "You are Hermes.")
+        XCTAssertEqual(hermes.asked, ["default"])
+        XCTAssertEqual(appState.keptBotDetails(rosterBot("default"))?.soul, "You are Hermes.", "Edit Bot opens on the same copy")
+
+        hermes.applied = ["soul": true]
+        let saved = await appState.saveProfileSoul("You are Hermes, briefly.", profile: "default")
+        XCTAssertNil(saved)
+        XCTAssertEqual(hermes.configured, [["soul"]], "Only the SOUL is written")
+        XCTAssertEqual(appState.keptProfileSoul("default"), "You are Hermes, briefly.")
+        XCTAssertEqual(appState.keptBotDetails(rosterBot("default"))?.soul, "You are Hermes, briefly.")
+
+        hermes.applied = ["soul": false]
+        let refused = await appState.saveProfileSoul("Something else.", profile: "default")
+        XCTAssertEqual(refused, AppLocalization.string("The personality was not saved."))
+        XCTAssertEqual(appState.keptProfileSoul("default"), "You are Hermes, briefly.", "A refused save keeps nothing")
+
+        appState.isConnected = false
+        let offline = await appState.saveProfileSoul("Offline.", profile: "default")
+        XCTAssertEqual(offline, AppLocalization.string("Connect to Hermes to change the personality."))
+        XCTAssertEqual(hermes.configured.count, 2, "Offline writes nothing")
+    }
+
     /// A read whose answer is the same as what's kept writes nothing, but
     /// its turn still counts: an older read landing after it with another
     /// answer doesn't put that one back (issue 2152, #2159 review).
