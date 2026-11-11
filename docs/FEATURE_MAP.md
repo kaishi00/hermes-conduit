@@ -552,6 +552,37 @@ instructions as sent) · Settings captions · docs/VOICE_SETTINGS.md
 
 **Checked:** 2026-11-06, #1896 (added: Local Live's personality and Your instructions, issue 583).
 
+## What a GPT-Live call is told
+
+Conduit's briefing for a GPT-Live call (its rules, the persona, what Hermes
+remembers, the call's own blocks and the language rule) and the chat's turns,
+and how they reach the model within what the session allows.
+
+**Siblings:** the iPhone's calls, CarPlay and calls from Hermes (the briefing
+travels with the session request) · the Apple Watch (the phone builds its
+briefing; the host's audio bridge starts the session through the same route) ·
+the notifier's session route, on its own Codex exchange and on Hermes' ·
+GPT-Live on the API key (not changed: gpt-live-1 reads its instructions) ·
+the fallback when a host doesn't take it (context appends after the start) ·
+the call trace (Live call trace) · text: docs/VOICE_SETTINGS.md (Diagnostics),
+the notifier README's session route and CHANGELOG.md
+
+**Code**
+- The briefing: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefing, maxBriefingCharacters, the late-briefing fallback where `briefingApplied` is false)
+- The answer: `Conduit/Voice/GPTLive/GPTLiveClient.swift` (briefingApplied, briefingClipped), `Conduit/Voice/GPTLive/GPTLiveSession.swift` (answerStep)
+- The Watch: `Shared/WatchVoice/WatchAudioBridgeWire.swift` (briefingApplied), `notifier/dashboard/api/watch_audio.py`
+- Host: `notifier/dashboard/api/gpt_live.py` (CODEX_ITEMS_MAX_TOKENS, _seeded_items, _clip_block, create_gpt_live_session), `notifier/tests/test_gpt_live.py` (test_seeded_items_never_exceed_the_codex_budget)
+
+**Rulings**
+- On a ChatGPT plan the briefing is the session's first seeded item, a developer message ahead of the history: gpt-live-1-codex doesn't read the session's instructions, so a briefing put there never reached the model while the host reported it applied (notifier #719, found by vesper-de-clerck with real Codex calls). On the API key it stays in the instructions, which gpt-live-1 reads.
+- Codex allows the seeded items 8,192 estimated tokens in all. That budget is kept in one place, the plugin's `_seeded_items`, which builds every subscription session's items (the plugin's exchange and Hermes' alike) for whatever any Conduit sends: the history keeps its newest turns within 2,048 tokens (the whole budget without a briefing), then what Hermes remembers is cut, then the persona, each marked as cut, and Conduit's rules, the call's own blocks and the language rule always go whole. Every earlier size bug was a limit guessed in another unit (Conduit issue 1077's 32 K characters, a context append's 500 tokens), so no other layer keeps a model budget of its own: the app's `maxBriefingCharacters` is only the request's limit for older plugins (2026-11-11, notifier #719).
+- `briefing_applied` is true only when the briefing is in the session the host sends; when even its rules don't fit, it's false and Conduit sends the briefing as context after the start, as for any host that doesn't take one. `briefing_clipped` says the memory or persona was cut, and the trace shows it as "cut to fit" (notifier #719).
+
+**Open gaps**
+- None known.
+
+**Checked:** 2026-11-11, #2232 (added: the briefing as a seeded item within one Codex token budget, notifier #719).
+
 ## Starting a call
 
 Every way a call starts, and which chat it joins.
@@ -4660,13 +4691,13 @@ in `bridgeStarted`) · docs/VOICE_SETTINGS.md
 - The user's turns show when the server heard speech start and end, with the microphone's loudest and quietest 100 ms between them, and say once when 15 s of audio pass with no start or no end, so a turn the server never ends can be told apart from audio that never arrived (2026-10-28, #1424, from #1418).
 - Qwen Live's trace has the turn steps, dropped microphone audio and the controller's tool steps; Grok's own session steps (setup, functions taken) have no Qwen counterpart (2026-10-28, #1424).
 - A tool step is noted only while its call is still the current one, so a lookup that returns after hang-up stays out of the next call's trace (2026-10-28, #1424).
-- GPT-Live's trace is its startup (#1611): the request's briefing length and whether it carried a persona and memory (by their blocks), whether it was a call from Hermes, a greeting or waits for the user, and how many history items; what the host answered (built by Hermes or the plugin, the billing path, `briefing_applied`, `greeting_applied`, the voice); session.started or its timeout; a briefing or opening Conduit sent after the start, or asked for again; which side spoke first; connection drops and the provider's error code, never its message. "Applied" means the text was in the instructions the host sent, not that OpenAI took it or the model followed it (2026-11-01, #1611).
+- GPT-Live's trace is its startup (#1611): the request's briefing length and whether it carried a persona and memory (by their blocks), whether it was a call from Hermes, a greeting or waits for the user, and how many history items; what the host answered (built by Hermes or the plugin, the billing path, `briefing_applied` and, when the host cut it to fit, `briefing_clipped` ("cut to fit", notifier #719), `greeting_applied`, the voice); session.started or its timeout; a briefing or opening Conduit sent after the start, or asked for again; which side spoke first; connection drops and the provider's error code, never its message. "Applied" means the text was in the session the host sent (the instructions, or on a ChatGPT plan its first seeded item), not that OpenAI took it or the model followed it (2026-11-01, #1611).
 
 **Open gaps**
 - Gemini Live sends no turn detection events and GPT-Live's turns run over WebRTC, so neither has turn steps; Gemini Live has no trace; the Watch has no trace to show.
 - Every trace keeps only the last call, in memory until the app restarts (its steps also go to the system log, which keeps them longer), and nothing joins a call from Hermes, its saved call and the host's session request (#1611 asked for an alias).
 
-**Checked:** 2026-11-01, #1612 (GPT-Live's startup steps, from issue 1611); 2026-10-28, #1424.
+**Checked:** 2026-11-11, #2232 (the trace says when the host cut the briefing to fit, notifier #719); 2026-11-01, #1612 (GPT-Live's startup steps, from issue 1611); 2026-10-28, #1424.
 
 ## Narrated actions left out of speech
 

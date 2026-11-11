@@ -258,6 +258,15 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual((requests.first?.body?["history"] as? [[String: Any]])?.count, 1)
         XCTAssertGreaterThan(requests.first?.timeout ?? 0, 32_000, "Longer than the host's own timeout")
 
+        reply = .success([
+            "ok": true, "auth": "subscription", "session": ["id": "rtc_abc"],
+            "transport": ["type": "webrtc", "sdp": "v=0 answer"], "source": "plugin",
+            "briefing_applied": true, "briefing_clipped": true,
+        ])
+        let clipped = try await client.createSession(offer: "v=0 offer", history: [GPTLiveProtocol.historyItem(role: "user", text: "hi")])
+        XCTAssertTrue(clipped.briefingApplied)
+        XCTAssertTrue(clipped.briefingClipped, "notifier #719: the host cut the memory to fit, for the trace")
+
         let detail = "GPT-Live session was rejected (HTTP 403); check the Codex sign-in and the account's voice access. No API fallback was used."
         reply = .failure(DashboardTicketBridgeError.http(status: 502, detail: detail))
         do {
@@ -553,6 +562,9 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(GPTLiveSession.answerStep(GPTLiveSessionAnswer(sessionID: nil, sdp: "v=0", voice: "a voice with spaces", billing: .api)),
                        "Host answered: builder not reported, API key, briefing applied no, opening applied no")
         XCTAssertNil(GPTLiveSession.traceCode("has a space"))
+        // notifier #719: a briefing the host cut to fit Codex's seeded-items budget says so.
+        XCTAssertEqual(GPTLiveSession.answerStep(GPTLiveSessionAnswer(sessionID: nil, sdp: "v=0", briefingApplied: true, briefingClipped: true, source: "plugin")),
+                       "Host answered: built by the plugin, ChatGPT plan, briefing applied yes, cut to fit, opening applied no")
     }
 
     func testGPTLiveSessionTracesARefusedRequest() async {
