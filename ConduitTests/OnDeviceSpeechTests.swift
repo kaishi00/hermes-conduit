@@ -347,6 +347,12 @@ extension HermesVoiceGatewayTimeoutTests {
             "See [x](https://example.com/a(b next.", "Then more."
         ])
 
+        // A title's spaces and stops stay inside the link.
+        var titled = "[x](https://example.com \"One Two. Three\") here. Next. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &titled), [
+            "[x](https://example.com \"One Two. Three\") here.", "Next."
+        ])
+
         // A CJK sentence keeps its closing quote.
         var cjkQuote = "「你好。」下一句。尾"
         XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &cjkQuote), ["「你好。」", "下一句。"])
