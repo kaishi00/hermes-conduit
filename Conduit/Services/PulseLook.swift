@@ -6,8 +6,9 @@
 //  `pulse_looks`): the pick it was made from, checked by the plugin
 //  (pulse_picks.py). A shape with its facts (a date, something due, a
 //  job's recent runs, a promise in the words it was made, a status, the
-//  steps of something underway, a card body drawn like a chat's
-//  conduit_show card, or plain words) and at most two actions. The
+//  steps of something underway, a value that moved, someone the user is
+//  waiting on, what a watch found, a card body drawn like a chat's conduit_show card, or plain
+//  words) and at most two actions. The
 //  morning brief's card carries its parts the same way: its summary, what's
 //  on today, what's still open, and how many of each. A card from an older
 //  plugin, or one whose look this build can't read, has none and shows its
@@ -19,6 +20,11 @@ import Foundation
 struct PulseLook: Equatable {
     enum State: String {
         case ok, warn, fail
+    }
+
+    /// Which way a number going is good news.
+    enum Better: String {
+        case up, down
     }
 
     enum Body: Equatable {
@@ -34,6 +40,15 @@ struct PulseLook: Equatable {
         case status(label: String, state: State)
         /// Named steps and the one it's at, counted from 0.
         case steps(names: [String], at: Int)
+        /// A measured value (plugin `pulse-more-shapes`): what it is, the
+        /// value and its unit, and the earlier value, a limit and which way
+        /// is good when the context gave them.
+        case number(label: String, value: Double, unit: String, was: Double?, limit: Double?, better: Better?)
+        /// Someone who owes the user a reply or a thing, and since when.
+        case waiting(person: String, what: String, since: Date?)
+        /// The answer to something the user asked Hermes to watch for or
+        /// find out: what they asked, what was found, and where.
+        case found(asked: String, answer: String, place: String)
         /// A card body drawn as a chat's conduit_show card is.
         case drawn(RichCard)
         /// The morning brief's parts (pulse_brief.look).
@@ -138,6 +153,18 @@ struct PulseLook: Equatable {
             let names = raw.compactMap { $0 as? String }
             guard names.count == raw.count, !names.contains(where: \.isEmpty), names.count >= 2, let at = PulseJSON.int(facts["at"]), names.indices.contains(at) else { return nil }
             return .steps(names: names, at: at)
+        case "number":
+            guard !text("label").isEmpty, let value = PulseJSON.double(facts["value"]), value.isFinite else { return nil }
+            let finite = { (key: String) in PulseJSON.double(facts[key]).flatMap { $0.isFinite ? $0 : nil } }
+            return .number(label: text("label"), value: value, unit: text("unit"), was: finite("was"),
+                           limit: finite("limit"), better: Better(rawValue: text("better")))
+        case "waiting":
+            guard !text("person").isEmpty, !text("what").isEmpty else { return nil }
+            return .waiting(person: text("person"), what: text("what"),
+                            since: Self.day(text("since"), calendar: calendar)?.date)
+        case "found":
+            guard !text("asked").isEmpty, !text("answer").isEmpty, !text("where").isEmpty else { return nil }
+            return .found(asked: text("asked"), answer: text("answer"), place: text("where"))
         case "drawn":
             guard let body = facts["body"], let card = RichCard.cards(raw: [body]).first else { return nil }
             return .drawn(card)
