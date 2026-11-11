@@ -100,6 +100,9 @@ struct ProfilePersonalitySection: View {
     @State private var loaded: String?
     @State private var kept: String?
     @State private var readFailed = false
+    @State private var isLoading = false
+    /// Counts reads, so only the newest one's answer is shown.
+    @State private var loadRun = 0
 
     var body: some View {
         if appState.canEditProfileSoul {
@@ -127,7 +130,11 @@ struct ProfilePersonalitySection: View {
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
-            .task(id: profile) { await load() }
+            .task(id: profile) {
+                loaded = nil
+                readFailed = false
+                await load()
+            }
         }
     }
 
@@ -137,19 +144,28 @@ struct ProfilePersonalitySection: View {
     private var readFailure: some View {
         Text(AppLocalization.string("Could not load this profile's personality."))
             .foregroundStyle(.secondary)
-        Button(AppLocalization.string("Try Again")) {
-            Task { await load() }
+        if isLoading {
+            // The note stays up until the read asked again answers.
+            ProgressView()
+                .frame(maxWidth: .infinity)
+        } else {
+            Button(AppLocalization.string("Try Again")) {
+                Task { await load() }
+            }
+            .buttonStyle(.settings)
         }
-        .buttonStyle(.settings)
     }
 
     private func load() async {
-        loaded = nil
-        readFailed = false
+        loadRun += 1
+        let run = loadRun
+        isLoading = true
         kept = appState.keptProfileSoul(profile)
         let answer = await appState.loadProfileSoul(profile)
-        guard !Task.isCancelled else { return }
-        loaded = answer
+        // A newer read, or a profile switch, owns what's shown.
+        guard !Task.isCancelled, run == loadRun else { return }
+        isLoading = false
+        if let answer { loaded = answer }
         readFailed = answer == nil
     }
 }
