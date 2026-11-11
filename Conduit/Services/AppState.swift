@@ -2738,6 +2738,26 @@ final class AppState: ObservableObject {
     private(set) lazy var pulseRememberedProfiles: [String: String] =
         defaults.dictionary(forKey: Self.pulseProfilesKey) as? [String: String] ?? [:]
     static let pulseProfilesKey = "conduit.pulse.homeProfiles"
+    /// The bot whose Bot Chat Do it and Ask open for a Pulse card from no
+    /// chat, per dashboard (`pulseDoItBot`); none for a new chat.
+    private(set) lazy var pulseDoItBots: [String: String] =
+        defaults.dictionary(forKey: Self.pulseDoItBotsKey) as? [String: String] ?? [:]
+    static let pulseDoItBotsKey = "conduit.pulse.doItBots"
+
+    /// Sets where Do it goes for a card from no chat on this dashboard:
+    /// `bot`'s Bot Chat, or a new chat for nil.
+    func setPulseDoItBot(_ bot: String?) {
+        guard let key = activeDashboardID?.uuidString, pulseDoItBots[key] != bot else { return }
+        var bots = pulseDoItBots
+        bots[key] = bot
+        storePulseDoItBots(bots)
+    }
+
+    private func storePulseDoItBots(_ bots: [String: String]) {
+        objectWillChange.send()
+        pulseDoItBots = bots
+        defaults.set(bots, forKey: Self.pulseDoItBotsKey)
+    }
 
     func rememberPulseHome(_ chat: String?, profile: String?) {
         guard let key = activeDashboardID?.uuidString else { return }
@@ -2754,6 +2774,8 @@ final class AppState: ObservableObject {
 
     /// A removed dashboard's Pulse chat goes with it.
     func forgetPulseHome(of dashboardID: UUID) {
+        var bots = pulseDoItBots
+        if bots.removeValue(forKey: dashboardID.uuidString) != nil { storePulseDoItBots(bots) }
         var profiles = pulseRememberedProfiles
         if profiles.removeValue(forKey: dashboardID.uuidString) != nil { storePulseProfiles(profiles) }
         var homes = pulseRememberedHomes

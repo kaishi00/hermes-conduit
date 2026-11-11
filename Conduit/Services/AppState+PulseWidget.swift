@@ -186,24 +186,54 @@ extension AppState {
         applyPulseFeed(page)
         guard let card = page.cards.first(where: { $0.id == id }), !card.isCleared,
               canActOnPulseCard(card), !canAskFromPulseCard(card) else { throw PulseWidgetDoItSkip.nothingToDo }
-        try await sendPulseCardFromWidget(card, deadline: deadline)
+        // Settings > Pulse picked a bot: right after a background connect
+        // the bot list may not have loaded yet, and without it the card
+        // would go to a new chat.
+        if activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }) != nil, pulseDoItBot == nil {
+            await refreshBotRoster()
+            guard activeDashboardID == dashboardID else { throw PulseWidgetDoItSkip.nothingToDo }
+        }
+        let chat = try await sendPulseCardFromWidget(card, deadline: deadline)
         // Pulse reads the chat once Hermes has answered and marks the card
         // done itself, as after the screen's Do it.
         if canMarkPulseCardDone(card), notifierPlugin.reports(PulseClient.actedCapability) {
-            try? await client.acted(card: card.id)
+            try? await client.acted(card: card.id, chat: chat)
         }
     }
 
     /// Do it from the widget: the card's message goes to the chat it came
     /// from, or for one from no chat (the calendar, reminders, the
-    /// Shortcuts inbox, a Kanban task's worker) to a new chat in Pulse's
+    /// Shortcuts inbox, a Kanban task's worker) to the Bot Chat of the bot
+    /// Settings > Pulse picked (`pulseDoItBot`), else a new chat in Pulse's
     /// profile, where Pulse reads what came of it, as the screen's Do it
     /// would open them. The widget has no composer, so it's sent as it is.
-    private func sendPulseCardFromWidget(_ card: PulseCard, deadline: Date) async throws {
+    /// The Bot Chat it sent to, for acted to name.
+    private func sendPulseCardFromWidget(_ card: PulseCard, deadline: Date) async throws -> PulseActedChat? {
         guard let dashboardID = activeDashboardID else { throw ShortcutSendError.notConnected }
         var request = ShortcutSendRequest(text: card.actionMessage, chatName: nil, profile: pulseHomeProfile,
                                           waitsForAnswer: false)
-        if pulseCardHasChat(card) {
+        // The card is this dashboard's: a switch while it waits stops it
+        // before it makes a chat or sends on the other one.
+        let backend = makeShortcutSendBackend(onlyOn: dashboardID)
+        var acted: PulseActedChat?
+        if let bot = pulseDoItBot(for: card) {
+            // The bot's chat now, as its Bots row finds it, then sent to by
+            // that id, so acted names the chat the text went to.
+            let found = try await backend.pickedChat(ShortcutPickedChat(
+                dashboardID: dashboardID,
+                reference: WidgetConversationReference(kind: .bot, scopeProfile: bot.name, botName: bot.name,
+                                                       botLabel: bot.displayLabel, sessionID: "", isUnverified: false),
+                title: bot.displayLabel
+            ))
+            let id = found.storedSessionID ?? found.runtimeSessionID
+            request.chat = ShortcutPickedChat(
+                dashboardID: dashboardID,
+                reference: WidgetConversationReference(kind: .dashboard, scopeProfile: bot.name, botName: nil, botLabel: nil,
+                                                       sessionID: id, isUnverified: false),
+                title: bot.displayLabel
+            )
+            acted = PulseActedChat(profile: bot.name, id: id)
+        } else if pulseCardHasChat(card) {
             let profile = card.profile.isEmpty ? pulseHomeProfile : card.profile
             request.chat = ShortcutPickedChat(
                 dashboardID: dashboardID,
@@ -215,9 +245,8 @@ extension AppState {
             request.newChatTitle = PulseWidgetFeed.plain(card.title.isEmpty ? card.news : card.title,
                                                          markdown: card.kind != "followup")
         }
-        // The card is this dashboard's: a switch while it waits stops it
-        // before it makes a chat or sends on the other one.
-        _ = try await ShortcutSender(backend: makeShortcutSendBackend(onlyOn: dashboardID)).send(request, deadline: deadline)
+        _ = try await ShortcutSender(backend: backend).send(request, deadline: deadline)
+        return acted
     }
 
     /// A tap on the Pulse widget: the Pulse screen, at the card tapped, on

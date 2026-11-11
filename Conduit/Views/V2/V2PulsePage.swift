@@ -1521,41 +1521,14 @@ struct V2PulsePage: View {
     }
 
     /// Do it, or a pick's Ask (`ask`, 0.150.0): the same chat, with the
-    /// pick's words in the composer to change before sending.
+    /// pick's words in the composer to change before sending. For a card
+    /// from no chat, a long press picks where it goes this once: a new
+    /// chat or a bot's Bot Chat (`pulseDoItBotChoices`).
     private func doItButton(_ card: PulseCard, ask: PulseLook.Action? = nil, bar: Bool = false) -> some View {
-        Button {
-            Haptics.selection()
-            if let refusal = appState.pulseNewChatRefusal(for: card) {
-                showError(refusal)
-                return
-            }
-            let failure = appState.pulseCardHasChat(card)
-                ? AppLocalization.string("Couldn't open that chat. Try again.")
-                : AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
-            let dashboard = appState.activeDashboardID
-            actingCard = card.id
-            Task {
-                defer { if actingCard == card.id { actingCard = nil } }
-                let opened = await appState.actOnPulseCard(card, words: ask?.value)
-                guard appState.activeDashboardID == dashboard else { return }
-                if !opened {
-                    showError(failure)
-                    return
-                }
-                if errorMessage == failure { errorMessage = nil }
-                // Pulse reads the chat once Hermes has answered and marks the card done itself.
-                // Only a card Pulse can mark done, with a Done button to fall back on.
-                if appState.canMarkPulseCardDone(card), appState.notifierPlugin.reports(PulseClient.actedCapability) {
-                    do {
-                        try await client.acted(card: card.id)
-                        untoldCards.remove(card.id)
-                    } catch {
-                        guard appState.activeDashboardID == dashboard else { return }
-                        untoldCards.insert(card.id)
-                        AccessibilityNotification.Announcement(Self.untoldNote).post()
-                    }
-                }
-            }
+        let bots: [BotProfile] = appState.pulseCardHasChat(card) ? [] : appState.pulseDoItBotChoices
+        let bot = appState.pulseDoItBot(for: card)
+        return Button {
+            doIt(card, ask: ask)
         } label: {
             // The icon's colour is set outright: in a prominent button a
             // Label's icon can take the tint, which is the button's own fill,
@@ -1570,15 +1543,76 @@ struct V2PulsePage: View {
             .scaledFont(bar ? .subheadline.weight(.semibold) : .footnote.weight(.semibold))
         }
         .modifier(PulseActionStyle(bar: bar, prominent: true, tint: .conduitAccent))
+        .contextMenu {
+            if !bots.isEmpty {
+                Section(AppLocalization.string("Do it in")) {
+                    Button {
+                        doIt(card, ask: ask, in: .newChat)
+                    } label: {
+                        Label(AppLocalization.string("New chat"), systemImage: "square.and.pencil")
+                    }
+                    ForEach(bots, id: \.name) { choice in
+                        Button {
+                            doIt(card, ask: ask, in: .bot(choice.name))
+                        } label: {
+                            Label(choice.displayLabel, systemImage: "person.crop.circle")
+                        }
+                    }
+                }
+            }
+        }
         .accessibilityHint(Text(ask != nil
             ? (appState.pulseCardHasChat(card)
                 ? AppLocalization.string("Opens the chat with these words to edit before sending")
-                : AppLocalization.string("Opens a new chat with these words to edit before sending"))
+                : bot.map { AppLocalization.string("Opens \($0.displayLabel)'s Bot Chat with these words to edit before sending") }
+                    ?? AppLocalization.string("Opens a new chat with these words to edit before sending"))
             : (appState.pulseCardHasChat(card)
                 ? AppLocalization.string("Opens the chat with this reminder ready to send")
-                : AppLocalization.string("Opens a new chat with this reminder ready to send"))))
+                : bot.map { AppLocalization.string("Opens \($0.displayLabel)'s Bot Chat with this reminder ready to send") }
+                    ?? AppLocalization.string("Opens a new chat with this reminder ready to send"))))
         .disabled(actingCard != nil || isBusy(card))
         .accessibilityIdentifier("pulse.card.do-it")
+    }
+
+    /// Do it's tap, or a pick from its long press (`picked`): opens the
+    /// chat, then tells Pulse, naming a bot's Bot Chat it opened so Pulse's
+    /// check reads it there.
+    private func doIt(_ card: PulseCard, ask: PulseLook.Action?, in picked: PulseDoItTarget? = nil) {
+        Haptics.selection()
+        if let refusal = appState.pulseNewChatRefusal(for: card, in: picked) {
+            showError(refusal)
+            return
+        }
+        let bot = appState.pulseDoItBot(for: card, in: picked)
+        let failure = appState.pulseCardHasChat(card)
+            ? AppLocalization.string("Couldn't open that chat. Try again.")
+            : bot.map { AppLocalization.string("Could not open \($0.displayLabel)'s Bot Chat.") }
+                ?? AppLocalization.string("Couldn't start a new chat. Check your connection and try again.")
+        let dashboard = appState.activeDashboardID
+        actingCard = card.id
+        Task {
+            defer { if actingCard == card.id { actingCard = nil } }
+            let opened = await appState.actOnPulseCard(card, words: ask?.value, in: picked)
+            guard appState.activeDashboardID == dashboard else { return }
+            if !opened {
+                showError(failure)
+                return
+            }
+            if errorMessage == failure { errorMessage = nil }
+            let chat = appState.pulseActedChat(in: bot)
+            // Pulse reads the chat once Hermes has answered and marks the card done itself.
+            // Only a card Pulse can mark done, with a Done button to fall back on.
+            if appState.canMarkPulseCardDone(card), appState.notifierPlugin.reports(PulseClient.actedCapability) {
+                do {
+                    try await client.acted(card: card.id, chat: chat)
+                    untoldCards.remove(card.id)
+                } catch {
+                    guard appState.activeDashboardID == dashboard else { return }
+                    untoldCards.insert(card.id)
+                    AccessibilityNotification.Announcement(Self.untoldNote).post()
+                }
+            }
+        }
     }
 
     /// A pick's Open (its link) or Draft (its message, to share or copy).

@@ -511137,6 +511137,416 @@
           }
         }
       }
+    },
+    "Do it in" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erledigen in"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hacerlo en"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "S'en occuper dans"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kerjakan di"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fallo in"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "実行先"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "실행할 곳"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zrób to w"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fazer em"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сделать в"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Şurada yap"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "去做的位置"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "去做的位置"
+          }
+        }
+      }
+    },
+    "Cards from no chat" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Karten ohne Chat"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tarjetas sin chat"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cartes sans discussion"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kartu tanpa chat"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Schede senza chat"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "チャットからではないカード"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "채팅에서 오지 않은 카드"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Karty spoza czatu"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cards sem conversa"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Карточки не из чата"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sohbetten gelmeyen kartlar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不是来自聊天的卡片"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不是來自聊天的卡片"
+          }
+        }
+      }
+    },
+    "Opens %@'s Bot Chat with this reminder ready to send" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet den Bot-Chat von %@ mit dieser Erinnerung, bereit zum Senden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre el chat de bot de %@ con este recordatorio listo para enviar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvre la discussion de bot de %@ avec ce rappel prêt à envoyer"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Membuka Obrolan Bot %@ dengan pengingat ini siap dikirim"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apre la chat del bot %@ con questo promemoria pronto da inviare"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このリマインダーを送信できる状態で%@のボットチャットを開きます"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 리마인더를 보낼 준비가 된 채로 %@의 봇 채팅을 엽니다"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otwiera czat z botem %@ z tym przypomnieniem gotowym do wysłania"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre o Chat de Bot de %@ com este lembrete pronto para enviar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открывает чат с ботом %@ с этим напоминанием, готовым к отправке"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ adlı botun Bot Sohbetini bu hatırlatma gönderilmeye hazır şekilde açar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 %@ 的 Bot Chat，这条提醒已备好发送"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "開啟「%@」的機器人聊天，這則提醒已備好傳送"
+          }
+        }
+      }
+    },
+    "Opens %@'s Bot Chat with these words to edit before sending" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Öffnet den Bot-Chat von %@ mit diesen Worten zum Bearbeiten vor dem Senden"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre el chat de bot de %@ con estas palabras para editarlas antes de enviar"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ouvre la discussion de bot de %@ avec ces mots à modifier avant l’envoi"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Membuka Obrolan Bot %@ dengan kata-kata ini untuk diedit sebelum dikirim"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Apre la chat del bot %@ con queste parole da modificare prima dell’invio"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "送信前に編集できるよう、この言葉を入れて%@のボットチャットを開きます"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "보내기 전에 편집할 수 있도록 이 문구를 넣어 %@의 봇 채팅을 엽니다"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Otwiera czat z botem %@ z tymi słowami do edycji przed wysłaniem"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Abre o Chat de Bot de %@ com estas palavras para editar antes de enviar"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Открывает чат с ботом %@ с этими словами, чтобы изменить их перед отправкой"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Göndermeden önce düzenlemek için %@ adlı botun Bot Sohbetini bu sözlerle açar"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打开 %@ 的 Bot Chat 并填入这些文字，发送前可编辑"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "打開「%@」的機器人聊天並填入這些文字，傳送前可編輯"
+          }
+        }
+      }
+    },
+    "Where Do it opens for a card that came from no chat, such as one from your calendar: a new chat, or a bot's Bot Chat. The widget's Do it goes there too. Long-press Do it to pick another for one card." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wo „Erledigen“ eine Karte öffnet, die aus keinem Chat kam, etwa eine aus deinem Kalender: ein neuer Chat oder der Bot-Chat eines Bots. „Erledigen“ im Widget geht auch dorthin. Halte „Erledigen“ gedrückt, um für eine Karte etwas anderes zu wählen."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dónde se abre Hacerlo para una tarjeta que no vino de ningún chat, como una de tu calendario: un chat nuevo o el chat de bot de un bot. Hacerlo en el widget también va allí. Mantén pulsado Hacerlo para elegir otro para una tarjeta."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Où « S'en occuper » s'ouvre pour une carte qui ne vient d'aucune discussion, comme une carte de votre calendrier : une nouvelle discussion ou la discussion de bot d'un bot. « S'en occuper » dans le widget y va aussi. Appuyez longuement sur « S'en occuper » pour en choisir un autre pour une carte."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tempat Kerjakan dibuka untuk kartu yang tidak berasal dari chat mana pun, misalnya dari kalender Anda: chat baru, atau Obrolan Bot milik sebuah bot. Kerjakan di widget juga ke sana. Tekan lama Kerjakan untuk memilih yang lain bagi satu kartu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dove si apre Fallo per una scheda che non viene da nessuna chat, come una dal tuo calendario: una nuova chat o la chat di un bot. Anche Fallo nel widget va lì. Tieni premuto Fallo per sceglierne un'altra per una scheda."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "カレンダーからのカードなど、どのチャットからでもないカードで「実行」を開く場所：新しいチャット、またはボットのボットチャット。ウィジェットの「実行」もそこに送られます。カード1枚だけ別の場所にするには「実行」を長押しします。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "캘린더에서 온 카드처럼 어떤 채팅에서도 오지 않은 카드에서 실행을 열 곳: 새 채팅 또는 봇의 봇 채팅. 위젯의 실행도 그곳으로 갑니다. 카드 하나만 다른 곳을 고르려면 실행을 길게 누르세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Gdzie „Zrób to” otwiera kartę, która nie pochodzi z żadnego czatu, na przykład z kalendarza: nowy czat albo czat z botem. „Zrób to” w widżecie też tam trafia. Przytrzymaj „Zrób to”, aby wybrać coś innego dla jednej karty."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Onde Fazer abre para um card que não veio de nenhuma conversa, como um do seu calendário: uma nova conversa ou o Chat de Bot de um bot. O Fazer do widget também vai para lá. Toque e segure Fazer para escolher outro para um card."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Где открывается «Сделать» для карточки, которая пришла не из чата, например из календаря: новый чат или чат с ботом. «Сделать» в виджете тоже отправляет туда. Нажмите и удерживайте «Сделать», чтобы выбрать другое для одной карточки."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Takviminizden gelen gibi hiçbir sohbetten gelmeyen bir kartta Yap'ın açılacağı yer: yeni bir sohbet ya da bir botun Bot Sohbeti. Widget'taki Yap da oraya gider. Tek bir kart için başka birini seçmek üzere Yap'a uzun basın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不是来自任何聊天的卡片（例如来自日历的）上，“去做”打开的位置：新聊天，或某个机器人的 Bot Chat。小组件的“去做”也会发到那里。长按“去做”可为单张卡片另选。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不是來自任何聊天的卡片（例如來自行事曆的）上，「去做」打開的位置：新聊天，或某個機器人的機器人聊天。小工具的「去做」也會傳到那裡。長按「去做」可為單張卡片另選。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
