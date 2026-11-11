@@ -83,10 +83,11 @@ extension GatewayRestartTests {
         XCTAssertEqual(CronBotChatReport(job: "News", report: "Rain at 9.").shown, "Rain at 9.")
         // Two quoted references on a line stay as written, and a backtick
         // line inside a tilde fence doesn't close it.
-        XCTAssertEqual(
-            CronBotChatReport(job: "Q", report: "- @image:/cards/a.png\n  > @file:/cards/b.pdf").shown,
-            "- MEDIA:`/cards/a.png`\n  > MEDIA:`/cards/b.pdf`"
-        )
+        // A list marker goes, so the tag is a line of its own and the folded
+        // card names it; a quote and a math block stay as written.
+        let marked = CronBotChatReport(job: "Q", report: "- @image:/cards/a.png\n  > @file:/cards/b.pdf\n$$\n@image:/x.png\n$$\n@file:\"")
+        XCTAssertEqual(marked.shown, "MEDIA:`/cards/a.png`\n  > @file:/cards/b.pdf\n$$\n@image:/x.png\n$$\n@file:\"")
+        XCTAssertEqual(marked.preview.components(separatedBy: "\n").first, "a.png")
         let twoFiles = "@file:\"/tmp/a.pdf\" @file:\"/tmp/b.pdf\""
         XCTAssertEqual(CronBotChatReport(job: "Q", report: twoFiles).shown, twoFiles)
         XCTAssertEqual(

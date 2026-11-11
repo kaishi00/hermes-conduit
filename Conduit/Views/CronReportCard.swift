@@ -26,26 +26,29 @@ struct CronBotChatReport: Equatable {
     /// as that picture or file. The plugin writes it as an `@image:` or
     /// `@file:` reference (notifier 0.161.2, issue 581), which Hermes
     /// Desktop shows on the note's user row; an older plugin left the
-    /// run's own `MEDIA:` tag, which reads the same. A reference inside a
-    /// sentence or in fenced code stays as written.
+    /// run's own `MEDIA:` tag, which reads the same. A list marker before
+    /// the reference goes, as the plugin drops it. A reference inside a
+    /// sentence or a quote, or in fenced code or a math block (opaque to
+    /// the transcript too), stays as written.
     var shown: String {
         guard report.contains("@image:") || report.contains("@file:") else { return report }
         var openFence: MarkdownFence?
+        var mathClosing: String?
         return report.components(separatedBy: "\n").map { line in
             let trimmed = line.trimmingCharacters(in: .whitespaces)
             if let fence = openFence {
                 if fence.closes(trimmed) { openFence = nil }
                 return line
             }
+            if let closing = mathClosing {
+                if trimmed == closing { mathClosing = nil }
+                return line
+            }
             if let fence = MarkdownFence.opening(trimmed) { openFence = fence; return line }
-            // Indentation and a list or quote marker before the reference
-            // stay, as the plugin keeps them; the transcript draws the tag
-            // after them.
-            let indent = String(line.prefix { $0 == " " || $0 == "\t" })
-            let marker = trimmed.range(of: #"^(?:[-*+]|\d{1,9}[.)]|>)\s+"#, options: .regularExpression)
-            let lead = indent + (marker.map { String(trimmed[$0]) } ?? "")
+            if trimmed == "$$" || trimmed == "\\[" { mathClosing = trimmed == "$$" ? "$$" : "\\]"; return line }
+            let marker = trimmed.range(of: #"^(?:[-*+]|\d{1,9}[.)])\s+"#, options: .regularExpression)
             guard let path = Self.referencePath(marker.map { String(trimmed[$0.upperBound...]) } ?? trimmed) else { return line }
-            return lead + ToolResultPresentation.mediaTag(for: path)
+            return ToolResultPresentation.mediaTag(for: path)
         }.joined(separator: "\n")
     }
 
@@ -70,7 +73,7 @@ struct CronBotChatReport: Equatable {
         } else if value.contains(where: \.isWhitespace) {
             return nil
         }
-        guard !value.isEmpty, !value.contains("`"), !value.contains("\n") else { return nil }
+        guard !value.isEmpty, !value.contains("`"), !value.allSatisfy({ "\"'".contains($0) }) else { return nil }
         return value
     }
 }
