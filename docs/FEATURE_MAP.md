@@ -4865,12 +4865,14 @@ state, and the notifier's README says how a workstream waits (done)
 - The line counts the open conversation's agents only, queued and running, nested ones included as the composer's count does. It has nothing to do with Coordinate Work: a chat with Work off shows it the same (issue 2142, #2201).
 - The cards don't depend on having seen an agent start: after each resume the chat reads Hermes' roster and takes a card for every agent it has none for; a card it has stays as its own events left it. While the chat shows and waits, the roster is read at once and then every 15 s (a hidden tab, a covered chat or a saved copy of another chat stops it, see Reads while a screen shows) and a running card Hermes no longer lists, quiet for 30 s, ends (#492's rule), so a missed end doesn't leave the chat waiting (#2201).
 - A workstream that delegates isn't finished until its agents' results are in: its row stays running and its Bot Chat hears nothing at the first turn's end. A turn that failed or was stopped isn't held, and if no turn starts within two minutes of the last agent ending it settles with what it had said (notifier #711).
+- A workstream stopped while it waits stays stopped: the turn its agents' results start is stopped too, until words are sent to it (notifier #711).
 
 **Open gaps**
 - Bots Home and the line under a Bot Chat's title don't show a Bot Chat's own agents (it can start them only on Everything Here, or with Coordinate Work off): the plugin would have to count them per bot. A workstream's agents do show, as its "working".
 - A Hermes without `subagent.list` gives a reopened chat no cards, so no line until an agent's next frame.
 - A queued card whose agent never starts and never ends keeps the line: the roster lists an agent only once it runs, so it can't end a queued card.
-- The plugin's count of a workstream's agents is in memory: after a Hermes restart the workstream is recovered as any running one, without the wait on its card.
+- The plugin's count of a workstream's agents is in memory: after a Hermes restart the workstream is recovered as any running one, without the wait on its card. What its last turn said before the wait is lost with it: the Bot Chat hears only that it stopped when Hermes restarted.
+- Stopping a waiting workstream doesn't stop its agents (Hermes stops them only with a running turn): they run to their end and their results are dropped.
 
 **Checked:** 2026-11-11, #2201 with notifier #711 (added: the waiting line, the cards from Hermes' roster after a reopen, and a workstream held as working while its agents run; issue 2142)
 
