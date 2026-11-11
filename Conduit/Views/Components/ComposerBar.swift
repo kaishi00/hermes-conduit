@@ -362,9 +362,15 @@ struct ComposerBar: View, Equatable {
         isShowingSlashSuggestions && !filteredSlashCommands.isEmpty
     }
 
+    // A pick, by click, tap or key, puts the cursor after what it put in,
+    // so the next word follows it instead of landing inside it (issue 2048).
     private func pickSlashSuggestion(_ command: SlashCommand) {
-        replaceComposerText("/\(command.name) ")
+        replaceComposerText("/\(command.name) ", cursorAtEnd: true)
         isShowingSlashSuggestions = false
+    }
+
+    private func pickMentionSuggestion(_ candidate: MentionAutocomplete.Candidate) {
+        replaceComposerText(MentionAutocomplete.completing(text, with: candidate), cursorAtEnd: true)
     }
 
     /// What the field's arrows, Tab, Escape and a highlighted Return act
@@ -398,7 +404,7 @@ struct ComposerBar: View, Equatable {
             if !slash.isEmpty {
                 pickSlashSuggestion(slash[index])
             } else {
-                replaceComposerText(MentionAutocomplete.completing(text, with: mentions[index]))
+                pickMentionSuggestion(mentions[index])
             }
         }
     }
@@ -759,7 +765,7 @@ struct ComposerBar: View, Equatable {
 
             if !showsSlashSuggestionList && !mentionCandidates.isEmpty {
                 MentionSuggestionList(candidates: mentionCandidates, highlighted: suggestionHighlight) { candidate in
-                    replaceComposerText(MentionAutocomplete.completing(text, with: candidate))
+                    pickMentionSuggestion(candidate)
                 }
                 .padding(.horizontal, 10)
                 .padding(.top, 8)
