@@ -220,8 +220,11 @@ class ReturnKeyTextView: UITextView {
         dropFocusWishWhileOff()
     }
 
+    /// A wish still waiting, with typing off or its restore queued just
+    /// after typing came back on, is let go; a field that holds focus
+    /// keeps it, since another field taking focus resigns it anyway.
     private func dropFocusWishWhileOff() {
-        guard focusesInWindow, !isEditable else { return }
+        guard focusesInWindow, !isFirstResponder else { return }
         focusesInWindow = false
         onFocusTakenWhileOff?()
     }
