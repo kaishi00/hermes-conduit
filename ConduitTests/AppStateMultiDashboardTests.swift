@@ -3280,6 +3280,12 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(next.skills.first?.enabled, true)
         XCTAssertEqual(next.toolsets.map(\.label), ["Web"])
         XCTAssertTrue(nextHeld.sent.isEmpty)
+        // Edit Bot's Skills page opens on the same kept list for its
+        // categories, per profile.
+        let keptDetails = next.keptBotSkillDetails(profile: "default")
+        XCTAssertEqual(keptDetails?.map(\.name), ["sql", "pdf"])
+        XCTAssertEqual(keptDetails?.first?.category, "data")
+        XCTAssertNil(next.keptBotSkillDetails(profile: "nova"), "Each profile keeps its own")
 
         let reload = Task { await next.loadCapabilities() }
         try await nextHeld.waitForRequests(2)
