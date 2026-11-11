@@ -300,6 +300,111 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
+    /// A typed send refused in a chat Desktop holds, with Take over
+    /// automatically on: what the composer does with a send that didn't go,
+    /// handing its words back to AppState.
+    private func refuseTypedSendInDesktopChat(
+        _ text: String,
+        sends: @escaping (String) -> Void,
+        takenOver: @escaping () -> Bool,
+        takeover: @escaping () -> [String: Any]
+    ) async -> (harness: (
+        appState: AppState,
+        coordinator: ChatResumeCoordinator,
+        store: ChatResumeStore,
+        recoverySequence: ChatResumeRecoverySequence
+    ), box: ConnectedClientBox) {
+        let harness = makeHarness(lifecycleOperations: desktopHeldChatOperations(sends: sends, takenOver: takenOver))
+        harness.appState.chatTakeoverClient = ChatTakeoverClient(request: { _, _, _ in takeover() })
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        let key = harness.appState.durableComposerDraftKeyOnScreen
+
+        let submitted = await harness.appState.submitComposer(text: text)
+
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(harness.appState.chatTakeover?.phase, .waiting, "Take over automatically started")
+        harness.appState.returnFailedComposerSubmission(
+            ComposerDraft(text: text, attachments: []),
+            key: key, dashboardID: UUID(), title: "Trip plans", stoppedQuietly: false
+        )
+        return (harness, box)
+    }
+
+    func testTypedSendRefusedByDesktopIsSentByConduitAfterTheAutomaticTakeover() async {
+        // Issue 2140: the takeover worked, but the composer only resent when
+        // its field still held the refused message. Its words came back
+        // somewhere else, so the field was empty under "This chat is yours
+        // now. Send your message again." Conduit now keeps them and sends
+        // them itself, as a call does its request (#1061).
+        let defaults = UserDefaults.standard
+        let savedAutomatic = defaults.object(forKey: ChatTakeoverPreference.automaticKey)
+        defaults.set(true, forKey: ChatTakeoverPreference.automaticKey)
+        defer { defaults.set(savedAutomatic, forKey: ChatTakeoverPreference.automaticKey) }
+        var sent: [String] = []
+        var takenOver = false
+        let (harness, box) = await refuseTypedSendInDesktopChat(
+            "From my phone", sends: { sent.append($0) }, takenOver: { takenOver },
+            takeover: {
+                takenOver = true
+                return ["ok": true, "status": "taken_over"]
+            }
+        )
+
+        XCTAssertTrue(harness.appState.composerRestoreRequests.isEmpty, "Conduit keeps the words while it takes the chat over")
+        for _ in 0..<300 where sent.count < 2 { try? await Task.sleep(for: .milliseconds(10)) }
+
+        XCTAssertEqual(sent, ["From my phone", "From my phone"], "Sent again once the chat is Conduit's")
+        XCTAssertNil(harness.appState.chatTakeover, "No notice asks to send again")
+        XCTAssertTrue(harness.appState.composerRestoreRequests.isEmpty, "Nothing comes back to send twice")
+        box.client.disconnect()
+    }
+
+    func testKeptTypedMessageComesBackWhenTheTakeoverDoesNotHappen() async {
+        // Conduit on another device holds the chat, so the host never hands
+        // it over: the kept words go back to the composer, never lost.
+        let defaults = UserDefaults.standard
+        let savedAutomatic = defaults.object(forKey: ChatTakeoverPreference.automaticKey)
+        defaults.set(true, forKey: ChatTakeoverPreference.automaticKey)
+        defer { defaults.set(savedAutomatic, forKey: ChatTakeoverPreference.automaticKey) }
+        var sent: [String] = []
+        let (harness, box) = await refuseTypedSendInDesktopChat(
+            "From my phone", sends: { sent.append($0) }, takenOver: { false },
+            takeover: { ["ok": true, "status": "same_host"] }
+        )
+        for _ in 0..<300 where harness.appState.chatTakeover?.phase == .waiting {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(harness.appState.chatTakeover?.phase, .heldHere)
+        XCTAssertEqual(harness.appState.composerRestoreRequests.map(\.draft.text), ["From my phone"])
+        XCTAssertEqual(sent, ["From my phone"])
+        box.client.disconnect()
+    }
+
+    func testKeptTypedMessageComesBackWhenTheTakeoverIsDismissed() async {
+        // Desktop is still replying, so Conduit waits; closing the notice
+        // stops the takeover and the words go back to the composer.
+        let defaults = UserDefaults.standard
+        let savedAutomatic = defaults.object(forKey: ChatTakeoverPreference.automaticKey)
+        defaults.set(true, forKey: ChatTakeoverPreference.automaticKey)
+        defer { defaults.set(savedAutomatic, forKey: ChatTakeoverPreference.automaticKey) }
+        var sent: [String] = []
+        let (harness, box) = await refuseTypedSendInDesktopChat(
+            "From my phone", sends: { sent.append($0) }, takenOver: { false },
+            takeover: { ["ok": true, "status": "busy", "surface": "desktop"] }
+        )
+        XCTAssertTrue(harness.appState.composerRestoreRequests.isEmpty)
+
+        harness.appState.dismissChatTakeover()
+
+        XCTAssertEqual(harness.appState.composerRestoreRequests.map(\.draft.text), ["From my phone"])
+        XCTAssertEqual(sent, ["From my phone"])
+        box.client.disconnect()
+    }
+
     func testCallRequestRefusedAgainAfterTakeoverStopsAndALaterOneTriesAgain() async {
         // Desktop took the chat straight back: one resend, no third send,
         // and the call says the chat is open there. The next request takes

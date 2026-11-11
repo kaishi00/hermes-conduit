@@ -904,7 +904,9 @@ chat (SESSION_NOT_OWNED): Hermes Desktop or a terminal with a claim, or the
 gateway's ledger running other work in it, like another bot's message in a
 Bot Chat.
 
-**Siblings:** the composer's offer and automatic takeover · a call's request
+**Siblings:** the composer's offer and automatic takeover, and the refused
+typed message an automatic takeover keeps and sends (a "Sends when connected"
+message's too) · a call's request
 in the open chat (Classic, Local Live, the live modes) · a call's request off
 screen (CarPlay and Watch calls too) · chats, project chats and Bot Chat ·
 Pulse's own takeover · the plugin's takeover route · the idle claim release
@@ -917,7 +919,9 @@ update notice
 
 **Code**
 - Offer, owner and sentences: `Conduit/Services/ChatTakeover.swift` (ChatTakeoverState.owner, ChatTakeoverClient, ChatTakeoverOutcome)
-- Flow: `Conduit/Services/AppState.swift` (noteChatOwnedElsewhere, takeOverChat, chatTakeoverProfile, runChatTakeover, noteChatTakeoverOwner, submitComposerForCall, takeOverChatForCall, sendCallPromptTakingOver), shown by `Conduit/Views/Components/ComposerBar.swift`
+- Flow: `Conduit/Services/AppState.swift` (noteChatOwnedElsewhere, takeOverChat, chatTakeoverProfile, runChatTakeover, noteChatTakeoverOwner, submitComposerForCall, takeOverChatForCall, sendCallPromptTakingOver), shown by `Conduit/Views/Components/ComposerBar.swift` (resendAfterChatTakeover, also after a restore puts the words back)
+- Kept typed message: `Conduit/Services/AppState.swift` (keepsWordsForChatTakeover, returnHeldTakeoverMessageIfEnded, canSendHeldTakeoverMessage, sendHeldTakeoverMessage), `Conduit/Services/ChatTakeover.swift` (ChatTakeoverHeldMessage), `Conduit/Services/AppState+PendingSend.swift` (returnFailedComposerSubmission, restoreFailedPendingComposerSend)
+- Tests: `ConduitTests/ChatTakeoverTests.swift`, `ConduitTests/AppStateForegroundLifecycleTests.swift` (testSendRefusedByDesktopOwnershipOffersTakeover, the call takeovers, testTypedSendRefusedByDesktopIsSentByConduitAfterTheAutomaticTakeover, testKeptTypedMessageComesBack…)
 - Setting: `Conduit/Views/AuxiliaryViews.swift` (Take over automatically)
 - Plugin: `notifier/chat_takeover.py` (take_over_session, gateway_queue_owner), `notifier/dashboard/api/chats.py` (/sessions/takeover), `notifier/pulse_host.py` (take_over), `notifier/conduit_claims.py` (idle claim release)
 
@@ -925,6 +929,7 @@ update notice
 - Only another process's claim is dropped, never while it runs a turn; this dashboard's own claims answer same_host (2026-10-02, #304; notifier #33, #101).
 - A call always takes over, whatever the setting, and Take over automatically is on by default (2026-10-21, #1066).
 - A Bot Chat's takeover asks the bot's profile, where its claims and ledger live (2026-10-25, #1261).
+- A typed message refused while Conduit takes the chat over automatically is kept by Conduit, not put back in the composer, and sent by Conduit once the chat is its own, as a call's request is (#1061); if it can't go from there (another chat open, the composer locked) its words go back and the composer sends them once it can, and if the takeover fails, can't happen, is dismissed or replaced, they go back to the composer unsent. With Take over automatically off, the words stay in the composer and the tapped takeover sends them (Eric, 2026-11-10, issue 2140, #PRNUM).
 - While the gateway's ledger holds the chat, nothing is dropped: the route answers busy, surface `bot` for another bot's message, and Conduit says the bot is answering another bot and sends once it finishes. Other queued work answers surface `gateway`, which reads as another Hermes window (it's a platform message or a job Hermes runs there), and is waited for the same way (2026-10-25, #1261; notifier #374).
 
 **Open gaps**
@@ -933,7 +938,7 @@ update notice
 - Classic shows a generic error when it can't take over (#1066).
 - Desktop isn't told it lost the chat and shows stale history until reopened (needs Hermes, #304).
 
-**Checked:** 2026-11-02, #1675 (takeover on a profile that turned the plugin off says how to turn it on, not to update (issue 1671; see "Conduit plugin update")); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1452 (a profile switch keeps the socket, so claims go by the idle release); 2026-10-25, #1261.
+**Checked:** 2026-11-11, #PRNUM (an automatic takeover keeps the refused typed message and sends it; issue 2140); 2026-11-02, #1675 (takeover on a profile that turned the plugin off says how to turn it on, not to update (issue 1671; see "Conduit plugin update")); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1452 (a profile switch keeps the socket, so claims go by the idle release); 2026-10-25, #1261.
 
 ## Ending a call and what gets saved
 
