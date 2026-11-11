@@ -607,7 +607,7 @@ private struct ChatTracesSection: View {
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Chat traces"), symbol: "waveform.path.ecg", tint: .conduitAccent) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Conduit notes how the open chat scrolls and lays out: row counts, sizes and timings, never what the messages say. When a chat jumps, freezes or stops scrolling, it saves the last few minutes on this device.")
+                Text("Conduit notes how the open chat scrolls and lays out: row counts, sizes and timings, never what the messages say. When a chat jumps, freezes, stops scrolling or shows none of its messages, it saves the last few minutes on this device.")
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 Text("If a chat jumped or got stuck, send its traces right after, while they still hold that moment.")

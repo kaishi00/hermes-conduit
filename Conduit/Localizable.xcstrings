@@ -411390,84 +411390,84 @@
         }
       }
     },
-    "Conduit notes how the open chat scrolls and lays out: row counts, sizes and timings, never what the messages say. When a chat jumps, freezes or stops scrolling, it saves the last few minutes on this device." : {
+    "Conduit notes how the open chat scrolls and lays out: row counts, sizes and timings, never what the messages say. When a chat jumps, freezes, stops scrolling or shows none of its messages, it saves the last few minutes on this device." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit hält fest, wie der offene Chat scrollt und sich aufbaut: Zeilenzahlen, Größen und Zeiten, nie was in den Nachrichten steht. Wenn ein Chat springt, einfriert oder nicht mehr scrollt, speichert es die letzten Minuten auf diesem Gerät."
+            "value" : "Conduit hält fest, wie der offene Chat scrollt und sich aufbaut: Zeilenzahlen, Größen und Zeiten, nie was in den Nachrichten steht. Wenn ein Chat springt, einfriert, nicht mehr scrollt oder keine seiner Nachrichten zeigt, speichert es die letzten Minuten auf diesem Gerät."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit anota cómo se desplaza y se dibuja el chat abierto: número de filas, tamaños y tiempos, nunca lo que dicen los mensajes. Cuando un chat salta, se congela o deja de desplazarse, guarda los últimos minutos en este dispositivo."
+            "value" : "Conduit anota cómo se desplaza y se dibuja el chat abierto: número de filas, tamaños y tiempos, nunca lo que dicen los mensajes. Cuando un chat salta, se congela, deja de desplazarse o no muestra ninguno de sus mensajes, guarda los últimos minutos en este dispositivo."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit note comment le chat ouvert défile et se met en page : nombre de lignes, tailles et durées, jamais ce que disent les messages. Quand un chat saute, se fige ou ne défile plus, il enregistre les dernières minutes sur cet appareil."
+            "value" : "Conduit note comment le chat ouvert défile et se met en page : nombre de lignes, tailles et durées, jamais ce que disent les messages. Quand un chat saute, se fige, ne défile plus ou n’affiche aucun de ses messages, il enregistre les dernières minutes sur cet appareil."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit mencatat cara chat yang terbuka bergulir dan ditata: jumlah baris, ukuran, dan waktu, tidak pernah isi pesannya. Saat chat melompat, macet, atau berhenti bergulir, Conduit menyimpan beberapa menit terakhir di perangkat ini."
+            "value" : "Conduit mencatat cara chat yang terbuka bergulir dan ditata: jumlah baris, ukuran, dan waktu, tidak pernah isi pesannya. Saat chat melompat, macet, berhenti bergulir, atau tidak menampilkan satu pun pesannya, Conduit menyimpan beberapa menit terakhir di perangkat ini."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit annota come la chat aperta scorre e si dispone: numero di righe, dimensioni e tempi, mai cosa dicono i messaggi. Quando una chat salta, si blocca o smette di scorrere, salva gli ultimi minuti su questo dispositivo."
+            "value" : "Conduit annota come la chat aperta scorre e si dispone: numero di righe, dimensioni e tempi, mai cosa dicono i messaggi. Quando una chat salta, si blocca, smette di scorrere o non mostra nessuno dei suoi messaggi, salva gli ultimi minuti su questo dispositivo."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit は、開いているチャットのスクロールとレイアウトの様子（行数、サイズ、タイミング）を記録します。メッセージの内容は記録しません。チャットが飛んだり、フリーズしたり、スクロールしなくなったりすると、直前の数分間をこのデバイスに保存します。"
+            "value" : "Conduit は、開いているチャットのスクロールとレイアウトの様子（行数、サイズ、タイミング）を記録します。メッセージの内容は記録しません。チャットが飛んだり、フリーズしたり、スクロールしなくなったり、メッセージが1つも表示されなくなったりすると、直前の数分間をこのデバイスに保存します。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit는 열린 채팅이 스크롤되고 배치되는 방식(행 수, 크기, 시간)을 기록하며, 메시지 내용은 절대 기록하지 않습니다. 채팅이 튀거나 멈추거나 스크롤되지 않으면 마지막 몇 분을 이 기기에 저장합니다."
+            "value" : "Conduit는 열린 채팅이 스크롤되고 배치되는 방식(행 수, 크기, 시간)을 기록하며, 메시지 내용은 절대 기록하지 않습니다. 채팅이 튀거나 멈추거나 스크롤되지 않거나 메시지가 하나도 보이지 않으면 마지막 몇 분을 이 기기에 저장합니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit zapisuje, jak otwarty czat się przewija i układa: liczbę wierszy, rozmiary i czasy, nigdy treść wiadomości. Gdy czat przeskoczy, zawiesi się lub przestanie się przewijać, zapisuje ostatnie minuty na tym urządzeniu."
+            "value" : "Conduit zapisuje, jak otwarty czat się przewija i układa: liczbę wierszy, rozmiary i czasy, nigdy treść wiadomości. Gdy czat przeskoczy, zawiesi się, przestanie się przewijać lub nie pokaże żadnej wiadomości, zapisuje ostatnie minuty na tym urządzeniu."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O Conduit anota como o chat aberto rola e se organiza: número de linhas, tamanhos e tempos, nunca o que as mensagens dizem. Quando um chat pula, trava ou para de rolar, ele salva os últimos minutos neste dispositivo."
+            "value" : "O Conduit anota como o chat aberto rola e se organiza: número de linhas, tamanhos e tempos, nunca o que as mensagens dizem. Quando um chat pula, trava, para de rolar ou não mostra nenhuma das suas mensagens, ele salva os últimos minutos neste dispositivo."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit отмечает, как открытый чат прокручивается и раскладывается: число строк, размеры и время, но никогда не содержимое сообщений. Когда чат прыгает, зависает или перестаёт прокручиваться, Conduit сохраняет последние минуты на этом устройстве."
+            "value" : "Conduit отмечает, как открытый чат прокручивается и раскладывается: число строк, размеры и время, но никогда не содержимое сообщений. Когда чат прыгает, зависает, перестаёт прокручиваться или не показывает ни одного сообщения, Conduit сохраняет последние минуты на этом устройстве."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit, açık sohbetin nasıl kaydığını ve yerleştiğini kaydeder: satır sayıları, boyutlar ve süreler; mesajların içeriğini asla kaydetmez. Bir sohbet sıçradığında, donduğunda ya da kaymayı bıraktığında son birkaç dakikayı bu cihaza kaydeder."
+            "value" : "Conduit, açık sohbetin nasıl kaydığını ve yerleştiğini kaydeder: satır sayıları, boyutlar ve süreler; mesajların içeriğini asla kaydetmez. Bir sohbet sıçradığında, donduğunda, kaymayı bıraktığında ya da hiçbir mesajını göstermediğinde son birkaç dakikayı bu cihaza kaydeder."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit 会记录打开的聊天如何滚动和排版：行数、尺寸和时间，绝不记录消息内容。当聊天跳动、卡住或无法滚动时，它会把最近几分钟保存在这台设备上。"
+            "value" : "Conduit 会记录打开的聊天如何滚动和排版：行数、尺寸和时间，绝不记录消息内容。当聊天跳动、卡住、无法滚动或一条消息都不显示时，它会把最近几分钟保存在这台设备上。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Conduit 會記錄開啟的聊天如何捲動和排版：列數、尺寸和時間，絕不記錄訊息內容。當聊天跳動、卡住或無法捲動時，它會把最近幾分鐘保存在這部裝置上。"
+            "value" : "Conduit 會記錄開啟的聊天如何捲動和排版：列數、尺寸和時間，絕不記錄訊息內容。當聊天跳動、卡住、無法捲動或一則訊息都不顯示時，它會把最近幾分鐘保存在這部裝置上。"
           }
         }
       }

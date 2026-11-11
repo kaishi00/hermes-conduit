@@ -6206,26 +6206,20 @@ final class AppState: ObservableObject {
     /// later run would wait on it in vain.
     var shortcutConnectHeld = false
     var isShortcutSendRunning: Bool { shortcutSendsRunning > 0 || shortcutConnectHeld }
-    /// How long a connect may run on after its run. A test seam.
-    var shortcutConnectHoldLimit: Duration = .seconds(60)
 
-    /// A shortcut run ended. A connect still under way runs on, until it
-    /// lands or fails (or the limit passes), so it settles its own state.
+    /// A shortcut run ended. A connect still under way runs on until it
+    /// lands or fails, however long that takes, so it settles its own state:
+    /// a time limit would cut a slow one off and leave the same "connecting"
+    /// behind. The hold starts nothing new, since every reconnect path waits
+    /// while a connect is under way; the phone coming on screen settles it
+    /// too.
     func endShortcutSend() {
         shortcutSendsRunning -= 1
         guard shortcutSendsRunning == 0, isConnecting, !isConnected, !shortcutConnectHeld else { return }
         shortcutConnectHeld = true
-        let limit = shortcutConnectHoldLimit
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await withTaskGroup(of: Void.self) { group in
-                group.addTask { @MainActor in
-                    for await connecting in self.$isConnecting.values where !connecting { return }
-                }
-                group.addTask { try? await Task.sleep(for: limit) }
-                await group.next()
-                group.cancelAll()
-            }
+            for await connecting in self.$isConnecting.values where !connecting { break }
             self.shortcutConnectHeld = false
         }
     }

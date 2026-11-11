@@ -533,6 +533,9 @@ final class CarPlayTransportRecoveryTests: XCTestCase {
 
         XCTAssertEqual(appState.shortcutSendsRunning, 0)
         XCTAssertTrue(appState.isShortcutSendRunning, "the connect under way may still finish")
+        // However long it takes: no time limit cuts a slow connect off.
+        for _ in 0..<200 { await Task.yield() }
+        XCTAssertTrue(appState.shortcutConnectHeld, "still under way, still held")
         appState.isConnecting = false
         for _ in 0..<500 where appState.shortcutConnectHeld { await Task.yield() }
         XCTAssertFalse(appState.isShortcutSendRunning, "settled, the phone's gate is back")
