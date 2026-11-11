@@ -11,7 +11,7 @@
 //  job's runs as blocks across the top, a promise in the words it was
 //  made, a status as its state writ large on a tinted card, steps as a
 //  checklist, a value large with how it moved, who the user is waiting on
-//  and for how long, and a card body as a chat draws a conduit_show card.
+//  and for how long, what a watch found and where, and a card body as a chat draws a conduit_show card.
 //  Plain words draw nothing more.
 //
 
@@ -60,12 +60,20 @@ struct PulseLookStyle {
             return (.indigo, "number", .lead)
         case .waiting:
             return (.pink, "person.badge.clock", .lead)
+        case .found:
+            return (Self.foundTint, "binoculars.fill", .lead)
         case .drawn:
             return (.conduitAccent, "", .under)
         case .brief, .plain:
             return (.conduitAccent, "", .none)
         }
     }
+
+    /// Mint, darker on a light screen, where the system's is too pale to read
+    /// as large words.
+    static let foundTint = Color(UIColor { traits in
+        traits.userInterfaceStyle == .dark ? .systemMint : UIColor(red: 0, green: 0.52, blue: 0.47, alpha: 1)
+    })
 
     /// A status card is tinted whole: its state is the news.
     static func washes(_ body: PulseLook.Body) -> Bool {
@@ -103,6 +111,8 @@ struct PulseLookBody: View {
                 number(label, value: value, unit: unit, was: was, limit: limit, better: better)
             case let .waiting(person, what, since):
                 waiting(person, what: what, since: since)
+            case let .found(asked, answer, place):
+                found(asked, answer: answer, place: place)
             case let .drawn(card):
                 RichCardView(card: card)
             case .brief, .plain:
@@ -318,6 +328,29 @@ struct PulseLookBody: View {
                         .foregroundStyle(tint)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+            }
+            Spacer(minLength: 0)
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    /// What was found leads the card, then what the user asked for and
+    /// where it turned up.
+    private func found(_ asked: String, answer: String, place: String) -> some View {
+        HStack(alignment: .top, spacing: 8) {
+            Image(systemName: style.symbol)
+                .scaledFont(.title2.weight(.semibold))
+                .foregroundStyle(tint)
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(verbatim: answer)
+                    .scaledFont(.title3.weight(.bold))
+                    .foregroundStyle(tint)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(verbatim: AppLocalization.string("You asked: \(asked)") + " · " + place)
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             }
             Spacer(minLength: 0)
         }

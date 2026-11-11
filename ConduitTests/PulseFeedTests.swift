@@ -1983,9 +1983,10 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertTrue(PresentedScreensSync.features.contains("pulse-looks"))
     }
 
-    /// Eric, 2026-11-11: a value that moved and someone the user is waiting
-    /// on get card types of their own; facts that don't hold up draw plain.
-    func testANumberAndAWaitingOnDecodeAndDrawPlainWithoutTheirFacts() throws {
+    /// Eric, 2026-11-11: a value that moved, someone the user is waiting on
+    /// and what a watch found get card types of their own; facts that don't
+    /// hold up draw plain.
+    func testANumberAWaitingOnAndAFoundDecodeAndDrawPlainWithoutTheirFacts() throws {
         func look(_ text: String) throws -> PulseLook {
             try XCTUnwrap(PulseLook(json: try JSONSerialization.jsonObject(with: Data(text.utf8))))
         }
@@ -2007,12 +2008,17 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(try look(#"{"shape": "waiting", "facts": {"person": "Dana", "what": "a reply", "since": "soon"}}"#).body,
                        .waiting(person: "Dana", what: "a reply", since: nil))
         XCTAssertEqual(try look(#"{"shape": "waiting", "facts": {"person": "Dana"}}"#).body, .plain)
+        XCTAssertEqual(try look("""
+        {"shape": "found", "facts": {"asked": "tickets for the show", "answer": "On sale Friday at 10am", "where": "Ticketmaster"}}
+        """).body, .found(asked: "tickets for the show", answer: "On sale Friday at 10am", place: "Ticketmaster"))
+        XCTAssertEqual(try look(#"{"shape": "found", "facts": {"asked": "tickets", "answer": "On sale Friday"}}"#).body, .plain)
+        XCTAssertEqual(PulseLookStyle(.found(asked: "x", answer: "y", place: "z")).place, .lead)
         XCTAssertEqual(PulseLookBody.amount(91, "%"), 91.formatted(.number.locale(AppLocalization.formattingLocale)) + "%")
         XCTAssertTrue(PulseLookBody.amount(3, "GB").hasSuffix(" GB"))
         XCTAssertEqual(PulseLookStyle(.number(label: "x", value: 1, unit: "", was: nil, limit: nil, better: nil)).place, .lead)
         XCTAssertEqual(PulseLookStyle(.waiting(person: "x", what: "y", since: nil)).place, .lead)
         // The plugin offers them only to a Conduit that says it draws them.
-        XCTAssertTrue(PresentedScreensSync.features.contains("pulse-number-waiting"))
+        XCTAssertTrue(PresentedScreensSync.features.contains("pulse-more-shapes"))
     }
 
     func testAskNeedsAnAskAndAnOpenCard() throws {

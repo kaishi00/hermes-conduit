@@ -7,7 +7,7 @@
 //  (pulse_picks.py). A shape with its facts (a date, something due, a
 //  job's recent runs, a promise in the words it was made, a status, the
 //  steps of something underway, a value that moved, someone the user is
-//  waiting on, a card body drawn like a chat's conduit_show card, or plain
+//  waiting on, what a watch found, a card body drawn like a chat's conduit_show card, or plain
 //  words) and at most two actions. The
 //  morning brief's card carries its parts the same way: its summary, what's
 //  on today, what's still open, and how many of each. A card from an older
@@ -40,12 +40,15 @@ struct PulseLook: Equatable {
         case status(label: String, state: State)
         /// Named steps and the one it's at, counted from 0.
         case steps(names: [String], at: Int)
-        /// A measured value (plugin `pulse-number-waiting`): what it is, the
+        /// A measured value (plugin `pulse-more-shapes`): what it is, the
         /// value and its unit, and the earlier value, a limit and which way
         /// is good when the context gave them.
         case number(label: String, value: Double, unit: String, was: Double?, limit: Double?, better: Better?)
         /// Someone who owes the user a reply or a thing, and since when.
         case waiting(person: String, what: String, since: Date?)
+        /// The answer to something the user asked Hermes to watch for or
+        /// find out: what they asked, what was found, and where.
+        case found(asked: String, answer: String, place: String)
         /// A card body drawn as a chat's conduit_show card is.
         case drawn(RichCard)
         /// The morning brief's parts (pulse_brief.look).
@@ -159,6 +162,9 @@ struct PulseLook: Equatable {
             guard !text("person").isEmpty, !text("what").isEmpty else { return nil }
             return .waiting(person: text("person"), what: text("what"),
                             since: Self.day(text("since"), calendar: calendar)?.date)
+        case "found":
+            guard !text("asked").isEmpty, !text("answer").isEmpty, !text("where").isEmpty else { return nil }
+            return .found(asked: text("asked"), answer: text("answer"), place: text("where"))
         case "drawn":
             guard let body = facts["body"], let card = RichCard.cards(raw: [body]).first else { return nil }
             return .drawn(card)
