@@ -219,21 +219,24 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         defer { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
         let first = SavedDashboard(id: UUID(), label: "First", normalizedURL: "https://one.example")
         let second = SavedDashboard(id: UUID(), label: "Second", normalizedURL: "https://two.example")
-        let recorder = TurnSurfaceRecorder()
-        recorder.discardErrors = [URLError(.timedOut)]
-        let harness = makeHarness(recorder: recorder,
+        let harness = makeHarness(recorder: nil,
                                   registry: SavedDashboardRegistry(activeDashboardID: first.id, dashboards: [first, second]))
         let appState = harness.appState
-        appState.turnSurfaceDiscardRetryDelays = [.milliseconds(20), .milliseconds(20), .milliseconds(20)]
+        appState.turnSurfaceDiscardRetryDelays = [.milliseconds(1), .milliseconds(1), .milliseconds(1)]
+        let recorder = TurnSurfaceRecorder()
+        // The first try fails, and the dashboard switches before it returns:
+        // whenever the retry wakes, the switch has already landed.
+        appState.turnSurfaceDiscarder = { [weak appState] _ in
+            recorder.discardTries += 1
+            appState?.selectDashboardTarget(second.id)
+            throw URLError(.timedOut)
+        }
 
         appState.discardTurnSurface(runtimeSessionID: "rt-first", text: "yes",
                                     after: RpcError(code: 4001, message: "invalid_params"), reportedOn: first.id)
         for _ in 0..<200 where recorder.discardTries == 0 { try? await Task.sleep(for: .milliseconds(1)) }
-        XCTAssertEqual(recorder.discardTries, 1)
-        appState.selectDashboardTarget(second.id)
-        try? await Task.sleep(for: .milliseconds(120))
+        try? await Task.sleep(for: .milliseconds(50))
         XCTAssertEqual(recorder.discardTries, 1, "Switched away while it waited: no retry goes")
-        XCTAssertEqual(recorder.discards, [])
 
         appState.discardTurnSurface(runtimeSessionID: "rt-first", text: "again",
                                     after: RpcError(code: 4001, message: "invalid_params"), reportedOn: first.id)
