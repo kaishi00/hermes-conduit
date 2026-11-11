@@ -43,6 +43,10 @@ private struct BotScreenContent: View {
     @State private var sudoPassword = ""
     @State private var confirmsStop = false
     @FocusState private var typeFieldFocused: Bool
+    @State private var showsFullScreen = false
+    @State private var fullScreenTyping = false
+    @State private var isZoomed = false
+    @State private var resetZoom = 0
 
     init(target: BotScreenTarget, client: HermesClient?, work: BotWorkStore) {
         self.target = target
@@ -89,6 +93,11 @@ private struct BotScreenContent: View {
                 model.foregrounded()
                 Task { await model.load() }
             }
+        }
+        // The screen filling the phone; it closes when the screen stops.
+        .fullScreenCover(isPresented: $showsFullScreen) { fullScreen }
+        .onChange(of: model.status?.isRunning == true) { _, running in
+            if !running { showsFullScreen = false }
         }
         // A new or cancelled ask never takes the password typed for another.
         .onChange(of: model.sudoRequestID) { _, _ in sudoPassword = "" }
@@ -310,23 +319,145 @@ private struct BotScreenContent: View {
     private func running(_ status: BotScreenStatus) -> some View {
         VStack(alignment: .leading, spacing: 12) {
             controlChip(status)
-            BotScreenWebView(model: model)
-                .aspectRatio(status.aspectRatio, contentMode: .fit)
-                .frame(maxWidth: .infinity)
-                .background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 10))
-                .clipShape(RoundedRectangle(cornerRadius: 10))
-                .overlay {
-                    RoundedRectangle(cornerRadius: 10)
-                        .strokeBorder(model.iHold ? Color.red : Color.clear, lineWidth: 3)
-                }
-                .overlay {
-                    streamOverlay
-                }
-                .accessibilityLabel(AppLocalization.string("\(target.botName)'s Screen"))
+            if showsFullScreen {
+                // One page draws the screen at a time: the full screen's, now.
+                Label(AppLocalization.string("Showing in full screen"), systemImage: "arrow.up.left.and.arrow.down.right")
+                    .scaledFont(.subheadline)
+                    .foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, minHeight: 120)
+                    .background(Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
+            } else {
+                screenView(status)
+                Text(AppLocalization.string("Pinch to zoom in. Drag with two fingers to look around."))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+            }
             useLine
             controls(status)
-            if model.iHold { typeBar }
+            if model.iHold, !showsFullScreen { typeBar }
         }
+    }
+
+    /// The live screen, zoomable, with its stream's state over it.
+    private func screenView(_ status: BotScreenStatus) -> some View {
+        BotScreenWebView(model: model, isZoomed: $isZoomed, resetZoom: resetZoom)
+            .aspectRatio(status.aspectRatio, contentMode: .fit)
+            .frame(maxWidth: .infinity)
+            .background(Color.black.opacity(0.85), in: RoundedRectangle(cornerRadius: 10))
+            .clipShape(RoundedRectangle(cornerRadius: 10))
+            .overlay {
+                RoundedRectangle(cornerRadius: 10)
+                    .strokeBorder(model.iHold ? Color.red : Color.clear, lineWidth: 3)
+            }
+            .overlay {
+                streamOverlay
+            }
+            .overlay(alignment: .bottomTrailing) {
+                if isZoomed {
+                    Button {
+                        resetZoom += 1
+                    } label: {
+                        Image(systemName: "arrow.down.right.and.arrow.up.left")
+                            .font(.system(size: 13, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 32, height: 32)
+                            .background(Circle().fill(Color.black.opacity(0.6)))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(AppLocalization.string("Show Whole Screen"))
+                }
+            }
+            .accessibilityLabel(AppLocalization.string("\(target.botName)'s Screen"))
+    }
+
+    /// The screen filling the phone, turned sideways with it (Eric
+    /// 2026-11-11): the desktop as big as the phone can show it, zoomable,
+    /// with Take Over, Hand Back and typing at hand.
+    private var fullScreen: some View {
+        GeometryReader { proxy in
+            let wide = proxy.size.width > proxy.size.height
+            let layout = wide ? AnyLayout(HStackLayout(spacing: 12)) : AnyLayout(VStackLayout(spacing: 12))
+            ZStack {
+                Color.black.ignoresSafeArea()
+                layout {
+                    if let status = model.status, status.isRunning {
+                        screenView(status)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    } else {
+                        Color.clear
+                    }
+                    fullScreenControls(wide: wide)
+                }
+                .padding(wide ? 8 : 12)
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if fullScreenTyping, model.iHold {
+                    typeBar
+                        .padding(12)
+                        .background(.regularMaterial)
+                }
+            }
+        }
+        .environment(\.colorScheme, .dark)
+        .statusBarHidden()
+        .persistentSystemOverlays(.hidden)
+        .onAppear { InterfaceOrientationGate.allowLandscape() }
+        .onDisappear {
+            fullScreenTyping = false
+            InterfaceOrientationGate.endLandscape()
+        }
+        .onChange(of: model.iHold) { _, holds in
+            if !holds { fullScreenTyping = false }
+        }
+    }
+
+    /// Round buttons beside the screen when it's wide, above it when it's tall.
+    private func fullScreenControls(wide: Bool) -> some View {
+        let buttons = Group {
+            fullScreenButton(AppLocalization.string("Exit Full Screen"), systemImage: "xmark") {
+                showsFullScreen = false
+            }
+            if model.iHold {
+                fullScreenButton(AppLocalization.string("Hand Back"), systemImage: "arrow.uturn.backward", tint: .red) {
+                    Haptics.light()
+                    Task { await model.handBack() }
+                }
+                fullScreenButton(fullScreenTyping ? AppLocalization.string("Hide Keyboard") : AppLocalization.string("Type on the screen"),
+                                 systemImage: "keyboard", selected: fullScreenTyping) {
+                    fullScreenTyping.toggle()
+                }
+            } else {
+                fullScreenButton(AppLocalization.string("Take Over"), systemImage: "hand.raised") {
+                    Haptics.light()
+                    Task { await model.takeOver() }
+                }
+                .disabled(model.stream != .live)
+            }
+        }
+        .disabled(model.isBusy)
+        return Group {
+            if wide {
+                VStack(spacing: 12) { buttons; Spacer(minLength: 0) }
+            } else {
+                HStack(spacing: 12) { buttons; Spacer(minLength: 0) }
+            }
+        }
+    }
+
+    private func fullScreenButton(_ title: String, systemImage: String, tint: Color? = nil,
+                                  selected: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 17, weight: .semibold))
+                .foregroundStyle(selected ? Color.black : Color.white)
+                .frame(width: 44, height: 44)
+                .background(Circle().fill(selected ? Color.white : (tint ?? Color.white.opacity(0.18))))
+                .contentShape(Circle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
 
     @ViewBuilder private var streamOverlay: some View {
@@ -403,6 +534,14 @@ private struct BotScreenContent: View {
                 .tint(.red)
                 .disabled(model.stream != .live)
             }
+            Button {
+                showsFullScreen = true
+            } label: {
+                Image(systemName: "arrow.up.left.and.arrow.down.right")
+                    .imageScale(.large)
+            }
+            .accessibilityLabel(AppLocalization.string("Full Screen"))
+            .disabled(model.stream != .live)
             Menu {
                 if model.someoneElseHolds {
                     Button(AppLocalization.string("Hand Back for Them")) { Task { await model.handBack(force: true) } }
@@ -484,13 +623,18 @@ private struct BotScreenChipStyle: LabelStyle {
     }
 }
 
-/// The page that draws the screen: noVNC in a web view, fed by the model.
+/// The page that draws the screen: noVNC in a web view, fed by the model,
+/// inside a frame that zooms (`BotScreenZoomView`).
 struct BotScreenWebView: UIViewRepresentable {
     @ObservedObject var model: BotScreenModel
+    /// Zoomed in past the screen's fit, for the reset button.
+    @Binding var isZoomed: Bool
+    /// Bumped to go back to the whole screen.
+    var resetZoom = 0
 
     func makeCoordinator() -> Coordinator { Coordinator(model: model) }
 
-    func makeUIView(context: Context) -> WKWebView {
+    func makeUIView(context: Context) -> BotScreenZoomView {
         let configuration = WKWebViewConfiguration()
         configuration.userContentController.add(WeakScriptHandler(context.coordinator), name: "screen")
         configuration.websiteDataStore = .nonPersistent()
@@ -499,28 +643,52 @@ struct BotScreenWebView: UIViewRepresentable {
         view.backgroundColor = .clear
         view.scrollView.isScrollEnabled = false
         view.scrollView.bounces = false
+        view.scrollView.pinchGestureRecognizer?.isEnabled = false
         context.coordinator.webView = view
+        context.coordinator.resetZoom = resetZoom
         if let url = Bundle.main.url(forResource: "BotScreenViewer", withExtension: "html") {
             view.loadFileURL(url, allowingReadAccessTo: url.deletingLastPathComponent())
         }
-        return view
+        let zoom = BotScreenZoomView(content: view)
+        zoom.onZoomChange = { [weak coordinator = context.coordinator] zoomed in
+            coordinator?.zoomChanged(zoomed)
+        }
+        return zoom
     }
 
-    func updateUIView(_ view: WKWebView, context: Context) {}
+    func updateUIView(_ view: BotScreenZoomView, context: Context) {
+        context.coordinator.isZoomed = $isZoomed
+        // One finger clicks once you've taken over; before that it looks around.
+        view.oneFingerPans = !model.iHold
+        if context.coordinator.resetZoom != resetZoom {
+            context.coordinator.resetZoom = resetZoom
+            view.reset()
+        }
+    }
 
-    static func dismantleUIView(_ view: WKWebView, coordinator: Coordinator) {
-        view.configuration.userContentController.removeScriptMessageHandler(forName: "screen")
-        coordinator.model?.detach()
+    static func dismantleUIView(_ view: BotScreenZoomView, coordinator: Coordinator) {
+        coordinator.webView?.configuration.userContentController.removeScriptMessageHandler(forName: "screen")
+        coordinator.model?.pageGone(coordinator)
     }
 
     @MainActor
     final class Coordinator: NSObject, WKScriptMessageHandler, BotScreenPage {
         weak var model: BotScreenModel?
         weak var webView: WKWebView?
+        var isZoomed: Binding<Bool>?
+        var resetZoom = 0
         private var ready = false
 
         init(model: BotScreenModel) {
             self.model = model
+        }
+
+        func zoomChanged(_ zoomed: Bool) {
+            // Told from inside a layout pass too: set after it.
+            DispatchQueue.main.async { [weak self] in
+                guard let isZoomed = self?.isZoomed, isZoomed.wrappedValue != zoomed else { return }
+                isZoomed.wrappedValue = zoomed
+            }
         }
 
         nonisolated func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
@@ -534,10 +702,7 @@ struct BotScreenWebView: UIViewRepresentable {
             switch body["type"] as? String {
             case "ready":
                 ready = true
-                model?.page = self
-                if let model, model.status?.isRunning == true, model.stream == .idle {
-                    Task { await model.attach() }
-                }
+                if let model { Task { await model.pageReady(self) } }
             case "send":
                 if let text = body["data"] as? String, let data = Data(base64Encoded: text) {
                     model?.pageSent(data, tag: tag)
@@ -583,6 +748,149 @@ private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         target?.userContentController(controller, didReceive: message)
+    }
+}
+
+/// The screen's frame, zoomed by a pinch and moved by a two-finger drag
+/// (one finger too while the screen is only watched). It grows the web view
+/// itself rather than scaling its picture, so noVNC redraws it sharp and
+/// still maps a tap to the right spot on the desktop. The page leaves
+/// pinches and two-finger drags to this frame (viewer.js), so they don't
+/// also scroll or zoom on the desktop.
+final class BotScreenZoomView: UIView, UIGestureRecognizerDelegate {
+    static let maxScale: CGFloat = 4
+    static let doubleTapScale: CGFloat = 2.5
+
+    let content: UIView
+    var onZoomChange: ((Bool) -> Void)?
+    /// While only watched, one finger moves a zoomed screen and a double
+    /// tap zooms; once you've taken over, both are the desktop's.
+    var oneFingerPans = true {
+        didSet {
+            pan.minimumNumberOfTouches = oneFingerPans ? 1 : 2
+            doubleTap.isEnabled = oneFingerPans
+        }
+    }
+
+    private(set) var scale: CGFloat = 1
+    private(set) var offset: CGPoint = .zero
+    private var laidOutSize: CGSize = .zero
+    private let pinch = UIPinchGestureRecognizer()
+    private let pan = UIPanGestureRecognizer()
+    private let doubleTap = UITapGestureRecognizer()
+
+    init(content: UIView) {
+        self.content = content
+        super.init(frame: .zero)
+        clipsToBounds = true
+        addSubview(content)
+        pinch.addTarget(self, action: #selector(pinched(_:)))
+        pan.addTarget(self, action: #selector(panned(_:)))
+        pan.maximumNumberOfTouches = 2
+        doubleTap.addTarget(self, action: #selector(doubleTapped(_:)))
+        doubleTap.numberOfTapsRequired = 2
+        // The page still gets every touch: it tells a click from a pinch.
+        for recognizer in [pinch, pan, doubleTap] as [UIGestureRecognizer] {
+            recognizer.cancelsTouchesInView = false
+            recognizer.delegate = self
+            addGestureRecognizer(recognizer)
+        }
+        accessibilityHint = AppLocalization.string("Pinch to zoom in. Drag with two fingers to look around.")
+    }
+
+    @available(*, unavailable)
+    required init?(coder: NSCoder) { fatalError("init(coder:) is not used") }
+
+    override func layoutSubviews() {
+        super.layoutSubviews()
+        // A new size (the phone turned, the sheet grew) starts from the whole screen.
+        if bounds.size != laidOutSize {
+            laidOutSize = bounds.size
+            scale = 1
+            offset = .zero
+            onZoomChange?(false)
+        }
+        placeContent()
+    }
+
+    /// Back to the whole screen.
+    func reset() {
+        set(scale: 1, offset: .zero)
+    }
+
+    /// Zooms to `newScale`, keeping the desktop's point under `focus` (in
+    /// this view) where it is.
+    func zoom(to newScale: CGFloat, around focus: CGPoint) {
+        let next = min(max(newScale, 1), Self.maxScale)
+        let pointX = (focus.x - offset.x) / scale
+        let pointY = (focus.y - offset.y) / scale
+        set(scale: next, offset: CGPoint(x: focus.x - pointX * next, y: focus.y - pointY * next))
+    }
+
+    func move(by delta: CGPoint) {
+        set(scale: scale, offset: CGPoint(x: offset.x + delta.x, y: offset.y + delta.y))
+    }
+
+    private func set(scale next: CGFloat, offset proposed: CGPoint) {
+        let wasZoomed = scale > 1.01
+        scale = next
+        // The desktop always covers the frame: no black past its edges.
+        let size = bounds.size
+        offset = CGPoint(x: min(0, max(size.width - size.width * next, proposed.x)),
+                         y: min(0, max(size.height - size.height * next, proposed.y)))
+        placeContent()
+        let zoomed = scale > 1.01
+        if zoomed != wasZoomed { onZoomChange?(zoomed) }
+    }
+
+    private func placeContent() {
+        content.frame = CGRect(x: offset.x, y: offset.y,
+                               width: bounds.width * scale, height: bounds.height * scale)
+    }
+
+    @objc private func pinched(_ recognizer: UIPinchGestureRecognizer) {
+        guard recognizer.state == .began || recognizer.state == .changed else { return }
+        zoom(to: scale * recognizer.scale, around: recognizer.location(in: self))
+        recognizer.scale = 1
+    }
+
+    @objc private func panned(_ recognizer: UIPanGestureRecognizer) {
+        guard recognizer.state == .began || recognizer.state == .changed else { return }
+        // One finger moves only a zoomed screen; at its fit it does nothing.
+        if recognizer.numberOfTouches < 2, scale <= 1.01 { return }
+        move(by: recognizer.translation(in: self))
+        recognizer.setTranslation(.zero, in: self)
+    }
+
+    @objc private func doubleTapped(_ recognizer: UITapGestureRecognizer) {
+        if scale > 1.01 {
+            reset()
+        } else {
+            zoom(to: Self.doubleTapScale, around: recognizer.location(in: self))
+        }
+    }
+
+    override func gestureRecognizerShouldBegin(_ recognizer: UIGestureRecognizer) -> Bool {
+        // One finger on a screen at its fit is the sheet's scroll, not a move.
+        if recognizer === pan { return recognizer.numberOfTouches >= 2 || scale > 1.01 }
+        return super.gestureRecognizerShouldBegin(recognizer)
+    }
+
+    /// The page's own recognizers run alongside; the sheet's scroll doesn't.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldRecognizeSimultaneouslyWith other: UIGestureRecognizer) -> Bool {
+        !isOutsideScroll(other)
+    }
+
+    /// The sheet scrolls only once a move here is ruled out.
+    func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer,
+                           shouldBeRequiredToFailBy other: UIGestureRecognizer) -> Bool {
+        gestureRecognizer === pan && isOutsideScroll(other)
+    }
+
+    private func isOutsideScroll(_ recognizer: UIGestureRecognizer) -> Bool {
+        guard let view = recognizer.view as? UIScrollView else { return false }
+        return !view.isDescendant(of: self)
     }
 }
 
