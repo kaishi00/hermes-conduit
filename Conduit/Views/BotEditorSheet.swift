@@ -542,10 +542,12 @@ struct BotEditorSheet: View {
                 if showsKeptDetails, detailsState == .failed {
                     Text(AppLocalization.string("Could not load this bot's personality."))
                         .foregroundStyle(.secondary)
+                    detailsRetry
                 }
             } else if detailsState == .failed {
                 Text(AppLocalization.string("Could not load this bot's personality."))
                     .foregroundStyle(.secondary)
+                detailsRetry
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity)
@@ -554,6 +556,16 @@ struct BotEditorSheet: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
+    }
+
+    /// A details read that failed is asked again on a tap, as Edit
+    /// profile's Personality does, rather than closing the editor.
+    private var detailsRetry: some View {
+        Button(AppLocalization.string("Try Again")) {
+            detailsState = .idle
+            Task { await seed() }
+        }
+        .buttonStyle(.settings)
     }
 
     private var personalityFooter: String {

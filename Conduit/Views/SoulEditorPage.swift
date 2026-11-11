@@ -9,6 +9,8 @@ struct SoulEditorPage: View {
     let footer: String
     /// Why the last save didn't land, under the field.
     var error: String? = nil
+    /// Held still while a save is out, keeping its look and its text.
+    var isDisabled: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -30,6 +32,7 @@ struct SoulEditorPage: View {
                     TextEditor(text: $soul)
                         .scaledFont(.callout.monospaced())
                         .scrollContentBackground(.hidden)
+                        .disabled(isDisabled)
                 }
             }
                 .padding(8)
@@ -60,19 +63,29 @@ struct SoulPreview: View {
     let emptyText: String
 
     var body: some View {
-        let trimmed = soul.trimmingCharacters(in: .whitespacesAndNewlines)
+        let opening = Self.opening(of: soul)
         Group {
-            if trimmed.isEmpty {
+            if opening.isEmpty {
                 Text(emptyText)
                     .foregroundStyle(.secondary)
             } else {
-                Text(verbatim: trimmed)
+                Text(verbatim: opening)
                     .scaledFont(.callout.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(3)
             }
         }
         .padding(.vertical, 2)
+    }
+
+    /// The SOUL's first three lines, at most 300 characters, so VoiceOver
+    /// reads the opening the row shows rather than the whole SOUL.
+    static func opening(of soul: String) -> String {
+        let trimmed = soul.trimmingCharacters(in: .whitespacesAndNewlines)
+        let lines = trimmed.split(separator: "\n", omittingEmptySubsequences: false)
+        var opening = lines.prefix(3).joined(separator: "\n")
+        if opening.count > 300 { opening = String(opening.prefix(300)) }
+        return opening.count < trimmed.count ? opening + "…" : opening
     }
 }
 
@@ -87,6 +100,9 @@ struct ProfilePersonalitySection: View {
     @State private var loaded: String?
     @State private var kept: String?
     @State private var readFailed = false
+    @State private var isLoading = false
+    /// Counts reads, so only the newest one's answer is shown.
+    @State private var loadRun = 0
 
     var body: some View {
         if appState.canEditProfileSoul {
@@ -103,13 +119,9 @@ struct ProfilePersonalitySection: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    if loaded == nil, readFailed {
-                        Text(AppLocalization.string("Could not load this profile's personality."))
-                            .foregroundStyle(.secondary)
-                    }
+                    if loaded == nil, readFailed { readFailure }
                 } else if readFailed {
-                    Text(AppLocalization.string("Could not load this profile's personality."))
-                        .foregroundStyle(.secondary)
+                    readFailure
                 } else {
                     ProgressView()
                         .frame(maxWidth: .infinity)
@@ -118,17 +130,42 @@ struct ProfilePersonalitySection: View {
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
-            .task(id: profile) { await load() }
+            .task(id: profile) {
+                loaded = nil
+                readFailed = false
+                await load()
+            }
+        }
+    }
+
+    /// A read that failed says so and asks again on a tap, so a Hermes
+    /// that comes back doesn't need Edit profile left and opened again.
+    @ViewBuilder
+    private var readFailure: some View {
+        Text(AppLocalization.string("Could not load this profile's personality."))
+            .foregroundStyle(.secondary)
+        if isLoading {
+            // The note stays up until the read asked again answers.
+            ProgressView()
+                .frame(maxWidth: .infinity)
+        } else {
+            Button(AppLocalization.string("Try Again")) {
+                Task { await load() }
+            }
+            .buttonStyle(.settings)
         }
     }
 
     private func load() async {
-        loaded = nil
-        readFailed = false
+        loadRun += 1
+        let run = loadRun
+        isLoading = true
         kept = appState.keptProfileSoul(profile)
         let answer = await appState.loadProfileSoul(profile)
-        guard !Task.isCancelled else { return }
-        loaded = answer
+        // A newer read, or a profile switch, owns what's shown.
+        guard !Task.isCancelled, run == loadRun else { return }
+        isLoading = false
+        if let answer { loaded = answer }
         readFailed = answer == nil
     }
 }
@@ -154,9 +191,10 @@ private struct ProfileSoulEditor: View {
         SoulEditorPage(
             soul: Binding(get: { draft ?? loaded ?? kept ?? "" }, set: { draft = $0 }),
             // A save compares with Hermes' own, never the kept copy.
-            isReadOnly: loaded == nil || isSaving,
+            isReadOnly: loaded == nil,
             footer: AppLocalization.string("Saved as the profile's SOUL.md, the same one Edit Bot shows."),
-            error: error
+            error: error,
+            isDisabled: isSaving
         )
         .toolbar {
             ToolbarItem(placement: .confirmationAction) {
