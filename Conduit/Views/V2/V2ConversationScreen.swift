@@ -573,7 +573,7 @@ struct V2ConversationScreen: View {
                 // iPadOS's own sidebar shortcut. A tab kept behind the
                 // selected one still holds its chat, and a shortcut
                 // ignores opacity and hit testing: only the shown tab's.
-                .keyboardShortcut("s", modifiers: [.command, .control])
+                .keyboardShortcut(ConduitKeyboardShortcut.chatList.shortcut)
                 .disabled(!shell.isTabActive)
                 .accessibilityLabel(shell.isSplit ? AppLocalization.string("Hide chat list") : AppLocalization.string("Show chat list"))
                 .accessibilityIdentifier("conversation.chatListToggle")
@@ -674,7 +674,7 @@ struct V2ConversationScreen: View {
                         .frame(width: 40, height: 40)
                         .modifier(V2PreGlassToolbarControl())
                 }
-                .keyboardShortcut("a", modifiers: [.command, .option])
+                .keyboardShortcut(ConduitKeyboardShortcut.artifacts.shortcut)
                 // The cover hides the panel: it waits for the coming chat.
                 .disabled(!shell.isTabActive || appState.botChatComingOverAnother != nil)
                 .accessibilityLabel(showsSidePanel ? AppLocalization.string("Hide artifacts") : AppLocalization.string("Show artifacts"))

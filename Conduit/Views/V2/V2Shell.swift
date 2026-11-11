@@ -816,6 +816,12 @@ struct V2Shell: View {
                 visitedTabs.insert(.settings)
                 selectTab(.settings)
             }
+            // ⌘1 to ⌘4 and ⌘, (KeyboardShortcuts.swift); nothing is in
+            // front, which the command checked.
+            .onReceive(KeyboardCommands.tabRequests) { tab in
+                visitedTabs.insert(tab)
+                selectTab(tab)
+            }
             .onChange(of: appState.kanbanTaskOpenRequest) { _, request in
                 // Tasks › Board opens the task and clears the request.
                 guard request != nil else { return }

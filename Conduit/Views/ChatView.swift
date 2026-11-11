@@ -319,6 +319,24 @@ struct ChatView: View {
             // shows, not for every redraw of this view.
             ComposerBar(appState: appState).equatable()
         }
+        // ⌘. stops the reply, as the composer's Stop does, a draft in the
+        // field or not. Only the shown tab's chat: a hidden tab keeps its
+        // screens mounted, and a shortcut ignores opacity.
+        .background {
+            Button(ConduitKeyboardShortcut.stop.title) { stopFromKeyboard() }
+                .keyboardShortcut(ConduitKeyboardShortcut.stop.shortcut)
+                .disabled(!shell.isTabActive)
+                .frame(width: 0, height: 0)
+                .opacity(0)
+                .accessibilityHidden(true)
+        }
+    }
+
+    private func stopFromKeyboard() {
+        guard KeyboardCommands.nothingInFront,
+              appState.isBusy || appState.workstreamStoppedByComposer != nil else { return }
+        Haptics.warning()
+        Task { await appState.cancelCurrent(stopsWorkstream: true) }
     }
 
     private var renderedScrollScope: ChatRenderedScrollScope? {

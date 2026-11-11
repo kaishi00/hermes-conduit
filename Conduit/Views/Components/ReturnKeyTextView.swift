@@ -372,8 +372,17 @@ class ReturnKeyTextView: UITextView {
         return command
     }()
 
+    /// ⌘Return sends whatever the Return key setting says, as in Mail,
+    /// Slack and Messages, so a hardware keyboard on an iPad (where Return
+    /// keeps its newline by default) can send too (issue 2219).
+    static let commandReturnKeyCommand: UIKeyCommand = {
+        let command = UIKeyCommand(input: "\r", modifierFlags: .command, action: #selector(commandReturnKeyCommandPressed))
+        command.wantsPriorityOverSystemBehavior = true
+        return command
+    }()
+
     override var keyCommands: [UIKeyCommand]? {
-        (super.keyCommands ?? []) + [Self.returnKeyCommand] + Self.suggestionKeyCommands
+        (super.keyCommands ?? []) + [Self.returnKeyCommand, Self.commandReturnKeyCommand] + Self.suggestionKeyCommands
     }
 
     /// The suggestion list over the field, while one shows: the arrows,
@@ -457,6 +466,10 @@ class ReturnKeyTextView: UITextView {
             return suggestionKeys != nil && markedTextRange == nil
                 && (sender as? UIKeyCommand)?.modifierFlags.isEmpty != false
         }
+        if action == #selector(commandReturnKeyCommandPressed) {
+            // Declining leaves the press to the text system, as before.
+            return commandReturnKeyCommandApplies
+        }
         if action == #selector(returnKeyCommandPressed) {
             if returnPicksSuggestion, (sender as? UIKeyCommand)?.modifierFlags.contains(.shift) != true {
                 return true
@@ -486,6 +499,24 @@ class ReturnKeyTextView: UITextView {
                 hasMarkedText: hasMarkedText,
                 canSubmit: canSubmitFromReturn
             ) == .submit
+    }
+
+    /// Whether ⌘Return sends now: the composer can send, and no IME is
+    /// composing (its Return is the composition's).
+    var commandReturnKeyCommandApplies: Bool {
+        commandReturnKeyCommandApplies(hasMarkedText: markedTextRange != nil)
+    }
+
+    func commandReturnKeyCommandApplies(hasMarkedText: Bool) -> Bool {
+        onSubmitFromReturn != nil
+            && ComposerReturnKey.commandReturnSends(hasMarkedText: hasMarkedText, canSubmit: canSubmitFromReturn)
+    }
+
+    @objc func commandReturnKeyCommandPressed() {
+        // The same press reaching pressesBegan doesn't send again.
+        returnTakenByKeyCommand = true
+        DispatchQueue.main.async { [weak self] in self?.returnTakenByKeyCommand = false }
+        _ = onSubmitFromReturn?()
     }
 
     @objc func returnKeyCommandPressed() {
