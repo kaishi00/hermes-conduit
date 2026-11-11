@@ -130,6 +130,11 @@ final class SystemPhotoLibrary: PhonePhotoSource {
 
     private let url: URL
     private var index: PhonePhotoIndex?
+    /// Counts forgets: a pass started before one never puts its copy back.
+    private var generation = 0
+    /// Writes and the forget's delete, in the order they were asked for, so
+    /// a late write can't bring the descriptions back.
+    private let disk = DispatchQueue(label: "conduit.phone-photos.index", qos: .utility)
     /// Place lookups per pass: Apple's geocoder answers a few a minute.
     static let placesPerPass = 10
 
@@ -155,12 +160,15 @@ final class SystemPhotoLibrary: PhonePhotoSource {
     }
 
     func forget() {
+        generation += 1
         index = PhonePhotoIndex()
-        try? FileManager.default.removeItem(at: url)
+        let url = self.url
+        disk.async { try? FileManager.default.removeItem(at: url) }
     }
 
     func describeMore(budget: Int, until deadline: Date) async {
         guard access.canRead else { return }
+        let started = generation
         var index = loaded()
         let assets = await Task.detached(priority: .utility) { Self.newestAssets() }.value
         let known = Dictionary(index.entries.map { ($0.localID, $0) }, uniquingKeysWith: { first, _ in first })
@@ -177,7 +185,10 @@ final class SystemPhotoLibrary: PhonePhotoSource {
         index.total = assets.count
         for asset in waiting.prefix(budget) {
             guard Date() < deadline, !Task.isCancelled else { break }
-            let seen = await Task.detached(priority: .utility) { Self.look(at: asset.localID) }.value
+            // A photo that couldn't be read (still in iCloud, Vision failed)
+            // stays waiting for a later pass.
+            guard let seen = await Task.detached(priority: .utility, operation: { Self.look(at: asset.localID) }).value
+            else { continue }
             kept.append(PhonePhotoEntry(
                 id: PhonePhotoEntry.id(forLocal: asset.localID), localID: asset.localID, at: asset.at, zone: nil,
                 screenshot: asset.screenshot, favorite: asset.favorite, labels: seen.labels, text: seen.text,
@@ -201,6 +212,8 @@ final class SystemPhotoLibrary: PhonePhotoSource {
             kept[position].zone = index.places[key]?.zone
             kept[position].placeLooked = true
         }
+        // Sharing turned off (and the descriptions forgotten) meanwhile.
+        guard generation == started else { return }
         kept.sort { $0.at > $1.at }
         index.entries = kept
         self.index = index
@@ -244,7 +257,7 @@ final class SystemPhotoLibrary: PhonePhotoSource {
 
     private func save(_ index: PhonePhotoIndex) {
         let url = self.url
-        Task.detached(priority: .utility) {
+        disk.async {
             guard let data = try? JSONEncoder().encode(index) else { return }
             var folder = url.deletingLastPathComponent()
             try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
@@ -303,14 +316,19 @@ final class SystemPhotoLibrary: PhonePhotoSource {
     }
 
     /// What Vision sees in a photo: its labels, best first, and the words in it.
-    nonisolated static func look(at localID: String) -> (labels: [String], text: String?) {
-        guard let cgImage = image(localID: localID, side: 1_024)?.cgImage else { return ([], nil) }
+    /// Nil when the photo couldn't be read or looked at.
+    nonisolated static func look(at localID: String) -> (labels: [String], text: String?)? {
+        guard let cgImage = image(localID: localID, side: 1_024)?.cgImage else { return nil }
         let classify = VNClassifyImageRequest()
         let read = VNRecognizeTextRequest()
         read.recognitionLevel = .fast
         read.usesLanguageCorrection = false
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        try? handler.perform([classify, read])
+        do {
+            try handler.perform([classify, read])
+        } catch {
+            return nil
+        }
         return (labels(from: classify.results ?? []), text(from: read.results ?? []))
     }
 
@@ -383,7 +401,12 @@ enum PhonePhotoAlbum {
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         // Limited access can still add to an album Conduit made.
         guard status == .authorized || status == .limited else { throw Failure.noAccess }
-        let album = try await existingAlbum() ?? createAlbum()
+        let album: PHAssetCollection
+        if let existing = try await existingAlbum() {
+            album = existing
+        } else {
+            album = try await createAlbum()
+        }
         try await PHPhotoLibrary.shared().performChanges {
             guard let created = PHAssetChangeRequest.creationRequestForAssetFromImage(atFileURL: fileURL),
                   let placeholder = created.placeholderForCreatedAsset,

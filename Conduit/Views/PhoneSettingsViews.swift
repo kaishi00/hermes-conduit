@@ -1022,7 +1022,15 @@ struct PhoneChangeCard: View {
     /// A long shortcut input, shown whole before the user taps Run.
     @State private var showsFullInput = false
     @State private var picture: UIImage?
+    /// The request `picture` is for: a card that moves on to the next
+    /// request never shows the last one's photo.
+    @State private var pictureFor: String?
     @State private var pictureMissing = false
+
+    /// A photo request is sent only once the user sees that photo.
+    private var waitsForPicture: Bool {
+        prompt.change.kind == .sendPhoto && (picture == nil || pictureFor != prompt.id)
+    }
 
     var body: some View {
         let change = prompt.change
@@ -1053,7 +1061,7 @@ struct PhoneChangeCard: View {
             }
             if change.kind == .sendPhoto {
                 Group {
-                    if let picture {
+                    if let picture, pictureFor == prompt.id {
                         Image(uiImage: picture)
                             .resizable()
                             .scaledToFit()
@@ -1070,12 +1078,19 @@ struct PhoneChangeCard: View {
                 }
                 .frame(maxWidth: .infinity, maxHeight: 260)
                 .task(id: prompt.id) {
+                    let asked = prompt.id
+                    picture = nil
+                    pictureFor = nil
+                    pictureMissing = false
                     guard let id = change.photoID, let photo else {
                         pictureMissing = true
                         return
                     }
-                    picture = await photo(id)
-                    pictureMissing = picture == nil
+                    let found = await photo(id)
+                    guard !Task.isCancelled, asked == prompt.id else { return }
+                    picture = found
+                    pictureFor = found == nil ? nil : asked
+                    pictureMissing = found == nil
                 }
             }
             if let calendar = prompt.calendarTitle, change.kind.isAddition {
@@ -1109,6 +1124,7 @@ struct PhoneChangeCard: View {
                         .foregroundStyle(Color.white)
                 }
                 .conduitGlassControl(cornerRadius: 14, tint: PhoneChangeWording.isRemoval(change.kind) ? .red : .conduitAccent, prominent: true)
+                .disabled(waitsForPicture)
                 .accessibilityIdentifier("phone.change.approve")
             }
             if waiting > 1 {
@@ -1176,6 +1192,8 @@ struct PhoneChangeOverlay: View {
                                 photo: { [engine] id in await engine.photoSource.thumbnail(photoID: id, side: 260) }) { approve in
                     Task { await appState.answerPhoneChange(prompt, approve: approve) }
                 }
+                // Each request its own card, so nothing (a photo) carries over.
+                .id(prompt.id)
                 .transition(.move(edge: .top).combined(with: .opacity))
             }
             if let added = engine.autoAdded {

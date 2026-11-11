@@ -5672,6 +5672,7 @@ capability, conduit_first's line, README, CHANGELOG and privacy policy
 **Rulings**
 - Hermes searches descriptions made on the phone (Vision's labels, the text in the photo, the place and time); the descriptions go to the user's own host, and a picture goes only when the user taps Send on its card, never without asking and never by voice: a live call can list or dismiss a request, and Classic's spoken yes doesn't answer it (2026-11-11, Eric chose "Ask on a card, then send"; notifier #700, #2171).
 - Captions aren't made by Apple's on-device model, which takes no images and needs iOS 26; Vision runs on every supported phone (2026-11-11, #2171).
+- The card's Send waits until it shows that request's photo, and each request gets a card of its own, so the photo seen is the photo sent. Turning Photos off forgets the descriptions (a pass already running doesn't put them back) and drops pictures approved but not yet sent (2026-11-11, #2171).
 - An approved picture waits on the phone and goes in an upload of its own, at most about 1.4 MB as a JPEG; the host applies the request only when the picture arrives, keeps it a week, and drops it when photo sharing is turned off or the phone wiped. A lost connection keeps it for the next pass; a refusal fails it with why (2026-11-11, notifier #700, #2171).
 - The newest 5000 photos are described, 60 more each pass, newest first; with limited access, only the photos the user chose (2026-11-11, #2171).
 

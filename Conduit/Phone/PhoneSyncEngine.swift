@@ -283,6 +283,12 @@ final class PhoneSyncEngine: ObservableObject {
     func savePreferences(_ preferences: PhoneSyncPreferences) {
         preferences.save(to: defaults)
         self.preferences = preferences
+        // Photos off: pictures the user said yes to but not yet sent never go.
+        if !preferences.photos, let waiting = state.photoUploads {
+            for changeID in waiting {
+                settlePhoto(PhoneChangeResult(id: changeID, outcome: .failed, note: Self.refusalNote(.sendPhoto)))
+            }
+        }
     }
 
     func savePeople(_ people: [PhonePerson]) {
@@ -428,7 +434,7 @@ final class PhoneSyncEngine: ObservableObject {
             let pending = try await upload(preferences: preferences, key: key, hostPending: hostPending,
                                            keepalive: keepalive, deadline: deadline, request: request)
             try checkTime(deadline)
-            try await uploadPhotos(preferences: preferences, key: key, request: request)
+            try await uploadPhotos(key: key, deadline: deadline, request: request)
             try checkTime(deadline)
             if pending > 0 || !state.unreported.isEmpty || !prompts.isEmpty {
                 try await exchange(key: key, request: request)
@@ -1239,10 +1245,14 @@ final class PhoneSyncEngine: ObservableObject {
     /// how it went. A refusal (the host no longer waits for it, or won't
     /// take it) answers that photo alone; a lost connection keeps it for
     /// the next pass.
-    private func uploadPhotos(preferences: PhoneSyncPreferences, key: PhoneSyncCrypto.SessionKey,
-                              request: Request) async throws {
+    private func uploadPhotos(key: PhoneSyncCrypto.SessionKey, deadline: Date, request: Request) async throws {
         guard let uploads = state.photoUploads, !uploads.isEmpty else { return }
         for changeID in uploads {
+            // What's left waits for the next pass.
+            try checkTime(deadline)
+            // The choice as it is now, not when the pass began: Photos may
+            // have been turned off while an earlier upload was answered.
+            let preferences = self.preferences
             let file = Self.photoUploadURL(changeID)
             guard preferences.photos, photoSource.access.canRead, let data = try? Data(contentsOf: file) else {
                 settlePhoto(PhoneChangeResult(id: changeID, outcome: .failed,
