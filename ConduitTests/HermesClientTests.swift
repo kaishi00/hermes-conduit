@@ -1,4 +1,5 @@
 import XCTest
+import UIKit
 @testable import Conduit
 
 @MainActor
@@ -4299,6 +4300,31 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(InterfaceOrientationGate.supported(idiom: .phone, landscapeHolders: 0), .portrait)
         XCTAssertEqual(InterfaceOrientationGate.supported(idiom: .phone, landscapeHolders: 1), .allButUpsideDown)
         XCTAssertEqual(InterfaceOrientationGate.supported(idiom: .pad, landscapeHolders: 0), .all)
+    }
+
+    /// Turned sideways for a bot's screen, an iPhone's screens under it keep
+    /// the width they had (else the tabs split, rebuilding the views the
+    /// screen opened from, and it closed back to the Bot Chat), until the
+    /// phone has turned back.
+    func testAnIPhoneTurnedForABotScreenKeepsItsLayoutWidth() {
+        func width(_ live: CGFloat, kept: CGFloat?, idiom: UIUserInterfaceIdiom = .phone,
+                   holders: Int = 0, sinceClosed: TimeInterval? = nil) -> CGFloat {
+            InterfaceOrientationGate.layoutWidth(live: live, kept: kept, idiom: idiom,
+                                                 holders: holders, sinceClosed: sinceClosed)
+        }
+        XCTAssertEqual(width(956, kept: 440, holders: 1), 440, "Open: the portrait width")
+        XCTAssertEqual(width(956, kept: 440, sinceClosed: 0.3), 440, "Turning back after it closed")
+        XCTAssertEqual(width(440, kept: 440, sinceClosed: 0.3), 440)
+        XCTAssertEqual(width(956, kept: 440, sinceClosed: 5), 956, "Long closed: the window's width")
+        XCTAssertEqual(width(956, kept: 440), 956, "Never opened")
+        XCTAssertEqual(width(956, kept: nil, holders: 1), 956, "Nothing laid out yet")
+        XCTAssertEqual(width(1180, kept: 820, idiom: .pad, holders: 1), 1180, "An iPad follows its window")
+        // What the screens wait out before they take up the window's width.
+        XCTAssertEqual(InterfaceOrientationGate.holdLeft(holders: 1, sinceClosed: nil), .infinity)
+        XCTAssertEqual(InterfaceOrientationGate.holdLeft(holders: 1, sinceClosed: 9), .infinity, "Opened again")
+        XCTAssertEqual(InterfaceOrientationGate.holdLeft(holders: 0, sinceClosed: 0.5) ?? 0, 1.5, accuracy: 0.001)
+        XCTAssertNil(InterfaceOrientationGate.holdLeft(holders: 0, sinceClosed: 2), "Turned back")
+        XCTAssertNil(InterfaceOrientationGate.holdLeft(holders: 0, sinceClosed: nil), "Never opened")
     }
 
     func testABotScreenStoppedStreamsMessagesAreStale() {

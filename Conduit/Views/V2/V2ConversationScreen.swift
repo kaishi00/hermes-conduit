@@ -133,6 +133,9 @@ struct V2ConversationScreen: View {
     /// The chat's ids when the panel opened.
     @State private var sidePanelIDs: [String] = []
     @State private var screenWidth: CGFloat = 0
+    /// Whether `screenWidth` stays put while a bot's screen in full screen
+    /// has the iPhone turned: not for a screen that opened during it.
+    @State private var holdsWidth = true
     /// The Bot Chat's Work panel: beside the chat on a window with room,
     /// else a sheet.
     @State private var workPanelOpen = false
@@ -232,8 +235,29 @@ struct V2ConversationScreen: View {
         .background {
             GeometryReader { proxy in
                 Color.clear
-                    .onAppear { screenWidth = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, width in screenWidth = width }
+                    // Opened while a full screen holds the screens' widths
+                    // (a push tapped as the phone turns back): this one
+                    // never laid out in portrait, so it holds no width.
+                    .onAppear {
+                        screenWidth = proxy.size.width
+                        holdsWidth = InterfaceOrientationGate.holdLeft == nil
+                    }
+                    // An iPhone turned sideways for a bot's screen in full
+                    // screen keeps its Work panel where it was: moving it
+                    // closed the screen opened from it.
+                    .onChange(of: proxy.size.width) { _, width in
+                        screenWidth = holdsWidth
+                            ? InterfaceOrientationGate.layoutWidth(live: width, kept: screenWidth) : width
+                    }
+                    // Held: the window's width once the hold ends.
+                    .task(id: proxy.size.width) {
+                        let live = proxy.size.width
+                        guard (live != screenWidth && screenWidth > 0) || !holdsWidth else { return }
+                        await InterfaceOrientationGate.layoutReleased()
+                        guard !Task.isCancelled else { return }
+                        screenWidth = InterfaceOrientationGate.layoutWidth(live: live, kept: screenWidth)
+                        holdsWidth = true
+                    }
                     // The chat open before's Work closes under a Bot Chat
                     // on its way, and doesn't come back over the one that
                     // lands. (Here, off the screen's long modifier chain.)
