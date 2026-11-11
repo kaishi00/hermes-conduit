@@ -52,10 +52,15 @@ extension AppState {
                     guard let bot = self.shownBotRoster.first(where: isPicked) else {
                         throw ShortcutSendError.chatUnavailable
                     }
-                    let rows = try await client.findBotChatSession(profile: bot.name)
-                    guard case .success(.openExisting(_, let resumeID)) = BotChatResolver.resolve(
-                        rows: rows, rosterCanonicalID: bot.canonicalSessionID
-                    ) else { throw ShortcutSendError.chatUnavailable }
+                    let rows = try await self.botChatLookupRows(client, profile: bot.name)
+                    let resumeID: String
+                    switch BotChatResolver.resolve(rows: rows, rosterCanonicalID: bot.canonicalSessionID) {
+                    case .success(.openExisting(_, let id)): resumeID = id
+                    // The lookup came back empty for a chat the roster names:
+                    // not proof it's gone.
+                    case .failure(.unconfirmedAbsence): throw ShortcutSendError.chatUnconfirmed
+                    default: throw ShortcutSendError.chatUnavailable
+                    }
                     return VoiceThreadTarget(runtimeSessionID: resumeID, storedSessionID: resumeID,
                                              title: bot.displayLabel, profile: bot.name)
                 }

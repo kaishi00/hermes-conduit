@@ -514,6 +514,90 @@ extension ScreenQuestionTests {
         XCTAssertEqual(title, "Shortcut: " + String(repeating: "a", count: 59) + "…")
     }
 
+    // MARK: - A picked Bot Chat
+
+    /// A picked Bot Chat opens the bot's chat now, as its Bots row would; a
+    /// bot not in the list yet is looked up before it's called gone, and a
+    /// hidden or missing bot, an unconfirmed lookup or another dashboard
+    /// sends nothing.
+    @MainActor
+    func testAPickedBotChatOpensTheBotsChatNowAndNeverAnotherOne() async throws {
+        let defaults = makeScratchDefaults("ShortcutSendBotPickTests")
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "https://one.example")
+        func bot(_ name: String, hidden: Bool = false, canonical: String? = nil) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name.capitalized, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: hidden, appearanceColor: nil,
+                       canonicalSession: canonical.map { BotCanonicalSession(id: $0, resolvedID: nil, lastActive: nil, preview: nil) },
+                       lastActive: nil, lastPreview: nil)
+        }
+        var roster: [BotProfile] = []
+        var rosterReads = 0
+        let lookups: [String: [BotChatLookupRow]] = [
+            "atlas": [BotChatLookupRow(id: "atlas-durable", resolvedID: "atlas-tip", title: BotMode.canonicalChatTitle)],
+        ]
+        var operations = ChatResumeLifecycleOperations()
+        operations.botRoster = { _ in
+            rosterReads += 1
+            return BotRosterSnapshot(bots: roster, supportsBotProtocol: true)
+        }
+        operations.findBotChat = { _, profile in lookups[profile] ?? [] }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard]),
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: operations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        let backend = appState.makeShortcutSendBackend()
+        func pick(_ name: String, on dashboardID: UUID = dashboard.id) -> ShortcutPickedChat {
+            ShortcutPickedChat(dashboardID: dashboardID,
+                               reference: WidgetConversationReference(kind: .bot, scopeProfile: name, botName: name, botLabel: name,
+                                                                      sessionID: "picked-then", isUnverified: false),
+                               title: name)
+        }
+        func refusal(_ chat: ShortcutPickedChat) async -> ShortcutSendError? {
+            do {
+                _ = try await backend.pickedChat(chat)
+                return nil
+            } catch {
+                return error as? ShortcutSendError
+            }
+        }
+
+        // Another dashboard: nothing is looked up.
+        let away = await refusal(pick("atlas", on: UUID()))
+        XCTAssertEqual(away, .chatOnAnotherDashboard)
+        XCTAssertEqual(rosterReads, 0)
+
+        // Not in the list yet: the list is asked for before the run gives up.
+        roster = [bot("atlas")]
+        let opened = try await backend.pickedChat(pick("atlas"))
+        XCTAssertEqual(rosterReads, 1)
+        XCTAssertEqual(opened.runtimeSessionID, "atlas-tip", "the chat's tip now, not the one picked")
+        XCTAssertEqual(opened.profile, "atlas")
+
+        // Hidden, or gone from Hermes: nothing sent.
+        roster = [bot("atlas"), bot("kai", hidden: true)]
+        let hidden = await refusal(pick("kai"))
+        XCTAssertEqual(hidden, .chatUnavailable)
+        let missing = await refusal(pick("nobody"))
+        XCTAssertEqual(missing, .chatUnavailable)
+
+        // A bot with no chat is never given a new one from here, and an empty
+        // lookup for a chat the roster names is worth a retry, not "gone".
+        roster = [bot("atlas"), bot("rei"), bot("nia", canonical: "nia-durable")]
+        await appState.refreshBotRoster()
+        let noChat = await refusal(pick("rei"))
+        XCTAssertEqual(noChat, .chatUnavailable)
+        let unconfirmed = await refusal(pick("nia"))
+        XCTAssertEqual(unconfirmed, .chatUnconfirmed)
+    }
+
     // MARK: - The named chat is the chat on screen
 
     /// A cold launch with the named chat on screen: the app still has the

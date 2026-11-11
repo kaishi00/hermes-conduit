@@ -90,6 +90,11 @@ struct ShortcutSendError: LocalizedError, Equatable {
         ShortcutSendError(message: AppLocalization.string("Conduit couldn't find that chat on Hermes, so nothing was sent. Pick another chat."))
     }
 
+    /// Hermes didn't confirm the picked bot's chat either way: worth a retry.
+    static var chatUnconfirmed: ShortcutSendError {
+        ShortcutSendError(message: AppLocalization.string("Conduit couldn't confirm that chat on Hermes, so nothing was sent. Try again."))
+    }
+
     /// The picked chat is on a dashboard Conduit isn't connected to.
     static var chatOnAnotherDashboard: ShortcutSendError {
         ShortcutSendError(message: AppLocalization.string("That chat is on another Hermes dashboard. Switch to it in Conduit first, then run this again."))
@@ -232,8 +237,19 @@ struct ShortcutSender {
         var reused = false
         if let picked = request.chat {
             var target = try await backend.pickedChat(picked)
-            // Never a new chat in its place: the run says the chat is gone.
-            guard let resumed = try await resume(target), !resumed.isEmpty else { throw ShortcutSendError.chatUnavailable }
+            // Never a new chat in its place: the run says the chat is gone,
+            // or that Hermes couldn't be reached, which isn't the same.
+            let resumed: String
+            do {
+                resumed = try await backend.resumeChat(target)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch HermesError.notConnected, HermesError.connectionClosed, HermesError.timeout {
+                throw ShortcutSendError.notConnected
+            } catch {
+                throw ShortcutSendError.chatUnavailable
+            }
+            guard !resumed.isEmpty else { throw ShortcutSendError.chatUnavailable }
             target.runtimeSessionID = resumed
             chat = target
             runtimeID = resumed

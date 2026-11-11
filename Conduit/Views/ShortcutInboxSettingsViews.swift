@@ -21,6 +21,8 @@ struct ShortcutInboxSettingsPage: View {
     @State private var isWorking = false
     @State private var errorMessage: String?
     @State private var showsDeleteAll = false
+    @State private var leavesOutJunk = ShortcutJunkFilter.isOn()
+    @State private var junkLeftOut = ShortcutJunkFilter.leftOutCount()
 
     /// Pulse can keep the deadlines it finds in this inbox, and deleting an
     /// event deletes them (0.90.0); Pulse reads only its own profile's. The
@@ -52,6 +54,23 @@ struct ShortcutInboxSettingsPage: View {
                         .foregroundStyle(.orange)
                     Button(AppLocalization.string("Try Again")) { load(before: nil) }
                         .disabled(isWorking)
+                }
+            }
+            if ShortcutJunkFilter.isAvailable {
+                ConduitSettingsSection(title: AppLocalization.string("Junk"), symbol: "line.3.horizontal.decrease.circle", tint: .indigo) {
+                    Toggle(isOn: $leavesOutJunk) {
+                        Text(AppLocalization.string("Leave out junk"))
+                    }
+                    .onChange(of: leavesOutJunk) { _, on in ShortcutJunkFilter.setOn(on) }
+                    .accessibilityIdentifier("settings.shortcut-inbox.junk")
+                    Text(AppLocalization.string("When this is on, Apple Intelligence on this iPhone sorts notifications, messages and emails before they're logged and leaves out what looks like marketing, newsletters, spam or app nudges. It's told to keep anything from a person, bills, deliveries and alerts, but it can get one wrong. When it's unsure or takes too long, the event is logged."))
+                        .scaledFont(.caption)
+                        .foregroundStyle(.secondary)
+                    if leavesOutJunk, junkLeftOut > 0 {
+                        Text(AppLocalization.string("\(Int(junkLeftOut)) left out in the last 7 days"))
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
                 }
             }
             ConduitSettingsSection(title: AppLocalization.string("Logged"), symbol: "list.bullet", tint: .indigo) {
@@ -151,6 +170,7 @@ struct ShortcutInboxSettingsPage: View {
 
     private func refreshWaiting() {
         waitingCount = scope.map { ShortcutInboxQueue.standard($0).pending().count } ?? 0
+        junkLeftOut = ShortcutJunkFilter.leftOutCount()
     }
 
     private func load(before: ShortcutInboxBrowser.Cursor?) {

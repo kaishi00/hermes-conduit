@@ -1015,6 +1015,206 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(host.batches.last?["contacts"])
     }
 
+    /// Shortcuts Hermes can run: the list goes when it changes, a run of a
+    /// listed shortcut waits for the user's yes (or runs without asking only
+    /// on screen), and the text it gave back goes with its outcome.
+    func testPhoneShortcutsSyncRunAndReportWhatTheyGaveBack() async throws {
+        let runner = FakePhoneShortcutRunner()
+        runner.results["Log Water"] = "Logged 250 ml"
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: FakePhoneCalendarSource(), shortcuts: runner)
+        var preferences = phonePreferences()
+        preferences.shortcuts = true
+        preferences.shortcutList = [try XCTUnwrap(PhoneShortcut(name: " Log Water ", note: "Adds a glass to Health"))]
+        engine.savePreferences(preferences)
+
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let sharing = try XCTUnwrap(host.batches.last?["sharing"] as? [String: Any])
+        XCTAssertEqual(sharing["shortcuts"] as? Bool, true)
+        XCTAssertEqual(sharing["shortcuts_auto"] as? Bool, false)
+        let listed = try XCTUnwrap(host.batches.last?["shortcuts"] as? [[String: Any]])
+        XCTAssertEqual(listed.first?["name"] as? String, "Log Water")
+        XCTAssertEqual(listed.first?["note"] as? String, "Adds a glass to Health")
+        let sent = host.batches.count
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, sent, "An unchanged list doesn't go again")
+
+        // Asked: a card, even with "Add without asking" for calendar items.
+        preferences.autoAdd = true
+        engine.savePreferences(preferences)
+        host.changes = [
+            ["id": "ch_run", "kind": "run_shortcut", "auto": true, "fields": ["shortcut": "log water", "input": "250"]],
+            ["id": "ch_other", "kind": "run_shortcut", "auto": false, "fields": ["shortcut": "Delete Everything"]],
+        ]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertTrue(runner.runs.isEmpty)
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_run", "ch_other"])
+        XCTAssertNil(engine.prompts.first?.calendarTitle)
+        XCTAssertEqual(PhoneChangeWording.detail(engine.prompts[0].change), "log water · “250”")
+
+        // Yes: it runs by its listed name; one that isn't listed never runs.
+        await engine.answer(engine.prompts[0], approve: true)
+        await engine.answer(try XCTUnwrap(engine.prompts.first), approve: true)
+        XCTAssertEqual(runner.runs.map(\.name), ["Log Water"])
+        XCTAssertEqual(runner.runs.first?.input, "250")
+        host.changes = []
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let ran = try XCTUnwrap(host.reported.first { $0["id"] as? String == "ch_run" })
+        XCTAssertEqual(ran["outcome"] as? String, "applied")
+        XCTAssertEqual(ran["result"] as? String, "Logged 250 ml")
+        XCTAssertEqual(host.reported.first { $0["id"] as? String == "ch_other" }?["outcome"] as? String, "failed")
+
+        // Without asking: only when Conduit is on screen.
+        preferences.shortcutsRunWithoutAsking = true
+        engine.savePreferences(preferences)
+        runner.onScreen = false
+        host.changes = [["id": "ch_auto", "kind": "run_shortcut", "auto": true, "fields": ["shortcut": "Log Water"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_auto"])
+        XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["shortcuts_auto"] as? Bool, true)
+        runner.onScreen = true
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        for _ in 0..<20 where runner.runs.count < 2 { await Task.yield() }
+        XCTAssertEqual(runner.runs.count, 2)
+        XCTAssertTrue(engine.prompts.isEmpty)
+
+        // Cancelled in Shortcuts: Hermes hears the user said no.
+        runner.failure = .cancelled
+        host.changes = [["id": "ch_cancel", "kind": "run_shortcut", "auto": false, "fields": ["shortcut": "Log Water"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        await engine.answer(try XCTUnwrap(engine.prompts.first), approve: true)
+        XCTAssertEqual(engine.state.answered["ch_cancel"]?.outcome, .dismissed)
+
+        // Turned off: refused, and the list stops going.
+        preferences.shortcuts = false
+        engine.savePreferences(preferences)
+        host.changes = [["id": "ch_off", "kind": "run_shortcut", "auto": false, "fields": ["shortcut": "Log Water"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertTrue(engine.prompts.isEmpty)
+        XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["shortcuts"] as? Bool, false)
+        XCTAssertNil(host.batches.last?["shortcuts"])
+    }
+
+    func testPhoneShortcutRunURLAndAnswers() async throws {
+        // What shortcuts gave back shares one exchange's room, so the
+        // sealed body stays under the host's cap.
+        let long = String(repeating: "y", count: PhoneChangeResult.resultChars + 10)
+        let sent = PhoneChangeResult.json(for: (0..<5).map { PhoneChangeResult(id: "c\($0)", outcome: .applied, result: long) })
+        let texts = sent.map { $0["result"] as? String ?? "" }
+        XCTAssertEqual(texts.map(\.utf8.count).reduce(0, +), PhoneChangeResult.resultsBytes)
+        XCTAssertEqual(texts[0].count, PhoneChangeResult.resultChars)
+        XCTAssertNil(sent[4]["result"])
+        let emoji = PhoneChangeResult.json(for: [PhoneChangeResult(id: "e", outcome: .applied, result: String(repeating: "🎬", count: 5_000))])
+        XCTAssertEqual((emoji[0]["result"] as? String)?.utf8.count, PhoneChangeResult.resultsBytes)
+
+        let url = try XCTUnwrap(PhoneShortcutRunner.runURL(name: "Log Water & Tea", input: "250 ml + ünï", scheme: "conduit", token: "t1"))
+        let items = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems)
+        XCTAssertEqual(url.scheme, "shortcuts")
+        XCTAssertEqual(url.host, "x-callback-url")
+        XCTAssertEqual(items.first { $0.name == "name" }?.value, "Log Water & Tea")
+        XCTAssertEqual(items.first { $0.name == "input" }?.value, "text")
+        XCTAssertEqual(items.first { $0.name == "text" }?.value, "250 ml + ünï")
+        XCTAssertEqual(items.first { $0.name == "x-success" }?.value, "conduit://shortcut-result/done?token=t1")
+        XCTAssertNil(PhoneShortcutRunner.runURL(name: "A", input: nil, scheme: "conduit", token: "t")
+            .flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false)?.queryItems?.first { $0.name == "input" } })
+
+        var opened: [URL] = []
+        let runner = PhoneShortcutRunner(open: { opened.append($0); return true }, isActive: { true }, scheme: "conduit")
+        async let text = runner.run(name: "Log Water", input: nil)
+        for _ in 0..<20 where opened.isEmpty { await Task.yield() }
+        let success = try XCTUnwrap(URLComponents(url: try XCTUnwrap(opened.first), resolvingAgainstBaseURL: false)?
+            .queryItems?.first { $0.name == "x-success" }?.value)
+        XCTAssertFalse(runner.handle(URL(string: "conduit://session/abc")!), "Other links route elsewhere")
+        XCTAssertTrue(runner.handle(URL(string: success + "&result=Logged")!))
+        let answer = try await text
+        XCTAssertEqual(answer, "Logged")
+
+        let away = PhoneShortcutRunner(open: { _ in true }, isActive: { false }, scheme: "conduit")
+        do {
+            _ = try await away.run(name: "Log Water", input: nil)
+            XCTFail("Runs only on screen")
+        } catch {
+            XCTAssertEqual(error as? PhoneShortcutError, .notOnScreen)
+        }
+    }
+
+    /// Contacts Hermes asks to add, change or delete: never without a card,
+    /// on the picked person's own card, and the picked people follow.
+    func testAContactListWithNothingUsableChangesNothing() {
+        // Nothing dialable or addressable: the card's lists stay as they are.
+        let junk = PhoneContactEdit(json: ["nickname": "Jo", "phones": [["number": "call me"]], "emails": [["address": "nope"]]])
+        XCTAssertNil(junk?.phones)
+        XCTAssertNil(junk?.emails)
+        // An empty list is a deliberate clear.
+        let cleared = PhoneContactEdit(json: ["phones": [[String: Any]](), "emails": [[String: Any]]()])
+        XCTAssertEqual(cleared?.phones, [])
+        XCTAssertEqual(cleared?.emails, [])
+        // Usable entries are kept, bad ones dropped.
+        let mixed = PhoneContactEdit(json: ["phones": [["number": "+1 555 0100"], ["number": "call me"]]])
+        XCTAssertEqual(mixed?.phones?.count, 1)
+    }
+
+    func testPhoneContactChangesAskThenFollowThePickedPeople() async throws {
+        let contacts = FakePhoneContactsSource()
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: FakePhoneCalendarSource(), contacts: contacts)
+        var preferences = phonePreferences()
+        preferences.contacts = true
+        preferences.contactsEdit = true
+        preferences.autoAdd = true
+        engine.savePreferences(preferences)
+        engine.savePeople([PhonePerson(id: "p_sam", name: "Sam Lee", relation: "wife", contactID: "C-sam"),
+                           PhonePerson(id: "p_alex", name: "Alex Kim", contactID: "C-alex")])
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["contacts_edit"] as? Bool, true)
+
+        host.changes = [
+            ["id": "ch_add", "kind": "add_contact", "auto": true,
+             "fields": ["given_name": "Jo", "family_name": "Park", "relation": "dentist", "name": "Jo Park",
+                        "phones": [["number": "+1 555 0100", "label": "work"]]]],
+            ["id": "ch_change", "kind": "update_contact", "target": ["contact_id": "p_sam"],
+             "fields": ["nickname": "Sammy", "relation": "partner", "name": "Sam Lee"]],
+            ["id": "ch_delete", "kind": "delete_contact", "target": ["contact_id": "p_alex"], "fields": ["name": "Alex Kim"]],
+            ["id": "ch_bad", "kind": "update_contact", "target": ["contact_id": "p_sam"], "fields": ["name": "Sam Lee"]],
+        ]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_add", "ch_change", "ch_delete"], "Each asks; one that sets nothing is dropped")
+        XCTAssertTrue(contacts.changes.isEmpty)
+        XCTAssertEqual(PhoneChangeWording.detail(engine.prompts[1].change), "Sam Lee → “Sammy” · partner")
+        XCTAssertTrue(PhoneChangeWording.isRemoval(engine.prompts[2].change.kind))
+
+        // Without Contacts access, a yes fails and says why.
+        await engine.answer(engine.prompts[0], approve: true)
+        XCTAssertEqual(engine.state.answered["ch_add"]?.outcome, .failed)
+        contacts.granted = .limited
+        _ = await contacts.requestAccess()
+        host.changes = Array(host.changes[1...2])
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        for prompt in engine.prompts { await engine.answer(prompt, approve: true) }
+        XCTAssertEqual(contacts.changes.map(\.contactID), ["C-sam", "C-alex"], "On the picked person's own card")
+        XCTAssertEqual(engine.people.map(\.id), ["p_sam"])
+        XCTAssertEqual(engine.people.first?.relation, "partner")
+
+        // A new contact joins the picked people with its relation.
+        host.changes = [["id": "ch_add2", "kind": "add_contact", "fields": ["given_name": "Jo", "relation": "dentist", "name": "Jo"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        await engine.answer(try XCTUnwrap(engine.prompts.first), approve: true)
+        let added = try XCTUnwrap(engine.people.last)
+        XCTAssertEqual(added.id, PhonePerson.id(forContact: "C-new"))
+        XCTAssertEqual(added.name, "Jo")
+        XCTAssertEqual(added.relation, "dentist")
+        host.changes = []
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual((host.batches.last?["contacts"] as? [[String: Any]])?.count, 2)
+
+        // Turned off: refused without a card.
+        preferences.contactsEdit = false
+        engine.savePreferences(preferences)
+        host.changes = [["id": "ch_off", "kind": "delete_contact", "target": ["contact_id": "p_sam"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertTrue(engine.prompts.isEmpty)
+    }
+
     func testPhonePeoplePickedAgainKeepTheirRelation() {
         let picked = [PhonePerson(id: "p_1", name: "Sam Lee (new)"), PhonePerson(id: "p_2", name: "Alex")]
         let people = PhonePeopleStore.merging(picked, into: [PhonePerson(id: "p_1", name: "Sam Lee", relation: "wife")])
@@ -1427,6 +1627,7 @@ extension HermesVoiceGatewayTimeoutTests {
     private func makePhoneEngine(source: FakePhoneCalendarSource,
                                  alarms: PhoneAlarmSource = FakePhoneAlarmSource(),
                                  contacts: PhoneContactsSource = FakePhoneContactsSource(),
+                                 shortcuts: PhoneShortcutRunning? = nil,
                                  folder given: URL? = nil, defaults givenDefaults: UserDefaults? = nil,
                                  keys box: PhoneKeyBox = PhoneKeyBox(),
                                  now: @escaping () -> Date = { Date(timeIntervalSince1970: 1_760_400_000) }) -> PhoneSyncEngine {
@@ -1439,7 +1640,7 @@ extension HermesVoiceGatewayTimeoutTests {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = .gmt
         return PhoneSyncEngine(calendarSource: source, statusSource: FakePhoneStatusSource(), alarmSource: alarms,
-                               contactsSource: contacts, store: PhoneSyncStateStore(url: folder.appendingPathComponent("state.json")),
+                               contactsSource: contacts, shortcutRunner: shortcuts ?? FakePhoneShortcutRunner(), store: PhoneSyncStateStore(url: folder.appendingPathComponent("state.json")),
                                keys: keys, defaults: defaults, calendar: calendar, now: now)
     }
 
@@ -1452,6 +1653,23 @@ extension HermesVoiceGatewayTimeoutTests {
     private func phoneEvent(_ id: String, _ title: String) -> [String: Any] {
         ["id": id, "calendar_id": "c_1", "title": title, "start": "2026-10-15T09:00:00Z", "end": "2026-10-15T10:00:00Z",
          "all_day": false]
+    }
+}
+
+@MainActor
+private final class FakePhoneShortcutRunner: PhoneShortcutRunning {
+    var onScreen = true
+    var results: [String: String] = [:]
+    var failure: PhoneShortcutError?
+    private(set) var runs: [(name: String, input: String?)] = []
+
+    var canRun: Bool { onScreen }
+
+    func run(name: String, input: String?) async throws -> String? {
+        guard onScreen else { throw PhoneShortcutError.notOnScreen }
+        runs.append((name, input))
+        if let failure { throw failure }
+        return results[name]
     }
 }
 
@@ -1504,6 +1722,13 @@ private final class FakePhoneContactsSource: PhoneContactsSource, @unchecked Sen
     func identifiers(for ids: Set<String>) async -> [String: String]? {
         searchedIDs.formUnion(ids)
         return searchFails ? nil : found.filter { ids.contains($0.key) }
+    }
+    private(set) var changes: [(kind: PhoneChange.Kind, contactID: String?)] = []
+    var newIdentifier = "C-new"
+    func applyChange(_ change: PhoneChange, contactID: String?) async throws -> String {
+        guard access.canRead else { throw PhoneContactChangeError.noAccess }
+        changes.append((change.kind, contactID))
+        return change.kind == .addContact ? newIdentifier : (contactID ?? "")
     }
 }
 

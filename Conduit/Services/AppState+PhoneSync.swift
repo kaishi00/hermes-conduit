@@ -36,6 +36,10 @@ extension AppState {
     /// Plugin 0.30.0: alarms and timers, and picked people.
     static let phoneAlarmsCapability = "phone-alarms"
     static let phoneContactsCapability = "phone-contacts"
+    /// Plugin 0.159.0: Shortcuts Hermes can run.
+    static let phoneShortcutsCapability = "phone-shortcuts"
+    /// Plugin 0.160.0: contacts Hermes asks to add, change or delete.
+    static let phoneContactEditsCapability = "phone-contact-edits"
     static let phoneSyncTaskIdentifier = "com.milim.relay.phone-sync"
     static let phoneChangesPushType = "phone.changes"
     static let phoneSyncLog = Logger(subsystem: "com.milim.relay", category: "phone-sync")
@@ -112,6 +116,10 @@ extension AppState {
             // A no to alarms (or no AlarmKit) still turns on the rest the user agreed to.
             do { try await phoneSync.alarmSource.requestAccess() } catch is PhoneAlarmError { choices.alarms = false }
         }
+        // Changing contacts writes to them: ask for Contacts access once, as a change of choices does.
+        if choices.contactsEdit, phoneSync.contactsAccess == .notAsked {
+            await phoneSync.requestContactsAccess()
+        }
         guard activeDashboardID == dashboardID, connection?.baseUrl == baseURL else {
             throw DashboardTicketBridgeError.notReady
         }
@@ -141,6 +149,10 @@ extension AppState {
         }
         if choices.status, !current.status { await phoneSync.statusSource.requestMotionAccess() }
         if choices.alarms, !current.alarms { try await phoneSync.alarmSource.requestAccess() }
+        // Changing contacts writes to them: ask for Contacts access once.
+        if choices.contactsEdit, !current.contactsEdit, phoneSync.contactsAccess == .notAsked {
+            await phoneSync.requestContactsAccess()
+        }
         // A newer change, or turning sharing off, came in while iOS asked.
         guard mine == Self.phoneUpdateGeneration, phoneSync.preferences.destination == destination else { return }
         var preferences = choices

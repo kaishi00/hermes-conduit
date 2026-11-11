@@ -108,7 +108,8 @@ enum PhoneVoiceTools {
             + "list: what's waiting. approve or dismiss: answer one by its id from list, only after the user said "
             + "so out loud in this call; Conduit checks their words and refuses otherwise. Approving applies it "
             + "on the phone at once. Tell the user what it is in a sentence (what, when, which calendar, and why "
-            + "if Hermes said) before asking. List once early in the call: some may be waiting from before it.",
+            + "if Hermes said) before asking. List once early in the call: some may be waiting from before it. "
+            + "A shortcut run can be dismissed here but only approved on its card on the iPhone's screen.",
         parameters: [
             "type": "object",
             "properties": [
@@ -293,6 +294,11 @@ enum PhoneVoiceTools {
             guard let id = arguments["id"] as? String,
                   let prompt = engine.prompts.first(where: { $0.id == id }) else {
                 return ["error": "No change with that id is waiting. List them again."]
+            }
+            // A run opens the Shortcuts app, which a call (from the lock
+            // screen, the Watch or CarPlay) can't: its card on the screen runs it.
+            if action == "approve", prompt.change.kind == .runShortcut {
+                return ["error": "A shortcut runs only from its card on the iPhone's screen. Tell the user it's waiting there."]
             }
             // Applying one takes the user's own yes, as a change made here does.
             if action == "approve", !(await confirmed(prompt.change.kind == .cancelAlarm, arrivalTurns[prompt.id])) {
@@ -629,6 +635,10 @@ enum PhoneVoiceTools {
         if let time = change.fields.time { entry["time"] = time.text }
         if let repeats = change.fields.repeats { entry["repeats"] = repeats }
         if let seconds = change.fields.seconds { entry["seconds"] = seconds }
+        if let shortcut = change.fields.shortcut { entry["shortcut"] = shortcut }
+        if let name = change.fields.personName { entry["person"] = name }
+        if let edit = change.fields.contact?.summary, !edit.isEmpty { entry["contact"] = edit }
+        if let input = change.fields.input { entry["input"] = String(input.prefix(300)) }
         if let alarm = prompt.alarmTitle { entry["alarm"] = alarm }
         if let reason = change.reason { entry["reason"] = reason }
         return entry

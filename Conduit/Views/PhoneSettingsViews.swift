@@ -44,6 +44,15 @@ struct PhoneSettingsPage: View {
     private var showsPeople: Bool {
         appState.notifierPlugin.reports(AppState.phoneContactsCapability) || choices.contacts
     }
+    private var showsContactEdits: Bool {
+        appState.notifierPlugin.reports(AppState.phoneContactEditsCapability) || choices.contactsEdit
+    }
+    private var showsShortcuts: Bool {
+        appState.notifierPlugin.reports(AppState.phoneShortcutsCapability) || choices.shortcuts
+    }
+    @State private var showsAddShortcut = false
+    @State private var newShortcutName = ""
+    @State private var newShortcutNote = ""
 
     var body: some View {
         SettingsDetailContainer {
@@ -61,10 +70,14 @@ struct PhoneSettingsPage: View {
             }
             if preferences.isOn || pluginServes {
                 calendarSection
-                if choices.takesChanges { changesSection }
+                // Runs have their own choice, in Shortcuts.
+                if choices.calendar.adds || (choices.reminders && !choices.remindersReadOnly) || choices.alarms {
+                    changesSection
+                }
                 phoneSection
                 if showsAlarms { alarmsSection }
                 if showsPeople { peopleSection }
+                if showsShortcuts { shortcutsSection }
                 if preferences.isOn { voiceSection }
                 actionSection
             }
@@ -290,6 +303,78 @@ struct PhoneSettingsPage: View {
         }
     }
 
+    // MARK: Shortcuts
+
+    private var shortcutsSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Shortcuts"), symbol: "square.2.layers.3d", tint: .conduitAccent) {
+            Toggle(isOn: binding(\.shortcuts)) {
+                Label("Let Hermes run shortcuts you list", systemImage: "square.2.layers.3d")
+            }
+            .accessibilityIdentifier("settings.phone.shortcuts")
+            Text("Add shortcuts from the Shortcuts app by name, with a note on what each does. Hermes can ask to run one, with some text as its input, and gets back the text it ends with. A run opens the Shortcuts app, so it happens with Conduit open: Hermes' request waits on a card until you tap Run. With Run without asking on, it runs straight away when Conduit is open.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+            if choices.shortcuts {
+                ForEach(choices.shortcutList) { shortcut in
+                    HStack(spacing: 10) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(shortcut.name)
+                                .scaledFont(.subheadline)
+                            if let note = shortcut.note {
+                                Text(note)
+                                    .scaledFont(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                        Spacer(minLength: 4)
+                        Button(role: .destructive) {
+                            Haptics.selection()
+                            var list = choices.shortcutList
+                            list.removeAll { $0.id == shortcut.id }
+                            binding(\.shortcutList).wrappedValue = list
+                        } label: {
+                            Image(systemName: "minus.circle.fill")
+                                .foregroundStyle(.red)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(Text(AppLocalization.string("Remove \(shortcut.name)")))
+                    }
+                }
+                Button {
+                    Haptics.selection()
+                    newShortcutName = ""
+                    newShortcutNote = ""
+                    showsAddShortcut = true
+                } label: {
+                    Label("Add a shortcut", systemImage: "plus.circle")
+                }
+                .disabled(choices.shortcutList.count >= PhoneShortcut.maximum)
+                .accessibilityIdentifier("settings.phone.shortcuts.add")
+                Toggle(isOn: binding(\.shortcutsRunWithoutAsking)) {
+                    Text("Run without asking")
+                }
+                .accessibilityIdentifier("settings.phone.shortcuts.auto")
+                Text("When Conduit is open, a shortcut Hermes asks for runs straight away. When it isn't, it waits on its card.")
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+            }
+        }
+        .alert("Add a shortcut", isPresented: $showsAddShortcut) {
+            TextField("Name in Shortcuts", text: $newShortcutName)
+            TextField("What it does (optional)", text: $newShortcutNote)
+            Button("Add") {
+                guard let shortcut = PhoneShortcut(name: newShortcutName, note: newShortcutNote) else { return }
+                var list = choices.shortcutList.filter { $0.id != shortcut.id }
+                list.append(shortcut)
+                binding(\.shortcutList).wrappedValue = list
+            }
+            .disabled(newShortcutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Type its name exactly as the Shortcuts app shows it.")
+        }
+    }
+
     private var peopleSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("People"), symbol: "person.2", tint: .conduitAccent) {
             Toggle(isOn: binding(\.contacts)) {
@@ -304,6 +389,15 @@ struct PhoneSettingsPage: View {
                 .foregroundStyle(.secondary)
             if appState.pulseBringsUpBirthdays {
                 Text("With Pulse and its memory on, it brings up their birthdays two weeks ahead, the day before and on the day.")
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+            }
+            if choices.contacts, showsContactEdits {
+                Toggle(isOn: binding(\.contactsEdit)) {
+                    Text("Let Hermes ask to add or change contacts")
+                }
+                .accessibilityIdentifier("settings.phone.contacts.edit")
+                Text("Hermes can ask to add someone to your contacts, or change or delete the card of someone you picked here. Each waits on a card for your yes. Changing contacts needs Contacts access.")
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -757,6 +851,10 @@ enum PhoneChangeWording {
         case .setAlarm: return AppLocalization.string("Hermes wants to set an alarm")
         case .setTimer: return AppLocalization.string("Hermes wants to start a timer")
         case .cancelAlarm: return AppLocalization.string("Hermes wants to cancel an alarm")
+        case .runShortcut: return AppLocalization.string("Hermes wants to run a shortcut")
+        case .addContact: return AppLocalization.string("Hermes wants to add a contact")
+        case .updateContact: return AppLocalization.string("Hermes wants to change a contact")
+        case .deleteContact: return AppLocalization.string("Hermes wants to delete a contact")
         }
     }
 
@@ -794,8 +892,15 @@ enum PhoneChangeWording {
     }
 
     /// The item's title and time, as far as the change says.
-    static func detail(_ change: PhoneChange) -> String {
+    static func detail(_ change: PhoneChange, personName: String? = nil) -> String {
         if change.kind == .setAlarm || change.kind == .setTimer { return alarmSummary(change.fields, kind: change.kind) }
+        if change.kind == .runShortcut { return shortcutSummary(change.fields) }
+        if change.kind.isContact {
+            // Who it's about, then what changes (a new contact's name is in it).
+            let edit = change.fields.contact?.summary ?? ""
+            if change.kind == .addContact { return edit }
+            return [personName ?? change.fields.personName, edit.isEmpty ? nil : edit].compactMap { $0 }.joined(separator: " → ")
+        }
         var parts: [String] = []
         if let title = change.fields.title, !title.isEmpty { parts.append(title) }
         let allDay = change.fields.allDay ?? false
@@ -825,18 +930,42 @@ enum PhoneChangeWording {
         case .setAlarm: return AppLocalization.string("Set")
         case .setTimer: return AppLocalization.string("Start")
         case .cancelAlarm: return AppLocalization.string("Cancel alarm")
+        case .runShortcut: return AppLocalization.string("Run")
+        case .addContact: return AppLocalization.string("Add")
+        case .updateContact: return AppLocalization.string("Change")
+        case .deleteContact: return AppLocalization.string("Delete")
         }
+    }
+
+    /// A run in a line: the shortcut's name, and the start of its text.
+    static func shortcutSummary(_ fields: PhoneChangeFields) -> String {
+        let name = fields.shortcut ?? AppLocalization.string("Shortcut")
+        guard let input = fields.input?.trimmingCharacters(in: .whitespacesAndNewlines), !input.isEmpty else { return name }
+        let preview = input.count > shortcutPreviewChars ? String(input.prefix(shortcutPreviewChars)) + "…" : input
+        return "\(name) · “\(preview)”"
+    }
+
+    static let shortcutPreviewChars = 120
+
+    /// A shortcut's whole input, when the line cuts it short: the card
+    /// lets the user read all of it before Run.
+    static func longShortcutInput(_ fields: PhoneChangeFields) -> String? {
+        guard let input = fields.input?.trimmingCharacters(in: .whitespacesAndNewlines),
+              input.count > shortcutPreviewChars else { return nil }
+        return input
     }
 
     static func symbol(_ kind: PhoneChange.Kind) -> String {
         if kind == .setTimer { return "timer" }
+        if kind == .runShortcut { return "square.2.layers.3d" }
+        if kind.isContact { return kind == .deleteContact ? "person.crop.circle.badge.minus" : "person.crop.circle.badge.plus" }
         if kind.isAlarm { return "alarm" }
         return kind.isEvent ? "calendar.badge.plus" : "checklist"
     }
 
     /// Changes whose approve button is the red one.
     static func isRemoval(_ kind: PhoneChange.Kind) -> Bool {
-        kind == .deleteEvent || kind == .deleteReminder || kind == .cancelAlarm
+        kind == .deleteEvent || kind == .deleteReminder || kind == .cancelAlarm || kind == .deleteContact
     }
 }
 
@@ -845,16 +974,35 @@ struct PhoneChangeCard: View {
     let prompt: PhoneChangePrompt
     let waiting: Int
     let answer: (Bool) -> Void
+    /// A long shortcut input, shown whole before the user taps Run.
+    @State private var showsFullInput = false
 
     var body: some View {
         let change = prompt.change
         VStack(alignment: .leading, spacing: 10) {
             Label(PhoneChangeWording.headline(change), systemImage: PhoneChangeWording.symbol(change.kind))
                 .scaledFont(.subheadline.weight(.semibold))
-            let detail = prompt.alarmTitle ?? PhoneChangeWording.detail(change)
+            let detail = prompt.alarmTitle ?? PhoneChangeWording.detail(change, personName: prompt.personName)
             if !detail.isEmpty {
                 Text(detail)
                     .scaledFont(.subheadline)
+            }
+            if change.kind == .runShortcut, let input = PhoneChangeWording.longShortcutInput(change.fields) {
+                if showsFullInput {
+                    ScrollView {
+                        Text(verbatim: input)
+                            .scaledFont(.caption)
+                            .textSelection(.enabled)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(maxHeight: 220)
+                }
+                Button(showsFullInput ? AppLocalization.string("Show less") : AppLocalization.string("Show all")) {
+                    showsFullInput.toggle()
+                }
+                .scaledFont(.caption)
+                .buttonStyle(.borderless)
+                .accessibilityIdentifier("phone.change.full-input")
             }
             if let calendar = prompt.calendarTitle, change.kind.isAddition {
                 Text(AppLocalization.string("In \(calendar)"))
@@ -974,8 +1122,9 @@ struct PhoneChangeOverlay: View {
         .animation(.spring(duration: 0.3), value: engine.autoAdded?.id)
         .onChange(of: engine.prompts.first?.id) { _, id in
             // The card isn't modal: tell VoiceOver users Hermes is waiting.
-            guard id != nil, let change = engine.prompts.first?.change else { return }
-            let spoken = [PhoneChangeWording.headline(change), PhoneChangeWording.detail(change)].filter { !$0.isEmpty }
+            guard id != nil, let prompt = engine.prompts.first else { return }
+            let change = prompt.change
+            let spoken = [PhoneChangeWording.headline(change), prompt.alarmTitle ?? PhoneChangeWording.detail(change, personName: prompt.personName)].filter { !$0.isEmpty }
             UIAccessibility.post(notification: .announcement, argument: spoken.joined(separator: ". "))
         }
     }

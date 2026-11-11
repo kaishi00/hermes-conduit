@@ -386,8 +386,9 @@ final class EventKitPhoneSource: PhoneCalendarSource, @unchecked Sendable {
             let id = Self.reminderID(reminder)
             try store.remove(reminder, commit: true)
             return id
-        case .setAlarm, .setTimer, .cancelAlarm:
-            // Alarms go to PhoneAlarmSource, never here.
+        case .setAlarm, .setTimer, .cancelAlarm, .runShortcut, .addContact, .updateContact, .deleteContact:
+            // Alarms go to PhoneAlarmSource, runs to PhoneShortcutRunner and
+            // contacts to the contacts source, never here.
             throw PhoneCalendarSourceError.notFound
         }
     }

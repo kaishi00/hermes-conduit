@@ -36,6 +36,8 @@ struct PhoneSyncState: Codable, Equatable {
     var focusHash: String?
     var alarmsHash: String?
     var contactsHash: String?
+    /// Optional fields read as nil from a state file written before them.
+    var shortcutsHash: String?
     var lastFullSync: Date?
     /// The time zone and sharing the last upload the host took reported,
     /// hashed, and when it went: a pass with nothing new sends nothing
@@ -66,6 +68,7 @@ struct PhoneSyncState: Codable, Equatable {
         focusHash = nil
         alarmsHash = nil
         contactsHash = nil
+        shortcutsHash = nil
         lastFullSync = nil
         fingerprint = nil
         frameHash = nil
@@ -149,6 +152,9 @@ struct PhoneChangePrompt: Identifiable, Equatable {
     var calendarTitle: String?
     /// The alarm a cancellation is about, by name and time.
     var alarmTitle: String?
+    /// The picked person a contact change or deletion is about, by the
+    /// name the phone knows them by, not the one Hermes sent.
+    var personName: String?
     var id: String { change.id }
 }
 
@@ -200,6 +206,10 @@ final class PhoneSyncEngine: ObservableObject {
     let statusSource: PhoneStatusSource
     let alarmSource: PhoneAlarmSource
     let contactsSource: PhoneContactsSource
+    let shortcutRunner: PhoneShortcutRunning
+    /// Reports a run that went without asking as soon as it ends, as an
+    /// answered card is: nothing else would send it while Conduit stays open.
+    var onRanWithoutAsking: (@MainActor () async -> Void)?
     private let store: PhoneSyncStateStore
     private let keys: PhoneSyncKeyStore
     private let defaults: UserDefaults
@@ -230,6 +240,7 @@ final class PhoneSyncEngine: ObservableObject {
         statusSource: PhoneStatusSource,
         alarmSource: PhoneAlarmSource = PhoneAlarmSources.system(),
         contactsSource: PhoneContactsSource = SystemContactsSource(),
+        shortcutRunner: PhoneShortcutRunning? = nil,
         store: PhoneSyncStateStore = .standard,
         keys: PhoneSyncKeyStore = .keychain,
         defaults: UserDefaults = .standard,
@@ -241,6 +252,7 @@ final class PhoneSyncEngine: ObservableObject {
         self.statusSource = statusSource
         self.alarmSource = alarmSource
         self.contactsSource = contactsSource
+        self.shortcutRunner = shortcutRunner ?? PhoneShortcutRunner.shared
         contactsAccess = contactsSource.access
         self.store = store
         self.keys = keys
@@ -516,6 +528,7 @@ final class PhoneSyncEngine: ObservableObject {
         var newFocusHash = state.focusHash
         var newAlarmsHash = state.alarmsHash
         var newContactsHash = state.contactsHash
+        var newShortcutsHash = state.shortcutsHash
         var statusSent = false
 
         let readsEvents = preferences.calendar.reads && calendarSource.eventAccess == .full
@@ -615,6 +628,16 @@ final class PhoneSyncEngine: ObservableObject {
         } else {
             newContactsHash = nil
         }
+        if preferences.shortcuts {
+            let shortcuts = preferences.shortcutList.map(\.json)
+            let hash = Self.hash(shortcuts)
+            if full || hash != state.shortcutsHash {
+                batch["shortcuts"] = shortcuts
+                newShortcutsHash = hash
+            }
+        } else {
+            newShortcutsHash = nil
+        }
 
         let frame = Self.hash(Self.frame(of: batch))
         let send = ContextUploadPolicy.phoneIngestNeeded(
@@ -645,6 +668,7 @@ final class PhoneSyncEngine: ObservableObject {
         state.focusHash = newFocusHash
         state.alarmsHash = newAlarmsHash
         state.contactsHash = newContactsHash
+        state.shortcutsHash = newShortcutsHash
         if statusSent { state.statusSentAt = currentNow }
         state.fingerprint = preferences.fingerprint
         if full { state.lastFullSync = currentNow }
@@ -830,7 +854,7 @@ final class PhoneSyncEngine: ObservableObject {
     private func exchange(key: PhoneSyncCrypto.SessionKey, request: Request) async throws {
         let callID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         let reporting = state.unreported
-        let results: [[String: Any]] = reporting.map { $0.json }
+        let results = PhoneChangeResult.json(for: reporting)
         let payload: [String: Any] = ["call_id": callID, "results": results]
         let plaintext = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let body = try PhoneSyncCrypto.exchangeEnvelope(plaintext: plaintext, op: "changes", key: key,
@@ -869,9 +893,18 @@ final class PhoneSyncEngine: ObservableObject {
                 await applyNow(change, auto: false)
             } else if change.auto, change.kind.addsWithoutAsking, preferences.autoAdd {
                 await applyNow(change, auto: true)
+            } else if change.kind == .runShortcut, change.auto, preferences.shortcutsRunWithoutAsking,
+                      shortcutRunner.canRun {
+                // Only on screen: iOS opens Shortcuts for an app in front.
+                // Otherwise it waits on its card like any other.
+                // Not awaited: a run lasts as long as the shortcut does.
+                Task {
+                    await self.applyNow(change, auto: true)
+                    await self.onRanWithoutAsking?()
+                }
             } else {
                 fresh.append(PhoneChangePrompt(change: change, calendarTitle: calendarTitle(for: change),
-                                               alarmTitle: alarmTitle(for: change)))
+                                               alarmTitle: alarmTitle(for: change), personName: personName(for: change)))
             }
         }
         // One approved on a card while this ran gets no card: the pass the
@@ -905,8 +938,14 @@ final class PhoneSyncEngine: ObservableObject {
     }
 
     private func calendarTitle(for change: PhoneChange) -> String? {
-        guard !change.kind.isAlarm else { return nil }
+        guard !change.kind.isAlarm, change.kind != .runShortcut, !change.kind.isContact else { return nil }
         return calendarSource.calendarTitle(id: change.fields.calendarID ?? change.fields.listID, forEvents: change.kind.isEvent)
+    }
+
+    /// The picked person a change or deletion names, as the phone has them.
+    private func personName(for change: PhoneChange) -> String? {
+        guard change.kind.isContact, change.kind != .addContact, let id = change.contactID else { return nil }
+        return people.first { $0.id == id }?.name
     }
 
     private func alarmTitle(for change: PhoneChange) -> String? {
@@ -922,6 +961,8 @@ final class PhoneSyncEngine: ObservableObject {
     /// copy, so not localized).
     nonisolated static func refusalNote(_ kind: PhoneChange.Kind) -> String {
         if kind.isAlarm { return "The user doesn't let Hermes set alarms on this iPhone" }
+        if kind == .runShortcut { return "The user doesn't let Hermes run Shortcuts on this iPhone" }
+        if kind.isContact { return "The user doesn't let Hermes change their contacts" }
         return kind.isEvent
             ? "The user doesn't let Hermes make this change to their calendar (read-only or not shared)"
             : "The user doesn't let Hermes change their reminders (read-only or not shared)"
@@ -937,6 +978,14 @@ final class PhoneSyncEngine: ObservableObject {
         }
         if change.kind.isAlarm {
             await applyAlarm(change, auto: auto)
+            return
+        }
+        if change.kind == .runShortcut {
+            await applyShortcut(change)
+            return
+        }
+        if change.kind.isContact {
+            await applyContact(change)
             return
         }
         do {
@@ -976,6 +1025,122 @@ final class PhoneSyncEngine: ObservableObject {
         } catch {
             record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.describe(error)))
             if !auto { lastError = Self.describe(error) }
+        }
+    }
+
+    /// Runs a shortcut the user listed (a name the host passed that isn't
+    /// listed here any more is refused), and reports the text it gave back.
+    private func applyShortcut(_ change: PhoneChange) async {
+        guard let name = change.fields.shortcut, let listed = preferences.listedShortcut(named: name) else {
+            record(PhoneChangeResult(id: change.id, outcome: .failed,
+                                     note: "The user doesn't let Hermes run a shortcut by that name any more"))
+            return
+        }
+        // A run can take minutes: what it gave back goes only to the host
+        // that asked, and only while the user still lets Hermes run it.
+        // Sharing turned off and on again, even to the same host, is
+        // another sharing: the device id survives that, the count doesn't.
+        let askedBy = ShortcutAsker(device: state.deviceID, turnOffs: turnOffs, destination: preferences.destination)
+        do {
+            let text = try await shortcutRunner.run(name: listed.name, input: change.fields.input)
+            guard stillAsked(by: askedBy) else { return }
+            record(PhoneChangeResult(id: change.id, outcome: .applied,
+                                     result: text.map { String($0.prefix(PhoneChangeResult.resultChars)) }))
+        } catch PhoneShortcutError.cancelled {
+            guard stillAsked(by: askedBy) else { return }
+            record(PhoneChangeResult(id: change.id, outcome: .dismissed, note: "The user cancelled the shortcut"))
+        } catch {
+            // Not on screen: no answer yet, so the card comes back on the
+            // next exchange.
+            if case .notOnScreen? = error as? PhoneShortcutError { return }
+            guard stillAsked(by: askedBy) else { return }
+            record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.shortcutNote(error)))
+            lastError = Self.describe(error)
+        }
+    }
+
+    /// The sharing a shortcut run was asked in.
+    private struct ShortcutAsker {
+        var device: String
+        var turnOffs: Int
+        var destination: PhoneSyncDestination?
+    }
+
+    /// Whether the sharing that asked for a run is still the one on, and
+    /// still lets Hermes run shortcuts.
+    private func stillAsked(by asker: ShortcutAsker) -> Bool {
+        state.deviceID == asker.device && turnOffs == asker.turnOffs
+            && preferences.destination == asker.destination && preferences.shortcuts
+    }
+
+    /// Adds a contact, or changes or deletes a picked person's card. A new
+    /// contact joins the picked people (with the relation Hermes gave), a
+    /// deleted one leaves them, and a changed one is read again, so the
+    /// next upload tells Hermes.
+    private func applyContact(_ change: PhoneChange) async {
+        var person: PhonePerson?
+        var contactID: String?
+        if change.kind != .addContact {
+            guard let id = change.contactID, let picked = people.first(where: { $0.id == id }) else {
+                record(PhoneChangeResult(id: change.id, outcome: .failed,
+                                         note: "That person isn't among the people the user picked any more"))
+                return
+            }
+            person = picked
+            contactID = picked.contactID
+            if contactID == nil, contactsSource.access.canRead {
+                contactID = await contactsSource.identifiers(for: [id])?[id]
+            }
+        }
+        do {
+            let identifier = try await contactsSource.applyChange(change, contactID: contactID)
+            switch change.kind {
+            case .addContact:
+                let read = await contactsSource.read([identifier])
+                var added: PhonePerson
+                if case .person(let person)? = read[identifier] {
+                    added = person
+                } else {
+                    // Not readable back (limited access can hide it): what the change said.
+                    let edit = change.fields.contact
+                    let typed = [edit?.givenName, edit?.familyName].compactMap { $0 }.joined(separator: " ")
+                    let name = change.fields.personName ?? (typed.isEmpty ? edit?.organization : typed)
+                    added = PhonePerson(id: PhonePerson.id(forContact: identifier), name: name ?? AppLocalization.string("Contact"))
+                    added.organization = edit?.organization
+                    added.nickname = edit?.nickname
+                    added.phones = edit?.phones ?? []
+                    added.emails = edit?.emails ?? []
+                    added.birthday = edit?.birthday
+                }
+                added.contactID = identifier
+                added.relation = change.fields.contact?.relation
+                savePeople(PhonePeopleStore.merging([added], into: people))
+                record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: added.id))
+            case .deleteContact:
+                savePeople(people.filter { $0.id != person?.id })
+                record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: person?.id))
+            default:
+                if let relation = change.fields.contact?.relation, let id = person?.id {
+                    savePeople(people.map { var kept = $0; if kept.id == id { kept.relation = relation }; return kept })
+                }
+                await refreshPeople()
+                record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: person?.id))
+            }
+        } catch {
+            record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.describe(error)))
+            lastError = Self.describe(error)
+        }
+    }
+
+    /// Why a run failed, for Hermes (not UI copy, so not localized).
+    static func shortcutNote(_ error: Error) -> String {
+        switch error as? PhoneShortcutError {
+        case .couldNotOpen?: return "The Shortcuts app couldn't be opened"
+        case .failed(let message)?: return message.map { "The shortcut stopped with an error: \($0)" } ?? "The shortcut stopped with an error"
+        case .noAnswer?: return "The Shortcuts app didn't say how the shortcut went"
+        case .cancelled?: return "The user cancelled the shortcut"
+        case .notOnScreen?: return "Conduit wasn't open, so iOS wouldn't start the shortcut"
+        case nil: return describe(error)
         }
     }
 
