@@ -43,12 +43,15 @@ enum IPhoneVoices {
     /// told apart by script (OnDeviceSpeechStream.language(of:), which tags
     /// a Cantonese one zh-HK):
     /// Simplified (zh-CN) and Traditional (zh-TW, where Cantonese voices go
-    /// too, so a Hong Kong pick speaks Traditional replies).
+    /// too, so a Hong Kong pick speaks Traditional replies). iOS tags some
+    /// Cantonese voices zh-HK (Sinji) and newer ones yue (Wing); both are
+    /// Traditional unless Simplified is named outright.
     static func languageKey(_ language: String) -> String {
         let parts = language.split(whereSeparator: { $0 == "-" || $0 == "_" }).map { String($0) }
         let base = (parts.first ?? language).lowercased()
-        guard base == "zh" else { return base }
         let rest = parts.dropFirst().map { $0.uppercased() }
+        if base == "yue" { return rest.contains("HANS") ? "zh-CN" : "zh-TW" }
+        guard base == "zh" else { return base }
         // A script named outright wins over the region (zh-Hans-HK is Simplified).
         if rest.contains("HANT") { return "zh-TW" }
         if rest.contains("HANS") { return "zh-CN" }
@@ -91,10 +94,24 @@ enum IPhoneVoices {
         }
     }
 
-    private static func isCantonese(_ language: String) -> Bool {
+    static func isCantonese(_ language: String) -> Bool {
         let parts = language.split(whereSeparator: { $0 == "-" || $0 == "_" }).map { $0.uppercased() }
-        // iOS tags its Cantonese voices zh-HK (Sinji), never yue.
-        return parts.first == "ZH" && (parts.contains("HK") || parts.contains("MO"))
+        // iOS tags its Cantonese voices zh-HK (Sinji) or yue (Wing).
+        return parts.first == "YUE" || (parts.first == "ZH" && (parts.contains("HK") || parts.contains("MO")))
+    }
+
+    /// A voice's name without the quality iOS adds to Enhanced and Premium
+    /// ones ("Wing (Enhanced)", in the iPhone's language), since Settings
+    /// names the quality itself, in the app's language.
+    static func plainName(_ name: String, quality: Int) -> String {
+        guard quality >= 2 else { return name }
+        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        for (open, close) in [("(", ")"), ("（", "）")] where trimmed.hasSuffix(close) {
+            guard let start = trimmed.range(of: open, options: .backwards) else { continue }
+            let plain = trimmed[..<start.lowerBound].trimmingCharacters(in: .whitespaces)
+            if !plain.isEmpty { return plain }
+        }
+        return name
     }
 
     /// Whether a pick in Settings changes what's saved. Against the saved
@@ -119,14 +136,23 @@ enum IPhoneVoices {
 
     // MARK: - This iPhone
 
+    /// Builds before Cantonese yue voices joined Traditional Chinese saved
+    /// their pick under its own key, where no reply ever looked.
+    private static let legacyCantoneseKey = "yue"
+
     static func chosenVoice(for language: String, defaults: UserDefaults = .standard) -> String? {
-        (defaults.dictionary(forKey: choicesKey) as? [String: String])?[languageKey(language)]
+        let choices = defaults.dictionary(forKey: choicesKey) as? [String: String]
+        let key = languageKey(language)
+        if let chosen = choices?[key] { return chosen }
+        return key == "zh-TW" ? choices?[legacyCantoneseKey] : nil
     }
 
     /// Saves `identifier` for `language`'s key; nil goes back to automatic.
     static func setChosenVoice(_ identifier: String?, for language: String, defaults: UserDefaults = .standard) {
         var choices = (defaults.dictionary(forKey: choicesKey) as? [String: String]) ?? [:]
-        choices[languageKey(language)] = identifier
+        let key = languageKey(language)
+        choices[key] = identifier
+        if key == "zh-TW" { choices[legacyCantoneseKey] = nil }
         defaults.set(choices, forKey: choicesKey)
     }
 
@@ -169,7 +195,7 @@ enum IPhoneVoices {
                   !voice.voiceTraits.contains(.isPersonalVoice) else { return nil }
             return IPhoneVoiceOption(
                 id: voice.identifier,
-                name: voice.name,
+                name: plainName(voice.name, quality: voice.quality.rawValue),
                 language: voice.language,
                 quality: voice.quality.rawValue
             )

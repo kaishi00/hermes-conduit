@@ -25,7 +25,10 @@ Premium, then Enhanced, then iOS's default voice. Screen-reader voices
 Settings says so then, since they're why a reply sounds robotic;
 novelty voices and Personal Voice never. Under
 Assistant speech you can pick the voice for each language instead; the pick
-is kept on this device for every profile. Siri's own voices can't be used:
+is kept on this device for every profile. Cantonese voices are listed under
+Traditional Chinese, marked Cantonese: written Cantonese and Traditional
+Chinese replies look the same, so picking one there speaks those replies in
+Cantonese. Siri's own voices can't be used:
 iOS doesn't offer them to apps. Premium voices are the closest: search iPhone Settings for "Voices" to
 download them (Accessibility > Read & Speak > Voices on iOS 26, Spoken
 Content before it).
