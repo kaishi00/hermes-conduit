@@ -236,10 +236,16 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     private static let sentenceClosers: Set<Character> = ["\"", "'", "\u{201D}", "\u{2019}", "\u{00BB}", ")", "]", "\u{300D}", "\u{300F}"]
 
     /// Whether the "[" just before `rest` opens a link: its "](" comes
-    /// before any other "[", so a stray bracket doesn't hold sentences.
+    /// before any other "[". A link still streaming in (no "]" yet, or one
+    /// with its "(" still to come) holds too, so it isn't cut before its
+    /// address arrives, but only for a link's length: a stray bracket
+    /// ("[sic") doesn't hold sentences for long.
     private static func opensLink(_ rest: Substring) -> Bool {
-        guard let close = rest.range(of: "](") else { return false }
-        return !rest[..<close.lowerBound].contains("[")
+        if let close = rest.range(of: "](") {
+            return !rest[..<close.lowerBound].contains("[")
+        }
+        guard rest.count < 200, !rest.contains("[") else { return false }
+        return !rest.dropLast().contains("]") && (rest.last == "]" || !rest.contains("]"))
     }
 
     /// Whether the word just before a period is a list number (a short
@@ -257,7 +263,8 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
             // "e.g", "U.S", and degrees like "Ph.D" and "M.Sc".
             let parts = word.split(separator: ".", omittingEmptySubsequences: false)
             guard parts.allSatisfy({ (1...2).contains($0.count) && $0.allSatisfy(\.isLetter) }) else { return false }
-            return parts.allSatisfy { $0.count == 1 } || parts[0].first?.isUppercase == true
+            // A degree's parts each start with a capital; "My.md" is a file.
+            return parts.allSatisfy { $0.count == 1 } || parts.allSatisfy { $0.first?.isUppercase == true }
         }
         if word.count == 1, let letter = word.first, letter.isUppercase { return true }
         return titles.contains(word.lowercased())

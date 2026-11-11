@@ -301,9 +301,9 @@ extension HermesVoiceGatewayTimeoutTests {
         ])
 
         // A degree is an abbreviation too.
-        var degree = "He has a Ph.D. in physics. Next. Tail"
+        var degree = "He has a Ph.D. in physics. Open My.md. Next. Tail"
         XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &degree), [
-            "He has a Ph.D. in physics.", "Next."
+            "He has a Ph.D. in physics.", "Open My.md.", "Next."
         ])
 
         // Closing quotes stay on the sentence they end.
@@ -327,10 +327,22 @@ extension HermesVoiceGatewayTimeoutTests {
             "[guide](https://example.com/a_(b) \"First. Second\").", "After."
         ])
 
-        // A stray bracket holds nothing.
-        var stray = "A stray [sic here. Then more. Tail"
-        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &stray), [
-            "A stray [sic here.", "Then more."
+        // A link still streaming in waits for its address.
+        var streaming = "Done. See [the docs. More"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &streaming), ["Done."])
+        streaming += "](https://example.com). Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &streaming), [
+            "See [the docs. More](https://example.com)."
+        ])
+
+        // A stray bracket holds only for a link's length, and not at all
+        // once a "]" without "(" shows it isn't a link.
+        let long = String(repeating: "More words here. ", count: 15)
+        var stray = "A stray [sic here. " + long + "Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &stray).first, "A stray [sic here.")
+        var bracketed = "See [1] for more. Then more. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &bracketed), [
+            "See [1] for more.", "Then more."
         ])
     }
 
