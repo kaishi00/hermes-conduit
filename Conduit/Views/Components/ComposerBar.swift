@@ -403,7 +403,7 @@ struct ComposerBar: View, Equatable {
         }
     }
 
-    /// Roster bots matching a trailing `@query`, while the editor has focus.
+    /// Roster bots matching a trailing `@query`, while the field takes text.
     private var mentionCandidates: [MentionAutocomplete.Candidate] {
         guard isTyping, mentionsDismissedFor != text,
               let query = MentionAutocomplete.activeQuery(in: text) else { return [] }
