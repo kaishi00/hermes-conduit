@@ -32,33 +32,42 @@ struct CronBotChatReport: Equatable {
     /// the transcript too), stays as written.
     var shown: String {
         guard report.contains("@image:") || report.contains("@file:") else { return report }
-        var openFence: MarkdownFence?
-        var mathClosing: String?
-        return report.components(separatedBy: "\n").map { line in
-            let trimmed = line.trimmingCharacters(in: .whitespaces)
-            if let fence = openFence {
-                if fence.closes(trimmed) { openFence = nil }
-                return line
-            }
-            if let closing = mathClosing {
-                if trimmed == closing { mathClosing = nil }
-                return line
-            }
-            if let fence = MarkdownFence.opening(trimmed) { openFence = fence; return line }
-            if trimmed == "$$" || trimmed == "\\[" { mathClosing = trimmed == "$$" ? "$$" : "\\]"; return line }
-            let marker = trimmed.range(of: #"^(?:[-*+]|\d{1,9}[.)])\s+"#, options: .regularExpression)
-            guard let path = Self.referencePath(marker.map { String(trimmed[$0.upperBound...]) } ?? trimmed) else { return line }
-            return ToolResultPresentation.mediaTag(for: path)
-        }.joined(separator: "\n")
+        return lines.map(\.text).joined(separator: "\n")
     }
 
     /// The report for the folded card: each delivered picture or file by
-    /// its name, never its path on the host.
+    /// its name, never its path on the host. A tag in fenced code or a
+    /// math block stays as written, as it does in `shown`.
     var preview: String {
-        shown.components(separatedBy: "\n").map { line in
-            guard let path = GatewayMediaTags.soleMediaPath(line) else { return line }
+        lines.map { line in
+            guard let path = line.media else { return line.text }
             return path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
         }.joined(separator: "\n")
+    }
+
+    /// The report's lines as the card draws them, each with the path of
+    /// the picture or file it delivers, if it delivers one.
+    private var lines: [(text: String, media: String?)] {
+        var openFence: MarkdownFence?
+        var mathClosing: String?
+        return report.components(separatedBy: "\n").map { (line: String) -> (text: String, media: String?) in
+            let trimmed = line.trimmingCharacters(in: .whitespaces)
+            if let fence = openFence {
+                if fence.closes(trimmed) { openFence = nil }
+                return (line, nil)
+            }
+            if let closing = mathClosing {
+                if trimmed == closing { mathClosing = nil }
+                return (line, nil)
+            }
+            if let fence = MarkdownFence.opening(trimmed) { openFence = fence; return (line, nil) }
+            if trimmed == "$$" || trimmed == "\\[" { mathClosing = trimmed == "$$" ? "$$" : "\\]"; return (line, nil) }
+            let marker = trimmed.range(of: #"^(?:[-*+]|\d{1,9}[.)])\s+"#, options: .regularExpression)
+            if let path = Self.referencePath(marker.map { String(trimmed[$0.upperBound...]) } ?? trimmed) {
+                return (ToolResultPresentation.mediaTag(for: path), path)
+            }
+            return (line, GatewayMediaTags.soleMediaPath(line))
+        }
     }
 
     /// The path of a line that is only an `@image:` or `@file:` reference,
@@ -73,6 +82,8 @@ struct CronBotChatReport: Equatable {
         } else if value.contains(where: \.isWhitespace) {
             return nil
         }
+        // Nor are two references run together without a space.
+        guard !value.contains("@image:"), !value.contains("@file:") else { return nil }
         guard !value.isEmpty, !value.contains("`"), !value.allSatisfy({ "\"'".contains($0) }) else { return nil }
         return value
     }
