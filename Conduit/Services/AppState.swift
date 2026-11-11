@@ -27981,6 +27981,9 @@ final class AppState: ObservableObject {
         }) ?? (sessions + cronSessions).first(where: { $0.storedSessionId == sessionId })
         if conversationProfile == nil,
            let session = listedSession, !sessionBelongsToProfile(session, profile: activeProfile) {
+            // Nothing opens in the room's place: the shell drops its screen
+            // rather than show the chat that was open before it.
+            roomHandedTo = .none
             errorMessage = AppLocalization.string("That conversation belongs to another workspace. Switch profiles to open it.")
             return (.failed, true, false)
         }

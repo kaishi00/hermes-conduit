@@ -1219,7 +1219,7 @@ struct V2Shell: View {
         let target = V2Tab.conversationTab(
             selected: selectedTab,
             isBotsChat: !ordinary && appState.placesConversationAsBotChat,
-            fromBotsPage: botsPath.last == .pulse || botsPath.last == .artifacts
+            fromBotsPage: !ordinary && (botsPath.last == .pulse || botsPath.last == .artifacts)
         )
         appState.botChatOpeningPlaced()
         // The push itself, before the path moves: paired with the
