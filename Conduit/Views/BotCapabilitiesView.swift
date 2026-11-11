@@ -57,13 +57,12 @@ struct BotCapabilitiesView: View {
                         .textFieldStyle(.roundedBorder)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
-                    // Keyed by name: a filter change must not hand one
-                    // skill's row to another.
-                    ForEach(visibleSkillNames, id: \.self) { name in
-                        if let index = capabilities.skills.firstIndex(where: { $0.name == name }) {
-                            toggle($capabilities.skills[index])
-                        }
-                    }
+                    BotCapabilityRows(
+                        rows: visibleSkills,
+                        editable: editable,
+                        keepsOneOn: false
+                    ) { name, on in set(\.skills, name, on) }
+                        .equatable()
                 }
                 if let sourceLabel, !skillsSkipped {
                     Text(AppLocalization.string("Starts from what \(sourceLabel) has installed."))
@@ -75,19 +74,14 @@ struct BotCapabilitiesView: View {
                     Text(AppLocalization.string("No tools to choose from."))
                         .foregroundStyle(.secondary)
                 } else {
-                    // Keyed by name, as the skills are: Hermes' answer can
-                    // replace the kept lists under the rows.
-                    ForEach(capabilities.toolsets.map(\.name), id: \.self) { name in
-                        if let index = capabilities.toolsets.firstIndex(where: { $0.name == name }) {
-                            toggle($capabilities.toolsets[index])
-                                // Hermes reads no tools as its default tools, so
-                                // the last one on stays on.
-                                .disabled(!capabilities.canTurnOffToolset(at: index))
-                                .accessibilityHint(capabilities.canTurnOffToolset(at: index)
-                                    ? Text(verbatim: "")
-                                    : Text(AppLocalization.string("At least one tool stays on.")))
-                        }
-                    }
+                    // Hermes reads no tools as its default tools, so the
+                    // last one on stays on.
+                    BotCapabilityRows(
+                        rows: capabilities.toolsets,
+                        editable: editable,
+                        keepsOneOn: true
+                    ) { name, on in set(\.toolsets, name, on) }
+                        .equatable()
                 }
                 if !capabilities.toolsets.isEmpty {
                     Text(AppLocalization.string("With every tool on, the bot follows Hermes' default tools. At least one tool stays on."))
@@ -306,12 +300,19 @@ struct BotCapabilitiesView: View {
         }
     }
 
-    private var visibleSkillNames: [String] {
+    private var visibleSkills: [BotCapability] {
         let query = skillFilter.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return capabilities.skills.map(\.name) }
+        guard !query.isEmpty else { return capabilities.skills }
         return capabilities.skills
             .filter { $0.name.localizedCaseInsensitiveContains(query) || ($0.label ?? "").localizedCaseInsensitiveContains(query) }
-            .map(\.name)
+    }
+
+    /// Flips one row by name: Hermes' answer can replace the kept lists
+    /// under the rows, so a row never writes by position.
+    private func set(_ list: WritableKeyPath<BotCapabilities, [BotCapability]>, _ name: String, _ on: Bool) {
+        guard editable, let index = capabilities[keyPath: list].firstIndex(where: { $0.name == name }) else { return }
+        if list == \BotCapabilities.toolsets, !on, !capabilities.canTurnOffToolset(at: index) { return }
+        capabilities[keyPath: list][index].enabled = on
     }
 
     private func toggle(_ item: Binding<BotCapability>) -> some View {
@@ -328,6 +329,49 @@ struct BotCapabilitiesView: View {
         }
         .tint(.conduitAccent)
         .disabled(!editable)
+    }
+}
+
+/// A list of skill or toolset switches, keyed by name so a filter change
+/// or Hermes' answer never hands one row's switch to another. Equatable on
+/// what it shows: Edit Bot redraws on every AppState publish, and a long
+/// skills list redrawn with it made the page lag. Lazy, so only the rows
+/// on screen are built.
+struct BotCapabilityRows: View, Equatable {
+    let rows: [BotCapability]
+    let editable: Bool
+    /// The toolsets: the last one on can't be turned off, since no tools
+    /// on would save as Hermes' default tools.
+    let keepsOneOn: Bool
+    let onSet: (String, Bool) -> Void
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.rows == rhs.rows && lhs.editable == rhs.editable && lhs.keepsOneOn == rhs.keepsOneOn
+    }
+
+    var body: some View {
+        let onCount = keepsOneOn ? rows.lazy.filter(\.enabled).count : 0
+        LazyVStack(alignment: .leading, spacing: 14) {
+            ForEach(rows) { row in
+                let locked = keepsOneOn && row.enabled && onCount <= 1
+                Toggle(isOn: Binding(get: { row.enabled }, set: { onSet(row.name, $0) })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: row.label ?? row.name)
+                        if !row.description.isEmpty {
+                            Text(verbatim: row.description)
+                                .scaledFont(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+                .tint(.conduitAccent)
+                .disabled(!editable || locked)
+                .accessibilityHint(locked
+                    ? Text(AppLocalization.string("At least one tool stays on."))
+                    : Text(verbatim: ""))
+            }
+        }
     }
 }
 
