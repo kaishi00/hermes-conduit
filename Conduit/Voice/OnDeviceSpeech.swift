@@ -89,8 +89,10 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     func append(_ text: String) async throws {
         if terminal { throw terminalError ?? CancellationError() }
         pending += text
-        // Whole sentences start speaking while the rest of the reply streams in.
-        if let sentences = Self.takeCompleteSentences(from: &pending) { queue.append(sentences) }
+        // Whole sentences start speaking while the rest of the reply streams in,
+        // each its own utterance: a Premium voice given a long run of them can
+        // go quiet past the watchdog partway and lose the rest (issue 2191).
+        queue.append(contentsOf: Self.takeCompleteSentences(from: &pending))
         speakNext()
     }
 
@@ -177,29 +179,72 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         continuation?.resume(with: result)
     }
 
-    /// Moves every finished sentence out of `text`, leaving the unfinished
-    /// tail. A sentence ends at . ! ? … followed by whitespace (so "3.5"
-    /// isn't split), or right after a line break or a CJK full stop.
-    static func takeCompleteSentences(from text: inout String) -> String? {
-        var boundary: String.Index?
+    /// Moves every finished sentence out of `text`, one string each, leaving
+    /// the unfinished tail. A sentence ends at . ! ? … followed by whitespace
+    /// (so "3.5" isn't split), or right after a line break or a CJK full
+    /// stop. A period after a list number, a title or an abbreviation
+    /// ("1.", "Dr.", "e.g.") doesn't end one, so it's said with what follows, and
+    /// nothing inside a Markdown link does, so the link reaches
+    /// PreviewText whole and its address isn't read.
+    static func takeCompleteSentences(from text: inout String) -> [String] {
+        var sentences: [String] = []
+        var start = text.startIndex
         var index = text.startIndex
+        var linkDepth = 0
+        var previous: Character?
         while index < text.endIndex {
             let character = text[index]
             let next = text.index(after: index)
-            if "。！？".contains(character) {
-                boundary = next
-            } else if character == "\n" {
-                boundary = next
-            } else if ".!?…".contains(character), next < text.endIndex, text[next].isWhitespace {
-                boundary = next
+            let followedBySpace = next < text.endIndex && text[next].isWhitespace
+            let ends: Bool
+            if "。！？".contains(character) || character.isNewline {
+                ends = true
+            } else if character == "[" || (character == "(" && previous == "]") {
+                linkDepth += 1
+                ends = false
+            } else if character == "]" || character == ")" {
+                linkDepth = max(0, linkDepth - 1)
+                ends = false
+            } else if linkDepth > 0 {
+                ends = false
+            } else if "!?…".contains(character) {
+                ends = followedBySpace
+            } else if character == "." {
+                ends = followedBySpace && !endsAbbreviation(text[start..<index])
+            } else {
+                ends = false
             }
+            if ends {
+                let sentence = text[start..<next].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !sentence.isEmpty { sentences.append(sentence) }
+                start = next
+                linkDepth = 0
+            }
+            previous = character
             index = next
         }
-        guard let boundary else { return nil }
-        let sentences = String(text[..<boundary]).trimmingCharacters(in: .whitespacesAndNewlines)
-        text = String(text[boundary...])
-        return sentences.isEmpty ? nil : sentences
+        if start > text.startIndex { text = String(text[start...]) }
+        return sentences
     }
+
+    /// Whether the word just before a period is a list number ("1", "12"),
+    /// a title ("Dr", "Mrs"), an initial ("J"), or letters each followed by
+    /// a period ("e.g", "U.S"). Any other word ends its sentence, short ones
+    /// ("do it.") and domains, file names and decimals included.
+    private static func endsAbbreviation(_ before: Substring) -> Bool {
+        let word = (before.split(whereSeparator: { $0.isWhitespace }).last ?? "")
+            .drop(while: { !$0.isLetter && !$0.isNumber })
+        guard !word.isEmpty else { return false }
+        if word.allSatisfy(\.isNumber) { return word.count <= 3 }
+        if word.contains(".") {
+            return word.split(separator: ".", omittingEmptySubsequences: false)
+                .allSatisfy { $0.count == 1 && $0.allSatisfy(\.isLetter) }
+        }
+        if word.count == 1, let letter = word.first, letter.isUppercase { return true }
+        return titles.contains(word.lowercased())
+    }
+
+    private static let titles: Set<String> = ["mr", "mrs", "ms", "dr", "prof", "st", "jr", "sr", "vs"]
 
     /// The reply's language, so a German answer gets a German voice even
     /// with the app in English. Nil when the text is too short to tell.

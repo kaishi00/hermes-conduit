@@ -259,16 +259,66 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testSentencesStartSpeakingWhileTheReplyStreams() {
         var text = "Hello there. The value is 3.5 now"
-        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &text), "Hello there.")
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &text), ["Hello there."])
         XCTAssertEqual(text, " The value is 3.5 now")
 
         var unfinished = "Still going"
-        XCTAssertNil(OnDeviceSpeechStream.takeCompleteSentences(from: &unfinished))
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &unfinished), [])
         XCTAssertEqual(unfinished, "Still going")
 
         var chinese = "你好。今天"
-        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &chinese), "你好。")
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &chinese), ["你好。"])
         XCTAssertEqual(chinese, "今天")
+    }
+
+    /// Issue 2191: a Premium voice given a whole reply as one utterance went
+    /// quiet past the watchdog partway, and everything up to the last
+    /// sentence was lost. Each sentence is its own utterance now.
+    func testEverySentenceIsItsOwnUtterance() {
+        var text = "First one. Second one! Third?\nA list:\n1. Ask Dr. Lee, e.g. by mail. Then wait"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &text), [
+            "First one.", "Second one!", "Third?", "A list:", "1. Ask Dr. Lee, e.g. by mail."
+        ])
+        XCTAssertEqual(text, " Then wait")
+
+        // A domain, a decimal or a file name still ends its sentence.
+        var dotted = "The site is example.com. The value is 3.5. Open notes.md. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &dotted), [
+            "The site is example.com.", "The value is 3.5.", "Open notes.md."
+        ])
+
+        // A short word still ends its sentence.
+        var short = "I can do it. You can do it. Ask J. Doe. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &short), [
+            "I can do it.", "You can do it.", "Ask J. Doe."
+        ])
+
+        // A link stays whole, so its address is dropped rather than read.
+        var link = "Read [part one. And two](https://example.com/a. b). Next one. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &link), [
+            "Read [part one. And two](https://example.com/a. b).", "Next one."
+        ])
+    }
+
+    func testALongReadAloudReplySpeaksSentenceBySentence() async throws {
+        let synthesizer = FakeSpeechSynthesizer()
+        let stream = OnDeviceSpeechStream(
+            synthesizer: synthesizer,
+            fallbackLanguage: "en",
+            onStart: { _ in },
+            onPCM16: { _, _ in }
+        )
+        // Read Aloud hands over the whole reply at once.
+        try await stream.append("The first paragraph opens here. It goes on a while.\n\nThe second one follows. And this is the end.")
+        let finishing = Task { try await stream.finish() }
+        for count in 1...4 {
+            await waitUntil { synthesizer.spoken.count == count }
+            synthesizer.finishCurrent(audio: Data([1, 0]))
+        }
+        _ = try await finishing.value
+        XCTAssertEqual(synthesizer.spoken, [
+            "The first paragraph opens here.", "It goes on a while.", "The second one follows.", "And this is the end."
+        ])
     }
 
     func testAReplyTooShortToTellWaitsForASentenceThatSaysItsLanguage() async throws {
@@ -279,7 +329,7 @@ extension HermesVoiceGatewayTimeoutTests {
             onStart: { _ in },
             onPCM16: { _, _ in }
         )
-        try await stream.append("42. ")
+        try await stream.append("42! ")
         synthesizer.finishCurrent(audio: Data([1, 0]))
         try await stream.append("Die Hauptstadt von Deutschland ist Berlin, und die Stadt ist im Sommer sehr schön. ")
         await waitUntil { synthesizer.spoken.count == 2 }
