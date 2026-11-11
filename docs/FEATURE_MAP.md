@@ -3477,7 +3477,7 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.keepsFocusAfterSend)
-- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus while the field takes text: isTyping), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView and Coordinator.deactivate, which pass the binding's focus to the field), `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView.setFocusIntent and didMoveToWindow: focus changes after the update that asked, and a field rebuilt with focus takes it once it's in the window; setTyping, endedEditingLeavesField and onFocusTakenWhileOff: typing turned off under focus keeps the wish; ReturnKeyTextEditor, rooms' field and the full editor, the same), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus while the field takes text: isTyping), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView and Coordinator.deactivate, which pass the binding's focus to the field), `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView.setFocusIntent and didMoveToWindow: focus changes after the update that asked, and a field rebuilt with focus takes it once it's in the window; setTyping, endedEditingLeavesField, onFocusTakenWhileOff and putAwayFocus: typing turned off under focus keeps the wish; ReturnKeyTextEditor, rooms' field and the full editor, the same), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send; focusesAfterFullEditor, read in the full editor sheet's onDismiss)
 - Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow, testFocusChangesWaitUntilAfterTheUpdateThatAskedAndTheLastAskWins, testAFieldTurnedOffUnderFocusTakesItBackOnceOnUnlessAnotherFieldTookIt)
@@ -3506,7 +3506,9 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   reply, a saved copy on screen) doesn't count as focus going: the field
   keeps the composer's wish, turns off just after the update that asked,
   and takes focus back once typing is on again, unless another text field
-  took focus meanwhile. On a Mac a sync once the reply came had let go of
+  took focus meanwhile or the keyboard was put away (a tap on the
+  transcript, a plan strip or a row, a profile switch:
+  `ReturnKeyTextView.putAwayFocus`), as the transcript ruling has it. On a Mac a sync once the reply came had let go of
   the focus a send kept. While it waits, nobody counts as typing: the
   minimised call bar shows, mentions hide and a resting composer may rest
   (2026-11-11, issue 2208, #2210).
@@ -3524,9 +3526,6 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   transcript take focus from the field on a Mac. No test reaches
   `updateUIView` passing the binding's focus to the field (it needs a SwiftUI
   Context), so that link is checked on a device only.
-- A click on the transcript while typing is off (a sync) puts away no
-  focus, as the field has none then: once typing is on, the field takes
-  focus back. Another text field taking focus is the only move it notices.
 - Issue 2208's cause is read from the code, not traced on the reporter's
   Mac: a sync or reconnect after the reply turning typing off.
 
@@ -4737,7 +4736,7 @@ Classic voice, and its calls speak with their live voices.
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-11, #2198 (an unclosed link address or title holds only for a link's length, and a title may run over a line break; same siblings, nothing of their own); 2026-11-11, #2195 (a malformed link address ends at its first space, and an unclosed title at its line break, instead of holding the rest of the reply; a title's own spaces and stops stay in the link; same siblings, nothing of their own); 2026-11-11, #2193 (review leftovers: trailing numbers, closing quotes, links across line breaks and CJK stops, parentheses in addresses, stray brackets, degrees; same siblings, nothing of their own); 2026-11-11, #2192 (each sentence its own utterance, so a Premium voice no longer goes quiet past the watchdog in a long reply and drops its middle, issue 2191; Read Aloud, Classic voice, CarPlay, the Hermes fallback and the speaking test share the stream; captions and docs/VOICE_SETTINGS.md don't describe how a reply is cut); 2026-11-11, #2179 (Cantonese voices iOS tags yue, such as Wing, joined Traditional Chinese, where replies look: a pick under their own Language row was never used and a Mandarin voice spoke; iOS's quality dropped from voice names; docs/VOICE_SETTINGS.md done; Classic voice, CarPlay, Read Aloud, the Hermes fallback and the speaking test share the pick, nothing of their own to change); 2026-11-02, #1664 (new entry: a reply recognized as Cantonese, or a Cantonese system language, speaks with a Cantonese voice, and a Chinese script named outright wins over the region; automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once; review: Automatic clears a deleted pick, screen-reader voices listed only when alone, Chinese kept apart by script, screen-reader voices below any other, an app in Traditional Chinese falls back to Traditional, Mandarin over Cantonese unpicked, a short opening sentence no longer fixes the reply's language).
+**Checked:** 2026-11-11, #2210 (issue 2208: the download hints and their caption name the iPad or the Mac and its settings, as docs/VOICE_SETTINGS.md now says; the voices themselves needed no change); 2026-11-11, #2198 (an unclosed link address or title holds only for a link's length, and a title may run over a line break; same siblings, nothing of their own); 2026-11-11, #2195 (a malformed link address ends at its first space, and an unclosed title at its line break, instead of holding the rest of the reply; a title's own spaces and stops stay in the link; same siblings, nothing of their own); 2026-11-11, #2193 (review leftovers: trailing numbers, closing quotes, links across line breaks and CJK stops, parentheses in addresses, stray brackets, degrees; same siblings, nothing of their own); 2026-11-11, #2192 (each sentence its own utterance, so a Premium voice no longer goes quiet past the watchdog in a long reply and drops its middle, issue 2191; Read Aloud, Classic voice, CarPlay, the Hermes fallback and the speaking test share the stream; captions and docs/VOICE_SETTINGS.md don't describe how a reply is cut); 2026-11-11, #2179 (Cantonese voices iOS tags yue, such as Wing, joined Traditional Chinese, where replies look: a pick under their own Language row was never used and a Mandarin voice spoke; iOS's quality dropped from voice names; docs/VOICE_SETTINGS.md done; Classic voice, CarPlay, Read Aloud, the Hermes fallback and the speaking test share the pick, nothing of their own to change); 2026-11-02, #1664 (new entry: a reply recognized as Cantonese, or a Cantonese system language, speaks with a Cantonese voice, and a Chinese script named outright wins over the region; automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once; review: Automatic clears a deleted pick, screen-reader voices listed only when alone, Chinese kept apart by script, screen-reader voices below any other, an app in Traditional Chinese falls back to Traditional, Mandarin over Cantonese unpicked, a short opening sentence no longer fixes the reply's language).
 
 ## Providers and keys
 
@@ -7569,7 +7568,8 @@ messages built from `VoiceAudioError.microphonePermissionDenied` and
 chat composer, group rooms' composer) · Location sharing's access rows ·
 Phone > Contacts' access row · Settings > Voice's iPhone voice hints
 (no voice, only a screen-reader voice, no Enhanced or Premium one, and the
-caption under them: where to download voices) · iPhone, iPad and Mac · not needed: CarPlay's
+caption under them: where to download voices) and docs/VOICE_SETTINGS.md ·
+iPhone, iPad and Mac · not needed: CarPlay's
 and the Watch's short titles (`VoiceSetupIssue.carPlayTitleVariants`), which
 only show beside an iPhone
 

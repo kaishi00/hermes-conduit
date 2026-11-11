@@ -165,7 +165,8 @@ class ReturnKeyTextView: UITextView {
     /// send kept focused was let go once the reply came and a sync ran
     /// (issue 2208). Now the composer's wish for focus stays, and the field
     /// takes focus back once typing is on again, unless another field took
-    /// focus meanwhile (`onFocusTakenWhileOff`).
+    /// focus meanwhile or the keyboard was put away (`putAwayFocus`, a tap
+    /// on the transcript; `onFocusTakenWhileOff`).
     private var typingAllowed = true
     private var typingChangeScheduled = false
     /// Set while the field turns typing off itself, so the editing that
@@ -211,9 +212,30 @@ class ReturnKeyTextView: UITextView {
     }
 
     @objc private func otherFieldBeganEditing(_ note: Notification) {
-        guard (note.object as AnyObject?) !== self, focusesInWindow, !isEditable else { return }
+        guard (note.object as AnyObject?) !== self else { return }
+        dropFocusWishWhileOff()
+    }
+
+    @objc private func focusPutAway(_ note: Notification) {
+        dropFocusWishWhileOff()
+    }
+
+    private func dropFocusWishWhileOff() {
+        guard focusesInWindow, !isEditable else { return }
         focusesInWindow = false
         onFocusTakenWhileOff?()
+    }
+
+    /// Posted by `putAwayFocus`.
+    static let focusPutAwayNotification = Notification.Name("ReturnKeyTextView.focusPutAway")
+
+    /// Puts the keyboard away, as a tap on the transcript does: whoever has
+    /// focus gives it up, and a field waiting with typing off lets go of
+    /// its wish, so it doesn't take focus back once typing is on.
+    @MainActor
+    static func putAwayFocus() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        NotificationCenter.default.post(name: focusPutAwayNotification, object: nil)
     }
 
     private func observeOtherFields() {
@@ -224,6 +246,10 @@ class ReturnKeyTextView: UITextView {
         NotificationCenter.default.addObserver(
             self, selector: #selector(otherFieldBeganEditing(_:)),
             name: UITextField.textDidBeginEditingNotification, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(focusPutAway(_:)),
+            name: Self.focusPutAwayNotification, object: nil
         )
     }
 

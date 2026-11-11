@@ -36167,7 +36167,7 @@ final class AppState: ObservableObject {
 
         // Dismiss keyboard before switching profiles
         DispatchQueue.main.async {
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            ReturnKeyTextView.putAwayFocus()
         }
 
         let previousProfile = activeProfile

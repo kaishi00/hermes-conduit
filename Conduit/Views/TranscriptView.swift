@@ -464,7 +464,7 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     }
 
     @objc private func handleBackgroundTap() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        ReturnKeyTextView.putAwayFocus()
     }
 
     /// Only touches on the collection view itself: one on a row is the
@@ -646,7 +646,7 @@ struct TranscriptCellRoot: View {
         // away, as one on the transcript did.
         .contentShape(Rectangle())
         .onTapGesture {
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            ReturnKeyTextView.putAwayFocus()
         }
         .transcriptCellEnvironment(rowEnvironment)
         .environmentObject(appState)

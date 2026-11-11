@@ -1025,6 +1025,19 @@ final class ComposerPasteTextViewTests: XCTestCase {
         XCTAssertTrue(isFocused)
         _ = field.resignFirstResponder()
         XCTAssertFalse(isFocused)
+
+        // Off, then the keyboard is put away (a tap on the transcript):
+        // on again, the field stays unfocused.
+        field.setFocusIntent(true)
+        settleFocus()
+        XCTAssertTrue(isFocused)
+        field.setTyping(false)
+        settleFocus()
+        ReturnKeyTextView.putAwayFocus()
+        XCTAssertFalse(isFocused)
+        field.setTyping(true)
+        settleFocus()
+        XCTAssertFalse(field.isFirstResponder)
     }
 
     /// Lets the focus change queued after an update run.

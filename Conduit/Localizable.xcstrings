@@ -360930,6 +360930,88 @@
         }
       }
     },
+    "To keep them off the Lock Screen, set Show Previews to When Unlocked in iPad Settings > Notifications > Conduit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Damit sie nicht auf dem Sperrbildschirm erscheinen, stelle in den iPad-Einstellungen > Mitteilungen > Conduit „Vorschauen zeigen“ auf „Wenn entsperrt“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para que no aparezcan en la pantalla bloqueada, en Ajustes del iPad > Notificaciones > Conduit pon Mostrar previsualizaciones en Si está desbloqueado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pour les garder hors de l’écran verrouillé, réglez Afficher les aperçus sur Si déverrouillé dans Réglages de l’iPad > Notifications > Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Agar tidak tampil di Layar Terkunci, atur Tampilkan Pratinjau ke Saat Tidak Dikunci di Pengaturan iPad > Pemberitahuan > Conduit."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Per non mostrarle sulla schermata di blocco, imposta Mostra anteprime su Se sbloccato in Impostazioni di iPad > Notifiche > Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ロック画面に表示しないには、iPadの設定 > 通知 > Conduit で「プレビューを表示」を「ロックされていないときのみ」にしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "잠금 화면에 표시되지 않게 하려면 iPad 설정 > 알림 > Conduit에서 미리보기 표시를 '잠금 해제 시'로 설정하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aby nie pokazywały się na ekranie blokady, w Ustawieniach iPada > Powiadomienia > Conduit ustaw Pokazuj podglądy na Gdy odblokowany."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Para não aparecerem na Tela Bloqueada, em Ajustes do iPad > Notificações > Conduit defina Mostrar Pré-visualizações como Quando Desbloqueado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Чтобы они не появлялись на экране блокировки, в Настройках iPad > Уведомления > Conduit выберите для «Показ миниатюр» вариант «Без блокировки»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kilitli Ekran'da görünmemeleri için iPad Ayarlar > Bildirimler > Conduit'te Önizlemeleri Göster'i Kilit Açıkken olarak ayarla."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如不想在锁定屏幕上显示，请在 iPad“设置”>“通知”>“Conduit”中将“显示预览”设为“解锁时”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "如不想在鎖定畫面上顯示，請在 iPad「設定」>「通知」>「Conduit」中將「顯示預覽」設為「解鎖時」。"
+          }
+        }
+      }
+    },
     "To keep them off the Lock Screen, set Show Previews to When Unlocked in System Settings → Notifications → Conduit." : {
       "localizations" : {
         "de" : {
