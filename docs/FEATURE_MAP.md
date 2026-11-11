@@ -2394,8 +2394,9 @@ Chat in another profile (`bot-chat:<name>`), served by this process's
 gateway or another · Hermes Desktop (it shows the note as Hermes'
 local-chat note, a picture or file the report delivered by the reference
 the plugin writes for it) · the Artifacts list (a report's files list as
-the run's deliveries) · Watch and CarPlay (not needed: no transcript
-cards) · notifier README.md's Cron jobs delivered to a Bot Chat
+the run's deliveries) · room work reports (not needed: their post links
+to the workstream and doesn't carry the report) · Watch and CarPlay (not
+needed: no transcript cards) · notifier README.md's Cron jobs delivered to a Bot Chat
 
 **Code**
 - Notifier: `notifier/cron_bot_chat.py` (install, show, the note's HEADER, reference_tags, annotate for the cron tool), `notifier/cron_store.py` (act, set_act, lets_act), `notifier/dashboard/api/notifications.py` (`act` and `shows_reports` on /cron/notifications), `notifier/dashboard/api/capabilities.py` (cron-bot-chat-reports), `notifier/__init__.py` (install, _transform_tool_result), `notifier/artifacts_index.py` (CRON_NOTE_PREFIX, user_items)
@@ -2418,7 +2419,7 @@ cards) · notifier README.md's Cron jobs delivered to a Bot Chat
 - Tried on Hermes' canary (notifier upstream/test_cron_bot_chat.py) but not yet on a phone: the card in a real Bot Chat, a report that arrives during a turn, and a report's picture in the card and in Hermes Desktop.
 - Hermes' own side, unchanged by the plugin: in the canary test, a job that lets the bot act was refused (`runtime_coordination_required`, delivery failed) while a socket session that had resumed the Bot Chat held its writer.
 
-**Checked:** 2026-11-11, #2178 (a report's delivered pictures and files show in Hermes Desktop and the card instead of their paths, with notifier #702, 0.161.3; issue 581); 2026-11-08, #2047 (the editor's save still sends a new job's Bot Chat choice when its reasoning edit fails, and one banner names each step not saved; see A scheduled job's model); 2026-11-05, #1793 (the job editor's delivery and When it runs built from Settings' pieces, see Sheets in Settings' look); 2026-11-03, #1703 (on main now, with notifier #519: the branch notes go and the notifier paths are checked; Eric: lookups is the default, with notifier 0.127.1, in the plugin and in Edit Bot > Work); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1690 (added, with notifier #518).
+**Checked:** 2026-11-11, #2188 with notifier #708 (review leftovers from #2178: the folded card leaves a tag in code or math as written, two references run together stay text, a message that only starts like a report lists no deliveries; room work reports recorded as not needed); 2026-11-11, #2178 (a report's delivered pictures and files show in Hermes Desktop and the card instead of their paths, with notifier #702, 0.161.3; issue 581); 2026-11-08, #2047 (the editor's save still sends a new job's Bot Chat choice when its reasoning edit fails, and one banner names each step not saved; see A scheduled job's model); 2026-11-05, #1793 (the job editor's delivery and When it runs built from Settings' pieces, see Sheets in Settings' look); 2026-11-03, #1703 (on main now, with notifier #519: the branch notes go and the notifier paths are checked; Eric: lookups is the default, with notifier 0.127.1, in the plugin and in Edit Bot > Work); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1690 (added, with notifier #518).
 
 ## A cron job's Run history
 
