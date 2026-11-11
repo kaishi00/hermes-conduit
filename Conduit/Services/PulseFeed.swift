@@ -1425,6 +1425,8 @@ extension AppState {
             guard await waitForOpenChat(card.chatID, on: dashboard) else { return false }
         } else if let bot = pulseDoItBot(for: card, in: picked) {
             guard await openBotChat(for: bot), activeDashboardID == dashboard else { return false }
+            // As a bot link's open: its chat comes forward over the Pulse screen.
+            dismissSidebarDrawer()
         } else {
             if !profilesMatch(activeProfile, pulseHomeProfile) {
                 // The switch returns with Pulse's profile connected and its chat open.
@@ -1451,6 +1453,11 @@ extension AppState {
         guard !pulseCardHasChat(card) else { return nil }
         if pulseDoItBot(for: card, in: picked) != nil {
             return isConnected ? nil : AppLocalization.string("Connect to Hermes to chat with bots.")
+        }
+        // The bot Settings picked, while the bot list couldn't say whether
+        // it's still there: never a new chat in its place.
+        if picked == nil, let name = pulseDoItBotUnconfirmed {
+            return AppLocalization.string("Could not open \(name)'s Bot Chat.")
         }
         if !profilesMatch(activeProfile, pulseHomeProfile), isVoiceCallInProgress {
             return AppLocalization.string("End the call to open a chat in another profile.")
@@ -1484,6 +1491,18 @@ extension AppState {
     var pulseDoItBot: BotProfile? {
         guard let name = activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }) else { return nil }
         return pulseDoItBotChoices.first { $0.name == name }
+    }
+
+    /// The bot Settings > Pulse picked, by name, when the bot list hasn't
+    /// been read on this dashboard (a failed or unanswered read), so it
+    /// can't say whether that bot is still there; nil when it's a choice,
+    /// none is picked, or the list was read and the bot is gone or hidden
+    /// (then Do it starts a new chat).
+    var pulseDoItBotUnconfirmed: String? {
+        guard notifierPlugin.reports(PulseClient.actedChatCapability),
+              let name = activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }),
+              pulseDoItBot == nil, botModePhase != .available else { return nil }
+        return name
     }
 
     /// The bot whose Bot Chat Do it opens for `card`: none for a card with

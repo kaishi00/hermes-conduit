@@ -486,7 +486,16 @@ final class PulseFeedTests: XCTestCase {
         state.client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
                                     profile: "default")
         state.isConnected = true
+        // Before the bot list is read, the bot picked can't be confirmed:
+        // Do it waits for it rather than starting a new chat in its place.
+        state.setNotifierPluginStateForTesting(.reported(version: "0.164.0", capabilities: [
+            PulseClient.feedCapability, PulseClient.actedCapability, PulseClient.actedChatCapability
+        ]))
+        state.setPulseDoItBot("atlas")
+        XCTAssertEqual(state.pulseDoItBotUnconfirmed, "atlas")
         await state.refreshBotRoster()
+        XCTAssertNil(state.pulseDoItBotUnconfirmed)
+        state.setPulseDoItBot(nil)
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
         {"home_chat_id": "pulse_chat", "cards": [
           {"id": 1, "kind": "noticed", "topic": "date", "level": "screen", "news": "Dentist Friday", "chat_id": "pulse_chat"},
@@ -520,9 +529,11 @@ final class PulseFeedTests: XCTestCase {
         state.activeSessionId = "atlas-tip"
         XCTAssertEqual(state.pulseActedChat(in: state.pulseDoItBot(for: date)), PulseActedChat(profile: "atlas", id: "atlas-tip"))
         XCTAssertNil(state.pulseActedChat(in: nil))
-        // A bot that's gone, or set to hidden, leaves Do it on a new chat.
+        // A bot the list read says is gone, or hidden, leaves Do it on a new chat.
         state.setPulseDoItBot("kai")
         XCTAssertNil(state.pulseDoItBot)
+        XCTAssertNil(state.pulseDoItBotUnconfirmed)
+        XCTAssertNil(state.pulseNewChatRefusal(for: date))
         // Per dashboard, kept across a launch, and gone with its dashboard.
         state.setPulseDoItBot("atlas")
         XCTAssertEqual(defaults.dictionary(forKey: AppState.pulseDoItBotsKey) as? [String: String], [home.id.uuidString: "atlas"])

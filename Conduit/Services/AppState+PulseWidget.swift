@@ -192,6 +192,9 @@ extension AppState {
         if activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }) != nil, pulseDoItBot == nil {
             await refreshBotRoster()
             guard activeDashboardID == dashboardID else { throw PulseWidgetDoItSkip.nothingToDo }
+            // A list that couldn't be read can't say the bot is gone: never a
+            // new chat in its place.
+            if pulseDoItBotUnconfirmed != nil { throw ShortcutSendError.chatUnconfirmed }
         }
         let chat = try await sendPulseCardFromWidget(card, deadline: deadline)
         // Pulse reads the chat once Hermes has answered and marks the card
@@ -219,12 +222,20 @@ extension AppState {
         if let bot = pulseDoItBot(for: card) {
             // The bot's chat now, as its Bots row finds it, then sent to by
             // that id, so acted names the chat the text went to.
-            let found = try await backend.pickedChat(ShortcutPickedChat(
-                dashboardID: dashboardID,
-                reference: WidgetConversationReference(kind: .bot, scopeProfile: bot.name, botName: bot.name,
-                                                       botLabel: bot.displayLabel, sessionID: "", isUnverified: false),
-                title: bot.displayLabel
-            ))
+            let found: VoiceThreadTarget
+            do {
+                found = try await backend.pickedChat(ShortcutPickedChat(
+                    dashboardID: dashboardID,
+                    reference: WidgetConversationReference(kind: .bot, scopeProfile: bot.name, botName: bot.name,
+                                                           botLabel: bot.displayLabel, sessionID: "", isUnverified: false),
+                    title: bot.displayLabel
+                ))
+            } catch let error as ShortcutSendError where error == .chatUnavailable {
+                // A bot with no Bot Chat yet: as Send to Hermes, a Bot Chat is
+                // never made off screen (one per bot, made where its open can
+                // confirm there's none). Opening it in Conduit makes it.
+                throw ShortcutSendError.reopenFailed
+            }
             let id = found.storedSessionID ?? found.runtimeSessionID
             request.chat = ShortcutPickedChat(
                 dashboardID: dashboardID,
