@@ -14,6 +14,9 @@ import Foundation
 @MainActor
 extension AppState {
     func sendFromShortcut(_ request: ShortcutSendRequest, deadline: Date) async throws -> ShortcutSendOutcome {
+        // Off screen, the run may reconnect on its own while it lasts (#2164).
+        shortcutSendsRunning += 1
+        defer { shortcutSendsRunning -= 1 }
         releaseLaunchDashboardChoice(for: "a shortcut")
         return try await ShortcutSender(backend: makeShortcutSendBackend()).send(request, deadline: deadline)
     }
@@ -25,6 +28,12 @@ extension AppState {
         return ShortcutSendBackend(
             connect: { [weak self] deadline in
                 guard let self else { return false }
+                // With Conduit in the background, iOS may have let the
+                // socket die while it was suspended: a quiet one is checked
+                // first, as a call's request is, and a dead one reconnects
+                // at once rather than at the end of its backoff (#2164).
+                await self.checkQuietTransportOffScreen()
+                self.reconnectNowForWaitingVoice("Shortcut send waiting")
                 // Leave time to send once connected.
                 let wait = max(0, min(12, deadline.timeIntervalSinceNow - 8))
                 guard await CarPlayVoiceCoordinator.awaitConnection(of: self, timeout: .seconds(wait)) else { return false }

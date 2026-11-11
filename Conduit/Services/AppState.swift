@@ -6184,7 +6184,14 @@ final class AppState: ObservableObject {
     /// CarPlay reporting Voice unavailable.
     private var canRunTransportRecovery: Bool {
         isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive || isNativeHermesCallActive
+            || isShortcutSendRunning
     }
+    /// Shortcut sends running now (Send to Hermes, and Siri's "Ask ‹chat›",
+    /// which runs it). A shortcut runs with Conduit in the background or
+    /// not running at all, so while one runs it may reconnect on its own,
+    /// as a call does, and only for the time of the run (#2164).
+    var shortcutSendsRunning = 0
+    var isShortcutSendRunning: Bool { shortcutSendsRunning > 0 }
     /// A transport whose handshake completed but whose post-connect bootstrap
     /// (profiles, Bot Mode roster, catalog sync + resume) was abandoned
     /// because the scene went inactive mid-connect — e.g. the Face ID
@@ -42584,8 +42591,9 @@ final class AppState: ObservableObject {
     func recoverTransportForCarPlayIfNeeded(immediately: Bool = false) {
         // A conversation kept running while locked relies on the transport
         // the same way, and so do a call the Apple Watch started and a call
-        // from Hermes answered in CallKit.
-        guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive || isNativeHermesCallActive,
+        // from Hermes answered in CallKit, and a shortcut send running.
+        guard isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive || isWatchVoiceCallActive || isNativeHermesCallActive
+                || isShortcutSendRunning,
               !isSceneActive,
               connection != nil,
               !isConnected,
@@ -42689,7 +42697,8 @@ final class AppState: ObservableObject {
     /// worked (#1362). The phone coming on screen pings first and
     /// reconnects a socket that doesn't answer; so does this, for a socket
     /// that has been quiet, and the request then waits for the reconnect as
-    /// after any drop. Requests at the same time share one check.
+    /// after any drop. Requests at the same time share one check. A
+    /// shortcut send off screen checks the same way before it sends (#2164).
     func checkQuietTransportOffScreen() async {
         if let running = quietTransportCheckTask {
             await running.value
