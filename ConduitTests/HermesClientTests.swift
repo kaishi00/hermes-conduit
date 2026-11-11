@@ -4251,11 +4251,20 @@ final class HermesClientTests: XCTestCase {
             private let lock = NSLock()
             private var left: [URLSessionWebSocketTask.Message]
             init(_ frames: [URLSessionWebSocketTask.Message]) { left = frames }
+            private var isDone = false
             func next() throws -> URLSessionWebSocketTask.Message {
                 lock.lock()
                 defer { lock.unlock() }
-                guard !left.isEmpty else { throw URLError(.networkConnectionLost) }
+                guard !left.isEmpty else {
+                    isDone = true
+                    throw URLError(.networkConnectionLost)
+                }
                 return left.removeFirst()
+            }
+            var done: Bool {
+                lock.lock()
+                defer { lock.unlock() }
+                return isDone
             }
         }
         var expected = Data()
@@ -4270,11 +4279,18 @@ final class HermesClientTests: XCTestCase {
         @MainActor final class Calls { var pieces: [[String]] = [] }
         let frames = Frames(messages)
         let calls = Calls()
-        await BotScreenStreamPump.run(receive: { try frames.next() }) { pieces in calls.pieces.append(pieces) }
+        // Detached: a task started here would wait for the main actor this test keeps busy.
+        let pump = Task.detached { await BotScreenStreamPump.run(receive: { try frames.next() }) { pieces in calls.pieces.append(pieces) } }
+        // The main actor stays busy until every frame was read, as a busy
+        // desktop's burst arrives while the page is still being called.
+        let deadline = Date().addingTimeInterval(10)
+        while !frames.done, Date() < deadline { Thread.sleep(forTimeInterval: 0.001) }
+        XCTAssertTrue(frames.done)
+        await pump.value
         let delivered = calls.pieces
         let received = delivered.flatMap { $0 }.reduce(into: Data()) { $0.append(Data(base64Encoded: $1)!) }
         XCTAssertEqual(received, expected, "Every byte, in order")
-        XCTAssertLessThanOrEqual(delivered.count, messages.count)
+        XCTAssertLessThanOrEqual(delivered.count, 3, "What came while the main actor was busy goes in one call, not one per message")
         XCTAssertFalse(delivered.contains { $0.isEmpty }, "No empty page calls")
     }
 
