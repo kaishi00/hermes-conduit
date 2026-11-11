@@ -134,7 +134,11 @@ enum VoiceSetupIssue: Equatable {
         case .microphoneDenied:
             return VoiceAudioError.microphonePermissionDenied.localizedDescription
         case .speechRecognitionDenied:
-            return AppLocalization.string("Allow Speech Recognition for Conduit in iPhone Settings > Conduit, or choose another speech-to-text option in Settings > Voice.")
+            return SystemSettings.worded(
+                iPhone: AppLocalization.string("Allow Speech Recognition for Conduit in iPhone Settings > Conduit, or choose another speech-to-text option in Settings > Voice."),
+                iPad: AppLocalization.string("Allow Speech Recognition for Conduit in iPad Settings > Conduit, or choose another speech-to-text option in Settings > Voice."),
+                mac: AppLocalization.string("Allow Speech Recognition for Conduit in System Settings → Privacy & Security → Speech Recognition, or choose another speech-to-text option in Settings > Voice.")
+            )
         case .speechRecognitionUnsupported(let locale):
             return AppLocalization.string("On-device Apple speech recognition doesn't support \(locale). Choose another speech-to-text option in Settings > Voice.")
         case .noSpeechToText(let detail):

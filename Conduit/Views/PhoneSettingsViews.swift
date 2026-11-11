@@ -506,8 +506,7 @@ struct PhoneSettingsPage: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             Button(AppLocalization.string("Open Settings")) {
-                guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                UIApplication.shared.open(url)
+                SystemSettings.open(.contacts)
             }
             .scaledFont(.subheadline)
         case .limited, .full:

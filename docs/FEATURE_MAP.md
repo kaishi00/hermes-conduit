@@ -3481,10 +3481,10 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 
 **Code**
 - Rule: `Conduit/Views/Components/ComposerLayout.swift` (ComposerLayout.keepsFocusAfterSend)
-- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView and Coordinator.deactivate, which pass the binding's focus to the field), `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView.setFocusIntent and didMoveToWindow: focus changes after the update that asked, and a field rebuilt with focus takes it once it's in the window; ReturnKeyTextEditor, rooms' field and the full editor, the same), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
+- Chat composer: `Conduit/Views/Components/ComposerBar.swift` (endInput, dismissComposer, collapseSubmittedDraft, submit, submitFromReturnKey, queueUntilChatIsReady, performComposerAction; handoffComposer, which clears focusesAfterFullEditor; composerInUse and hidesMinimisedCallBar, which follow focus while the field takes text: isTyping), `Conduit/Views/Components/ComposerPasteTextView.swift` (updateUIView and Coordinator.deactivate, which pass the binding's focus to the field), `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView.setFocusIntent and didMoveToWindow: focus changes after the update that asked, and a field rebuilt with focus takes it once it's in the window; setTyping, endedEditingLeavesField, onFocusTakenWhileOff and putAwayFocus: typing turned off under focus keeps the wish; ReturnKeyTextEditor, rooms' field and the full editor, the same), `Conduit/Views/ChatView.swift` (composerTyping, read through V2ComposerTypingKey, hides MinimisedLiveVoiceBar)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send; focusesAfterFullEditor, read in the full editor sheet's onDismiss)
-- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow, testFocusChangesWaitUntilAfterTheUpdateThatAskedAndTheLastAskWins)
+- Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow, testFocusChangesWaitUntilAfterTheUpdateThatAskedAndTheLastAskWins, testAFieldTurnedOffUnderFocusTakesItBackOnceOnUnlessAnotherFieldTookIt)
 
 **Rulings**
 - On a Mac, or on an iPad with a hardware keyboard, a send or Stop
@@ -3506,6 +3506,16 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   chat first, that focus doesn't follow it there (2026-10-30, #1527).
 - Opening a call from the composer still takes focus away on every device:
   the call has the screen (2026-10-30, #1527).
+- Typing turned off under focus (a chat's sync or reconnect after the
+  reply, a saved copy on screen) doesn't count as focus going: the field
+  keeps the composer's wish, turns off just after the update that asked,
+  and takes focus back once typing is on again, unless another text field
+  took focus meanwhile or the keyboard was put away (a tap on the
+  transcript, a plan strip or a row, a profile switch:
+  `ReturnKeyTextView.putAwayFocus`), as the transcript ruling has it. On a Mac a sync once the reply came had let go of
+  the focus a send kept. While it waits, nobody counts as typing: the
+  minimised call bar shows, mentions hide and a resting composer may rest
+  (2026-11-11, issue 2208, #2210).
 - Every composer field takes or gives up focus just after the SwiftUI
   update that asked, never inside it, and several asks before then come to
   the last. Resigning inside the update asked the hosting view whether it
@@ -3520,8 +3530,10 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   transcript take focus from the field on a Mac. No test reaches
   `updateUIView` passing the binding's focus to the field (it needs a SwiftUI
   Context), so that link is checked on a device only.
+- Issue 2208's cause is read from the code, not traced on the reporter's
+  Mac: a sync or reconnect after the reply turning typing off.
 
-**Checked:** 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
+**Checked:** 2026-11-11, #2210 (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
@@ -4728,7 +4740,7 @@ Classic voice, and its calls speak with their live voices.
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-11, #2198 (an unclosed link address or title holds only for a link's length, and a title may run over a line break; same siblings, nothing of their own); 2026-11-11, #2195 (a malformed link address ends at its first space, and an unclosed title at its line break, instead of holding the rest of the reply; a title's own spaces and stops stay in the link; same siblings, nothing of their own); 2026-11-11, #2193 (review leftovers: trailing numbers, closing quotes, links across line breaks and CJK stops, parentheses in addresses, stray brackets, degrees; same siblings, nothing of their own); 2026-11-11, #2192 (each sentence its own utterance, so a Premium voice no longer goes quiet past the watchdog in a long reply and drops its middle, issue 2191; Read Aloud, Classic voice, CarPlay, the Hermes fallback and the speaking test share the stream; captions and docs/VOICE_SETTINGS.md don't describe how a reply is cut); 2026-11-11, #2179 (Cantonese voices iOS tags yue, such as Wing, joined Traditional Chinese, where replies look: a pick under their own Language row was never used and a Mandarin voice spoke; iOS's quality dropped from voice names; docs/VOICE_SETTINGS.md done; Classic voice, CarPlay, Read Aloud, the Hermes fallback and the speaking test share the pick, nothing of their own to change); 2026-11-02, #1664 (new entry: a reply recognized as Cantonese, or a Cantonese system language, speaks with a Cantonese voice, and a Chinese script named outright wins over the region; automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once; review: Automatic clears a deleted pick, screen-reader voices listed only when alone, Chinese kept apart by script, screen-reader voices below any other, an app in Traditional Chinese falls back to Traditional, Mandarin over Cantonese unpicked, a short opening sentence no longer fixes the reply's language).
+**Checked:** 2026-11-11, #2210 (issue 2208: the download hints and their caption name the iPad or the Mac and its settings, as docs/VOICE_SETTINGS.md now says; the voices themselves needed no change); 2026-11-11, #2198 (an unclosed link address or title holds only for a link's length, and a title may run over a line break; same siblings, nothing of their own); 2026-11-11, #2195 (a malformed link address ends at its first space, and an unclosed title at its line break, instead of holding the rest of the reply; a title's own spaces and stops stay in the link; same siblings, nothing of their own); 2026-11-11, #2193 (review leftovers: trailing numbers, closing quotes, links across line breaks and CJK stops, parentheses in addresses, stray brackets, degrees; same siblings, nothing of their own); 2026-11-11, #2192 (each sentence its own utterance, so a Premium voice no longer goes quiet past the watchdog in a long reply and drops its middle, issue 2191; Read Aloud, Classic voice, CarPlay, the Hermes fallback and the speaking test share the stream; captions and docs/VOICE_SETTINGS.md don't describe how a reply is cut); 2026-11-11, #2179 (Cantonese voices iOS tags yue, such as Wing, joined Traditional Chinese, where replies look: a pick under their own Language row was never used and a Mandarin voice spoke; iOS's quality dropped from voice names; docs/VOICE_SETTINGS.md done; Classic voice, CarPlay, Read Aloud, the Hermes fallback and the speaking test share the pick, nothing of their own to change); 2026-11-02, #1664 (new entry: a reply recognized as Cantonese, or a Cantonese system language, speaks with a Cantonese voice, and a Chinese script named outright wins over the region; automatic skips screen-reader voices, a pick per language, newly downloaded voices used at once; review: Automatic clears a deleted pick, screen-reader voices listed only when alone, Chinese kept apart by script, screen-reader voices below any other, an app in Traditional Chinese falls back to Traditional, Mandarin over Cantonese unpicked, a short opening sentence no longer fixes the reply's language).
 
 ## Providers and keys
 
@@ -7543,6 +7555,54 @@ Settings caption or doc gives the cadence)
 - A screen covered by a sheet still reads: the sheet doesn't tell the tab it covers.
 
 **Checked:** 2026-11-11, #2201 (added: the waiting line's roster read, gated as the open chat's check is: a hidden tab or a covered chat stops it, and showing it again reads at once); 2026-11-10, #2162 (a copy tick's approvals read moved into readRoomCopyApprovalsIfDue, with a test that a failed read retries next tick); 2026-11-10, #2159 (a room hosted elsewhere reads approvals each tick only while something moves, a quiet one every 15 s; the Link sheets' and Multiplayer's Link follows skip ticks in the background, as the join card's did); 2026-11-09, #2075 (a room under V2's Bot Chat cover stops polling; the legacy shell's doesn't); 2026-11-05, #1837 (added: hidden tabs stop the project page, open chat, room and bot work reads)
+
+## Allowing Conduit in Settings
+
+The words that say where to allow something for Conduit (notifications, the
+microphone, Speech Recognition, the camera, location, contacts) and the Open
+Settings buttons beside them, for the device Conduit runs on.
+
+**Siblings:** Finish setting up's notifications row · a steps card's
+notifications-off line · Settings > Notifications' Show Previews caption ·
+Voice's setup steps (microphone, Speech Recognition), Apple speech's
+permission captions and its selection error (Settings > Voice, and AppState's
+setVoiceTranscriptionMode), and the voice modes'
+messages built from `VoiceAudioError.microphonePermissionDenied` and
+`VoiceSetupIssue.speechRecognitionDenied` · the camera notices (code scanner,
+chat composer, group rooms' composer) · Location sharing's access rows ·
+Phone > Contacts' access row · Settings > Voice's iPhone voice hints
+(no voice, only a screen-reader voice, no Enhanced or Premium one, and the
+caption under them: where to download voices) and docs/VOICE_SETTINGS.md ·
+iPhone, iPad and Mac · not needed: CarPlay's
+and the Watch's short titles (`VoiceSetupIssue.carPlayTitleVariants`), which
+only show beside an iPhone
+
+**Code**
+- Words and links: `Conduit/Services/SystemSettings.swift` (worded, notificationsOffText, open, macURL)
+- Buttons and texts: `Conduit/Views/V2/V2FinishSetupCard.swift`, `Conduit/Cards/RichInfoCardViews.swift`, `Conduit/Views/AuxiliaryViews.swift` (Show Previews caption), `Conduit/Views/VoiceSettingsView.swift` (microphoneStep, speechToTextStep, the Apple speech captions and selectProvider's testStatus, the iPhone voice caption), `Conduit/Services/AppState.swift` (setVoiceTranscriptionMode's denial), `Conduit/Views/IPhoneVoiceSettingsView.swift` (the download hints), `Conduit/Voice/VoiceTypes.swift`, `Conduit/Voice/VoiceSetupIssue.swift`, `Conduit/Views/Login/DashboardCodeScanner.swift`, `Conduit/Views/Components/ComposerBar.swift` (pasteErrorNotice), `Conduit/Views/Components/GroupRoomComposer.swift`, `Conduit/Views/LocationSettingsViews.swift`, `Conduit/Views/PhoneSettingsViews.swift`
+- Tests: `ConduitTests/VoiceSetupIssueTests.swift` (testPermissionTextsAndSettingsLinksFollowTheDevice)
+
+**Rulings**
+- A text that names where to allow something names the device's own
+  settings: iPhone Settings, iPad Settings, or on a Mac the System Settings
+  pane (Notifications, or Privacy & Security and the permission). Texts that
+  say only "Settings" stay as they are, unless they name an iPhone path a
+  Mac doesn't have (Settings > Conduit > Speech Recognition); the voice download hints say
+  "this iPad" or "this Mac" and search that device's settings for Voices
+  (2026-11-11, issue 2208, #2210).
+- On a Mac each Open Settings opens that pane of System Settings
+  (`x-apple.systempreferences:`); the iPad app's own settings URLs open its
+  settings window there (Touch Alternatives). Should macOS turn the link down,
+  the button opens the app's settings as before (2026-11-11, issue 2208, #2210).
+
+**Open gaps**
+- Not yet seen on a Mac: that System Settings opens at each pane from the
+  iPad app, and Notifications at Conduit's row.
+- The System Settings search on a Mac shows a blank icon for Conduit
+  (issue 2208); the Dock, Finder and the Notifications list show it. Not
+  reproduced or explained yet.
+
+**Checked:** 2026-11-11, #2210 (new entry).
 
 ## Swiping list rows on a Mac
 

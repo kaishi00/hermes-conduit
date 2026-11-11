@@ -4980,7 +4980,11 @@ private struct NotificationsSettingsDetail: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if detail != .generic {
-                Text(AppLocalization.string("To keep them off the Lock Screen, set Show Previews to When Unlocked in iOS Settings > Notifications > Conduit."))
+                Text(verbatim: SystemSettings.worded(
+                    iPhone: AppLocalization.string("To keep them off the Lock Screen, set Show Previews to When Unlocked in iOS Settings > Notifications > Conduit."),
+                    iPad: AppLocalization.string("To keep them off the Lock Screen, set Show Previews to When Unlocked in iPad Settings > Notifications > Conduit."),
+                    mac: AppLocalization.string("To keep them off the Lock Screen, set Show Previews to When Unlocked in System Settings → Notifications → Conduit.")
+                ))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }

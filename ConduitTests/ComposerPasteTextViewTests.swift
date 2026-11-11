@@ -962,6 +962,84 @@ final class ComposerPasteTextViewTests: XCTestCase {
         XCTAssertFalse(editor.isFirstResponder)
     }
 
+    /// Issue 2208: on a Mac a send keeps the field focused, and a sync or
+    /// reconnect once the reply came turned typing off, which ended the
+    /// editing and let go of focus for good. Off under focus, the field
+    /// keeps the composer's wish (after the asking update, issue 1781) and
+    /// takes focus back once typing is on again; not when another field
+    /// took focus meanwhile.
+    func testAFieldTurnedOffUnderFocusTakesItBackOnceOnUnlessAnotherFieldTookIt() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 120))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        var isFocused = false
+        let view = ComposerPasteTextView(
+            text: .constant(""),
+            isFocused: Binding(get: { isFocused }, set: { isFocused = $0 }),
+            measuredHeight: .constant(44),
+            enabled: true,
+            onPastedImage: { _ in },
+            onPastedImageError: { _ in },
+            editorIdentity: UUID()
+        )
+        let coordinator = ComposerPasteTextView.Coordinator(view)
+        let field = ImagePasteTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        field.delegate = coordinator
+        field.onFocusTakenWhileOff = { isFocused = false }
+        field.isEditable = true
+        window.addSubview(field)
+        field.setFocusIntent(true)
+        settleFocus()
+        XCTAssertTrue(field.isFirstResponder)
+        XCTAssertTrue(isFocused)
+
+        // Off: after the asking update, and the composer still wants focus.
+        field.setTyping(false)
+        XCTAssertTrue(field.isEditable, "turned off inside the asking update")
+        settleFocus()
+        XCTAssertFalse(field.isEditable)
+        XCTAssertFalse(field.isFirstResponder)
+        XCTAssertTrue(isFocused, "typing off isn't the user leaving the field")
+
+        // On again: focus comes back.
+        field.setTyping(true)
+        settleFocus()
+        XCTAssertTrue(field.isFirstResponder)
+
+        // Off, then another field takes focus: on again, it stays there.
+        field.setTyping(false)
+        settleFocus()
+        let other = UITextField(frame: CGRect(x: 0, y: 60, width: 320, height: 44))
+        window.addSubview(other)
+        XCTAssertTrue(other.becomeFirstResponder())
+        XCTAssertFalse(isFocused)
+        field.setTyping(true)
+        settleFocus()
+        XCTAssertFalse(field.isFirstResponder)
+        XCTAssertTrue(other.isFirstResponder)
+
+        // Leaving a field that's on is still the focus going.
+        field.setFocusIntent(true)
+        settleFocus()
+        XCTAssertTrue(field.isFirstResponder)
+        XCTAssertTrue(isFocused)
+        _ = field.resignFirstResponder()
+        XCTAssertFalse(isFocused)
+
+        // Off, then the keyboard is put away (a tap on the transcript):
+        // on again, the field stays unfocused.
+        field.setFocusIntent(true)
+        settleFocus()
+        XCTAssertTrue(isFocused)
+        field.setTyping(false)
+        settleFocus()
+        ReturnKeyTextView.putAwayFocus()
+        XCTAssertFalse(isFocused)
+        field.setTyping(true)
+        settleFocus()
+        XCTAssertFalse(field.isFirstResponder)
+    }
+
     /// Lets the focus change queued after an update run.
     private func settleFocus() {
         RunLoop.main.run(until: Date().addingTimeInterval(0.05))

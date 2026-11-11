@@ -23,12 +23,14 @@ class ReturnKeyTextView: UITextView {
         super.init(frame: frame, textContainer: textContainer)
         inlinePredictionType = Self.inlinePredictionType(onMac: ProcessInfo.processInfo.isiOSAppOnMac)
         installFieldDrop()
+        observeOtherFields()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         inlinePredictionType = Self.inlinePredictionType(onMac: ProcessInfo.processInfo.isiOSAppOnMac)
         installFieldDrop()
+        observeOtherFields()
     }
 
     // MARK: Drops on the field
@@ -134,8 +136,9 @@ class ReturnKeyTextView: UITextView {
         scheduleFocusIntent()
     }
 
+    /// A field that's off (`setTyping`) waits to take focus until it's on.
     private var focusMatchesIntent: Bool {
-        focusesInWindow ? (isFirstResponder || window == nil) : !isFirstResponder
+        focusesInWindow ? (isFirstResponder || window == nil || !isEditable) : !isFirstResponder
     }
 
     private func scheduleFocusIntent() {
@@ -149,8 +152,105 @@ class ReturnKeyTextView: UITextView {
     }
 
     private func applyFocusIntent() {
-        if focusesInWindow, !isFirstResponder, window != nil { _ = becomeFirstResponder() }
+        if focusesInWindow, !isFirstResponder, window != nil, isEditable { _ = becomeFirstResponder() }
         if !focusesInWindow, isFirstResponder { _ = resignFirstResponder() }
+    }
+
+    // MARK: Typing off and on
+
+    /// Typing is off while the chat can't take a message: a sync or a
+    /// reconnect after a reply, a saved copy on screen. Turning it off
+    /// under focus ends the editing, and the field used to hand the
+    /// composer that as its focus going for good, so on a Mac the field a
+    /// send kept focused was let go once the reply came and a sync ran
+    /// (issue 2208). Now the composer's wish for focus stays, and the field
+    /// takes focus back once typing is on again, unless another field took
+    /// focus meanwhile or the keyboard was put away (`putAwayFocus`, a tap
+    /// on the transcript; `onFocusTakenWhileOff`).
+    private var typingAllowed = true
+    private var typingChangeScheduled = false
+    /// Set while the field turns typing off itself, so the editing that
+    /// ends with it isn't read as the user leaving the field.
+    private var isTurningTypingOff = false
+
+    /// Called when another text field or view starts editing while this
+    /// one is off and wants focus: the composer lets go of its wish.
+    var onFocusTakenWhileOff: (() -> Void)?
+
+    /// Turns typing on or off as the composer asks. Off under focus, the
+    /// change waits until just after the SwiftUI update that asked, as a
+    /// focus change does (issue 1781): it ends the editing.
+    func setTyping(_ allowed: Bool) {
+        typingAllowed = allowed
+        if allowed || !isFirstResponder {
+            applyTyping()
+            return
+        }
+        guard !typingChangeScheduled else { return }
+        typingChangeScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.typingChangeScheduled = false
+            self.applyTyping()
+        }
+    }
+
+    private func applyTyping() {
+        guard isEditable != typingAllowed else { return }
+        isTurningTypingOff = !typingAllowed
+        isEditable = typingAllowed
+        isTurningTypingOff = false
+        setNeedsLayout()
+        if typingAllowed { scheduleFocusIntent() }
+    }
+
+    /// Whether the editing that just ended is the user leaving the field,
+    /// which the composer takes as its focus going; not when typing was
+    /// turned off under it.
+    var endedEditingLeavesField: Bool {
+        !isTurningTypingOff && isEditable
+    }
+
+    @objc private func otherFieldBeganEditing(_ note: Notification) {
+        guard (note.object as AnyObject?) !== self else { return }
+        dropFocusWishWhileOff()
+    }
+
+    @objc private func focusPutAway(_ note: Notification) {
+        dropFocusWishWhileOff()
+    }
+
+    private func dropFocusWishWhileOff() {
+        guard focusesInWindow, !isEditable else { return }
+        focusesInWindow = false
+        onFocusTakenWhileOff?()
+    }
+
+    /// Posted by `putAwayFocus`.
+    static let focusPutAwayNotification = Notification.Name("ReturnKeyTextView.focusPutAway")
+
+    /// Puts the keyboard away, as a tap on the transcript does: whoever has
+    /// focus gives it up, and a field waiting with typing off lets go of
+    /// its wish, so it doesn't take focus back once typing is on.
+    @MainActor
+    static func putAwayFocus() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        NotificationCenter.default.post(name: focusPutAwayNotification, object: nil)
+    }
+
+    private func observeOtherFields() {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(otherFieldBeganEditing(_:)),
+            name: UITextView.textDidBeginEditingNotification, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(otherFieldBeganEditing(_:)),
+            name: UITextField.textDidBeginEditingNotification, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(focusPutAway(_:)),
+            name: Self.focusPutAwayNotification, object: nil
+        )
     }
 
     /// Takes a drop the field accepted: files to the composer, words and
@@ -592,6 +692,7 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         uiView.canSubmitFromReturn = false
         uiView.onLongTextPaste = nil
         uiView.suggestionKeys = nil
+        uiView.onFocusTakenWhileOff = nil
     }
 
     private func configure(_ view: ReturnKeyTextView, context: Context) {
@@ -604,7 +705,7 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
             view.fontColumnText = columnText
             view.font = .preferredFont(forTextStyle: .body, in: sizeCategory, from: columnText)
         }
-        if view.isEditable != enabled { view.isEditable = enabled }
+        view.setTyping(enabled)
         view.accessibilityLabel = accessibilityLabel
         view.accessibilityIdentifier = accessibilityIdentifier
         view.returnKeySends = returnKeySends
@@ -612,6 +713,10 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         view.onSubmitFromReturn = onSubmitFromReturn
         view.onLongTextPaste = onLongTextPaste
         view.suggestionKeys = suggestionKeys
+        view.onFocusTakenWhileOff = { [weak coordinator = context.coordinator] in
+            guard let coordinator, coordinator.parent.isFocused else { return }
+            coordinator.parent.isFocused = false
+        }
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: ReturnKeyTextView, context: Context) -> CGSize? {
@@ -687,6 +792,8 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
+            // Typing turned off under focus keeps the wish (issue 2208).
+            if let field = textView as? ReturnKeyTextView, !field.endedEditingLeavesField { return }
             if parent.isFocused { parent.isFocused = false }
         }
     }

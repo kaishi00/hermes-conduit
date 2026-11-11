@@ -31,7 +31,9 @@ Chinese replies look the same, so picking one there speaks those replies in
 Cantonese. Siri's own voices can't be used:
 iOS doesn't offer them to apps. Premium voices are the closest: search iPhone Settings for "Voices" to
 download them (Accessibility > Read & Speak > Voices on iOS 26, Spoken
-Content before it).
+Content before it). On an iPad Conduit says iPad Settings, and on a Mac
+System Settings (Accessibility > Spoken Content > System voice > Manage
+Voices).
 A voice downloaded while Conduit runs is used from the next sentence.
 
 ## Custom OpenAI-compatible endpoints

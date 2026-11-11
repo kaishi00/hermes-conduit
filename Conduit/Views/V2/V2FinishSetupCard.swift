@@ -49,7 +49,7 @@ struct V2FinishSetupCard: View {
             withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { appState.endFinishSetup() }
         }
         .task { await notifications.refresh() }
-        // Back from iPhone Settings: notifications may be allowed now.
+        // Back from Settings: notifications may be allowed now.
         .onChange(of: scenePhase) { _, phase in
             guard phase == .active else { return }
             Task { await notifications.refresh() }
@@ -161,10 +161,9 @@ struct V2FinishSetupCard: View {
                 }
             }
         case .denied:
-            FinishSetupRow(icon: icon, title: title, detail: AppLocalization.string("Notifications are off for Conduit in iPhone Settings."), identifier: "finish-setup.notifications") {
+            FinishSetupRow(icon: icon, title: title, detail: SystemSettings.notificationsOffText, identifier: "finish-setup.notifications") {
                 actionButton(AppLocalization.string("Open Settings")) {
-                    guard let url = URL(string: UIApplication.openNotificationSettingsURLString) else { return }
-                    UIApplication.shared.open(url)
+                    SystemSettings.open(.notifications)
                 }
             }
         case .done:

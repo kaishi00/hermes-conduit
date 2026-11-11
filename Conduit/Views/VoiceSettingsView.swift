@@ -530,9 +530,13 @@ struct VoiceSettingsView: View {
         case .denied:
             return setupStep(
                 AppLocalization.string("Microphone"),
-                detail: AppLocalization.string("Not allowed. Allow the microphone for Conduit in iPhone Settings."),
+                detail: SystemSettings.worded(
+                    iPhone: AppLocalization.string("Not allowed. Allow the microphone for Conduit in iPhone Settings."),
+                    iPad: AppLocalization.string("Not allowed. Allow the microphone for Conduit in iPad Settings."),
+                    mac: AppLocalization.string("Not allowed. Allow the microphone for Conduit in System Settings → Privacy & Security → Microphone.")
+                ),
                 state: .attention,
-                fix: (label: AppLocalization.string("Open Settings"), action: openSystemSettings)
+                fix: (label: AppLocalization.string("Open Settings"), action: { SystemSettings.open(.microphone) })
             )
         default:
             return setupStep(AppLocalization.string("Microphone"), detail: AppLocalization.string("iOS asks the first time you talk."), state: .pending)
@@ -555,9 +559,13 @@ struct VoiceSettingsView: View {
             case .permissionDenied:
                 return setupStep(
                     title,
-                    detail: AppLocalization.string("Speech Recognition isn't allowed. Allow it for Conduit in iPhone Settings, or choose a Hermes provider under Speech to text below."),
+                    detail: SystemSettings.worded(
+                        iPhone: AppLocalization.string("Speech Recognition isn't allowed. Allow it for Conduit in iPhone Settings, or choose a Hermes provider under Speech to text below."),
+                        iPad: AppLocalization.string("Speech Recognition isn't allowed. Allow it for Conduit in iPad Settings, or choose a Hermes provider under Speech to text below."),
+                        mac: AppLocalization.string("Speech Recognition isn't allowed. Allow it for Conduit in System Settings → Privacy & Security → Speech Recognition, or choose a Hermes provider under Speech to text below.")
+                    ),
                     state: .attention,
-                    fix: (label: AppLocalization.string("Open Settings"), action: openSystemSettings)
+                    fix: (label: AppLocalization.string("Open Settings"), action: { SystemSettings.open(.speechRecognition) })
                 )
             case .unsupported:
                 return setupStep(
@@ -1450,7 +1458,11 @@ struct VoiceSettingsView: View {
             IPhoneVoiceSettingsView(onPickedAppLanguageVoice: {
                 if actions.runTTSTest != nil, !isRunningTest { runTest(kind: .tts) }
             })
-            Text(AppLocalization.string("Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search iPhone Settings for “Voices” to download them."))
+            Text(verbatim: SystemSettings.worded(
+                iPhone: AppLocalization.string("Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search iPhone Settings for “Voices” to download them."),
+                iPad: AppLocalization.string("Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search iPad Settings for “Voices” to download them."),
+                mac: AppLocalization.string("Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search System Settings for “Voices” to download them.")
+            ))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1477,11 +1489,19 @@ struct VoiceSettingsView: View {
             case .ready:
                 EmptyView()
             case .permissionRequired:
-                Text("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\".")
+                Text(verbatim: SystemSettings.worded(
+                    iPhone: AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."),
+                    iPad: AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."),
+                    mac: AppLocalization.string("Enable Speech Recognition in System Settings → Privacy & Security → Speech Recognition, then retry selecting \"On this iPhone\".")
+                ))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             case .permissionDenied:
-                Text("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition.")
+                Text(verbatim: SystemSettings.worded(
+                    iPhone: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    iPad: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    mac: AppLocalization.string("Speech Recognition permission was denied. Please enable it in System Settings → Privacy & Security → Speech Recognition.")
+                ))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
             case .unsupported:
@@ -1736,9 +1756,17 @@ struct VoiceSettingsView: View {
                 transcriptionModeChosen = true
                 testStatus = nil
             } else if case .permissionRequired = appleSpeechAvailability {
-                testStatus = AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\".")
+                testStatus = SystemSettings.worded(
+                    iPhone: AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."),
+                    iPad: AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."),
+                    mac: AppLocalization.string("Enable Speech Recognition in System Settings → Privacy & Security → Speech Recognition, then retry selecting \"On this iPhone\".")
+                )
             } else if case .permissionDenied = appleSpeechAvailability {
-                testStatus = AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition.")
+                testStatus = SystemSettings.worded(
+                    iPhone: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    iPad: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    mac: AppLocalization.string("Speech Recognition permission was denied. Please enable it in System Settings → Privacy & Security → Speech Recognition.")
+                )
             } else if case .unsupported = appleSpeechAvailability {
                 testStatus = AppLocalization.string("On-device speech recognition is not available for your current language locale.")
             }
@@ -1791,11 +1819,6 @@ struct VoiceSettingsView: View {
         if let descriptor = providers.first(where: { $0.descriptor.id == id })?.descriptor { return descriptor.displayName }
         if let descriptor = VoiceConfigurationParser.catalogDescriptor(id: id, kind: kind) { return descriptor.displayName }
         return id.isEmpty ? AppLocalization.string("Not chosen") : id.replacingOccurrences(of: "_", with: " ").capitalized
-    }
-
-    private func openSystemSettings() {
-        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-        UIApplication.shared.open(url)
     }
 
     private func load() async {
