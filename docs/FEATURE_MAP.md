@@ -2970,7 +2970,7 @@ what waited (An empty new chat Hermes lost)
 - Screenshots: `Conduit/Services/AppState+ScreenQuestion.swift` (startChatForScreenshot, openScreenQuestion)
 - Hermes calls: `Conduit/Services/AppState+HermesCalls.swift` (startHermesCallsChat)
 - Widget and Shortcut launches: `Conduit/Services/AppState+WidgetLaunch.swift`
-- Pulse's Do it and Ask: `Conduit/Services/AppState.swift` (startPulseNewChat), `Conduit/Services/PulseFeed.swift` (actOnPulseCard, its words: Ask's)
+- Pulse's Do it and Ask: `Conduit/Services/AppState.swift` (startPulseNewChat), `Conduit/Services/PulseFeed.swift` (actOnPulseCard and doPulseCard, its words: Ask's)
 - Tests: `ConduitTests/SessionRenameTests.swift`, `ConduitTests/PulseFeedTests.swift`
 
 **Rulings**
@@ -2978,11 +2978,12 @@ what waited (An empty new chat Hermes lost)
 - New Chat focuses the composer only on the chat it made. A Classic voice conversation files and archives only its own new chat under Voice; a fresh one asked for fails when another chat took the screen.
 - Pulse's Do it on an item from no chat (and, since #1473, on one from a Kanban task's worker, which Hermes won't reopen as a chat) starts a chat only when New Chat can start one at once, and puts the reminder only in the chat its own create returned, while that one is still open. The Pulse screen stays up until then, so a chat that didn't start leaves it there to say why (2026-10-25, #1240 on the `pulse` branch).
 - Pulse's Ask (#2058, with notifier 0.150.0) goes the same way: on a card from no chat it starts a chat only as Do it does and puts the pick's words in the composer of the chat its own create returned, to edit before sending; it never sends them.
+- When Settings > Pulse or Do it's long press picks a bot (#2211, with notifier 0.164.0), Do it and Ask on a card from no chat open that bot's Bot Chat instead of starting a chat, as its Bots row opens it, and leave their words only while that open still owns the screen; none of this entry's new-chat rules apply to it (see Pulse).
 
 **Open gaps**
 - A widget's or Shortcut's New Chat and /new put nothing in the chat, so they only report whether the open chat changed.
 
-**Checked:** 2026-11-09, #2058 (Pulse's Ask leaves its words only in the chat its own create returned, as Do it does); 2026-11-04, #1752 (an empty chat Hermes lost hands its screenshot, composer prompt, focus and Classic voice filing to the fresh chat in its place, see An empty new chat Hermes lost); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479, carrying #1473 from the `pulse` branch (Do it on a card from a Kanban task's worker takes the same new chat); 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
+**Checked:** 2026-11-11, #2211 (Do it and Ask on a card from no chat can open a picked bot's Bot Chat in place of a new chat); 2026-11-09, #2058 (Pulse's Ask leaves its words only in the chat its own create returned, as Do it does); 2026-11-04, #1752 (an empty chat Hermes lost hands its screenshot, composer prompt, focus and Classic voice filing to the fresh chat in its place, see An empty new chat Hermes lost); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479, carrying #1473 from the `pulse` branch (Do it on a card from a Kanban task's worker takes the same new chat); 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
 
 ## /new in a Bot Chat
 

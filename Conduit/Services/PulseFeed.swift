@@ -1417,26 +1417,36 @@ extension AppState {
     /// Do it), in place of Settings > Pulse's choice (`pulseDoItBot`). A
     /// bot's Bot Chat opens as its Bots row opens it.
     func actOnPulseCard(_ card: PulseCard, words: String? = nil, in picked: PulseDoItTarget? = nil) async -> Bool {
+        await doPulseCard(card, words: words, in: picked) != nil
+    }
+
+    /// As `actOnPulseCard`, with what it opened: the Bot Chat it opened for
+    /// acted to name, resolved here rather than before the tap's hop, so a
+    /// roster change meanwhile can't make acted name another chat. Nil when
+    /// no chat opened.
+    func doPulseCard(_ card: PulseCard, words: String? = nil, in picked: PulseDoItTarget? = nil) async -> PulseDoItOpened? {
         guard words != nil ? canAskFromPulseCard(card) : canActOnPulseCard(card),
-              pulseNewChatRefusal(for: card, in: picked) == nil else { return false }
+              pulseNewChatRefusal(for: card, in: picked) == nil else { return nil }
         let dashboard = activeDashboardID
+        var chat: PulseActedChat?
         if pulseCardHasChat(card) {
             openPulseCardChat(card)
-            guard await waitForOpenChat(card.chatID, on: dashboard) else { return false }
+            guard await waitForOpenChat(card.chatID, on: dashboard) else { return nil }
         } else if let bot = pulseDoItBot(for: card, in: picked) {
-            guard await openBotChat(for: bot), activeDashboardID == dashboard else { return false }
+            guard await openBotChat(for: bot), activeDashboardID == dashboard else { return nil }
             // As a bot link's open: its chat comes forward over the Pulse screen.
             dismissSidebarDrawer()
+            chat = pulseActedChat(in: bot)
         } else {
             if !profilesMatch(activeProfile, pulseHomeProfile) {
                 // The switch returns with Pulse's profile connected and its chat open.
                 guard await switchProfileForPulse(), activeDashboardID == dashboard,
-                      profilesMatch(activeProfile, pulseHomeProfile) else { return false }
+                      profilesMatch(activeProfile, pulseHomeProfile) else { return nil }
             }
-            guard await startPulseNewChat() != nil, activeDashboardID == dashboard else { return false }
+            guard await startPulseNewChat() != nil, activeDashboardID == dashboard else { return nil }
         }
         prefillComposer(words ?? card.actionMessage)
-        return true
+        return PulseDoItOpened(chat: chat)
     }
 
     /// Why Do it can't start a new chat for a card from no chat right now,
@@ -1560,6 +1570,12 @@ enum PulseDoItTarget: Equatable {
     case newChat
     /// A bot's Bot Chat, by its profile name.
     case bot(String)
+}
+
+/// What Do it opened: the Bot Chat it opened for acted to name, nil for a
+/// new chat or the card's own.
+struct PulseDoItOpened {
+    let chat: PulseActedChat?
 }
 
 /// The chat Do it used for a card from no chat, as acted names it.

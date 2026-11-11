@@ -1592,14 +1592,14 @@ struct V2PulsePage: View {
         actingCard = card.id
         Task {
             defer { if actingCard == card.id { actingCard = nil } }
-            let opened = await appState.actOnPulseCard(card, words: ask?.value, in: picked)
+            let opened = await appState.doPulseCard(card, words: ask?.value, in: picked)
             guard appState.activeDashboardID == dashboard else { return }
-            if !opened {
+            guard let opened else {
                 showError(failure)
                 return
             }
             if errorMessage == failure { errorMessage = nil }
-            let chat = appState.pulseActedChat(in: bot)
+            let chat = opened.chat
             // Pulse reads the chat once Hermes has answered and marks the card done itself.
             // Only a card Pulse can mark done, with a Done button to fall back on.
             if appState.canMarkPulseCardDone(card), appState.notifierPlugin.reports(PulseClient.actedCapability) {

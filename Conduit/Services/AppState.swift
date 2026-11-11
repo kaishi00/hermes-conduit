@@ -1987,6 +1987,12 @@ final class AppState: ObservableObject {
             || (botModePhase == .available && botRosterVerifiedForCurrentConnection)
     }
 
+    /// The bot list was read on this connection: what it leaves out is gone,
+    /// so the widget's Do it doesn't read it again for a saved bot it lacks.
+    var pulseDoItBotRosterRead: Bool {
+        botModePhase == .available && botRosterVerifiedForCurrentConnection
+    }
+
     /// Refuses a push whose target is bot-owned, with copy that matches how
     /// confident the match is: ownership folds case, so an exact spelling IS that
     /// bot's profile while a case-only match may be an unrelated workspace that

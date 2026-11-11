@@ -818,8 +818,9 @@ final class PulseFeedTests: XCTestCase {
         // The chat its New Chat made gets the reminder, uncovered.
         state.showSidebar = true
         state.widgetSessionCreatorOverride = { _, _ in ("fresh", "fresh", "default") }
-        let opened = await state.actOnPulseCard(date)
-        XCTAssertTrue(opened)
+        let opened = await state.doPulseCard(date)
+        XCTAssertNotNil(opened)
+        XCTAssertNil(opened?.chat, "a new chat: acted names none, Pulse finds it by its subject")
         XCTAssertEqual(state.activeSessionId, "fresh")
         XCTAssertFalse(state.showSidebar)
         XCTAssertEqual(state.composerPrefillText, date.actionMessage)

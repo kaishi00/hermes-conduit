@@ -186,10 +186,12 @@ extension AppState {
         applyPulseFeed(page)
         guard let card = page.cards.first(where: { $0.id == id }), !card.isCleared,
               canActOnPulseCard(card), !canAskFromPulseCard(card) else { throw PulseWidgetDoItSkip.nothingToDo }
-        // Settings > Pulse picked a bot: right after a background connect
-        // the bot list may not have loaded yet, and without it the card
-        // would go to a new chat.
-        if activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }) != nil, pulseDoItBot == nil {
+        // Settings > Pulse picked a bot for a card from no chat: right after
+        // a background connect the bot list may not have loaded yet, and
+        // without it the card would go to a new chat. A list already read on
+        // this connection that leaves the bot out isn't read again.
+        if !pulseCardHasChat(card), activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }) != nil,
+           pulseDoItBot == nil, !pulseDoItBotRosterRead {
             await refreshBotRoster()
             guard activeDashboardID == dashboardID else { throw PulseWidgetDoItSkip.nothingToDo }
             // A list that couldn't be read can't say the bot is gone: never a
