@@ -507,8 +507,12 @@ final class PulseFeedTests: XCTestCase {
                        provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: hidden, appearanceColor: nil,
                        canonicalSession: nil, lastActive: nil, lastPreview: nil)
         }
+        let gate = PulseRosterGate()
         var operations = ChatResumeLifecycleOperations()
-        operations.botRoster = { _ in BotRosterSnapshot(bots: [bot("atlas"), bot("kai", hidden: true)], supportsBotProtocol: true) }
+        operations.botRoster = { _ in
+            await gate.pass()
+            return BotRosterSnapshot(bots: [bot("atlas"), bot("kai", hidden: true)], supportsBotProtocol: true)
+        }
         let state = AppState(defaults: defaults, loadSavedConnection: false,
                              dashboardRegistry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home, work]),
                              clearSessionPresentationCache: {}, chatResumeLifecycleOperations: operations)
@@ -520,11 +524,6 @@ final class PulseFeedTests: XCTestCase {
         state.setNotifierPluginStateForTesting(.reported(version: "0.164.0", capabilities: [
             PulseClient.feedCapability, PulseClient.actedCapability, PulseClient.actedChatCapability
         ]))
-        state.setPulseDoItBot("atlas")
-        XCTAssertEqual(state.pulseDoItBotUnconfirmed, "atlas")
-        await state.refreshBotRoster()
-        XCTAssertNil(state.pulseDoItBotUnconfirmed)
-        state.setPulseDoItBot(nil)
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
         {"home_chat_id": "pulse_chat", "cards": [
           {"id": 1, "kind": "noticed", "topic": "date", "level": "screen", "news": "Dentist Friday", "chat_id": "pulse_chat"},
@@ -533,6 +532,20 @@ final class PulseFeedTests: XCTestCase {
         """)))
         state.applyPulseFeed(page)
         let date = page.cards[0], fact = page.cards[1]
+        state.setPulseDoItBot("atlas")
+        XCTAssertEqual(state.pulseDoItBotUnconfirmed, "atlas")
+        // While the first read is out, a tap is asked to try again in a
+        // moment; a read that failed says it couldn't open (issue 2215).
+        gate.holds = true
+        let reading = Task { await state.refreshBotRoster() }
+        for _ in 0..<200 where state.botModePhase != .loading { await Task.yield() }
+        XCTAssertEqual(state.botModePhase, .loading)
+        XCTAssertEqual(state.pulseNewChatRefusal(for: date),
+                       AppLocalization.string("atlas's Bot Chat is still loading. Try again in a moment."))
+        gate.release()
+        await reading.value
+        XCTAssertNil(state.pulseDoItBotUnconfirmed)
+        state.setPulseDoItBot(nil)
         let older: Set<String> = [PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
                      PulseClient.foundActionsCapability]
         state.setNotifierPluginStateForTesting(.reported(version: "0.163.2", capabilities: older))
@@ -2318,5 +2331,24 @@ final class PulseFeedTests: XCTestCase {
         let outcome = try await ShortcutSender(backend: backend).send(request, deadline: Date().addingTimeInterval(20))
         XCTAssertEqual(outcome, .sent)
         XCTAssertEqual(created, "Renew the insurance")
+    }
+}
+
+/// Holds a bot list read until the test lets it go.
+@MainActor
+private final class PulseRosterGate {
+    var holds = false
+    private var waiting: [CheckedContinuation<Void, Never>] = []
+
+    func pass() async {
+        guard holds else { return }
+        await withCheckedContinuation { waiting.append($0) }
+    }
+
+    func release() {
+        holds = false
+        let pending = waiting
+        waiting.removeAll()
+        pending.forEach { $0.resume() }
     }
 }

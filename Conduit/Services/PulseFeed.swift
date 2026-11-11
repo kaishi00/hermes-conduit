@@ -1468,6 +1468,10 @@ extension AppState {
         // it's still there, or one picked from the long press that's gone
         // since: never a new chat in its place.
         if picked == nil, let name = pulseDoItBotUnconfirmed {
+            // A read still in flight will answer: worth a retry (issue 2215).
+            if botModePhase == .loading {
+                return AppLocalization.string("\(name)'s Bot Chat is still loading. Try again in a moment.")
+            }
             return AppLocalization.string("Could not open \(name)'s Bot Chat.")
         }
         if case .bot(let name) = picked {

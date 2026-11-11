@@ -142,8 +142,12 @@ extension AppState {
         } catch {
             note = PulseRefusal.message(for: error)
         }
-        guard let note, let store = pulseWidgetStore, let kept = store.read(), kept.dashboardID == dashboardID else { return }
-        if (try? store.write(kept.with(note: .some(note), noteAt: Date()))) == true { reloadPulseWidget() }
+        guard let note, let store = pulseWidgetStore else { return }
+        let changed = store.update { kept in
+            guard let kept, kept.dashboardID == dashboardID else { return nil }
+            return kept.with(note: .some(note), noteAt: Date())
+        }
+        if changed { reloadPulseWidget() }
     }
 
     /// Whether a widget Do it may send: not while one for the same card on
@@ -160,13 +164,17 @@ extension AppState {
 
     /// The row Do it sent shows so until Pulse sees the thing done.
     private func markPulseWidgetRow(_ id: Int, dashboardID: UUID) {
-        guard let store = pulseWidgetStore, let kept = store.read(), kept.dashboardID == dashboardID else { return }
-        let marked = kept.cards.map { row -> PulseWidgetCard in
-            var row = row
-            if row.id == id { row.sentAt = Date() }
-            return row
+        guard let store = pulseWidgetStore else { return }
+        let changed = store.update { kept in
+            guard let kept, kept.dashboardID == dashboardID else { return nil }
+            let marked = kept.cards.map { row -> PulseWidgetCard in
+                var row = row
+                if row.id == id { row.sentAt = Date() }
+                return row
+            }
+            return kept.with(cards: marked, note: .some(nil))
         }
-        if (try? store.write(kept.with(cards: marked, note: .some(nil)))) == true { reloadPulseWidget() }
+        if changed { reloadPulseWidget() }
     }
 
     /// Sends the card's Do it message; throws `nothingToDo` when the card
