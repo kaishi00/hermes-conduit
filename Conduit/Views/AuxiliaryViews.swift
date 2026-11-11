@@ -1241,7 +1241,6 @@ private struct SettingsHome: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     /// Redraws when an inbox's key or waiting events change (showsShortcutInboxSettings).
     @ObservedObject private var shortcutInbox = ShortcutInboxLocalState.shared
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let snapshot: SettingsSnapshot
     @Binding var path: [SettingsDestination]
     /// V2's grouping: the selected profile first, then Voice, Hermes, App.
@@ -1289,65 +1288,16 @@ private struct SettingsHome: View {
                             path.append(.conduitPlugin)
                         }
                     }
-                    if v2Layout {
-                        v2Sections
-                    } else {
-                    homeSection(AppLocalization.string("Profile"), symbol: "person.crop.circle", tint: .conduitAccent) {
-                        settingsLink(.profile, icon: "person.crop.circle", title: profileDisplayName, detail: AppLocalization.string("Profile-specific preferences"))
-                    }
-                    homeSection("Hermes", tint: .conduitAura) {
-                        settingsLink(.model, icon: "cpu", title: AppLocalization.string("Models & providers"), detail: AppLocalization.string("Default model, reasoning, and providers"))
-                        settingsLink(.usage, icon: "chart.bar", title: AppLocalization.string("Usage"), detail: AppLocalization.string("Tokens, cost, and provider quota"), identifier: "settings.usage")
-                        settingsLink(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"))
-                        settingsLink(.voice, icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in"))
-                        if appState.supportsHermesCalls {
-                            settingsLink(.hermesCalls, icon: "phone.arrow.down.left", title: AppLocalization.string("Calls from Hermes"), detail: AppLocalization.string("When Hermes may phone you"), identifier: "settings.hermes-calls")
+                    // Each group is a view of its own, filled from the rows
+                    // built below: the whole list as one nested view type
+                    // overflowed the main thread's stack on iOS 18 while
+                    // the runtime worked out that type (build 264).
+                    ForEach(homeGroups) { group in
+                        if v2Layout {
+                            V2SettingsHomeGroupCard(group: group, perform: perform)
+                        } else {
+                            SettingsHomeGroupSection(group: group, perform: perform)
                         }
-                        settingsLink(.workspace, icon: "folder", title: AppLocalization.string("Workspace & safety"), detail: AppLocalization.string("Working directory, approvals, and privacy"))
-                        settingsLink(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
-                        settingsLink(.advanced, icon: "wrench.and.screwdriver", title: AppLocalization.string("Advanced"), detail: AppLocalization.string("Turn limits, terminal, and tool output"))
-                        settingsLink(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, tools, connectors, and plugins"))
-                        settingsLink(.credentialVault, icon: "key", title: AppLocalization.string("Passwords & logins"), detail: AppLocalization.string("Logins, cards and password managers Hermes signs in with"), identifier: "settings.vault")
-                        if appState.canLinkRooms {
-                            settingsLink(.people, icon: "person.2", title: AppLocalization.string("Multiplayer"), detail: AppLocalization.string("Rooms with other people's agents"), identifier: "settings.people")
-                        }
-                        // Where the plugin serves Pulse (AppState+Pulse.swift).
-                        if appState.showsPulseSettings {
-                            settingsLink(.pulse, icon: "waveform.path.ecg", title: AppLocalization.string("Pulse (beta)"), detail: AppLocalization.string("What Hermes would bring up on its own"), identifier: "settings.pulse")
-                        }
-                    }
-                    homeSection(AppLocalization.string("Connection"), tint: .conduitAura) {
-                        settingsLink(.savedDashboards, icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards")
-                        settingsLink(.gateway, icon: "radio", title: AppLocalization.string("Gateway"), detail: snapshot.server ?? AppLocalization.string("Not connected"), identifier: "settings.gateway")
-                        settingsLink(.conduitPlugin, icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: NotifierPluginSummary.detail(appState.notifierPlugin, update: appState.activeNotifierPluginUpdate), identifier: "settings.conduit-plugin")
-                        settingsLink(.syncedPreferences, icon: "arrow.triangle.2.circlepath", title: AppLocalization.string("Sync across devices"), detail: syncedPreferencesDetail, identifier: "settings.sync")
-                        settingsActionRow(
-                            icon: "checkmark.circle",
-                            title: AppLocalization.string("Connection Setup"),
-                            detail: AppLocalization.string("Test, troubleshoot, or change your connection"),
-                            identifier: "settings.connection-setup"
-                        ) {
-                            openConnectionSetup()
-                        }
-                    }
-                    homeSection(AppLocalization.string("On this device"), tint: .conduitAccent) {
-                        settingsLink(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"))
-                        settingsLink(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
-                        if appState.showsHealthSettings {
-                            settingsLink(.health, icon: "heart.text.square", title: AppLocalization.string("Health"), detail: AppLocalization.string("Share Apple Health data with Hermes"), identifier: "settings.health")
-                        }
-                        if appState.showsLocationSettings {
-                            settingsLink(.location, icon: "location", title: AppLocalization.string("Location"), detail: AppLocalization.string("Share where you are with Hermes"), identifier: "settings.location")
-                        }
-                        if appState.showsPhoneSettings {
-                            settingsLink(.phone, icon: "calendar", title: AppLocalization.string("Calendar & phone"), detail: AppLocalization.string("Share your calendar, reminders, Focus and phone status with Hermes"), identifier: "settings.phone")
-                        }
-                        if appState.showsShortcutInboxSettings {
-                            settingsLink(.shortcutInbox, icon: "tray.full", title: AppLocalization.string("Shortcuts inbox"), detail: AppLocalization.string("What your automations logged for Hermes"), identifier: "settings.shortcut-inbox")
-                        }
-                        settingsLink(.screenQuestion, icon: "camera.viewfinder", title: AppLocalization.string("Ask Hermes About Screen"), detail: AppLocalization.string("Action Button shortcut for screenshots"), identifier: "settings.screen-question")
-                        settingsLink(.about, icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling"))
-                    }
                     }
                     Text("Hermes settings follow the active profile. Appearance, notifications, and privacy controls stay on this device unless you turn on Sync across devices.")
                         .scaledFont(.footnote)
@@ -1460,183 +1410,153 @@ private struct SettingsHome: View {
             : AppLocalization.string("Share preferences with your other devices")
     }
 
+    /// The groups Settings home lists, in the layout's order.
+    private var homeGroups: [SettingsHomeGroup] {
+        v2Layout ? v2Groups : classicGroups
+    }
+
     /// V2's grouping: the selected profile (its connection, approvals and
     /// profile page), then Voice, Hermes, and App, each one card of rows
     /// with hairlines between them, as in the Scheduled list. Every page the
     /// drawer's Settings reached stays reachable.
-    @ViewBuilder
-    private var v2Sections: some View {
-        v2Group(profileDisplayName, symbol: "person.crop.circle") {
-            v2Link(
-                .gateway,
+    private var v2Groups: [SettingsHomeGroup] {
+        var groups: [SettingsHomeGroup] = []
+        groups.append(SettingsHomeGroup(id: "profile", title: profileDisplayName, symbol: "person.crop.circle", rows: [
+            SettingsHomeRow(
+                .open(.gateway),
                 icon: "dot.radiowaves.left.and.right",
                 title: AppLocalization.string("Connection"),
                 detail: v2ConnectionDetail,
                 identifier: "settings.gateway",
-                statusDot: appState.isConnected ? Color.green : (appState.isRecoveringConnection ? Color.orange : Color.red),
-                first: true
-            )
-            v2Link(.workspace, icon: "checkmark.shield", title: AppLocalization.string("Approvals"), detail: AppLocalization.string("Working directory, approvals, and privacy"))
-            v2Link(.profile, icon: "person.crop.circle", title: AppLocalization.string("Edit profile"), detail: AppLocalization.string("Profile-specific preferences"))
+                statusDot: appState.isConnected ? Color.green : (appState.isRecoveringConnection ? Color.orange : Color.red)
+            ),
+            SettingsHomeRow(.open(.workspace), icon: "checkmark.shield", title: AppLocalization.string("Approvals"), detail: AppLocalization.string("Working directory, approvals, and privacy")),
+            SettingsHomeRow(.open(.profile), icon: "person.crop.circle", title: AppLocalization.string("Edit profile"), detail: AppLocalization.string("Profile-specific preferences")),
+        ]))
+        var voice = [
+            SettingsHomeRow(.open(.voice), icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in")),
+        ]
+        if appState.supportsHermesCalls {
+            voice.append(SettingsHomeRow(.open(.hermesCalls), icon: "phone.arrow.down.left", title: AppLocalization.string("Calls from Hermes"), detail: AppLocalization.string("When Hermes may phone you"), identifier: "settings.hermes-calls"))
         }
-        v2Group(AppLocalization.string("Voice"), symbol: "waveform") {
-            v2Link(.voice, icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in"), first: true)
-            if appState.supportsHermesCalls {
-                v2Link(.hermesCalls, icon: "phone.arrow.down.left", title: AppLocalization.string("Calls from Hermes"), detail: AppLocalization.string("When Hermes may phone you"), identifier: "settings.hermes-calls")
-            }
+        groups.append(SettingsHomeGroup(id: "voice", title: AppLocalization.string("Voice"), symbol: "waveform", rows: voice))
+        var hermes = [
+            SettingsHomeRow(.open(.model), icon: "cpu", title: AppLocalization.string("Models & providers"), detail: AppLocalization.string("Default model, reasoning, and providers")),
+            SettingsHomeRow(.open(.usage), icon: "chart.bar", title: AppLocalization.string("Usage"), detail: AppLocalization.string("Tokens, cost, and provider quota"), identifier: "settings.usage"),
+            SettingsHomeRow(.open(.chat), icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone")),
+            SettingsHomeRow(.open(.memory), icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents")),
+            SettingsHomeRow(.open(.advanced), icon: "wrench.and.screwdriver", title: AppLocalization.string("Advanced"), detail: AppLocalization.string("Turn limits, terminal, and tool output")),
+            SettingsHomeRow(.open(.capabilities), icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, tools, connectors, and plugins")),
+            SettingsHomeRow(.open(.credentialVault), icon: "key", title: AppLocalization.string("Passwords & logins"), detail: AppLocalization.string("Logins, cards and password managers Hermes signs in with"), identifier: "settings.vault"),
+        ]
+        if appState.canLinkRooms {
+            hermes.append(SettingsHomeRow(.open(.people), icon: "person.2", title: AppLocalization.string("Multiplayer"), detail: AppLocalization.string("Rooms with other people's agents"), identifier: "settings.people"))
         }
-        v2Group(AppLocalization.string("Hermes"), symbol: "gearshape.2") {
-            v2Link(.model, icon: "cpu", title: AppLocalization.string("Models & providers"), detail: AppLocalization.string("Default model, reasoning, and providers"), first: true)
-            v2Link(.usage, icon: "chart.bar", title: AppLocalization.string("Usage"), detail: AppLocalization.string("Tokens, cost, and provider quota"), identifier: "settings.usage")
-            v2Link(.chat, icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone"))
-            v2Link(.memory, icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents"))
-            v2Link(.advanced, icon: "wrench.and.screwdriver", title: AppLocalization.string("Advanced"), detail: AppLocalization.string("Turn limits, terminal, and tool output"))
-            v2Link(.capabilities, icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, tools, connectors, and plugins"))
-            v2Link(.credentialVault, icon: "key", title: AppLocalization.string("Passwords & logins"), detail: AppLocalization.string("Logins, cards and password managers Hermes signs in with"), identifier: "settings.vault")
-            if appState.canLinkRooms {
-                v2Link(.people, icon: "person.2", title: AppLocalization.string("Multiplayer"), detail: AppLocalization.string("Rooms with other people's agents"), identifier: "settings.people")
-            }
-            // Where the plugin serves Pulse (AppState+Pulse.swift).
-            if appState.showsPulseSettings {
-                v2Link(.pulse, icon: "waveform.path.ecg", title: AppLocalization.string("Pulse (beta)"), detail: AppLocalization.string("What Hermes would bring up on its own"), identifier: "settings.pulse")
-            }
+        // Where the plugin serves Pulse (AppState+Pulse.swift).
+        if appState.showsPulseSettings {
+            hermes.append(SettingsHomeRow(.open(.pulse), icon: "waveform.path.ecg", title: AppLocalization.string("Pulse (beta)"), detail: AppLocalization.string("What Hermes would bring up on its own"), identifier: "settings.pulse"))
         }
-        v2Group(AppLocalization.string("App"), symbol: "slider.horizontal.3") {
-            v2Action(
-                icon: "person.2.crop.square.stack",
-                title: AppLocalization.string("Profiles"),
-                detail: AppLocalization.string("Rename, reorder, or change profile photos"),
-                identifier: "settings.profiles",
-                first: true
-            ) {
-                showProfileManager = true
-            }
-            v2Link(.appearance, icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences"))
-            v2Link(.notifications, icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup"))
-            v2Link(.syncedPreferences, icon: "arrow.triangle.2.circlepath", title: AppLocalization.string("Sync across devices"), detail: syncedPreferencesDetail, identifier: "settings.sync")
-            v2Link(.screenQuestion, icon: "camera.viewfinder", title: AppLocalization.string("Ask Hermes About Screen"), detail: AppLocalization.string("Action Button shortcut for screenshots"), identifier: "settings.screen-question")
+        groups.append(SettingsHomeGroup(id: "hermes", title: AppLocalization.string("Hermes"), symbol: "gearshape.2", rows: hermes))
+        groups.append(SettingsHomeGroup(id: "app", title: AppLocalization.string("App"), symbol: "slider.horizontal.3", rows: [
+            SettingsHomeRow(.profiles, icon: "person.2.crop.square.stack", title: AppLocalization.string("Profiles"), detail: AppLocalization.string("Rename, reorder, or change profile photos"), identifier: "settings.profiles"),
+            SettingsHomeRow(.open(.appearance), icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences")),
+            SettingsHomeRow(.open(.notifications), icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup")),
+            SettingsHomeRow(.open(.syncedPreferences), icon: "arrow.triangle.2.circlepath", title: AppLocalization.string("Sync across devices"), detail: syncedPreferencesDetail, identifier: "settings.sync"),
+            SettingsHomeRow(.open(.screenQuestion), icon: "camera.viewfinder", title: AppLocalization.string("Ask Hermes About Screen"), detail: AppLocalization.string("Action Button shortcut for screenshots"), identifier: "settings.screen-question"),
+        ]))
+        let device = deviceRows
+        if !device.isEmpty {
+            groups.append(SettingsHomeGroup(id: "device", title: AppLocalization.string("On this device"), symbol: "iphone", rows: device))
         }
-        if appState.showsHealthSettings || appState.showsLocationSettings || appState.showsPhoneSettings || appState.showsShortcutInboxSettings {
-            v2Group(AppLocalization.string("On this device"), symbol: "iphone") {
-                if appState.showsHealthSettings {
-                    v2Link(.health, icon: "heart.text.square", title: AppLocalization.string("Health"), detail: AppLocalization.string("Share Apple Health data with Hermes"), identifier: "settings.health", first: true)
-                }
-                if appState.showsLocationSettings {
-                    v2Link(.location, icon: "location", title: AppLocalization.string("Location"), detail: AppLocalization.string("Share where you are with Hermes"), identifier: "settings.location", first: !appState.showsHealthSettings)
-                }
-                if appState.showsPhoneSettings {
-                    v2Link(.phone, icon: "calendar", title: AppLocalization.string("Calendar & phone"), detail: AppLocalization.string("Share your calendar, reminders, Focus and phone status with Hermes"), identifier: "settings.phone", first: !appState.showsHealthSettings && !appState.showsLocationSettings)
-                }
-                if appState.showsShortcutInboxSettings {
-                    v2Link(.shortcutInbox, icon: "tray.full", title: AppLocalization.string("Shortcuts inbox"), detail: AppLocalization.string("What your automations logged for Hermes"), identifier: "settings.shortcut-inbox", first: !appState.showsHealthSettings && !appState.showsLocationSettings && !appState.showsPhoneSettings)
-                }
-            }
-        }
-        v2Group(AppLocalization.string("Server"), symbol: "server.rack") {
-            v2Link(.savedDashboards, icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards", first: true)
-            v2Link(.conduitPlugin, icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: NotifierPluginSummary.detail(appState.notifierPlugin, update: appState.activeNotifierPluginUpdate), identifier: "settings.conduit-plugin")
-            v2Action(
-                icon: "checkmark.circle",
-                title: AppLocalization.string("Connection Setup"),
-                detail: AppLocalization.string("Test, troubleshoot, or change your connection"),
-                identifier: "settings.connection-setup"
-            ) {
-                openConnectionSetup()
-            }
-        }
-        v2Group(AppLocalization.string("About"), symbol: "info.circle") {
-            v2Link(.about, icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling"), first: true)
-        }
+        groups.append(SettingsHomeGroup(id: "server", title: AppLocalization.string("Server"), symbol: "server.rack", rows: [
+            SettingsHomeRow(.open(.savedDashboards), icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards"),
+            SettingsHomeRow(.open(.conduitPlugin), icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: NotifierPluginSummary.detail(appState.notifierPlugin, update: appState.activeNotifierPluginUpdate), identifier: "settings.conduit-plugin"),
+            SettingsHomeRow(.connectionSetup, icon: "checkmark.circle", title: AppLocalization.string("Connection Setup"), detail: AppLocalization.string("Test, troubleshoot, or change your connection"), identifier: "settings.connection-setup"),
+        ]))
+        groups.append(SettingsHomeGroup(id: "about", title: AppLocalization.string("About"), symbol: "info.circle", rows: [
+            SettingsHomeRow(.open(.about), icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling")),
+        ]))
+        return groups
     }
 
-    /// A V2 group: its name over one card of rows.
-    private func v2Group<Rows: View>(_ title: String, symbol: String, @ViewBuilder rows: () -> Rows) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            SettingsSectionHeader(title: title, symbol: symbol, tint: .conduitAccent)
-            VStack(spacing: 0) {
-                rows()
-            }
-            .settingsCard()
+    /// The pages for what this iPhone shares with Hermes, each shown once
+    /// the feature is available here.
+    private var deviceRows: [SettingsHomeRow] {
+        var rows: [SettingsHomeRow] = []
+        if appState.showsHealthSettings {
+            rows.append(SettingsHomeRow(.open(.health), icon: "heart.text.square", title: AppLocalization.string("Health"), detail: AppLocalization.string("Share Apple Health data with Hermes"), identifier: "settings.health"))
         }
+        if appState.showsLocationSettings {
+            rows.append(SettingsHomeRow(.open(.location), icon: "location", title: AppLocalization.string("Location"), detail: AppLocalization.string("Share where you are with Hermes"), identifier: "settings.location"))
+        }
+        if appState.showsPhoneSettings {
+            rows.append(SettingsHomeRow(.open(.phone), icon: "calendar", title: AppLocalization.string("Calendar & phone"), detail: AppLocalization.string("Share your calendar, reminders, Focus and phone status with Hermes"), identifier: "settings.phone"))
+        }
+        if appState.showsShortcutInboxSettings {
+            rows.append(SettingsHomeRow(.open(.shortcutInbox), icon: "tray.full", title: AppLocalization.string("Shortcuts inbox"), detail: AppLocalization.string("What your automations logged for Hermes"), identifier: "settings.shortcut-inbox"))
+        }
+        return rows
     }
 
-    private func v2Link(
-        _ destination: SettingsDestination,
-        icon: String,
-        title: String,
-        detail: String,
-        identifier: String = "",
-        statusDot: Color? = nil,
-        first: Bool = false
-    ) -> some View {
-        Button {
-            Haptics.selection()
-            path.append(destination)
-        } label: {
-            v2RowLabel(icon: icon, title: title, detail: detail, statusDot: statusDot, first: first)
+    /// The classic layout's groups: Profile, Hermes, Connection, and this
+    /// device.
+    private var classicGroups: [SettingsHomeGroup] {
+        var hermes = [
+            SettingsHomeRow(.open(.model), icon: "cpu", title: AppLocalization.string("Models & providers"), detail: AppLocalization.string("Default model, reasoning, and providers")),
+            SettingsHomeRow(.open(.usage), icon: "chart.bar", title: AppLocalization.string("Usage"), detail: AppLocalization.string("Tokens, cost, and provider quota"), identifier: "settings.usage"),
+            SettingsHomeRow(.open(.chat), icon: "bubble.left.and.bubble.right", title: AppLocalization.string("Chat"), detail: AppLocalization.string("Response behavior, visibility, and timezone")),
+            SettingsHomeRow(.open(.voice), icon: "mic.and.signal.meter", title: AppLocalization.string("Voice"), detail: AppLocalization.string("Speech providers, credentials, and device opt-in")),
+        ]
+        if appState.supportsHermesCalls {
+            hermes.append(SettingsHomeRow(.open(.hermesCalls), icon: "phone.arrow.down.left", title: AppLocalization.string("Calls from Hermes"), detail: AppLocalization.string("When Hermes may phone you"), identifier: "settings.hermes-calls"))
         }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(identifier)
+        hermes += [
+            SettingsHomeRow(.open(.workspace), icon: "folder", title: AppLocalization.string("Workspace & safety"), detail: AppLocalization.string("Working directory, approvals, and privacy")),
+            SettingsHomeRow(.open(.memory), icon: "brain.head.profile", title: AppLocalization.string("Memory & delegation"), detail: AppLocalization.string("Memory, compression, and child agents")),
+            SettingsHomeRow(.open(.advanced), icon: "wrench.and.screwdriver", title: AppLocalization.string("Advanced"), detail: AppLocalization.string("Turn limits, terminal, and tool output")),
+            SettingsHomeRow(.open(.capabilities), icon: "puzzlepiece.extension", title: AppLocalization.string("Capabilities"), detail: AppLocalization.string("Skills, tools, connectors, and plugins")),
+            SettingsHomeRow(.open(.credentialVault), icon: "key", title: AppLocalization.string("Passwords & logins"), detail: AppLocalization.string("Logins, cards and password managers Hermes signs in with"), identifier: "settings.vault"),
+        ]
+        if appState.canLinkRooms {
+            hermes.append(SettingsHomeRow(.open(.people), icon: "person.2", title: AppLocalization.string("Multiplayer"), detail: AppLocalization.string("Rooms with other people's agents"), identifier: "settings.people"))
+        }
+        // Where the plugin serves Pulse (AppState+Pulse.swift).
+        if appState.showsPulseSettings {
+            hermes.append(SettingsHomeRow(.open(.pulse), icon: "waveform.path.ecg", title: AppLocalization.string("Pulse (beta)"), detail: AppLocalization.string("What Hermes would bring up on its own"), identifier: "settings.pulse"))
+        }
+        var device = [
+            SettingsHomeRow(.open(.appearance), icon: "circle.lefthalf.filled", title: AppLocalization.string("Appearance"), detail: AppLocalization.string("Theme and interface preferences")),
+            SettingsHomeRow(.open(.notifications), icon: "bell", title: AppLocalization.string("Notifications"), detail: AppLocalization.string("Delivery status and setup")),
+        ]
+        device += deviceRows
+        device += [
+            SettingsHomeRow(.open(.screenQuestion), icon: "camera.viewfinder", title: AppLocalization.string("Ask Hermes About Screen"), detail: AppLocalization.string("Action Button shortcut for screenshots"), identifier: "settings.screen-question"),
+            SettingsHomeRow(.open(.about), icon: "shield", title: AppLocalization.string("About & privacy"), detail: AppLocalization.string("App information and data handling")),
+        ]
+        return [
+            SettingsHomeGroup(id: "profile", title: AppLocalization.string("Profile"), symbol: "person.crop.circle", tint: .conduitAccent, rows: [
+                SettingsHomeRow(.open(.profile), icon: "person.crop.circle", title: profileDisplayName, detail: AppLocalization.string("Profile-specific preferences")),
+            ]),
+            SettingsHomeGroup(id: "hermes", title: "Hermes", symbol: "gearshape.2", tint: .conduitAura, rows: hermes),
+            SettingsHomeGroup(id: "connection", title: AppLocalization.string("Connection"), symbol: "gearshape.2", tint: .conduitAura, rows: [
+                SettingsHomeRow(.open(.savedDashboards), icon: "server.rack", title: AppLocalization.string("Saved Dashboards"), detail: savedDashboardsDetail, identifier: "settings.saved-dashboards"),
+                SettingsHomeRow(.open(.gateway), icon: "radio", title: AppLocalization.string("Gateway"), detail: snapshot.server ?? AppLocalization.string("Not connected"), identifier: "settings.gateway"),
+                SettingsHomeRow(.open(.conduitPlugin), icon: "puzzlepiece.extension", title: AppLocalization.string("Conduit plugin"), detail: NotifierPluginSummary.detail(appState.notifierPlugin, update: appState.activeNotifierPluginUpdate), identifier: "settings.conduit-plugin"),
+                SettingsHomeRow(.open(.syncedPreferences), icon: "arrow.triangle.2.circlepath", title: AppLocalization.string("Sync across devices"), detail: syncedPreferencesDetail, identifier: "settings.sync"),
+                SettingsHomeRow(.connectionSetup, icon: "checkmark.circle", title: AppLocalization.string("Connection Setup"), detail: AppLocalization.string("Test, troubleshoot, or change your connection"), identifier: "settings.connection-setup"),
+            ]),
+            SettingsHomeGroup(id: "device", title: AppLocalization.string("On this device"), symbol: "gearshape.2", tint: .conduitAccent, rows: device),
+        ]
     }
 
-    private func v2Action(
-        icon: String,
-        title: String,
-        detail: String,
-        identifier: String,
-        first: Bool = false,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button {
-            Haptics.selection()
-            action()
-        } label: {
-            v2RowLabel(icon: icon, title: title, detail: detail, first: first)
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(identifier)
-    }
-
-    /// A row in a V2 group: the gold glyph, the name over a short detail,
-    /// a chevron, and a hairline above every row but the first, from the
-    /// text column.
-    private func v2RowLabel(icon: String, title: String, detail: String, statusDot: Color? = nil, first: Bool) -> some View {
-        HStack(spacing: 14) {
-            Image(systemName: icon)
-                .scaledFont(.body.weight(.medium))
-                .conduitFixedGlyph()
-                .foregroundStyle(Color.conduitAccent)
-                .frame(width: 26)
-                .accessibilityHidden(true)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .scaledFont(.callout.weight(.semibold))
-                    .foregroundStyle(.primary)
-                HStack(spacing: 5) {
-                    if let statusDot {
-                        Circle().fill(statusDot).frame(width: 7, height: 7).accessibilityHidden(true)
-                    }
-                    Text(detail)
-                        .scaledFont(.subheadline)
-                        .foregroundStyle(Color.primary.opacity(0.58))
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
-                }
-            }
-            Spacer(minLength: 8)
-            Image(systemName: "chevron.right")
-                .scaledFont(.footnote.weight(.semibold))
-                .foregroundStyle(.conduitTertiary)
-                .accessibilityHidden(true)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 11)
-        .contentShape(Rectangle())
-        .overlay(alignment: .top) {
-            if !first { V2RowDivider(leadingInset: 56) }
+    /// What a row's tap does.
+    private func perform(_ action: SettingsHomeRow.Action) {
+        switch action {
+        case .open(let destination): path.append(destination)
+        case .profiles: showProfileManager = true
+        case .connectionSetup: openConnectionSetup()
         }
     }
-
     /// The Connection row's second line: the state in a word, and the host.
     private var v2ConnectionDetail: String {
         let state = appState.isConnected
@@ -1676,45 +1596,152 @@ private struct SettingsHome: View {
     private var profileDisplayName: String {
         appState.profileDisplayName(snapshot.profile)
     }
+}
 
-    private func homeSection<Content: View>(_ title: String, symbol: String = "gearshape.2", tint: Color, @ViewBuilder content: () -> Content) -> some View {
-        ConduitSettingsSection(title: title, symbol: symbol, tint: tint, content: content)
+/// One row on Settings home: a page it opens, or a sheet.
+private struct SettingsHomeRow: Identifiable {
+    enum Action: Hashable {
+        case open(SettingsDestination)
+        case profiles
+        case connectionSetup
     }
 
-    private func settingsLink(_ destination: SettingsDestination, icon: String, title: String, detail: String, identifier: String = "", statusDot: Color? = nil) -> some View {
-        Button {
-            Haptics.selection()
-            path.append(destination)
-        } label: {
-            settingsRowLabel(icon: icon, title: title, detail: detail, statusDot: statusDot)
+    let action: Action
+    let icon: String
+    let title: String
+    let detail: String
+    var identifier = ""
+    var statusDot: Color?
+
+    init(_ action: Action, icon: String, title: String, detail: String, identifier: String = "", statusDot: Color? = nil) {
+        self.action = action
+        self.icon = icon
+        self.title = title
+        self.detail = detail
+        self.identifier = identifier
+        self.statusDot = statusDot
+    }
+
+    var id: String { "\(icon)|\(title)" }
+}
+
+/// A named group of rows on Settings home.
+private struct SettingsHomeGroup: Identifiable {
+    let id: String
+    let title: String
+    let symbol: String
+    var tint: Color = .conduitAccent
+    let rows: [SettingsHomeRow]
+}
+
+/// A V2 group: its name over one card of rows, with a hairline above every
+/// row but the first.
+private struct V2SettingsHomeGroupCard: View {
+    let group: SettingsHomeGroup
+    let perform: (SettingsHomeRow.Action) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            SettingsSectionHeader(title: group.title, symbol: group.symbol, tint: group.tint)
+            VStack(spacing: 0) {
+                ForEach(Array(group.rows.enumerated()), id: \.element.id) { index, row in
+                    Button {
+                        Haptics.selection()
+                        perform(row.action)
+                    } label: {
+                        V2SettingsHomeRowLabel(row: row, first: index == 0)
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier(row.identifier)
+                }
+            }
+            .settingsCard()
         }
-        .buttonStyle(.plain)
-        .accessibilityHint(detail)
-        .accessibilityIdentifier(identifier)
     }
+}
 
-    private func settingsActionRow(icon: String, title: String, detail: String, identifier: String, action: @escaping () -> Void) -> some View {
-        Button {
-            Haptics.selection()
-            action()
-        } label: {
-            settingsRowLabel(icon: icon, title: title, detail: detail)
-        }
-        .buttonStyle(.plain)
-        .accessibilityIdentifier(identifier)
-        .accessibilityHint(detail)
-    }
+/// A row in a V2 group: the gold glyph, the name over a short detail,
+/// a chevron, and a hairline above every row but the first, from the
+/// text column.
+private struct V2SettingsHomeRowLabel: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let row: SettingsHomeRow
+    let first: Bool
 
-    private func settingsRowLabel(icon: String, title: String, detail: String, statusDot: Color? = nil) -> some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon).scaledFont(.subheadline.weight(.semibold)).conduitFixedGlyph().foregroundStyle(.conduitAccent).frame(width: 25)
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: row.icon)
+                .scaledFont(.body.weight(.medium))
+                .conduitFixedGlyph()
+                .foregroundStyle(Color.conduitAccent)
+                .frame(width: 26)
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(title).scaledFont(.subheadline.weight(.semibold))
+                Text(row.title)
+                    .scaledFont(.callout.weight(.semibold))
+                    .foregroundStyle(.primary)
                 HStack(spacing: 5) {
-                    if let statusDot {
+                    if let statusDot = row.statusDot {
                         Circle().fill(statusDot).frame(width: 7, height: 7).accessibilityHidden(true)
                     }
-                    Text(detail).scaledFont(.caption).foregroundStyle(.secondary).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                    Text(row.detail)
+                        .scaledFont(.subheadline)
+                        .foregroundStyle(Color.primary.opacity(0.58))
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
+                }
+            }
+            Spacer(minLength: 8)
+            Image(systemName: "chevron.right")
+                .scaledFont(.footnote.weight(.semibold))
+                .foregroundStyle(.conduitTertiary)
+                .accessibilityHidden(true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 11)
+        .contentShape(Rectangle())
+        .overlay(alignment: .top) {
+            if !first { V2RowDivider(leadingInset: 56) }
+        }
+    }
+}
+
+/// A classic-layout group: a settings section of rows.
+private struct SettingsHomeGroupSection: View {
+    let group: SettingsHomeGroup
+    let perform: (SettingsHomeRow.Action) -> Void
+
+    var body: some View {
+        ConduitSettingsSection(title: group.title, symbol: group.symbol, tint: group.tint) {
+            ForEach(group.rows) { row in
+                Button {
+                    Haptics.selection()
+                    perform(row.action)
+                } label: {
+                    SettingsHomeRowLabel(row: row)
+                }
+                .buttonStyle(.plain)
+                .accessibilityHint(row.detail)
+                .accessibilityIdentifier(row.identifier)
+            }
+        }
+    }
+}
+
+private struct SettingsHomeRowLabel: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    let row: SettingsHomeRow
+
+    var body: some View {
+        HStack(spacing: 12) {
+            Image(systemName: row.icon).scaledFont(.subheadline.weight(.semibold)).conduitFixedGlyph().foregroundStyle(.conduitAccent).frame(width: 25)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(row.title).scaledFont(.subheadline.weight(.semibold))
+                HStack(spacing: 5) {
+                    if let statusDot = row.statusDot {
+                        Circle().fill(statusDot).frame(width: 7, height: 7).accessibilityHidden(true)
+                    }
+                    Text(row.detail).scaledFont(.caption).foregroundStyle(.secondary).lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
                 }
             }
             Spacer(minLength: 8)

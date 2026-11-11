@@ -5997,7 +5997,7 @@ README.md (Cloudflare Access) · the notifier's support page · the website's
 setup page (setup/index.html in hermes-conduit-website)
 
 **Code**
-- Rows and page: `Conduit/Views/AuxiliaryViews.swift` (v2Sections, SettingsHome, GatewaySettingsDetail and its title)
+- Rows and page: `Conduit/Views/AuxiliaryViews.swift` (SettingsHome: v2Groups, classicGroups and their row views, GatewaySettingsDetail and its title)
 - Chat's sheet and Diagnostics & logs: `Conduit/Views/ChatSupportSheets.swift` (GatewayDiagnosticsSheet and its Placement), `Conduit/Views/V2/V2ConversationScreen.swift`, `Conduit/Services/AppState.swift` (refreshGatewayDiagnostics), `Conduit/Services/AppState+GatewayRestart.swift`
 - Restart Gateway's progress: `Conduit/Views/GatewayRestartViews.swift` (GatewayRestartStatusView, GatewayWaitView: what a draining restart waits on and Restart now, shared with the plugin update)
 - Sign-in screen's link: `Conduit/Views/Login/LoginScreens.swift` (LoginDiagnosticsLink, LoginFlowPresentations), `Conduit/Views/Login/LoginFlowModel.swift` (showsDiagnostics)
