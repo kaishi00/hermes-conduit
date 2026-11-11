@@ -707,6 +707,17 @@ final class PhoneSyncEngine: ObservableObject {
             let parts = await Self.partsInBackground(batch, maxItems: PhoneSyncLimits.batchItems,
                                                      maxBytes: PhoneSyncLimits.batchBytes)
             for var part in parts {
+                // Photos turned off while this pass got ready or sent an
+                // earlier part: what's left goes without descriptions, and
+                // says Photos is off.
+                if preferences.photos, !self.preferences.photos {
+                    part["photos"] = nil
+                    if var sharing = part["sharing"] as? [String: Any] {
+                        sharing["photos"] = false
+                        part["sharing"] = sharing
+                    }
+                    newPhotoHashes = nil
+                }
                 let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
                 part["batch_id"] = batchID
                 let body = try await Self.sealBatch(part, key: key, deviceID: state.deviceID, batchID: batchID)
