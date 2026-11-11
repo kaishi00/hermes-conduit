@@ -140,7 +140,7 @@ struct ModelChooserPage: View {
                 footer
             }
         }
-        .searchable(text: $query, prompt: Text(AppLocalization.string("Search providers or models")))
+        .pageSearchable(text: $query, prompt: Text(AppLocalization.string("Search providers or models")))
         .navigationTitle(title)
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {

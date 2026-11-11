@@ -762,9 +762,38 @@ not needed) · text: no Settings caption or doc describes the bar's place
 
 **Open gaps**
 - Not seen on a Duo yet: the inner screen's strip (the simulator can't unfold from the command line) and a finger's taps in the strip on hardware wait on TestFlight.
-- Settings' pages aren't in a tab path, so the tabs stay beside a pushed Settings page: its Back sits above them, but a Settings page with a search field would put iOS's search button over the main button. None has one yet.
+- Settings' pages aren't in a tab path, so the tabs stay beside a pushed Settings page; its Back sits above them. A page's search field sits under its title, not in the strip (see Search on a page under the tabs).
 
-**Checked:** 2026-11-10, #2126 (the tabs and the main button take iOS's 50 pt control column, icons only, below the window controls; issue 2118). Earlier 2026-11-07, added at #1945.
+**Checked:** 2026-11-11, #2180 (a Settings page's search sits under its title, so it never stands over the main button; gap closed). Earlier 2026-11-10, #2126 (the tabs and the main button take iOS's 50 pt control column, icons only, below the window controls; issue 2118). Earlier 2026-11-07, added at #1945.
+
+## Search on a page under the tabs
+
+A page's search field, on a page that can show with the floating tab bar
+over it. iOS 26 puts a pushed page's search at the foot of an iPhone screen,
+where the bar and the main button cover it.
+
+**Siblings:** the Skill Hub (done) · the Plugin catalog's Browse All (done)
+· Apps in Connectors (done) · the shared Model page, from Settings, a bot,
+Kanban or delegation (done) · Artifacts pushed in Chats or Bots (done; the
+panel beside a chat has its own field) · a Duo's status strip (done: the
+field is no toolbar button there) · Add a provider and the Kanban task
+composer's pickers (not needed: sheets, no tabs over them) · the drawer
+shell's lists (not needed: no tab bar) · the Chats list's own search (not
+needed: its own field in the top bar) · Watch and CarPlay (not needed: no
+such pages) · text: no caption or doc says where the field sits
+
+**Code**
+- `Conduit/Views/V2/V2Shell.swift` (pageSearchable)
+- Users: `Conduit/Views/Capabilities/SkillHubViews.swift`, `Conduit/Views/Capabilities/PluginCatalogViews.swift`, `Conduit/Views/Capabilities/HostedAppsViews.swift`, `Conduit/Views/ModelChooserPage.swift`, `Conduit/Views/V2/V2ArtifactsViews.swift`
+- Tests: `scripts/tests/test_page_search_source_contract.py` (a bare `.searchable` only in the sheets and the drawer shell it lists)
+
+**Rulings**
+- A page that can show with the tabs up searches through pageSearchable: the field under the title, always shown, never at the screen's foot (a tester's screenshot of the Skill Hub, 2026-11-11, #2180). A sheet keeps iOS's own place.
+
+**Open gaps**
+- Not yet seen on a device or simulator: the source check can't show where iOS draws the field.
+
+**Checked:** 2026-11-11, added at #2180.
 
 ## The open chat in the list beside it
 
@@ -3815,7 +3844,8 @@ page is the profile in use, as the other Capabilities tabs are) · the Kanban
 skill picker (not needed: it lists installed skills) · Watch, CarPlay and
 group rooms (not needed: no settings) · the notifier (not needed: Hermes'
 own routes) · Plugin catalog: browse and install (the plugins half of the
-marketplace) · Text: the page's captions and README.md's Capabilities line
+marketplace) · its search field (done: under the title, see Search on a page
+under the tabs) · Text: the page's captions and README.md's Capabilities line
 (done)
 
 **Code**
@@ -3835,7 +3865,7 @@ marketplace) · Text: the page's captions and README.md's Capabilities line
 - The hub's taps (adding a GitHub repository as a source, Desktop's Sources) aren't on the page.
 - A skill the scan would have Hermes ask about installs with Hermes' `--yes`, as Desktop's Install does; the page shows the findings first.
 
-**Checked:** 2026-11-08, #2024 (the hub leads the Skills tab); 2026-11-08, #2011 (README's Capabilities line, shared, also names each plugin's own settings); 2026-11-08, #2009 (the plugin catalog named as a sibling; wording); 2026-11-08, #1999 (the page, the scan, install, remove and update)
+**Checked:** 2026-11-11, #2180 (the search field sits under the title, not behind the tab bar); 2026-11-08, #2024 (the hub leads the Skills tab); 2026-11-08, #2011 (README's Capabilities line, shared, also names each plugin's own settings); 2026-11-08, #2009 (the plugin catalog named as a sibling; wording); 2026-11-08, #1999 (the page, the scan, install, remove and update)
 
 ## Plugin catalog: browse and install
 
@@ -3858,7 +3888,8 @@ plugin catalog (upstream, the reference: its featured picks from
 catalog-curation.json, its tiers and pictures) · the chat card Hermes opens
 to install a catalog plugin (not needed: Hermes runs that install itself,
 see Things Hermes connects from a chat) · Skill Hub: browse and install (done:
-the skills half of the marketplace, named here and there) · Watch, CarPlay and group rooms (not
+the skills half of the marketplace, named here and there) · Browse All's
+search field (done: under the title, see Search on a page under the tabs) · Watch, CarPlay and group rooms (not
 needed: no settings) · the notifier (not needed: Hermes' own routes) · Text:
 the pages' captions and README.md's Capabilities line (done)
 
@@ -3881,7 +3912,7 @@ the pages' captions and README.md's Capabilities line (done)
 - A plugin's README (Desktop's docs page) isn't shown.
 - An install that finishes after a switch away doesn't offer Restart Gateway when the user comes back, if Hermes needs one to load it (#2019).
 
-**Checked:** 2026-11-08, #2024 (the shelf leads the Plugins tab, says it's loading; the banner no longer widens the page); 2026-11-08, #2019 (Install fenced to the page's dashboard, the profile read live as #2018 has it, its outcome said only where it went; the Settings sheet closes on a switch, issue 2016; Rulings, gaps); 2026-11-08, #2018 (the pages read the store's profile live, not the one they were pushed on); 2026-11-08, #2011 (README's Capabilities line also names each plugin's own settings, see Plugin settings); 2026-11-08, #2010 (kept filters keep their place, the rule in CapabilityPluginFilter; the Category menu reads its selection to VoiceOver); 2026-11-08, #2009 (the shelf, Browse All, the plugin page)
+**Checked:** 2026-11-11, #2180 (Browse All's search sits under the title, not behind the tab bar); 2026-11-08, #2024 (the shelf leads the Plugins tab, says it's loading; the banner no longer widens the page); 2026-11-08, #2019 (Install fenced to the page's dashboard, the profile read live as #2018 has it, its outcome said only where it went; the Settings sheet closes on a switch, issue 2016; Rulings, gaps); 2026-11-08, #2018 (the pages read the store's profile live, not the one they were pushed on); 2026-11-08, #2011 (README's Capabilities line also names each plugin's own settings, see Plugin settings); 2026-11-08, #2010 (kept filters keep their place, the rule in CapabilityPluginFilter; the Category menu reads its selection to VoiceOver); 2026-11-08, #2009 (the shelf, Browse All, the plugin page)
 
 ## Plugin settings
 

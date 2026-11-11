@@ -180,7 +180,7 @@ struct PluginCatalogBrowsePage: View {
             }
         }
         .navigationTitle(Text("Plugin catalog"))
-        .searchable(text: $query, prompt: Text("Search plugins"))
+        .pageSearchable(text: $query, prompt: Text("Search plugins"))
     }
 
     @ViewBuilder
