@@ -124,7 +124,10 @@ final class GPTLiveConversationController: ObservableObject {
 
     /// The most briefing the notifier plugin takes for a call, counted as it
     /// counts (Unicode code points), less a margin for the whitespace it
-    /// strips. A longer one is refused with "briefing is too long".
+    /// strips. A longer one is refused with "briefing is too long" by a
+    /// plugin before 0.52.1. This is the request's limit, not the model's:
+    /// the plugin fits what reaches gpt-live-1-codex to Codex's token budget
+    /// itself (notifier #719), the one place that budget is kept.
     static let maxBriefingCharacters = 32 * 1024 - 64
 
     /// Conduit's briefing for a call, with `followedBy` (the call's own
@@ -181,9 +184,11 @@ final class GPTLiveConversationController: ObservableObject {
     }
 
     /// Conduit's rules for the live model. They travel with the session
-    /// request and the host adds them to GPT-Live's instructions; a host
-    /// that doesn't take them gets them as session context when the call
-    /// starts. Written for the model, not shown as UI copy, so not localized.
+    /// request and the host puts them in the session (the API's
+    /// instructions, or the subscription's first seeded item, which the
+    /// plugin fits to Codex's token budget by cutting the memory, then the
+    /// persona: notifier #719); a host that doesn't take them gets them as
+    /// session context when the call starts. Written for the model, not shown as UI copy, so not localized.
     private static func briefingRules(answerLength: LiveVoiceAnswerLength, onWatch: Bool, watchChats: Bool) -> String {
         """
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through \(onWatch ? "Conduit on their Apple Watch" : "the Conduit iPhone app"). This is speech, not text: talk naturally, in full spoken sentences.

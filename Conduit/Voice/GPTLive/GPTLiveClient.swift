@@ -63,10 +63,15 @@ struct GPTLiveSessionAnswer: Equatable {
     /// The voice the host started the call with; nil from a host that
     /// doesn't report it (an older plugin).
     var voice: String? = nil
-    /// True when the host put Conduit's briefing into the session's
-    /// instructions; an older plugin ignores it and the briefing must be sent
-    /// as context after the call starts.
+    /// True when the host put Conduit's briefing into the session (the
+    /// public API's instructions, or the subscription's first seeded item,
+    /// notifier 0.164.4+); an older plugin ignores it and the briefing must
+    /// be sent as context after the call starts.
     var briefingApplied: Bool = false
+    /// True when the host cut what Hermes remembers (then the persona) to
+    /// fit Codex's seeded-items budget (notifier #719). Read only for the
+    /// call trace.
+    var briefingClipped: Bool = false
     /// True when the host made the model speak first: a greeting (#290) or
     /// the opening of a call Hermes placed (`call_opening`, #544). An older
     /// plugin keeps it silent and the opening is asked for after the call
@@ -266,6 +271,7 @@ final class GPTLiveClient: GPTLiveSessionProviding {
             sdp: sdp,
             voice: voice,
             briefingApplied: response["briefing_applied"] as? Bool == true,
+            briefingClipped: response["briefing_clipped"] as? Bool == true,
             greetingApplied: response["greeting_applied"] as? Bool == true,
             billing: billing,
             // Only the two names the plugin sends: nothing else the host

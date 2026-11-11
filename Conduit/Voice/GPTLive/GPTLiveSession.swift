@@ -273,12 +273,14 @@ final class GPTLiveSession {
     }
 
     /// What the host says it did with the request. "Applied" means the
-    /// text was in the instructions the host sent, not that the model
-    /// followed it.
+    /// text was in the session the host sent (its instructions, or the
+    /// subscription's seeded items), not that the model followed it; "cut
+    /// to fit" means the host shortened the memory or persona for Codex's
+    /// budget.
     nonisolated static func answerStep(_ answer: GPTLiveSessionAnswer) -> String {
         let builder = answer.source.map { $0 == "hermes" ? "built by Hermes" : "built by the plugin" } ?? "builder not reported"
         let path = answer.billing == .api ? "API key" : "ChatGPT plan"
-        return "Host answered: \(builder), \(path), briefing applied \(answer.briefingApplied ? "yes" : "no")"
+        return "Host answered: \(builder), \(path), briefing applied \(answer.briefingApplied ? (answer.briefingClipped ? "yes, cut to fit" : "yes") : "no")"
             + ", opening applied \(answer.greetingApplied ? "yes" : "no")"
             + (traceCode(answer.voice).map { ", voice \($0)" } ?? "")
     }
