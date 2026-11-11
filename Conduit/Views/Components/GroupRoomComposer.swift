@@ -619,7 +619,7 @@ struct GroupRoomComposer: View {
     /// Return key sends (Settings > Chat > Keyboard), as in a chat: Return
     /// stands for Send, which is dictation's Stop while it runs.
     private var canSubmitFromReturn: Bool {
-        shell.chatTakesKeys && (canSend || dictationHoldsSendSlot)
+        shell.chatTakesKeys && appState.botChatComingOverAnother == nil && (canSend || dictationHoldsSendSlot)
     }
 
     private func submitFromReturnKey() -> Bool {

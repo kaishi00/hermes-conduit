@@ -3329,7 +3329,7 @@ Keyboard shortcuts) and the Keyboard section's line on it
 **Code**
 - Policy: `Conduit/Views/Components/ComposerReturnKey.swift` (ComposerReturnKey), `Conduit/Views/Components/ComposerSuggestionKeys.swift` (a suggestion list's keys)
 - Key handling: `Conduit/Views/Components/ReturnKeyTextView.swift` (ReturnKeyTextView: the Return key command and pressesBegan; ReturnKeyTextEditor, the field rooms and the full editor use)
-- Chat composer: `Conduit/Views/Components/ComposerPasteTextView.swift` (ImagePasteTextView), `Conduit/Views/Components/ComposerBar.swift` (submitFromReturnKey, the full editor's)
+- Chat composer: `Conduit/Views/Components/ComposerPasteTextView.swift` (ImagePasteTextView), `Conduit/Views/Components/ComposerBar.swift` (submitFromReturnKey, the full editor's; returnKeysReachChat)
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (field, submitFromReturnKey)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ComposerReturnKeySettings)
@@ -3384,17 +3384,19 @@ keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
 - Screens' own: `Conduit/Views/ChatView.swift` (stopFromKeyboard), `Conduit/Views/V2/V2ChatsView.swift` (searchCommand), `Conduit/Views/V2/V2ConversationScreen.swift` (chat list and artifacts buttons)
 - ⌘Return: `Conduit/Views/Components/ReturnKeyTextView.swift` (commandReturnKeyCommand), `Conduit/Views/Components/ComposerReturnKey.swift` (commandReturnSends)
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (ComposerReturnKeySettings)
-- Tests: `ConduitTests/ComposerReturnKeyTests.swift` (testCommandReturn…, testShortcutGlyphsAreWrittenInTheMenuBarsOrder, testNoTwoShortcutsShareAKey, testTextSize…), `scripts/tests/test_chats_search_command_source_contract.py`
+- Tests: `ConduitTests/ComposerReturnKeyTests.swift` (testCommandReturn…, testShortcutGlyphsAreWrittenInTheMenuBarsOrder, testNoTwoShortcutsShareAKey, testTextSize…), `scripts/tests/test_chats_search_command_source_contract.py`, `scripts/tests/test_keyboard_shortcut_gates_source_contract.py`
 
 **Rulings**
 - One catalog names every key; the menu, the screens' shortcuts and the sheet all read it, so the list shown can't drift from the keys that work (2026-11-11, #2224).
 - ⌘N is New Chat, never a new window: Conduit has one window (2026-11-11, #2224, issue 2219).
 - The tabs take ⌘1 to ⌘4 in the bar's order; Settings also takes ⌘, (2026-11-11, #2224).
 - Nothing acts behind a sheet, an alert or the call screen: every command, the text size included, and ⌘F check for a presented view controller first. ⌘/ is the exception only for its own sheet, which closes itself, from either way in (2026-11-11, #2224).
-- A chat's own keys (⌘., ⌃⌘S, ⌥⌘A, and Return and ⌘Return in its composer or a room's) reach it only while it's on screen: its tab shows and split Settings doesn't cover it (`V2ShellContext.chatTakesKeys`), since a hidden or covered chat stays mounted, keeps its field's focus, and a shortcut ignores opacity; ⌘. also waits out a Bot Chat on its way over the chat, as ⌥⌘A does (2026-11-11, #2224 review).
+- A chat's own keys (⌘., ⌃⌘S, ⌥⌘A, and Return and ⌘Return in its composer or a room's) reach it only while it's on screen: its tab shows and split Settings doesn't cover it (`V2ShellContext.chatTakesKeys`), since a hidden or covered chat stays mounted, keeps its field's focus, and a shortcut ignores opacity; ⌘., Return and ⌘Return also wait out a Bot Chat on its way over the chat, as ⌥⌘A does (2026-11-11, #2224 review).
 - The menus observe no state, so AppState's publishes never rebuild them; each command checks what it needs when pressed (2026-11-11, #2224).
 - ⌘Return sends whatever the Return key setting says, with Return's limits (no IME composing, the composer able to send a typed message) (2026-11-11, #2224).
 - ⌘. is Stop wherever the composer's Stop would stop (a turn, or the open workstream), a draft in the field or not, in the shown tab's chat only (2026-11-11, #2224).
+- ⌘. doesn't stop a running dictation: that stays with the composer's Stop and Return, which own the dictation (2026-11-11, #2224 review).
+- The sheet lists only the keys the current shell answers: the drawer shell shows Settings with ⌘, and leaves out ⌘1 to ⌘4, ⌃⌘S and ⌥⌘A (2026-11-11, #2224 review).
 
 **Open gaps**
 - Not yet tried on a device: the menus on a Mac and an iPad, and whether ⌘+ fires from ⌘= on a US layout (it's registered as "+").

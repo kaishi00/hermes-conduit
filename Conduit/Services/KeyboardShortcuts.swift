@@ -208,6 +208,9 @@ struct ConduitKeyboardCommands: Commands {
 struct KeyboardShortcutsSheet: View {
     @ObservedObject private var appLanguage = AppLanguageStore.shared
     @Environment(\.dismiss) private var dismiss
+    /// The drawer shell has no tabs and no chat list or Artifacts toggles:
+    /// the sheet leaves out the keys it doesn't answer.
+    @AppStorage(V2ShellPreference.key) private var usesTabs = V2ShellPreference.defaultValue
 
     var body: some View {
         NavigationStack {
@@ -217,16 +220,22 @@ struct KeyboardShortcutsSheet: View {
                     row(.search)
                     row(.send)
                     row(.stop)
-                    row(.chatList)
-                    row(.artifacts)
+                    if usesTabs {
+                        row(.chatList)
+                        row(.artifacts)
+                    }
                 }
                 Section(AppLocalization.string("Go to")) {
-                    ForEach(V2Tab.destinations) { tab in
-                        if let glyphs = ConduitKeyboardShortcut.tabGlyphs(tab) {
-                            row(title: tab.title, glyphs: tab == .settings
-                                ? [glyphs, ConduitKeyboardShortcut.settings.glyphs]
-                                : [glyphs])
+                    if usesTabs {
+                        ForEach(V2Tab.destinations) { tab in
+                            if let glyphs = ConduitKeyboardShortcut.tabGlyphs(tab) {
+                                row(title: tab.title, glyphs: tab == .settings
+                                    ? [glyphs, ConduitKeyboardShortcut.settings.glyphs]
+                                    : [glyphs])
+                            }
                         }
+                    } else {
+                        row(.settings)
                     }
                 }
                 Section(AppLocalization.string("Chat text size")) {

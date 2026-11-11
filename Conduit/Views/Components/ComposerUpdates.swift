@@ -33,6 +33,8 @@ struct ComposerInputs: Equatable {
     let chatTakeover: ChatTakeoverState?
     let activeChatTakeover: ChatTakeoverState?
     let hasRoomSurface: Bool
+    /// A Bot Chat on its way covers the chat: Return doesn't send from it.
+    let botChatComing: Bool
     let runtime: RuntimeState
     let isWritingReasoningEffort: Bool
     let activeAgents: Int
@@ -89,6 +91,7 @@ struct ComposerInputs: Equatable {
         chatTakeover = appState.chatTakeover
         activeChatTakeover = appState.activeChatTakeover
         hasRoomSurface = appState.activeRoomSurface != nil
+        botChatComing = appState.botChatComingOverAnother != nil
         runtime = appState.runtime
         isWritingReasoningEffort = appState.isWritingReasoningEffort
         activeAgents = appState.activeAgents

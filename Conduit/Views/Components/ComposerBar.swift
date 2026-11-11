@@ -439,6 +439,12 @@ struct ComposerBar: View, Equatable {
         action == .stop
     }
 
+    /// Return and ⌘Return send only from the chat on screen: not a hidden
+    /// tab's, one split Settings covers, or one a Bot Chat on its way covers.
+    private var returnKeysReachChat: Bool {
+        shell.chatTakesKeys && !updates.inputs.botChatComing
+    }
+
     private var actionSymbol: String {
         switch action {
         case .stop: return "stop.fill"
@@ -881,7 +887,7 @@ struct ComposerBar: View, Equatable {
                 // May lag one render behind fast typing; the safe
                 // failure mode is newline insertion, and
                 // submitFromReturnKey() re-checks the live gate.
-                canSubmitFromReturn: shell.chatTakesKeys && (ComposerReturnKey.canSubmit(action: action) || dictationHoldsSendSlot),
+                canSubmitFromReturn: returnKeysReachChat && (ComposerReturnKey.canSubmit(action: action) || dictationHoldsSendSlot),
                 onSubmitFromReturn: { submitFromReturnKey() },
                 suggestionKeys: suggestionKeys,
                 onUserEdit: {
