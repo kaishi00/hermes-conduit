@@ -1,3 +1,4 @@
+import SwiftUI
 import UIKit
 import XCTest
 @testable import Conduit
@@ -100,6 +101,65 @@ final class TranscriptLayoutTests: XCTestCase {
             CGRect(x: TranscriptLayout.sideMargin, y: a.maxY, width: Self.width - 2 * TranscriptLayout.sideMargin, height: 60),
             "The cell spans its row and the gap above it, inside the margins"
         )
+    }
+
+    /// Build 265's watchdog kill swiping out of a Bot Chat: a run of steps
+    /// measured 889.7 but drew at 1037, and the layout took each in turn,
+    /// laying the transcript out again inside the same pass for ever. Once
+    /// a row reports how it draws, its cell's measurement is that, until it
+    /// shows another row or other content, or is laid out at another width.
+    func testACellMeasuresItsRowAtTheHeightItDrewAt() throws {
+        let suiteName = "transcript-cell-drawn-height"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let parent = UIViewController()
+        final class Reports { var sizes: [CGSize] = [] }
+        let reports = Reports()
+        func root(_ id: String) -> TranscriptCellRoot {
+            TranscriptCellRoot(
+                rowID: id,
+                content: AnyView(Color.clear.frame(height: 100)),
+                rowEnvironment: TranscriptCellEnvironment(EnvironmentValues(), disclosure: nil),
+                appState: appState,
+                resized: { reports.sizes.append($0) }
+            )
+        }
+        let width = Self.width - 2 * TranscriptLayout.sideMargin
+        let cell = TranscriptCell(frame: CGRect(x: 0, y: 0, width: width, height: 40))
+        let attributes = UICollectionViewLayoutAttributes(forCellWith: IndexPath(item: 0, section: 0))
+        attributes.size = CGSize(width: width, height: 40)
+        let ideal = 100 + TranscriptLayout.rowGap
+
+        cell.host(root("a"), rowID: "a", in: parent)
+        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, ideal, accuracy: 1,
+                       "A row that hasn't drawn yet measures at its ideal height")
+
+        try XCTUnwrap(cell.hosting).rootView.resized(CGSize(width: width, height: 300))
+        XCTAssertEqual(reports.sizes.last, CGSize(width: width, height: 300), "The transcript still hears of it")
+        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, 300,
+                       "A row that drew measures at the height it drew at")
+
+        let narrower = try XCTUnwrap(attributes.copy() as? UICollectionViewLayoutAttributes)
+        narrower.size.width = width - 40
+        XCTAssertEqual(cell.preferredLayoutAttributesFitting(narrower).size.height, ideal, accuracy: 1,
+                       "At another width it measures again")
+
+        try XCTUnwrap(cell.hosting).rootView.resized(CGSize(width: width, height: 300))
+        var larger = TranscriptCellEnvironment(EnvironmentValues(), disclosure: nil)
+        larger.dynamicTypeSize = .accessibility3
+        cell.updateEnvironment(larger)
+        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, ideal, accuracy: 1,
+                       "In another environment (a text size) it measures again until it reports")
+
+        cell.host(root("a"), rowID: "a", in: parent)
+        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, ideal, accuracy: 1,
+                       "Drawing something else, it measures again until it reports")
+
+        try XCTUnwrap(cell.hosting).rootView.resized(CGSize(width: width, height: 300))
+        cell.host(root("b"), rowID: "b", in: parent)
+        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, ideal, accuracy: 1,
+                       "Another row measures afresh")
     }
 
     func testARowChangingHeightMovesTheRowsUnderItInTheSamePass() throws {

@@ -525,6 +525,15 @@ final class TranscriptCell: UICollectionViewCell {
 
     private(set) var hosting: UIHostingController<TranscriptCellRoot>?
     private(set) var hostedRowID: String?
+    /// The size the hosted row last reported drawing at (its
+    /// onGeometryChange), for the row and content shown now. The cell's
+    /// measurement goes by it once there is one: a row whose fresh
+    /// measurement disagrees with how it draws (a Bot Chat's run of steps
+    /// measured 889.7 and drew at 1037) otherwise has the two take turns,
+    /// each one laying the transcript out again inside the same pass, and
+    /// the main thread never gets back to its run loop (build 265's
+    /// watchdog kill swiping out of a Bot Chat).
+    private(set) var drawnSize: CGSize?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -541,6 +550,15 @@ final class TranscriptCell: UICollectionViewCell {
     /// `parent`'s.
     func host(_ root: TranscriptCellRoot, rowID: String, in parent: UIViewController) {
         hostedRowID = rowID
+        // Another row, or the same row drawing something else: measured
+        // afresh until it reports how it draws.
+        drawnSize = nil
+        var root = root
+        let resized = root.resized
+        root.resized = { [weak self] size in
+            if let self, self.hostedRowID == rowID { self.drawnSize = size }
+            resized(size)
+        }
         if let hosting {
             hosting.rootView = root
             return
@@ -562,6 +580,8 @@ final class TranscriptCell: UICollectionViewCell {
     /// content as it is.
     func updateEnvironment(_ environment: TranscriptCellEnvironment) {
         guard let hosting, hosting.rootView.rowEnvironment != environment else { return }
+        // It may draw at another height (a text size): measured afresh.
+        drawnSize = nil
         hosting.rootView.rowEnvironment = environment
     }
 
@@ -571,16 +591,24 @@ final class TranscriptCell: UICollectionViewCell {
         let released = hosting
         hosting = nil
         hostedRowID = nil
+        drawnSize = nil
         return released
     }
 
-    /// The row's height at the cell's width: its SwiftUI ideal height, the
-    /// gap above it included.
+    /// The row's height at the cell's width, the gap above it included:
+    /// the height it reported drawing at this width (`drawnSize`), else its
+    /// SwiftUI ideal height.
     override func preferredLayoutAttributesFitting(
         _ layoutAttributes: UICollectionViewLayoutAttributes
     ) -> UICollectionViewLayoutAttributes {
         guard let hosting else { return layoutAttributes }
-        let size = hosting.sizeThatFits(in: CGSize(width: layoutAttributes.size.width, height: .greatestFiniteMagnitude))
+        let width = layoutAttributes.size.width
+        let size: CGSize
+        if let drawnSize, abs(drawnSize.width - width) <= 0.5 {
+            size = drawnSize
+        } else {
+            size = hosting.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
+        }
         guard size.height > 0, size.height.isFinite, abs(size.height - layoutAttributes.size.height) > 0.5,
               let attributes = layoutAttributes.copy() as? UICollectionViewLayoutAttributes else { return layoutAttributes }
         attributes.size.height = size.height
@@ -600,7 +628,8 @@ struct TranscriptCellRoot: View {
     /// in place (TranscriptCell.updateEnvironment).
     var rowEnvironment: TranscriptCellEnvironment
     let appState: AppState
-    let resized: @MainActor (CGSize) -> Void
+    /// The row's drawn size changed; the cell hears it first (`drawnSize`).
+    var resized: @MainActor (CGSize) -> Void
 
     var body: some View {
         TranscriptCellLayout {

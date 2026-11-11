@@ -193,6 +193,7 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         var index = text.startIndex
         var inLinkText = false
         var addressDepth = 0
+        var titleCloser: Character?
         while index < text.endIndex {
             let character = text[index]
             var next = text.index(after: index)
@@ -207,9 +208,38 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
                 }
             } else if addressDepth > 0 {
                 // An address can hold parentheses of its own ("a_(b)"); an
-                // escaped one ("a\\(b") is just a character.
-                if character == "\\", next < text.endIndex {
+                // escaped one ("a\\(b") is just a character. It has no
+                // spaces, so one not opening a title ends a malformed
+                // address ("a(b next."), which would otherwise hold every
+                // sentence after it until the reply ends.
+                if let closer = titleCloser {
+                    // Inside a title ("a "One. Two")") a space or a stop is
+                    // just text. A line break ends a title that never closed, and its sentence.
+                    if character == "\\", next < text.endIndex {
+                        next = text.index(after: next)
+                    } else if character == closer {
+                        titleCloser = nil
+                    } else if character.isNewline {
+                        titleCloser = nil
+                        addressDepth = 0
+                        ends = true
+                    }
+                } else if character == "\\", next < text.endIndex {
                     next = text.index(after: next)
+                } else if "\"'(".contains(character), index > start,
+                          text[text.index(before: index)].isWhitespace {
+                    titleCloser = character == "(" ? ")" : character
+                } else if character.isNewline || (character.isWhitespace && addressDepth > 1) {
+                    // A title follows the address itself, never an unclosed
+                    // "(" inside it, and a line break ends its sentence too.
+                    addressDepth = 0
+                    ends = character.isNewline
+                } else if character.isWhitespace {
+                    // Nothing after it yet: a title may still be streaming in.
+                    if let after = text[next...].first(where: { !$0.isWhitespace }),
+                       !"\"'(".contains(after) {
+                        addressDepth = 0
+                    }
                 } else if character == "(" {
                     addressDepth += 1
                 } else if character == ")" {

@@ -289,6 +289,9 @@ targets:
       - path: ConduitWidgets/Resources/Assets.xcassets
         buildPhase: resources
       - path: Shared/Widgets
+      # The Pulse widget reads Pulse with a host pass, as the Location Push
+      # extension sends with one (issue 2190).
+      - path: Shared/Location/LocationHostClient.swift
       - path: Shared/DateOrder
       - path: Conduit/Localizable.xcstrings
         buildPhase: resources

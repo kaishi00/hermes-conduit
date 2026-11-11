@@ -1212,7 +1212,11 @@ extension AppState {
             pulseUnseen = 0
             pulseSources = [:]
             pulseHomeChatID = nil
-            if !pulsePluginUnanswered { rememberPulseHome(nil, profile: nil) }  // the plugin said: no Pulse here
+            if !pulsePluginUnanswered {
+                // The plugin said: no Pulse here, nor in the Pulse widget.
+                rememberPulseHome(nil, profile: nil)
+                removePulseWidget()
+            }
             return
         }
         let dashboard = activeDashboardID
@@ -1232,6 +1236,8 @@ extension AppState {
         if sources != pulseSources { pulseSources = sources }
         if page.homeChatID != pulseHomeChatID { pulseHomeChatID = page.homeChatID }
         rememberPulseHome(page.homeChatID, profile: page.profile)
+        // The Pulse widget reads again when the open cards changed (issue 2190).
+        pulseWidgetFeedChanged(page)
     }
 
     /// Pulse's own chat: Conduit shows it as the Pulse screen, not in Chats.
