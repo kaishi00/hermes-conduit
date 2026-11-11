@@ -1051,6 +1051,8 @@ struct RoomSetupSection: View {
             busyRestart = nil
             confirmsChange = false
             restartWait = nil
+            showsCustomTools = false
+            showsSetupSteps = false
         }
         loadError = nil
         do {
