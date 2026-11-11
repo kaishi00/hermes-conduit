@@ -1750,6 +1750,34 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(PhoneChange(json: ["id": "ch_y", "kind": "send_photo"]))
     }
 
+    func testPhotoAccessTakenAwayBetweenPartsSendsTheRestWithoutPhotos() async throws {
+        // 5,000 events and a calendar fill more than one part; the photo goes in the last.
+        let source = FakePhoneCalendarSource()
+        source.events = (0..<5_000).map { phoneEvent("e_\($0)", "Meeting \($0)") }
+        let photos = FakePhonePhotoSource()
+        photos.entries = [["id": "ph_0000000000000001", "taken": "2026-10-12T15:00:00Z", "labels": ["beach"]]]
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: source, photos: photos)
+        var preferences = phonePreferences()
+        preferences.photos = true
+        engine.savePreferences(preferences)
+
+        // Access is taken away in Settings once the first part is in.
+        _ = await engine.sync(deadline: .distantFuture) { [unowned photos] path, method, body in
+            let answer = try await host.handle(path: path, method: method, body: body)
+            if host.batches.count == 1 { photos.granted = .denied }
+            return answer
+        }
+        let parts = host.batches
+        XCTAssertGreaterThan(parts.count, 1)
+        XCTAssertEqual((parts.first?["sharing"] as? [String: Any])?["photos"] as? Bool, true)
+        for part in parts.dropFirst() {
+            XCTAssertNil(part["photos"], "What's left goes without descriptions")
+            XCTAssertEqual((part["sharing"] as? [String: Any])?["photos"] as? Bool, false)
+        }
+        XCTAssertNil(engine.state.photoHashes, "The next pass sends descriptions again once access is back")
+    }
+
     // MARK: Helpers
 
     private func makePhoneEngine(source: FakePhoneCalendarSource,
