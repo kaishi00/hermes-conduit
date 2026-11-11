@@ -204,6 +204,9 @@ final class PhoneSyncEngine: ObservableObject {
     let alarmSource: PhoneAlarmSource
     let contactsSource: PhoneContactsSource
     let shortcutRunner: PhoneShortcutRunning
+    /// Reports a run that went without asking as soon as it ends, as an
+    /// answered card is: nothing else would send it while Conduit stays open.
+    var onRanWithoutAsking: (@MainActor () async -> Void)?
     private let store: PhoneSyncStateStore
     private let keys: PhoneSyncKeyStore
     private let defaults: UserDefaults
@@ -892,7 +895,10 @@ final class PhoneSyncEngine: ObservableObject {
                 // Only on screen: iOS opens Shortcuts for an app in front.
                 // Otherwise it waits on its card like any other.
                 // Not awaited: a run lasts as long as the shortcut does.
-                Task { await self.applyNow(change, auto: true) }
+                Task {
+                    await self.applyNow(change, auto: true)
+                    await self.onRanWithoutAsking?()
+                }
             } else {
                 fresh.append(PhoneChangePrompt(change: change, calendarTitle: calendarTitle(for: change),
                                                alarmTitle: alarmTitle(for: change)))
@@ -1030,11 +1036,13 @@ final class PhoneSyncEngine: ObservableObject {
             record(PhoneChangeResult(id: change.id, outcome: .applied,
                                      result: text.map { String($0.prefix(PhoneChangeResult.resultChars)) }))
         } catch PhoneShortcutError.cancelled {
+            guard state.deviceID == askedBy, preferences.shortcuts else { return }
             record(PhoneChangeResult(id: change.id, outcome: .dismissed, note: "The user cancelled the shortcut"))
         } catch {
             // Not on screen: no answer yet, so the card comes back on the
             // next exchange.
             if case .notOnScreen? = error as? PhoneShortcutError { return }
+            guard state.deviceID == askedBy, preferences.shortcuts else { return }
             record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.shortcutNote(error)))
             lastError = Self.describe(error)
         }

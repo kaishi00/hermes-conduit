@@ -30271,8 +30271,12 @@ final class AppState: ObservableObject {
     lazy var healthSync = HealthSyncEngine(source: HealthKitDataSource(), deviceName: { UIDevice.current.name })
     /// Calendar, Reminders, Focus and phone status shared with one Hermes
     /// profile, and the calendar changes Hermes asks for (AppState+PhoneSync).
-    lazy var phoneSync = PhoneSyncEngine(calendarSource: EventKitPhoneSource(), statusSource: DevicePhoneStatusSource(),
-                                         deviceName: { UIDevice.current.name })
+    lazy var phoneSync: PhoneSyncEngine = {
+        let engine = PhoneSyncEngine(calendarSource: EventKitPhoneSource(), statusSource: DevicePhoneStatusSource(),
+                                     deviceName: { UIDevice.current.name })
+        engine.onRanWithoutAsking = { [weak self] in _ = await self?.runPhoneSync(reason: .answered) }
+        return engine
+    }()
 
     /// The dashboard|version update notices the user closed with Not now
     /// (AppState+NotifierPluginUpdate.swift).

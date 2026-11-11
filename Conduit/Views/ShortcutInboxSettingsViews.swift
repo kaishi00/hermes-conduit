@@ -170,6 +170,7 @@ struct ShortcutInboxSettingsPage: View {
 
     private func refreshWaiting() {
         waitingCount = scope.map { ShortcutInboxQueue.standard($0).pending().count } ?? 0
+        junkLeftOut = ShortcutJunkFilter.leftOutCount()
     }
 
     private func load(before: ShortcutInboxBrowser.Cursor?) {

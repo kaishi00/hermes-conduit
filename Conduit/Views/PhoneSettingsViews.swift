@@ -368,6 +368,7 @@ struct PhoneSettingsPage: View {
                 list.append(shortcut)
                 binding(\.shortcutList).wrappedValue = list
             }
+            .disabled(newShortcutName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             Button("Cancel", role: .cancel) {}
         } message: {
             Text("Type its name exactly as the Shortcuts app shows it.")
