@@ -226,7 +226,8 @@ final class BotScreenModel: ObservableObject {
     @Published private(set) var sudoRequestID: String?
     @Published private(set) var viewerHash: String?
 
-    /// The page's end of the stream (BotScreenWebView).
+    /// The page's end of the stream (BotScreenWebView): the sheet's or the
+    /// full screen's, whichever was ready last (`pageReady`).
     weak var page: BotScreenPage?
 
     private weak var client: HermesClient?
@@ -722,6 +723,24 @@ final class BotScreenModel: ObservableObject {
         transport = nil
         page?.stopStream()
         stream = .idle
+    }
+
+    /// A page ready to draw (the sheet's screen or its full screen): the
+    /// newest one takes the stream, so the page it replaces stops drawing
+    /// and the new one watches it from the next attach.
+    func pageReady(_ ready: BotScreenPage) async {
+        if let current = page, current !== ready { detach() }
+        page = ready
+        if status?.isRunning == true, stream == .idle { await attach() }
+    }
+
+    /// A page gone from the screen: its stream ends, unless another page
+    /// has taken it since (the full screen opening or closing).
+    func pageGone(_ gone: BotScreenPage) {
+        guard page == nil || page === gone else { return }
+        // Before the next page is ready, nothing attaches to the gone one.
+        detach()
+        page = nil
     }
 
     /// Whether a page message is about the stream now open: each attach
