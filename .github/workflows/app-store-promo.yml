@@ -1,0 +1,213 @@
+name: App Store promo footage
+
+# Manual: records the footage the App Store's promo loops are cut from. The
+# demo dashboard plays promo-script.json (the anime's bots: Conduit Chan,
+# Piko, Mira and Riri, with their pictures), and testRecordPromo walks Bots
+# Home and a Bot Chat handing work to workstreams while the simulator's
+# screen is recorded; then the live voice fixtures are recorded as clips.
+# Never part of the merge gate.
+
+on:
+  workflow_dispatch:
+    inputs:
+      device:
+        description: "Simulator name"
+        default: "iPhone 17 Pro Max"
+
+permissions:
+  contents: read
+
+concurrency:
+  group: app-store-promo-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  capture:
+    runs-on: macos-26
+    timeout-minutes: 90
+    env:
+      DEVICE: ${{ inputs.device || 'iPhone 17 Pro Max' }}
+      DEMO_HOST: hermes.tail-demo.ts.net
+      DEMO_PORT: "9119"
+      DEMO_USER: demo
+      # Not a secret: the demo dashboard lives only on this runner.
+      DEMO_PASSWORD: conduit-demo-2026
+      DEMO_WORK: ${{ github.workspace }}/demo-hermes
+      DEMO_SCRIPT: promo-script.json
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Select Xcode
+        run: sudo xcode-select -s /Applications/Xcode.app
+
+      - name: Install xcodegen
+        run: brew install xcodegen
+
+      - name: Generate Xcode project
+        run: xcodegen generate --spec project-tests.yml
+
+      - name: Start the demo dashboard
+        timeout-minutes: 20
+        run: bash scripts/app-store/start-demo-hermes.sh
+
+      - name: Record
+        timeout-minutes: 60
+        run: |
+          set -euo pipefail
+          command -v ffmpeg >/dev/null || brew install ffmpeg >/dev/null
+          mkdir -p shots/clips
+          udid=$(xcrun simctl list devices available -j | python3 -c '
+          import json, sys
+          name = sys.argv[1]
+          runtimes = json.load(sys.stdin)["devices"]
+          ios = sorted((r for r in runtimes if "iOS" in r), reverse=True)
+          for exact in (True, False):
+              for r in ios:
+                  for d in runtimes[r]:
+                      if d["name"] == name if exact else d["name"].startswith(name):
+                          print(d["udid"]); sys.exit()
+          print("available:", sorted({d["name"] for r in ios for d in runtimes[r]}), file=sys.stderr)
+          ' "$DEVICE")
+          if [ -z "$udid" ]; then echo "::error::no simulator named $DEVICE"; exit 1; fi
+          xcrun simctl boot "$udid" || true
+          xcrun simctl bootstatus "$udid" -b
+          xcrun simctl status_bar "$udid" override --time 9:41 --dataNetwork wifi --wifiMode active --wifiBars 3 \
+            --cellularMode active --cellularBars 4 --batteryState charged --batteryLevel 100 || true
+          build=(-project Conduit.xcodeproj -scheme Conduit -destination "id=$udid" -derivedDataPath dd)
+          xcodebuild build-for-testing "${build[@]}" \
+            COMPILER_INDEX_STORE_ENABLE=NO \
+            CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOWED=NO \
+            DEVELOPMENT_TEAM="" PROVISIONING_PROFILE_SPECIFIER="" > results-build.log 2>&1 \
+            || { grep -E "error:" results-build.log | head -20; exit 1; }
+          # The bot's routes once before the walk, so its first reads aren't
+          # the app's (and their answers are kept).
+          python3 scripts/app-store/probe_bot_routes.py "http://$DEMO_HOST:$DEMO_PORT" "$DEMO_USER" "$DEMO_PASSWORD" conduit-chan \
+            > probe-bots-before.txt 2>&1 || true
+          # The walk, recorded whole; PROMO_MARK lines date its parts.
+          xcrun simctl io "$udid" recordVideo --codec h264 --force shots/promo.mov > record-promo.log 2>&1 &
+          recorder=$!
+          echo "RECORD_START $(python3 -c 'import time; print(time.time())')" > shots/promo.marks
+          sleep 2
+          set +e
+          TEST_RUNNER_CONDUIT_DEMO_URL="http://$DEMO_HOST:$DEMO_PORT" \
+          TEST_RUNNER_CONDUIT_DEMO_USER="$DEMO_USER" \
+          TEST_RUNNER_CONDUIT_DEMO_PASSWORD="$DEMO_PASSWORD" \
+          TEST_RUNNER_CONDUIT_RECORD_PROMO=1 \
+          perl -e 'alarm shift; exec @ARGV' 900 xcodebuild test-without-building "${build[@]}" \
+            -only-testing:ConduitScreenshots/AppStoreScreenshotTests/testRecordPromo \
+            -resultBundlePath results/promo.xcresult > results-promo.log 2>&1
+          rc=$?
+          set -e
+          sleep 2
+          kill -INT "$recorder" || true
+          for _ in 1 2 3 4 5 6 7 8 9 10; do kill -0 "$recorder" 2>/dev/null || break; sleep 1; done
+          kill -TERM "$recorder" 2>/dev/null || true
+          wait "$recorder" || true
+          grep -E "error:|Test Case" results-promo.log || true
+          grep -o "PROMO_MARK [a-z-]* [0-9.]*" results-promo.log >> shots/promo.marks || true
+          if [ "$rc" -ne 0 ]; then echo "promo recording exited $rc" >> failures.txt; fi
+          # A smaller copy that always fits the git ref.
+          ffmpeg -v error -y -i shots/promo.mov -vf "fps=30,scale=-2:1920" -an -c:v libx264 -crf 20 \
+            -pix_fmt yuv420p -movflags +faststart shots/promo.mp4 || echo "promo.mp4 not made" >> failures.txt
+          mkdir -p shots/stills
+          xcrun xcresulttool export attachments --path results/promo.xcresult --output-path shots/stills || true
+          # Named after their attachments (promo-01-bots-home.png and on).
+          if [ -f shots/stills/manifest.json ]; then
+            python3 - shots/stills <<'PY'
+          import json, os, sys
+          root = sys.argv[1]
+          for test in json.load(open(os.path.join(root, "manifest.json"))):
+              for a in test.get("attachments", []):
+                  src = os.path.join(root, a["exportedFileName"])
+                  name = a.get("suggestedHumanReadableName") or a["exportedFileName"]
+                  base = name.split("_")[0] if name.count("_") >= 2 else os.path.splitext(name)[0]
+                  base = "".join(c if c.isalnum() or c in "-_. " else "_" for c in base)
+                  if os.path.exists(src):
+                      os.rename(src, os.path.join(root, base + os.path.splitext(src)[1]))
+          PY
+          fi
+          # What the app logged, and the bot's routes from the runner itself,
+          # for a walk that didn't finish.
+          xcrun simctl spawn "$udid" log show --last 20m --style compact \
+            --predicate 'process == "Conduit" AND NOT (subsystem IN {"com.apple.network", "com.apple.securityd", "com.apple.CFNetwork", "com.apple.dt.xctest"}) AND NOT (category == "Security")' > app-log.txt 2>&1 || true
+          python3 scripts/app-store/probe_bot_routes.py "http://$DEMO_HOST:$DEMO_PORT" "$DEMO_USER" "$DEMO_PASSWORD" conduit-chan \
+            > probe-bots.txt 2>&1 || true
+          # Full resolution in parts the git ref can carry.
+          ffmpeg -v error -y -i shots/promo.mov -vf fps=30 -an -c:v libx264 -crf 20 -pix_fmt yuv420p \
+            -f segment -segment_time 90 -reset_timestamps 1 shots/promo-full-%02d.mp4 \
+            || echo "promo-full parts not made" >> failures.txt
+          # Live voice, over the scripted call (the sign-in is saved now).
+          for state in listening speaking; do
+            scripts/app-store/record-clip.sh "$udid" com.milim.relay "$state" "shots/clips/voice-$state.mp4" 12 \
+              || echo "voice $state clip not recorded" >> failures.txt
+          done
+          ls -lR shots
+
+      - name: Stage the git ref's files
+        if: always()
+        run: |
+          set -euo pipefail
+          out="$RUNNER_TEMP/shots-ref"
+          mkdir -p "$out"
+          cp -R shots "$out/" 2>/dev/null || true
+          # GitHub refuses a file over 100 MB, and one would sink the whole ref.
+          find "$out" \( -name '*.mov' -o -name 'promo-full-*.mp4' \) -size +90M -print -delete
+          mkdir -p "$out/logs"
+          for f in demo-hermes/*.log results-*.log record-*.log app-log.txt probe-bots-before.txt probe-bots.txt; do
+            if [ -f "$f" ]; then tail -c 400000 "$f" > "$out/logs/$(basename "$f")"; fi
+          done
+
+      - name: Upload the git ref's files
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-store-promo-ref
+          path: ${{ runner.temp }}/shots-ref
+          if-no-files-found: ignore
+          retention-days: 1
+
+      - name: Fail on missing footage
+        if: always()
+        run: |
+          if [ -s failures.txt ]; then
+            while read -r line; do echo "::error::$line"; done < failures.txt
+            exit 1
+          fi
+
+  publish:
+    # As in app-store-screenshots.yml: cloud sessions fetch the footage as
+    # refs/app-store-shots/<run id>-promo, pushed by a job that ran nothing
+    # the capture job did.
+    needs: [capture]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: write
+    steps:
+      - name: Download the ref's files
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: app-store-promo-ref
+          path: refs/promo
+
+      - name: Publish to a git ref
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RUN_ID: ${{ github.run_id }}
+        run: |
+          set -euo pipefail
+          auth=$(printf 'x-access-token:%s' "$GH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          export GIT_CONFIG_COUNT=1 GIT_CONFIG_KEY_0=http.https://github.com/.extraheader \
+            GIT_CONFIG_VALUE_0="AUTHORIZATION: basic $auth"
+          mkdir -p refs/promo
+          git=(env GIT_DIR="$RUNNER_TEMP/promo.git" GIT_WORK_TREE=refs/promo git -c user.name=ci -c user.email=ci@localhost)
+          "${git[@]}" init -q
+          "${git[@]}" add -A
+          "${git[@]}" commit -qm "App Store promo footage, run $RUN_ID" --allow-empty
+          "${git[@]}" push -q "https://github.com/$GITHUB_REPOSITORY" "HEAD:refs/app-store-shots/$RUN_ID-promo"
+          echo "::notice::git fetch origin refs/app-store-shots/$RUN_ID-promo"

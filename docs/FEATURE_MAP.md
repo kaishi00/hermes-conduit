@@ -6068,13 +6068,13 @@ docs/CI.md, its Budget section included
 - A PR's Smoke runs the unit tests only; the pinned UI tests run on pushes (main's run after each merge, and `linked-rooms`), and the whole UI suite nightly. A PR still builds every UI test, and the unit tests run inside the app, so a broken launch still fails it (Eric, 2026-11-02, #1642: UI smoke was 3-5 of a PR's 18-22 minutes and its flakiest step).
 - Smoke waits only for the plan job's selection and skip decision; the Linux checks run in the self-test job beside the build (2026-11-02, #1642).
 - A PR's newer run never waits for its superseded one: a PR from this repository gets a concurrency group of its own run, and its plan job's first step cancels the PR's older runs (only runs whose one PR is this one, number and base). A fork PR, whose token can't cancel, keeps one group per PR with cancel-in-progress (2026-11-02, #1646: a cancelled Smoke job took about 3.5 minutes to wind down).
-- Smoke builds the full app (`project.yml`) on every PR and push, from the cache main's latest merge saved; the app-only overlay (`project-tests.yml`) is built only by the nightly unit shards and the App Store screenshots capture job (`.github/workflows/app-store-screenshots.yml`). An app-only PR build restored only nightly's cache and recompiled the day's main: 682 s to a finished build against 537 s, medians of 275 runs 2026-10-22..29 (2026-10-29, #1513).
+- Smoke builds the full app (`project.yml`) on every PR and push, from the cache main's latest merge saved; the app-only overlay (`project-tests.yml`) is built only by the nightly unit shards and the App Store capture jobs (screenshots and promo footage) (`.github/workflows/app-store-screenshots.yml`, `.github/workflows/app-store-promo.yml`). An app-only PR build restored only nightly's cache and recompiled the day's main: 682 s to a finished build against 537 s, medians of 275 runs 2026-10-22..29 (2026-10-29, #1513).
 
 **Open gaps**
 - A changed UI test class doesn't join Smoke: a UI test a PR adds or edits first runs at night. UI tests are the slow ones (36-150 s each) and the list is capped at 4 (2026-10-29, #1508).
 - A changed unit class with no timing baseline is charged 3 s of `changed_budget_s`, and `scripts/test-timings.json` was last seeded in August, so a PR adding several slow new classes isn't held to the budget (2026-10-29, #1508).
 
-**Checked:** 2026-11-02, #1646 (a PR's new run cancels its older runs); #1642; #1513; #1508.
+**Checked:** 2026-11-06, #1912 (the promo capture job builds the app-only overlay too); 2026-11-02, #1646 (a PR's new run cancels its older runs); #1642; #1513; #1508.
 
 ## Settings connection page
 
@@ -6168,15 +6168,16 @@ and the README's "See it in action" strip show.
 
 **Siblings:** the iPhone and iPad capture · the Watch capture · the call
 fixtures they launch (phone and Watch) · the showcase clips · the App Preview
-cut · scripts/app-store/README.md · README.md's "See it in action" strip · the hermesconduit.app pages that show the
+cut · the promo footage the App Store's header and search loops are cut from
+(its own workflow and demo script, the anime's bots as the demo's) · scripts/app-store/README.md · README.md's "See it in action" strip · the hermesconduit.app pages that show the
 clips (kaishi00/hermes-conduit-website)
 
 **Code**
-- Workflow: `.github/workflows/app-store-screenshots.yml`
-- Scripts: `scripts/app-store/record-clip.sh`, `scripts/app-store/cut-preview.sh`
-- UI test: `ConduitScreenshots/AppStoreScreenshotTests.swift`
+- Workflow: `.github/workflows/app-store-screenshots.yml`; the promo footage: `.github/workflows/app-store-promo.yml`
+- Scripts: `scripts/app-store/record-clip.sh`, `scripts/app-store/cut-preview.sh`, `scripts/app-store/probe_bot_routes.py` (the promo run's check of a bot's routes)
+- UI test: `ConduitScreenshots/AppStoreScreenshotTests.swift` (testRecordPromo for the promo footage)
 - Fixtures: `Conduit/Services/ScreenshotCallFixture.swift`, `ConduitWatch/WatchVoiceCall.swift` (applyScreenshotFixture)
-- Demo Hermes: `scripts/app-store/start-demo-hermes.sh`, `scripts/app-store/llm_stub.py`, `scripts/app-store/demo-script.json`
+- Demo Hermes: `scripts/app-store/start-demo-hermes.sh` (DEMO_SCRIPT, a bot's approval mode, the notifier in the bots' profiles), `scripts/app-store/seed_demo.py` (a bot's picture), `scripts/app-store/llm_stub.py`, `scripts/app-store/demo-script.json`, `scripts/app-store/promo-script.json` and its bots' pictures beside it (`scripts/app-store/portraits/conduit-chan.png` and the rest)
 - Text: `scripts/app-store/README.md`
 - README strip: `README.md` ("See it in action"), `docs/media/voice.webp`, `docs/media/watch-speaking.webp`, `docs/media/watch-approval.webp`
 
@@ -6184,11 +6185,12 @@ clips (kaishi00/hermes-conduit-website)
 - A real Hermes with a scripted model, not a mock gateway; only audio-driven states (calls) use DEBUG-only launch fixtures (2026-10-17, #753).
 - Clips come from the same fixtures as the screenshots. The workflow lists the screenshot states and the clip states separately, so a call state that should move goes into both lists. `home` and `listening` are screenshots only: neither moves enough to need a clip (2026-10-25, #1226).
 - The site and README show only V2 media; footage from before the V2 redesign isn't reused (2026-10-24, Eric, #1226).
+- The App Store's promo loops show the anime's characters as the demo's bots, Conduit Chan, Piko, Mira and Riri with their pictures, so the app on screen matches the characters around it (Eric, 2026-11-06). They come from their own workflow and script; the screenshots keep demo-script.json.
 
 **Open gaps**
 - No clips yet of an incoming Hermes call, of CarPlay or of a lock-screen approval. A simulator can't show any of them (calls ring through CallKit, and the CarPlay window opens only by hand), so they come from recordings on Eric's devices, then go into the README strip and the site (#1193).
 
-**Checked:** 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-10-25, at #1228. 2026-11-03, #1678 (on `bot-workstreams` the app opens on Bots, so both the screenshots and the App Preview tap Sessions first).
+**Checked:** 2026-11-06, #1912 (the promo footage: app-store-promo.yml, promo-script.json with the anime's bots and their pictures, a Bot Chat handing work to two workstreams and an approval from the Work panel, testRecordPromo); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-10-25, at #1228. 2026-11-03, #1678 (on `bot-workstreams` the app opens on Bots, so both the screenshots and the App Preview tap Sessions first).
 
 ## What your sent message shows
 
