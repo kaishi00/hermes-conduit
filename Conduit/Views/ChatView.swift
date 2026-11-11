@@ -1441,7 +1441,7 @@ struct MessageBubble: View, Equatable {
             } else if let report = CronBotChatReport.parse(message.content) {
                 // A cron job's report the bot wasn't asked to act on: the
                 // report itself, not a system line (cron_bot_chat).
-                CronReportCard(report: report, timestamp: message.timestamp, disclosureID: message.id)
+                CronReportCard(report: report, timestamp: message.timestamp, gatewayResolver: gatewayResolver, disclosureID: message.id)
             } else if let review = message.review ?? MessageNormalizer.reviewActivity(fromText: message.content) {
                 if let reviewRun, reviewRun.run.count >= 2, reviewRun.index == 0, let disclosure = rowDisclosure {
                     ReviewRunCard(run: reviewRun.run, disclosure: disclosure, toggles: disclosure.groupToggles) {
