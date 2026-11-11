@@ -14,6 +14,9 @@ struct CronBotChatReport: Equatable {
 
     static func parse(_ text: String) -> CronBotChatReport? {
         guard text.hasPrefix(prefix) else { return nil }
+        // A CRLF report reads as the transcript reads it (MarkdownText
+        // normalizes line ends too), so a closing fence still closes.
+        let text = text.replacingOccurrences(of: "\r\n", with: "\n")
         let firstLine = text.prefix { $0 != "\n" }
         guard firstLine.hasSuffix(suffix), firstLine.count > prefix.count + suffix.count else { return nil }
         let job = String(firstLine.dropFirst(prefix.count).dropLast(suffix.count))
@@ -41,7 +44,7 @@ struct CronBotChatReport: Equatable {
     var preview: String {
         lines.map { line in
             guard let path = line.media else { return line.text }
-            return path.split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? path
+            return GatewayMediaTags.fileName(of: path)
         }.joined(separator: "\n")
     }
 
@@ -61,7 +64,8 @@ struct CronBotChatReport: Equatable {
                 return (line, nil)
             }
             if let fence = MarkdownFence.opening(trimmed) { openFence = fence; return (line, nil) }
-            if trimmed == "$$" || trimmed == "\\[" { mathClosing = trimmed == "$$" ? "$$" : "\\]"; return (line, nil) }
+            if trimmed == "$$" { mathClosing = "$$"; return (line, nil) }
+            if trimmed == "\\[" { mathClosing = "\\]"; return (line, nil) }
             let marker = trimmed.range(of: #"^(?:[-*+]|\d{1,9}[.)])\s+"#, options: .regularExpression)
             if let path = Self.referencePath(marker.map { String(trimmed[$0.upperBound...]) } ?? trimmed) {
                 return (ToolResultPresentation.mediaTag(for: path), path)

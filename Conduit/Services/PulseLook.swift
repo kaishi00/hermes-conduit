@@ -83,8 +83,11 @@ struct PulseLook: Equatable {
             guard !label.isEmpty || !needsValue,
                   !needsValue || !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             else { return nil }
+            // The links a chat card's open button may open (web pages,
+            // Maps, Phone, Messages, Mail, Calendar, Reminders), as the
+            // plugin's pick check allows.
             if does == .open {
-                guard let url = URL(string: value), url.scheme == "https" else { return nil }
+                guard RichCardSchema.isOpenable(value), URL(string: value) != nil else { return nil }
             }
             self.label = label
             self.does = does

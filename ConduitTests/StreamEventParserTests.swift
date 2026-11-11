@@ -674,6 +674,16 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(DelegateAgentActivity.activeCount(adopted), 2, "queued and running both keep the chat waiting")
         XCTAssertEqual(DelegateAgentActivity.adopting(cards, roster: []), cards)
         XCTAssertEqual(DelegateAgentActivity.activeCount(cards), 0)
+
+        // Issue 2206: a card kept from before a resume moves to the runtime
+        // the roster was read for, keeping what its events said.
+        var resumed = agent("b", .running)
+        resumed.sessionId = "s2"
+        let moved = DelegateAgentActivity.adopting([agent("b", .running, goal: "kept")], roster: [resumed])
+        XCTAssertEqual(moved.map(\.sessionId), ["s2"])
+        XCTAssertEqual(moved.first?.goal, "kept")
+        let notMoved = DelegateAgentActivity.adopting([agent("b", .running)], roster: [resumed], moving: false)
+        XCTAssertEqual(notMoved.map(\.sessionId), ["s1"], "an earlier runtime's roster moves no card")
     }
 
     func testFirstReportedEndWins() {

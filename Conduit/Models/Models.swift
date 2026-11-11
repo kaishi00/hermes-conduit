@@ -1060,13 +1060,27 @@ struct DelegateAgentActivity: Identifiable, Equatable {
     /// The cards with a roster's agents among them: one the chat has no
     /// card for gets one (it was started before this chat was opened, or
     /// while the socket was down), and a card it has is left as its own
-    /// events made it.
+    /// events made it, except that it moves to the session the roster was
+    /// read for: a card kept from before a resume would otherwise ask
+    /// about, steer or stop its agent under a runtime Hermes has moved on
+    /// from (issue 2206).
+    /// A roster of a runtime that's no longer the chat's own (`moving`
+    /// false) adds cards but moves none.
     static func adopting(
         _ agents: [DelegateAgentActivity],
-        roster: [DelegateAgentActivity]
+        roster: [DelegateAgentActivity],
+        moving: Bool = true
     ) -> [DelegateAgentActivity] {
+        let listedIn = moving
+            ? Dictionary(roster.map { ($0.id, $0.sessionId) }, uniquingKeysWith: { first, _ in first }) : [:]
+        let moved = agents.map { agent -> DelegateAgentActivity in
+            guard let session = listedIn[agent.id], !session.isEmpty, session != agent.sessionId else { return agent }
+            var moved = agent
+            moved.sessionId = session
+            return moved
+        }
         let have = Set(agents.map(\.id))
-        return agents + roster.filter { !have.contains($0.id) }
+        return moved + roster.filter { !have.contains($0.id) }
     }
 
     /// How many of a chat's delegate agents are still queued or running.
