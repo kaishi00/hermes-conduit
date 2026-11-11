@@ -707,10 +707,10 @@ final class PhoneSyncEngine: ObservableObject {
             let parts = await Self.partsInBackground(batch, maxItems: PhoneSyncLimits.batchItems,
                                                      maxBytes: PhoneSyncLimits.batchBytes)
             for var part in parts {
-                // Photos turned off while this pass got ready or sent an
-                // earlier part: what's left goes without descriptions, and
-                // says Photos is off.
-                if preferences.photos, !self.preferences.photos {
+                // Photos turned off (or its access taken away) while this
+                // pass got ready or sent an earlier part: what's left goes
+                // without descriptions, and says Photos is off.
+                if preferences.photos, !self.preferences.photos || !photoSource.access.canRead {
                     part["photos"] = nil
                     if var sharing = part["sharing"] as? [String: Any] {
                         sharing["photos"] = false

@@ -1732,6 +1732,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let midPass = host.batches.dropFirst(beforeOff)
         XCTAssertNil(midPass.first { $0["photos"] != nil })
         XCTAssertEqual((midPass.last?["sharing"] as? [String: Any])?["photos"] as? Bool, false)
+        XCTAssertEqual(photos.described, 0, "Nothing more is described once Photos is off")
 
         // Turned off: asked photos are refused, the descriptions stop and are forgotten.
         preferences.photos = false
@@ -1740,12 +1741,41 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertTrue(engine.prompts.isEmpty)
         XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["photos"] as? Bool, false)
+        let forgetsBeforeTurnOff = photos.forgets
         _ = await engine.turnOff(deleteFromHost: nil)
-        XCTAssertTrue(photos.forgotten)
+        XCTAssertGreaterThan(photos.forgets, forgetsBeforeTurnOff, "Turning sharing off forgets the descriptions")
 
         // A photo request names its photo.
         XCTAssertEqual(PhoneChange(json: ["id": "ch_x", "kind": "send_photo", "target": ["photo_id": "ph_1"]])?.kind, .sendPhoto)
         XCTAssertNil(PhoneChange(json: ["id": "ch_y", "kind": "send_photo"]))
+    }
+
+    func testPhotoAccessTakenAwayBetweenPartsSendsTheRestWithoutPhotos() async throws {
+        // 5,000 events and a calendar fill more than one part; the photo goes in the last.
+        let source = FakePhoneCalendarSource()
+        source.events = (0..<5_000).map { phoneEvent("e_\($0)", "Meeting \($0)") }
+        let photos = FakePhonePhotoSource()
+        photos.entries = [["id": "ph_0000000000000001", "taken": "2026-10-12T15:00:00Z", "labels": ["beach"]]]
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: source, photos: photos)
+        var preferences = phonePreferences()
+        preferences.photos = true
+        engine.savePreferences(preferences)
+
+        // Access is taken away in Settings once the first part is in.
+        _ = await engine.sync(deadline: .distantFuture) { [unowned photos] path, method, body in
+            let answer = try await host.handle(path: path, method: method, body: body)
+            if host.batches.count == 1 { photos.granted = .denied }
+            return answer
+        }
+        let parts = host.batches
+        XCTAssertGreaterThan(parts.count, 1)
+        XCTAssertEqual((parts.first?["sharing"] as? [String: Any])?["photos"] as? Bool, true)
+        for part in parts.dropFirst() {
+            XCTAssertNil(part["photos"], "What's left goes without descriptions")
+            XCTAssertEqual((part["sharing"] as? [String: Any])?["photos"] as? Bool, false)
+        }
+        XCTAssertNil(engine.state.photoHashes, "The next pass sends descriptions again once access is back")
     }
 
     // MARK: Helpers
@@ -1811,13 +1841,17 @@ private final class FakePhonePhotoSource: PhonePhotoSource {
     var jpegs: [String: Data] = [:]
     private(set) var described = 0
     private(set) var forgotten = false
+    private(set) var forgets = 0
 
     var access: PhonePhotoAccess { granted }
     func requestAccess() async -> PhonePhotoAccess { granted }
     /// What happens while a pass describes photos (the user turning Photos off).
     var whileDescribing: (() -> Void)?
     func describeMore(budget: Int, until deadline: Date) async {
+        let before = forgets
         whileDescribing?()
+        // Forgotten meanwhile: nothing more is described, as the real library's generation check does.
+        guard forgets == before else { return }
         described = min(entries.count, described + budget)
     }
     func descriptions() -> [[String: Any]] { Array(entries.prefix(described)) }
@@ -1826,6 +1860,7 @@ private final class FakePhonePhotoSource: PhonePhotoSource {
     func jpeg(photoID: String, maxBytes: Int) async -> Data? { jpegs[photoID] }
     func forget() {
         forgotten = true
+        forgets += 1
         described = 0
     }
 }
