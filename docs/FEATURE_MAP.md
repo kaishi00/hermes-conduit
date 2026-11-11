@@ -3507,7 +3507,7 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
   keeps the composer's wish, turns off just after the update that asked,
   and takes focus back once typing is on again, unless another text field
   took focus meanwhile. On a Mac a sync once the reply came had let go of
-  the focus a send kept (2026-11-11, issue 2208, #PRNUM).
+  the focus a send kept (2026-11-11, issue 2208, #2210).
 - Every composer field takes or gives up focus just after the SwiftUI
   update that asked, never inside it, and several asks before then come to
   the last. Resigning inside the update asked the hosting view whether it
@@ -3528,7 +3528,7 @@ iPhone, iPad and Mac · no Settings caption or doc describes it
 - Issue 2208's cause is read from the code, not traced on the reporter's
   Mac: a sync or reconnect after the reply turning typing off.
 
-**Checked:** 2026-11-11, #PRNUM (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
+**Checked:** 2026-11-11, #2210 (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
@@ -7576,11 +7576,11 @@ only show beside an iPhone
 - A text that names where to allow something names the device's own
   settings: iPhone Settings, iPad Settings, or on a Mac the System Settings
   pane (Notifications, or Privacy & Security and the permission). Texts that
-  say only "Settings" stay as they are (2026-11-11, issue 2208, #PRNUM).
+  say only "Settings" stay as they are (2026-11-11, issue 2208, #2210).
 - On a Mac each Open Settings opens that pane of System Settings
   (`x-apple.systempreferences:`); the iPad app's own settings URLs open its
   settings window there (Touch Alternatives). Should macOS turn the link down,
-  the button opens the app's settings as before (2026-11-11, issue 2208, #PRNUM).
+  the button opens the app's settings as before (2026-11-11, issue 2208, #2210).
 
 **Open gaps**
 - Not yet seen on a Mac: that System Settings opens at each pane from the
@@ -7593,7 +7593,7 @@ only show beside an iPhone
   (issue 2208); the Dock, Finder and the Notifications list show it. Not
   reproduced or explained yet.
 
-**Checked:** 2026-11-11, #PRNUM (new entry).
+**Checked:** 2026-11-11, #2210 (new entry).
 
 ## Swiping list rows on a Mac
 
