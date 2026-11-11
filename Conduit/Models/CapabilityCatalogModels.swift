@@ -111,15 +111,22 @@ enum CapabilitySkillOrdering {
             .map { name in OfficialSkillGroup(category: name, skills: skills.filter { $0.category == name }) }
     }
 
-    /// `software_development` reads "Software Development".
+    /// `software_development` reads "Software Development", and
+    /// `autonomous-ai-agents` "Autonomous AI Agents".
     static func prettyCategory(_ category: String?) -> String {
         let raw = (category ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let words = (raw.isEmpty ? "general" : raw)
             .replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: "-", with: " ")
             .split(separator: " ")
-        return words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+        return words.map { word in
+            if acronyms.contains(word.lowercased()) { return word.uppercased() }
+            return word.prefix(1).uppercased() + word.dropFirst()
+        }.joined(separator: " ")
     }
+
+    /// Words a category name spells in capitals.
+    private static let acronyms: Set<String> = ["ai", "api", "cli", "llm", "mcp", "ml", "seo", "sql", "ui", "ux"]
 }
 
 /// A SKILL.md split into its frontmatter fields and its body.

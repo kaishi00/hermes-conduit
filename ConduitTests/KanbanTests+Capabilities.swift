@@ -44,6 +44,8 @@ extension KanbanTests {
         XCTAssertEqual(OfficialSkill(["name": "solo"])?.identifier, "solo")
         XCTAssertEqual(CapabilitySkillOrdering.prettyCategory("software_development"), "Software Development")
         XCTAssertEqual(CapabilitySkillOrdering.prettyCategory(nil), "General")
+        XCTAssertEqual(CapabilitySkillOrdering.prettyCategory("autonomous-ai-agents"), "Autonomous AI Agents")
+        XCTAssertEqual(CapabilitySkillOrdering.prettyCategory("mcp"), "MCP")
         let available = CapabilitySkillOrdering.available(catalog, installedNames: [], query: "")
         XCTAssertEqual(CapabilitySkillOrdering.categories(available), ["general", "research"])
         XCTAssertEqual(
