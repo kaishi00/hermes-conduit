@@ -355,6 +355,9 @@ final class WidgetSnapshotTests: XCTestCase {
         let kept = try XCTUnwrap(store.read())
         XCTAssertEqual(kept.cards.map(\.id), [7])
         XCTAssertEqual(kept.note, "Open Conduit to refresh")
+        XCTAssertTrue(kept.noteAnsweredByRead, "a read that reaches the host answers the widget's own note")
+        // A failed Do it's note is written without the flag, so a read leaves it for its quarter hour.
+        XCTAssertFalse(kept.with(note: "Do it couldn't start").noteAnsweredByRead)
         XCTAssertTrue(store.remove())
         XCTAssertNil(store.read())
     }

@@ -215,7 +215,9 @@ extension AppState {
             request.newChatTitle = PulseWidgetFeed.plain(card.title.isEmpty ? card.news : card.title,
                                                          markdown: card.kind != "followup")
         }
-        _ = try await ShortcutSender(backend: makeShortcutSendBackend()).send(request, deadline: deadline)
+        // The card is this dashboard's: a switch while it waits stops it
+        // before it makes a chat or sends on the other one.
+        _ = try await ShortcutSender(backend: makeShortcutSendBackend(onlyOn: dashboardID)).send(request, deadline: deadline)
     }
 
     /// A tap on the Pulse widget: the Pulse screen, at the card tapped, on
