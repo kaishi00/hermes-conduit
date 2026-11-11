@@ -328,7 +328,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(harness.appState.chatTakeover?.phase, .waiting, "Take over automatically started")
         harness.appState.returnFailedComposerSubmission(
             ComposerDraft(text: text, attachments: []),
-            key: key, dashboardID: UUID(), title: "Trip plans", stoppedQuietly: false
+            key: key, dashboardID: harness.appState.activeDashboardID ?? UUID(), title: "Trip plans", stoppedQuietly: false
         )
         return (harness, box)
     }

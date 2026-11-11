@@ -30705,7 +30705,8 @@ final class AppState: ObservableObject {
         }
         guard composerDraftStore.clearCount == clearCount else { return }
         if let pending = held.restore.pending,
-           !pendingComposerSendFiles(dashboardID: pending.dashboardID).contains(where: { $0.id == pending.id }) {
+           !pendingComposerSendFiles(dashboardID: pending.dashboardID).contains(where: { $0.id == pending.id })
+            || composerRestoreRequests.contains(where: { $0.pending?.id == pending.id }) {
             return
         }
         composerRestoreRequests.append(held.restore)
