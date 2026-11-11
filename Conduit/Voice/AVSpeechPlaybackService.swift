@@ -145,7 +145,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     func start(sampleRate: Double) throws {
         let unplayed = pendingBuffers
         stop()
-        trace("Playback started at \(Int(sampleRate)) Hz" + (unplayed > 0 ? ", \(unplayed) chunks still unplayed dropped" : ""))
+        trace("Playback started at \(String(format: "%.0f", sampleRate)) Hz" + (unplayed > 0 ? ", \(unplayed) chunks still unplayed dropped" : ""))
         interruptedStandaloneStream = false
         let rate = Self.clampedRate(playbackRate)
         // Every stream schedules Float32 buffers (converted in enqueuePCM16).
