@@ -1,4 +1,5 @@
 import UserNotifications
+import WidgetKit
 
 /// Decrypts end-to-end encrypted Conduit notifications on the iPhone (#431).
 ///
@@ -105,6 +106,11 @@ final class NotificationService: UNNotificationServiceExtension {
                 quietGateways: NotificationSharedSettings.pulseQuietGateways
             ) {
                 content.categoryIdentifier = PulseNotifications.categoryIdentifier
+            }
+            // Pulse brought something up: the Pulse widget reads its cards
+            // again, without Conduit running (issue 2190).
+            if PulseNotifications.isPulse(titleLabel: verified.content["title_label"] as? String) {
+                WidgetCenter.shared.reloadTimelines(ofKind: PulseNotifications.widgetKind)
             }
             if let thread = ReadChatHint.roomThread(note) {
                 deliverInRoom(content, note: note, thread: thread, request: request)

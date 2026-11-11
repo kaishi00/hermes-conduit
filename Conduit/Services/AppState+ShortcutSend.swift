@@ -21,26 +21,33 @@ extension AppState {
         return try await ShortcutSender(backend: makeShortcutSendBackend()).send(request, deadline: deadline)
     }
 
+    /// Connects for a run that may start with Conduit in the background or
+    /// not running (a shortcut, a Pulse widget button), within the run's
+    /// `deadline`; whether Hermes can be reached. The run holds
+    /// `shortcutSendsRunning` meanwhile, so it may reconnect on its own.
+    func connectForBackgroundRun(deadline: Date) async -> Bool {
+        // With Conduit in the background, iOS may have let the socket die
+        // while it was suspended: a quiet one is checked first, as a call's
+        // request is, and a dead one reconnects at once rather than at the
+        // end of its backoff (#2164).
+        publishOpenSocketOffScreen()
+        await checkQuietTransportOffScreen()
+        reconnectNowForWaitingVoice("Shortcut send waiting")
+        // Leave time to send once connected, but always wait a moment for
+        // the reconnect just started, within the run.
+        let left = max(0, deadline.timeIntervalSinceNow)
+        let wait = max(min(2, left), min(12, left - 8))
+        guard await CarPlayVoiceCoordinator.awaitConnection(of: self, timeout: .seconds(wait)) else { return false }
+        return client != nil
+    }
+
     func makeShortcutSendBackend() -> ShortcutSendBackend {
         // The error a failed composer try left, for the run to clear once
         // its retry lands.
         let failedTry = ShortcutFailedTry()
         return ShortcutSendBackend(
             connect: { [weak self] deadline in
-                guard let self else { return false }
-                // With Conduit in the background, iOS may have let the
-                // socket die while it was suspended: a quiet one is checked
-                // first, as a call's request is, and a dead one reconnects
-                // at once rather than at the end of its backoff (#2164).
-                self.publishOpenSocketOffScreen()
-                await self.checkQuietTransportOffScreen()
-                self.reconnectNowForWaitingVoice("Shortcut send waiting")
-                // Leave time to send once connected, but always wait a
-                // moment for the reconnect just started, within the run.
-                let left = max(0, deadline.timeIntervalSinceNow)
-                let wait = max(min(2, left), min(12, left - 8))
-                guard await CarPlayVoiceCoordinator.awaitConnection(of: self, timeout: .seconds(wait)) else { return false }
-                return self.client != nil
+                await self?.connectForBackgroundRun(deadline: deadline) ?? false
             },
             activeProfile: { [weak self] in self?.activeProfile ?? "default" },
             pickedChat: { [weak self] picked in

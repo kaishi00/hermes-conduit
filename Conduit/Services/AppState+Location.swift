@@ -53,7 +53,11 @@ extension AppState {
             forName: .nativeOAuthTokensRotated, object: nil, queue: .main
         ) { [weak self] note in
             guard let dashboardID = note.userInfo?["dashboardID"] as? UUID else { return }
-            Task { @MainActor in await self?.locationHostTokensRotated(dashboardID: dashboardID) }
+            Task { @MainActor in
+                await self?.locationHostTokensRotated(dashboardID: dashboardID)
+                // The Pulse widget's pass carries the same token.
+                if self?.activeDashboardID == dashboardID { await self?.savePulseWidgetAccess() }
+            }
         }
         controller.activateAtLaunch()
     }
@@ -146,7 +150,7 @@ extension AppState {
         guard controller.binding?.dashboardID == dashboardID,
               activeDashboardID == dashboardID, let bridge = dashboardTicketBridge else { return }
         // Removed or unbound while the pass was read: it isn't kept.
-        if let pass = await locationHostPass(bridge: bridge, dashboardID: dashboardID),
+        if let pass = await dashboardHostPass(bridge: bridge, dashboardID: dashboardID),
            controller.binding?.dashboardID == pass.dashboardID,
            !LocationKeychain.saveHostPass(pass) {
             // Logged by LocationKeychain. The previous pass (if any) stays;
@@ -159,8 +163,9 @@ extension AppState {
 
     /// The headers this dashboard's requests carry, for sending without the
     /// app: a native sign-in's access token, else the session cookies, and
-    /// the proxy headers.
-    private func locationHostPass(bridge: DashboardTicketBridge, dashboardID: UUID) async -> LocationHostPass? {
+    /// the proxy headers. Location sharing's pass, and the Pulse widget's
+    /// (AppState+PulseWidget).
+    func dashboardHostPass(bridge: DashboardTicketBridge, dashboardID: UUID) async -> LocationHostPass? {
         let path = "\(LocationHostClient.base)/ingest"
         // The dashboard page's fetch resolves an absolute path against its
         // origin, so the pass keeps the origin.

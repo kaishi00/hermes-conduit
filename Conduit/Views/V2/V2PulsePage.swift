@@ -266,6 +266,11 @@ struct V2PulsePage: View {
             // Only the page on screen: one covered by a chat leaves it to the one pushed over it.
             if let request, isShown { focus(request) }
         }
+        .onChange(of: page) { _, page in
+            // Done, Not now and Undo here change the cards before the next
+            // read: the Pulse widget reads again too (issue 2190).
+            if let page { appState.pulseWidgetFeedChanged(page) }
+        }
     }
 
     private var pageWithDialogs: some View {
