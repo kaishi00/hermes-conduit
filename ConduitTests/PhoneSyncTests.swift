@@ -1068,15 +1068,21 @@ extension HermesVoiceGatewayTimeoutTests {
         preferences.shortcutsRunWithoutAsking = true
         engine.savePreferences(preferences)
         runner.onScreen = false
+        // A run without asking reports as soon as it ends, with no other sync to carry it.
+        engine.onRanWithoutAsking = { _ = await engine.sync(deadline: .distantFuture, request: host.handle) }
         host.changes = [["id": "ch_auto", "kind": "run_shortcut", "auto": true, "fields": ["shortcut": "Log Water"]]]
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_auto"])
         XCTAssertEqual((host.batches.last?["sharing"] as? [String: Any])?["shortcuts_auto"] as? Bool, true)
         runner.onScreen = true
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
-        for _ in 0..<20 where runner.runs.count < 2 { await Task.yield() }
+        for _ in 0..<200 where !host.reported.contains(where: { $0["id"] as? String == "ch_auto" }) { await Task.yield() }
         XCTAssertEqual(runner.runs.count, 2)
         XCTAssertTrue(engine.prompts.isEmpty)
+        XCTAssertTrue(host.reported.contains { $0["id"] as? String == "ch_auto" }, "Reported by the run's own pass")
+        engine.onRanWithoutAsking = nil
+        preferences.shortcutsRunWithoutAsking = false
+        engine.savePreferences(preferences)
 
         // Cancelled in Shortcuts: Hermes hears the user said no.
         runner.failure = .cancelled
@@ -1084,6 +1090,20 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         await engine.answer(try XCTUnwrap(engine.prompts.first), approve: true)
         XCTAssertEqual(engine.state.answered["ch_cancel"]?.outcome, .dismissed)
+
+        // Sharing turned off and on again while a run is going: what it gave
+        // back belongs to the sharing that asked, so it's dropped.
+        runner.failure = nil
+        host.changes = [["id": "ch_late", "kind": "run_shortcut", "auto": false, "fields": ["shortcut": "Log Water"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        let late = try XCTUnwrap(engine.prompts.first { $0.id == "ch_late" })
+        runner.whileRunning = {
+            _ = await engine.turnOff(deleteFromHost: nil)
+            engine.savePreferences(preferences)
+        }
+        await engine.answer(late, approve: true)
+        runner.whileRunning = nil
+        XCTAssertNil(engine.state.answered["ch_late"], "A late result never reaches the new sharing")
 
         // Turned off: refused, and the list stops going.
         preferences.shortcuts = false
@@ -1138,8 +1158,7 @@ extension HermesVoiceGatewayTimeoutTests {
         }
     }
 
-    /// Contacts Hermes asks to add, change or delete: never without a card,
-    /// on the picked person's own card, and the picked people follow.
+    /// A contact change's phones or emails with nothing usable in them.
     func testAContactListWithNothingUsableChangesNothing() {
         // Nothing dialable or addressable: the card's lists stay as they are.
         let junk = PhoneContactEdit(json: ["nickname": "Jo", "phones": [["number": "call me"]], "emails": [["address": "nope"]]])
@@ -1154,6 +1173,8 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(mixed?.phones?.count, 1)
     }
 
+    /// Contacts Hermes asks to add, change or delete: never without a card,
+    /// on the picked person's own card, and the picked people follow.
     func testPhoneContactChangesAskThenFollowThePickedPeople() async throws {
         let contacts = FakePhoneContactsSource()
         let host = FakePhoneHost()
@@ -1174,7 +1195,7 @@ extension HermesVoiceGatewayTimeoutTests {
                         "phones": [["number": "+1 555 0100", "label": "work"]]]],
             ["id": "ch_change", "kind": "update_contact", "target": ["contact_id": "p_sam"],
              "fields": ["nickname": "Sammy", "relation": "partner", "name": "Sam Lee"]],
-            ["id": "ch_delete", "kind": "delete_contact", "target": ["contact_id": "p_alex"], "fields": ["name": "Alex Kim"]],
+            ["id": "ch_delete", "kind": "delete_contact", "target": ["contact_id": "p_alex"], "fields": ["name": "Alexandra"]],
             ["id": "ch_bad", "kind": "update_contact", "target": ["contact_id": "p_sam"], "fields": ["name": "Sam Lee"]],
         ]
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
@@ -1182,6 +1203,10 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(contacts.changes.isEmpty)
         XCTAssertEqual(PhoneChangeWording.detail(engine.prompts[1].change), "Sam Lee → “Sammy” · partner")
         XCTAssertTrue(PhoneChangeWording.isRemoval(engine.prompts[2].change.kind))
+        // The card and a call name the person the phone will delete, not the name Hermes sent.
+        XCTAssertEqual(engine.prompts[2].personName, "Alex Kim")
+        XCTAssertEqual(PhoneChangeWording.detail(engine.prompts[2].change, personName: engine.prompts[2].personName), "Alex Kim")
+        XCTAssertEqual(PhoneVoiceTools.describe(engine.prompts[2])["person"] as? String, "Alex Kim")
 
         // Without Contacts access, a yes fails and says why.
         await engine.answer(engine.prompts[0], approve: true)
@@ -1661,6 +1686,8 @@ private final class FakePhoneShortcutRunner: PhoneShortcutRunning {
     var onScreen = true
     var results: [String: String] = [:]
     var failure: PhoneShortcutError?
+    /// What happens while the shortcut runs, before it answers.
+    var whileRunning: (@MainActor () async -> Void)?
     private(set) var runs: [(name: String, input: String?)] = []
 
     var canRun: Bool { onScreen }
@@ -1668,6 +1695,7 @@ private final class FakePhoneShortcutRunner: PhoneShortcutRunning {
     func run(name: String, input: String?) async throws -> String? {
         guard onScreen else { throw PhoneShortcutError.notOnScreen }
         runs.append((name, input))
+        if let whileRunning { await whileRunning() }
         if let failure { throw failure }
         return results[name]
     }
