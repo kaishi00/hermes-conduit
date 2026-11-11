@@ -669,10 +669,19 @@ final class PhoneSyncEngine: ObservableObject {
         } else {
             newShortcutsHash = nil
         }
-        if preferences.photos, photoSource.access.canRead {
+        // Photos read live, not from the pass's start: turned off while the
+        // pass ran, nothing more is described or sent, and the host hears
+        // it's off now.
+        if preferences.photos, self.preferences.photos, photoSource.access.canRead {
             // A few dozen more described each pass, newest first.
             await photoSource.describeMore(budget: PhoneSyncLimits.photosPerPass,
                                            until: min(deadline, now().addingTimeInterval(20)))
+        }
+        if preferences.photos, !self.preferences.photos, var sharing = batch["sharing"] as? [String: Any] {
+            sharing["photos"] = false
+            batch["sharing"] = sharing
+        }
+        if preferences.photos, self.preferences.photos, photoSource.access.canRead {
             let photos = photoSource.descriptions()
             let section = await Self.diffInBackground(photos, against: state.photoHashes ?? [:], full: full,
                                                       truncated: false)
@@ -698,6 +707,17 @@ final class PhoneSyncEngine: ObservableObject {
             let parts = await Self.partsInBackground(batch, maxItems: PhoneSyncLimits.batchItems,
                                                      maxBytes: PhoneSyncLimits.batchBytes)
             for var part in parts {
+                // Photos turned off while this pass got ready or sent an
+                // earlier part: what's left goes without descriptions, and
+                // says Photos is off.
+                if preferences.photos, !self.preferences.photos {
+                    part["photos"] = nil
+                    if var sharing = part["sharing"] as? [String: Any] {
+                        sharing["photos"] = false
+                        part["sharing"] = sharing
+                    }
+                    newPhotoHashes = nil
+                }
                 let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
                 part["batch_id"] = batchID
                 let body = try await Self.sealBatch(part, key: key, deviceID: state.deviceID, batchID: batchID)
@@ -941,7 +961,10 @@ final class PhoneSyncEngine: ObservableObject {
                 if !state.unreported.contains(refusal) { state.unreported.append(refusal) }
                 continue
             }
-            if let approved = approvedOnCard.removeValue(forKey: change.id), approved > now() {
+            // A photo goes only from its own card, with the picture showing:
+            // a Pulse card's approval doesn't send one.
+            if let approved = approvedOnCard.removeValue(forKey: change.id), approved > now(),
+               change.kind != .sendPhoto {
                 await applyNow(change, auto: false)
             } else if change.auto, change.kind.addsWithoutAsking, preferences.autoAdd {
                 await applyNow(change, auto: true)
@@ -973,7 +996,8 @@ final class PhoneSyncEngine: ObservableObject {
         let now = self.now()
         approvedOnCard = approvedOnCard.filter { $0.value > now }
         if let prompt = prompts.first(where: { $0.id == changeID }) {
-            await answer(prompt, approve: true)
+            // A photo waits on its own card (see the exchange).
+            if prompt.change.kind != .sendPhoto { await answer(prompt, approve: true) }
             return
         }
         approvedOnCard[changeID] = now.addingTimeInterval(Self.cardApprovalWindow)

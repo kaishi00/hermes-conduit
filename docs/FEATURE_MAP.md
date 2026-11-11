@@ -5661,7 +5661,8 @@ change card with the photo's thumbnail and its wording (PhoneChangeWording) ·
 the push title `phone.send_photo` (NotificationCopy) · the image viewer's
 share sheet (Save to Hermes album) · live voice's phone_changes tool (lists
 and dismisses a photo request, never approves one) · Classic voice's spoken
-yes (a photo card counts but no yes answers it) · Phone data sync with the
+yes (a photo card counts but no yes answers it) · a Pulse card's approval
+(never sends a photo: it waits on its own card) · Phone data sync with the
 host (the descriptions and the picture ride the same sealed upload) · the
 notifier's phone store (`photos`, `photo_files`, `send_photo`, the files kept
 a week), the conduit_photos tool and its description, the `phone-photos`
@@ -5679,16 +5680,18 @@ capability, conduit_first's line, README, CHANGELOG and privacy policy
 - Tests: `ConduitTests/PhoneSyncTests.swift` (testPhonePhotosShareDescriptionsAndSendOnlyFromTheCard), `notifier/tests/test_phone.py`
 
 **Rulings**
-- Hermes searches descriptions made on the phone (Vision's labels, the text in the photo, the place and time); the descriptions go to the user's own host, and a picture goes only when the user taps Send on its card, never without asking and never by voice: a live call can list or dismiss a request, and Classic's spoken yes doesn't answer it (2026-11-11, Eric chose "Ask on a card, then send"; notifier #700, #2171).
+- Hermes searches descriptions made on the phone (Vision's labels, the text in the photo, the place and time); the descriptions go to the user's own host, and a picture goes only when the user taps Send on its card, never without asking and never by voice: a live call can list or dismiss a request, and Classic's spoken yes doesn't answer it. A Pulse card's approval doesn't send one either (2026-11-11, Eric chose "Ask on a card, then send"; notifier #700, #2171, #2177).
 - Captions aren't made by Apple's on-device model, which takes no images and needs iOS 26; Vision runs on every supported phone (2026-11-11, #2171).
 - The card's Send waits until it shows that request's photo, and each request gets a card of its own, so the photo seen is the photo sent. Turning Photos off forgets the descriptions (a pass already running doesn't put them back) and drops pictures approved but not yet sent (2026-11-11, #2171).
-- An approved picture waits on the phone and goes in an upload of its own, at most about 1.4 MB as a JPEG; the host applies the request only when the picture arrives, keeps it a week, and drops it when photo sharing is turned off or the phone wiped. A lost connection keeps it for the next pass; a refusal fails it with why (2026-11-11, notifier #700, #2171).
+- An approved picture waits on the phone and goes in an upload of its own, at most about 1.4 MB as a JPEG; the host applies the request only when the picture arrives, keeps it a week, and drops it when photo sharing is turned off or the phone wiped. A lost connection keeps it for the next pass; a refusal fails it with why. A phone set up again keeps the pictures it sent until its first upload says what it shares; turning Photos off also forgets when and where an asked-for photo was taken (2026-11-11, notifier #700, #701, #2171).
 - The newest 5000 photos are described, 60 more each pass, newest first; with limited access, only the photos the user chose (2026-11-11, #2171).
 
 **Open gaps**
 - Not tried on a device: Vision's captions on a real library, limited access, and saving to the Hermes album (#2171).
+- Settings reads the photo index on first draw; at 5000 photos that's a small JSON read on the main thread (#2177).
+- Turned off while a part of an upload is already on its way, that part still carries descriptions; the parts after it go without them and say Photos is off, as does the pass the switch starts (#2177).
 
-**Checked:** 2026-11-11, #2171 (added with notifier #700).
+**Checked:** 2026-11-11, #2177 (a Pulse approval never sends a photo; Photos turned off mid-pass stops describing at once and later parts of its upload go without descriptions; the described count leaves out photos that never go; a failed album save buzzes; with notifier #701); 2026-11-11, #2171 (added with notifier #700).
 
 ## Steps in a turn
 
@@ -6187,7 +6190,8 @@ tool pictures) · the saved-chat copy · call job result sheets and the cards a
 voice model shows · group rooms · the Artifacts page, a chat's Artifacts sheet
 and the panel beside the chat · the Markdown reader (a Markdown artifact or file card) · the Folder tab · iPhone, iPad and Mac (the
 same viewer; keys and a trackpad on an iPad or Mac) · Quick Look, which still
-opens videos, audio and documents · README.md · text that describes it (the
+opens videos, audio and documents · Share's Save to Hermes Album (see Photos
+Hermes can search) · README.md · text that describes it (the
 pictures' VoiceOver hint "Opens full screen with save and share")
 
 **Code**
@@ -6213,7 +6217,7 @@ pictures' VoiceOver hint "Opens full screen with save and share")
 - An animated GIF plays at up to 120 frames, drawn small enough that its frames stay within 32 MB (the pager holds three pages); Quick Look played every frame at full size.
 - The Folder pages through its listed files only: a folder not opened in the tree isn't listed.
 
-**Checked:** 2026-11-09, #2044 (a room someone else hosts pages the pictures sent into it too, read from your own host's copy, see Pictures in messages); 2026-11-08, #2045 (a room's list pages through its messages' Hermes attachments, a scheduled post's left out as its bubble draws none); 2026-11-08, #2036 (a room's list leads each message with the pictures sent into it, read from the plugin's room files, see Pictures in messages); 2026-11-07, #1932 (the room gallery pages only a scheduled post's shown pictures); 2026-11-07, #1914 (a group room's list holds a bot's `MEDIA:` pictures too, each fetched through its own profile, see Pictures in messages); 2026-11-06, #1884 (the Markdown reader's pictures page through the file's own, not the chat's it opened over); 2026-11-05, #1803 (a tile of a message's picture grid opens the viewer as its picture did, the "+N" tile on its own picture, the rest paged to; Code); 2026-10-30, #1550 (a saved copy's pictures page through the chat's own list, from the rows drawn); 2026-10-29, #1491.
+**Checked:** 2026-11-11, #2177 (Share's sheet gains Save to Hermes Album, from #2171; a failed save buzzes; see Photos Hermes can search); 2026-11-09, #2044 (a room someone else hosts pages the pictures sent into it too, read from your own host's copy, see Pictures in messages); 2026-11-08, #2045 (a room's list pages through its messages' Hermes attachments, a scheduled post's left out as its bubble draws none); 2026-11-08, #2036 (a room's list leads each message with the pictures sent into it, read from the plugin's room files, see Pictures in messages); 2026-11-07, #1932 (the room gallery pages only a scheduled post's shown pictures); 2026-11-07, #1914 (a group room's list holds a bot's `MEDIA:` pictures too, each fetched through its own profile, see Pictures in messages); 2026-11-06, #1884 (the Markdown reader's pictures page through the file's own, not the chat's it opened over); 2026-11-05, #1803 (a tile of a message's picture grid opens the viewer as its picture did, the "+N" tile on its own picture, the rest paged to; Code); 2026-10-30, #1550 (a saved copy's pictures page through the chat's own list, from the rows drawn); 2026-10-29, #1491.
 
 ## Cards Hermes shows
 
