@@ -30,11 +30,19 @@ private final class FakeHermes {
     var replyReads = 0
     /// iOS ends the run while it waits.
     var cancelsSleep = false
+    /// Picked chats asked for, and what each resolves to (nil: gone).
+    var picks: [ShortcutPickedChat] = []
+    var pickedTarget: VoiceThreadTarget?
 
     func backend() -> ShortcutSendBackend {
         ShortcutSendBackend(
             connect: { _ in self.connects },
             activeProfile: { "default" },
+            pickedChat: { picked in
+                self.picks.append(picked)
+                guard let target = self.pickedTarget else { throw ShortcutSendError.chatUnavailable }
+                return target
+            },
             createChat: { profile, title in
                 self.created.append((profile, title))
                 let id = "run-\(self.created.count)"
@@ -98,6 +106,60 @@ extension ScreenQuestionTests {
     }
 
     // MARK: - Which chat
+
+    private func pickedChat(_ session: String = "chat-7") -> ShortcutPickedChat {
+        ShortcutPickedChat(
+            dashboardID: UUID(uuidString: "00000000-0000-0000-0000-000000000007")!,
+            reference: WidgetConversationReference(kind: .dashboard, scopeProfile: "work", botName: nil, botLabel: nil,
+                                                   sessionID: session, isUnverified: false),
+            title: "Trip planning")
+    }
+
+    @MainActor
+    func testAPickedChatIsResumedAndWinsOverAChatName() async throws {
+        let hermes = FakeHermes()
+        hermes.pickedTarget = VoiceThreadTarget(runtimeSessionID: "chat-7", storedSessionID: "chat-7",
+                                                title: "Trip planning", profile: "work")
+        let chats = shortcutChats()
+        var request = shortcutRequest("Book the train", chat: "Log")
+        request.chat = pickedChat()
+        let outcome = try await sender(hermes, chats).send(request, deadline: hermes.now.addingTimeInterval(25))
+
+        XCTAssertEqual(outcome, .sent)
+        XCTAssertEqual(hermes.picks, [pickedChat()])
+        XCTAssertEqual(hermes.resumed.map(\.storedSessionID), ["chat-7"])
+        XCTAssertEqual(hermes.resumed.map(\.profile), ["work"])
+        XCTAssertEqual(hermes.submitted.map(\.runtimeID), ["resumed-1"])
+        XCTAssertTrue(hermes.created.isEmpty)
+        // The name wasn't kept for a later run.
+        XCTAssertNil(chats.chat(named: "Log", profile: "default"))
+    }
+
+    @MainActor
+    func testAPickedChatHermesNoLongerHasSendsNothingAndMakesNoChat() async throws {
+        let hermes = FakeHermes()
+        hermes.pickedTarget = VoiceThreadTarget(runtimeSessionID: "chat-7", storedSessionID: "chat-7",
+                                                title: "Trip planning", profile: "work")
+        hermes.resumeFails = true
+        var request = shortcutRequest("Book the train")
+        request.chat = pickedChat()
+        do {
+            _ = try await sender(hermes, shortcutChats()).send(request, deadline: hermes.now.addingTimeInterval(25))
+            XCTFail("A gone chat must fail the run")
+        } catch let error as ShortcutSendError {
+            XCTAssertEqual(error, .chatUnavailable)
+        }
+        hermes.pickedTarget = nil
+        hermes.resumeFails = false
+        do {
+            _ = try await sender(hermes, shortcutChats()).send(request, deadline: hermes.now.addingTimeInterval(25))
+            XCTFail("A pick that can't be found must fail the run")
+        } catch let error as ShortcutSendError {
+            XCTAssertEqual(error, .chatUnavailable)
+        }
+        XCTAssertTrue(hermes.submitted.isEmpty)
+        XCTAssertTrue(hermes.created.isEmpty)
+    }
 
     @MainActor
     func testEachRunWithoutAChatNameStartsANewChatTitledFromTheText() async throws {

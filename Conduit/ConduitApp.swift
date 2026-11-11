@@ -467,8 +467,10 @@ struct ConduitApp: App {
             // (#1238). ChatView asks too; a read under way is joined.
             .task { await TranscriptPictureMemory.loadKeptSizes() }
             .task { await PushNotificationService.shared.refresh() }
-            // Siri learns the cached profile names for its profile phrases.
-            .task { SiriProfileShortcuts.refresh() }
+            // Siri learns the cached profile names for its profile phrases,
+            // and Spotlight and Siri the chats, as the app last saw them (a
+            // snapshot write only refreshes them when it changed something).
+            .task { ConduitChatSpotlight.refresh(from: WidgetSnapshotStore.production) }
             .task(id: notificationRouteKey) {
                 guard let target = notifications.pendingTarget else { return }
                 if notifications.pendingRouteAwaitsCall {

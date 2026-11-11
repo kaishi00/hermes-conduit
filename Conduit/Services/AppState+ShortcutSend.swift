@@ -31,6 +31,35 @@ extension AppState {
                 return self.client != nil
             },
             activeProfile: { [weak self] in self?.activeProfile ?? "default" },
+            pickedChat: { [weak self] picked in
+                guard let self, let client = self.client else { throw HermesError.notConnected }
+                // Sending never switches dashboards: that's the app's to do on screen.
+                guard picked.dashboardID == self.activeDashboardID else { throw ShortcutSendError.chatOnAnotherDashboard }
+                let reference = picked.reference
+                switch reference.kind {
+                case .dashboard:
+                    return VoiceThreadTarget(runtimeSessionID: reference.sessionID, storedSessionID: reference.sessionID,
+                                             title: picked.title ?? "", profile: reference.scopeProfile)
+                case .bot:
+                    // The bot's chat now, as its Bots row opens it (a /new
+                    // since the pick moved it), never a new one.
+                    guard let botName = reference.botName else { throw ShortcutSendError.chatUnavailable }
+                    let isPicked = { (bot: BotProfile) in bot.name == botName && !bot.isHiddenByMeta }
+                    // Right after connecting the bot list may not have loaded
+                    // yet (or was cleared with saved chats): ask for the
+                    // current one before calling the bot gone.
+                    if !self.shownBotRoster.contains(where: isPicked) { await self.refreshBotRoster() }
+                    guard let bot = self.shownBotRoster.first(where: isPicked) else {
+                        throw ShortcutSendError.chatUnavailable
+                    }
+                    let rows = try await client.findBotChatSession(profile: bot.name)
+                    guard case .success(.openExisting(_, let resumeID)) = BotChatResolver.resolve(
+                        rows: rows, rosterCanonicalID: bot.canonicalSessionID
+                    ) else { throw ShortcutSendError.chatUnavailable }
+                    return VoiceThreadTarget(runtimeSessionID: resumeID, storedSessionID: resumeID,
+                                             title: bot.displayLabel, profile: bot.name)
+                }
+            },
             createChat: { [weak self] profile, title in
                 guard let self, let client = self.client else { throw HermesError.notConnected }
                 let inUse = self.profilesMatch(profile, self.activeProfile)

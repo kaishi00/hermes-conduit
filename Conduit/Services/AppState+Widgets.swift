@@ -8,9 +8,12 @@ extension AppState {
 
     private var widgetReload: () -> Void {
         if let widgetSnapshotReloadOverride { return widgetSnapshotReloadOverride }
+        let store = widgetStore
         return {
             WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.native)
             WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.character)
+            // Spotlight and Siri know the same chats the widget offers.
+            MainActor.assumeIsolated { ConduitChatSpotlight.refresh(from: store) }
         }
     }
 

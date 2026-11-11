@@ -3443,7 +3443,7 @@ calls reading a job's chat · the Watch's answer to a call from Hermes
 **Open gaps**
 - The same message sent twice and answered in the same words, read once from saved history and once from the open chat, still can't be told apart.
 
-**Checked:** 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-24, at #1185; a Shortcut send's failed try counted even when its text repeats the banner at #1191 (#1056 review).
+**Checked:** 2026-11-10, #2163 (Send to Hermes takes a picked chat, which counts as reused; reading the reply unchanged); 2026-11-01, #1631 (an answer to a question this socket never saw passes the call's chat and profile, for the gateway's own listener; see Two Hermes servers); 2026-10-24, at #1185; a Shortcut send's failed try counted even when its text repeats the banner at #1191 (#1056 review).
 
 ## Following the latest message
 
@@ -5516,6 +5516,42 @@ features' sealing and 409 handling (Phone data sync with the host)
 
 **Checked:** 2026-11-03, #1684 (the Pulse keeps deadlines caption follows the profile Pulse runs in); 2026-11-02, #1675 (an event refused because the profile turned the plugin off is kept and says how to turn it on, and the Settings list says the same (issue 1671)); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the Settings page's Pulse caption is on main now; nothing else changed); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, at #1375, the privacy policy sibling: notifier #410 added what Pulse keeps from these events to its Optional events from Shortcuts automations; at #1345, carrying the `pulse` branch's entry: #1341, with notifier #410 (Pulse memory keeps deadlines from the inbox: the ruling on what memory keeps, deleting events deleting them, and on the `pulse` branch the inbox page's caption and Delete Everything's message; the Log to Hermes action, the conduit_inbox tool, watches, the report and the brief needed no change); before that 2026-10-25, #1214 (fork CI #87), at main 6e0f32d and notifier main with notifier #350; the privacy policy sibling and sign-out added in #1232 (privacy in notifier #356), which carries #1214; the morning brief added as a reader in notifier #357 (its README line in notifier #360), carried in #1237.
 
+## Your chats in Siri, Spotlight and Shortcuts
+
+Hermes chats as App Intents entities: Spotlight lists them by title, Siri
+opens or asks one by name, and Send to Hermes picks one instead of a typed
+Chat Name.
+
+**Siblings:** the launcher widget's conversation picker and the Share
+extension's chat picker (the same widget snapshot is the list) · a widget's
+open (Open Chat goes through the same launch) · Send to Hermes (its Chat
+parameter and the "Ask … in Conduit" phrases; see A chat's last reply) ·
+Siri's profile phrases (refreshed with the chats) · the Watch's shortcuts
+(not needed: the Watch has no chats list) · CarPlay (not needed: it has its
+own chat list) · Chat sources (Kanban
+workers and hidden sources stay out, as the snapshot already leaves them) ·
+README.md
+
+**Code**
+- Entities: `Conduit/Intents/ConduitChatEntity.swift` (ConduitChatEntity, IndexedEntity on iOS 18; ConduitChatCatalog; ConduitChatEntityQuery; OpenConduitChatIntent; ConduitChatSpotlight)
+- Phrases: `Conduit/Intents/StartVoiceConversationIntent.swift` (ConduitVoiceShortcuts), `Conduit/AppShortcuts.xcstrings`
+- Send to Hermes: `Conduit/Intents/SendToHermesIntent.swift` (ShortcutPickedChat, ShortcutSender's picked chat), `Conduit/Services/AppState+ShortcutSend.swift` (pickedChat)
+- Index refresh: `Conduit/Services/AppState+Widgets.swift` (widgetReload, after each snapshot write that changed it), `Conduit/ConduitApp.swift` (at launch)
+- Tests: `ConduitTests/WidgetConfigurationTests.swift` (the catalog), `ConduitTests/ShortcutSendTests.swift` (a picked chat)
+
+**Rulings**
+- The chats are the widget snapshot's: each workspace the app has shown, its last chat, pinned and recent chats and its Bot Chats, up to 20 a workspace. Only titles and where they live go into Spotlight, on the phone; no message does. iOS's Siri & Search settings for Conduit turn it off (2026-11-10, #2163).
+- Spotlight's copy is rebuilt whole from the snapshot at launch and after each write that changed it, one rebuild at a time with the newest list last, so a chat that left the snapshot (deleted, archived, a removed dashboard or profile) leaves Spotlight too (2026-11-10, #2163).
+- Opening a chat goes through the widget's launch: it switches dashboard and profile and says when the chat is gone, as a widget tap does (2026-11-10, #2163).
+- Send to Hermes with a picked chat sends into that chat and never makes a new one: a chat Hermes no longer has, or a bot no longer listed, fails the run and nothing is sent. A picked Bot Chat is its bot's chat now, found as its Bots row finds it, so a /new since the pick doesn't strand it. It never switches dashboards: a chat on another dashboard says to switch in Conduit first. The pick wins over Chat Name and Profile (2026-11-10, #2163).
+- A saved shortcut's pick that the snapshot no longer lists keeps its identity, untitled, so the shortcut keeps working while the chat exists (2026-11-10, #2163).
+
+**Open gaps**
+- Scheduled jobs and projects aren't entities yet ("Run my morning job").
+- Not tried on a device yet: Spotlight results, Siri's chat names and the Shortcuts picker.
+
+**Checked:** 2026-11-10, #2163.
+
 ## Steps in a turn
 
 How a turn's thinking and tool calls read in the chat while it runs and
@@ -6891,7 +6927,7 @@ platform list) · the chat header (shows no source)
 - A plugin platform Hermes adds after this list shows as Other until it's added here.
 - A saved chat list written before #1572 keeps Other on its platform rows until the live list replaces it: a saved row keeps no raw Hermes source, as in Kanban workers' transcripts.
 
-**Checked:** 2026-10-31, #1572 (every gateway platform named, issue #1561).
+**Checked:** 2026-11-10, #2163 (Siri, Spotlight and Send to Hermes' chat picker read the widget snapshot, so they leave out what it does; nothing here changed); 2026-10-31, #1572 (every gateway platform named, issue #1561).
 
 ## Kanban workers' transcripts
 
@@ -6909,9 +6945,10 @@ previews) · search "In messages" · find chat on a phone call in Gemini,
 Qwen, Grok, GPT-Live and Local Live (VoiceChatFinder) · Classic voice and
 Hermes-run turns, which search with Hermes' own `session_search` · find chat
 on an Apple Watch call (notifier) · CarPlay's chat list, the Home Screen
-launcher widget's conversation picker, the Share extension's chat picker and
+launcher widget's conversation picker, the Share extension's chat picker,
+Siri, Spotlight and Send to Hermes' chat picker, and
 the home voice button's Recent menu (they read the same list, the pickers
-through the widget snapshot) · opening a chat from a
+through the widget snapshot; see Your chats in Siri, Spotlight and Shortcuts) · opening a chat from a
 link or notification (the message shown) · a Pulse card drawn from a
 worker's session (it links the task, and Do it starts a new chat) · the Kanban task's Worker Log ·
 Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
@@ -6944,7 +6981,7 @@ Hermes Desktop's sidebar (upstream, leaves `kanban` out too)
 - Hermes' `session_search` (Classic voice, Hermes-run turns, every Hermes channel) can recall a legacy worker's transcript: it hides workers by the `kanban` source, which Hermes' retag never gave these. It's Hermes' recall, not a list Conduit draws; filtering it in the plugin (`transform_tool_result`) for every channel is the maintainer's call (#1464 review).
 - A legacy worker saved as the last chat (picked before #1461) still reopens on a return: Hermes resumes it, so nothing retires the saved pointer until another chat is opened. It opens as a readable chat, not an error (#1461 review).
 
-**Checked:** 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479 (a Pulse card drawn from a worker links its task and Do it starts a new chat, #1473 on the `pulse` branch and notifier #458); 2026-10-29, #1464 (search and find chat leave out legacy workers by their preview, notifier #452); 2026-10-29, #1463 (the Watch's find chat leaves out `tool` and `oneshot` too, notifier #450); 2026-10-28, #1457 (the main bot's last chat takes its Conduit name and is listed once by its chat, see Profile names); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1461 (`tool` and `oneshot` sessions and legacy workers left out, issue #1459); 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
+**Checked:** 2026-11-10, #2163 (Siri, Spotlight and Send to Hermes' chat picker added to the pickers that read the widget snapshot, which leaves workers out; nothing else changed); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479 (a Pulse card drawn from a worker links its task and Do it starts a new chat, #1473 on the `pulse` branch and notifier #458); 2026-10-29, #1464 (search and find chat leave out legacy workers by their preview, notifier #452); 2026-10-29, #1463 (the Watch's find chat leaves out `tool` and `oneshot` too, notifier #450); 2026-10-28, #1457 (the main bot's last chat takes its Conduit name and is listed once by its chat, see Profile names); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, #1461 (`tool` and `oneshot` sessions and legacy workers left out, issue #1459); 2026-10-28, #1448 (Bot Chat rows and the last chat name an unnamed bot by its id capitalized); 2026-10-26, #1305 (with the Share extension's picker).
 
 ## Bars lists scroll under
 
