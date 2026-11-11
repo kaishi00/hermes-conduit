@@ -55,8 +55,13 @@ extension AppState {
     /// widget showed when it's another dashboard's. At each connect, each
     /// return to the screen, and when a native sign-in's token rotates.
     func savePulseWidgetAccess() async {
-        guard let dashboardID = activeDashboardID, let bridge = dashboardTicketBridge else { return }
-        guard notifierPlugin.state != .unknown else { return }
+        guard let dashboardID = activeDashboardID else { return }
+        // Another dashboard is in use now: the widget stops reading the old
+        // one's before this one has connected.
+        if let kept = PulseWidgetKeychain.load(), kept.dashboardID != dashboardID {
+            removePulseWidget(dashboardID: kept.dashboardID)
+        }
+        guard let bridge = dashboardTicketBridge, notifierPlugin.state != .unknown else { return }
         guard showsPulseScreen, await hasPulseWidget() else {
             removePulseWidget()
             return
@@ -158,7 +163,11 @@ extension AppState {
         guard showsPulseScreen, activeDashboardID == dashboardID else { throw PulseWidgetDoItSkip.nothingToDo }
         let client = pulseClient
         let page = try await client.feed(proposals: pulseSuggests, looks: pulseLooks)
-        guard activeDashboardID == dashboardID, let card = page.cards.first(where: { $0.id == id }), !card.isCleared,
+        guard activeDashboardID == dashboardID else { throw PulseWidgetDoItSkip.nothingToDo }
+        // Pulse's chat and profile as the host names them now, which a card
+        // from no chat goes to.
+        applyPulseFeed(page)
+        guard let card = page.cards.first(where: { $0.id == id }), !card.isCleared,
               canActOnPulseCard(card), !canAskFromPulseCard(card) else { throw PulseWidgetDoItSkip.nothingToDo }
         try await sendPulseCardFromWidget(card, deadline: deadline)
         // Pulse reads the chat once Hermes has answered and marks the card

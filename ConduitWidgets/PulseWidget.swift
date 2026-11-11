@@ -50,9 +50,13 @@ struct PulseWidgetProvider: TimelineProvider {
     /// dashboard in use, or Conduit not opened since the widget was added).
     static func read(store: PulseWidgetStore? = PulseWidgetStore.production,
                      access: PulseWidgetAccess? = PulseWidgetKeychain.load()) async -> PulseWidgetSnapshot? {
-        let kept = store?.read()
         guard let access else { return nil }
-        let previous = kept?.dashboardID == access.dashboardID ? kept : nil
+        // The last good read for this dashboard, read again after each
+        // request: Do it, Done or Not now may have written meanwhile.
+        var previous: PulseWidgetSnapshot? {
+            let kept = store?.read()
+            return kept?.dashboardID == access.dashboardID ? kept : nil
+        }
         let language = WidgetSnapshotStore.production?.read()?.appLanguage ?? "system"
         do {
             let feed = try await LocationHostClient.requestJSON(

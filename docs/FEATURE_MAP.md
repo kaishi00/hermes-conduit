@@ -1981,7 +1981,7 @@ README.md
 - Tests: `ConduitTests/PulseFeedTests.swift` (rows and buttons against the screen's, capability names, a new chat's title), `ConduitTests/WidgetSnapshotTests.swift` (the link, sent rows and notes, a button with no pass)
 
 **Rulings**
-- The widget holds a host pass for the dashboard in use while a Pulse widget is on the Home Screen, and none otherwise, as the Location Push extension does for location; it never refreshes a sign-in, so an expired one says Open Conduit to refresh (Eric, 2026-11-11, #2194: the widget must update without opening Conduit).
+- The widget holds a host pass for the dashboard in use while a Pulse widget is on the Home Screen, and none otherwise (a dashboard switch takes the outgoing one's away at once), as the Location Push extension does for location; it never refreshes a sign-in, so an expired one says Open Conduit to refresh (Eric, 2026-11-11, #2194: the widget must update without opening Conduit).
 - Done and Not now go from the widget straight to the host. Do it sends a message to a chat, which takes Conduit's connection, so iOS runs it in Conduit, in the background (#2194).
 - Not now from the widget is later today; the plugin makes it tomorrow once today's gone, as the dialog's first choice would (#2194).
 - A pick's Ask isn't offered as Do it in the widget: its words are for the user to change before sending, and the widget has no composer; the card opens instead (#2194).

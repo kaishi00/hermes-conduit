@@ -111,13 +111,14 @@ enum PulseWidgetHostActions {
         }
         do {
             _ = try await LocationHostClient.requestJSON(pass: access.pass, path: path, method: "POST", body: body)
-            guard let kept, kept.dashboardID == dashboardID else { return }
+            // What's saved now: a read or Do it may have written meanwhile.
+            guard let kept = store?.read(), kept.dashboardID == dashboardID else { return }
             try? store?.write(kept.with(cards: kept.cards.filter { $0.id != card }, note: .some(nil)))
         } catch LocationHostError.signInRequired {
-            note(WidgetLocalization.string("Open Conduit to refresh", language: language), kept: kept, store: store)
+            note(WidgetLocalization.string("Open Conduit to refresh", language: language), kept: store?.read(), store: store)
         } catch {
             note(WidgetLocalization.string("Conduit couldn't reach Hermes. Open Conduit and check the connection.",
-                                           language: language), kept: kept, store: store)
+                                           language: language), kept: store?.read(), store: store)
         }
     }
 
