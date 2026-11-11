@@ -359,4 +359,21 @@ extension GroupChatModelsTests {
         XCTAssertNil(appState.activeRoomSurface)
         XCTAssertEqual(appState.roomHandedTo, .openedChat, "the chat shows where the room was, not Bots Home under it")
     }
+
+    /// A new chat started over a room closes it for that chat: the shell
+    /// shows it in Sessions, as it has no id yet to place it by.
+    @MainActor
+    func testANewChatOverARoomTakesTheRoomsPlace() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy()])
+        let steps = RoomChatSessions()
+        var operations = steps.operations
+        operations.createSession = { _, _ in (sessionId: "run-fresh", storedSessionId: "chat-fresh", profile: "default") }
+        let appState = try await postsOpenCopy(routes, report: roomChatsPluginReport, chatResume: operations)
+        XCTAssertNotNil(appState.activeRoomSurface)
+
+        _ = await appState.createNewSession()
+
+        XCTAssertNil(appState.activeRoomSurface)
+        XCTAssertEqual(appState.roomHandedTo, .newChat)
+    }
 }
