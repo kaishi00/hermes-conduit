@@ -452,6 +452,130 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(calls[2].body?["card"] as? Int, 9)
     }
 
+    func testActedNamesTheBotChatDoItUsed() async throws {
+        var bodies: [[String: Any]] = []
+        let client = PulseClient { _, _, body in
+            bodies.append(body ?? [:])
+            return ["ok": true, "booked": true]
+        }
+        try await client.acted(card: 3, chat: PulseActedChat(profile: "atlas", id: "atlas-tip"))
+        try await client.acted(card: 4)
+        XCTAssertEqual(bodies[0]["chat"] as? [String: String], ["profile": "atlas", "id": "atlas-tip"])
+        XCTAssertNil(bodies[1]["chat"], "a new chat is found by its subject: none named")
+    }
+
+    /// A gateway that can't host bots has answered: a bot saved for Do it
+    /// isn't there, so Do it starts a new chat rather than waiting on a list
+    /// that never comes (#2211's review).
+    func testDoItOnAGatewayWithoutBotsStartsANewChat() async throws {
+        let suite = "PulseFeedTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let home = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "https://one.example")
+        var operations = ChatResumeLifecycleOperations()
+        operations.botRoster = { _ in throw RpcError(code: -32601, message: "unknown method") }
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             dashboardRegistry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home]),
+                             clearSessionPresentationCache: {}, chatResumeLifecycleOperations: operations)
+        state.client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+                                    profile: "default")
+        state.isConnected = true
+        state.setNotifierPluginStateForTesting(.reported(version: "0.164.0", capabilities: [
+            PulseClient.feedCapability, PulseClient.actedCapability, PulseClient.actedChatCapability
+        ]))
+        state.setPulseDoItBot("atlas")
+        XCTAssertFalse(state.pulseDoItBotRosterRead)
+        await state.refreshBotRoster()
+        XCTAssertEqual(state.botModePhase, .gatewayUnsupported)
+        XCTAssertNil(state.pulseDoItBot)
+        XCTAssertNil(state.pulseDoItBotUnconfirmed, "the gateway's answer says the bot isn't there")
+        XCTAssertTrue(state.pulseDoItBotRosterRead, "so the widget doesn't ask again")
+        XCTAssertEqual(state.pulseDoItBotSavedName, "atlas", "Settings still shows it, to clear")
+    }
+
+    /// Settings > Pulse's bot for cards from no chat, per dashboard, offered
+    /// only by a plugin that reads the chat Do it names, and a long press's
+    /// pick for one card over it.
+    func testDoItGoesToTheBotPickedForCardsFromNoChat() async throws {
+        let suite = "PulseFeedTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let home = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "https://one.example")
+        let work = SavedDashboard(id: UUID(), label: "Work", normalizedURL: "https://two.example")
+        func bot(_ name: String, hidden: Bool = false) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name.capitalized, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: hidden, appearanceColor: nil,
+                       canonicalSession: nil, lastActive: nil, lastPreview: nil)
+        }
+        var operations = ChatResumeLifecycleOperations()
+        operations.botRoster = { _ in BotRosterSnapshot(bots: [bot("atlas"), bot("kai", hidden: true)], supportsBotProtocol: true) }
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             dashboardRegistry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home, work]),
+                             clearSessionPresentationCache: {}, chatResumeLifecycleOperations: operations)
+        state.client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+                                    profile: "default")
+        state.isConnected = true
+        // Before the bot list is read, the bot picked can't be confirmed:
+        // Do it waits for it rather than starting a new chat in its place.
+        state.setNotifierPluginStateForTesting(.reported(version: "0.164.0", capabilities: [
+            PulseClient.feedCapability, PulseClient.actedCapability, PulseClient.actedChatCapability
+        ]))
+        state.setPulseDoItBot("atlas")
+        XCTAssertEqual(state.pulseDoItBotUnconfirmed, "atlas")
+        await state.refreshBotRoster()
+        XCTAssertNil(state.pulseDoItBotUnconfirmed)
+        state.setPulseDoItBot(nil)
+        let page = try XCTUnwrap(PulseFeedPage(json: json("""
+        {"home_chat_id": "pulse_chat", "cards": [
+          {"id": 1, "kind": "noticed", "topic": "date", "level": "screen", "news": "Dentist Friday", "chat_id": "pulse_chat"},
+          {"id": 2, "kind": "noticed", "topic": "fact", "level": "screen", "news": "Deploy is flaky", "chat_id": "work"}
+        ]}
+        """)))
+        state.applyPulseFeed(page)
+        let date = page.cards[0], fact = page.cards[1]
+        let older: Set<String> = [PulseClient.feedCapability, PulseClient.doneCapability, PulseClient.actedCapability,
+                     PulseClient.foundActionsCapability]
+        state.setNotifierPluginStateForTesting(.reported(version: "0.163.2", capabilities: older))
+        // A plugin that doesn't read the chat Do it names: no bots offered, a new chat as before.
+        state.setPulseDoItBot("atlas")
+        XCTAssertTrue(state.pulseDoItBotChoices.isEmpty)
+        XCTAssertNil(state.pulseDoItBot(for: date))
+        state.setNotifierPluginStateForTesting(.reported(version: "0.164.0",
+                                                         capabilities: older.union([PulseClient.actedChatCapability])))
+        // Every bot the Bots list shows; a hidden one isn't a choice.
+        XCTAssertEqual(state.pulseDoItBotChoices.map(\.name), ["atlas"])
+        XCTAssertEqual(state.pulseDoItBot(for: date)?.name, "atlas")
+        XCTAssertNil(state.pulseDoItBot(for: fact), "a card from a chat opens that chat")
+        XCTAssertNil(state.pulseDoItBot(for: date, in: .newChat), "a long press's New chat, this once")
+        XCTAssertNil(state.pulseDoItBot(for: date, in: .bot("kai")))
+        // A long press's pick that's gone since says so, never a new chat.
+        XCTAssertEqual(state.pulseNewChatRefusal(for: date, in: .bot("kai")),
+                       AppLocalization.string("Could not open kai's Bot Chat."))
+        // Offline, the Bot Chat's own words say so.
+        state.isConnected = false
+        XCTAssertEqual(state.pulseNewChatRefusal(for: date), AppLocalization.string("Connect to Hermes to chat with bots."))
+        XCTAssertEqual(state.pulseNewChatRefusal(for: date, in: .newChat),
+                       AppLocalization.string("Couldn't start a new chat. Check your connection and try again."))
+        state.isConnected = true
+        // Acted names the Bot Chat open, by its id; a new chat names none.
+        state.activeSessionId = "atlas-tip"
+        XCTAssertEqual(state.pulseActedChat(in: state.pulseDoItBot(for: date)), PulseActedChat(profile: "atlas", id: "atlas-tip"))
+        XCTAssertNil(state.pulseActedChat(in: nil))
+        // A bot the list read says is gone, or hidden, leaves Do it on a new chat.
+        state.setPulseDoItBot("kai")
+        XCTAssertNil(state.pulseDoItBot)
+        XCTAssertNil(state.pulseDoItBotUnconfirmed)
+        XCTAssertTrue(state.pulseDoItBotSaved, "Settings keeps its row, so New chat can clear it")
+        XCTAssertEqual(state.pulseDoItBotSavedName, "kai", "and shows it there, not New chat, while it stays saved")
+        XCTAssertNil(state.pulseNewChatRefusal(for: date))
+        // Per dashboard, kept across a launch, and gone with its dashboard.
+        state.setPulseDoItBot("atlas")
+        XCTAssertEqual(defaults.dictionary(forKey: AppState.pulseDoItBotsKey) as? [String: String], [home.id.uuidString: "atlas"])
+        state.forgetPulseHome(of: home.id)
+        XCTAssertNil(state.pulseDoItBot)
+        XCTAssertEqual(defaults.dictionary(forKey: AppState.pulseDoItBotsKey) as? [String: String], [:])
+    }
+
     func testReportItemsAreTheirOwnRatableCards() throws {
         let page = try XCTUnwrap(PulseFeedPage(json: json("""
         {"cards": [
@@ -724,8 +848,9 @@ final class PulseFeedTests: XCTestCase {
         // The chat its New Chat made gets the reminder, uncovered.
         state.showSidebar = true
         state.widgetSessionCreatorOverride = { _, _ in ("fresh", "fresh", "default") }
-        let opened = await state.actOnPulseCard(date)
-        XCTAssertTrue(opened)
+        let opened = await state.doPulseCard(date)
+        XCTAssertNotNil(opened)
+        XCTAssertNil(opened?.chat, "a new chat: acted names none, Pulse finds it by its subject")
         XCTAssertEqual(state.activeSessionId, "fresh")
         XCTAssertFalse(state.showSidebar)
         XCTAssertEqual(state.composerPrefillText, date.actionMessage)

@@ -1094,8 +1094,10 @@ extension PulseClient {
     /// answered and marks the card done if it got done. Only the card is
     /// named: a new chat Do it started for an item from no chat is found by
     /// the reminder's words, which it shares with the card (notifier #362).
-    func acted(card: Int) async throws {
-        _ = try await request("\(Self.path)/acted", "POST", ["card": card])
+    func acted(card: Int, chat: PulseActedChat? = nil) async throws {
+        var body: [String: Any] = ["card": card]
+        if let chat { body["chat"] = ["profile": chat.profile, "id": chat.id] }
+        _ = try await request("\(Self.path)/acted", "POST", body)
     }
 
     /// Not now: swipes a card away (nothing learned) until later today,
@@ -1411,23 +1413,40 @@ extension AppState {
     /// chat opened.
     /// `words`: an Ask's (0.150.0), left in the composer in place of the
     /// card's reminder, for the user to change before sending.
-    func actOnPulseCard(_ card: PulseCard, words: String? = nil) async -> Bool {
+    /// `picked`: where a card from no chat goes this once (a long press on
+    /// Do it), in place of Settings > Pulse's choice (`pulseDoItBot`). A
+    /// bot's Bot Chat opens as its Bots row opens it.
+    func actOnPulseCard(_ card: PulseCard, words: String? = nil, in picked: PulseDoItTarget? = nil) async -> Bool {
+        await doPulseCard(card, words: words, in: picked) != nil
+    }
+
+    /// As `actOnPulseCard`, with what it opened: the Bot Chat it opened for
+    /// acted to name, resolved here rather than before the tap's hop, so a
+    /// roster change meanwhile can't make acted name another chat. Nil when
+    /// no chat opened.
+    func doPulseCard(_ card: PulseCard, words: String? = nil, in picked: PulseDoItTarget? = nil) async -> PulseDoItOpened? {
         guard words != nil ? canAskFromPulseCard(card) : canActOnPulseCard(card),
-              pulseNewChatRefusal(for: card) == nil else { return false }
+              pulseNewChatRefusal(for: card, in: picked) == nil else { return nil }
         let dashboard = activeDashboardID
+        var chat: PulseActedChat?
         if pulseCardHasChat(card) {
             openPulseCardChat(card)
-            guard await waitForOpenChat(card.chatID, on: dashboard) else { return false }
+            guard await waitForOpenChat(card.chatID, on: dashboard) else { return nil }
+        } else if let bot = pulseDoItBot(for: card, in: picked) {
+            guard await openBotChat(for: bot), activeDashboardID == dashboard else { return nil }
+            // As a bot link's open: its chat comes forward over the Pulse screen.
+            dismissSidebarDrawer()
+            chat = pulseActedChat(in: bot)
         } else {
             if !profilesMatch(activeProfile, pulseHomeProfile) {
                 // The switch returns with Pulse's profile connected and its chat open.
                 guard await switchProfileForPulse(), activeDashboardID == dashboard,
-                      profilesMatch(activeProfile, pulseHomeProfile) else { return false }
+                      profilesMatch(activeProfile, pulseHomeProfile) else { return nil }
             }
-            guard await startPulseNewChat() != nil, activeDashboardID == dashboard else { return false }
+            guard await startPulseNewChat() != nil, activeDashboardID == dashboard else { return nil }
         }
         prefillComposer(words ?? card.actionMessage)
-        return true
+        return PulseDoItOpened(chat: chat)
     }
 
     /// Why Do it can't start a new chat for a card from no chat right now,
@@ -1438,8 +1457,22 @@ extension AppState {
     /// one that waits, and a New Chat already starting or waiting comes
     /// first. From another profile, a call stops the switch, as it does New
     /// Chat's (startNewChat(inProfile:)).
-    func pulseNewChatRefusal(for card: PulseCard) -> String? {
+    /// A card going to a bot's Bot Chat (`pulseDoItBot`) needs only the
+    /// connection: its open says the rest.
+    func pulseNewChatRefusal(for card: PulseCard, in picked: PulseDoItTarget? = nil) -> String? {
         guard !pulseCardHasChat(card) else { return nil }
+        if pulseDoItBot(for: card, in: picked) != nil {
+            return isConnected ? nil : AppLocalization.string("Connect to Hermes to chat with bots.")
+        }
+        // The bot Settings picked, while the bot list couldn't say whether
+        // it's still there, or one picked from the long press that's gone
+        // since: never a new chat in its place.
+        if picked == nil, let name = pulseDoItBotUnconfirmed {
+            return AppLocalization.string("Could not open \(name)'s Bot Chat.")
+        }
+        if case .bot(let name) = picked {
+            return AppLocalization.string("Could not open \(name)'s Bot Chat.")
+        }
         if !profilesMatch(activeProfile, pulseHomeProfile), isVoiceCallInProgress {
             return AppLocalization.string("End the call to open a chat in another profile.")
         }
@@ -1457,6 +1490,65 @@ extension AppState {
             return AppLocalization.string("Another new chat is starting. Try again in a moment.")
         }
         return nil
+    }
+
+    /// The bots Do it can go to for a card from no chat: every bot the Bots
+    /// list shows, once the plugin reads the chat Do it names (0.164.0).
+    /// Empty otherwise, and Do it starts a new chat as before.
+    var pulseDoItBotChoices: [BotProfile] {
+        guard notifierPlugin.reports(PulseClient.actedChatCapability) else { return [] }
+        return shownBotRoster.filter { !$0.isHiddenByMeta }
+    }
+
+    /// Settings > Pulse's choice on this dashboard, while that bot is still
+    /// one of the choices; nil for a new chat.
+    var pulseDoItBot: BotProfile? {
+        guard let name = activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }) else { return nil }
+        return pulseDoItBotChoices.first { $0.name == name }
+    }
+
+    /// The bot Settings > Pulse picked, by name, when the bot list hasn't
+    /// been read on this dashboard (a failed or unanswered read), so it
+    /// can't say whether that bot is still there; nil when it's a choice,
+    /// none is picked, or the list was read and the bot is gone or hidden
+    /// (then Do it starts a new chat). A gateway that can't host bots has
+    /// answered too: no bot is there.
+    var pulseDoItBotUnconfirmed: String? {
+        guard notifierPlugin.reports(PulseClient.actedChatCapability),
+              let name = activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }),
+              pulseDoItBot == nil, botModePhase != .available, botModePhase != .gatewayUnsupported else { return nil }
+        return name
+    }
+
+    /// Whether Settings > Pulse has a bot saved on this dashboard, a choice
+    /// now or not: its row stays so New chat can clear it.
+    var pulseDoItBotSaved: Bool { pulseDoItBotSavedName != nil }
+
+    /// The bot Settings > Pulse has saved on this dashboard, a choice now or
+    /// not, for its row to show rather than New chat while it stays saved.
+    var pulseDoItBotSavedName: String? {
+        guard notifierPlugin.reports(PulseClient.actedChatCapability) else { return nil }
+        return activeDashboardID.flatMap { pulseDoItBots[$0.uuidString] }
+    }
+
+    /// The bot whose Bot Chat Do it opens for `card`: none for a card with
+    /// a chat of its own, else the one picked this once, else Settings >
+    /// Pulse's.
+    func pulseDoItBot(for card: PulseCard, in picked: PulseDoItTarget? = nil) -> BotProfile? {
+        guard !pulseCardHasChat(card) else { return nil }
+        switch picked {
+        case .newChat: return nil
+        case .bot(let name): return pulseDoItBotChoices.first { $0.name == name }
+        case nil: return pulseDoItBot
+        }
+    }
+
+    /// The chat Do it opened in `bot`'s profile, for acted to name, so
+    /// Pulse's check reads it there; nil for a new chat, which the check
+    /// finds by its subject.
+    func pulseActedChat(in bot: BotProfile?) -> PulseActedChat? {
+        guard let bot, let open = activeSessionId else { return nil }
+        return PulseActedChat(profile: bot.name, id: canonicalSessionID(for: open) ?? open)
     }
 
     /// Waits up to ten seconds for `chatID` to be the open chat. Gives up
@@ -1478,6 +1570,25 @@ extension AppState {
     }
 }
 
+/// Where Do it goes for a Pulse card from no chat, picked for one card.
+enum PulseDoItTarget: Equatable {
+    case newChat
+    /// A bot's Bot Chat, by its profile name.
+    case bot(String)
+}
+
+/// What Do it opened: the Bot Chat it opened for acted to name, nil for a
+/// new chat or the card's own.
+struct PulseDoItOpened {
+    let chat: PulseActedChat?
+}
+
+/// The chat Do it used for a card from no chat, as acted names it.
+struct PulseActedChat: Equatable {
+    let profile: String
+    let id: String
+}
+
 /// A request to show the Pulse screen, at a card or at the top.
 struct PulseOpenRequest: Equatable {
     let id = UUID()
@@ -1495,6 +1606,9 @@ extension PulseClient {
     static let doneCapability = "pulse_done"
     /// After Do it, Pulse marks the card done itself once the chat shows it (0.64.0).
     static let actedCapability = "pulse_acted"
+    /// Acted takes the chat Do it used for a card from no chat (a bot's Bot
+    /// Chat), which Pulse's check reads (0.164.0).
+    static let actedChatCapability = "pulse_acted_chat"
     /// Cards can be swiped away, and briefs name the cards they brought (0.68.0).
     static let dismissCapability = "pulse_dismiss"
     /// The morning brief comes every day with what's still open (0.76.0).
