@@ -322,6 +322,8 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertNil(merged.cards[1].sentAt)
         XCTAssertNil(merged.cards[2].sentAt)
         XCTAssertEqual(merged.note, "Couldn't reach Hermes")
+        // A read that reached the host answers a note that it couldn't.
+        XCTAssertNil(fresh.merging(previous, now: now, answered: ["Couldn't reach Hermes"]).note)
         // A quarter of an hour on, the note is gone.
         XCTAssertNil(fresh.merging(previous, now: now.addingTimeInterval(16 * 60)).note)
         // Another dashboard's read keeps nothing.

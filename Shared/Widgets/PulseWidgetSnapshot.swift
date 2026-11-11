@@ -75,8 +75,10 @@ struct PulseWidgetSnapshot: Codable, Equatable {
 
     /// A fresh read, with what the last one kept that a read can't know:
     /// the rows Do it sent in the last day that are still open, and a
-    /// button's note from the last quarter hour.
-    func merging(_ previous: PulseWidgetSnapshot?, now: Date = Date()) -> PulseWidgetSnapshot {
+    /// button's note from the last quarter hour, unless it's one of
+    /// `answered` (a read that reached the host answers "couldn't reach").
+    func merging(_ previous: PulseWidgetSnapshot?, now: Date = Date(),
+                 answered: Set<String> = []) -> PulseWidgetSnapshot {
         guard let previous, previous.dashboardID == dashboardID else { return self }
         let sent = Dictionary(previous.cards.compactMap { card in card.sentAt.map { (card.id, $0) } },
                               uniquingKeysWith: { first, _ in first })
@@ -88,6 +90,7 @@ struct PulseWidgetSnapshot: Codable, Equatable {
             return card
         }
         let recent = note == nil && previous.noteAt.map { now.timeIntervalSince($0) < Self.noteLifetime } == true
+            && !answered.contains(previous.note ?? "")
         return with(cards: kept, note: recent ? .some(previous.note) : nil, noteAt: recent ? previous.noteAt : nil)
     }
 
