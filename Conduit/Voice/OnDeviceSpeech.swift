@@ -207,9 +207,18 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
                 }
             } else if addressDepth > 0 {
                 // An address can hold parentheses of its own ("a_(b)"); an
-                // escaped one ("a\\(b") is just a character.
+                // escaped one ("a\\(b") is just a character. It has no
+                // spaces, so one not opening a title ends a malformed
+                // address ("a(b next."), which would otherwise hold every
+                // sentence after it until the reply ends.
                 if character == "\\", next < text.endIndex {
                     next = text.index(after: next)
+                } else if character.isWhitespace {
+                    // Nothing after it yet: a title may still be streaming in.
+                    if let after = text[next...].first(where: { !$0.isWhitespace }),
+                       !"\"'(".contains(after) {
+                        addressDepth = 0
+                    }
                 } else if character == "(" {
                     addressDepth += 1
                 } else if character == ")" {

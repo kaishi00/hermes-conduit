@@ -314,9 +314,9 @@ extension HermesVoiceGatewayTimeoutTests {
 
         // A link stays whole, so its address is dropped rather than read:
         // across a line break or a CJK stop, and with parentheses in it.
-        var link = "Read [part one. And two](https://example.com/a. b). Next one. Tail"
+        var link = "Read [part one. And two](https://example.com/a.html). Next one. Tail"
         XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &link), [
-            "Read [part one. And two](https://example.com/a. b).", "Next one."
+            "Read [part one. And two](https://example.com/a.html).", "Next one."
         ])
         var spanning = "See [the docs\nfor details](https://example.com). Read [中文。更多](https://example.com). Done. Tail"
         XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &spanning), [
@@ -338,6 +338,13 @@ extension HermesVoiceGatewayTimeoutTests {
         var escaped = "[guide](https://example.com/a\\(b). Next one. Tail"
         XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &escaped), [
             "[guide](https://example.com/a\\(b).", "Next one."
+        ])
+
+        // A malformed address ends at its first space, so it can't hold the
+        // rest of the reply.
+        var unclosed = "See [x](https://example.com/a(b next. Then more. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &unclosed), [
+            "See [x](https://example.com/a(b next.", "Then more."
         ])
 
         // A CJK sentence keeps its closing quote.
