@@ -5031,6 +5031,7 @@ final class AppState: ObservableObject {
                 throw VoiceAudioError.unavailable(self.callRefusalMessageForOpenChat()
                     ?? AppLocalization.string("Hermes could not send this to the chat."))
             }
+            let reportedOn = self.activeDashboardID
             await self.reportTurnSurface(self.messageTurnSurface(spoken: true), runtimeSessionID: chat.runtimeID, text: text)?.value
             let outcome: PromptSubmissionOutcome
             do {
@@ -5041,7 +5042,7 @@ final class AppState: ObservableObject {
                     try await client.sendPrompt(chat.runtimeID, text: text, surface: AppState.spokenPromptSurface, voiceTurn: true)
                 }
             } catch {
-                self.discardTurnSurface(runtimeSessionID: chat.runtimeID, text: text, after: error)
+                self.discardTurnSurface(runtimeSessionID: chat.runtimeID, text: text, after: error, reportedOn: reportedOn)
                 throw error
             }
             switch outcome {
@@ -10539,6 +10540,7 @@ final class AppState: ObservableObject {
         }
         let target = runtimeID.isEmpty ? thread.runtimeSessionID : runtimeID
         // Alongside the read below, so it adds no wait between the read and the send.
+        let reportedOn = activeDashboardID
         let surfaceReport = reportTurnSurface(messageTurnSurface(spoken: true), runtimeSessionID: target, text: text)
         let outcome: PromptSubmissionOutcome
         do {
@@ -10563,7 +10565,7 @@ final class AppState: ObservableObject {
         } catch {
             // Nothing of it was sent, or Hermes refused it: its report waits for no turn.
             await surfaceReport?.value
-            discardTurnSurface(runtimeSessionID: target, text: text, after: error)
+            discardTurnSurface(runtimeSessionID: target, text: text, after: error, reportedOn: reportedOn)
             throw error
         }
         switch outcome {
@@ -31350,6 +31352,7 @@ final class AppState: ObservableObject {
         // ahead of it.
         let promptText = Self.promptText(outboundText, fileReferences: fileReferences)
         // Where in Conduit this was sent from, for its turn's line (#888).
+        let surfaceReportedOn = activeDashboardID
         let surfaceReport = reportTurnSurface(
             submissionTurnSurface.flatMap { $0.text == text ? $0.surface : nil }
                 ?? messageTurnSurface(spoken: surface == Self.spokenPromptSurface),
@@ -31527,7 +31530,7 @@ final class AppState: ObservableObject {
             // No turn of it is coming: the same words sent from another
             // client there mustn't take its line.
             if surfaceReport != nil {
-                discardTurnSurface(runtimeSessionID: sessionId, text: promptText, after: error)
+                discardTurnSurface(runtimeSessionID: sessionId, text: promptText, after: error, reportedOn: surfaceReportedOn)
             }
             // Images staged for a send that didn't land would ride on a
             // later turn. One Hermes took was already claimed by it, so
