@@ -489,9 +489,39 @@ final class ChatScrollHostedTests: XCTestCase {
             XCTAssertLessThanOrEqual(time.count + line.count, ChatViewportTrace.maxLineLength, line)
         }
 
+        // Off screen, nothing is checked: the count starts over without
+        // saying the rows were drawn, and a save takes two fresh checks.
+        for cell in cells { cell.hosting?.view.isHidden = true }
+        let frame = collectionView.frame
+        collectionView.frame.size.height = 0
         watch.check()
-        XCTAssertEqual(saves, 1)
-        XCTAssertEqual(blankLines().dropFirst(before).last, "blank screen drawn again after 2 checks")
+        collectionView.frame = frame
+        collectionView.layoutIfNeeded()
+        let afterSkip = blankLines().count
+        XCTAssertFalse(blankLines().dropFirst(before).contains { $0.hasPrefix("blank screen drawn again") }, "a skipped check isn't a recovery")
+        let shown = collectionView.visibleCells.compactMap { $0 as? TranscriptCell }
+        for cell in shown { cell.hosting?.view.isHidden = true }
+        watch.check()
+        XCTAssertEqual(saves, 1, "one fresh blank check isn't a blank screen")
+        watch.check()
+        XCTAssertEqual(saves, 2)
+        for cell in shown + cells { cell.hosting?.view.isHidden = false }
+
+        watch.check()
+        XCTAssertEqual(blankLines().dropFirst(afterSkip).last, "blank screen drawn again after 2 checks")
+        XCTAssertEqual(blankLines().dropFirst(before).filter { $0.hasPrefix("blank screen drawn again") }.count, 1)
+
+        // Long row ids keep their tails, so four fit a line.
+        XCTAssertEqual(TranscriptBlankWatch.shortID("0123456789abcdefghij"), "abcdefghij")
+        let longRows = (0..<4).map { TranscriptRowFrame(id: "a-long-stored-row-id-\($0)-abcdefghij", minY: 12_345, maxY: 23_456) }
+        let longLines = TranscriptBlankWatch.describe(
+            .init(rowsOnScreen: longRows, cells: (0..<4).map { "abcdefghi\($0) view h 1234.5" }),
+            collectionView: collectionView, scroller: mounted.scroller
+        )
+        for line in longLines.suffix(2) {
+            XCTAssertLessThanOrEqual(time.count + line.count, ChatViewportTrace.maxLineLength, line)
+            XCTAssertEqual(line.components(separatedBy: ", ").count, 4, line)
+        }
     }
 
     func testARunningReplyOpenedAgainShowsWhatWasWrittenAtOnce() throws {
