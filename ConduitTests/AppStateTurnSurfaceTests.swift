@@ -211,6 +211,36 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         XCTAssertEqual(recorder.discards.count, 1, "Still on the dashboard it reported to")
     }
 
+    func testADiscardStopsRetryingOnceItsDashboardIsSwitchedAway() async {
+        // Issue 2222 follow-up: a switch while a discard waits to try again
+        // ends it; the retry never goes to either dashboard.
+        let keychain = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(keychain)
+        defer { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let first = SavedDashboard(id: UUID(), label: "First", normalizedURL: "https://one.example")
+        let second = SavedDashboard(id: UUID(), label: "Second", normalizedURL: "https://two.example")
+        let recorder = TurnSurfaceRecorder()
+        recorder.discardErrors = [URLError(.timedOut)]
+        let harness = makeHarness(recorder: recorder,
+                                  registry: SavedDashboardRegistry(activeDashboardID: first.id, dashboards: [first, second]))
+        let appState = harness.appState
+        appState.turnSurfaceDiscardRetryDelays = [.milliseconds(20), .milliseconds(20), .milliseconds(20)]
+
+        appState.discardTurnSurface(runtimeSessionID: "rt-first", text: "yes",
+                                    after: RpcError(code: 4001, message: "invalid_params"), reportedOn: first.id)
+        for _ in 0..<200 where recorder.discardTries == 0 { try? await Task.sleep(for: .milliseconds(1)) }
+        XCTAssertEqual(recorder.discardTries, 1)
+        appState.selectDashboardTarget(second.id)
+        try? await Task.sleep(for: .milliseconds(120))
+        XCTAssertEqual(recorder.discardTries, 1, "Switched away while it waited: no retry goes")
+        XCTAssertEqual(recorder.discards, [])
+
+        appState.discardTurnSurface(runtimeSessionID: "rt-first", text: "again",
+                                    after: RpcError(code: 4001, message: "invalid_params"), reportedOn: first.id)
+        for _ in 0..<20 { await Task.yield() }
+        XCTAssertEqual(recorder.discardTries, 1, "Reported on the first dashboard: nothing goes to the second")
+    }
+
     func testASendWhoseReplyWasLostKeepsItsReport() async {
         let recorder = TurnSurfaceRecorder()
         recorder.sendError = URLError(.networkConnectionLost)
@@ -239,7 +269,7 @@ final class AppStateTurnSurfaceTests: XCTestCase {
 
     private typealias Harness = (appState: AppState, defaults: UserDefaults)
 
-    private func makeHarness(recorder: TurnSurfaceRecorder?) -> Harness {
+    private func makeHarness(recorder: TurnSurfaceRecorder?, registry: SavedDashboardRegistry? = nil) -> Harness {
         let defaults = makeScratchDefaults("AppStateTurnSurfaceTests")
         let operations = ChatResumeLifecycleOperations(
             sendPrompt: { _, sessionID, text in
@@ -254,6 +284,7 @@ final class AppStateTurnSurfaceTests: XCTestCase {
             chatResumeCoordinator: ChatResumeCoordinator(store: store),
             recoverySequence: ChatResumeRecoverySequence(),
             loadSavedConnection: false,
+            dashboardRegistry: registry,
             clearSessionPresentationCache: {},
             chatResumeLifecycleOperations: operations,
             sessionPresentationCache: SessionPresentationCache(defaults: defaults)
