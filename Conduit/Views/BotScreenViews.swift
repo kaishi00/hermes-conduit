@@ -95,7 +95,19 @@ private struct BotScreenContent: View {
             }
         }
         // The screen filling the phone; it closes when the screen stops.
-        .fullScreenCover(isPresented: $showsFullScreen) { fullScreen }
+        // Over the sheet, not in place of it: a `.fullScreenCover` takes the
+        // sheet out of the window, and its `onDisappear` would hand a
+        // takeover back and end the stream (Greptile on #2172).
+        .background {
+            // What the full screen shows that the sheet's body doesn't read,
+            // so a change to it updates the full screen too.
+            OverFullScreenCover(isPresented: $showsFullScreen,
+                                refresh: [AnyHashable(fullScreenTyping), typed, typesSecret, isZoomed, resetZoom]) {
+                fullScreen
+                    .environmentObject(appState)
+                    .environment(\.locale, appLanguage.resolvedLocale)
+            }
+        }
         .onChange(of: model.status?.isRunning == true) { _, running in
             if !running { showsFullScreen = false }
         }
@@ -748,6 +760,55 @@ private final class WeakScriptHandler: NSObject, WKScriptMessageHandler {
 
     func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
         target?.userContentController(controller, didReceive: message)
+    }
+}
+
+/// Presents `content` over the whole screen without taking the views under
+/// it out of the window (`.overFullScreen`), so they keep running and their
+/// `onDisappear` doesn't fire, as `MediaPreviewPresenter` does for Quick
+/// Look. `content` is read again on every update of the view it's in.
+private struct OverFullScreenCover<Content: View>: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    /// State `content` reads that the presenting body doesn't: passed in so
+    /// a change to it updates this view, and so `content`.
+    let refresh: [AnyHashable]
+    @ViewBuilder let content: () -> Content
+
+    final class Coordinator {
+        var shown: UIHostingController<Content>?
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeUIViewController(context: Context) -> UIViewController {
+        let host = UIViewController()
+        host.view.isUserInteractionEnabled = false
+        return host
+    }
+
+    func updateUIViewController(_ host: UIViewController, context: Context) {
+        let coordinator = context.coordinator
+        if isPresented {
+            if let shown = coordinator.shown {
+                shown.rootView = content()
+            } else if host.presentedViewController == nil, host.view.window != nil {
+                let shown = UIHostingController(rootView: content())
+                shown.modalPresentationStyle = .overFullScreen
+                shown.modalTransitionStyle = .crossDissolve
+                shown.modalPresentationCapturesStatusBarAppearance = true
+                shown.view.backgroundColor = .black
+                coordinator.shown = shown
+                host.present(shown, animated: true)
+            }
+        } else if let shown = coordinator.shown {
+            coordinator.shown = nil
+            shown.dismiss(animated: true)
+        }
+    }
+
+    static func dismantleUIViewController(_ host: UIViewController, coordinator: Coordinator) {
+        coordinator.shown?.dismiss(animated: false)
+        coordinator.shown = nil
     }
 }
 
