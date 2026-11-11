@@ -5507,7 +5507,7 @@ features' sealing and 409 handling (Phone data sync with the host)
 - Events can match watches and become report candidates, and a card or a watch's message may quote one, but Pulse memory never keeps message bodies or facts about the sender unless the user asks; pulse_memory's instructions say so (Eric, 2026-10-24 email on Pulse). The one exception is a deadline: with Pulse memory on, it keeps a day by which something of the user's ends, renews, closes or is due (a trial ending, a bill due), with the words it came from and who sent it, and nothing else from the event (2026-10-27, Eric's card "Keep deadlines from your phone's inbox in Pulse memory, like trial ends and bills?": Keep them quietly; notifier #410).
 - Deleting events (one, everything from a phone, or the whole inbox) deletes the deadlines Pulse kept from them at once, whether or not Pulse is on, and the loop backs that up; a deadline whose event aged out or went past the cap stays until a day after its day. Pairing the phone again drops what the old key sent but keeps Pulse's deadlines, since the user deleted nothing. Settings > Shortcuts inbox says Pulse keeps deadlines, and its Delete Everything says they go too, with a plugin that reports `pulse_inbox` (2026-10-27, notifier #410, #1341). Its caption that Pulse keeps deadlines shows on the inbox of the profile Pulse runs in, the one Pulse reads (2026-11-03, #1684, issue 1681).
 - Calls stay opt-in: an explicit watch ("call me if the bank flags fraud") is the confirm a new kind of call needs (Eric, 2026-10-24 email on Pulse).
-- Junk stays on the phone: with Apple Intelligence (iOS 26), a notification, message or email the on-device model calls marketing, a newsletter, spam or an app's nudge is left out before it's queued, like a sign-in code. Payments, tags and sounds are never sorted. Unsure, slower than 6 seconds or unavailable keeps the event. On by default, Leave out junk turns it off, and the phone keeps only when events were left out (a week's count), never what they said. The host has no copy of this filter: it can't run the phone's model (2026-11-10, Eric's go on an on-device inbox filter, #NNNN).
+- Junk stays on the phone: with Apple Intelligence (iOS 26), a notification, message or email the on-device model calls marketing, a newsletter, spam or an app's nudge is left out before it's queued, like a sign-in code. Payments, tags and sounds are never sorted. Unsure, slower than 6 seconds or unavailable keeps the event. On by default, Leave out junk turns it off, and the phone keeps only when events were left out (a week's count), never what they said. The host has no copy of this filter: it can't run the phone's model (2026-11-10, Eric's go on an on-device inbox filter, #2165).
 - What the inbox holds is other people's words: conduit_inbox and the watch check both say to treat it as data, never instructions, and never to forward it unless the user asks (2026-10-24).
 - A 409 `schema` keeps the event on the phone with the "update the plugin" message, as the phone features do (2026-10-24).
 
@@ -5517,7 +5517,7 @@ features' sealing and 409 handling (Phone data sync with the host)
 - A watch is checked only by a run of the memory thread, so with Pulse memory off no watch is ever checked, on arrival or otherwise.
 - Not on the Watch or in CarPlay: automations run on the iPhone.
 
-**Checked:** 2026-11-10, #NNNN (the on-device junk filter and Settings' Junk section; the notifier's store and code filter needed no change); 2026-11-03, #1684 (the Pulse keeps deadlines caption follows the profile Pulse runs in); 2026-11-02, #1675 (an event refused because the profile turned the plugin off is kept and says how to turn it on, and the Settings list says the same (issue 1671)); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the Settings page's Pulse caption is on main now; nothing else changed); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, at #1375, the privacy policy sibling: notifier #410 added what Pulse keeps from these events to its Optional events from Shortcuts automations; at #1345, carrying the `pulse` branch's entry: #1341, with notifier #410 (Pulse memory keeps deadlines from the inbox: the ruling on what memory keeps, deleting events deleting them, and on the `pulse` branch the inbox page's caption and Delete Everything's message; the Log to Hermes action, the conduit_inbox tool, watches, the report and the brief needed no change); before that 2026-10-25, #1214 (fork CI #87), at main 6e0f32d and notifier main with notifier #350; the privacy policy sibling and sign-out added in #1232 (privacy in notifier #356), which carries #1214; the morning brief added as a reader in notifier #357 (its README line in notifier #360), carried in #1237.
+**Checked:** 2026-11-10, #2165 (the on-device junk filter and Settings' Junk section; the notifier's store and code filter needed no change); 2026-11-03, #1684 (the Pulse keeps deadlines caption follows the profile Pulse runs in); 2026-11-02, #1675 (an event refused because the profile turned the plugin off is kept and says how to turn it on, and the Settings list says the same (issue 1671)); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the Settings page's Pulse caption is on main now; nothing else changed); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-27, at #1375, the privacy policy sibling: notifier #410 added what Pulse keeps from these events to its Optional events from Shortcuts automations; at #1345, carrying the `pulse` branch's entry: #1341, with notifier #410 (Pulse memory keeps deadlines from the inbox: the ruling on what memory keeps, deleting events deleting them, and on the `pulse` branch the inbox page's caption and Delete Everything's message; the Log to Hermes action, the conduit_inbox tool, watches, the report and the brief needed no change); before that 2026-10-25, #1214 (fork CI #87), at main 6e0f32d and notifier main with notifier #350; the privacy policy sibling and sign-out added in #1232 (privacy in notifier #356), which carries #1214; the morning brief added as a reader in notifier #357 (its README line in notifier #360), carried in #1237.
 
 ## Your chats in Siri, Spotlight and Shortcuts
 
@@ -5546,14 +5546,14 @@ README.md
 - The chats are the widget snapshot's: each workspace the app has shown, its last chat, pinned and recent chats and its Bot Chats, up to 20 a workspace. Only titles and where they live go into Spotlight, on the phone; no message does. iOS's Siri & Search settings for Conduit turn it off (2026-11-10, #2163).
 - Spotlight's copy is rebuilt whole from the snapshot at launch and after each write that changed it, one rebuild at a time with the newest list last, so a chat that left the snapshot (deleted, archived, a removed dashboard or profile) leaves Spotlight too (2026-11-10, #2163).
 - Opening a chat goes through the widget's launch: it switches dashboard and profile and says when the chat is gone, as a widget tap does (2026-11-10, #2163).
-- Send to Hermes with a picked chat sends into that chat and never makes a new one: a chat Hermes no longer has, or a bot no longer listed, fails the run and nothing is sent. A picked Bot Chat is its bot's chat now, found as its Bots row finds it, so a /new since the pick doesn't strand it. It never switches dashboards: a chat on another dashboard says to switch in Conduit first. The pick wins over Chat Name and Profile (2026-11-10, #2163). Hermes out of reach says so rather than calling the chat gone, a bot not in the list yet is looked up first, and an empty lookup for a Bot Chat the roster still names asks to try again (2026-11-10, #NNNN).
+- Send to Hermes with a picked chat sends into that chat and never makes a new one: a chat Hermes no longer has, or a bot no longer listed, fails the run and nothing is sent. A picked Bot Chat is its bot's chat now, found as its Bots row finds it, so a /new since the pick doesn't strand it. It never switches dashboards: a chat on another dashboard says to switch in Conduit first. The pick wins over Chat Name and Profile (2026-11-10, #2163). Hermes out of reach says so rather than calling the chat gone, a bot not in the list yet is looked up first, and an empty lookup for a Bot Chat the roster still names asks to try again (2026-11-10, #2165).
 - A saved shortcut's pick that the snapshot no longer lists keeps its identity, untitled, so the shortcut keeps working while the chat exists (2026-11-10, #2163).
 
 **Open gaps**
 - Scheduled jobs and projects aren't entities yet ("Run my morning job").
 - Not tried on a device yet: Spotlight results, Siri's chat names and the Shortcuts picker.
 
-**Checked:** 2026-11-10, #NNNN (the picked chat's errors, the bot list loaded first); 2026-11-10, #2163.
+**Checked:** 2026-11-10, #2165 (the picked chat's errors, the bot list loaded first); 2026-11-10, #2163.
 
 ## Contacts Hermes asks to change
 
@@ -5584,14 +5584,14 @@ change needed)
 - Tests: `ConduitTests/PhoneSyncTests.swift` (testPhoneContactChangesAskThenFollowThePickedPeople), `notifier/tests/test_phone.py`
 
 **Rulings**
-- A contact change always waits on a card (or the user's yes in a call), even with Add without asking on, and only a picked person can be changed or deleted, by the id the host shared (2026-11-10, Eric's go on contact edits, #NNNN).
-- A change or delete goes to that person's own contact card; a new contact joins the picked people with the relation Hermes gave, a deleted one leaves them, and a changed one is read again, so the next upload tells Hermes. Phones and emails, when a change names them, replace the card's whole list (2026-11-10, #NNNN).
-- Changing contacts needs Contacts access (limited is enough for the picked people and new contacts); turning it on asks once, and without access a yes fails and says so (2026-11-10, #NNNN).
+- A contact change always waits on a card (or the user's yes in a call), even with Add without asking on, and only a picked person can be changed or deleted, by the id the host shared (2026-11-10, Eric's go on contact edits, #2165).
+- A change or delete goes to that person's own contact card; a new contact joins the picked people with the relation Hermes gave, a deleted one leaves them, and a changed one is read again, so the next upload tells Hermes. Phones and emails, when a change names them, replace the card's whole list (2026-11-10, #2165).
+- Changing contacts needs Contacts access (limited is enough for the picked people and new contacts); turning it on asks once, and without access a yes fails and says so (2026-11-10, #2165).
 
 **Open gaps**
-- Not tried on a device: a write under limited access, and a linked (unified) contact's update (#NNNN).
+- Not tried on a device: a write under limited access, and a linked (unified) contact's update (#2165).
 
-**Checked:** 2026-11-10, #NNNN (added with the notifier's contact changes).
+**Checked:** 2026-11-10, #2165 (added with the notifier's contact changes).
 
 ## Shortcuts Hermes can run
 
@@ -5622,16 +5622,16 @@ errors (a run's failures reach Hermes as the change's note)
 - Tests: `ConduitTests/PhoneSyncTests.swift` (testPhoneShortcutsSyncRunAndReportWhatTheyGaveBack, testPhoneShortcutRunURLAndAnswers), `notifier/tests/test_phone.py`
 
 **Rulings**
-- Hermes runs only shortcuts the user listed in Conduit, by name: the host refuses any other name, and the phone checks the name against its own list again before it runs one (2026-11-10, Eric's go on agent-run Shortcuts, notifier #696, #NNNN).
-- iOS runs another app's shortcut only through the Shortcuts app's x-callback-url, which opens only for an app on screen, so a run waits on its card until the user taps Run. Run without asking runs it straight away only while Conduit is open, and otherwise leaves the card; it never covers calendar or alarm changes, which keep Add without asking (2026-11-10, #NNNN).
-- A live call can list or dismiss a run but not approve it: a call from the lock screen, the Watch or CarPlay can't open the Shortcuts app (2026-11-10, #NNNN).
-- Cancelled in Shortcuts reports as dismissed; an error, or no answer from Shortcuts within 10 minutes, reports as failed with why. A run waits on the host for an hour, not a day like other changes, since it's asked for now (2026-11-10, notifier #696, #NNNN).
+- Hermes runs only shortcuts the user listed in Conduit, by name: the host refuses any other name, and the phone checks the name against its own list again before it runs one (2026-11-10, Eric's go on agent-run Shortcuts, notifier #696, #2165).
+- iOS runs another app's shortcut only through the Shortcuts app's x-callback-url, which opens only for an app on screen, so a run waits on its card until the user taps Run. Run without asking runs it straight away only while Conduit is open, and otherwise leaves the card; it never covers calendar or alarm changes, which keep Add without asking (2026-11-10, #2165).
+- A live call can list or dismiss a run but not approve it: a call from the lock screen, the Watch or CarPlay can't open the Shortcuts app (2026-11-10, #2165).
+- Cancelled in Shortcuts reports as dismissed; an error, or no answer from Shortcuts within 10 minutes, reports as failed with why. A run waits on the host for an hour, not a day like other changes, since it's asked for now (2026-11-10, notifier #696, #2165).
 
 **Open gaps**
-- Not tried on a device: the x-callback round trip, a shortcut that asks the user something mid-run, and the 10-minute wait (#NNNN).
+- Not tried on a device: the x-callback round trip, a shortcut that asks the user something mid-run, and the 10-minute wait (#2165).
 - iOS has no list of the user's shortcuts for an app to read, so names are typed and a typo only shows when a run fails.
 
-**Checked:** 2026-11-10, #NNNN (added with notifier #696).
+**Checked:** 2026-11-10, #2165 (added with notifier #696).
 
 ## Steps in a turn
 
