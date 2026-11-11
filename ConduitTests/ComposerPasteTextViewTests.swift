@@ -20,6 +20,37 @@ final class ComposerPasteTextViewTests: XCTestCase {
     // rather than a hung pasteboard read. Writes and clears are safe, so
     // isolation here uses clears only — never an unsolicited read.
 
+    /// A suggestion pick (a slash command, an @mention) replaces the draft
+    /// with the cursor after what it put in, wherever the cursor was, so
+    /// the next word follows the pick (issue 2048).
+    func testAPickedSuggestionPutsTheCursorAfterIt() {
+        var value = ""
+        let identity = UUID()
+        let editor = ComposerPasteTextView(
+            text: Binding(get: { value }, set: { value = $0 }),
+            isFocused: .constant(false),
+            measuredHeight: .constant(44),
+            enabled: true,
+            onPastedImage: { _ in },
+            onPastedImageError: { _ in },
+            editorIdentity: identity
+        )
+        let coordinator = ComposerPasteTextView.Coordinator(editor)
+        let textView = ImagePasteTextView()
+        coordinator.apply(text: "/skil", programmaticRevision: 1, editorIdentity: identity, to: textView)
+        textView.selectedRange = NSRange(location: 5, length: 0)
+
+        coordinator.apply(text: "/skill-scout ", programmaticRevision: 2, cursorAtEnd: true, editorIdentity: identity, to: textView)
+        XCTAssertEqual(textView.text, "/skill-scout ")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 13, length: 0))
+
+        // Moved back into the word first, the pick still ends after it.
+        coordinator.apply(text: "hi @ra", programmaticRevision: 3, editorIdentity: identity, to: textView)
+        textView.selectedRange = NSRange(location: 1, length: 0)
+        coordinator.apply(text: "hi @raiden ", programmaticRevision: 4, cursorAtEnd: true, editorIdentity: identity, to: textView)
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 11, length: 0))
+    }
+
     func testAPastedImageLinkThatAnsweredWithAPageIsRefused() {
         XCTAssertNil(PastedRemoteImage.image(from: Data("<html><body>Not found</body></html>".utf8)))
     }
