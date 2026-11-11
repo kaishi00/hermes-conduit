@@ -24,7 +24,7 @@ struct CronBotChatReport: Equatable {
     /// The report as the card draws it: a picture or file the run delivered
     /// on a line of its own becomes the `MEDIA:` tag the transcript draws
     /// as that picture or file. The plugin writes it as an `@image:` or
-    /// `@file:` reference (notifier 0.161.1, issue 581), which Hermes
+    /// `@file:` reference (notifier 0.161.2, issue 581), which Hermes
     /// Desktop shows on the note's user row; an older plugin left the
     /// run's own `MEDIA:` tag, which reads the same. A reference inside a
     /// sentence or in fenced code stays as written.
