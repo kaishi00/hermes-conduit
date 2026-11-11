@@ -559,11 +559,7 @@ struct ChatView: View {
                 repliesElsewhere: line.repliesElsewhere
             )
         case .awaitingAgents(let count):
-            ChatAwaitingAgentsLine(
-                count: count,
-                showAgents: { appState.showAgentsSheet = true },
-                refresh: { [weak appState = appState] in await appState?.refreshDelegateAgents() }
-            )
+            ChatAwaitingAgentsLine(count: count) { appState.showAgentsSheet = true }
         case .pendingSend(let pending):
             PendingComposerSendBubble(pending: pending)
         case .room:
@@ -665,6 +661,18 @@ struct ChatView: View {
                 while !Task.isCancelled {
                     await appState.openChatSyncTick()
                     try? await Task.sleep(for: .seconds(5))
+                }
+            }
+            // The chat waits for delegate agents it started (issue 2142):
+            // Hermes is asked which still run, at once and then now and
+            // then, so an end this chat never heard of doesn't leave it
+            // waiting. Only while the chat shows, as the check above.
+            .task(id: "\(appState.activeSessionId ?? "")|\(appState.backgroundAgentsAwaited > 0)|\(scenePhase == .active)|\(appState.showSidebar && !shell.hasChatBeside)|\(shell.isTabActive)") {
+                guard appState.backgroundAgentsAwaited > 0, scenePhase == .active,
+                      !appState.showSidebar || shell.hasChatBeside, shell.isTabActive else { return }
+                while !Task.isCancelled {
+                    await appState.refreshDelegateAgents()
+                    try? await Task.sleep(for: ChatAwaitingAgentsLine.refreshInterval)
                 }
             }
             .onChange(of: stopsAtReplyStart) { _, _ in

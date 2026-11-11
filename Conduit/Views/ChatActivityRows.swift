@@ -430,13 +430,12 @@ struct ChatWorkingLine: View {
 /// agents it started still work (issue 2142): how many it waits for, and
 /// that Hermes goes on when they finish. The turn isn't running, so the
 /// agent's mark rests and nothing counts up. A tap opens the Delegate
-/// agents sheet. While it shows it asks Hermes now and then which agents
-/// still run, so an end the chat never heard of doesn't leave it waiting.
+/// agents sheet. While the chat shows it, ChatView asks Hermes now and
+/// then which agents still run, so an end the chat never heard of doesn't
+/// leave it waiting.
 struct ChatAwaitingAgentsLine: View {
     let count: Int
     let showAgents: () -> Void
-    /// Reads the agents Hermes still has (AppState.refreshDelegateAgents).
-    let refresh: () async -> Void
     /// Between two reads of the roster.
     static let refreshInterval: Duration = .seconds(15)
     @Environment(\.chatRowState) private var rowState
@@ -472,13 +471,6 @@ struct ChatAwaitingAgentsLine: View {
         .buttonStyle(.plain)
         .accessibilityElement(children: .combine)
         .accessibilityHint("Shows the delegate agents")
-        .task {
-            while !Task.isCancelled {
-                try? await Task.sleep(for: Self.refreshInterval)
-                guard !Task.isCancelled else { return }
-                await refresh()
-            }
-        }
     }
 }
 

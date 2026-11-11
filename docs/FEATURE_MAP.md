@@ -4815,7 +4815,7 @@ state, and the notifier's README says how a workstream waits (done)
 
 **Code**
 - The cards: `Conduit/Models/Models.swift` (DelegateAgentActivity: `merged`, `reconciled`, `adopting`, `activeCount`, `init(rosterRow:)`), `Conduit/Services/StreamEventParser.swift` (the `subagent.*` frames), `Conduit/Services/AppState.swift` (the `.delegateAgent` event, `refreshDelegateAgents`, `adoptDelegateRoster` after a resume, `keepDelegateAgents`, `backgroundAgentsAwaited`), `Conduit/Services/HermesClient.swift` (`subagentRoster`, steer, interrupt, tail)
-- The waiting line: `Conduit/Views/TranscriptModel.swift` (LiveTurn's `agentsAwaited` and the `.awaitingAgents` row), `Conduit/Views/ChatActivityRows.swift` (ChatAwaitingAgentsLine, its 15 s roster read), `Conduit/Views/ChatView.swift` (liveTurn, transcriptRow)
+- The waiting line: `Conduit/Views/TranscriptModel.swift` (LiveTurn's `agentsAwaited` and the `.awaitingAgents` row), `Conduit/Views/ChatActivityRows.swift` (ChatAwaitingAgentsLine), `Conduit/Views/ChatView.swift` (liveTurn, transcriptRow, the 15 s roster read's task)
 - The count and the sheet: `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/ChatSupportSheets.swift` (DelegateAgentsSheet)
 - A workstream's wait: `notifier/work_tool.py` (`agent_started`, `agent_stopped`, `_settle_held`, `awaited_agents`, `agents` in `_app_row`, `waiting_for` in `_row`), `notifier/__init__.py` (`_subagent_start`, `_subagent_stop`), `Conduit/Services/BotWorkstreams.swift` (`awaitedAgentCount`, `doing`)
 - Tests: `ConduitTests/ChatScrollStateTests+TranscriptModel.swift` (testAnEndedTurnWaitsForItsBackgroundAgents), `ConduitTests/StreamEventParserTests.swift` (testARosterRowIsTheCardItsEventsWouldHaveMade, testARosterAddsOnlyTheAgentsTheChatHasNoCardFor), `ConduitTests/BotWorkstreamsTests.swift` (testAWorkstreamWaitingForItsAgentsSaysSo), `notifier/tests/test_work.py`
@@ -4823,7 +4823,7 @@ state, and the notifier's README says how a workstream waits (done)
 **Rulings**
 - A chat whose turn has ended while its agents work isn't running: the line says it waits, Send stays Send, nothing counts up and the Chats list shows no Running for it. The next turn's working line takes the line's place (issue 2142, #2201).
 - The line counts the open conversation's agents only, queued and running, nested ones included as the composer's count does. It has nothing to do with Coordinate Work: a chat with Work off shows it the same (issue 2142, #2201).
-- The cards don't depend on having seen an agent start: after each resume the chat reads Hermes' roster and takes a card for every agent it has none for; a card it has stays as its own events left it. While the line shows, the roster is read every 15 s and a running card Hermes no longer lists, quiet for 30 s, ends (#492's rule), so a missed end doesn't leave the chat waiting (#2201).
+- The cards don't depend on having seen an agent start: after each resume the chat reads Hermes' roster and takes a card for every agent it has none for; a card it has stays as its own events left it. While the chat shows and waits, the roster is read at once and then every 15 s (a hidden tab or a covered chat stops it, see Reads while a screen shows) and a running card Hermes no longer lists, quiet for 30 s, ends (#492's rule), so a missed end doesn't leave the chat waiting (#2201).
 - A workstream that delegates isn't finished until its agents' results are in: its row stays running and its Bot Chat hears nothing at the first turn's end. A turn that failed or was stopped isn't held, and if no turn starts within two minutes of the last agent ending it settles with what it had said (notifier #711).
 
 **Open gaps**
@@ -7468,7 +7468,7 @@ approvals in it) · the Link sheets' and Settings > Multiplayer's follows of
 a waiting Link, and the join card's of an invite · a bot's
 work (the Bot Chat's title line, the Work panel, a workstream's bar; see Bot
 workstreams) · the chat's waiting line's 15 s read of Hermes' delegate roster
-(only while the line is on screen; see Delegate agents a chat started) · not needed, already gated on what shows: the Chats list's live
+(while the chat shows and waits; see Delegate agents a chat started) · not needed, already gated on what shows: the Chats list's live
 registry poll (Running and Needs approval in the chats list), All profiles'
 catalog poll, Tasks and the Kanban board, Pulse's page, Bots Home's portraits
 and talking rooms, Needs you (its own 20 s read) · not needed: the Bot
@@ -7483,7 +7483,7 @@ Settings caption or doc gives the cadence)
 - Group room: `Conduit/Services/AppState.swift` (startRoomPolling, pollActiveRoomOnce, noteRoomView, roomSurfaceShows; a copy's pollActiveRoomCopyOnce, readRoomCopyApprovalsIfDue and roomCopyReadsApprovals), `Conduit/Views/GroupChatView.swift` (roomViewID)
 - Links and invites: `Conduit/Views/RoomLinkSheets.swift` (followNewLink, followLink), `Conduit/Views/PeopleSettingsViews.swift` (followWaitingLinks), `Conduit/Views/RoomInviteViews.swift` (RoomInviteSheet.follow)
 - Bot work: `Conduit/Views/BotWorkViews.swift` (BotWorkRefresh, its inChat: the Bot Overview's panel isn't in a chat)
-- The waiting line: `Conduit/Views/ChatActivityRows.swift` (ChatAwaitingAgentsLine's task: it runs while the row is drawn)
+- The waiting line: `Conduit/Views/ChatView.swift` (the task beside openChatSyncTick's, with the same gate), `Conduit/Views/ChatActivityRows.swift` (ChatAwaitingAgentsLine.refreshInterval)
 - Tests: `ConduitTests/GroupChatSessionSafetyTests.swift` (testRoomPollStopsWhileHiddenAndCatchesUpWhenShown)
 
 **Rulings**
@@ -7496,7 +7496,7 @@ Settings caption or doc gives the cadence)
 **Open gaps**
 - A screen covered by a sheet still reads: the sheet doesn't tell the tab it covers.
 
-**Checked:** 2026-11-11, #2201 (added: the waiting line's roster read, which runs only while the line is drawn); 2026-11-10, #2162 (a copy tick's approvals read moved into readRoomCopyApprovalsIfDue, with a test that a failed read retries next tick); 2026-11-10, #2159 (a room hosted elsewhere reads approvals each tick only while something moves, a quiet one every 15 s; the Link sheets' and Multiplayer's Link follows skip ticks in the background, as the join card's did); 2026-11-09, #2075 (a room under V2's Bot Chat cover stops polling; the legacy shell's doesn't); 2026-11-05, #1837 (added: hidden tabs stop the project page, open chat, room and bot work reads)
+**Checked:** 2026-11-11, #2201 (added: the waiting line's roster read, gated as the open chat's check is: a hidden tab or a covered chat stops it, and showing it again reads at once); 2026-11-10, #2162 (a copy tick's approvals read moved into readRoomCopyApprovalsIfDue, with a test that a failed read retries next tick); 2026-11-10, #2159 (a room hosted elsewhere reads approvals each tick only while something moves, a quiet one every 15 s; the Link sheets' and Multiplayer's Link follows skip ticks in the background, as the join card's did); 2026-11-09, #2075 (a room under V2's Bot Chat cover stops polling; the legacy shell's doesn't); 2026-11-05, #1837 (added: hidden tabs stop the project page, open chat, room and bot work reads)
 
 ## Swiping list rows on a Mac
 
