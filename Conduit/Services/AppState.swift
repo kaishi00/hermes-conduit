@@ -1987,11 +1987,10 @@ final class AppState: ObservableObject {
             || (botModePhase == .available && botRosterVerifiedForCurrentConnection)
     }
 
-    /// The bot list was read on this connection: what it leaves out is gone,
-    /// so the widget's Do it doesn't read it again for a saved bot it lacks.
-    var pulseDoItBotRosterRead: Bool {
-        botModePhase == .available && botRosterVerifiedForCurrentConnection
-    }
+    /// The bot list was read on this connection, or the gateway can't host
+    /// bots: what it leaves out is gone, so the widget's Do it doesn't read
+    /// it again for a saved bot it lacks.
+    var pulseDoItBotRosterRead: Bool { botEvidenceIsAvailable }
 
     /// Refuses a push whose target is bot-owned, with copy that matches how
     /// confident the match is: ownership folds case, so an exact spelling IS that

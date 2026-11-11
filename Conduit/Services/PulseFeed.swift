@@ -1511,11 +1511,12 @@ extension AppState {
     /// been read on this dashboard (a failed or unanswered read), so it
     /// can't say whether that bot is still there; nil when it's a choice,
     /// none is picked, or the list was read and the bot is gone or hidden
-    /// (then Do it starts a new chat).
+    /// (then Do it starts a new chat). A gateway that can't host bots has
+    /// answered too: no bot is there.
     var pulseDoItBotUnconfirmed: String? {
         guard notifierPlugin.reports(PulseClient.actedChatCapability),
               let name = activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }),
-              pulseDoItBot == nil, botModePhase != .available else { return nil }
+              pulseDoItBot == nil, botModePhase != .available, botModePhase != .gatewayUnsupported else { return nil }
         return name
     }
 

@@ -334,7 +334,8 @@ struct PulseSettingsPage: View {
         let bots = appState.pulseDoItBotChoices.map { (id: $0.name, title: $0.displayLabel) }
         var choices = [(id: "", title: AppLocalization.string("New chat"))] + bots
         if let saved = appState.pulseDoItBotSavedName, !bots.contains(where: { $0.id == saved }) {
-            choices.append((id: saved, title: saved))
+            let known = appState.botRoster.first { $0.name == saved }
+            choices.append((id: saved, title: known?.displayLabel ?? saved))
         }
         return choices
     }

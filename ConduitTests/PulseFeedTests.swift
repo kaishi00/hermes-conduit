@@ -467,6 +467,35 @@ final class PulseFeedTests: XCTestCase {
     /// Settings > Pulse's bot for cards from no chat, per dashboard, offered
     /// only by a plugin that reads the chat Do it names, and a long press's
     /// pick for one card over it.
+    /// A gateway that can't host bots has answered: a bot saved for Do it
+    /// isn't there, so Do it starts a new chat rather than waiting on a list
+    /// that never comes (#2211's review).
+    func testDoItOnAGatewayWithoutBotsStartsANewChat() async throws {
+        let suite = "PulseFeedTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let home = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "https://one.example")
+        var operations = ChatResumeLifecycleOperations()
+        operations.botRoster = { _ in throw RpcError(code: -32601, message: "unknown method") }
+        let state = AppState(defaults: defaults, loadSavedConnection: false,
+                             dashboardRegistry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home]),
+                             clearSessionPresentationCache: {}, chatResumeLifecycleOperations: operations)
+        state.client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
+                                    profile: "default")
+        state.isConnected = true
+        state.setNotifierPluginStateForTesting(.reported(version: "0.164.0", capabilities: [
+            PulseClient.feedCapability, PulseClient.actedCapability, PulseClient.actedChatCapability
+        ]))
+        state.setPulseDoItBot("atlas")
+        XCTAssertFalse(state.pulseDoItBotRosterRead)
+        await state.refreshBotRoster()
+        XCTAssertEqual(state.botModePhase, .gatewayUnsupported)
+        XCTAssertNil(state.pulseDoItBot)
+        XCTAssertNil(state.pulseDoItBotUnconfirmed, "the gateway's answer says the bot isn't there")
+        XCTAssertTrue(state.pulseDoItBotRosterRead, "so the widget doesn't ask again")
+        XCTAssertEqual(state.pulseDoItBotSavedName, "atlas", "Settings still shows it, to clear")
+    }
+
     func testDoItGoesToTheBotPickedForCardsFromNoChat() async throws {
         let suite = "PulseFeedTests.\(UUID().uuidString)"
         let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
