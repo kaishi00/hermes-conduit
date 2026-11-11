@@ -5433,7 +5433,8 @@ dashboard (sharing bound to it ends, and the Remove Dashboard dialog's text
 says so, in Saved Dashboards and on the sign-in screen) · the picked people
 read again from Contacts (Settings > Calendar & phone > People's rows and
 captions, the Contacts permission prompt, the notifier README's Contacts
-line and the privacy policy)
+line and the privacy policy) · Photos Hermes can search (the descriptions and an
+approved picture ride the same sealed upload)
 
 **Code**
 - Phone: `Conduit/Phone/PhoneSyncEngine.swift` (pass; approveFromCard, for Pulse), `Conduit/Phone/PhoneSyncModels.swift` (PhoneSyncPause)
@@ -5467,7 +5468,7 @@ line and the privacy policy)
 - A locate answered from the push extension drops its fix on any failed post, a 409 `schema` included, and shows no pause: it is a one-shot answer, and the app shares its own fix next time.
 - A voice read that meets a 409 `schema` tells the model only that the read failed, not that the plugin needs an update.
 
-**Checked:** 2026-11-08, #2031 (the host pass saved again after a native sign-in refresh, and the push extension's ATS block, issue 2028; see Maps lookups); 2026-11-06, #1890 (picked people read again from Contacts at each sync with the user's Contacts access, and a person who can't be read flagged on their row; with notifier #584 for the README and privacy policy; calendar and reminders already read EventKit live and needed no change, nor did the host's store, the conduit_contacts tool or Pulse's birthdays, which take the snapshot as before); 2026-11-05, #1834 (one item a store can't keep is left out, not the batch, notifier #568, notifier issue 555; the phone keeps back health events the host leaves out; the voice reads, Pulse, Settings' pause messages and the Shortcuts inbox needed no change); 2026-11-05, #1802 (sharing bound to a removed dashboard ends and unbinds, issue 1800; the Remove Dashboard dialog says so); 2026-11-02, #1675 (phone, health and location sharing pause with how to turn the plugin on for a profile that turned it off, and a delete that meets it isn't counted as done; the turn-off banner says so (issue 1671)); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1497 (asks between linked agents answer free on a date from the same busy blocks, notifier #465; the sync itself needed no change); 2026-10-29, #1494 (Use my data's free/busy reads the shared calendar's busy blocks, notifier #463; the sync itself needed no change); 2026-10-29, #1474 (alarms unsupported on a Vision Pro; Settings, the voice tools and Pulse read the same source and needed no change); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, at #1427, carrying #1426 from the `pulse` branch (the shop entries' deletion cites the walking-past decision, and names turning walking past off); at #1423, carrying #1414 from the `pulse` branch (walking past's shop entries and sealed reply ride the location batch, with notifier #435; the refusals and pauses apply as for the batch); 2026-10-27, at #1398, carrying #1392 from the `pulse` branch (Pulse's next steps read the events that ended on the host, from what the phone already shares; the sync needed no change); 2026-10-27, at #1383, carrying #1379 from the `pulse` branch (location's arrivals and departures reach Pulse with Where you are on, with notifier #420; the stores' refusals and pauses needed no change); 2026-10-27, at #1375, carrying #1356 from the `pulse` branch (a change approved on a Pulse card, with notifier #417); 2026-10-26, #1247 (location sharing's fix and send work keep Conduit running through BackgroundTaskHold); 2026-10-24, at main e9d9592; the Shortcuts inbox added as a sibling in #1214 (fork CI #87), carried in #1232.
+**Checked:** 2026-11-11, #2171 (Photos Hermes can search added as a sibling; the sync's refusals and pauses apply to its uploads); 2026-11-08, #2031 (the host pass saved again after a native sign-in refresh, and the push extension's ATS block, issue 2028; see Maps lookups); 2026-11-06, #1890 (picked people read again from Contacts at each sync with the user's Contacts access, and a person who can't be read flagged on their row; with notifier #584 for the README and privacy policy; calendar and reminders already read EventKit live and needed no change, nor did the host's store, the conduit_contacts tool or Pulse's birthdays, which take the snapshot as before); 2026-11-05, #1834 (one item a store can't keep is left out, not the batch, notifier #568, notifier issue 555; the phone keeps back health events the host leaves out; the voice reads, Pulse, Settings' pause messages and the Shortcuts inbox needed no change); 2026-11-05, #1802 (sharing bound to a removed dashboard ends and unbinds, issue 1800; the Remove Dashboard dialog says so); 2026-11-02, #1675 (phone, health and location sharing pause with how to turn the plugin on for a profile that turned it off, and a delete that meets it isn't counted as done; the turn-off banner says so (issue 1671)); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1497 (asks between linked agents answer free on a date from the same busy blocks, notifier #465; the sync itself needed no change); 2026-10-29, #1494 (Use my data's free/busy reads the shared calendar's busy blocks, notifier #463; the sync itself needed no change); 2026-10-29, #1474 (alarms unsupported on a Vision Pro; Settings, the voice tools and Pulse read the same source and needed no change); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, at #1427, carrying #1426 from the `pulse` branch (the shop entries' deletion cites the walking-past decision, and names turning walking past off); at #1423, carrying #1414 from the `pulse` branch (walking past's shop entries and sealed reply ride the location batch, with notifier #435; the refusals and pauses apply as for the batch); 2026-10-27, at #1398, carrying #1392 from the `pulse` branch (Pulse's next steps read the events that ended on the host, from what the phone already shares; the sync needed no change); 2026-10-27, at #1383, carrying #1379 from the `pulse` branch (location's arrivals and departures reach Pulse with Where you are on, with notifier #420; the stores' refusals and pauses needed no change); 2026-10-27, at #1375, carrying #1356 from the `pulse` branch (a change approved on a Pulse card, with notifier #417); 2026-10-26, #1247 (location sharing's fix and send work keep Conduit running through BackgroundTaskHold); 2026-10-24, at main e9d9592; the Shortcuts inbox added as a sibling in #1214 (fork CI #87), carried in #1232.
 
 ## Shortcuts inbox (Log to Hermes)
 
@@ -5645,6 +5646,49 @@ errors (a run's failures reach Hermes as the change's note)
 - iOS has no list of the user's shortcuts for an app to read, so names are typed and a typo only shows when a run fails.
 
 **Checked:** 2026-11-11, #2168 (tests for a late result after sharing turns off and on, and for the run-without-asking report); 2026-11-10, #2165 (added with notifier #696).
+
+## Photos Hermes can search
+
+Hermes searching the user's photo library by what the phone says about each
+photo (made on the phone), asking for one it wants on a card, and getting the
+picture once the user taps Send; and pictures from a chat saved to a Hermes
+album. Part of Calendar & phone sharing.
+
+**Siblings:** Settings > Calendar & phone > Photos (the switch, its caption,
+the described-so-far count and the limited-access note) · the Photos
+permission prompt and its usage text (NSPhotoLibraryUsageDescription) · the
+change card with the photo's thumbnail and its wording (PhoneChangeWording) ·
+the push title `phone.send_photo` (NotificationCopy) · the image viewer's
+share sheet (Save to Hermes album) · live voice's phone_changes tool (lists
+and dismisses a photo request, never approves one) · Classic voice's spoken
+yes (a photo card counts but no yes answers it) · Phone data sync with the
+host (the descriptions and the picture ride the same sealed upload) · the
+notifier's phone store (`photos`, `photo_files`, `send_photo`, the files kept
+a week), the conduit_photos tool and its description, the `phone-photos`
+capability, conduit_first's line, README, CHANGELOG and privacy policy
+
+**Code**
+- Library and captions: `Conduit/Phone/PhonePhotoLibrary.swift` (PhonePhotoSource, SystemPhotoLibrary: Vision labels and text, places, thumbnail, jpeg; PhonePhotoAlbum)
+- Models: `Conduit/Phone/PhoneSyncModels.swift` (PhoneSyncPreferences.photos; PhoneChange.Kind.sendPhoto, photoID; PhoneChangeFields.taken, place; PhoneSyncLimits.photosPerPass, photoFileBytes)
+- Engine: `Conduit/Phone/PhoneSyncEngine.swift` (the upload's `photos` section, stagePhoto, uploadPhotos, settlePhoto, refusalNote)
+- Settings, card: `Conduit/Views/PhoneSettingsViews.swift` (photosSection, PhoneChangeCard's photo, PhoneChangeWording), `Conduit/Services/AppState+PhoneSync.swift` (phonePhotosCapability, the Photos ask), `Conduit/Info.plist` and `Conduit/InfoPlist.xcstrings` (NSPhotoLibraryUsageDescription)
+- Save to Hermes album: `Conduit/Views/Components/ImageGalleryViewer.swift` (SaveToHermesAlbumActivity)
+- Push titles: `Shared/Notifications/NotificationCopy.swift` (phoneTitle)
+- Voice: `Conduit/Phone/PhoneVoiceTools.swift` (runChanges, describe, note), `Conduit/Services/AppState+SpokenApprovals.swift` (spokenApprovalsWaiting)
+- Notifier: `notifier/phone_store.py` (_parse_photos, _parse_photo_files, _save_photo_files, _sweep_photo_files, photos), `notifier/phone_tool.py` (PHOTOS_TOOL, _photos, _photo_send), `notifier/dashboard/api/capabilities.py`
+- Tests: `ConduitTests/PhoneSyncTests.swift` (testPhonePhotosShareDescriptionsAndSendOnlyFromTheCard), `notifier/tests/test_phone.py`
+
+**Rulings**
+- Hermes searches descriptions made on the phone (Vision's labels, the text in the photo, the place and time); the descriptions go to the user's own host, and a picture goes only when the user taps Send on its card, never without asking and never by voice: a live call can list or dismiss a request, and Classic's spoken yes doesn't answer it (2026-11-11, Eric chose "Ask on a card, then send"; notifier #700, #2171).
+- Captions aren't made by Apple's on-device model, which takes no images and needs iOS 26; Vision runs on every supported phone (2026-11-11, #2171).
+- The card's Send waits until it shows that request's photo, and each request gets a card of its own, so the photo seen is the photo sent. Turning Photos off forgets the descriptions (a pass already running doesn't put them back) and drops pictures approved but not yet sent (2026-11-11, #2171).
+- An approved picture waits on the phone and goes in an upload of its own, at most about 1.4 MB as a JPEG; the host applies the request only when the picture arrives, keeps it a week, and drops it when photo sharing is turned off or the phone wiped. A lost connection keeps it for the next pass; a refusal fails it with why (2026-11-11, notifier #700, #2171).
+- The newest 5000 photos are described, 60 more each pass, newest first; with limited access, only the photos the user chose (2026-11-11, #2171).
+
+**Open gaps**
+- Not tried on a device: Vision's captions on a real library, limited access, and saving to the Hermes album (#2171).
+
+**Checked:** 2026-11-11, #2171 (added with notifier #700).
 
 ## Steps in a turn
 

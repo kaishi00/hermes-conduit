@@ -15,7 +15,11 @@ extension AppState {
         var waiting = SpokenApprovals.Waiting()
         waiting.phoneChanges = phoneSync.prompts.map(\.id)
         waiting.cancellingAlarms = Set(phoneSync.prompts.filter { $0.change.kind == .cancelAlarm }.map(\.id))
-        waiting.staleChanges = phoneChangesWaitingAtLastWords ?? Set(waiting.phoneChanges)
+        // A photo goes only from its card, where the user sees it: like a
+        // stale one, it counts (a yes with it waiting answers nothing else)
+        // but no yes or no answers it.
+        let photos = phoneSync.prompts.filter { $0.change.kind == .sendPhoto }.map(\.id)
+        waiting.staleChanges = (phoneChangesWaitingAtLastWords ?? Set(waiting.phoneChanges)).union(photos)
         waiting.presented = presentedScreens.prompts.filter { !$0.isExpired() }
         if let sessionId = activeSessionId, !sessionId.isEmpty {
             let open = chatOwnSessionIDs(for: sessionId)

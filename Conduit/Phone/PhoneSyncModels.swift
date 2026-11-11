@@ -104,6 +104,9 @@ struct PhoneSyncPreferences: Codable, Equatable {
     /// Hermes may ask to add a contact, or change or delete a picked
     /// person's; always on a card. Read `contactsEdit`.
     var contactsEditChoice: Bool?
+    /// Hermes may search what the phone says about each photo (made on
+    /// the phone) and ask for one, always on a card. Read `photos`.
+    var photosChoice: Bool?
 
     /// Hermes may set alarms and timers on this phone (iOS 26's AlarmKit).
     /// They ring through Silent and Focus, so it's its own choice.
@@ -128,6 +131,13 @@ struct PhoneSyncPreferences: Codable, Equatable {
     var contactsEdit: Bool {
         get { contacts && (contactsEditChoice ?? false) }
         set { contactsEditChoice = newValue ? true : nil }
+    }
+
+    /// Hermes may search the photo library's descriptions and ask for a
+    /// photo, which goes only once the user says yes on its card.
+    var photos: Bool {
+        get { photosChoice ?? false }
+        set { photosChoice = newValue ? true : nil }
     }
 
     /// Hermes may ask to run the Shortcuts in `shortcutList`.
@@ -160,15 +170,20 @@ struct PhoneSyncPreferences: Codable, Equatable {
         if kind.isAlarm { return alarms }
         if kind == .runShortcut { return shortcuts }
         if kind.isContact { return contactsEdit }
+        if kind == .sendPhoto { return photos }
         if kind.isEvent { return kind.isAddition ? calendar.adds : calendar == .full }
         return reminders && !remindersReadOnly
     }
 
     /// Something Hermes may ask to add or change.
-    var takesChanges: Bool { calendar.adds || (reminders && !remindersReadOnly) || alarms || shortcuts || contactsEdit }
+    var takesChanges: Bool {
+        calendar.adds || (reminders && !remindersReadOnly) || alarms || shortcuts || contactsEdit || photos
+    }
 
     var isOn: Bool { destination != nil && sharesAnything }
-    var sharesAnything: Bool { calendar != .off || reminders || status || focus || alarms || contacts || shortcuts }
+    var sharesAnything: Bool {
+        calendar != .off || reminders || status || focus || alarms || contacts || shortcuts || photos
+    }
 
     /// Whether a live call on `mode` may use the calendar and phone.
     func letsVoiceUse(_ mode: LiveVoiceModeName) -> Bool {
@@ -216,6 +231,7 @@ struct PhoneSyncPreferences: Codable, Equatable {
             "shortcuts": shortcuts,
             "shortcuts_auto": shortcutsRunWithoutAsking,
             "contacts_edit": contactsEdit,
+            "photos": photos,
             "past_days": PhoneCalendarWindow.pastDays,
             "future_days": window.rawValue,
         ]
@@ -396,6 +412,7 @@ struct PhoneChange: Identifiable, Equatable {
         case addContact = "add_contact"
         case updateContact = "update_contact"
         case deleteContact = "delete_contact"
+        case sendPhoto = "send_photo"
 
         /// A new calendar event or reminder.
         var isAddition: Bool { self == .addEvent || self == .addReminder }
@@ -417,6 +434,8 @@ struct PhoneChange: Identifiable, Equatable {
     var alarmID: String?
     /// The picked person a contact change is about (PhonePerson.id).
     var contactID: String?
+    /// The photo Hermes asks for (PhonePhotoEntry.id).
+    var photoID: String?
     /// "this" or "future" for a recurring event.
     var span: String?
     var fields: PhoneChangeFields
@@ -435,6 +454,7 @@ struct PhoneChange: Identifiable, Equatable {
         reminderID = target?["reminder_id"] as? String
         alarmID = target?["alarm_id"] as? String
         contactID = target?["contact_id"] as? String
+        photoID = target?["photo_id"] as? String
         let fieldsJSON = json["fields"] as? [String: Any] ?? [:]
         span = (fieldsJSON["span"] as? String) ?? (target?["span"] as? String)
         fields = PhoneChangeFields(json: fieldsJSON)
@@ -462,6 +482,8 @@ struct PhoneChange: Identifiable, Equatable {
             guard contactID != nil, fields.contact != nil else { return nil }
         case .deleteContact:
             guard contactID != nil else { return nil }
+        case .sendPhoto:
+            guard photoID != nil else { return nil }
         }
     }
 }
@@ -502,6 +524,9 @@ struct PhoneChangeFields: Equatable {
     var contact: PhoneContactEdit?
     /// The person's name as shared, for the card.
     var personName: String?
+    /// When and where a photo Hermes asks for was taken, as the host has it.
+    var taken: Date?
+    var place: String?
 
     static let weekdays = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
@@ -534,6 +559,8 @@ struct PhoneChangeFields: Equatable {
         input = (json["input"] as? String).map { String($0.prefix(PhoneShortcut.inputChars)) }.flatMap { $0.isEmpty ? nil : $0 }
         contact = PhoneContactEdit(json: json)
         personName = (json["name"] as? String).map { String($0.prefix(120)) }.flatMap { $0.isEmpty ? nil : $0 }
+        taken = (json["taken"] as? String).flatMap(PhoneDates.parse)
+        place = (json["place"] as? String).map { String($0.prefix(100)) }.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// `HH:MM` on a 24-hour clock.
@@ -643,4 +670,13 @@ enum PhoneSyncLimits {
     /// and the notifier refuses bodies over 4 MiB
     /// (dashboard/api/phone_data.py PHONE_MAX_INGEST_BODY_BYTES).
     static let batchBytes = 3_000_000
+    /// The newest photos described for Hermes (phone_store MAX_PHOTOS).
+    static let maxPhotos = 5_000
+    /// Photos described in one pass, so a pass stays short; the rest
+    /// follow in later passes.
+    static let photosPerPass = 60
+    /// A picture the user sent Hermes, as JPEG: its base64 inside the sealed
+    /// body's base64 stays under the 4 MiB ingest cap (phone_store
+    /// MAX_PHOTO_FILE_BYTES is 1,500,000).
+    static let photoFileBytes = 1_400_000
 }
