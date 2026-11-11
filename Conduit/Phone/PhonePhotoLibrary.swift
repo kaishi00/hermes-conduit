@@ -132,6 +132,10 @@ final class SystemPhotoLibrary: PhonePhotoSource {
     private var index: PhonePhotoIndex?
     /// Counts forgets: a pass started before one never puts its copy back.
     private var generation = 0
+    /// Photos that couldn't be read lately, and when: skipped for a while so
+    /// they never hold up older photos behind them.
+    private var unreadable: [String: Date] = [:]
+    static let unreadableRetry: TimeInterval = 6 * 3600
     /// Writes and the forget's delete, in the order they were asked for, so
     /// a late write can't bring the descriptions back.
     private let disk = DispatchQueue(label: "conduit.phone-photos.index", qos: .utility)
@@ -161,6 +165,7 @@ final class SystemPhotoLibrary: PhonePhotoSource {
 
     func forget() {
         generation += 1
+        unreadable = [:]
         index = PhonePhotoIndex()
         let url = self.url
         disk.async { try? FileManager.default.removeItem(at: url) }
@@ -178,6 +183,8 @@ final class SystemPhotoLibrary: PhonePhotoSource {
             if var entry = known[asset.localID] {
                 entry.favorite = asset.favorite
                 kept.append(entry)
+            } else if let failed = unreadable[asset.localID], Date().timeIntervalSince(failed) < Self.unreadableRetry {
+                continue
             } else {
                 waiting.append(asset)
             }
@@ -188,7 +195,11 @@ final class SystemPhotoLibrary: PhonePhotoSource {
             // A photo that couldn't be read (still in iCloud, Vision failed)
             // stays waiting for a later pass.
             guard let seen = await Task.detached(priority: .utility, operation: { Self.look(at: asset.localID) }).value
-            else { continue }
+            else {
+                unreadable[asset.localID] = Date()
+                continue
+            }
+            unreadable[asset.localID] = nil
             kept.append(PhonePhotoEntry(
                 id: PhonePhotoEntry.id(forLocal: asset.localID), localID: asset.localID, at: asset.at, zone: nil,
                 screenshot: asset.screenshot, favorite: asset.favorite, labels: seen.labels, text: seen.text,

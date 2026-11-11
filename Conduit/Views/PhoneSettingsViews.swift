@@ -1029,6 +1029,8 @@ struct PhoneChangeCard: View {
     /// request never shows the last one's photo.
     @State private var pictureFor: String?
     @State private var pictureMissing = false
+    /// Bumped by Try again, to read the photo once more.
+    @State private var pictureAttempt = 0
 
     /// A photo request is sent only once the user sees that photo.
     private var waitsForPicture: Bool {
@@ -1071,16 +1073,23 @@ struct PhoneChangeCard: View {
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
                             .accessibilityLabel(Text(AppLocalization.string("The photo Hermes asks for")))
                     } else if pictureMissing {
-                        Text(AppLocalization.string("This photo isn't on your iPhone any more."))
-                            .scaledFont(.caption)
-                            .foregroundStyle(.secondary)
+                        VStack(spacing: 6) {
+                            Text(AppLocalization.string("This photo isn't on your iPhone any more."))
+                                .scaledFont(.caption)
+                                .foregroundStyle(.secondary)
+                            // A read that failed for now (iCloud, no connection) may work later.
+                            Button(AppLocalization.string("Try again")) { pictureAttempt += 1 }
+                                .scaledFont(.caption)
+                                .buttonStyle(.borderless)
+                                .accessibilityIdentifier("phone.change.photo-retry")
+                        }
                     } else {
                         ProgressView()
                             .frame(maxWidth: .infinity, minHeight: 80)
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: 260)
-                .task(id: prompt.id) {
+                .task(id: "\(prompt.id)#\(pictureAttempt)") {
                     let asked = prompt.id
                     picture = nil
                     pictureFor = nil
