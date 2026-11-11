@@ -2135,7 +2135,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(PulseNotifications.widgetKind, ConduitWidgetKind.pulse)
     }
 
-    /// A Do it from no chat starts a chat named for the card, not "Shortcut: …".
+    /// The widget's Do it sends once per card and dashboard at a time, and never on a row already sent.
     func testPulseWidgetDoItRunsOncePerCardAndDashboard() throws {
         let state = try appState()
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
@@ -2158,6 +2158,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertTrue(state.beginPulseWidgetDoIt(card: 5, dashboardID: dashboard))
     }
 
+    /// A Do it from no chat starts a chat named for the card, not "Shortcut: …".
     func testShortcutSendNamesANewChatAsAsked() async throws {
         var created: String?
         let backend = ShortcutSendBackend(

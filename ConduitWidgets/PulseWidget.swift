@@ -149,7 +149,7 @@ private struct PulseWidgetView: View {
                     }
                 }
             } else {
-                Text(verbatim: string("Open Conduit to refresh"))
+                Text(verbatim: string(PulseWidgetNote.openConduit))
                     .font(.footnote)
                     .foregroundStyle(.secondary)
             }
