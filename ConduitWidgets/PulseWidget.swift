@@ -33,7 +33,10 @@ struct PulseWidgetProvider: TimelineProvider {
     }
 
     func getSnapshot(in context: Context, completion: @escaping (PulseWidgetEntry) -> Void) {
-        completion(PulseWidgetEntry(date: Date(), snapshot: PulseWidgetStore.production?.read()))
+        // Only while Conduit keeps the widget a pass for that dashboard.
+        let access = PulseWidgetKeychain.load()
+        let kept = PulseWidgetStore.production?.read()
+        completion(PulseWidgetEntry(date: Date(), snapshot: kept?.dashboardID == access?.dashboardID ? kept : nil))
     }
 
     func getTimeline(in context: Context, completion: @escaping (Timeline<PulseWidgetEntry>) -> Void) {
@@ -49,7 +52,8 @@ struct PulseWidgetProvider: TimelineProvider {
     /// nothing when Conduit hasn't given the widget a pass (no Pulse on the
     /// dashboard in use, or Conduit not opened since the widget was added).
     static func read(store: PulseWidgetStore? = PulseWidgetStore.production,
-                     access: PulseWidgetAccess? = PulseWidgetKeychain.load()) async -> PulseWidgetSnapshot? {
+                     access: PulseWidgetAccess? = PulseWidgetKeychain.load(),
+                     currentAccess: () -> PulseWidgetAccess? = PulseWidgetKeychain.load) async -> PulseWidgetSnapshot? {
         guard let access else { return nil }
         // The last good read for this dashboard, read again after each
         // request: Do it, Done or Not now may have written meanwhile.
@@ -73,6 +77,9 @@ struct PulseWidgetProvider: TimelineProvider {
                let next = (state["next_report_at"] as? NSNumber)?.doubleValue {
                 snapshot = snapshot.with(nextLookAt: .some(Date(timeIntervalSince1970: next)))
             }
+            // Conduit took the pass away or changed dashboards meanwhile:
+            // this answer is no longer the widget's to show.
+            guard currentAccess()?.dashboardID == access.dashboardID else { return nil }
             snapshot = snapshot.merging(previous)
             try? store?.write(snapshot)
             return snapshot

@@ -38,12 +38,13 @@ extension AppState {
         WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.pulse)
     }
 
-    /// Whether a Pulse widget is on the Home Screen.
-    private func hasPulseWidget() async -> Bool {
+    /// Whether a Pulse widget is on the Home Screen; nil when WidgetKit
+    /// couldn't say.
+    private func hasPulseWidget() async -> Bool? {
         await withCheckedContinuation { continuation in
             WidgetCenter.shared.getCurrentConfigurations { result in
-                let kinds = (try? result.get())?.map(\.kind) ?? []
-                continuation.resume(returning: kinds.contains(ConduitWidgetKind.pulse))
+                let kinds = (try? result.get())?.map(\.kind)
+                continuation.resume(returning: kinds?.contains(ConduitWidgetKind.pulse))
             }
         }
     }
@@ -62,7 +63,10 @@ extension AppState {
             removePulseWidget(dashboardID: kept.dashboardID)
         }
         guard let bridge = dashboardTicketBridge, notifierPlugin.state != .unknown else { return }
-        guard showsPulseScreen, await hasPulseWidget() else {
+        let installed = showsPulseScreen ? await hasPulseWidget() : false
+        // WidgetKit couldn't list the widgets: what the widget has stays.
+        guard let installed else { return }
+        guard installed else {
             removePulseWidget()
             return
         }
@@ -86,13 +90,15 @@ extension AppState {
     func removePulseWidget(dashboardID: UUID? = nil) {
         let access = PulseWidgetKeychain.load()
         let kept = pulseWidgetStore?.read()
-        if let dashboardID, access?.dashboardID != dashboardID, kept?.dashboardID != dashboardID { return }
+        // Each goes only when it's the named dashboard's (or none was named).
         var changed = false
-        if access != nil {
+        if let access, dashboardID == nil || access.dashboardID == dashboardID {
             PulseWidgetKeychain.clear()
             changed = true
         }
-        if pulseWidgetStore?.remove() == true { changed = true }
+        if let kept, dashboardID == nil || kept.dashboardID == dashboardID, pulseWidgetStore?.remove() == true {
+            changed = true
+        }
         if changed { reloadPulseWidget() }
     }
 
