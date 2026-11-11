@@ -5263,6 +5263,46 @@ enum SettingsNames {
     static let json = "JSON"
 }
 
+/// A row in a Settings card that folds the rows after it: its name, an
+/// optional grey line under it (what's on in there), and a chevron that
+/// turns down while open. Not a DisclosureGroup: outside a List it indents
+/// its rows without narrowing them, so their switches ran off the card (as
+/// Settings > Phone found).
+struct SettingsFoldRow: View {
+    let title: String
+    var detail: String?
+    @Binding var isOn: Bool
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        Button {
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { isOn.toggle() }
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: title)
+                        .scaledFont(.subheadline)
+                        .foregroundStyle(.primary)
+                    if let detail {
+                        Text(verbatim: detail)
+                            .scaledFont(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                }
+                Spacer(minLength: 8)
+                Image(systemName: "chevron.right")
+                    .scaledFont(.footnote.weight(.semibold))
+                    .foregroundStyle(.secondary)
+                    .rotationEffect(.degrees(isOn ? 90 : 0))
+                    .accessibilityHidden(true)
+            }
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityValue(Text(isOn ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")))
+    }
+}
+
 /// The chevron at the end of a Settings row that opens a page.
 struct SettingsChevron: View {
     var body: some View {

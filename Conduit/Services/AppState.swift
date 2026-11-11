@@ -25893,6 +25893,23 @@ final class AppState: ObservableObject {
         keptRead(BotProfileDetails.self, KeptRoute.botDetails, profile: profile)?.capabilities
     }
 
+    /// The profile's installed skills from the dashboard (`/api/skills`),
+    /// for the bot editor's Skills page: `profiles.describe` names them
+    /// only, and this adds each one's category and description. Kept in
+    /// the profile's answers as Capabilities' own read is, so the page
+    /// opens on them next time. Nil when the read fails.
+    func loadBotSkillDetails(profile: String) async -> [CapabilitySkill]? {
+        guard let runtime = currentDashboardRuntimeOwner(),
+              let answer = try? await readKeepingAnswer(KeptRoute.skills, profile: profile, owner: runtime) else { return nil }
+        return capabilitySkills(from: answer)
+    }
+
+    /// What `loadBotSkillDetails` (or Capabilities) kept for the profile on
+    /// this dashboard.
+    func keptBotSkillDetails(profile: String) -> [CapabilitySkill]? {
+        keptAnswer(KeptRoute.skills, profile: profile).map(capabilitySkills(from:))
+    }
+
     /// The MCP catalog and the bot's servers' sign-in state, for Edit Bot's
     /// MCP page, kept for it to open on (#1533). Nil when Hermes doesn't
     /// offer them (an older gateway), so the page keeps its plain on/off

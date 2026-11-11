@@ -739,7 +739,6 @@ struct RoomSetupSection: View {
     /// Whether the Custom-only tools, and what Set up does, are unfolded.
     @State private var showsCustomTools = false
     @State private var showsSetupSteps = false
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     /// A Set up is on its way, for this profile or the one shown before:
     /// one at a time, as the plugin does them.
     @State private var working = false
@@ -980,35 +979,8 @@ struct RoomSetupSection: View {
         }
     }
 
-    /// A row that folds what follows it. Not a DisclosureGroup: outside a
-    /// List it indents its rows without narrowing them, so their switches
-    /// ran off the card (as Settings > Phone found).
     private func foldButton(_ title: String, detail: String? = nil, isOn: Binding<Bool>) -> some View {
-        Button {
-            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { isOn.wrappedValue.toggle() }
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(verbatim: title)
-                        .scaledFont(.subheadline)
-                        .foregroundStyle(.primary)
-                    if let detail {
-                        Text(verbatim: detail)
-                            .scaledFont(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.right")
-                    .scaledFont(.footnote.weight(.semibold))
-                    .foregroundStyle(.secondary)
-                    .rotationEffect(.degrees(isOn.wrappedValue ? 90 : 0))
-                    .accessibilityHidden(true)
-            }
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-        .accessibilityValue(Text(isOn.wrappedValue ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")))
+        SettingsFoldRow(title: title, detail: detail, isOn: isOn)
     }
 
     private func toolToggle(_ choice: RoomSetupState.Choice) -> some View {
