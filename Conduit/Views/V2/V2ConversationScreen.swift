@@ -109,6 +109,8 @@ struct V2ConversationScreen: View {
     @State private var chatTitlePendingRename: SessionSummary?
     @State private var chatTitlePendingDeletion: SessionSummary?
     @State private var confirmsRoomDisband = false
+    /// Delete, from the menu of an ended room someone else hosts.
+    @State private var confirmsRoomCopyDelete = false
     @State private var showsRoomInfo = false
     @State private var choosesRoomPicture: GroupRoomPictureRequest?
     @State private var showsRoomSettings = false
@@ -323,7 +325,8 @@ struct V2ConversationScreen: View {
         .onChange(of: screenTarget != nil || artifactSessionIDs != nil || chatTitlePendingRename != nil
                   || chatTitlePendingDeletion != nil || editedBot != nil
                   || (workPanelOpen && !fitsSidePanel && workProfile != nil)
-                  || showsRoomSettings || showsRoomInfo || confirmsRoomDisband || choosesRoomPicture != nil) { _, covered in
+                  || showsRoomSettings || showsRoomInfo || confirmsRoomDisband || confirmsRoomCopyDelete
+                  || choosesRoomPicture != nil) { _, covered in
             appState.chatCoveredBySheet = covered
             // What came in under the sheet is read once it closes (#1579).
             if !covered { appState.clearShownChatNotifications() }
@@ -384,6 +387,7 @@ struct V2ConversationScreen: View {
             chatTitlePendingRename: $chatTitlePendingRename,
             chatTitlePendingDeletion: $chatTitlePendingDeletion,
             confirmsRoomDisband: $confirmsRoomDisband,
+            confirmsRoomCopyDelete: $confirmsRoomCopyDelete,
             choosesRoomPicture: $choosesRoomPicture,
             showsRoomSettings: $showsRoomSettings,
             showsRoomInfo: $showsRoomInfo
@@ -674,6 +678,7 @@ struct V2ConversationScreen: View {
                     onDelete: { chatTitlePendingDeletion = $0 },
                     onShowRoomInfo: { showsRoomInfo = true },
                     onDisbandRoom: { confirmsRoomDisband = true },
+                    onDeleteRoomCopy: { confirmsRoomCopyDelete = true },
                     onChooseRoomPicture: { choosesRoomPicture = $0 },
                     onRoomSettings: { showsRoomSettings = true },
                     onArtifacts: { openArtifacts(tab: .made) },
@@ -712,12 +717,14 @@ struct V2ConversationScreen: View {
 }
 
 /// The conversation's rename sheet, delete alert, room picture picker, room
-/// settings and info, and disband confirmation.
+/// settings and info, and its disband or (hosted elsewhere) delete
+/// confirmation.
 private struct ConversationDialogs: ViewModifier {
     @EnvironmentObject private var appState: AppState
     @Binding var chatTitlePendingRename: SessionSummary?
     @Binding var chatTitlePendingDeletion: SessionSummary?
     @Binding var confirmsRoomDisband: Bool
+    @Binding var confirmsRoomCopyDelete: Bool
     @Binding var choosesRoomPicture: GroupRoomPictureRequest?
     @Binding var showsRoomSettings: Bool
     @Binding var showsRoomInfo: Bool
@@ -765,6 +772,7 @@ private struct ConversationDialogs: ViewModifier {
             } message: {
                 Text(GroupRoomDisband.warning(members: appState.activeRoomSurface?.room.members ?? []))
             }
+            .modifier(RoomCopyDelete(copy: appState.activeRoomSurface?.copy, confirming: $confirmsRoomCopyDelete))
     }
 }
 
@@ -855,6 +863,7 @@ private struct V2ConversationMenu: View {
     let onDelete: (SessionSummary) -> Void
     let onShowRoomInfo: () -> Void
     let onDisbandRoom: () -> Void
+    let onDeleteRoomCopy: () -> Void
     let onChooseRoomPicture: (GroupRoomPictureRequest) -> Void
     let onRoomSettings: () -> Void
     let onArtifacts: () -> Void
@@ -904,7 +913,8 @@ private struct V2ConversationMenu: View {
             if appState.activeRoomSurface != nil {
                 GroupRoomActionItems(
                     onShowInfo: onShowRoomInfo,
-                    onDisband: onDisbandRoom, onChoosePicture: onChooseRoomPicture, onOpenSettings: onRoomSettings
+                    onDisband: onDisbandRoom, onChoosePicture: onChooseRoomPicture, onOpenSettings: onRoomSettings,
+                    onDeleteCopy: onDeleteRoomCopy
                 )
             } else {
                 Button {
