@@ -71,7 +71,6 @@ struct V2TasksView: View, Equatable {
             } action: { width in
                 if abs(width - pageWidth) > 0.5 { pageWidth = width }
             }
-            .v2ProfileSwitchContent()
             .environmentObject(updates)
         }
         .onChange(of: shell.isTabActive, initial: true) { _, shown in
@@ -119,7 +118,19 @@ struct V2TasksView: View, Equatable {
         // Until the width is known the other page hides instead.
         let slides = !reduceMotion && pageWidth > 0
         return content()
-            .transformEnvironment(\.v2Shell) { $0.isTabActive = $0.isTabActive && isShown }
+            .v2ProfileSwitchContent()
+            .transformEnvironment(\.v2Shell) {
+                $0.isTabActive = $0.isTabActive && isShown
+                // The page out of sight shows no profile switch, as a
+                // hidden tab doesn't: shifted along with the one in view,
+                // the Scheduled list laid its rows out again on every
+                // frame of the slide.
+                if !isShown {
+                    $0.contentFaded = false
+                    $0.contentShift = 0
+                    $0.isPickingProfile = false
+                }
+            }
             .offset(x: slides ? side * pageWidth : 0)
             .opacity(isShown || slides ? 1 : 0)
             .allowsHitTesting(isShown)
@@ -148,12 +159,21 @@ struct V2ScheduledList: View {
     @State private var showingBlueprints = false
     /// A job a blueprint just made, opened once the gallery has closed.
     @State private var createdJob: CronJob?
+    /// The dashboard, profile and connection the list last read for.
+    @State private var readScope: String?
+    /// A page's slide into view, until it has settled and the list has
+    /// laid out (`ConduitMotion.easeSpring`).
+    private static let pageSlideWait: Duration = .seconds(1)
     /// Pinned jobs, per profile: "profile\tjobID" lines. Kept on the phone;
     /// Hermes has no pin for a job.
     @AppStorage("conduit.v2.pinnedCronJobs") private var pinnedRaw = ""
 
     private var jobs: [CronJob] {
         CronJobFilter.visibleJobs(appState.cronJobs, filter: .all, query: "")
+    }
+
+    private var readScopeNow: String {
+        "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.activeProfile)|\(appState.isConnected)"
     }
 
     private func pinKey(_ job: CronJob) -> String {
@@ -253,8 +273,16 @@ struct V2ScheduledList: View {
         }
         // A hidden Tasks tab stays mounted; it loads when shown, like Chats.
         // The list is the dashboard's: another one reads its own, as the drawer's does.
-        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.activeProfile)|\(appState.isConnected)|\(shell.isTabActive)") {
+        .task(id: "\(readScopeNow)|\(shell.isTabActive)") {
             guard shell.isTabActive, appState.isConnected else { return }
+            // Shown again with what it already read: the read waits for the
+            // page to slide in. Its publishes each redraw the page, and fell
+            // in the slide's first frames.
+            let scope = readScopeNow
+            if scope == readScope {
+                do { try await Task.sleep(for: Self.pageSlideWait) } catch { return }
+            }
+            readScope = scope
             await appState.refreshScheduledContent()
         }
         // The capability report can land after this tab's first read, and the
