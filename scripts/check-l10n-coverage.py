@@ -1198,6 +1198,8 @@ WATCH_SHARED_SOURCES = (
     "Shared/WatchVoice",
     "Shared/Approvals",
     "Conduit/Voice/GPTLive/GPTLiveProtocol.swift",
+    "Conduit/Views/Components/GatewayMediaTags.swift",
+    "Conduit/Views/Components/TranscriptDirectives.swift",
 )
 
 

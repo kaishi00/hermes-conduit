@@ -340,7 +340,9 @@ def remove(keys, catalog_path: str) -> None:
 
 def move(keys, source_path: str, destination_path: str) -> None:
     """Move keys, translations and all, between the app's tables (the
-    Watch's and the other catalogs are separate apps' strings)."""
+    Watch's and the other catalogs are separate apps' strings). The
+    destination is written first; if the source's write then fails, the
+    keys are in both, and `remove KEY --catalog SOURCE` finishes the move."""
     tables = [CATALOGS[0], *table_catalogs()]
     for catalog_path in (source_path, destination_path):
         if catalog_path not in tables:
