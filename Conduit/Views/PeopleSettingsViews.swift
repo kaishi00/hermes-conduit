@@ -766,6 +766,9 @@ struct RoomSetupSection: View {
     /// now would stop.
     @State private var busyRestart: String?
     @State private var confirmsChange = false
+    /// The rooms the change stops the agent answering in, by name, when
+    /// they're known (RoomSetupRooms).
+    @State private var roomsHeld: [String]?
     /// Set when the gateway restarts: the section reads the API server
     /// again until it runs or says why not.
     @State private var restartWait: UUID?
@@ -834,7 +837,7 @@ struct RoomSetupSection: View {
         } message: {
             // Each room pins its members' tools, approvals and turn limit
             // when it starts (designs/cross-owner-agents, decision 13).
-            Text(AppLocalization.string("\(profileName) then stops answering in rooms already started with other people's agents, which hold it to the tools it had when they started. New rooms use these.", table: .rooms))
+            Text(verbatim: RoomSetupRooms.message(profileName: profileName, rooms: roomsHeld))
         }
     }
 
@@ -932,7 +935,21 @@ struct RoomSetupSection: View {
                         .controlSize(.small)
                 }
                 Button(editing ? AppLocalization.string("Save") : AppLocalization.string("Set up")) {
-                    if state.changesSavedCeiling(picking: picked, servers: pickedServers) { confirmsChange = true } else { setUp() }
+                    if state.changesSavedCeiling(picking: picked, servers: pickedServers) {
+                        // The rooms as they are now: one started on another
+                        // device since Group Chats was last read counts too.
+                        working = true
+                        Task {
+                            await appState.refreshGroupRooms()
+                            if appState.canInviteLinkedPeople { await appState.refreshLinkedRoomCopies() }
+                            working = false
+                            roomsHeld = appState.roomsHoldingTools(of: profile)
+                            // No room going on holds it: nothing stops, so nothing to ask.
+                            if roomsHeld == [] { setUp() } else { confirmsChange = true }
+                        }
+                    } else {
+                        setUp()
+                    }
                 }
                 .buttonStyle(.settingsPrimary)
                 .disabled(working || (editing && picked == Set(state.ceiling)

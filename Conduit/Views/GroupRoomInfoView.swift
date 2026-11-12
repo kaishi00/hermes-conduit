@@ -19,6 +19,10 @@ struct GroupRoomInfoSheet: View {
     @State private var takingOut: GroupMember?
     @State private var confirmingLeave = false
     @State private var working = false
+    /// What each of your agents may do here, by profile, read when Group
+    /// Info opens and again when you come back from its choices: shown on
+    /// its row, so nobody has to guess why a bot won't look something up.
+    @State private var agentTools: [String: RoomChoices] = [:]
     /// A refusal's title and the plugin's words.
     @State private var refusal: (title: String, message: String)?
     /// Whether the sheet is still up, for a room chat that fails after Done.
@@ -107,6 +111,9 @@ struct GroupRoomInfoSheet: View {
         let members = GroupRoomTurns.members(appState.activeRoomMembers, namedBy: appState.botRoster)
         // Choices matter only beside other people's agents.
         let offersChoices = appState.canSetRoomChoices && members.contains(where: \.isPeer)
+        let choiceProfiles = offersChoices
+            ? Array(Set(members.filter { !$0.isPeer && $0.out == nil }.compactMap(\.profile).filter { !$0.isEmpty })).sorted()
+            : []
         ConduitSettingsSection(title: AppLocalization.string("Members", table: .rooms), symbol: "person.3", tint: .conduitAccent) {
             ForEach(members, id: \.identityKey) { member in
                 let canTakeOut = appState.canTakeOut(member) && !working
@@ -122,6 +129,13 @@ struct GroupRoomInfoSheet: View {
                             HStack {
                                 GroupRoomMemberRow(member: member, route: nil)
                                 Spacer(minLength: 8)
+                                if let tools = agentTools[profile].map({ RoomInviteChoicesView.toolsLabel($0.tools) }),
+                                   !tools.isEmpty {
+                                    Text(tools)
+                                        .scaledFont(.footnote)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
                                 SettingsChevron()
                             }
                             .contentShape(Rectangle())
@@ -157,10 +171,31 @@ struct GroupRoomInfoSheet: View {
                 })
             }
             if offersChoices {
-                Text(AppLocalization.string("Tap one of your agents to choose what it may do and share here.", table: .rooms))
+                Text(AppLocalization.string("Tap one of your agents to choose what it may do and share here. Other people choose for theirs.", table: .rooms))
                     .settingsCaption()
             }
         }
+        // Read on each appearance (so again on coming back from an agent's
+        // choices) and when the agents that offer choices change. Leaving
+        // cancels a read, so an older one never lands over a newer one.
+        .task(id: choiceProfiles) {
+            guard !choiceProfiles.isEmpty else { return }
+            await loadAgentTools(roomID: room.roomID, profiles: choiceProfiles)
+        }
+    }
+
+    /// Each agent's choices for the room, one read each; one that fails
+    /// shows no line rather than a wrong one.
+    private func loadAgentTools(roomID: String, profiles: [String]) async {
+        let client = appState.roomChoicesClient
+        var read: [String: RoomChoices] = [:]
+        // A room holds at most six agents, so one read after another.
+        for profile in profiles {
+            if let choices = try? await client.choices(roomID: roomID, profile: profile) { read[profile] = choices }
+        }
+        // Left (or a newer read started), or another room opened meanwhile.
+        guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID else { return }
+        if read != agentTools { agentTools = read }
     }
 }
 

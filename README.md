@@ -25,7 +25,7 @@ A native iPhone, iPad and Apple Watch app for [Hermes Agent](https://github.com/
   </tr>
 </table>
 
-More on [hermesconduit.app](https://hermesconduit.app): [live voice](https://hermesconduit.app/voice/), [Apple Watch](https://hermesconduit.app/watch/), [CarPlay](https://hermesconduit.app/carplay/) and [privacy](https://hermesconduit.app/privacy/).
+More on [hermesconduit.app](https://hermesconduit.app): [live voice](https://hermesconduit.app/voice/), [Apple Watch](https://hermesconduit.app/watch/), [CarPlay](https://hermesconduit.app/carplay/), [Multiplayer](https://hermesconduit.app/multiplayer/) (your bots and a friend's in one room, set up in Settings > Multiplayer) and [privacy](https://hermesconduit.app/privacy/).
 
 Want new features sooner? The [TestFlight beta](https://testflight.apple.com/join/gcF9BBJ3) gets newer builds before they reach the App Store.
 

@@ -9611,88 +9611,6 @@
         }
       }
     },
-    "Tap one of your agents to choose what it may do and share here." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tippe auf einen deiner Agenten, um festzulegen, was er hier tun und teilen darf."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Toca uno de tus agentes para elegir qué puede hacer y compartir aquí."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Touchez l'un de vos agents pour choisir ce qu'il peut faire et partager ici."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ketuk salah satu agen Anda untuk memilih apa yang boleh dilakukan dan dibagikannya di sini."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tocca uno dei tuoi agenti per scegliere cosa può fare e condividere qui."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "あなたのエージェントをタップすると、ここで何をして何を共有できるかを選べます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "내 에이전트를 탭해 여기서 할 수 있는 일과 공유할 수 있는 내용을 선택하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Stuknij jednego ze swoich agentów, aby wybrać, co może tu robić i udostępniać."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Toque em um dos seus agentes para escolher o que ele pode fazer e compartilhar aqui."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Нажмите на одного из своих агентов, чтобы выбрать, что он может здесь делать и чем делиться."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Burada ne yapabileceğini ve ne paylaşabileceğini seçmek için ajanlarınızdan birine dokunun."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "轻点你的一个智能体，选择它在这里可以做什么、分享什么。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "點一下你的其中一個代理程式，選擇它在這裡可以做什麼、分享什麼。"
-          }
-        }
-      }
-    },
     "Use my data" : {
       "localizations" : {
         "de" : {
@@ -31619,6 +31537,334 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "你的代理程式已被移出群組"
+          }
+        }
+      }
+    },
+    "Tap one of your agents to choose what it may do and share here. Other people choose for theirs." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tippe auf einen deiner Agenten, um festzulegen, was er hier tun und teilen darf. Andere legen das für ihre fest."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toca uno de tus agentes para elegir qué puede hacer y compartir aquí. Los demás eligen por los suyos."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Touchez l'un de vos agents pour choisir ce qu'il peut faire et partager ici. Les autres choisissent pour les leurs."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ketuk salah satu agen Anda untuk memilih apa yang boleh dilakukan dan dibagikannya di sini. Orang lain memilih untuk agen mereka."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tocca uno dei tuoi agenti per scegliere cosa può fare e condividere qui. Gli altri scelgono per i propri."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "あなたのエージェントをタップすると、ここで何をして何を共有できるかを選べます。ほかの人のエージェントはその人が選びます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "내 에이전트를 탭해 여기서 할 수 있는 일과 공유할 수 있는 내용을 선택하세요. 다른 사람의 에이전트는 그 사람이 정해요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Stuknij jednego ze swoich agentów, aby wybrać, co może tu robić i udostępniać. Inni wybierają za swoich."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Toque em um dos seus agentes para escolher o que ele pode fazer e compartilhar aqui. Os outros escolhem pelos deles."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Нажмите на одного из своих агентов, чтобы выбрать, что он может здесь делать и чем делиться. Другие выбирают за своих."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Burada ne yapabileceğini ve ne paylaşabileceğini seçmek için ajanlarınızdan birine dokunun. Diğerleri kendi ajanları için seçer."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "轻点你的一个智能体，选择它在这里可以做什么、分享什么。其他人为自己的智能体选择。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "點一下你的其中一個代理程式，選擇它在這裡可以做什麼、分享什麼。其他人為自己的代理程式選擇。"
+          }
+        }
+      }
+    },
+    "%@ then stops answering in %@, which hold it to the tools it had when they started. New rooms use these." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ antwortet dann nicht mehr in %2$@, denn diese halten ihn an die Werkzeuge, die er beim Start hatte. Neue Räume nutzen diese."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ deja entonces de responder en %2$@, que lo limitan a las herramientas que tenía cuando empezaron. Las salas nuevas usan estas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ cesse alors de répondre dans %2$@, qui le limitent aux outils qu'il avait à leur début. Les nouveaux salons utilisent ceux-ci."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ lalu berhenti menjawab di %2$@, yang membatasinya pada alat yang dimilikinya saat ruang itu dimulai. Ruang baru memakai alat ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ smette allora di rispondere in %2$@, che lo vincolano agli strumenti che aveva al loro avvio. Le nuove stanze usano questi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのあと%1$@は%2$@で応答しなくなります。各グループは開始時のツールに固定されるためです。新しいグループではこれらが使われます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그러면 %1$@은(는) %2$@에서 더 이상 답하지 않아요. 각 방은 시작할 때의 도구로 고정되기 때문이에요. 새 방은 이 도구를 써요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ przestanie wtedy odpowiadać w: %2$@, bo trzymają go przy narzędziach, które miał na ich początku. Nowe pokoje używają tych."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ então deixa de responder em %2$@, que o limitam às ferramentas que ele tinha quando começaram. As salas novas usam estas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тогда %1$@ перестанет отвечать в комнатах: %2$@. Они ограничивают его инструментами, которые были у него на момент начала. Новые комнаты используют эти."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bundan sonra %1$@ şu odalarda yanıt vermeyi bırakır: %2$@. Bu odalar onu başladıklarında sahip olduğu araçlara bağlı tutar. Yeni odalar bunları kullanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "之后，%1$@ 将不再在 %2$@ 中回答，因为这些群聊会将它限定为开始时拥有的工具。新群聊会使用这些工具。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "之後，%1$@ 將不再在 %2$@ 中回答，因為這些群組會將它限定在開始時擁有的工具。新群組會使用這些工具。"
+          }
+        }
+      }
+    },
+    "%@ is larger than the %@ MB a room with other people's agents can share with them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ ist größer als die %2$@ MB, die ein Raum mit Agenten anderer Personen mit ihnen teilen kann."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ supera los %2$@ MB que una sala con agentes de otras personas puede compartir con ellas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ dépasse les %2$@ Mo qu'un salon avec les agents d'autres personnes peut partager avec elles."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ lebih besar dari %2$@ MB yang bisa dibagikan ruang berisi agen orang lain kepada mereka."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ supera i %2$@ MB che una stanza con agenti di altre persone può condividere con loro."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@は、ほかの人のエージェントがいるグループで共有できる%2$@ MBを超えています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@은(는) 다른 사람의 에이전트가 있는 방에서 공유할 수 있는 %2$@MB보다 커요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ przekracza %2$@ MB, które pokój z agentami innych osób może im udostępnić."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ é maior que os %2$@ MB que uma sala com agentes de outras pessoas pode compartilhar com elas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ больше %2$@ МБ, которыми комната с агентами других людей может с ними поделиться."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, başka kişilerin ajanlarının olduğu bir odanın onlarla paylaşabileceği %2$@ MB'tan büyük."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 超过了有其他人智能体的群聊可与他们共享的 %2$@ MB。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 超過了有其他人代理程式的群組可與他們分享的 %2$@ MB。"
+          }
+        }
+      }
+    },
+    "These files are larger than the %@ MB a room with other people's agents can share with them: %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Dateien sind größer als die %1$@ MB, die ein Raum mit Agenten anderer Personen mit ihnen teilen kann: %2$@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estos archivos superan los %1$@ MB que una sala con agentes de otras personas puede compartir con ellas: %2$@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ces fichiers dépassent les %1$@ Mo qu'un salon avec les agents d'autres personnes peut partager avec elles : %2$@."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File ini lebih besar dari %1$@ MB yang bisa dibagikan ruang berisi agen orang lain kepada mereka: %2$@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questi file superano i %1$@ MB che una stanza con agenti di altre persone può condividere con loro: %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これらのファイルは、ほかの人のエージェントがいるグループで共有できる%1$@ MBを超えています: %2$@。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 파일들은 다른 사람의 에이전트가 있는 방에서 공유할 수 있는 %1$@MB보다 커요: %2$@."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te pliki przekraczają %1$@ MB, które pokój z agentami innych osób może im udostępnić: %2$@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estes arquivos são maiores que os %1$@ MB que uma sala com agentes de outras pessoas pode compartilhar com elas: %2$@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эти файлы больше %1$@ МБ, которыми комната с агентами других людей может с ними поделиться: %2$@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu dosyalar, başka kişilerin ajanlarının olduğu bir odanın onlarla paylaşabileceği %1$@ MB'tan büyük: %2$@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些文件超过了有其他人智能体的群聊可与他们共享的 %1$@ MB：%2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這些檔案超過了有其他人代理程式的群組可與他們分享的 %1$@ MB：%2$@。"
           }
         }
       }

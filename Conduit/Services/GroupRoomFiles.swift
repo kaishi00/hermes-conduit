@@ -48,6 +48,11 @@ final class GroupRoomFilesClient {
     /// The largest file /room-files takes (dashboard/api/rooms.py ROOM_FILE_MAX_BYTES).
     static let maximumMegabytes = 50
 
+    /// The largest file Linked Rooms carry to the other people's hosts
+    /// (room_files_link.MAX_FILE_BYTES): in a room with their agents, a
+    /// larger one would stay on the host's Hermes, so it isn't sent.
+    static let linkedMaximumMegabytes = 16
+
     /// The largest file Hermes keeps as a room message's attachment
     /// (15,000,000 bytes), for a host whose plugin can't store room files.
     static let hermesMaximumMegabytes = 14
@@ -67,6 +72,14 @@ final class GroupRoomFilesClient {
             return AttachmentSizeLimit.tooLargeMessage(names: names, megabytes: preference)
         }
         let limit = String(roomCap)
+        if roomCap == linkedMaximumMegabytes {
+            // Only a room with other people's agents has this cap.
+            if names.count == 1, let name = names.first {
+                return AppLocalization.string("\(name) is larger than the \(limit) MB a room with other people's agents can share with them.", table: .rooms)
+            }
+            let list = names.joined(separator: ", ")
+            return AppLocalization.string("These files are larger than the \(limit) MB a room with other people's agents can share with them: \(list).", table: .rooms)
+        }
         if names.count == 1, let name = names.first {
             return AppLocalization.string("\(name) is larger than the \(limit) MB a group room takes.", table: .rooms)
         }
@@ -178,9 +191,13 @@ extension AppState {
 
     /// The largest file the room composer stages, in MB.
     var roomFileCapMegabytes: Int {
-        notifierPlugin.reports(GroupRoomFilesClient.capability)
-            ? GroupRoomFilesClient.maximumMegabytes
-            : GroupRoomFilesClient.hermesMaximumMegabytes
+        guard notifierPlugin.reports(GroupRoomFilesClient.capability) else { return GroupRoomFilesClient.hermesMaximumMegabytes }
+        // With other people's agents in it, a file has to reach their hosts.
+        // (A copy of a room hosted elsewhere takes no files: canAttachRoomFiles.)
+        if let surface = activeRoomSurface, surface.room.members.contains(where: \.isPeer) {
+            return GroupRoomFilesClient.linkedMaximumMegabytes
+        }
+        return GroupRoomFilesClient.maximumMegabytes
     }
 
     /// A room message ready for `groups.send`: its text (with the `@file:`

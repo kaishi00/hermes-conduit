@@ -273,6 +273,49 @@ extension GroupChatModelsTests {
                        AppLocalization.string("On: \("Terminal")", table: .rooms))
     }
 
+    func testChangingRoomToolsNamesTheRoomsThatHoldTheAgent() throws {
+        func member(_ profile: String?, peer: Bool) -> GroupMember {
+            GroupMember(memberID: "m-\(profile ?? "peer")", profile: profile, handle: profile ?? "laifu",
+                        displayName: nil, target: ["kind": .string(peer ? "peer" : "local")], extra: [:])
+        }
+        func room(_ name: String, _ members: [GroupMember], disbanded: Bool = false) -> GroupRoom {
+            GroupRoom(roomID: name, name: name, members: members, authorityGatewayID: "gw", authorityEpoch: 1, revision: 1,
+                      createdAt: 0, updatedAt: 0, disbandedAt: disbanded ? 1 : nil, latestSeq: 0)
+        }
+        let rooms = [
+            room("Zoo trip", [member("research", peer: false), member(nil, peer: true)]),
+            // Only your own agents: it pins nothing.
+            room("Just us", [member("research", peer: false), member("default", peer: false)]),
+            room("Old", [member("research", peer: false), member(nil, peer: true)], disbanded: true),
+            room("Theirs", [member("default", peer: false), member(nil, peer: true)]),
+        ]
+        var going = copiesCopy(room: "conduit-1")
+        going["name"] = "Book club"
+        let copies = [try XCTUnwrap(RoomCopiesClient.copy(going)),
+                      try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(room: "conduit-2", status: "ended")))]
+        XCTAssertEqual(RoomSetupRooms.holding(profile: "research", rooms: rooms, copies: copies), ["Book club", "Zoo trip"])
+        XCTAssertEqual(RoomSetupRooms.holding(profile: "writer", rooms: rooms, copies: copies), [])
+        XCTAssertNil(RoomSetupRooms.holding(profile: "research", rooms: nil, copies: copies), "not read yet")
+        XCTAssertEqual(RoomSetupRooms.message(profileName: "Kuro", rooms: ["Book club"]),
+                       AppLocalization.string("\("Kuro") then stops answering in \("Book club"), which hold it to the tools it had when they started. New rooms use these.", table: .rooms))
+        XCTAssertEqual(RoomSetupRooms.message(profileName: "Kuro", rooms: nil),
+                       AppLocalization.string("\("Kuro") then stops answering in rooms already started with other people's agents, which hold it to the tools it had when they started. New rooms use these.", table: .rooms))
+    }
+
+    @MainActor
+    func testOnlyACompleteRoomListSaysNoRoomHoldsTheAgent() {
+        let suite = "GroupChatModelsTests.People.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        XCTAssertNil(appState.roomsHoldingTools(of: "research"), "not read yet")
+        appState.groupRoomsListed = true
+        appState.groupRoomsComplete = false
+        XCTAssertNil(appState.roomsHoldingTools(of: "research"), "more pages: a room on one of them may hold it")
+        appState.groupRoomsComplete = true
+        XCTAssertEqual(appState.roomsHoldingTools(of: "research"), [])
+    }
+
     @MainActor
     func testRoomSetupPostsTheCeilingAndInterruptToTheProfile() async throws {
         var asked: [(path: String, method: String, body: [String: Any]?)] = []
