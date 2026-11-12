@@ -194,6 +194,7 @@ private struct RichMediaViewer: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var player: AVPlayer?
+    @State private var resumes: AnyCancellable?
 
     var body: some View {
         NavigationStack {
@@ -241,9 +242,17 @@ private struct RichMediaViewer: View {
             RichAudioPlayer.preparePlayback()
             let player = AVPlayer(url: item.url)
             self.player = player
+            // Playing again after an interruption (the controls, or Siri
+            // handing back) takes the lease again, so wake listening steps
+            // aside for the video as before.
+            resumes = player.publisher(for: \.timeControlStatus)
+                .filter { $0 == .playing }
+                .receive(on: DispatchQueue.main)
+                .sink { _ in MainActor.assumeIsolated { RichAudioPlayer.preparePlayback() } }
             player.play()
         }
         .onDisappear {
+            resumes = nil
             guard let player else { return }
             player.pause()
             RichAudioPlayer.endPlayback()
