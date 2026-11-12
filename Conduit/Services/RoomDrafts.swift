@@ -26,6 +26,9 @@ struct RoomDraft: Identifiable, Equatable {
         let status: String
         /// The names of the agents they joined with.
         let agents: [String]
+        /// In it with none of their agents ("Just me", plugin 0.166.3+);
+        /// one who then left has status `left`.
+        var justMe = false
     }
 
     /// The room's id, which the room keeps once it starts.
@@ -204,8 +207,12 @@ enum RoomDraftText {
     /// How someone answered, or nil for a status a newer plugin adds.
     static func status(of person: RoomDraft.Person) -> String? {
         switch person.status {
+        case "joined" where person.justMe:
+            return AppLocalization.string("Joined without their bots", table: .rooms)
         case "joined":
             return AppLocalization.string("Joined with \(names(person.agents))", table: .rooms)
+        case "left":
+            return AppLocalization.string("Left", table: .rooms)
         case "waiting":
             return AppLocalization.string("Hasn't answered yet", table: .rooms)
         case "declined":
@@ -300,7 +307,9 @@ struct RoomDraftsClient {
         guard let link = object["link"] as? String, !link.isEmpty,
               let name = object["name"] as? String,
               let status = object["status"] as? String else { return nil }
-        return RoomDraft.Person(id: link, name: name, status: status, agents: names(object["agents"]))
+        var person = RoomDraft.Person(id: link, name: name, status: status, agents: names(object["agents"]))
+        person.justMe = object["just_me"] as? Bool == true
+        return person
     }
 
     /// The agents' display names.

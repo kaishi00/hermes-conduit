@@ -467,6 +467,11 @@ extension GroupChatModelsTests {
             AppLocalization.string("Declined"),
             nil,
         ])
+        // In it with none of their agents ("Just me"), and once they left.
+        let alone = try XCTUnwrap(RoomDraftsClient.person(["link": "lk2", "name": "Mona", "status": "joined", "just_me": true, "agents": []]))
+        XCTAssertEqual(RoomDraftText.status(of: alone), AppLocalization.string("Joined without their bots", table: .rooms))
+        let gone = try XCTUnwrap(RoomDraftsClient.person(["link": "lk2", "name": "Mona", "status": "left", "just_me": false, "agents": []]))
+        XCTAssertEqual(RoomDraftText.status(of: gone), AppLocalization.string("Left", table: .rooms))
     }
 
     func testDraftRefusalsShowThePluginsWords() {

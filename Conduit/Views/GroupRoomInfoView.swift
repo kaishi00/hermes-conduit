@@ -17,6 +17,8 @@ struct GroupRoomInfoSheet: View {
     @State private var roomID: String?
     /// The member a Take Out asks about.
     @State private var takingOut: GroupMember?
+    /// The person a Block asks about.
+    @State private var blocking: RoomBlockTarget?
     @State private var confirmingLeave = false
     @State private var working = false
     /// What each of your agents may do here, by profile, read when Group
@@ -43,6 +45,7 @@ struct GroupRoomInfoSheet: View {
                     memberSection(room)
                 }
                 roomChatSection
+                blockSection
                 if appState.canLeaveActiveRoom {
                     Button(role: .destructive) {
                         confirmingLeave = true
@@ -65,6 +68,19 @@ struct GroupRoomInfoSheet: View {
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
             } message: { member in
                 Text(verbatim: takeOutMessage(member))
+            }
+            .confirmationDialog(
+                blocking.map { RoomBlock.title($0.name) } ?? "",
+                isPresented: Binding(get: { blocking != nil }, set: { if !$0 { blocking = nil } }),
+                titleVisibility: .visible,
+                presenting: blocking
+            ) { target in
+                Button(AppLocalization.string("Block", table: .rooms), role: .destructive) {
+                    block(target)
+                }
+                Button(AppLocalization.string("Cancel"), role: .cancel) {}
+            } message: { target in
+                Text(verbatim: RoomBlock.message(target.name))
             }
             .confirmationDialog(RoomLeaveText.leaveTitle, isPresented: $confirmingLeave, titleVisibility: .visible) {
                 Button(AppLocalization.string("Leave Room", table: .rooms), role: .destructive) {
@@ -172,7 +188,7 @@ struct GroupRoomInfoSheet: View {
             }
             // People in it with none of their agents ("Just me").
             if !appState.activeRoomJustMe.isEmpty {
-                Text(AppLocalization.string("Also here without their bots: \(ListFormatter.localizedString(byJoining: appState.activeRoomJustMe))", table: .rooms))
+                Text(AppLocalization.string("Also here without their bots: \(appState.activeRoomJustMe.formatted(.list(type: .and).locale(AppLocalization.formattingLocale)))", table: .rooms))
                     .settingsCaption()
             }
             if offersChoices {
@@ -205,6 +221,47 @@ struct GroupRoomInfoSheet: View {
 }
 
 extension GroupRoomInfoSheet {
+    /// The people here you're linked with, each of whom Block unlinks
+    /// (RoomBlock: there's no report, since nobody but the two of you sees it).
+    @ViewBuilder
+    private var blockSection: some View {
+        let targets = appState.activeRoomBlockTargets
+        if !targets.isEmpty {
+            ConduitSettingsSection(title: AppLocalization.string("People"), symbol: "person.2", tint: .conduitAccent) {
+                ForEach(targets) { target in
+                    Button(role: .destructive) {
+                        blocking = target
+                    } label: {
+                        Label(AppLocalization.string("Block \(target.name)", table: .rooms), systemImage: "hand.raised")
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .buttonStyle(.settingsDestructive)
+                    .disabled(working)
+                }
+                Text(AppLocalization.string("Blocking unlinks them: nothing more from them reaches your Hermes, and the rooms you share with them stop.", table: .rooms))
+                    .settingsCaption()
+            }
+        }
+    }
+
+    private func block(_ target: RoomBlockTarget) {
+        guard !working else { return }
+        working = true
+        Task {
+            defer { working = false }
+            do {
+                _ = try await appState.block(target)
+                Haptics.success()
+                dismiss()
+            } catch {
+                guard !(error is CancellationError) else { return }
+                Haptics.error()
+                refusal = (title: AppLocalization.string("Could not block \(target.name)", table: .rooms),
+                           message: RoomLinksClient.message(for: error))
+            }
+        }
+    }
+
     /// Each of your agents in a room with other people's opens a private
     /// chat about it, or asks there for its notes (C5b).
     @ViewBuilder

@@ -831,6 +831,21 @@ extension GroupChatModelsTests {
     }
 
     @MainActor
+    func testBlockListsThePeopleInTheRoomYoureLinkedWith() throws {
+        // A copy: its host. A room hosted here: each person it invited, once, by name.
+        let copy = try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(room: "conduit-1", link: "lk-mona", from: "Mona")))
+        XCTAssertEqual(RoomBlock.targets(copy: copy, draft: nil), [RoomBlockTarget(id: "lk-mona", name: "Mona")])
+        let draft = RoomDraft(
+            id: "conduit-2", name: "Zoo trip", status: "started", reason: nil, createdAt: nil, expiresAt: nil,
+            agents: ["Furina"],
+            people: [RoomDraft.Person(id: "lk-zed", name: "Zed", status: "joined", agents: ["Scout"]),
+                     RoomDraft.Person(id: "lk-ann", name: "Ann", status: "declined", agents: [])]
+        )
+        XCTAssertEqual(RoomBlock.targets(copy: nil, draft: draft).map(\.name), ["Ann", "Zed"])
+        XCTAssertEqual(RoomBlock.targets(copy: nil, draft: nil), [])
+        XCTAssertEqual(RoomBlock.title("Mona"), AppLocalization.string("Block \("Mona")?", table: .rooms))
+    }
+
     func testWhatTheyCanAskSaysWhoAnswersAndThatQuestionsWaitForYou() {
         let asking = LinkAskRules(freeOn: "ask", questions: "ask", profile: "default")
         let caption = LinkAskText.caption(asking, name: "Laifu", profileName: "Furina")
