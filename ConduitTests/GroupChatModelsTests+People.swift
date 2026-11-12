@@ -197,6 +197,24 @@ extension GroupChatModelsTests {
         let paused = RoomLink(id: "lk4", name: "Venti", status: "paused", words: Self.peopleWords, createdAt: nil)
         XCTAssertNil(PeopleSettingsText.status(of: paused))
         XCTAssertEqual(PeopleSettingsText.words(Self.peopleWords), "amber · birch · cedar · delta")
+
+        // Plugins that differ say whose to update; matching ones, older plugins and waiting Links say nothing.
+        let parsed = RoomLinksClient.link(["id": "lk1", "name": "Mona", "status": "linked", "words": Self.peopleWords,
+                                           "plugin": "0.166.2", "behind": "theirs"])
+        XCTAssertEqual(parsed?.plugin, "0.166.2")
+        XCTAssertEqual(parsed.flatMap(PeopleSettingsText.update(for:)), AppLocalization.string(
+            "\("Mona")'s Conduit plugin is older than yours, so some of what your rooms share won't reach them. Ask them to update it.",
+            table: .rooms))
+        var newer = mona
+        newer.behind = "yours"
+        XCTAssertEqual(PeopleSettingsText.update(for: newer), AppLocalization.string(
+            "\("Mona")'s Conduit plugin is newer than yours, so some of what they share isn't reaching you. Update your Conduit plugin.",
+            table: .rooms))
+        XCTAssertNil(PeopleSettingsText.update(for: mona))
+        var waitingBehind = waiting
+        waitingBehind.behind = "theirs"
+        XCTAssertNil(PeopleSettingsText.update(for: waitingBehind))
+        XCTAssertNil(RoomLinksClient.link(["id": "lk1", "name": "Mona", "status": "linked", "words": Self.peopleWords])?.behind)
     }
 
     // MARK: - Host setup

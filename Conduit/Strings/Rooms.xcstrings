@@ -31868,6 +31868,170 @@
           }
         }
       }
+    },
+    "%@'s Conduit plugin is older than yours, so some of what your rooms share won't reach them. Ask them to update it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Conduit-Plugin von %@ ist älter als deins, daher erreicht sie manches nicht, was in euren Räumen geteilt wird. Bitte sie, es zu aktualisieren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El plugin de Conduit de %@ es más antiguo que el tuyo, así que parte de lo que se comparte en tus salas no le llegará. Pídele que lo actualice."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin Conduit de %@ est plus ancien que le vôtre : une partie de ce que vos salons partagent ne lui parviendra pas. Demandez-lui de le mettre à jour."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin Conduit milik %@ lebih lama dari milikmu, jadi sebagian yang dibagikan di ruangmu tidak akan sampai kepadanya. Minta dia memperbaruinya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin Conduit di %@ è più vecchio del tuo, quindi parte di ciò che si condivide nelle tue stanze non gli arriverà. Chiedigli di aggiornarlo."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の Conduit プラグインはあなたのものより古いため、ルームで共有される内容の一部が届きません。更新するよう頼んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 님의 Conduit 플러그인이 내 것보다 오래되어 방에서 공유하는 내용 일부가 전달되지 않습니다. 업데이트해 달라고 요청하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wtyczka Conduit użytkownika %@ jest starsza niż Twoja, więc część tego, co udostępniają Twoje pokoje, do niego nie dotrze. Poproś o jej aktualizację."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin do Conduit de %@ é mais antigo que o seu, então parte do que suas salas compartilham não vai chegar até essa pessoa. Peça para ela atualizá-lo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагин Conduit у %@ старше вашего, поэтому часть того, чем делятся ваши комнаты, до него не дойдёт. Попросите его обновить плагин."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ adlı kişinin Conduit eklentisi seninkinden eski, bu yüzden odalarında paylaşılanların bir kısmı ona ulaşmayacak. Güncellemesini iste."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Conduit 插件比你的旧，你的房间里分享的部分内容无法送达对方。请让对方更新插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Conduit 外掛比你的舊，你的房間裡分享的部分內容無法送達對方。請對方更新外掛。"
+          }
+        }
+      }
+    },
+    "%@'s Conduit plugin is newer than yours, so some of what they share isn't reaching you. Update your Conduit plugin." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Conduit-Plugin von %@ ist neuer als deins, daher erreicht dich manches nicht, was geteilt wird. Aktualisiere dein Conduit-Plugin."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El plugin de Conduit de %@ es más reciente que el tuyo, así que parte de lo que comparte no te llega. Actualiza tu plugin de Conduit."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le plugin Conduit de %@ est plus récent que le vôtre : une partie de ce qu’il partage ne vous parvient pas. Mettez à jour votre plugin Conduit."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin Conduit milik %@ lebih baru dari milikmu, jadi sebagian yang dia bagikan tidak sampai kepadamu. Perbarui plugin Conduit-mu."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il plugin Conduit di %@ è più recente del tuo, quindi parte di ciò che condivide non ti arriva. Aggiorna il tuo plugin Conduit."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ の Conduit プラグインはあなたのものより新しいため、共有される内容の一部があなたに届いていません。Conduit プラグインを更新してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 님의 Conduit 플러그인이 내 것보다 최신이라 공유하는 내용 일부가 나에게 전달되지 않습니다. 내 Conduit 플러그인을 업데이트하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wtyczka Conduit użytkownika %@ jest nowsza niż Twoja, więc część tego, co udostępnia, do Ciebie nie dociera. Zaktualizuj swoją wtyczkę Conduit."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O plugin do Conduit de %@ é mais novo que o seu, então parte do que essa pessoa compartilha não está chegando até você. Atualize seu plugin do Conduit."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Плагин Conduit у %@ новее вашего, поэтому часть того, чем он делится, до вас не доходит. Обновите свой плагин Conduit."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ adlı kişinin Conduit eklentisi seninkinden yeni, bu yüzden paylaştıklarının bir kısmı sana ulaşmıyor. Conduit eklentini güncelle."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Conduit 插件比你的新，对方分享的部分内容没有送达你这里。请更新你的 Conduit 插件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ 的 Conduit 外掛比你的新，對方分享的部分內容沒有送達你這裡。請更新你的 Conduit 外掛。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
