@@ -30,6 +30,7 @@ import argparse
 import re
 import sys
 from collections import OrderedDict
+from types import SimpleNamespace
 from pathlib import Path
 
 APP_STATE = "Conduit/Services/AppState.swift"
@@ -687,7 +688,32 @@ def plan_access(src, file_items):
                 changes[e.decl_line] = widen(src.lines[e.decl_line], which)
                 widened.append((e, which, f"the signature of {d.names[0]}"))
                 queue.append(e)
+    # A fileprivate member of another type in AppState.swift is reached as
+    # `value.name`: widen it when moved code uses (or, for a setter, writes) it.
+    for it in src.outer_before + src.outer_after:
+        if it.dest or it.kind not in ("class", "struct", "enum", "actor"):
+            continue
+        for k in range(it.start, it.end):
+            m = OUTER_MEMBER.match(src.masked[k])
+            if not m:
+                continue
+            which, name = m.group(1), m.group(2)
+            for f, text in every.items():
+                if f == APP_STATE:
+                    continue
+                joined = "\n".join(text)
+                hit = (re.search(r"\." + re.escape(name) + r"\b(?=" + MUTATION + r")", joined)
+                       if which.endswith("(set)") else
+                       re.search(r"\." + re.escape(name) + r"\b", joined))
+                if hit:
+                    changes[k] = widen(changes.get(k, src.lines[k]), which)
+                    widened.append((SimpleNamespace(names=[name], decl_line=k), which, f))
+                    break
     return changes, widened
+
+
+OUTER_MEMBER = re.compile(r"^\s+(?:@\w+(?:\([^)]*\))?\s+)*(?:\w+\s+)*?"
+                          r"(fileprivate\(set\)|fileprivate)\s+(?:\w+\s+)*?(?:var|let|func)\s+(\w+)")
 
 
 def signature(src, d):

@@ -22208,10 +22208,10 @@ final class AppState: ObservableObject {
 /// `setStreamingTextForTesting`, in debug builds only).
 @MainActor
 final class LiveTurnProjection: ObservableObject {
-    @Published fileprivate(set) var streamingText = "" {
+    @Published var streamingText = "" {
         didSet { reshape() }
     }
-    @Published fileprivate(set) var reasoningSegment: AppState.LiveReasoningSegment? {
+    @Published var reasoningSegment: AppState.LiveReasoningSegment? {
         didSet { reshape() }
     }
     /// Which live rows the turn shows, published only when one comes or
