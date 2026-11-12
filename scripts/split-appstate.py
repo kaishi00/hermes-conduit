@@ -106,12 +106,32 @@ STEPS = [
     },
     # 6: chats, their list and what's kept on the phone
     {
-        "AppState+Session.swift": ["Session", "Session management", "New Chat"],
-        "AppState+ChatList.swift": ["Saved chat list", "Stars (#757)", "Read state (#454)"],
-        "AppState+Persistence.swift": ["Persistence", "Offline chat cache (#99)"],
+        "AppState+Session.swift": [
+            "Session", "Session management", "New Chat",
+            "Read state (#454)|from setActiveSessionState",
+        ],
+        "AppState+ChatList.swift": [
+            "Saved chat list", "Stars (#757)", "Read state (#454)|until removePinnedState",
+        ],
+        "AppState+Persistence.swift": [
+            "Persistence|until restorePinnedSessions", "Offline chat cache (#99)",
+        ],
+        "AppState+PinSync.swift": [
+            "Persistence|from restorePinnedSessions until showNotice",
+            "Persistence|from dismissPinSyncNotice until isVoiceJobSession",
+            "Read state (#454)|from removePinnedState until pendingDecisionRestorationMessages",
+        ],
+        "AppState+Notices.swift": ["Persistence|from showNotice until dismissPinSyncNotice"],
+        "AppState+Voice.swift": ["Persistence|from isVoiceJobSession"],
+        "AppState+Reconciliation.swift": [
+            "Read state (#454)|from pendingDecisionRestorationMessages until setActiveSessionState",
+        ],
         "AppState+SessionReferences.swift": [
-            "Session references (durable conversation identity)",
+            "Session references (durable conversation identity)|until cancelScheduledReconnect",
             "Secondary profile title recovery",
+        ],
+        "AppState+ChatResume.swift": [
+            "Session references (durable conversation identity)|from cancelScheduledReconnect",
         ],
         "AppState+PendingSend.swift": ["Sending while connecting: what reads private state"],
     },
@@ -781,7 +801,12 @@ def render_app_state(src, moved, changes):
             for k in range(it.start, it.end):
                 line = changes.get(k, src.lines[k])
                 if "// MARK:" in line:
-                    changes[k] = line.rstrip() + f" ({', '.join(region_dests[it.region])})"
+                    # a MARK cut before keeps the files it named
+                    m = re.search(r" \(((?:AppState\+\w+\.swift(?:, )?)+)\)$", line.rstrip())
+                    files = m.group(1).split(", ") if m else []
+                    head = line.rstrip()[:m.start()] if m else line.rstrip()
+                    files += [f for f in region_dests[it.region] if f not in files]
+                    changes[k] = head + f" ({', '.join(files)})"
                     break
     outer = src.outer_before + src.outer_after
     outer_left = {it.region for it in outer if it.kind != "mark" and it.start not in skip}
@@ -820,9 +845,27 @@ def render_app_state(src, moved, changes):
 MARK_TITLES = {"AppState+OpenChat.swift": "Opening chats",
                "AppState+ProfileSettings.swift": "Profile and connection settings",
                "AppState+AppLinks.swift": "Opening app links",
+               "AppState+PinSync.swift": "Pins kept on the phone and on the host, and pinned replies",
+               "AppState+Notices.swift": "Notices over the app",
+               "AppState+Voice.swift": "Voice background jobs",
+               "AppState+Reconciliation.swift": "Keeping row ids and local notes across a reconcile",
+               "AppState+ChatResume.swift": "Resuming a chat: return surface, viewport and transport",
                "AppState+PinnedChatOrder.swift": "Pinning chats, and the saved order of chats, bots and rooms"}
 
 HEADER_NOTES = {
+    "AppState+PinSync.swift": [
+        "Pinned chats kept on the phone and on the host (SessionPinSync), and",
+        "the replies pinned in a chat. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+Notices.swift": [
+        "The notices shown over the app: a refused call, CarPlay failing, and",
+        "the general notice. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ChatResume.swift": [
+        "Resuming a chat: the surface it returns to, the viewport it restores,",
+        "and the transport continuation after a reconnect. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
     "AppState+AppLinks.swift": [
         "Opening a conduit:// link: a chat, a bot's Bot Chat or a call's",
         "transcript, on whichever profile it belongs to. Moved out of",

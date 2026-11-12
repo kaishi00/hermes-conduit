@@ -274,6 +274,15 @@ final class AppState: ObservableObject {
         self.assertIn("// MARK: - Connection (AppState+Ready.swift, AppState+Connect.swift)\n",
                       self.read("AppState.swift"), "the MARK left over stored properties names both files")
 
+    def test_a_mark_cut_again_keeps_the_files_it_named(self):
+        split.STEPS = [{"AppState+Ready.swift": ["Connection|until connect"]}]
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        region = "Connection (AppState+Ready.swift)"
+        split.STEPS = [{"AppState+Connect.swift": [region]}]
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        self.assertIn("// MARK: - Connection (AppState+Ready.swift, AppState+Connect.swift)\n",
+                      self.read("AppState.swift"))
+
     def test_points_the_map_at_the_new_file(self):
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")
         text = (self.repo / split.MAP).read_text()
