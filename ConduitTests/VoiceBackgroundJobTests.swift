@@ -97,6 +97,10 @@ final class FakeVoiceJobBackend {
     private(set) var leftChats: [(String?, String)] = []
     var activeProfile: String? = "default"
     private(set) var submissions: [(String, String)] = []
+    /// Each turn surface reported before a submit: session, text, whether a
+    /// Watch call's job; and the sessions whose report a failed submit dropped.
+    private(set) var surfaceReports: [(String, String, Bool)] = []
+    private(set) var droppedSurfaces: [String] = []
     private(set) var cancelled: [String] = []
     /// The attached chat: whether a turn runs there, what was sent to it,
     /// and its latest reply.
@@ -176,6 +180,10 @@ final class FakeVoiceJobBackend {
                 self.submissions.append((id, text))
                 self.onSubmit?(id)
                 if let error = self.submitError { throw error }
+            },
+            reportTurnSurface: { [self] id, text, fromWatch in
+                self.surfaceReports.append((id, text, fromWatch))
+                return { [self] _ in self.droppedSurfaces.append(id) }
             },
             cancel: { [self] id in
                 if self.parksCancel {
@@ -282,6 +290,28 @@ extension VoiceConversationControllerTests {
 
     /// Bot workstreams M5: the job is kept in its bot's registry by its
     /// stored id, once Hermes takes its request; the runtime id when Hermes names no other.
+    func testAJobReportsItsTurnSurfaceBeforeItsSubmitAndDropsItWhenRefused() async {
+        // Where the request came from reaches Hermes with the job's own
+        // prompt, the exact text submitted (#888): a Watch call's job says so.
+        let (supervisor, fake) = makeSupervisor()
+        _ = await supervisor.performVoiceCommand(.start(instructions: "check the backups"))
+        _ = await supervisor.startJob(instructions: "check the disks", profile: nil, callsModel: false, fromWatch: true)
+        XCTAssertEqual(fake.surfaceReports.map(\.0), fake.submissions.map(\.0))
+        XCTAssertEqual(fake.surfaceReports.map(\.1), fake.submissions.map(\.1))
+        XCTAssertEqual(fake.surfaceReports.map(\.2), [false, true])
+        XCTAssertTrue(fake.droppedSurfaces.isEmpty)
+        // A refused submit drops its report, so it can't label another turn.
+        let (refused, refusedFake) = makeSupervisor()
+        refusedFake.submitError = HermesError.timeout("prompt.submit")
+        _ = await refused.performVoiceCommand(.start(instructions: "check the weather"))
+        XCTAssertEqual(refusedFake.droppedSurfaces, refusedFake.submissions.map(\.0))
+        XCTAssertEqual(refusedFake.droppedSurfaces.count, 1)
+        // The surface: the Watch for its call's job, else where a spoken message is.
+        XCTAssertEqual(TurnSurface.voiceJob(fromWatch: true, carPlay: true, device: .iphone), TurnSurface(place: .watch, input: .spoken))
+        XCTAssertEqual(TurnSurface.voiceJob(fromWatch: false, carPlay: true, device: .iphone), TurnSurface(place: .carplay, input: .spoken))
+        XCTAssertEqual(TurnSurface.voiceJob(fromWatch: false, carPlay: false, device: .ipad), TurnSurface(place: .ipad, input: .spoken))
+    }
+
     func testAStartedJobIsKeptInItsBotsWorkRegistry() async {
         let (supervisor, fake) = makeSupervisor()
         _ = await supervisor.performVoiceCommand(.start(instructions: "check why my server went down"))

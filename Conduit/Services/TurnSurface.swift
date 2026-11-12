@@ -18,9 +18,11 @@ import UIKit
 
 struct TurnSurface: Equatable {
     /// The plugin's wire values. The plugin's own Watch turns name the
-    /// Watch themselves.
+    /// Watch themselves; `watch` here is a Watch call's job this phone
+    /// starts. `widget` is a widget's button (the Pulse widget's Do it),
+    /// which a plugin before 0.164.12 refuses: that turn just has no line.
     enum Place: String {
-        case iphone, ipad, mac, vision, carplay, siri
+        case iphone, ipad, mac, vision, carplay, siri, watch, widget
     }
 
     enum Input: String {
@@ -28,7 +30,8 @@ struct TurnSurface: Equatable {
     }
 
     var place: Place
-    /// Unknown for a Shortcut, which may have been spoken or run on its own.
+    /// Unknown for a Shortcut, which may have been spoken or run on its own,
+    /// and for a widget's button.
     var input: Input?
     /// A typed message whose reply Read replies aloud will read (notifier
     /// issue 674): the plugin tells Hermes the answer is heard too, so it
@@ -89,6 +92,14 @@ struct TurnSurface: Equatable {
     }
 
     static let shortcut = TurnSurface(place: .siri, input: nil)
+    /// A tap on a widget's button, in words Conduit wrote.
+    static let widget = TurnSurface(place: .widget, input: nil)
+
+    /// A voice call's background job: its request was spoken, on the Watch
+    /// for a Watch call's job, else where `message` says a spoken one was.
+    @MainActor static func voiceJob(fromWatch: Bool, carPlay: Bool, device: Place? = nil) -> TurnSurface {
+        fromWatch ? TurnSurface(place: .watch, input: .spoken) : message(spoken: true, carPlay: carPlay, device: device)
+    }
 
     /// `text` is exactly what `prompt.submit` sends: the plugin matches the
     /// turn by it, so a message that steers a running turn labels no other.

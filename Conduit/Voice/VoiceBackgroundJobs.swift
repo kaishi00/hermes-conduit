@@ -330,6 +330,11 @@ struct VoiceBackgroundJobBackend {
     /// while its session is made can't file it under another bot.
     var activeProfile: @MainActor () -> String? = { nil }
     var submit: @MainActor (_ sessionID: String, _ text: String) async throws -> Void
+    /// Tells the plugin where a job's request came from, just before its
+    /// submit (TurnSurface, #888): spoken, from the Watch for a Watch call's
+    /// job. Returns what forgets that report when the submit fails.
+    var reportTurnSurface: @MainActor (_ sessionID: String, _ text: String, _ fromWatch: Bool) async
+        -> @MainActor (Error) -> Void = { _, _, _ in { _ in } }
     var cancel: @MainActor (_ sessionID: String) async throws -> Void
     /// The live runtimes of `profile` (nil: the active profile).
     var liveSessions: @MainActor (_ profile: String?) async throws -> [LiveSessionStatus]
@@ -1550,7 +1555,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 $0.requestSent = true
                 $0.sentAt = Date()
             }
-            try await backend.submit(runtimeID, Self.jobPrompt(for: request))
+            let prompt = Self.jobPrompt(for: request)
+            let dropTurnSurface = await backend.reportTurnSurface(runtimeID, prompt, fromWatch)
+            do {
+                try await backend.submit(runtimeID, prompt)
+            } catch {
+                dropTurnSurface(error)
+                throw error
+            }
             // Events may legitimately move the job past .starting while
             // submit awaits; only a cancel or a reset retires it here. A
             // cancel that landed mid-submit reached Hermes before the turn
