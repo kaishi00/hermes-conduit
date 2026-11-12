@@ -65,7 +65,7 @@ struct RoomInvite: Identifiable, Equatable {
     /// You joined with none of your agents ("Just me"), to read the room
     /// and post in it.
     var justMe = false
-    /// The host's plugin takes Just me (0.166.3+), so the card offers it.
+    /// The host's plugin takes Just me (0.167.5+), so the card offers it.
     var justMeOffered = false
 }
 

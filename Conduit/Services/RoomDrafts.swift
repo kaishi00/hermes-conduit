@@ -26,7 +26,7 @@ struct RoomDraft: Identifiable, Equatable {
         let status: String
         /// The names of the agents they joined with.
         let agents: [String]
-        /// In it with none of their agents ("Just me", plugin 0.166.3+);
+        /// In it with none of their agents ("Just me", plugin 0.167.5+);
         /// one who then left has status `left`.
         var justMe = false
     }

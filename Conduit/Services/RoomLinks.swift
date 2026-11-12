@@ -80,12 +80,12 @@ struct RoomLink: Identifiable, Equatable {
     let words: [String]
     let createdAt: Date?
     /// The other side's Conduit plugin version, nil until it says (plugins
-    /// before 0.166.2 never do).
+    /// before 0.167.4 never do).
     var plugin: String? = nil
     /// Whose plugin to update for this Link to carry everything: `theirs`
     /// (it takes fewer kinds of envelope than yours sends, or never said) or
     /// `yours` (it sent one yours doesn't take). Nil when they match, and
-    /// from plugins before 0.166.2.
+    /// from plugins before 0.167.4.
     var behind: String? = nil
 }
 

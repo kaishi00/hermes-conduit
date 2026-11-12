@@ -200,8 +200,8 @@ extension GroupChatModelsTests {
 
         // Plugins that differ say whose to update; matching ones, older plugins and waiting Links say nothing.
         let parsed = RoomLinksClient.link(["id": "lk1", "name": "Mona", "status": "linked", "words": Self.peopleWords,
-                                           "plugin": "0.166.2", "behind": "theirs"])
-        XCTAssertEqual(parsed?.plugin, "0.166.2")
+                                           "plugin": "0.167.4", "behind": "theirs"])
+        XCTAssertEqual(parsed?.plugin, "0.167.4")
         XCTAssertEqual(parsed.flatMap(PeopleSettingsText.update(for:)), AppLocalization.string(
             "\("Mona")'s Conduit plugin is older than yours, so some of what your rooms share won't reach them. Ask them to update it.",
             table: .rooms))
