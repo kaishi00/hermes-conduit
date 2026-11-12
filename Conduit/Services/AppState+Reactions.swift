@@ -308,7 +308,10 @@ extension AppState {
                 token: token,
                 acceptedSessionIDs: knownSessionIDs(for: storedID),
                 conversationIdentity: captureConversationIdentity(for: storedID),
-                requiredViewportTransitionGeneration: transitionGeneration
+                requiredViewportTransitionGeneration: transitionGeneration,
+                // A Bot Chat's branch resumes, reads its history and is
+                // kept in the bot's profile, as its parent is.
+                conversationProfile: profilesMatch(branchProfile, profile) ? nil : branchProfile
             )
             guard chatViewportTransitionIsCurrent(generation: transitionGeneration),
                   profile == activeProfile,

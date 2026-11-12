@@ -175,7 +175,12 @@ extension AppState {
         case .success(let found?):
             workspaceReveal = WorkspaceReveal(path: found, line: line)
         case .success(nil):
-            let name = Self.workspaceName(path)
+            // A relative name splits as the chat's folder does: a POSIX
+            // host's name may hold a backslash.
+            let windowsHost = chatWorkspaceFolder.map { !($0.hasPrefix("/") || $0.hasPrefix("~")) } ?? false
+            let name = Self.isAbsoluteWorkspacePath(path) || windowsHost
+                ? Self.workspaceName(path)
+                : Self.workspaceName("/" + path)
             let notice = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.", table: .chat)
             // A notice already up (a message that came back) waits under
             // this one and comes back when it goes.

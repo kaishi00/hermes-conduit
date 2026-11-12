@@ -177,6 +177,10 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// Whether a continued job's submit began (after its turn surface
     /// report). Until then a cancel interrupts nothing in its chat.
     var submitted = false
+    /// A continued job's submit is on its way: it holds its chat until the
+    /// submit returns, cancelled or not, so a cancel repeated then never
+    /// stops the call's next request there (issue 2295).
+    var submitInFlight = false
     /// A follow-up being put into the running turn (#451). While it is on
     /// its way, or waits to run as the next turn, a completion isn't taken
     /// as the request's end.
@@ -1677,7 +1681,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // two of the call's requests never both pass during that wait
             // (issue 2283).
             let earlier = jobs.contains { other in
-                other.id != jobID && other.status.isActive && (other.requestSent || other.claimsChat)
+                other.id != jobID && (other.submitInFlight || other.status.isActive && (other.requestSent || other.claimsChat))
                     && [other.runtimeSessionID, other.storedSessionID].compactMap { $0 }.contains { chat.owns(sessionID: $0) }
             }
             if !earlier {
@@ -1713,7 +1717,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 dropTurnSurface(VoiceJobNotSentError())
                 return
             }
-            update(jobID) { $0.submitted = true }
+            update(jobID) {
+                $0.submitted = true
+                $0.submitInFlight = true
+            }
+            // Holds the chat through the repeated cancel below too.
+            defer { update(jobID) { $0.submitInFlight = false } }
             do {
                 try await backend.submit(sessionID, prompt)
             } catch {
@@ -3488,7 +3497,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         // The request whose chat the call took stays: the saved call's line
         // for it follows the chat's stored id once the poll learns it.
         let settled = jobs.filter {
-            !$0.status.isActive && $0.outcomeDelivered && noticesInFlight[$0.id] == nil && $0.id != callChatJobID
+            !$0.status.isActive && $0.outcomeDelivered && noticesInFlight[$0.id] == nil && $0.id != callChatJobID && !$0.submitInFlight
         }
         let excess = settled.count - Self.maximumSettledJobs
         guard excess > 0 else { return }
