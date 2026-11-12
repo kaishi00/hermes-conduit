@@ -707,6 +707,8 @@ final class CopiesRoutes {
     /// `PUT /rooms/looks`'s bodies; the next this many fail.
     private(set) var looksPuts: [[String: Any]] = []
     var failingLooksPuts = 0
+    /// The next PUTs each wait this long.
+    var looksPutDelays: [Duration] = []
     /// The next people reads each wait this long, answering what the people
     /// were when they were asked.
     var peopleDelays: [Duration] = []
@@ -794,6 +796,9 @@ final class CopiesRoutes {
         }
         if path.hasPrefix(RoomLooksUpload.path), method == "PUT" {
             looksPuts.append(body ?? [:])
+            if !looksPutDelays.isEmpty {
+                try await Task.sleep(for: looksPutDelays.removeFirst())
+            }
             if failingLooksPuts > 0 {
                 failingLooksPuts -= 1
                 throw DashboardTicketBridgeError.http(status: 502, detail: "Bad gateway")
