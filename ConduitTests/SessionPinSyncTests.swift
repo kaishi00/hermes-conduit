@@ -383,15 +383,15 @@ extension ChatReadStateTests {
         XCTAssertFalse(SessionMutationIdentity.isRefusal(DashboardTicketBridgeError.signInRequired))
         XCTAssertEqual(
             DashboardTicketBridgeError.describe(status: 403, detail: "permission_denied"),
-            AppLocalization.string("Hermes only lets the computer it runs on change this older chat. Change it there instead.")
+            AppLocalization.string("Hermes only lets the computer it runs on change this older chat. Change it there instead.", table: .connection)
         )
         XCTAssertEqual(
             DashboardTicketBridgeError.describe(status: 403, detail: "profile_mismatch"),
-            AppLocalization.string("Hermes says this chat belongs to another profile. Switch to that profile, then try again.")
+            AppLocalization.string("Hermes says this chat belongs to another profile. Switch to that profile, then try again.", table: .connection)
         )
         XCTAssertEqual(
             DashboardTicketBridgeError.describe(status: 403, detail: "Forbidden"),
-            AppLocalization.string("Hermes turned this down because the dashboard sign-in expired or doesn't allow it. Sign in again, then try once more.")
+            AppLocalization.string("Hermes turned this down because the dashboard sign-in expired or doesn't allow it. Sign in again, then try once more.", table: .connection)
         )
     }
 
@@ -432,10 +432,10 @@ extension ChatReadStateTests {
     func testPinKeptOnThePhoneSaysWhatHermesSaid() {
         let conflict = "admission_conflict"
         let pinned = PinSyncNotice(error: DashboardTicketBridgeError.http(status: 409, detail: conflict), pinned: true)
-        XCTAssertEqual(pinned.message, AppLocalization.string("Pinned on this iPhone only. \(conflict)"))
+        XCTAssertEqual(pinned.message, AppLocalization.string("Pinned on this iPhone only. \(conflict)", table: .chat))
         let refusal = DashboardTicketBridgeError.describe(status: 403, detail: "permission_denied")
         let unpinned = PinSyncNotice(error: DashboardTicketBridgeError.http(status: 403, detail: "permission_denied"), pinned: false)
-        XCTAssertEqual(unpinned.message, AppLocalization.string("Unpinned on this iPhone only. \(refusal)"))
+        XCTAssertEqual(unpinned.message, AppLocalization.string("Unpinned on this iPhone only. \(refusal)", table: .chat))
         let repeated = PinSyncNotice(error: DashboardTicketBridgeError.http(status: 409, detail: conflict), pinned: true)
         XCTAssertNotEqual(pinned, repeated, "A repeat failure shows again")
     }

@@ -64,9 +64,9 @@ enum GatewayMediaKind: Equatable {
     var label: String {
         switch self {
         case .image: return AppLocalization.string("Image")
-        case .video: return AppLocalization.string("Video")
+        case .video: return AppLocalization.string("Video", table: .chat)
         case .audio: return AppLocalization.string("Audio")
-        case .document: return AppLocalization.string("File")
+        case .document: return AppLocalization.string("File", table: .chat)
         }
     }
 }
@@ -494,19 +494,22 @@ private final class PreviewItem: NSObject, QLPreviewItem {
 /// tells VoiceOver it is a button that does so.
 struct MediaPreviewTapModifier: ViewModifier {
     let action: () -> Void
+    /// In place of the opening hint, when a tap does something else (a
+    /// file that couldn't be read tries again).
+    var hint: Text? = nil
 
     func body(content: Content) -> some View {
         content
             .contentShape(Rectangle())
             .onTapGesture(perform: action)
             .accessibilityAddTraits(.isButton)
-            .accessibilityHint(Text("Opens full screen with save and share"))
+            .accessibilityHint(hint ?? Text("Opens full screen with save and share"))
     }
 }
 
 extension View {
-    func opensMediaPreview(_ action: @escaping () -> Void) -> some View {
-        modifier(MediaPreviewTapModifier(action: action))
+    func opensMediaPreview(_ action: @escaping () -> Void, hint: Text? = nil) -> some View {
+        modifier(MediaPreviewTapModifier(action: action, hint: hint))
     }
 }
 

@@ -27,6 +27,14 @@ only the translation.
   remove KEY [KEY ...] [--catalog PATH]
       Delete keys no call site uses any more.
 
+  move KEY [KEY ...] --to PATH [--catalog PATH]
+      Move keys to another of the app's tables with their translations:
+      into a feature table (Conduit/Strings/Voice.xcstrings) for keys only
+      that feature uses, or back into Localizable once a second feature
+      uses one. Change the call sites' `table:` to match.
+
+--catalog defaults to Conduit/Localizable.xcstrings, the shared table.
+
 After any change, run scripts/check-l10n-coverage.py. See
 docs/LOCALIZATION.md.
 """
@@ -42,7 +50,8 @@ import sys
 REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 
 # Every catalog the app and its targets ship, in the order worksheets list
-# them.
+# them. The app's feature tables (Conduit/Strings, issue 823) follow
+# Localizable: see catalogs().
 CATALOGS = (
     "Conduit/Localizable.xcstrings",
     "Conduit/AppShortcuts.xcstrings",
@@ -50,6 +59,7 @@ CATALOGS = (
     "ConduitWatch/Localizable.xcstrings",
     "ConduitWatch/InfoPlist.xcstrings",
 )
+TABLES_DIRECTORY = "Conduit/Strings"
 
 # The Swift sources whose call sites each Localizable catalog serves, for
 # the worksheet's "where" hints.
@@ -68,6 +78,26 @@ def _checker():
 
 
 CHECKER = _checker()
+
+
+def table_catalogs() -> list:
+    """The app's feature tables, Conduit/Strings/<Name>.xcstrings."""
+    directory = os.path.join(REPO_ROOT, TABLES_DIRECTORY)
+    if not os.path.isdir(directory):
+        return []
+    return [f"{TABLES_DIRECTORY}/{name}" for name in sorted(os.listdir(directory))
+            if name.endswith(".xcstrings")]
+
+
+def catalogs() -> list:
+    """Every catalog, Localizable's feature tables right after it."""
+    return [CATALOGS[0], *table_catalogs(), *CATALOGS[1:]]
+
+
+def _known(catalog_path: str) -> str:
+    if catalog_path not in catalogs():
+        raise ValueError(f"unknown catalog {catalog_path!r}")
+    return catalog_path
 
 
 def load(path: str) -> dict:
@@ -134,9 +164,17 @@ def set_localization(entry: dict, language: str, localization: dict) -> None:
 
 
 def call_sites(catalog_path: str) -> dict:
-    """{key: ["file:line", ...]} for the catalog's Swift call sites."""
+    """{key: ["file:line", ...]} for the catalog's Swift call sites: those
+    naming its feature table, or no table for a Localizable catalog."""
     sites = {}
-    for root in SITE_ROOTS.get(catalog_path, ()):
+    table = None
+    roots = SITE_ROOTS.get(catalog_path, ())
+    if catalog_path.startswith(TABLES_DIRECTORY + "/"):
+        name = os.path.basename(catalog_path)[:-len(".xcstrings")]
+        cases = CHECKER.read_table_cases(REPO_ROOT)
+        table = next((case for case, table_name in cases.items() if table_name == name), "")
+        roots = ("Conduit",)
+    for root in roots:
         for dirpath, _dirnames, filenames in os.walk(os.path.join(REPO_ROOT, root)):
             for name in sorted(filenames):
                 if not name.endswith(".swift"):
@@ -146,7 +184,9 @@ def call_sites(catalog_path: str) -> dict:
                     # Offsets index the comment-blanked text, which keeps
                     # the file's line breaks.
                     source = CHECKER.strip_comment_lines(handle.read())
-                for skeleton, offset in CHECKER.extract_sites(source):
+                for skeleton, site_table, offset in CHECKER.extract_table_sites(source):
+                    if site_table != table:
+                        continue
                     line = source.count("\n", 0, offset) + 1
                     sites.setdefault(skeleton, []).append(
                         f"{os.path.relpath(path, REPO_ROOT)}:{line}")
@@ -155,7 +195,7 @@ def call_sites(catalog_path: str) -> dict:
 
 def export(language: str, include_all: bool) -> dict:
     entries = []
-    for catalog_path in CATALOGS:
+    for catalog_path in catalogs():
         path = os.path.join(REPO_ROOT, catalog_path)
         if not os.path.exists(path):
             continue
@@ -186,7 +226,7 @@ def export(language: str, include_all: bool) -> dict:
 
 
 def import_worksheets(paths, create: bool = False) -> int:
-    catalogs = {}
+    loaded = {}
     written = 0
     for worksheet_path in paths:
         worksheet = load(worksheet_path)
@@ -198,18 +238,18 @@ def import_worksheets(paths, create: bool = False) -> int:
             catalog_path = item["catalog"]
             # A worksheet is handed out and comes back from someone else, so
             # it only names a catalog; it never chooses the file written.
-            if catalog_path not in CATALOGS:
+            if catalog_path not in catalogs():
                 raise ValueError(f"{worksheet_path}: unknown catalog {catalog_path!r}")
-            if catalog_path not in catalogs:
-                catalogs[catalog_path] = load(os.path.join(REPO_ROOT, catalog_path))
-            strings = catalogs[catalog_path]["strings"]
+            if catalog_path not in loaded:
+                loaded[catalog_path] = load(os.path.join(REPO_ROOT, catalog_path))
+            strings = loaded[catalog_path]["strings"]
             if item["key"] not in strings:
                 if not create:
                     raise KeyError(f"{catalog_path}: no key {item['key']!r} (pass --create for a new string)")
                 strings[item["key"]] = {"localizations": {}}
             set_localization(strings[item["key"]], language, localization_from(translation))
             written += 1
-    for catalog_path, catalog in catalogs.items():
+    for catalog_path, catalog in loaded.items():
         save(os.path.join(REPO_ROOT, catalog_path), catalog)
     return written
 
@@ -264,7 +304,7 @@ def _rewrite_values(localization: dict, rewrite) -> dict:
 
 
 def rename(old: str, new: str, catalog_path: str) -> None:
-    path = os.path.join(REPO_ROOT, catalog_path)
+    path = os.path.join(REPO_ROOT, _known(catalog_path))
     catalog = load(path)
     strings = catalog["strings"]
     if old not in strings:
@@ -289,13 +329,40 @@ def rename(old: str, new: str, catalog_path: str) -> None:
 
 
 def remove(keys, catalog_path: str) -> None:
-    path = os.path.join(REPO_ROOT, catalog_path)
+    path = os.path.join(REPO_ROOT, _known(catalog_path))
     catalog = load(path)
     for key in keys:
         if key not in catalog["strings"]:
             raise KeyError(f"{catalog_path}: no key {key!r}")
         del catalog["strings"][key]
     save(path, catalog)
+
+
+def move(keys, source_path: str, destination_path: str) -> None:
+    """Move keys, translations and all, between the app's tables (the
+    Watch's and the other catalogs are separate apps' strings). The
+    destination is written first; if the source's write then fails, the
+    keys are in both, and `remove KEY --catalog SOURCE` finishes the move."""
+    tables = [CATALOGS[0], *table_catalogs()]
+    for catalog_path in (source_path, destination_path):
+        if catalog_path not in tables:
+            raise ValueError(f"{catalog_path!r} isn't one of the app's tables "
+                             f"({', '.join(tables)})")
+    if source_path == destination_path:
+        raise ValueError("the keys are already there")
+    source = load(os.path.join(REPO_ROOT, source_path))
+    destination = load(os.path.join(REPO_ROOT, destination_path))
+    for key in keys:
+        if key not in source["strings"]:
+            raise KeyError(f"{source_path}: no key {key!r}")
+        if key in destination["strings"]:
+            raise KeyError(f"{destination_path}: {key!r} already exists")
+    for key in keys:
+        destination["strings"][key] = source["strings"].pop(key)
+    # The destination first: a failed write then leaves the keys where
+    # they were instead of in neither table.
+    save(os.path.join(REPO_ROOT, destination_path), destination)
+    save(os.path.join(REPO_ROOT, source_path), source)
 
 
 def main(argv=None) -> int:
@@ -317,6 +384,10 @@ def main(argv=None) -> int:
     remove_parser = commands.add_parser("remove", help="delete unused keys")
     remove_parser.add_argument("keys", nargs="+")
     remove_parser.add_argument("--catalog", default=CATALOGS[0])
+    move_parser = commands.add_parser("move", help="move keys to another of the app's tables")
+    move_parser.add_argument("keys", nargs="+")
+    move_parser.add_argument("--to", required=True, help="destination table, e.g. Conduit/Strings/Voice.xcstrings")
+    move_parser.add_argument("--catalog", default=CATALOGS[0], help="the table they're in now")
     args = parser.parse_args(argv)
 
     try:
@@ -333,6 +404,8 @@ def main(argv=None) -> int:
             rename(args.old, args.new, args.catalog)
         elif args.command == "remove":
             remove(args.keys, args.catalog)
+        elif args.command == "move":
+            move(args.keys, args.catalog, args.to)
     except (KeyError, ValueError, OSError) as error:
         print(f"FAIL: {error}", file=sys.stderr)
         return 1

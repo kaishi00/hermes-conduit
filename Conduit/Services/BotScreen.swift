@@ -106,6 +106,10 @@ struct BotScreenUse: Equatable {
         let title: String
         let label: String
         let at: Date?
+
+        /// Whether this is the chat with these ids (the one the sheet
+        /// opened from).
+        func isChat(in ids: Set<String>) -> Bool { ids.contains(sessionID) }
     }
 
     let controlling: Entry?
@@ -130,13 +134,38 @@ struct BotScreenUse: Equatable {
                      at: at.map { Date(timeIntervalSince1970: $0) })
     }
 
-    /// How a chat holding the screen is named here: its ref, the Bot Chat,
-    /// or its title.
-    static func name(of entry: Entry) -> String {
+    /// The line saying which chat drives the screen now: "This chat" when
+    /// it's the chat the sheet opened from, else that chat by name.
+    static func controllingLine(_ entry: Entry, openChat: Set<String> = []) -> String {
+        entry.isChat(in: openChat)
+            ? AppLocalization.string("This chat is using the screen", table: .bots)
+            : AppLocalization.string("\(name(of: entry, openChat: openChat)) is using the screen", table: .bots)
+    }
+
+    /// Which bot's screen a chat's menu opens, or nil for none: a Bot
+    /// Chat's or a workstream's bot, else the profile an ordinary chat runs
+    /// under, its row's or the active one (issue 2132). Never a room's (its
+    /// bots may be another host's), a saved copy's (no host to ask) or no
+    /// chat at all.
+    static func menuProfile(inRoom: Bool, botChatProfile: String?, workstreamProfile: String?,
+                            savedCopy: Bool, sessionID: String?, rowProfile: String?,
+                            activeProfile: String) -> String? {
+        guard !inRoom else { return nil }
+        if let profile = botChatProfile ?? workstreamProfile { return profile }
+        guard !savedCopy, let sessionID, !sessionID.isEmpty else { return nil }
+        if let rowProfile, !rowProfile.isEmpty { return rowProfile }
+        return activeProfile
+    }
+
+    /// How a chat holding the screen is named here: "this chat" when it's
+    /// the chat the sheet opened from, else its ref, the Bot Chat, or its
+    /// title.
+    static func name(of entry: Entry, openChat: Set<String> = []) -> String {
+        if entry.isChat(in: openChat) { return AppLocalization.string("this chat", table: .bots) }
         switch entry.kind {
         case "workstream" where !entry.ref.isEmpty: return entry.ref
-        case "bot_chat": return AppLocalization.string("the Bot Chat")
-        default: return entry.title.isEmpty ? AppLocalization.string("another chat") : entry.title
+        case "bot_chat": return AppLocalization.string("the Bot Chat", table: .bots)
+        default: return entry.title.isEmpty ? AppLocalization.string("another chat", table: .bots) : entry.title
         }
     }
 }
@@ -197,7 +226,8 @@ final class BotScreenModel: ObservableObject {
     @Published private(set) var sudoRequestID: String?
     @Published private(set) var viewerHash: String?
 
-    /// The page's end of the stream (BotScreenWebView).
+    /// The page's end of the stream (BotScreenWebView): the sheet's or the
+    /// full screen's, whichever was ready last (`pageReady`).
     weak var page: BotScreenPage?
 
     private weak var client: HermesClient?
@@ -307,7 +337,7 @@ final class BotScreenModel: ObservableObject {
 
     func load() async {
         guard let client else {
-            availability = .failed(AppLocalization.string("Not connected to Hermes."))
+            availability = .failed(AppLocalization.string("Not connected to Hermes.", table: .bots))
             return
         }
         // A hand back that didn't go through when the sheet last closed goes
@@ -354,7 +384,7 @@ final class BotScreenModel: ObservableObject {
 
     func install() async {
         guard let client else {
-            errorText = AppLocalization.string("Not connected to Hermes.")
+            errorText = AppLocalization.string("Not connected to Hermes.", table: .bots)
             return
         }
         installLog = []
@@ -530,7 +560,7 @@ final class BotScreenModel: ObservableObject {
 
     private func perform(_ work: @escaping (HermesClient) async throws -> Void) async {
         guard let client else {
-            errorText = AppLocalization.string("Not connected to Hermes.")
+            errorText = AppLocalization.string("Not connected to Hermes.", table: .bots)
             return
         }
         isBusy = true
@@ -612,8 +642,8 @@ final class BotScreenModel: ObservableObject {
                 installLog = []
             } else {
                 errorText = code == -2
-                    ? AppLocalization.string("This host has no sudo. Run the install command on the host yourself.")
-                    : AppLocalization.string("The install didn't finish. Its log is below.")
+                    ? AppLocalization.string("This host has no sudo. Run the install command on the host yourself.", table: .bots)
+                    : AppLocalization.string("The install didn't finish. Its log is below.", table: .bots)
             }
         default:
             break
@@ -695,6 +725,24 @@ final class BotScreenModel: ObservableObject {
         stream = .idle
     }
 
+    /// A page ready to draw (the sheet's screen or its full screen): the
+    /// newest one takes the stream, so the page it replaces stops drawing
+    /// and the new one watches it from the next attach.
+    func pageReady(_ ready: BotScreenPage) async {
+        if let current = page, current !== ready { detach() }
+        page = ready
+        if status?.isRunning == true, stream == .idle { await attach() }
+    }
+
+    /// A page gone from the screen: its stream ends, unless another page
+    /// has taken it since (the full screen opening or closing).
+    func pageGone(_ gone: BotScreenPage) {
+        guard page == nil || page === gone else { return }
+        // Before the next page is ready, nothing attaches to the gone one.
+        detach()
+        page = nil
+    }
+
     /// Whether a page message is about the stream now open: each attach
     /// tags the page's stream with its generation, so a stopped stream's
     /// late close or failure never ends the one that replaced it.
@@ -726,7 +774,7 @@ final class BotScreenModel: ObservableObject {
     func pageFailed(_ reason: String, tag: Int?) {
         guard isCurrent(tag), stream == .connecting || stream == .live else { return }
         detach()
-        stream = .lost(reason.isEmpty ? AppLocalization.string("The screen's stream was lost.") : reason)
+        stream = .lost(reason.isEmpty ? AppLocalization.string("The screen's stream was lost.", table: .bots) : reason)
     }
 
     /// The app went to the background: a takeover is handed back, so the
@@ -754,22 +802,15 @@ final class BotScreenModel: ObservableObject {
     private func opened(_ socket: any HermesWebSocket, generation: Int) {
         guard generation == attachGeneration, self.socket === socket else { return }
         page?.streamOpened()
-        receiveTask = Task { [weak self] in
-            while !Task.isCancelled {
-                do {
-                    let message = try await socket.receive()
-                    guard let self, !Task.isCancelled, generation == self.attachGeneration,
-                          self.socket === socket else { return }
-                    switch message {
-                    case .data(let data): self.page?.streamData(data)
-                    case .string(let text): self.page?.streamData(Data(text.utf8))
-                    @unknown default: break
-                    }
-                } catch {
-                    await MainActor.run { self?.ended(socket, generation: generation) }
-                    return
-                }
+        // Off the main actor: the socket is read and its bytes encoded there,
+        // and only the page's call comes here, once for what came meanwhile
+        // (issue 2216).
+        receiveTask = Task.detached { [weak self] in
+            await BotScreenStreamPump.run(receive: { try await socket.receive() }) { [weak self] pieces in
+                guard let self, generation == self.attachGeneration, self.socket === socket else { return }
+                for piece in pieces { self.page?.streamData(base64: piece) }
             }
+            await self?.ended(socket, generation: generation)
         }
     }
 
@@ -789,11 +830,11 @@ final class BotScreenModel: ObservableObject {
                 Task { await attach() }
                 return
             }
-            stream = .lost(AppLocalization.string("Someone else took control of the screen."))
+            stream = .lost(AppLocalization.string("Someone else took control of the screen.", table: .bots))
             return
         }
         stream = code == URLSessionWebSocketTask.CloseCode.normalClosure.rawValue
-            ? .idle : .lost(AppLocalization.string("The screen's stream was lost."))
+            ? .idle : .lost(AppLocalization.string("The screen's stream was lost.", table: .bots))
         Task { await load() }
     }
 }
@@ -804,11 +845,86 @@ protocol BotScreenPage: AnyObject {
     /// Starts a stream the page tags its messages with (`tag`).
     func startStream(viewOnly: Bool, tag: Int)
     func streamOpened()
-    func streamData(_ data: Data)
+    /// The stream's next bytes, base64.
+    func streamData(base64: String)
     func streamClosed(code: Int)
     func stopStream()
     func setViewOnly(_ viewOnly: Bool)
     func sendKeysyms(_ keysyms: [Int])
+}
+
+/// A screen's stream bytes on their way from the socket to the page. RFB
+/// is one ordered byte stream, so what came since the last drain is handed
+/// on as one piece, cut only where it's too big for one page call.
+final class BotScreenStreamBuffer: @unchecked Sendable {
+    /// The most bytes one page call carries (about 1.4 MB of base64).
+    static let pieceBytes = 1 << 20
+
+    private let lock = NSLock()
+    private var pending = Data()
+    private let pieceBytes: Int
+
+    init(pieceBytes: Int = BotScreenStreamBuffer.pieceBytes) {
+        self.pieceBytes = max(1, pieceBytes)
+    }
+
+    func append(_ data: Data) {
+        lock.lock()
+        pending.append(data)
+        lock.unlock()
+    }
+
+    /// Everything since the last drain, in order, base64 in pieces of at
+    /// most `pieceBytes` bytes each; nothing when nothing came.
+    func drain() -> [String] {
+        lock.lock()
+        let bytes = pending
+        pending = Data()
+        lock.unlock()
+        return stride(from: 0, to: bytes.count, by: pieceBytes).map { offset in
+            let start = bytes.startIndex + offset
+            return bytes[start..<min(start + pieceBytes, bytes.endIndex)].base64EncodedString()
+        }
+    }
+}
+
+/// Reads a screen's stream and hands it to the page (issue 2216). The
+/// socket is read and its bytes encoded off the main actor; `deliver`, on
+/// the main actor, gets what came while it was busy in one go, in order,
+/// so a busy desktop's many small updates cost the page one call per turn
+/// of the main actor, not one per message.
+enum BotScreenStreamPump {
+    /// Returns once the socket fails (closed, or cancelled with the task),
+    /// after everything read before it was delivered.
+    static func run(receive: @escaping @Sendable () async throws -> URLSessionWebSocketTask.Message,
+                    buffer: BotScreenStreamBuffer = BotScreenStreamBuffer(),
+                    deliver: @escaping @MainActor @Sendable ([String]) -> Void) async {
+        // One wake waits at most: those that came while a delivery ran are
+        // all in the buffer for the next one.
+        let (wakes, signal) = AsyncStream.makeStream(of: Void.self, bufferingPolicy: .bufferingNewest(1))
+        await withTaskGroup(of: Void.self) { group in
+            group.addTask {
+                defer { signal.finish() }
+                while !Task.isCancelled {
+                    guard let message = try? await receive() else { return }
+                    switch message {
+                    case .data(let data): buffer.append(data)
+                    case .string(let text): buffer.append(Data(text.utf8))
+                    @unknown default: continue
+                    }
+                    signal.yield()
+                }
+            }
+            group.addTask {
+                for await _ in wakes {
+                    let pieces = buffer.drain()
+                    if !pieces.isEmpty { await deliver(pieces) }
+                }
+                let rest = buffer.drain()
+                if !rest.isEmpty, !Task.isCancelled { await deliver(rest) }
+            }
+        }
+    }
 }
 
 /// Which bots' hosts can have a screen, as last read: a bot's Screen entries

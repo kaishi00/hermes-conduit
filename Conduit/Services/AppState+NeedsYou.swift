@@ -70,8 +70,13 @@ extension AppState {
         Task { @MainActor [weak self] in await self?.refreshNeedsYou() }
     }
 
-    /// Whether a wait is in the chat on screen, whose card is there.
+    /// Whether a wait is in the chat on screen, whose card is there, or in
+    /// the group room on screen, whose card answers it (issue 2064).
     func isOpenChat(_ item: NeedsYouItem) -> Bool {
+        if let roomID = item.roomID {
+            // A linked room's copy is another host's room, whatever its id.
+            return activeRoomSurface?.copy == nil && activeRoomSurface?.room.roomID == roomID
+        }
         // A Bot Chat's own profile, not the strip's selected one.
         guard profilesMatch(item.profile, conversationIdentityProfile),
               let active = activeSessionId, !active.isEmpty else { return false }
@@ -83,6 +88,27 @@ extension AppState {
     /// the chat on screen it only scrolls.
     func openNeedsYou(_ item: NeedsYouItem) {
         needsYou.dismissBanner(item)
+        if let roomID = item.roomID {
+            // A wait in a group room this Hermes hosts: the room opens (in
+            // any profile, since rooms are the dashboard's) with its card.
+            dismissSidebarDrawer()
+            guard !isOpenChat(item) else { return }
+            let viewport = chatViewportTransitionGeneration, roomEpoch = groupRoomEpoch, dashboardID = activeDashboardID
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                // A chat, room or dashboard opened since the tap owns the screen.
+                let owned = {
+                    self.chatViewportTransitionGeneration == viewport && self.groupRoomEpoch == roomEpoch
+                        && self.activeDashboardID == dashboardID
+                }
+                guard owned() else { return }
+                // Offline, or Hermes' rooms not read yet: say so, as a chat's
+                // open does, unless something opened meanwhile.
+                guard await self.openNotificationRoom(roomID) == .retry, owned() else { return }
+                self.errorMessage = AppLocalization.string("Couldn't open that chat. Try again.")
+            }
+            return
+        }
         guard let sessionID = item.sessionIDs.first else { return }
         let isOpen = isOpenChat(item)
         // Another profile's chat doesn't open during a call (it says so),

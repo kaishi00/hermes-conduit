@@ -64,7 +64,7 @@ class CheckHermesSlashParityTests(unittest.TestCase):
         self.assertEqual(check.parse_registry_subcommands(COMMANDS)["skills"], ["search", "pending"])
 
     def test_conduit_sources_parse(self):
-        with open(os.path.join(ROOT, check.APP_STATE), encoding="utf-8") as fh:
+        with open(os.path.join(ROOT, check.SLASH_COMMANDS_FILE), encoding="utf-8") as fh:
             app_state = fh.read()
         with open(os.path.join(ROOT, check.MODEL_PICKER), encoding="utf-8") as fh:
             picker = fh.read()

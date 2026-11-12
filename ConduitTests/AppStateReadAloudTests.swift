@@ -54,6 +54,26 @@ final class AppStateReadAloudTests: XCTestCase {
         harness.readAloudController.stop()
     }
 
+    func testATypedTurnIsReportedHeardOnlyWhileAReadingCouldStart() {
+        let harness = makeHarness(snapshot: ttsOnlySnapshot)
+        let app = harness.appState
+        XCTAssertNil(app.readAloudUnavailableReason)
+        XCTAssertFalse(app.messageTurnSurface(spoken: false).heard, "the setting is off")
+
+        app.appDefaults.set(true, forKey: ReadRepliesAloud.preferenceKey)
+        XCTAssertTrue(app.messageTurnSurface(spoken: false).heard)
+        XCTAssertFalse(app.messageTurnSurface(spoken: true).heard, "a spoken turn is heard anyway")
+
+        app.isNativeHermesCallActive = true
+        XCTAssertFalse(app.messageTurnSurface(spoken: false).heard, "nothing reads it during a call")
+        app.isNativeHermesCallActive = false
+
+        harness.readAloudController.setForegroundActive(false)
+        XCTAssertFalse(app.messageTurnSurface(spoken: false).heard, "nothing starts off screen")
+        harness.readAloudController.setForegroundActive(true)
+        XCTAssertTrue(app.messageTurnSurface(spoken: false).heard)
+    }
+
     func testReadAloudIsRefusedDuringACallFromHermes() {
         let harness = makeHarness(snapshot: ttsOnlySnapshot)
         let messageA = ChatMessage(id: "msg-a", role: .assistant, content: "Response A", timestamp: "1")

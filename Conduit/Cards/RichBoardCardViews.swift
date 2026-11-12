@@ -122,26 +122,30 @@ private struct RichBoardTabs: View {
 /// A board's follow-ups under it: tap sends one as the user's message,
 /// long-press puts it in the composer, as Predictive's reply chips do, and
 /// like them they step aside while the user writes a draft (a tap would
-/// replace it) and ignore taps in their first moment on screen.
+/// replace it) or has something staged (a tap would send it along), and
+/// ignore taps in their first moment on screen.
 struct RichBoardFollowUps: View {
     let followUps: [String]
-    /// Holds the composer's draft (Predictive's store sees every edit).
-    @ObservedObject var composer: PredictiveStore
+    /// Holds the composer's draft (Predictive's store sees every edit);
+    /// the chips follow only whether it's empty (RichDraftGate).
+    let composer: PredictiveStore
     let send: (String) -> Void
     let edit: (String) -> Void
 
     @State private var shownAt = Date.distantFuture
 
     var body: some View {
-        if composer.draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            CapabilityFlowLayout(spacing: 8) {
-                ForEach(Array(followUps.enumerated()), id: \.offset) { index, text in
-                    PredictiveReplyChip(text: text, isFirst: index == 0,
-                                        send: { if ready { send($0) } },
-                                        edit: { if ready { Haptics.light(); edit($0) } })
+        RichDraftGate(composer: composer) { empty in
+            if empty {
+                CapabilityFlowLayout(spacing: 8) {
+                    ForEach(Array(followUps.enumerated()), id: \.offset) { index, text in
+                        PredictiveReplyChip(text: text, isFirst: index == 0,
+                                            send: { if ready { send($0) } },
+                                            edit: { if ready { Haptics.light(); edit($0) } })
+                    }
                 }
+                .onAppear { shownAt = Date() }
             }
-            .onAppear { shownAt = Date() }
         }
     }
 
@@ -242,8 +246,8 @@ struct RichTableCard: View {
         .buttonStyle(.plain)
         .accessibilityHint(Text("Sorts the table by this column"))
         .accessibilityValue(sort?.column == column
-                            ? Text(sort?.ascending == true ? AppLocalization.string("Sorted ascending")
-                                                           : AppLocalization.string("Sorted descending"))
+                            ? Text(sort?.ascending == true ? AppLocalization.string("Sorted ascending", table: .chat)
+                                                           : AppLocalization.string("Sorted descending", table: .chat))
                             : Text(verbatim: ""))
     }
 }
@@ -359,7 +363,7 @@ struct RichChecklistCard: View {
         RichInfoCardFrame(title: card.title, source: card.source) {
             VStack(alignment: .leading, spacing: 12) {
                 let done = card.checklist.filter { ticked.contains($0.text.lowercased()) }.count
-                Text(AppLocalization.string("\(String(done)) of \(String(card.checklist.count)) done"))
+                Text(AppLocalization.string("\(String(done)) of \(String(card.checklist.count)) done", table: .chat))
                     .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 ForEach(Array(Self.groups(card.checklist).enumerated()), id: \.offset) { _, group in
@@ -583,7 +587,7 @@ struct RichCalloutCard: View {
 
     static func name(_ tone: RichCallout.Tone) -> String {
         switch tone {
-        case .tip: return AppLocalization.string("Tip")
+        case .tip: return AppLocalization.string("Tip", table: .chat)
         case .note: return AppLocalization.string("Note")
         case .warning: return AppLocalization.string("Warning")
         }

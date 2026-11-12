@@ -47,7 +47,13 @@ final class VoiceConversationController: ObservableObject {
     /// regardless of whether the speech detector classifies it as speech,
     /// and returns to zero whenever capture is paused, stopped, suspended,
     /// or interrupted.
-    @Published private(set) var microphoneLevel: Float = 0
+    ///
+    /// Read from `microphoneMeter`, which publishes on its own: the meter
+    /// ticks up to 20 times a second, and only the level bars draw it. On
+    /// the controller every tick re-rendered the whole voice sheet
+    /// (issue 1970).
+    var microphoneLevel: Float { microphoneMeter.level }
+    let microphoneMeter = VoiceMicrophoneMeter()
     /// Publication clock for meter throttling: level events arrive at tap
     /// buffer rate (~50 Hz), far faster than any useful UI animation, and
     /// every @Published assignment re-renders observing surfaces.
@@ -526,15 +532,15 @@ final class VoiceConversationController: ObservableObject {
 
     func requestOnDeviceTranscriptionPermissions() async -> VoiceProviderTestResult {
         guard isApplicationForegroundActive else {
-            return .failure(AppLocalization.string("Voice permissions can only be requested while Conduit is in the foreground."))
+            return .failure(AppLocalization.string("Voice permissions can only be requested while Conduit is in the foreground.", table: .voice))
         }
         guard await capture.requestPermission() else {
             return .failure(VoiceAudioError.microphonePermissionDenied.localizedDescription)
         }
         guard await deviceTranscriber.requestPermission() else {
-            return .failure(AppLocalization.string("Speech Recognition permission is required for on-device transcription."))
+            return .failure(AppLocalization.string("Speech Recognition permission is required for on-device transcription.", table: .voice))
         }
-        return .success(AppLocalization.string("On-device speech recognition is ready."))
+        return .success(AppLocalization.string("On-device speech recognition is ready.", table: .voice))
     }
 
     func startListening(includePreRoll: Bool = false) async {
@@ -549,6 +555,10 @@ final class VoiceConversationController: ObservableObject {
         // relisten (after a reply, an empty transcript, a spoken Stop, the
         // voice screen opening) settles to wait for the next press instead.
         if isPushToTalkActive, !isPushToTalkHeld {
+            // A widget's or Shortcut's Talk has done its part once the call
+            // waits for the press: the launch ends here, so its deadline
+            // never reports it expired over a call the user is in (#1934).
+            widgetAuthorization?.conversationDidSettle()
             if isSteeringTurn {
                 resumeTurnAfterSteer()
             } else if isVoiceSessionActive {
@@ -565,7 +575,7 @@ final class VoiceConversationController: ObservableObject {
         rearmRuntimeAfterCaptureRestart()
         guard let gateway else {
             releaseHeldCapture()
-            state = .failed(AppLocalization.string("Voice isn't set up yet. Check Settings > Voice."))
+            state = .failed(AppLocalization.string("Voice isn't set up yet. Check Settings > Voice.", table: .voice))
             return
         }
         _ = gateway // keeps the availability check explicit at the state edge.
@@ -606,7 +616,7 @@ final class VoiceConversationController: ObservableObject {
             // change or another app took it while locked); its raw avfaudio
             // error means nothing on the lock screen or after unlocking.
             state = .failed(isBackgroundListeningRequested
-                ? AppLocalization.string("Listening stopped while your phone was locked. Tap Listen to continue.")
+                ? AppLocalization.string("Listening stopped while your phone was locked. Tap Listen to continue.", table: .voice)
                 : UserFacingError.message(for: error))
         }
     }
@@ -869,7 +879,7 @@ final class VoiceConversationController: ObservableObject {
     func runTranscriptionTest(duration: TimeInterval = 4) async -> VoiceProviderTestResult {
         stop()
         guard isApplicationForegroundActive else {
-            return .failure(AppLocalization.string("Voice tests only run while Conduit is in the foreground."))
+            return .failure(AppLocalization.string("Voice tests only run while Conduit is in the foreground.", table: .voice))
         }
         guard let gateway else {
             return .failure(AppLocalization.string("Conduit could not connect this test to the selected profile."))
@@ -890,14 +900,14 @@ final class VoiceConversationController: ObservableObject {
             return .failure(VoiceAudioError.microphonePermissionDenied.localizedDescription)
         }
         guard isCurrent(generation) else {
-            return .failure(AppLocalization.string("The speech-to-text test was cancelled."))
+            return .failure(AppLocalization.string("The speech-to-text test was cancelled.", table: .voice))
         }
         do {
             try capture.startListening(includePreRoll: false)
             state = .listening
             try await Task.sleep(for: .seconds(duration))
             guard isCurrent(generation) else {
-                return .failure(AppLocalization.string("The speech-to-text test was cancelled."))
+                return .failure(AppLocalization.string("The speech-to-text test was cancelled.", table: .voice))
             }
             let audio = try capture.finishUtterance()
             state = .transcribing
@@ -906,13 +916,13 @@ final class VoiceConversationController: ObservableObject {
             resetMicrophoneMeter()
             let transcript = try await transcribe(audio, gateway: gateway)
             guard isCurrent(generation) else {
-                return .failure(AppLocalization.string("The speech-to-text test was cancelled."))
+                return .failure(AppLocalization.string("The speech-to-text test was cancelled.", table: .voice))
             }
             guard !transcript.isEmpty else {
-                return .failure(AppLocalization.string("The selected speech-to-text provider returned an empty transcript."))
+                return .failure(AppLocalization.string("The selected speech-to-text provider returned an empty transcript.", table: .voice))
             }
             latestTranscript = transcript
-            return .success(AppLocalization.string("Transcribed: \(transcript)"))
+            return .success(AppLocalization.string("Transcribed: \(transcript)", table: .voice))
         } catch {
             if isCurrent(generation) { state = .failed(UserFacingError.message(for: error)) }
             return .failure(UserFacingError.message(for: error))
@@ -924,7 +934,7 @@ final class VoiceConversationController: ObservableObject {
     func runSpeechTest(text: String) async -> VoiceProviderTestResult {
         stop()
         guard isApplicationForegroundActive else {
-            return .failure(AppLocalization.string("Voice tests only run while Conduit is in the foreground."))
+            return .failure(AppLocalization.string("Voice tests only run while Conduit is in the foreground.", table: .voice))
         }
         guard let gateway else {
             return .failure(AppLocalization.string("Conduit could not connect this test to the selected profile."))
@@ -980,21 +990,21 @@ final class VoiceConversationController: ObservableObject {
             speechStream = stream
             try await stream.append(text)
             guard isCurrent(generation) else {
-                return .failure(AppLocalization.string("The speech playback test was cancelled."))
+                return .failure(AppLocalization.string("The speech playback test was cancelled.", table: .voice))
             }
             _ = try await stream.finish()
             guard isCurrent(generation) else {
-                return .failure(AppLocalization.string("The speech playback test was cancelled."))
+                return .failure(AppLocalization.string("The speech playback test was cancelled.", table: .voice))
             }
             try playback.finish()
             await playback.drain()
             guard isCurrent(generation) else {
-                return .failure(AppLocalization.string("The speech playback test was cancelled."))
+                return .failure(AppLocalization.string("The speech playback test was cancelled.", table: .voice))
             }
             guard deliveredAudio else {
-                return .failure(AppLocalization.string("Hermes connected, but the selected speech provider returned no audio."))
+                return .failure(AppLocalization.string("Hermes connected, but the selected speech provider returned no audio.", table: .voice))
             }
-            return .success(AppLocalization.string("Speech playback completed."))
+            return .success(AppLocalization.string("Speech playback completed.", table: .voice))
         } catch {
             if isCurrent(generation) { state = .failed(UserFacingError.message(for: error)) }
             return .failure(UserFacingError.message(for: error))
@@ -1007,7 +1017,7 @@ final class VoiceConversationController: ObservableObject {
         switch state {
         case .listening:
             if utteranceStartedAt == nil { utteranceStartedAt = date }
-            switch speechDetector.observe(level) {
+            switch speechDetector.observe(level, at: date) {
             case .started, .continued:
                 lastSpeechAt = date
                 openLiveTranscriptionIfNeeded()
@@ -1248,7 +1258,7 @@ final class VoiceConversationController: ObservableObject {
             // @Published state.
             guard state != .transcribing else { return }
             if lastMeterPublication == nil || date.timeIntervalSince(lastMeterPublication!) >= 0.05 {
-                microphoneLevel = level
+                microphoneMeter.level = level
                 lastMeterPublication = date
             }
             guard !isProviderTestRunning else { return }
@@ -1284,7 +1294,7 @@ final class VoiceConversationController: ObservableObject {
     /// Zeroes the visible meter and clears the publication clock so the
     /// first event of a fresh capture window always publishes.
     private func resetMicrophoneMeter() {
-        microphoneLevel = 0
+        microphoneMeter.level = 0
         lastMeterPublication = nil
     }
 
@@ -1474,7 +1484,7 @@ final class VoiceConversationController: ObservableObject {
                     // session and the sticky orphan — the user's next
                     // Listen + utterance retries the cancellation.
                     releaseRuntimeResources()
-                    state = .failed(AppLocalization.string("Hermes could not cancel the previous response."))
+                    state = .failed(AppLocalization.string("Hermes could not cancel the previous response.", table: .voice))
                     return
                 }
                 suspendedInFlightTurnOrphaned = false
@@ -1490,7 +1500,7 @@ final class VoiceConversationController: ObservableObject {
             guard await submit(transcript) else {
                 guard isCurrent(generation) else { return }
                 isAwaitingVoiceAssistant = false
-                state = .failed(AppLocalization.string("Hermes could not submit the transcription."))
+                state = .failed(AppLocalization.string("Hermes could not submit the transcription.", table: .voice))
                 return
             }
             guard isCurrent(generation) else { return }
@@ -1555,7 +1565,7 @@ final class VoiceConversationController: ObservableObject {
             }
             guard let server = session else {
                 throw VoiceSpeechServerError.message(speechServerFailure
-                    ?? AppLocalization.string("Could not reach your speech server through Hermes."))
+                    ?? AppLocalization.string("Could not reach your speech server through Hermes.", table: .voice))
             }
             finishingLiveTranscription = server
             let text = await server.finish()
@@ -1790,7 +1800,7 @@ final class VoiceConversationController: ObservableObject {
         // adjacent side features (response haptics) do not stand down
         // forever after an interruption.
         failedForAudioInterruption = true
-        state = .failed(AppLocalization.string("Audio was interrupted."))
+        state = .failed(AppLocalization.string("Audio was interrupted.", table: .voice))
     }
 
     /// Clears the lifecycle-suspension gate after the capture runtime has
@@ -1954,8 +1964,8 @@ final class VoiceConversationController: ObservableObject {
     /// How to answer when speaking alone won't: push to talk needs the
     /// button held, and a paused microphone hears nothing.
     private var approvalAnswerHint: String? {
-        if isMicrophonePaused { return AppLocalization.string("The microphone is paused: answer on the card.") }
-        if isPushToTalkActive { return AppLocalization.string("Hold to talk to answer.") }
+        if isMicrophonePaused { return AppLocalization.string("The microphone is paused: answer on the card.", table: .voice) }
+        if isPushToTalkActive { return AppLocalization.string("Hold to talk to answer.", table: .voice) }
         return nil
     }
 
@@ -2540,4 +2550,11 @@ final class VoiceConversationController: ObservableObject {
     private func isCurrent(_ generation: UInt64) -> Bool {
         generation == operationGeneration && isApplicationForegroundActive && isVoiceSessionActive
     }
+}
+
+/// The classic voice microphone's level, published apart from its
+/// controller so a tick re-renders only the bars reading it (issue 1970).
+@MainActor
+final class VoiceMicrophoneMeter: ObservableObject {
+    @Published fileprivate(set) var level: Float = 0
 }

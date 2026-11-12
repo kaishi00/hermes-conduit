@@ -222,7 +222,7 @@ struct V2ProjectPage: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            MinimisedLiveVoiceBar()
+            V2ListCallBar()
         }
         // Read again when the chats list's catalog changes: beside the open
         // chat on a wide window the page stays on screen (issue 1454).
@@ -497,7 +497,7 @@ struct V2ProjectPage: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(name.map { AppLocalization.string("\($0) profile") } ?? AppLocalization.string("All"))
+        .accessibilityLabel(name.map { AppLocalization.string("\($0) profile", table: .chat) } ?? AppLocalization.string("All"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 

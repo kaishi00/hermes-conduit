@@ -221,7 +221,7 @@ final class KanbanStore {
         let generation = loadGeneration
         guard let service else {
             // Said over a kept board too, which can't be changed offline.
-            setIfChanged(\.errorMessage, AppLocalization.string("Connect to a Hermes dashboard to use Kanban."))
+            setIfChanged(\.errorMessage, AppLocalization.string("Connect to a Hermes dashboard to use Kanban.", table: .tasks))
             return
         }
 
@@ -323,7 +323,7 @@ final class KanbanStore {
     }
 
     func fetchTaskDetail(id: String) async throws -> KanbanTaskDetail {
-        guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")) }
+        guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)) }
         return try await service.fetchTask(id: id, board: loadedBoardSlug ?? effectiveBoardSlug)
     }
 
@@ -334,7 +334,7 @@ final class KanbanStore {
     /// first failure is thrown, so a lost connection doesn't read as a
     /// missing task.
     func findTask(id: String) async throws -> (board: String, task: KanbanTask)? {
-        guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")) }
+        guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)) }
         let first = loadedBoardSlug ?? resolvedSelectedBoardSlug
         var failure: Error?
         for slug in [first] + boards.map(\.slug).filter({ $0 != first }) {
@@ -354,7 +354,7 @@ final class KanbanStore {
     }
 
     func fetchTaskLog(id: String, tailBytes: Int = 16_384) async throws -> KanbanWorkerLog {
-        guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")) }
+        guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)) }
         return try await service.fetchTaskLog(id: id, board: loadedBoardSlug ?? effectiveBoardSlug, tailBytes: tailBytes)
     }
 
@@ -362,7 +362,7 @@ final class KanbanStore {
     /// auxiliary data: failures are surfaced to the caller (the picker falls
     /// back to free-text entry) but never touch board state.
     func fetchModelOptions() async throws -> [KanbanModelProviderOption] {
-        guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")) }
+        guard let service else { throw KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)) }
         return try await service.fetchModelOptions()
     }
 
@@ -387,7 +387,7 @@ final class KanbanStore {
         try validateExpectedContext(expectedContext)
         // Context is frozen before the first suspension point.
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         let targetStatus = initialStatus ?? (request.triage ? "triage" : "todo")
 
@@ -413,7 +413,7 @@ final class KanbanStore {
                     throw KanbanServiceError.taskCreatedButMoveFailed(
                         taskID: nil,
                         targetStatus: targetStatus,
-                        reason: AppLocalization.string("Hermes did not return the created task ID.")
+                        reason: AppLocalization.string("Hermes did not return the created task ID.", table: .tasks)
                     )
                 }
                 do {
@@ -443,7 +443,7 @@ final class KanbanStore {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         return try await performMutation(context: context, includeArchived: includeArchived) {
             if let status = patch.status, !KanbanStatusPresentation.canSelectManually(status) {
@@ -463,7 +463,7 @@ final class KanbanStore {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         try await performMutation(context: context, includeArchived: includeArchived) {
             try await context.service.deleteTask(id: id, board: context.boardSlug)
@@ -496,7 +496,7 @@ final class KanbanStore {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         try await performMutation(context: context, includeArchived: includeArchived) {
             try await context.service.deleteTask(id: id, board: context.boardSlug)
@@ -510,7 +510,7 @@ final class KanbanStore {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         try await performMutation(context: context, includeArchived: false) {
             // Comments are not dispatcher-relevant upstream: no nudge.
@@ -523,7 +523,7 @@ final class KanbanStore {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         try await performMutation(context: context, includeArchived: false) {
             try await context.service.reassignTask(taskID: taskID, board: context.boardSlug, profile: profile, reclaimFirst: reclaimFirst)
@@ -536,7 +536,7 @@ final class KanbanStore {
             throw recordMutationError(KanbanServiceError.mutationInProgress)
         }
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         try await performMutation(context: context, includeArchived: false) {
             try await context.service.reclaimTask(taskID: taskID, board: context.boardSlug, reason: reason)
@@ -565,7 +565,7 @@ final class KanbanStore {
         // while a server reconfigure still fails closed (review F-2).
         try validateExpectedServerContext(expectedContext)
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         return try await performMutation(context: context, includeArchived: includeArchived, scope: .server) {
             let settings = try await context.service.updateOrchestration(patch)
@@ -596,7 +596,7 @@ final class KanbanStore {
         // updateOrchestration for the F-2 rationale).
         try validateExpectedServerContext(expectedContext)
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         try await performMutation(context: context, includeArchived: includeArchived, scope: .server) {
             try await context.service.updateProfileDescription(profile: profile, description: description)
@@ -621,7 +621,7 @@ final class KanbanStore {
         // updateOrchestration for the F-2 rationale).
         try validateExpectedServerContext(expectedContext)
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         return try await performMutation(context: context, includeArchived: includeArchived, scope: .server) {
             let outcome = try await context.service.autoDescribeProfile(profile: profile, overwrite: overwrite)
@@ -665,7 +665,7 @@ final class KanbanStore {
         }
         try validateExpectedContext(expectedContext)
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         return try await performMutation(context: context, includeArchived: includeArchived) {
             try await context.service.specifyTask(id: id, board: context.boardSlug)
@@ -687,7 +687,7 @@ final class KanbanStore {
         }
         try validateExpectedContext(expectedContext)
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         return try await performMutation(context: context, includeArchived: includeArchived) {
             try await context.service.decomposeTask(id: id, board: context.boardSlug)
@@ -709,7 +709,7 @@ final class KanbanStore {
         }
         try validateExpectedContext(expectedContext)
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         try await performMutation(context: context, includeArchived: includeArchived) {
             try await context.service.nudgeDispatcher(board: context.boardSlug)
@@ -737,11 +737,11 @@ final class KanbanStore {
         // refuses a malformed slug before any request reaches the network.
         guard KanbanBoardSlugPolicy.isValid(request.slug) else {
             throw recordMutationError(KanbanServiceError.actionDeclined(
-                reason: AppLocalization.string("Invalid board slug — use 1-64 lowercase letters or numbers with hyphens/underscores.")
+                reason: AppLocalization.string("Invalid board slug — use 1-64 lowercase letters or numbers with hyphens/underscores.", table: .tasks)
             ))
         }
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         return try await performMutation(context: context, includeArchived: includeArchived, scope: .server) {
             let created = try await context.service.createBoard(request)
@@ -777,10 +777,10 @@ final class KanbanStore {
             if let existing = boards.first(where: { $0.slug == slug }) {
                 return existing
             }
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("No board changes to save.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("No board changes to save.", table: .tasks)))
         }
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         return try await performMutation(context: context, includeArchived: includeArchived) {
             let updated = try await context.service.updateBoard(slug: slug, patch: patch)
@@ -806,7 +806,7 @@ final class KanbanStore {
     private func refuseDefaultBoardArchive(_ slug: String) throws {
         guard slug != "default" else {
             throw recordMutationError(KanbanServiceError.actionDeclined(
-                reason: AppLocalization.string("Hermes does not allow archiving the default board.")
+                reason: AppLocalization.string("Hermes does not allow archiving the default board.", table: .tasks)
             ))
         }
     }
@@ -826,7 +826,7 @@ final class KanbanStore {
         // versa) after the context moved.
         try validateExpectedBoardTarget(slug: slug, expectedContext: expectedContext)
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         let generation = context.configurationGeneration
         // Bespoke ownership flow (review W-1..W-4): ONE owned reconciliation
@@ -843,11 +843,11 @@ final class KanbanStore {
             if result.action != "archived" {
                 if let action = result.action {
                     throw KanbanServiceError.invalidResponse(
-                        AppLocalization.string("Hermes answered the board delete with an unexpected result: \(action)")
+                        AppLocalization.string("Hermes answered the board delete with an unexpected result: \(action)", table: .tasks)
                     )
                 }
                 throw KanbanServiceError.invalidResponse(
-                    AppLocalization.string("Hermes answered the board delete without a result.")
+                    AppLocalization.string("Hermes answered the board delete without a result.", table: .tasks)
                 )
             }
             if configurationGeneration == generation {
@@ -941,7 +941,7 @@ final class KanbanStore {
         }
         let requestedIDs = Self.normalizedBulkIDs(ids)
         guard !requestedIDs.isEmpty else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("No tasks selected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("No tasks selected.", table: .tasks)))
         }
         try validateExpectedContext(expectedContext)
         // Defense-in-depth (single-task parity): a bulk Move cannot target a
@@ -952,7 +952,7 @@ final class KanbanStore {
             throw recordMutationError(KanbanServiceError.invalidManualStatus(status))
         }
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         var mutationPatch = patch
         mutationPatch.ids = requestedIDs
@@ -975,11 +975,11 @@ final class KanbanStore {
         }
         let requestedIDs = Self.normalizedBulkIDs(ids)
         guard !requestedIDs.isEmpty else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("No tasks selected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("No tasks selected.", table: .tasks)))
         }
         try validateExpectedContext(expectedContext)
         guard let context = makeOperationContext() else {
-            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.")))
+            throw recordMutationError(KanbanServiceError.invalidResponse(AppLocalization.string("Kanban is not connected.", table: .tasks)))
         }
         return try await performMutation(context: context, includeArchived: includeArchived) {
             let results = await context.service.deleteTasksFanout(ids: requestedIDs, board: context.boardSlug)

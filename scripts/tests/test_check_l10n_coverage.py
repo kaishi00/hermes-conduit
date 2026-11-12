@@ -1109,6 +1109,135 @@ class CatalogFileTests(unittest.TestCase):
         self.assertEqual(key_problems, {})
 
 
+class FeatureTableTests(unittest.TestCase):
+    """Feature String Catalogs (issue 823): LocalizationTable's cases, one
+    Conduit/Strings/<Name>.xcstrings each."""
+
+    ENUM = (
+        "enum AppLocalization {}\n"
+        "enum LocalizationTable: String, CaseIterable, Sendable {\n"
+        '    case voice = "Voice"\n'
+        '    case watchCarPlay = "WatchCarPlay"\n'
+        "}\n")
+
+    def setUp(self):
+        import tempfile
+        self.directory = tempfile.TemporaryDirectory()
+        self.addCleanup(self.directory.cleanup)
+
+    def write(self, name, content):
+        path = os.path.join(self.directory.name, name)
+        os.makedirs(os.path.dirname(path), exist_ok=True)
+        with open(path, "w", encoding="utf-8") as handle:
+            handle.write(content)
+
+    def catalog(self, *keys):
+        return json.dumps({"sourceLanguage": "en", "strings": {
+            key: {"localizations": {"fr": unit(key)}} for key in keys}})
+
+    def write_repo(self, swift, shared_keys=("Cancel",), voice=("Voice replies",),
+                   watch_car_play=("Shortcut name",), enum=ENUM):
+        self.write("Conduit/Localizable.xcstrings",
+                   self.catalog(*shared_keys, *check_l10n_coverage.REGRESSION_KEYS))
+        self.write("Conduit/Services/AppLanguage.swift", enum)
+        self.write("Conduit/Strings/Voice.xcstrings", self.catalog(*voice))
+        self.write("Conduit/Strings/WatchCarPlay.xcstrings", self.catalog(*watch_car_play))
+        for name, source in swift.items():
+            self.write(name, source)
+
+    def check(self):
+        return check_l10n_coverage.check(self.directory.name)
+
+    def test_a_call_resolves_in_the_table_it_names(self):
+        self.write_repo({"Conduit/Voice/View.swift":
+                         'AppLocalization.string("Voice replies", table: .voice)\n'
+                         'AppLocalization.string("Cancel")\n'
+                         'Text("Cancel")\n'})
+        checked, missing, key_problems, _plan = self.check()
+        self.assertEqual((checked, missing, key_problems), (3, {}, {}))
+
+    def test_a_call_naming_the_wrong_table_is_missing_with_a_hint(self):
+        self.write_repo({"Conduit/Voice/View.swift":
+                         'AppLocalization.string("Voice replies")\n'
+                         'AppLocalization.string("Cancel", table: .voice)\n'})
+        _checked, missing, _problems, _plan = self.check()
+        self.assertEqual(missing["Voice replies"], [
+            os.path.join("Conduit", "Voice", "View.swift")
+            + ":1 (the key is in .voice: pass that table)"])
+        self.assertEqual(missing["Cancel"], [
+            os.path.join("Conduit", "Voice", "View.swift")
+            + ":2 (the key is in no table (Localizable): pass that table)"])
+
+    def test_a_key_lives_in_one_table(self):
+        self.write_repo({}, shared_keys=("Cancel", "Voice replies"))
+        _checked, _missing, key_problems, _plan = self.check()
+        self.assertIn("is in Localizable.xcstrings and Voice.xcstrings",
+                      key_problems["Voice replies"][0])
+
+    def test_a_file_names_one_feature_table(self):
+        self.write_repo({"Conduit/Views/Mixed.swift":
+                         'AppLocalization.string("Voice replies", table: .voice)\n'
+                         'AppLocalization.string("Shortcut name", table: .watchCarPlay)\n'
+                         'AppLocalization.string("Cancel")\n'})
+        _checked, missing, key_problems, _plan = self.check()
+        self.assertEqual(missing, {})
+        self.assertIn("names 2 feature tables (.voice, .watchCarPlay)",
+                      key_problems[os.path.join("Conduit", "Views", "Mixed.swift")][0])
+
+    def test_shared_and_watch_sources_name_no_table(self):
+        self.write_repo({
+            "Shared/Widgets/Copy.swift": 'AppLocalization.string("Voice replies", table: .voice)\n',
+            "Conduit/Voice/GPTLive/GPTLiveProtocol.swift":
+                'AppLocalization.string("Voice replies", table: .voice)\n'})
+        _checked, _missing, key_problems, _plan = self.check()
+        for rel in (os.path.join("Shared", "Widgets", "Copy.swift"),
+                    os.path.join("Conduit", "Voice", "GPTLive", "GPTLiveProtocol.swift")):
+            self.assertIn("carries only Localizable", key_problems[f"{rel}:1"][0], rel)
+
+    def test_an_unknown_case_is_reported(self):
+        self.write_repo({"Conduit/Voice/View.swift":
+                         'AppLocalization.string("Voice replies", table: .speech)\n'})
+        _checked, _missing, key_problems, _plan = self.check()
+        self.assertIn("isn't a LocalizationTable case",
+                      key_problems[os.path.join("Conduit", "Voice", "View.swift") + ":1"][0])
+
+    def test_cases_and_catalogs_match(self):
+        self.write_repo({}, enum=self.ENUM.replace('case watchCarPlay', 'case rooms = "Rooms"\n    case watchCarPlay'))
+        self.write("Conduit/Strings/Extra.xcstrings", self.catalog("Extra"))
+        _checked, _missing, key_problems, _plan = self.check()
+        self.assertIn("the catalog doesn't exist",
+                      key_problems[os.path.join("Conduit", "Strings", "Rooms.xcstrings")][0])
+        self.assertIn("no LocalizationTable case names it",
+                      key_problems[os.path.join("Conduit", "Strings", "Extra.xcstrings")][0])
+
+    def test_a_feature_table_is_held_to_the_language_rules(self):
+        self.write_repo({})
+        self.write("Conduit/Strings/Voice.xcstrings", json.dumps({
+            "sourceLanguage": "en", "strings": {
+                "Voice replies": {"localizations": {"fr": unit("")}}}}))
+        _checked, _missing, key_problems, _plan = self.check()
+        self.assertIn("Conduit/Strings/Voice.xcstrings: Voice replies", key_problems)
+
+    def test_extension_sources_keep_their_keys_in_localizable(self):
+        self.write_repo({
+            "Shared/Widgets/Copy.swift": 'static let note = "Voice replies"\n',
+            "ConduitWidgets/Widget.swift": 'string("Cancel", language: x)\n'})
+        _checked, _missing, key_problems, _plan = self.check()
+        problems = key_problems[os.path.join("Shared", "Widgets", "Copy.swift") + ":1"]
+        self.assertIn('spells "Voice replies", which lives in Voice.xcstrings', problems[0])
+        self.assertEqual(len(key_problems), 1)
+
+    def test_table_arguments_are_read(self):
+        source = ('AppLocalization.string("A", table: .voice, language: .source)\n'
+                  'AppLocalization.string(\n    "B \\(count) items",\n    table: .rooms\n)\n'
+                  'AppLocalization.string("C")\n'
+                  'String(localized: "D")\n')
+        self.assertEqual(
+            [(skeleton, table) for skeleton, table, _offset
+             in check_l10n_coverage.extract_table_sites(source)],
+            [("A", "voice"), ("B %lld items", "rooms"), ("C", None), ("D", None)])
+
+
 class CheckIntegrationTests(unittest.TestCase):
     def test_repo_catalog_covers_every_call_site(self):
         checked, missing, key_problems, plan = check_l10n_coverage.check(

@@ -1,0 +1,647 @@
+//
+//  RoomInvites.swift
+//  Conduit
+//
+//  Rooms with people you've linked, from the invited side (designs/
+//  cross-owner-agents, C3c): someone you've linked invites this Hermes to a
+//  room they host, over your Link. The invite is a row in Group Chats until
+//  it's answered and after, and its join card brings your bots, each with
+//  its choices for the room, or declines. The notifier plugin keeps the
+//  invites for the whole installation (room_invites.py) and sends your
+//  answer to the host over the rooms mailbox. A room that started is hosted
+//  elsewhere: the Chats list shows it with C4.
+//
+
+import Foundation
+
+/// A room someone you've linked invited this Hermes to, as the plugin
+/// shows it.
+struct RoomInvite: Identifiable, Equatable {
+    /// One of your agents in it.
+    struct Agent: Equatable {
+        let profile: String
+        let displayName: String
+        /// Its handle in the room, and how it went (`left`, `removed`,
+        /// `ended`): for `gone` only.
+        var handle: String? = nil
+        var reason: String? = nil
+    }
+
+    /// The Link and the room, as the plugin keys an invite: the same room
+    /// over another Link is another invite.
+    var id: String { "\(link)/\(roomID)" }
+    let link: String
+    let roomID: String
+    /// Who invited you, by the name the Link shows them; empty for a Link
+    /// without one.
+    let from: String
+    let name: String
+    /// The other people invited, by name.
+    let people: [String]
+    /// The host's agents, by name.
+    let hostAgents: [String]
+    /// How many of your agents it has places for.
+    let places: Int
+    let expiresAt: Date?
+    /// `waiting` (for your answer), `joined`, `declined`, `started`,
+    /// `cancelled`, `left`, `ended` or `lapsed`. A status a newer plugin
+    /// adds is kept as it is.
+    let status: String
+    /// Why it was cancelled or ended: `withdrawn`, `lapsed`, `too_few`,
+    /// `start_failed`, `refused`, `started_without_you`, `removed`,
+    /// `disbanded` or `left`.
+    let reason: String?
+    /// Your agents in it, once you joined.
+    let joined: [Agent]
+    /// The profiles that can join, in the plugin's order: those whose
+    /// choices for it could be read.
+    let profiles: [String]
+    /// Each profile's choices for the room: those of its last room with the
+    /// same people, else its defaults.
+    let choices: [String: RoomChoices]
+    /// Your agents that were in it and are out: left, taken out, or there
+    /// when it ended. Their hidden chats for it stay until it's deleted.
+    var gone: [Agent] = []
+}
+
+/// What Group Chats lists of the invites.
+enum RoomInviteRows {
+    /// Those waiting on you or on the room, and those that started, ran
+    /// out, or were cancelled or ended, until they're removed. One you
+    /// declined or left was your own doing, and a status a newer plugin
+    /// adds isn't listed.
+    static func rows(_ invites: [RoomInvite], dismissed: Set<String>) -> [RoomInvite] {
+        invites.filter { invite in
+            switch invite.status {
+            case "waiting", "joined":
+                return true
+            case "started", "cancelled", "lapsed", "ended":
+                return !dismissed.contains(invite.id)
+            default:
+                return false
+            }
+        }
+    }
+
+    /// One waiting on you or on the room stays.
+    static func canRemove(_ invite: RoomInvite) -> Bool {
+        !["waiting", "joined"].contains(invite.status)
+    }
+}
+
+/// The invites as Group Chats last read them, for the dashboard they were
+/// read from.
+struct LinkedRoomInvites: Equatable {
+    let dashboardID: UUID?
+    /// Newest first.
+    var invites: [RoomInvite]
+
+    /// An invite just answered: in its place, or first.
+    mutating func adopt(_ invite: RoomInvite) {
+        if let index = invites.firstIndex(where: { $0.id == invite.id }) {
+            invites[index] = invite
+        } else {
+            invites.insert(invite, at: 0)
+        }
+    }
+}
+
+/// One of your bots joining a room it's invited to: the handle a room of
+/// your own bots would give it, and its choices for the room.
+struct RoomInviteAgent: Equatable {
+    let agent: RoomDraftAgent
+    let choices: RoomChoices
+
+    /// Your bots with the handles `createGroupRoom` gives them, each with
+    /// its choices; nil when one has none (the plugin can't bring it) or
+    /// two would claim one handle.
+    static func agents(for bots: [BotProfile], choices: [String: RoomChoices]) -> [RoomInviteAgent]? {
+        guard let agents = RoomDraftAgent.agents(for: bots) else { return nil }
+        var joining: [RoomInviteAgent] = []
+        for agent in agents {
+            guard let chosen = choices[agent.profile] else { return nil }
+            joining.append(RoomInviteAgent(agent: agent, choices: chosen))
+        }
+        return joining
+    }
+
+    /// As the plugin takes it, with every choice: the plugin fills one left
+    /// out from its plain defaults, not from the join card's.
+    var body: [String: Any] {
+        ["profile": agent.profile, "handle": agent.handle, "display_name": agent.displayName, "choices": choices.body]
+    }
+}
+
+/// How many of your bots the join card brings: at least one to join, and
+/// no more than the invite has places for, nor than 5 (a room has 6
+/// agents, the host's at least one of them).
+enum RoomInviteLimits {
+    static let maxAgents = 5
+
+    static func canPick(picked: Int, places: Int) -> Bool {
+        picked < min(places, maxAgents)
+    }
+
+    static func canJoin(picked: Int, places: Int) -> Bool {
+        picked >= 1 && picked <= min(places, maxAgents)
+    }
+
+    /// The bots picked that the invite no longer lists: a read since
+    /// picking them took them off.
+    static func unlisted(picked: Set<String>, profiles: [String]) -> Set<String> {
+        picked.subtracting(profiles)
+    }
+}
+
+/// What Group Chats and the join card say about an invite.
+enum RoomInviteText {
+    /// Who invited you: the name the Link shows them, else who they are.
+    static func sender(of invite: RoomInvite) -> String {
+        invite.from.isEmpty ? AppLocalization.string("Someone you've linked with", table: .rooms) : invite.from
+    }
+
+    /// Who invited you, where the invite stands, or why it ended.
+    static func line(for invite: RoomInvite) -> String {
+        let sender = sender(of: invite)
+        switch invite.status {
+        case "waiting":
+            return AppLocalization.string("\(sender) invited you", table: .rooms)
+        case "joined":
+            return AppLocalization.string("You joined, waiting for the room to start", table: .rooms)
+        case "started":
+            return AppLocalization.string("Started with your agents in it", table: .rooms)
+        case "lapsed":
+            return AppLocalization.string("The invite ran out", table: .rooms)
+        case "declined":
+            return AppLocalization.string("You declined")
+        case "left":
+            return AppLocalization.string("Your agents left", table: .rooms)
+        case "cancelled":
+            switch invite.reason {
+            case "withdrawn":
+                return AppLocalization.string("\(sender) took it back", table: .rooms)
+            case "lapsed":
+                return AppLocalization.string("It ran out before the room started", table: .rooms)
+            case "too_few":
+                return AppLocalization.string("Too few joined, so it didn't start", table: .rooms)
+            case "start_failed":
+                return AppLocalization.string("Their Hermes couldn't start it", table: .rooms)
+            case "refused":
+                return AppLocalization.string("It started, but your agents couldn't be added", table: .rooms)
+            case "started_without_you":
+                return AppLocalization.string("It started without you", table: .rooms)
+            default:
+                return AppLocalization.string("It was called off", table: .rooms)
+            }
+        case "ended":
+            switch invite.reason {
+            case "removed":
+                return AppLocalization.string("\(sender) took your agents out", table: .rooms)
+            case "disbanded":
+                return AppLocalization.string("\(sender) ended the room", table: .rooms)
+            default:
+                return AppLocalization.string("It ended", table: .rooms)
+            }
+        default:
+            return AppLocalization.string("It ended", table: .rooms)
+        }
+    }
+
+    /// A row's line: one waiting on you says until when.
+    static func rowLine(for invite: RoomInvite) -> String {
+        guard invite.status == "waiting", let expiresAt = invite.expiresAt else { return line(for: invite) }
+        return AppLocalization.string("\(sender(of: invite)) invited you, answer by \(RoomDraftText.until(expiresAt))", table: .rooms)
+    }
+}
+
+/// The plugin's invites routes. Like the drafts', they take no profile:
+/// the invites are the installation's. An answer waits on the rooms
+/// mailbox, which takes it to the host.
+struct RoomInvitesClient {
+    static let capability = "room-invites"
+    static let path = "/api/plugins/conduit_push/rooms/invites"
+
+    typealias Request = RoomLinksClient.Request
+
+    /// The dashboard the requests go to (nil in tests).
+    var dashboardID: UUID?
+    let request: Request
+
+    init(dashboardID: UUID? = nil, request: @escaping Request) {
+        self.dashboardID = dashboardID
+        self.request = request
+    }
+
+    func invites() async throws -> [RoomInvite] {
+        try Self.parseList(try await request(Self.path, "GET", nil, nil))
+    }
+
+    /// Joins with `agents`, or declines with none.
+    func answer(_ invite: RoomInvite, agents: [RoomInviteAgent]) async throws -> RoomInvite {
+        let body: [String: Any] = ["link": invite.link, "room_id": invite.roomID, "agents": agents.map(\.body)]
+        let response = try await request("\(Self.path)/answer", "POST", body, RoomLinksClient.mailboxTimeoutMilliseconds)
+        guard response["ok"] as? Bool == true, let object = response["invite"] as? [String: Any],
+              let answered = Self.invite(object) else { throw HermesError.invalidResponse }
+        return answered
+    }
+
+    /// An invite the list can't show (no room, Link, name or status) is
+    /// left out rather than refusing the whole list.
+    static func parseList(_ response: [String: Any]) throws -> [RoomInvite] {
+        guard response["ok"] as? Bool == true,
+              let invites = response["invites"] as? [[String: Any]] else { throw HermesError.invalidResponse }
+        return invites.compactMap(invite)
+    }
+
+    static func invite(_ object: [String: Any]) -> RoomInvite? {
+        guard let roomID = object["room_id"] as? String, !roomID.isEmpty,
+              let link = object["link"] as? String, !link.isEmpty,
+              let name = object["name"] as? String,
+              let status = object["status"] as? String, !status.isEmpty else { return nil }
+        var profiles: [String] = []
+        var choices: [String: RoomChoices] = [:]
+        for entry in object["profiles"] as? [[String: Any]] ?? [] {
+            guard let profile = entry["profile"] as? String, !profile.isEmpty, choices[profile] == nil,
+                  let read = (entry["choices"] as? [String: Any]).flatMap({ RoomChoicesClient.choices($0, saved: false) })
+            else { continue }
+            profiles.append(profile)
+            choices[profile] = read
+        }
+        return RoomInvite(
+            link: link,
+            roomID: roomID,
+            from: object["from"] as? String ?? "",
+            name: name,
+            people: (object["people"] as? [Any] ?? []).compactMap { $0 as? String },
+            hostAgents: (object["agents"] as? [[String: Any]] ?? []).compactMap { $0["display_name"] as? String },
+            places: object["slots"] as? Int ?? 0,
+            expiresAt: RoomLinksClient.date(object["expires_at"]),
+            status: status,
+            reason: (object["reason"] as? String).flatMap { $0.isEmpty ? nil : $0 },
+            joined: agents(object["joined"]),
+            profiles: profiles,
+            choices: choices,
+            gone: goneAgents(object["gone"])
+        )
+    }
+
+    private static func goneAgents(_ value: Any?) -> [RoomInvite.Agent] {
+        (value as? [[String: Any]] ?? []).compactMap { agent in
+            guard let profile = agent["profile"] as? String, let name = agent["display_name"] as? String else { return nil }
+            return RoomInvite.Agent(profile: profile, displayName: name,
+                                    handle: agent["handle"] as? String, reason: agent["reason"] as? String)
+        }
+    }
+
+    private static func agents(_ value: Any?) -> [RoomInvite.Agent] {
+        (value as? [[String: Any]] ?? []).compactMap { agent in
+            guard let profile = agent["profile"] as? String, let name = agent["display_name"] as? String else { return nil }
+            return RoomInvite.Agent(profile: profile, displayName: name)
+        }
+    }
+
+    /// What a failed invites request says: the plugin's own words, as
+    /// RoomLinksClient keeps them (an invite answered already, a Link no
+    /// longer linked, one that ran out).
+    static func message(for error: Error) -> String {
+        RoomLinksClient.message(for: error)
+    }
+
+    /// Why an answer didn't go. A 504 is the mailbox taking longer than the
+    /// request: the answer is still on its way.
+    static func answerRefusal(for error: Error, joining: Bool) -> String {
+        if case DashboardTicketBridgeError.http(504, _) = error {
+            return AppLocalization.string("Your Hermes is still sending your answer. The invite shows it once it has.", table: .rooms)
+        }
+        let words = message(for: error)
+        return joining
+            ? AppLocalization.string("Could not join: \(words)", table: .rooms)
+            : AppLocalization.string("Could not decline: \(words)", table: .rooms)
+    }
+}
+
+/// The invite a room.invite notification opens: its Link and room, from
+/// the push's `room`, and the dashboard it came from.
+struct RoomInviteTarget: Identifiable, Equatable {
+    let link: String
+    let roomID: String
+    var dashboardID: UUID? = nil
+    /// The push named a dashboard that isn't a UUID: it opens nothing.
+    var hasMalformedDashboardID = false
+    var relayGatewayID: String? = nil
+
+    var id: String { "\(dashboardID?.uuidString ?? "-"):\(link)/\(roomID)" }
+
+    /// A routing payload's invite: type `room.invite`, with a `room` whose
+    /// Link and room ids are as the relay checks them (relay/src/server.mjs
+    /// ROOM_LINK_PATTERN and ROOM_ID_PATTERN); nil for anything else.
+    static func parse(_ payload: [String: Any]) -> RoomInviteTarget? {
+        guard payload["type"] as? String == "room.invite",
+              let room = payload["room"] as? [String: Any],
+              let link = room["link"] as? String,
+              link.range(of: #"\A[A-Za-z0-9_-]{1,48}\z"#, options: .regularExpression) != nil,
+              let roomID = room["id"] as? String,
+              roomID.range(of: #"\A[A-Za-z0-9][A-Za-z0-9._:-]{0,127}\z"#, options: .regularExpression) != nil
+        else { return nil }
+        // As a chat's tap reads them (PushNotificationService): a dashboard
+        // that isn't a UUID fails closed.
+        let rawDashboardID = (payload["dashboard_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let dashboardID = rawDashboardID.isEmpty ? nil : UUID(uuidString: rawDashboardID)
+        let gatewayID = (payload["gateway_id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return RoomInviteTarget(
+            link: link,
+            roomID: roomID,
+            dashboardID: dashboardID,
+            hasMalformedDashboardID: !rawDashboardID.isEmpty && dashboardID == nil,
+            relayGatewayID: gatewayID.isEmpty ? nil : gatewayID
+        )
+    }
+}
+
+/// How opening a tapped invite went.
+enum RoomInviteOpening: Equatable {
+    /// Its card is up.
+    case opened
+    /// Not yet: Conduit isn't connected, or the plugin hasn't said what it
+    /// keeps. It's tried again when that changes.
+    case waiting
+    /// A call is on, and it said the invite opens once the call has ended.
+    case afterCall
+    /// The dashboard changed while the invites were read: try again, on
+    /// the one in use now.
+    case retry
+    /// It can't open; `errorMessage` says why, or nothing will open it.
+    case failed
+}
+
+/// How the join card's answer went.
+enum RoomInviteAnswering: Equatable {
+    case answered
+    /// Not answered, with why.
+    case refused(String)
+    /// The mailbox is still taking it, with what that means.
+    case sending(String)
+}
+
+extension AppState {
+    /// Requests stay with the dashboard they were made for.
+    var roomInvitesClient: RoomInvitesClient {
+        let dashboard = activeDashboardID
+        return RoomInvitesClient(dashboardID: dashboard) { [weak self] path, method, body, timeout in
+            guard let self, self.activeDashboardID == dashboard else { throw DashboardTicketBridgeError.notReady }
+            return try await self.roomRouteJSON(path: path, method: method, body: body, timeoutMilliseconds: timeout)
+        }
+    }
+
+    /// The invites as last read for the dashboard in use.
+    private var currentLinkedRoomInvites: LinkedRoomInvites? {
+        guard canInviteLinkedPeople, let invites = linkedRoomInvites, invites.dashboardID == activeDashboardID else {
+            return nil
+        }
+        return invites
+    }
+
+    /// Group Chats' invite rows.
+    var linkedRoomInviteRows: [RoomInvite] {
+        guard groupChatPhase == .available, let invites = currentLinkedRoomInvites else { return [] }
+        // A room your Hermes has a copy of is listed as the room.
+        let copied = linkedRoomCopyInviteIDs
+        return RoomInviteRows.rows(invites.invites, dismissed: dismissedRoomInviteIDs).filter { !copied.contains($0.id) }
+    }
+
+    /// An invite by its id, whatever its status.
+    func linkedRoomInvite(_ id: String) -> RoomInvite? {
+        currentLinkedRoomInvites?.invites.first { $0.id == id }
+    }
+
+    /// The invites were read, and that one isn't among them any more: the
+    /// plugin forgot it, so its card can't answer it.
+    func linkedRoomInviteIsGone(_ id: String) -> Bool {
+        guard let invites = currentLinkedRoomInvites else { return false }
+        return !invites.invites.contains { $0.id == id }
+    }
+
+    /// Reads the invites. A read that fails keeps what was read last, and
+    /// one that a sign-out or another dashboard overtook is dropped, as the
+    /// drafts' is.
+    func refreshLinkedRoomInvites() async {
+        _ = await readLinkedRoomInvites()
+    }
+
+    /// Every 10 s for 3 minutes after a Link is made, an invite joined or
+    /// a draft made, then every 30 s while a room is still on its way: a
+    /// draft waits for answers or starts, or an invite you joined waits for
+    /// its room, or one of them started and its room or copy isn't listed
+    /// yet. The room the other person makes next reaches this Hermes
+    /// through the mailbox within a minute or so, and its push may not
+    /// reach the phone (or not while the screen showing the Link is up); a
+    /// draft starts on its host once everyone has answered, which can be
+    /// long after it was made, and its room, or its copy on the guest's
+    /// Hermes, appears then. Group Chats would show either only once it's
+    /// read again. Each call starts the count again, and another dashboard
+    /// or a sign-out ends it.
+    func followLinkedRoomInvites() {
+        linkedRoomInviteFollow?.cancel()
+        let dashboard = activeDashboardID
+        // Until a time, not a count: ticks that came due while iOS held the
+        // app suspended are one read on return, not a burst of them. Ticks in
+        // the background are skipped; the return to the foreground reads.
+        let end = Date().addingTimeInterval(Self.linkedRoomInviteFollowSeconds)
+        linkedRoomInviteFollow = Task { [weak self] in
+            while true {
+                let early = Date() < end
+                try? await Task.sleep(for: early ? Self.linkedRoomInviteFollowInterval
+                                                 : Self.linkedRoomPendingFollowInterval)
+                guard !Task.isCancelled, let self, self.activeDashboardID == dashboard else { return }
+                guard early || self.linkedRoomOnItsWay else { return }
+                guard self.isSceneActive else { continue }
+                // The people New Group Chat offers only in the first minutes,
+                // when a Link was just made; after, the drafts alone.
+                await self.refreshLinkedRoomDrafts(readingPeople: early)
+                await self.refreshGroupRoomsForStartedDrafts()
+                await self.refreshLinkedRoomInvites()
+            }
+        }
+    }
+
+    /// A room is on its way to Group Chats: a draft of yours waits or starts,
+    /// or started with its room not listed yet, or an invite you joined
+    /// waits for its room, or started with its copy not listed yet.
+    var linkedRoomOnItsWay: Bool {
+        if let drafts = linkedRoomDrafts, drafts.dashboardID == activeDashboardID {
+            let listed = Set(groupRooms.map(\.roomID))
+            if drafts.list.drafts.contains(where: {
+                ["waiting", "starting"].contains($0.status) || ($0.status == "started" && !listed.contains($0.id))
+            }) { return true }
+        }
+        if let invites = linkedRoomInvites, invites.dashboardID == activeDashboardID {
+            let copied = linkedRoomCopyInviteIDs
+            if invites.invites.contains(where: {
+                $0.status == "joined" || ($0.status == "started" && canReadRoomCopies && !copied.contains($0.id))
+            }) { return true }
+        }
+        return false
+    }
+
+    /// Back in the foreground: an invite that came while Conduit was away,
+    /// its push missed, and the drafts, so a room that started meanwhile
+    /// shows; a room still on its way is followed again.
+    func refreshLinkedRoomsOnForeground() async {
+        await refreshLinkedRoomDrafts(readingPeople: false)
+        await refreshGroupRoomsForStartedDrafts()
+        await refreshLinkedRoomInvites()
+        followLinkedRoomsOnTheirWay()
+    }
+
+    /// Follows a room on its way that a read just found: one a launch, a
+    /// reconnect or the foreground read with nothing following it yet.
+    func followLinkedRoomsOnTheirWay() {
+        if linkedRoomOnItsWay { followLinkedRoomInvites() }
+    }
+
+    /// A started draft leaves Group Chats' draft rows for its room's row,
+    /// so the rooms are read when one has started that isn't listed yet:
+    /// else the host would see neither (as RoomDraftSheet reads them).
+    func refreshGroupRoomsForStartedDrafts() async {
+        guard let drafts = linkedRoomDrafts, drafts.dashboardID == activeDashboardID else { return }
+        let listed = Set(groupRooms.map(\.roomID))
+        guard drafts.list.drafts.contains(where: { $0.status == "started" && !listed.contains($0.id) }) else { return }
+        await refreshGroupRooms()
+    }
+
+    nonisolated static let linkedRoomInviteFollowSeconds: TimeInterval = 180
+    nonisolated static let linkedRoomInviteFollowInterval: Duration = .seconds(10)
+    nonisolated static let linkedRoomPendingFollowInterval: Duration = .seconds(30)
+
+    /// Whether the invites were read now and kept.
+    func readLinkedRoomInvites() async -> Bool {
+        guard canInviteLinkedPeople, isConnected else { return false }
+        let epoch = groupRoomEpoch
+        let client = roomInvitesClient
+        do {
+            let invites = try await client.invites()
+            guard groupRoomEpoch == epoch, activeDashboardID == client.dashboardID else { return false }
+            linkedRoomInvites = LinkedRoomInvites(dashboardID: client.dashboardID, invites: invites)
+            // A room you joined that has started is listed as its copy, which
+            // this Hermes keeps from then on: read the copies while one isn't
+            // there yet, or Group Chats shows neither the invite nor the room
+            // until something else reads them.
+            if canReadRoomCopies,
+               invites.contains(where: { $0.status == "started" && !linkedRoomCopyInviteIDs.contains($0.id) }) {
+                await refreshLinkedRoomCopies()
+            }
+            return true
+        } catch {
+            // The rows stay as they were: a stale row is safer than none.
+            return false
+        }
+    }
+
+    /// An invite that a request just answered, in the list it belongs to,
+    /// and whether it was. Only into a list still there, as a draft is
+    /// adopted: one a sign-out or a disconnect cleared while the answer was
+    /// on its way stays cleared (issue 2040), and the next read lists it.
+    @discardableResult
+    func adoptLinkedRoomInvite(_ invite: RoomInvite, from dashboardID: UUID?) -> Bool {
+        guard activeDashboardID == dashboardID, var invites = linkedRoomInvites, invites.dashboardID == dashboardID else {
+            return false
+        }
+        invites.adopt(invite)
+        linkedRoomInvites = invites
+        return true
+    }
+
+    /// The join card's answer: your bots in `agents`, or none to decline. A
+    /// 504 means the answer is still going to the host, so the invites are
+    /// read again.
+    func answerLinkedRoomInvite(_ invite: RoomInvite, agents: [RoomInviteAgent]) async -> RoomInviteAnswering {
+        let client = roomInvitesClient
+        do {
+            let answered = try await client.answer(invite, agents: agents)
+            // The room starts on the host when everyone has answered, maybe
+            // after the join card is closed. Not followed when the invites
+            // were cleared meanwhile: that ended their follow.
+            if adoptLinkedRoomInvite(answered, from: client.dashboardID), !agents.isEmpty { followLinkedRoomInvites() }
+            return .answered
+        } catch {
+            let message = RoomInvitesClient.answerRefusal(for: error, joining: !agents.isEmpty)
+            guard case DashboardTicketBridgeError.http(504, _) = error else { return .refused(message) }
+            // Cleared while the answer was out (a sign-out or disconnect):
+            // a read that lists them again after a reconnect doesn't undo that.
+            let cleared = linkedRoomInvites?.dashboardID != client.dashboardID
+            await refreshLinkedRoomInvites()
+            // The answer may still reach the host, and the room start then.
+            // A disconnect during the refresh clears the list too.
+            if !agents.isEmpty, !cleared, activeDashboardID == client.dashboardID,
+               linkedRoomInvites?.dashboardID == client.dashboardID {
+                followLinkedRoomInvites()
+            }
+            return .sending(message)
+        }
+    }
+
+    /// A tapped invite's notification: on the dashboard that sent it,
+    /// switching to it as a chat's tap does, its card once Conduit is
+    /// connected, the plugin has said it keeps invites, and they've been
+    /// read. During a call it waits for the call to end, and says so: the
+    /// card can't open over the call's screen, and a switch would end it.
+    func openRoomInvite(_ target: RoomInviteTarget) async -> RoomInviteOpening {
+        let ownership = NotificationDashboardOwnership.resolve(
+            targetDashboardID: target.dashboardID,
+            hasMalformedDashboardID: target.hasMalformedDashboardID,
+            activeDashboardID: activeDashboardID,
+            savedDashboardIDs: savedDashboardRegistry.dashboards.map(\.id),
+            targetGatewayID: target.relayGatewayID,
+            activeDashboardGatewayIDs: activeDashboardRelayGatewayIDs
+        )
+        if case .failClosed(let failure) = ownership {
+            switch failure {
+            case .unrecognizedDashboard:
+                errorMessage = AppLocalization.string("This notification belongs to a dashboard this device doesn't recognize. Add that dashboard again to continue.")
+            case .unscopedPush:
+                errorMessage = AppLocalization.string("This notification predates multi-dashboard pairing. Update the notifier on the sending gateway and pair it again to continue.")
+            }
+            return .failed
+        }
+        guard !isVoiceCallInProgress else {
+            showCallRefusal(AppLocalization.string("This invite opens when the call ends.", table: .rooms))
+            return .afterCall
+        }
+        if case .switchFirst(let dashboardID) = ownership {
+            await switchDashboard(to: dashboardID)
+            // Still connecting waits: the connection tries again. Signing
+            // in is the user's step, and a dashboard picked meanwhile owns
+            // the screen.
+            guard activeDashboardID == dashboardID, !showLogin else {
+                errorMessage = AppLocalization.string("Could not connect to that dashboard to open this notification.")
+                return .failed
+            }
+        }
+        guard isConnected, client != nil, notifierPlugin.state != .unknown else { return .waiting }
+        guard canInviteLinkedPeople else {
+            errorMessage = AppLocalization.string("This invite isn't on your Hermes any more.", table: .rooms)
+            return .failed
+        }
+        let epoch = groupRoomEpoch
+        let reader = roomInvitesClient
+        let invites: [RoomInvite]
+        do {
+            invites = try await reader.invites()
+        } catch {
+            guard !Task.isCancelled else { return .waiting }
+            errorMessage = AppLocalization.string("Could not open the invite: \(RoomInvitesClient.message(for: error))", table: .rooms)
+            return .failed
+        }
+        guard !Task.isCancelled else { return .waiting }
+        guard activeDashboardID == reader.dashboardID else { return .retry }
+        if groupRoomEpoch == epoch {
+            linkedRoomInvites = LinkedRoomInvites(dashboardID: reader.dashboardID, invites: invites)
+        }
+        guard let invite = invites.first(where: { $0.link == target.link && $0.roomID == target.roomID }) else {
+            errorMessage = AppLocalization.string("This invite isn't on your Hermes any more.", table: .rooms)
+            return .failed
+        }
+        presentedRoomInvite = invite
+        return .opened
+    }
+}

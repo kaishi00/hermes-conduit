@@ -7,6 +7,17 @@ import UIKit
 extension BotModeTests {
     // MARK: - Profile id
 
+    /// The Personality row hands VoiceOver the opening it shows: the
+    /// SOUL's first three lines, at most 300 characters, with an ellipsis
+    /// when there's more (#2227 review).
+    func testSoulPreviewShowsOnlyTheOpening() {
+        XCTAssertEqual(SoulPreview.opening(of: "  \n"), "")
+        XCTAssertEqual(SoulPreview.opening(of: "# Atlas\nCurious."), "# Atlas\nCurious.")
+        XCTAssertEqual(SoulPreview.opening(of: "1\n2\n3\n4\n5"), "1\n2\n3…")
+        let long = String(repeating: "a", count: 400)
+        XCTAssertEqual(SoulPreview.opening(of: long), String(repeating: "a", count: 300) + "…")
+    }
+
     func testSlugMatchesDesktopForAsciiAccentedAndCJKNames() {
         XCTAssertEqual(BotProfileSlug.slug(from: "Ada Lovelace"), "ada-lovelace")
         XCTAssertEqual(BotProfileSlug.slug(from: "  --Hi!! there__ "), "hi-there__")
@@ -334,6 +345,41 @@ extension BotModeTests {
         capabilities.toolsets[1].enabled = false
         XCTAssertFalse(capabilities.canTurnOffToolset(at: 0), "no tools on would save as Hermes' defaults")
         XCTAssertTrue(capabilities.canTurnOffToolset(at: 1), "an off tool can always be turned back on")
+        capabilities.setEnabled(\.toolsets, name: "web", on: false)
+        XCTAssertTrue(capabilities.toolsets[0].enabled, "a switch keeps the last tool on too")
+        capabilities.setEnabled(\.toolsets, name: "terminal", on: true)
+        capabilities.setEnabled(\.toolsets, name: "web", on: false)
+        XCTAssertEqual(capabilities.toolsets.map(\.enabled), [false, true], "switches write by name")
+        capabilities.setEnabled(\.skills, name: "missing", on: true)
+        XCTAssertTrue(capabilities.skills.isEmpty, "a name Hermes' answer dropped writes nothing")
+    }
+
+    func testSkillsGroupByHermesCategoryWithDescriptions() {
+        let skills = [
+            BotCapability(name: "arxiv", enabled: true),
+            BotCapability(name: "Excalidraw", enabled: false),
+            BotCapability(name: "my-notes", enabled: true),
+            BotCapability(name: "plan", enabled: true),
+        ]
+        let details = [
+            CapabilitySkill(name: "arxiv", description: "Search papers", category: "research", enabled: true),
+            CapabilitySkill(name: "excalidraw", description: "Draw diagrams", category: "creative", enabled: false),
+            CapabilitySkill(name: "plan", description: "Plan work", category: "software-development", enabled: true),
+        ]
+        let groups = BotSkillGrouping.grouped(skills, details: details)
+        XCTAssertEqual(groups.map(\.title), ["Creative", "General", "Research", "Software Development"])
+        XCTAssertEqual(groups[0].rows.first?.description, "Draw diagrams", "names match without case")
+        XCTAssertEqual(groups[1].rows.map(\.name), ["my-notes"], "a skill the dashboard doesn't list goes under General")
+        XCTAssertEqual(BotCapabilities.onSummary(groups[0].rows), "0 of 1 on")
+        XCTAssertEqual(BotCapabilities.onSummary(skills), "3 of 4 on")
+        XCTAssertNil(BotCapabilities.onSummary([]))
+
+        XCTAssertEqual(BotSkillGrouping.grouped(skills, details: details, query: "diagram").flatMap(\.rows).map(\.name), ["Excalidraw"], "a search reads descriptions")
+        XCTAssertEqual(BotSkillGrouping.grouped(skills, details: details, query: "software").flatMap(\.rows).map(\.name), ["plan"], "and categories")
+        XCTAssertTrue(BotSkillGrouping.grouped(skills, details: details, query: "zzz").isEmpty)
+        XCTAssertEqual(BotSkillGrouping.grouped(skills, details: details, query: "software-development").flatMap(\.rows).map(\.name), ["plan"], "and Hermes' own spelling of them")
+        XCTAssertEqual(BotSkillGrouping.matching(skills, query: "NOTES").map(\.name), ["my-notes"], "with no list, one filtered list")
+        XCTAssertEqual(BotSkillGrouping.matching(skills, query: " ").count, 4)
     }
 
     func testEveryMCPServerOffSendsAnEmptyList() {

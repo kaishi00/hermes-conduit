@@ -21,11 +21,11 @@ struct SyncedPreferencesSettingsDetail: View {
 
     var body: some View {
         SettingsDetailContainer {
-            ConduitSettingsSection(title: AppLocalization.string("Sync across devices"), symbol: "arrow.triangle.2.circlepath", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("Sync across devices", table: .settings), symbol: "arrow.triangle.2.circlepath", tint: .conduitAccent) {
                 Text("Your iPhone and iPad share Conduit's preferences through the Conduit plugin on your Hermes host: appearance, chat and voice settings, the order of your pinned chats, bots and group chats, CarPlay, and your other saved dashboards (their addresses only).")
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
-                Toggle(AppLocalization.string("Sync with this Hermes"), isOn: Binding(
+                Toggle(AppLocalization.string("Sync with this Hermes", table: .settings), isOn: Binding(
                     // Holds on while the host is checked, so the tap reads as taken.
                     get: { controller.isEnabled || checkingHost },
                     set: { enabled in
@@ -64,14 +64,14 @@ struct SyncedPreferencesSettingsDetail: View {
             }
 
             if appState.supportsSyncedPreferences && controller.isEnabled {
-                ConduitSettingsSection(title: AppLocalization.string("Another host"), symbol: "server.rack", tint: .conduitAura) {
+                ConduitSettingsSection(title: AppLocalization.string("Another host", table: .settings), symbol: "server.rack", tint: .conduitAura) {
                     Text("Each Hermes profile keeps its own copy. To bring yours to a new host or profile, connect to it and copy this device's settings there.")
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     Button {
                         confirmingCopy = true
                     } label: {
-                        Label(AppLocalization.string("Copy this device's settings here"), systemImage: "square.and.arrow.up")
+                        Label(AppLocalization.string("Copy this device's settings here", table: .settings), systemImage: "square.and.arrow.up")
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
                             .frame(minHeight: 44)
@@ -90,7 +90,7 @@ struct SyncedPreferencesSettingsDetail: View {
         // that fails eases the switch back off.
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: controller.isEnabled)
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: checkingHost)
-        .navigationTitle(AppLocalization.string("Sync across devices"))
+        .navigationTitle(AppLocalization.string("Sync across devices", table: .settings))
         .onDisappear {
             turningOn?.cancel()
             checkingHost = false
@@ -99,24 +99,24 @@ struct SyncedPreferencesSettingsDetail: View {
             await appState.syncPreferences()
         }
         .confirmationDialog(
-            AppLocalization.string("This Hermes already has settings from another device"),
+            AppLocalization.string("This Hermes already has settings from another device", table: .settings),
             isPresented: $choosingStart,
             titleVisibility: .visible
         ) {
-            Button(AppLocalization.string("Use the ones on Hermes")) {
+            Button(AppLocalization.string("Use the ones on Hermes", table: .settings)) {
                 Task { await appState.setSyncedPreferencesEnabled(true, start: .useHost) }
             }
-            Button(AppLocalization.string("Use this device's")) {
+            Button(AppLocalization.string("Use this device's", table: .settings)) {
                 Task { await appState.setSyncedPreferencesEnabled(true, start: .useDevice) }
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         }
         .confirmationDialog(
-            AppLocalization.string("Replace this Hermes' copy with this device's settings?"),
+            AppLocalization.string("Replace this Hermes' copy with this device's settings?", table: .settings),
             isPresented: $confirmingCopy,
             titleVisibility: .visible
         ) {
-            Button(AppLocalization.string("Copy settings")) {
+            Button(AppLocalization.string("Copy settings", table: .settings)) {
                 Task { await appState.copyPreferencesToHost() }
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
@@ -145,10 +145,10 @@ struct SyncedPreferencesSettingsDetail: View {
 
     private var statusText: String {
         switch controller.status {
-        case .idle: return AppLocalization.string("Not synced yet")
+        case .idle: return AppLocalization.string("Not synced yet", table: .settings)
         case .syncing: return AppLocalization.string("Syncing…")
         case .synced(let date):
-            return AppLocalization.string("Synced \(date.formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale)))")
+            return AppLocalization.string("Synced \(date.formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale)))", table: .settings)
         case .failed(let message): return message
         }
     }

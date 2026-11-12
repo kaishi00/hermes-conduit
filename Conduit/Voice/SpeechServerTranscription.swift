@@ -24,10 +24,10 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
     static let statusPath = "/api/plugins/conduit_push/speech-server/status"
     static let testPath = "/api/plugins/conduit_push/speech-server/test"
     /// What the speech server is sent: the OpenAI Realtime input rate.
-    static let inputSampleRate: Double = 24_000
+    nonisolated static let inputSampleRate: Double = 24_000
     /// Trailing silence at the end of speech, longer than a typical turn
     /// detector's silence window.
-    static let trailingSilence = Data(count: Int(inputSampleRate * 0.8) * 2)
+    nonisolated static let trailingSilence = Data(count: Int(inputSampleRate * 0.8) * 2)
 
     private enum Outcome {
         case finished(String?)
@@ -110,7 +110,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         if let outcome { return Self.transcript(outcome) }
         guard !ended else { return nil }
         ended = true
-        enqueueAudio(Self.trailingSilence)
+        enqueueAudio(Self.trailingSilence, from: Self.inputSampleRate)
         if let commit = try? Self.encode(["type": "input_audio_buffer.commit"]) {
             enqueue(.string(commit))
         }
@@ -118,7 +118,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
             try? await Task.sleep(for: finishTimeout)
             guard !Task.isCancelled, let self else { return }
             if self.segments.isEmpty {
-                self.resolve(.failed(self.lastError ?? AppLocalization.string("Your speech server didn't send any words back in time.")))
+                self.resolve(.failed(self.lastError ?? AppLocalization.string("Your speech server didn't send any words back in time.", table: .voice)))
             } else {
                 self.resolve(.finished(self.joinedTranscript))
             }
@@ -166,15 +166,14 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         var offset = pcm16.startIndex
         while offset < pcm16.endIndex {
             let end = pcm16.index(offset, offsetBy: chunkBytes, limitedBy: pcm16.endIndex) ?? pcm16.endIndex
-            let chunk = pcm16.subdata(in: offset..<end)
-            enqueueAudio(Self.resampled(chunk, from: captureSampleRate))
+            enqueueAudio(pcm16.subdata(in: offset..<end))
             offset = end
         }
     }
 
     /// Capture audio at the server's 24 kHz input rate. Conduit captures at
     /// 16 kHz (the Grok Live 3:2 path); any other rate is resampled linearly.
-    static func resampled(_ pcm16: Data, from rate: Double) -> Data {
+    nonisolated static func resampled(_ pcm16: Data, from rate: Double) -> Data {
         if rate == inputSampleRate { return pcm16 }
         if rate == 16_000 { return GrokLiveProtocol.upsampledForInput(pcm16) }
         guard rate > 0 else { return Data() }
@@ -197,23 +196,37 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         return output
     }
 
-    private func enqueueAudio(_ pcm24: Data) {
-        guard !pcm24.isEmpty, let frame = try? Self.encode([
-            "type": "input_audio_buffer.append",
-            "audio": pcm24.base64EncodedString(),
-        ]) else { return }
-        enqueue(.string(frame))
+    /// Resampled and encoded off the main actor, in the send chain's order,
+    /// as a live call's microphone is (issue 1959).
+    /// `rate` is the audio's own: the capture's, or the server's input
+    /// rate for the trailing silence, which is already there.
+    private func enqueueAudio(_ pcm16: Data, from rate: Double? = nil) {
+        let rate = rate ?? captureSampleRate
+        enqueue {
+            await LiveVoiceWireCoding.offMainActor {
+                let pcm24 = Self.resampled(pcm16, from: rate)
+                guard !pcm24.isEmpty, let frame = try? Self.encode([
+                    "type": "input_audio_buffer.append",
+                    "audio": pcm24.base64EncodedString(),
+                ]) else { return nil }
+                return .string(frame)
+            }
+        }
     }
 
     private func enqueue(_ message: URLSessionWebSocketTask.Message) {
+        enqueue { message }
+    }
+
+    private func enqueue(_ makeMessage: @escaping @MainActor () async -> URLSessionWebSocketTask.Message?) {
         let previous = sendChain
         sendChain = Task { @MainActor [weak self, socket] in
             await previous?.value
-            guard !Task.isCancelled else { return }
+            guard !Task.isCancelled, let message = await makeMessage() else { return }
             do {
                 try await socket.send(message)
             } catch {
-                self?.resolve(.failed(AppLocalization.string("Lost the connection to your speech server.")))
+                self?.resolve(.failed(AppLocalization.string("Lost the connection to your speech server.", table: .voice)))
             }
         }
     }
@@ -260,7 +273,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
             // segment already closed; anything else is kept as the reason
             // if no words come.
             if let message = Self.errorMessage(frame), !Self.isEmptyCommit(frame) {
-                lastError = AppLocalization.string("Your speech server reported: \(message)")
+                lastError = AppLocalization.string("Your speech server reported: \(message)", table: .voice)
             }
         default:
             break
@@ -293,7 +306,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         if ended, startedSegments > 0, finishedSegments >= startedSegments {
             resolve(.finished(joinedTranscript))
         } else {
-            resolve(.failed(lastError ?? AppLocalization.string("Lost the connection to your speech server.")))
+            resolve(.failed(lastError ?? AppLocalization.string("Lost the connection to your speech server.", table: .voice)))
         }
     }
 
@@ -333,7 +346,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         return code.contains("commit_empty") || code.contains("buffer_too_small")
     }
 
-    static func encode(_ message: [String: Any]) throws -> String {
+    nonisolated static func encode(_ message: [String: Any]) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: message, options: [.sortedKeys])
         return String(decoding: data, as: UTF8.self)
     }
@@ -428,7 +441,7 @@ struct SpeechServerStatus: Equatable {
     var readFailed = false
 
     static var pluginMissingReason: String {
-        AppLocalization.string("Update the Conduit plugin on your Hermes host to use your own speech server.")
+        PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to use your own speech server.", table: .voice))
     }
 
     static var pluginMissing: SpeechServerStatus {
@@ -490,10 +503,10 @@ struct SpeechServerTestResult: Equatable {
     var message: String {
         if connected {
             if let latencyMilliseconds {
-                return AppLocalization.string("Connected. Your speech server answered in \(String(latencyMilliseconds)) ms.")
+                return AppLocalization.string("Connected. Your speech server answered in \(String(latencyMilliseconds)) ms.", table: .voice)
             }
-            return AppLocalization.string("Connected to your speech server.")
+            return AppLocalization.string("Connected to your speech server.", table: .voice)
         }
-        return reason ?? AppLocalization.string("Could not reach your speech server.")
+        return reason ?? AppLocalization.string("Could not reach your speech server.", table: .voice)
     }
 }

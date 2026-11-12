@@ -19,9 +19,9 @@ enum GrokLiveClientError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .unavailable(let availability):
-            return availability.userFacingReason
+            return PluginUpdateAsk.reason(availability.userFacingReason)
         case .socketUnavailable:
-            return AppLocalization.string("Could not open the Grok Live connection.")
+            return AppLocalization.string("Could not open the Grok Live connection.", table: .voice)
         }
     }
 }

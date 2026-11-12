@@ -494,6 +494,21 @@ final class GPTLiveDelegationBridge {
         if !confirmed { spokenWords?.settleWords(.all) }
         let routingWords = instructions.components(separatedBy: GPTLiveConversationController.delegationContextMarker).first ?? instructions
         if supervisor.liveThread != nil, !VoiceThreadRouting.wantsBackgroundJob(routingWords) {
+            // A workstream's chat: its session takes the request, never a
+            // chat turn queued behind the question it waits on.
+            // Only the request: an answer to its question is taken as written.
+            let said = await supervisor.sendToWorkstream(routingWords.trimmingCharacters(in: .whitespacesAndNewlines))
+            guard callGeneration == call, !isEnding else { return [] }
+            if let said {
+                // Not passed on (busy, unreachable): the user's retry isn't
+                // "already sent". A sent request's result can go on (a
+                // picture that didn't go with it), so it's read by its start.
+                if !said.hasPrefix(AppState.workstreamCallSent) {
+                    if confirmed { lastSentAt = nil }
+                    lastUntaken = id
+                }
+                return [.delegationReply(delegationID: id, text: Self.relay(said), channel: .speakable)]
+            }
             let sent = supervisor.startThreadTurn(request: instructions)
             guard let jobID = sent.jobID else {
                 if confirmed { lastSentAt = nil }

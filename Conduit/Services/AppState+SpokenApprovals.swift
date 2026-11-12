@@ -15,7 +15,11 @@ extension AppState {
         var waiting = SpokenApprovals.Waiting()
         waiting.phoneChanges = phoneSync.prompts.map(\.id)
         waiting.cancellingAlarms = Set(phoneSync.prompts.filter { $0.change.kind == .cancelAlarm }.map(\.id))
-        waiting.staleChanges = phoneChangesWaitingAtLastWords ?? Set(waiting.phoneChanges)
+        // A photo or a shortcut run goes only from its card: like a stale
+        // one, it counts (a yes with it waiting answers nothing else) but no
+        // yes or no answers it.
+        let cardOnly = phoneSync.prompts.filter { SpokenApprovals.answeredOnlyOnCard($0.change.kind) }.map(\.id)
+        waiting.staleChanges = (phoneChangesWaitingAtLastWords ?? Set(waiting.phoneChanges)).union(cardOnly)
         waiting.presented = presentedScreens.prompts.filter { !$0.isExpired() }
         if let sessionId = activeSessionId, !sessionId.isEmpty {
             let open = chatOwnSessionIDs(for: sessionId)
@@ -278,6 +282,11 @@ extension AppState {
         guard turnState.isRunning, let sessionId = activeSessionId, !sessionId.isEmpty else { return [] }
         let open = chatOwnSessionIDs(for: sessionId)
         return messages.filter { message in
+            if let connection = message.connection {
+                // A connect card: opened, set up or skipped by tapping
+                // only, as an input card is.
+                return connection.isOpen && open.contains(connection.sessionId)
+            }
             guard let prompt = message.inputPrompt else { return false }
             return (prompt.isAnswerable || prompt.status == .submitting) && open.contains(prompt.sessionId)
         }

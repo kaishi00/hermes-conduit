@@ -44,6 +44,7 @@ struct V2VoiceButton: View {
     /// Faded out (the expanded composer): its bars stop redrawing unseen.
     var isHidden = false
     @EnvironmentObject private var appState: AppState
+    @Environment(\.v2MainButtonDiameter) private var mainButtonDiameter
     /// What the big button beside a chat does, app-wide (Settings >
     /// Appearance); a profile can override it.
     @AppStorage(ChatVoiceButtonAction.key) private var appChatVoiceButton = ChatVoiceButtonAction.defaultValue.rawValue
@@ -160,24 +161,24 @@ struct V2VoiceButton: View {
     private var conversationCallLabel: String {
         if appState.openChatCallToResume != nil { return AppLocalization.string("Resume call") }
         if appState.activeBotChatProfile != nil {
-            return AppLocalization.string("Call \(appState.conversationAgentIdentity.name)")
+            return AppLocalization.string("Call \(appState.conversationAgentIdentity.name)", table: .voice)
         }
-        return AppLocalization.string("Talk in this conversation")
+        return AppLocalization.string("Talk in this conversation", table: .voice)
     }
 
     private var label: String {
-        if returnsToCall { return AppLocalization.string("Return to call") }
+        if returnsToCall { return AppLocalization.string("Return to call", table: .voice) }
         if dictates { return AppLocalization.string("Dictate") }
-        if recordsMessage { return AppLocalization.string("Record voice message") }
-        if needsSetup { return AppLocalization.string("Set up voice") }
+        if recordsMessage { return AppLocalization.string("Record voice message", table: .voice) }
+        if needsSetup { return AppLocalization.string("Set up voice", table: .voice) }
         switch context {
         case .home: return AppLocalization.string("New voice call")
         case .bots:
-            return callableBots.isEmpty ? AppLocalization.string("New voice call") : AppLocalization.string("Call a bot")
+            return callableBots.isEmpty ? AppLocalization.string("New voice call") : AppLocalization.string("Call a bot", table: .voice)
         case .project(let project):
             return Self.folder(of: project) == nil
                 ? AppLocalization.string("New voice call")
-                : AppLocalization.string("Talk in this project")
+                : AppLocalization.string("Talk in this project", table: .voice)
         case .conversation:
             return conversationCallLabel
         }
@@ -186,18 +187,18 @@ struct V2VoiceButton: View {
     private var hint: String? {
         if dictates {
             return canAct
-                ? AppLocalization.string("Types what you say into the message. Touch and hold for a live call.")
+                ? AppLocalization.string("Types what you say into the message. Touch and hold for a live call.", table: .voice)
                 : nil
         }
         if recordsMessage {
             return canAct
-                ? AppLocalization.string("Records a voice message. Or touch and hold to record, and let go to send.")
+                ? AppLocalization.string("Records a voice message. Or touch and hold to record, and let go to send.", table: .voice)
                 : nil
         }
         if !canAct { return appState.phoneVoiceUnavailableReason }
-        if showsChatMenu { return AppLocalization.string("Touch and hold to dictate instead") }
-        if showsBotMenu { return AppLocalization.string("Lists your bots to call one") }
-        return showsRecentMenu ? AppLocalization.string("Touch and hold for recent conversations") : nil
+        if showsChatMenu { return AppLocalization.string("Touch and hold to dictate instead", table: .voice) }
+        if showsBotMenu { return AppLocalization.string("Lists your bots to call one", table: .voice) }
+        return showsRecentMenu ? AppLocalization.string("Touch and hold for recent conversations", table: .voice) : nil
     }
 
     var body: some View {
@@ -317,7 +318,7 @@ struct V2VoiceButton: View {
                 V2VoiceBars(isLive: returnsToCall && !isHidden)
             }
         }
-        .frame(width: Self.diameter, height: Self.diameter)
+        .frame(width: mainButtonDiameter, height: mainButtonDiameter)
         .background(Color.conduitAccent, in: Circle())
         .opacity(canAct ? 1 : 0.55)
         .contentShape(Circle())
@@ -515,8 +516,7 @@ struct V2VoiceButton: View {
         Task { @MainActor in
             defer { isStarting = false }
             appState.beginOpeningBotChat(bot.name)
-            let opened = await appState.openBotChat(for: bot)
-            appState.endOpeningBotChat(bot.name)
+            let opened = await appState.openBotChatFromList(bot)
             // A failed open says why itself; a superseded one (a newer
             // navigation took over) is no failure, so nothing more is said.
             guard opened else { return }
@@ -554,6 +554,7 @@ struct V2VoiceButton: View {
 struct V2NewChatButton: View {
     let context: V2VoiceContext
     @EnvironmentObject private var appState: AppState
+    @Environment(\.v2MainButtonDiameter) private var mainButtonDiameter
     /// A creation in a project's folder in flight: a second tap doesn't
     /// make a second chat.
     @State private var isCreating = false
@@ -599,7 +600,7 @@ struct V2NewChatButton: View {
                 .font(.system(size: 21, weight: .semibold))
                 .conduitFixedGlyph()
                 .foregroundStyle(Color.black.opacity(0.82))
-                .frame(width: V2VoiceButton.diameter, height: V2VoiceButton.diameter)
+                .frame(width: mainButtonDiameter, height: mainButtonDiameter)
                 .background(Color.conduitAccent, in: Circle())
                 .opacity(canAct ? 1 : 0.55)
                 .contentShape(Circle())
@@ -643,5 +644,19 @@ struct V2VoiceBars: View {
         guard isLive, !reduceMotion else { return resting }
         let wave = sin(time * 6 + Double(index) * 1.1)
         return max(0.22, min(1, resting + CGFloat(wave) * 0.3))
+    }
+}
+
+private struct V2MainButtonDiameterKey: EnvironmentKey {
+    static let defaultValue: CGFloat = V2VoiceButton.diameter
+}
+
+extension EnvironmentValues {
+    /// The main button's circle (Voice or New chat): 56 pt beside the
+    /// floating tabs, the 50 pt of iOS's own controls in a Duo's status
+    /// strip (issue 2118).
+    var v2MainButtonDiameter: CGFloat {
+        get { self[V2MainButtonDiameterKey.self] }
+        set { self[V2MainButtonDiameterKey.self] = newValue }
     }
 }

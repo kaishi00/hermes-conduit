@@ -148,7 +148,7 @@ struct BotRoomPortraitLabel<Icon: View>: View {
             if talking {
                 HStack(spacing: 4) {
                     BotsLiveDot(animates: animates)
-                    Text(AppLocalization.string("Talking now"))
+                    Text(AppLocalization.string("Talking now", table: .bots))
                         .scaledFont(.caption2.weight(.semibold))
                         .foregroundStyle(Color.conduitAccent)
                         .lineLimit(1)
@@ -216,6 +216,9 @@ struct GroupRoomPortrait: View {
             BotRoomPortraitLabel(title: room.name, talking: talking, highlighted: selection == .open,
                                  animates: animates, zoomSource: zoomKey) { size in
                 GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: size)
+                    // Other people's agents as their own Conduits draw them.
+                    .environment(\.groupRoomLooks, appState.homeRoomLooks(roomID: room.roomID))
+                    .modifier(RoomTileBadge(systemImage: RoomTileBadge.linked, shown: room.isLinked))
             }
         }
         .buttonStyle(PressableButtonStyle())
@@ -225,6 +228,8 @@ struct GroupRoomPortrait: View {
         .modifier(RoomTileDrag(roomID: room.roomID, enabled: actions != nil) {
             // Drawn outside the view's environment, as a bot's preview.
             GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: 56)
+                .environment(\.groupRoomLooks, appState.homeRoomLooks(roomID: room.roomID))
+                .modifier(RoomTileBadge(systemImage: RoomTileBadge.linked, shown: room.isLinked))
                 .environmentObject(appState)
         })
         // A move, not a copy, so the tile in hand shows no + over it. Held
@@ -309,7 +314,7 @@ struct GroupRoomPortrait: View {
             }
         }
         Button(action: actions.reorder) {
-            Label(AppLocalization.string("Reorder Group Chats"), systemImage: "arrow.up.arrow.down")
+            Label(AppLocalization.string("Reorder Group Chats", table: .bots), systemImage: "arrow.up.arrow.down")
         }
         if let disband = actions.disband {
             Divider()
@@ -320,8 +325,10 @@ struct GroupRoomPortrait: View {
     }
 
     private var accessibilityValue: String {
-        let members = AppLocalization.string("\(room.members.count) members")
-        return talking ? "\(AppLocalization.string("Talking now")), \(members)" : members
+        var parts = [AppLocalization.string("\(room.members.count) members")]
+        if room.isLinked { parts.insert(AppLocalization.string("With linked people"), at: 0) }
+        if talking { parts.insert(AppLocalization.string("Talking now", table: .bots), at: 0) }
+        return parts.joined(separator: ", ")
     }
 }
 
@@ -477,21 +484,39 @@ struct DesktopGroupPortrait: View {
                     members: group.groupMembers,
                     size: size
                 )
-                .overlay(alignment: .bottomTrailing) {
-                    Image(systemName: "desktopcomputer")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundStyle(.secondary)
-                        .frame(width: 22, height: 22)
-                        .background(Circle().fill(Color(.secondarySystemBackground)))
-                        .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
-                        .offset(x: 4, y: 4)
-                }
+                .modifier(RoomTileBadge(systemImage: "desktopcomputer"))
             }
         }
         .buttonStyle(PressableButtonStyle())
         .accessibilityLabel(Text(group.name))
         .accessibilityValue(Text(AppLocalization.string("\(group.members.count) members")))
         .accessibilityHint(Text(AppLocalization.string("Shows this Hermes Desktop group chat.")))
+    }
+}
+
+/// A small mark on a room's picture saying what kind of room it is: a
+/// Hermes Desktop group chat's computer, or a room over Links' people
+/// (`RoomTileBadge.linked`).
+struct RoomTileBadge: ViewModifier {
+    let systemImage: String
+    var shown = true
+
+    /// A room with other people's agents in it, yours or theirs.
+    static let linked = "person.2.fill"
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .bottomTrailing) {
+            if shown {
+                Image(systemName: systemImage)
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .background(Circle().fill(Color(.secondarySystemBackground)))
+                    .overlay(Circle().strokeBorder(Color(.systemBackground), lineWidth: 2))
+                    .offset(x: 4, y: 4)
+                    .accessibilityHidden(true)
+            }
+        }
     }
 }
 
@@ -551,7 +576,7 @@ struct NewRoomPortrait: View {
         ))
         .accessibilityLabel(Text(verbatim: name))
         .accessibilityValue(Text(verbatim: members))
-        .accessibilityHint(Text(AppLocalization.string("Names the room in the bar below.")))
+        .accessibilityHint(Text(AppLocalization.string("Names the room in the bar below.", table: .bots)))
         .accessibilityIdentifier("bots.newRoom.tile")
     }
 
@@ -697,13 +722,13 @@ struct BotsHomeGesturesTip: Tip {
     /// Bots Home shows two or more bots, so there's something to arrange.
     @Parameter static var hasBotsToArrange: Bool = false
 
-    var title: Text { Text(AppLocalization.string("Arrange your bots")) }
+    var title: Text { Text(AppLocalization.string("Arrange your bots", table: .bots)) }
 
     var message: Text? {
         // A Mac has no touch and hold: its menu is a right-click.
         Text(ProcessInfo.processInfo.isiOSAppOnMac
-             ? AppLocalization.string("Right-click a bot for its menu. Drag it to move it, or hold it over another bot to start a room.")
-             : AppLocalization.string("Touch and hold a bot for its menu. Drag it to move it, or hold it over another bot to start a room."))
+             ? AppLocalization.string("Right-click a bot for its menu. Drag it to move it, or hold it over another bot to start a room.", table: .bots)
+             : AppLocalization.string("Touch and hold a bot for its menu. Drag it to move it, or hold it over another bot to start a room.", table: .bots))
     }
 
     var image: Image? { Image(systemName: "hand.draw") }
@@ -964,6 +989,9 @@ enum BotPortraitStatus: Equatable {
     /// Answering another bot's ask (an open ask_in), by that bot's name.
     case helping(String)
     case working(Int)
+    /// Background agents the Bot Chat itself started, still running: its
+    /// workstreams are off, or it does the work itself (app issue 2206).
+    case agents(Int)
     /// Talking in group rooms now (their driver works), by room name,
     /// talked in last first.
     case inRooms([String])
@@ -972,11 +1000,15 @@ enum BotPortraitStatus: Equatable {
     case idle
 
     /// What needs the user first, then helping another bot, its own work,
-    /// talking in a room, and waiting on another bot. `rooms`: the talking
-    /// rooms it's in, which show without the plugin's workstreams too.
+    /// the Bot Chat's own background agents, talking in a room, and waiting
+    /// on another bot. `rooms`: the talking rooms it's in, which show
+    /// without the plugin's workstreams too. The Bot Chat's agents show with
+    /// its workstreams off too: then it's the one delegating.
     static func of(_ snapshot: BotWorkSnapshot?, talkingIn rooms: [String] = []) -> BotPortraitStatus {
         let quiet: BotPortraitStatus = rooms.isEmpty ? .idle : .inRooms(rooms)
-        guard let snapshot, snapshot.isOn else { return quiet }
+        guard let snapshot else { return quiet }
+        let agents = snapshot.botChatAgentCount
+        guard snapshot.isOn else { return agents > 0 ? .agents(agents) : quiet }
         if snapshot.needsYouCount > 0 { return .needsYou(snapshot.needsYouCount) }
         if let ask = snapshot.items.first(where: {
             $0.kind == .askIn && !$0.isClosed && ["starting", "running"].contains($0.status) && !$0.otherBot.isEmpty
@@ -984,6 +1016,7 @@ enum BotPortraitStatus: Equatable {
             return .helping(ask.otherBot)
         }
         if snapshot.workingCount > 0 { return .working(snapshot.workingCount) }
+        if agents > 0 { return .agents(agents) }
         if !rooms.isEmpty { return quiet }
         if let ask = snapshot.items.first(where: {
             $0.kind == .askOut && !$0.isClosed && $0.status == "waiting" && !$0.otherBot.isEmpty
@@ -1010,12 +1043,13 @@ enum BotPortraitStatus: Equatable {
 
     var title: String {
         switch self {
-        case .needsYou(let count): return AppLocalization.string("\(count) needs you")
-        case .helping(let name): return AppLocalization.string("Helping \(name)")
-        case .working(let count): return AppLocalization.string("\(count) working")
+        case .needsYou(let count): return AppLocalization.string("\(count) needs you", table: .bots)
+        case .helping(let name): return AppLocalization.string("Helping \(name)", table: .bots)
+        case .working(let count): return AppLocalization.string("\(count) working", table: .bots)
+        case .agents(let count): return AppLocalization.string("\(count) agents running", table: .bots)
         case .inRooms(let rooms) where rooms.count == 1: return AppLocalization.string("In \(rooms[0])")
-        case .inRooms(let rooms): return AppLocalization.string("In \(rooms.count) rooms")
-        case .waitingOn(let name): return AppLocalization.string("Waiting on \(name)")
+        case .inRooms(let rooms): return AppLocalization.string("In \(rooms.count) rooms", table: .bots)
+        case .waitingOn(let name): return AppLocalization.string("Waiting on \(name)", table: .bots)
         // Idle says nothing: the portrait's still ring says it.
         case .idle: return ""
         }
@@ -1024,7 +1058,7 @@ enum BotPortraitStatus: Equatable {
     var tint: Color {
         switch self {
         case .needsYou: return .orange
-        case .helping, .working, .inRooms: return .conduitAccent
+        case .helping, .working, .agents, .inRooms: return .conduitAccent
         case .waitingOn, .idle: return .secondary
         }
     }
@@ -1034,6 +1068,7 @@ enum BotPortraitStatus: Equatable {
         case .needsYou: return "exclamationmark.circle.fill"
         case .helping: return "arrowshape.turn.up.left.fill"
         case .working: return "arrow.triangle.2.circlepath"
+        case .agents: return "person.2.fill"
         case .inRooms: return "bubble.left.and.bubble.right.fill"
         case .waitingOn: return "hourglass"
         case .idle: return nil
@@ -1143,7 +1178,7 @@ struct BotPortraitCell<MenuContent: View>: View {
             .accessibilityLabel(Text(bot.displayLabel))
             .accessibilityValue(Text(accessibilityValue(status)))
             .accessibilityHint(Text(portraitHint))
-            .accessibilityAction(named: Text(AppLocalization.string("Overview"))) { onOverview() }
+            .accessibilityAction(named: Text(AppLocalization.string("Overview", table: .bots))) { onOverview() }
             .v2SelectedTrait(selection)
 
             // The name, and the ⓘ beside it; at accessibility sizes the ⓘ
@@ -1230,8 +1265,7 @@ struct BotPortraitCell<MenuContent: View>: View {
         // unless it opens beside the list, or doesn't open.
         if openBeside == nil { appState.botZoom.tap(bot.name) }
         Task {
-            if await !appState.openBotChat(for: bot) { appState.botZoom.openFailed(bot.name) }
-            appState.endOpeningBotChat(bot.name)
+            if await !appState.openBotChatFromList(bot) { appState.botZoom.openFailed(bot.name) }
         }
     }
 
@@ -1253,8 +1287,8 @@ struct BotPortraitCell<MenuContent: View>: View {
         .buttonStyle(PressableButtonStyle())
         .fixedSize()
         .padding(.horizontal, -7)
-        .help(AppLocalization.string("Overview"))
-        .accessibilityLabel(Text(AppLocalization.string("\(bot.displayLabel)’s overview")))
+        .help(AppLocalization.string("Overview", table: .bots))
+        .accessibilityLabel(Text(AppLocalization.string("\(bot.displayLabel)’s overview", table: .bots)))
         .accessibilityIdentifier("bots.overview.\(bot.name)")
     }
 
@@ -1282,9 +1316,9 @@ struct BotPortraitCell<MenuContent: View>: View {
 
     private var portraitHint: String {
         switch room {
-        case .off: return AppLocalization.string("Opens this bot's chat.")
-        case .member: return AppLocalization.string("Takes this bot out of the new room.")
-        case .notMember: return AppLocalization.string("Adds this bot to the new room.")
+        case .off: return AppLocalization.string("Opens this bot's chat.", table: .bots)
+        case .member: return AppLocalization.string("Takes this bot out of the new room.", table: .bots)
+        case .notMember: return AppLocalization.string("Adds this bot to the new room.", table: .bots)
         }
     }
 
@@ -1534,7 +1568,7 @@ struct BotPortraitCell<MenuContent: View>: View {
     private func accessibilityValue(_ status: BotPortraitStatus) -> String {
         let parts = [
             bot.isPinned ? AppLocalization.string("Pinned") : "",
-            room == .member ? AppLocalization.string("In the new room") : "",
+            room == .member ? AppLocalization.string("In the new room", table: .bots) : "",
             status == .idle ? "" : status.title,
         ]
         return parts.filter { !$0.isEmpty }.joined(separator: ", ")
@@ -1597,7 +1631,7 @@ struct BotOverviewSheet: View {
                     Haptics.light()
                     onChat()
                 } label: {
-                    Label(AppLocalization.string("Chat with \(botName)"), systemImage: "bubble.left.fill")
+                    Label(AppLocalization.string("Chat with \(botName)", table: .bots), systemImage: "bubble.left.fill")
                         .frame(maxWidth: .infinity, minHeight: 44)
                 }
                 // Settings' primary button, as every sheet's.
@@ -1609,7 +1643,7 @@ struct BotOverviewSheet: View {
                 .padding(.bottom, showsWork ? 0 : 12)
                 .accessibilityIdentifier("botOverview.chat")
                 if showsWork {
-                    Picker(AppLocalization.string("Overview"), selection: $section) {
+                    Picker(AppLocalization.string("Overview", table: .bots), selection: $section) {
                         Text(AppLocalization.string("Work")).tag(Section.work)
                         Text(AppLocalization.string("Artifacts")).tag(Section.artifacts)
                     }
@@ -1711,7 +1745,7 @@ struct BotOverviewSheet: View {
             BotScreenButton(support: appState.botScreens, profile: profile, open: {
                 Haptics.light()
                 screenTarget = BotScreenTarget(profile: profile, botName: botName)
-            }, title: AppLocalization.string("\(botName)'s Screen"), iconOnly: true)
+            }, title: AppLocalization.string("\(botName)'s Screen", table: .bots), iconOnly: true)
             if let bot, let onEdit {
                 Button {
                     Haptics.light()
@@ -1778,7 +1812,7 @@ struct BotReorderSheet: View {
                 }
             }
             .environment(\.editMode, .constant(.active))
-            .navigationTitle(AppLocalization.string("Reorder Bots"))
+            .navigationTitle(AppLocalization.string("Reorder Bots", table: .bots))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -1803,6 +1837,7 @@ struct GroupRoomReorderSheet: View {
                 ForEach(rooms) { room in
                     HStack(spacing: 12) {
                         GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: 36)
+                            .environment(\.groupRoomLooks, appState.homeRoomLooks(roomID: room.roomID))
                             .accessibilityHidden(true)
                         Text(verbatim: room.name)
                             .scaledFont(.body)
@@ -1813,7 +1848,7 @@ struct GroupRoomReorderSheet: View {
                 }
             }
             .environment(\.editMode, .constant(.active))
-            .navigationTitle(AppLocalization.string("Reorder Group Chats"))
+            .navigationTitle(AppLocalization.string("Reorder Group Chats", table: .bots))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -2033,7 +2068,7 @@ struct BotPortraitMotion: ViewModifier {
 
     private var isWorking: Bool {
         switch status {
-        case .working, .helping: return true
+        case .working, .helping, .agents: return true
         default: return false
         }
     }

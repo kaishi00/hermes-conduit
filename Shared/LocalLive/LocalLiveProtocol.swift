@@ -134,7 +134,7 @@ enum LocalLiveProtocol {
         ["type": "conduit.agent.note", "text": text]
     }
 
-    enum AgentFrame: Equatable {
+    enum AgentFrame: Equatable, Sendable {
         /// The fast model called one of the call's tools.
         case toolCall(GeminiLiveProtocol.FunctionCall)
         /// A tool's answer came after the model stopped waiting for it.
@@ -189,7 +189,7 @@ enum LocalLiveProtocol {
 
     // MARK: Server → client
 
-    enum TurnFrame: Equatable {
+    enum TurnFrame: Equatable, Sendable {
         /// The speech server wants the reply to `text`.
         case turn(id: String, text: String)
         /// The server moved on (the user spoke again, or it gave up).
@@ -235,5 +235,24 @@ enum LocalLiveProtocol {
 
     static func encode(_ message: [String: Any]) throws -> String {
         try GrokLiveProtocol.encode(message)
+    }
+
+    /// One frame from the server, read whole where it arrived: off the
+    /// main actor on a network socket (issue 1959). The plugin's frames
+    /// come first, then the speech server's own.
+    enum Inbound: Equatable, Sendable {
+        case agent(AgentFrame)
+        case turn(TurnFrame)
+        case server(stopsPlayback: Bool, frames: [GrokLiveProtocol.ServerFrame])
+
+        init(_ data: Data) {
+            if let frame = LocalLiveProtocol.agentFrame(data) {
+                self = .agent(frame)
+            } else if let turn = LocalLiveProtocol.turnFrame(data) {
+                self = .turn(turn)
+            } else {
+                self = .server(stopsPlayback: LocalLiveProtocol.stopsPlayback(data), frames: GrokLiveProtocol.decode(data))
+            }
+        }
     }
 }

@@ -35,6 +35,9 @@ struct TranscriptRow: Identifiable, Equatable {
         case streaming(isActive: Bool)
         /// The running turn's working line.
         case working(TranscriptWorkingLine)
+        /// The chat's own turn has ended and this many of its delegate
+        /// agents still work in the background.
+        case awaitingAgents(Int)
         /// A message sent while the chat was on its way.
         case pendingSend(PendingComposerSend)
         /// A group room's row (GroupRoomTranscript).
@@ -49,6 +52,7 @@ struct TranscriptRow: Identifiable, Equatable {
     static let emptyID = "transcript-empty"
     static let streamingID = "streaming"
     static let workingID = "typing"
+    static let awaitingAgentsID = "awaiting-agents"
     static let pendingSendID = "pending-send"
 
     /// Whether `other` draws as this row does. One of the chat's rows is
@@ -196,10 +200,16 @@ struct TranscriptModel {
         var isShown = true
         /// The working line's tool and timer.
         var working = TranscriptWorkingLine()
+        /// The chat's delegate agents still queued or running
+        /// (AppState.backgroundAgentsAwaited).
+        var agentsAwaited = 0
 
         /// Its rows, in order: the open thinking card, the reply streaming
         /// in, and the working line while nothing streams yet or another
-        /// device gets the reply.
+        /// device gets the reply. Once the turn has ended, the waiting line
+        /// while its delegate agents still work: the turn isn't running
+        /// (Send stays Send), and Hermes starts the next one when they
+        /// finish.
         var rows: [TranscriptRow] {
             guard isShown else { return [] }
             var rows: [TranscriptRow] = []
@@ -214,6 +224,8 @@ struct TranscriptModel {
                 line.isThinking = shape.thinkingID != nil
                 line.repliesElsewhere = repliesElsewhere
                 rows.append(TranscriptRow(id: TranscriptRow.workingID, kind: .working(line)))
+            } else if !isBusy, !shape.streams, agentsAwaited > 0 {
+                rows.append(TranscriptRow(id: TranscriptRow.awaitingAgentsID, kind: .awaitingAgents(agentsAwaited)))
             }
             return rows
         }
@@ -384,14 +396,27 @@ enum GroupRoomRow: Equatable {
     /// A room event (GroupEventRow), whether it continues the run of the
     /// row above (the speaker's picture and name once), and the boards its
     /// agent showed for it (RoomBoards).
-    case event(GroupEvent, members: [GroupMember], continuesRun: Bool, boards: [RichBoard])
+    case event(GroupEvent, members: [GroupMember], continuesRun: Bool, boards: [RichBoard],
+               byline: GroupRoomByline = GroupRoomByline())
     /// The user's message on its way, under the id its event will have:
-    /// "Sending…" while its send is out, else Retry.
-    case pending(text: String, members: [GroupMember], isSending: Bool)
-    /// The member whose turn is running.
-    case responding(GroupMember)
-    /// A room with nothing in it yet.
-    case empty(roomID: String, members: [GroupMember])
+    /// "Sending…" while its send is out, else Retry. In a room someone else
+    /// hosts, where its post through your Hermes stands (RoomPosts.swift).
+    case pending(text: String, members: [GroupMember], isSending: Bool, copyPost: RoomPostText.RowState? = nil,
+                 files: [Attachment] = [])
+    /// The member whose turn is running, or whose route to its Hermes is
+    /// cut off or unreachable (Linked Rooms).
+    case responding(GroupMember, state: GroupResponderState = .responding)
+    /// A room with nothing in it yet, and whether it takes your messages
+    /// (a room someone else hosts may not).
+    case empty(roomID: String, members: [GroupMember], takesPosts: Bool = true)
+}
+
+/// Whose the people's messages are in a room over Links: in a room someone
+/// else hosts, who posts them (`host`), and the posts' owners
+/// (RoomPosts.swift). Empty in your own room with no one linked.
+struct GroupRoomByline: Equatable {
+    var host: String? = nil
+    var attribution = RoomPostAttribution.none
 }
 
 /// A group room's transcript rows (#1533, the transcript rewrite): its
@@ -412,7 +437,11 @@ enum GroupRoomTranscript {
         pending: GroupRoomOutbox.Pending?,
         isSending: Bool,
         responder: GroupMember?,
-        boards: [String: [RichBoard]] = [:]
+        boards: [String: [RichBoard]] = [:],
+        byline: GroupRoomByline = GroupRoomByline(),
+        copyPost: RoomPostText.RowState? = nil,
+        responderState: GroupResponderState = .responding,
+        takesPosts: Bool = true
     ) -> [TranscriptRow] {
         var rows: [TranscriptRow] = []
         rows.reserveCapacity(events.count + 2)
@@ -424,20 +453,23 @@ enum GroupRoomTranscript {
         for (index, event) in events.enumerated() {
             // A member's run of replies shows its picture and name once,
             // like a group thread in Messages.
-            let continuesRun = index > 0 && GroupEventRow.sameSpeaker(events[index - 1], event)
-            add(event.id, .event(event, members: members, continuesRun: continuesRun, boards: boards[event.id] ?? []))
+            let continuesRun = index > 0
+                && GroupEventRow.sameSpeaker(events[index - 1], event, attribution: byline.attribution)
+            add(event.id, .event(event, members: members, continuesRun: continuesRun, boards: boards[event.id] ?? [],
+                                 byline: byline))
         }
         if let pending {
             add(
                 GroupRoomOutbox.serverEventID(forClientEventID: pending.eventID),
-                .pending(text: pending.text, members: members, isSending: isSending)
+                .pending(text: pending.text, members: members, isSending: isSending, copyPost: copyPost,
+                         files: pending.attachments.map { $0.attachment(roomID: roomID) })
             )
         }
         if let responder {
-            add(respondingID, .responding(responder))
+            add(respondingID, .responding(responder, state: responderState))
         }
         if rows.isEmpty {
-            add(emptyID, .empty(roomID: roomID, members: members))
+            add(emptyID, .empty(roomID: roomID, members: members, takesPosts: takesPosts))
         }
         return rows
     }
@@ -471,6 +503,10 @@ final class GroupRoomTranscriptBox {
         var isSending = false
         var responder: GroupMember?
         var boards: [String: [RichBoard]] = [:]
+        var byline = GroupRoomByline()
+        var copyPost: RoomPostText.RowState?
+        var responderState = GroupResponderState.responding
+        var takesPosts = true
     }
 
     private var input: Input?
@@ -481,6 +517,7 @@ final class GroupRoomTranscriptBox {
     func update(_ input: Input, scroller: TranscriptScroller) -> [TranscriptRow] {
         guard input != self.input else { return rows }
         let responderChanged = input.responder != self.input?.responder
+            || input.responderState != self.input?.responderState
         self.input = input
         let events = input.replay.events.filter(GroupRoomTurns.isVisible)
         rows = GroupRoomTranscript.rows(
@@ -490,7 +527,11 @@ final class GroupRoomTranscriptBox {
             pending: input.pending,
             isSending: input.isSending,
             responder: input.responder,
-            boards: input.boards
+            boards: input.boards,
+            byline: input.byline,
+            copyPost: input.copyPost,
+            responderState: input.responderState,
+            takesPosts: input.takesPosts
         )
         let ids = events.map(\.id)
         // Only an event at the end is new: the oldest rows trimmed, or a

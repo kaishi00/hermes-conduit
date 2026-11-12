@@ -24,6 +24,10 @@ enum MessageRole: String, Codable, Equatable {
     /// password, skill/setup secret, password-manager unlock, a website's
     /// login or its one-time code.
     case inputPrompt
+    /// Hermes connecting something for the model and waiting on the user:
+    /// an app sign-in, an MCP server's setup, a catalog install or the
+    /// apps directory (`connection.request`, ConnectionActivity).
+    case connection
 }
 
 enum SessionSource: String, Codable, CaseIterable {
@@ -818,6 +822,8 @@ struct ChatMessage: Identifiable, Equatable {
     var clarify: ClarifyActivity?
     var approval: ApprovalActivity?
     var inputPrompt: InputPromptActivity?
+    /// The connect card on a `.connection` row. Live-only, like inputPrompt.
+    var connection: ConnectionActivity?
     var attachments: [Attachment]?
     var code: String?
     /// Canonical Hermes `display_kind` when the persisted row arrived with
@@ -836,6 +842,11 @@ struct ChatMessage: Identifiable, Equatable {
     /// How long a thinking step took, in seconds, when Conduit watched it
     /// stream (tool calls keep theirs on `tool`). Nil when unknown.
     var stepDuration: TimeInterval? = nil
+    /// What each background agent came back with, on the notice Hermes
+    /// writes when a chat's delegate agents finish (`async_delegation_complete`,
+    /// issue 1553). Nil for every other row, and for a report Conduit can't
+    /// read, which keeps the plain notice.
+    var delegationReport: DelegationReport? = nil
 
     // Non-codable because it contains closures in some uses; serialization
     // is handled by the gateway, not by us. We construct these from RPC results.
@@ -900,6 +911,8 @@ struct ChatMessage: Identifiable, Equatable {
             reactions: reactions
         )
         copy.stepDuration = stepDuration
+        copy.connection = connection
+        copy.delegationReport = delegationReport
         return copy
     }
 
@@ -1029,6 +1042,30 @@ struct DelegateAgentActivity: Identifiable, Equatable {
     /// The live session whose events reported this agent.
     var sessionId = ""
     var updatedAt = Date()
+    /// When the agent started running, as Hermes or its first running
+    /// event said; nil for a queued agent and for one whose start nobody
+    /// saw (issue 1553).
+    var startedAt: Date? = nil
+    /// How long it ran, once it ended: Hermes' own figure when its end
+    /// event carries one, else from `startedAt` to the end Conduit saw.
+    var duration: TimeInterval? = nil
+
+    /// How long the agent has run at `now`, or ran; nil when that isn't
+    /// known. A start stamped by Hermes' clock never reads as negative.
+    func elapsed(at now: Date) -> TimeInterval? {
+        if let duration { return max(0, duration) }
+        guard status.isActive, let startedAt else { return nil }
+        return max(0, now.timeIntervalSince(startedAt))
+    }
+
+    /// The card ended `as` a status at `now`, its running time kept.
+    func ended(as status: Status, at now: Date) -> DelegateAgentActivity {
+        var ended = self
+        ended.status = status
+        ended.currentTool = nil
+        if ended.duration == nil, let startedAt { ended.duration = max(0, now.timeIntervalSince(startedAt)) }
+        return ended
+    }
 
     /// Folds a later event for the same agent into the card: blank fields
     /// keep what earlier events said, and a finished agent stays finished
@@ -1044,10 +1081,56 @@ struct DelegateAgentActivity: Identifiable, Equatable {
         // A finished agent is no longer in any tool.
         merged.currentTool = merged.status.isActive ? update.currentTool ?? currentTool : nil
         merged.summary = update.summary ?? summary
+        // The first start an agent reports is its start, and the first end
+        // keeps its time; an end with no time of its own counts from it.
+        merged.startedAt = startedAt ?? update.startedAt
+        if !status.isActive {
+            merged.duration = duration ?? update.duration
+        } else if !merged.status.isActive, merged.duration == nil, let start = merged.startedAt {
+            merged.duration = max(0, update.updatedAt.timeIntervalSince(start))
+        }
         merged.hasGatewayID = hasGatewayID || update.hasGatewayID
         if merged.sessionId.isEmpty { merged.sessionId = sessionId }
         merged.stream = Array((stream + update.stream).suffix(20))
         return merged
+    }
+
+    /// The cards with a roster's agents among them: one the chat has no
+    /// card for gets one (it was started before this chat was opened, or
+    /// while the socket was down), and a card it has is left as its own
+    /// events made it, except that it moves to the session the roster was
+    /// read for: a card kept from before a resume would otherwise ask
+    /// about, steer or stop its agent under a runtime Hermes has moved on
+    /// from (issue 2206).
+    /// A roster of a runtime that's no longer the chat's own (`moving`
+    /// false) adds cards but moves none.
+    static func adopting(
+        _ agents: [DelegateAgentActivity],
+        roster: [DelegateAgentActivity],
+        moving: Bool = true
+    ) -> [DelegateAgentActivity] {
+        let listedIn = moving
+            ? Dictionary(roster.map { ($0.id, $0.sessionId) }, uniquingKeysWith: { first, _ in first }) : [:]
+        // Hermes' own start outranks the first event the chat happened to
+        // see, which can come long after the agent started.
+        let startedIn = Dictionary(roster.compactMap { row in row.startedAt.map { (row.id, $0) } },
+                                   uniquingKeysWith: { first, _ in first })
+        let moved = agents.map { agent -> DelegateAgentActivity in
+            var moved = agent
+            if moved.status.isActive, let start = startedIn[agent.id], moved.startedAt.map({ start < $0 }) ?? true {
+                moved.startedAt = start
+            }
+            guard let session = listedIn[agent.id], !session.isEmpty, session != agent.sessionId else { return moved }
+            moved.sessionId = session
+            return moved
+        }
+        let have = Set(agents.map(\.id))
+        return moved + roster.filter { !have.contains($0.id) }
+    }
+
+    /// How many of a chat's delegate agents are still queued or running.
+    static func activeCount(_ agents: [DelegateAgentActivity]) -> Int {
+        agents.reduce(0) { $1.status.isActive ? $0 + 1 : $0 }
     }
 
     /// Agents a gateway roster no longer lists have ended; their
@@ -1067,10 +1150,42 @@ struct DelegateAgentActivity: Identifiable, Equatable {
                   agent.sessionId == sessionId,
                   agent.updatedAt < cutoff,
                   !liveIDs.contains(agent.id) else { return agent }
-            var ended = agent
-            ended.status = .completed
-            ended.currentTool = nil
+            // It ended some time after its last news, unseen: how long it
+            // ran isn't known, so the card shows no time.
+            var ended = agent.ended(as: .completed, at: cutoff)
+            ended.duration = nil
             return ended
+        }
+    }
+}
+
+extension DelegateAgentActivity {
+    /// One `subagent.list` row as a card; nil for a row without an id. The
+    /// roster lists the agents Hermes still has, so a status it doesn't
+    /// name reads as running.
+    init?(rosterRow row: [String: AnyCodable]?, sessionId: String) {
+        guard let row, let id = row["subagent_id"]?.stringValue, !id.isEmpty else { return nil }
+        let named = row["status"]?.stringValue?.lowercased() ?? ""
+        let status: Status = named == "pending" ? .queued
+            : ["error", "timeout"].contains(named) ? .failed
+            : ["cancelled", "canceled", "stopped"].contains(named) ? .interrupted
+            : Status(rawValue: named) ?? .running
+        self.init(
+            id: id,
+            goal: row["goal"]?.stringValue ?? "",
+            model: row["model"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 },
+            status: status,
+            taskCount: 1,
+            taskIndex: 0,
+            currentTool: row["last_tool"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 },
+            summary: nil,
+            stream: [],
+            hasGatewayID: true,
+            sessionId: sessionId
+        )
+        // Hermes stamps `started_at` in epoch seconds as the agent starts.
+        if status.isActive, let started = row["started_at"]?.doubleValue, started.isFinite, started > 0 {
+            startedAt = Date(timeIntervalSince1970: started)
         }
     }
 }
@@ -1168,9 +1283,19 @@ struct CronJob: Codable, Identifiable {
     var scheduleDisplay: String?
     var script: String?
     var state: String?
+    /// The job's own model and provider; empty, it runs on the profile's.
+    var model: String?
+    var provider: String?
+    /// An endpoint of the job's own, which Hermes keeps beside its provider.
+    var baseURL: String?
+    /// The job's own reasoning level (`none` … `ultra`); empty, it follows
+    /// the profile's.
+    var reasoningEffort: String?
 
     enum CodingKeys: String, CodingKey {
-        case deliver, enabled, id, name, prompt, script, state
+        case deliver, enabled, id, name, prompt, script, state, model, provider
+        case baseURL = "base_url"
+        case reasoningEffort = "reasoning_effort"
         case lastError = "last_error"
         case lastRunAt = "last_run_at"
         case nextRunAt = "next_run_at"
@@ -1336,6 +1461,12 @@ enum TurnState: Equatable {
 
     var isRunning: Bool {
         self == .running
+    }
+
+    /// Running, or still being read back (a sync, a reconnect), so a reply
+    /// may be running: a chat call's seed leaves the running turn off.
+    var mayBeRunning: Bool {
+        self == .running || self == .synchronizing || self == .reconnecting
     }
 
     static func fromGatewayRunning(_ running: Bool?) -> TurnState {
@@ -1644,6 +1775,25 @@ struct ProfileConfigSchema: Equatable {
     }
 
     subscript(key: String) -> Field? { fields[key] }
+}
+
+/// A fallback list that may follow another one: the subagents'
+/// (`delegation.fallback_providers`) follow the chat's while unset (null);
+/// an empty list of their own turns fallback off.
+struct ProfileFallbackChain: Equatable {
+    var inherits = false
+    var entries: [ProfileFallbackModel] = []
+
+    init(inherits: Bool = false, entries: [ProfileFallbackModel] = []) {
+        self.inherits = inherits
+        self.entries = entries
+    }
+
+    /// The subagents' chain in a profile's config.
+    init(delegationIn config: [String: Any]) {
+        let value = (config["delegation"] as? [String: Any])?["fallback_providers"]
+        self.init(inherits: value == nil || value is NSNull, entries: ProfileFallbackModel.list(from: value))
+    }
 }
 
 /// One `fallback_providers` entry: the model Hermes tries when the default

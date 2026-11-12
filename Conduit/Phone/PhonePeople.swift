@@ -171,6 +171,9 @@ protocol PhoneContactsSource: Sendable {
     /// the identifier whose hash is each person's id. Reads identifiers only.
     /// Nil when Contacts couldn't be searched.
     func identifiers(for ids: Set<String>) async -> [String: String]?
+    /// Adds a contact, or changes or deletes the card `contactID` names, as
+    /// a contact change says (PhoneContactChanges). The card's identifier.
+    func applyChange(_ change: PhoneChange, contactID: String?) async throws -> String
 }
 
 struct SystemContactsSource: PhoneContactsSource {

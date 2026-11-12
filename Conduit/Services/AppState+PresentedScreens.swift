@@ -150,7 +150,7 @@ extension AppState {
         // they share their location with Conduit and haven't paused it.
         let places = location.places
         guard let place = MapsVoiceTool.ref(target.to, places: places), place != .me else {
-            errorMessage = AppLocalization.string("Couldn't find that place in Apple Maps.")
+            errorMessage = AppLocalization.string("Couldn't find that place in Apple Maps.", table: .chat)
             return
         }
         var hint: CLLocation?
@@ -160,14 +160,14 @@ extension AppState {
         }
         let outcome = await MapsNavigator.open(place, mode: target.mode, places: places, near: hint?.coordinate)
         if case .failed = outcome {
-            errorMessage = AppLocalization.string("Couldn't find that place in Apple Maps.")
+            errorMessage = AppLocalization.string("Couldn't find that place in Apple Maps.", table: .chat)
         }
     }
 
     /// The user's answer; reported to the host right away.
     func answerPresentedConfirm(_ prompt: PresentedConfirm, outcome: PresentedConfirmOutcome,
-                                via source: PresentedConfirmAnswerSource) async {
-        presentedScreens.answer(prompt, outcome: outcome, via: source)
+                                via source: PresentedConfirmAnswerSource, editText: String? = nil) async {
+        presentedScreens.answer(prompt, outcome: outcome, via: source, editText: editText)
         await reportPresentedAnswer(prompt, outcome: outcome)
     }
 
@@ -188,7 +188,7 @@ extension AppState {
             guard await openSession(session) else {
                 // Hermes already knows; say why the draft didn't appear.
                 if errorMessage == nil {
-                    errorMessage = AppLocalization.string("Couldn't open the chat to edit it. Hermes knows you want changes.")
+                    errorMessage = AppLocalization.string("Couldn't open the chat to edit it. Hermes knows you want changes.", table: .chat)
                 }
                 return
             }

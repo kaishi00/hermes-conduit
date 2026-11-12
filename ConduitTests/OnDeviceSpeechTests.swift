@@ -145,6 +145,44 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(IPhoneVoices.languageKey("zh-Hant-CN"), "zh-TW")
     }
 
+    func testAPickedYueCantoneseVoiceSpeaksTraditionalReplies() throws {
+        // iOS tags newer Cantonese voices yue (Wing), not zh-HK: they join
+        // Traditional Chinese, where replies look, instead of a key of their own.
+        XCTAssertEqual(IPhoneVoices.languageKey("yue"), "zh-TW")
+        XCTAssertEqual(IPhoneVoices.languageKey("yue-CN"), "zh-TW")
+        XCTAssertEqual(IPhoneVoices.languageKey("yue-Hant-HK"), "zh-TW")
+        XCTAssertEqual(IPhoneVoices.languageKey("yue-Hans-CN"), "zh-CN")
+        XCTAssertTrue(IPhoneVoices.isCantonese("yue-CN"))
+        let mandarinTW = iPhoneVoice("meijia", "Meijia", "zh-TW", quality: 2)
+        let wing = iPhoneVoice("wing", "Wing", "yue-CN", quality: 2)
+        // language(of:) tags a Traditional reply zh-TW, a Cantonese one zh-HK.
+        XCTAssertEqual(IPhoneVoices.pick([mandarinTW, wing], wanted: "zh-TW", chosen: "wing", region: "HK", systemDefault: nil), wing)
+        XCTAssertEqual(IPhoneVoices.pick([mandarinTW, wing], wanted: "zh-TW", chosen: nil, region: "HK", systemDefault: nil), mandarinTW)
+        XCTAssertEqual(IPhoneVoices.pick([mandarinTW, wing], wanted: "zh-HK", chosen: nil, region: "HK", systemDefault: nil), wing)
+
+        // A pick an earlier build saved under its own yue key still counts,
+        // until a Traditional Chinese pick replaces it.
+        let suite = "IPhoneVoicesTests.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        defaults.set(["yue": "wing"], forKey: IPhoneVoices.choicesKey)
+        XCTAssertEqual(IPhoneVoices.chosenVoice(for: "zh-TW", defaults: defaults), "wing")
+        XCTAssertEqual(IPhoneVoices.chosenVoice(for: "yue", defaults: defaults), "wing")
+        XCTAssertNil(IPhoneVoices.chosenVoice(for: "zh-CN", defaults: defaults))
+        IPhoneVoices.setChosenVoice(nil, for: "zh-TW", defaults: defaults)
+        XCTAssertNil(IPhoneVoices.chosenVoice(for: "zh-TW", defaults: defaults))
+    }
+
+    func testVoiceNamesDropTheQualityIOSAdds() {
+        // iOS names Enhanced and Premium voices with their quality, in the
+        // iPhone's language; Settings adds its own.
+        XCTAssertEqual(IPhoneVoices.plainName("Wing (Enhanced)", quality: 2), "Wing")
+        XCTAssertEqual(IPhoneVoices.plainName("Wing (高音質)", quality: 2), "Wing")
+        XCTAssertEqual(IPhoneVoices.plainName("Kyoko（拡張）", quality: 2), "Kyoko")
+        XCTAssertEqual(IPhoneVoices.plainName("Zoe", quality: 3), "Zoe")
+        XCTAssertEqual(IPhoneVoices.plainName("Fred (Basic)", quality: 1), "Fred (Basic)")
+    }
+
     @MainActor
     func testALanguageWithNoInstalledVoiceUsesIOSsOwn() {
         let saved = IPhoneVoices.readInstalled
@@ -221,16 +259,223 @@ extension HermesVoiceGatewayTimeoutTests {
 
     func testSentencesStartSpeakingWhileTheReplyStreams() {
         var text = "Hello there. The value is 3.5 now"
-        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &text), "Hello there.")
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &text), ["Hello there."])
         XCTAssertEqual(text, " The value is 3.5 now")
 
         var unfinished = "Still going"
-        XCTAssertNil(OnDeviceSpeechStream.takeCompleteSentences(from: &unfinished))
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &unfinished), [])
         XCTAssertEqual(unfinished, "Still going")
 
         var chinese = "你好。今天"
-        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &chinese), "你好。")
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &chinese), ["你好。"])
         XCTAssertEqual(chinese, "今天")
+    }
+
+    /// Issue 2191: a Premium voice given a whole reply as one utterance went
+    /// quiet past the watchdog partway, and everything up to the last
+    /// sentence was lost. Each sentence is its own utterance now.
+    func testEverySentenceIsItsOwnUtterance() {
+        var text = "First one. Second one! Third?\nA list:\n1. Ask Dr. Lee, e.g. by mail. Then wait"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &text), [
+            "First one.", "Second one!", "Third?", "A list:", "1. Ask Dr. Lee, e.g. by mail."
+        ])
+        XCTAssertEqual(text, " Then wait")
+
+        // A domain, a decimal or a file name still ends its sentence.
+        var dotted = "The site is example.com. The value is 3.5. Open notes.md. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &dotted), [
+            "The site is example.com.", "The value is 3.5.", "Open notes.md."
+        ])
+
+        // A short word still ends its sentence.
+        var short = "I can do it. You can do it. Ask J. Doe. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &short), [
+            "I can do it.", "You can do it.", "Ask J. Doe."
+        ])
+
+        // A number closes a sentence unless it opens one as a list number;
+        // a lone capital stays an initial.
+        var numbers = "The total is 42. The next total is 50. My grade is A. Then restart. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &numbers), [
+            "The total is 42.", "The next total is 50.", "My grade is A. Then restart."
+        ])
+
+        // A degree is an abbreviation too.
+        var degree = "He has a Ph.D. in physics. Open My.md. Next. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &degree), [
+            "He has a Ph.D. in physics.", "Open My.md.", "Next."
+        ])
+
+        // Closing quotes stay on the sentence they end.
+        var quoted = "\"First sentence.\" \"Second sentence.\" Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &quoted), [
+            "\"First sentence.\"", "\"Second sentence.\""
+        ])
+
+        // A link stays whole, so its address is dropped rather than read:
+        // across a line break or a CJK stop, and with parentheses in it.
+        var link = "Read [part one. And two](https://example.com/a.html). Next one. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &link), [
+            "Read [part one. And two](https://example.com/a.html).", "Next one."
+        ])
+        var spanning = "See [the docs\nfor details](https://example.com). Read [中文。更多](https://example.com). Done. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &spanning), [
+            "See [the docs\nfor details](https://example.com).", "Read [中文。更多](https://example.com).", "Done."
+        ])
+        var nested = "[guide](https://example.com/a_(b) \"First. Second\"). After. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &nested), [
+            "[guide](https://example.com/a_(b) \"First. Second\").", "After."
+        ])
+
+        // A link still streaming in waits for its address.
+        var streaming = "Done. See [the docs. More"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &streaming), ["Done."])
+        streaming += "](https://example.com). Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &streaming), [
+            "See [the docs. More](https://example.com)."
+        ])
+
+        var escaped = "[guide](https://example.com/a\\(b). Next one. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &escaped), [
+            "[guide](https://example.com/a\\(b).", "Next one."
+        ])
+
+        // A malformed address ends at its first space, so it can't hold the
+        // rest of the reply.
+        var unclosed = "See [x](https://example.com/a(b next. Then more. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &unclosed), [
+            "See [x](https://example.com/a(b next.", "Then more."
+        ])
+
+        var unclosedLine = "See [x](https://example.com/a(b\nNext one. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &unclosedLine), [
+            "See [x](https://example.com/a(b", "Next one."
+        ])
+
+        // An unclosed "(" can't be followed by a title, so its quote doesn't hold.
+        var unclosedQuote = "See [x](https://example.com/a(b \"你好。下一句。尾"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &unclosedQuote), [
+            "See [x](https://example.com/a(b \"你好。", "下一句。"
+        ])
+
+        // A title's spaces and stops stay inside the link.
+        var titled = "[x](https://example.com \"One Two. Three\") here. Next. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &titled), [
+            "[x](https://example.com \"One Two. Three\") here.", "Next."
+        ])
+
+        var singleQuoted = "[x](https://example.com 'One Two. Three') here. Next. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &singleQuoted), [
+            "[x](https://example.com 'One Two. Three') here.", "Next."
+        ])
+
+        var parenTitled = "[x](https://example.com (One Two. Three)) here. Next. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &parenTitled), [
+            "[x](https://example.com (One Two. Three)) here.", "Next."
+        ])
+
+        // A title may run over a line break.
+        var twoLineTitle = "[x](https://example.com \"A title.\nOver two lines\") here. Next. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &twoLineTitle), [
+            "[x](https://example.com \"A title.\nOver two lines\") here.", "Next."
+        ])
+
+        // A title or address that never closes holds only for a link's length.
+        let longRest = String(repeating: "Then more words follow. ", count: 12)
+        var unclosedTitle = "[x](https://example.com \"Never closed. " + longRest + "Tail"
+        let released = OnDeviceSpeechStream.takeCompleteSentences(from: &unclosedTitle)
+        XCTAssertGreaterThan(released.count, 1)
+        XCTAssertEqual(released.last, "Then more words follow.")
+        XCTAssertEqual(unclosedTitle.trimmingCharacters(in: .whitespaces), "Tail")
+
+        var unclosedCJK = "見 [x](https://example.com/a(b" + String(repeating: "你好。", count: 80) + "尾"
+        let releasedCJK = OnDeviceSpeechStream.takeCompleteSentences(from: &unclosedCJK)
+        XCTAssertGreaterThan(releasedCJK.count, 1)
+        XCTAssertEqual(releasedCJK.last, "你好。")
+        XCTAssertEqual(unclosedCJK, "尾")
+
+        // The stop the hold gives up on still ends its sentence.
+        let beforeTitle = "](https://example.com \""
+        var limitStop = "[x" + beforeTitle + String(repeating: "a", count: 200 - beforeTitle.count) + ". Next one. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &limitStop).last, "Next one.")
+
+        // A CJK sentence keeps its closing quote.
+        var cjkQuote = "「你好。」下一句。尾"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &cjkQuote), ["「你好。」", "下一句。"])
+
+        // A stray bracket holds only for a link's length, and not at all
+        // once a "]" without "(" shows it isn't a link.
+        let long = String(repeating: "More words here. ", count: 15)
+        var stray = "A stray [sic here. " + long + "Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &stray).first, "A stray [sic here.")
+        var bracketed = "See [1] for more. Then more. Tail"
+        XCTAssertEqual(OnDeviceSpeechStream.takeCompleteSentences(from: &bracketed), [
+            "See [1] for more.", "Then more."
+        ])
+    }
+
+    func testALongReadAloudReplySpeaksSentenceBySentence() async throws {
+        let synthesizer = FakeSpeechSynthesizer()
+        let stream = OnDeviceSpeechStream(
+            synthesizer: synthesizer,
+            fallbackLanguage: "en",
+            onStart: { _ in },
+            onPCM16: { _, _ in }
+        )
+        // Read Aloud hands over the whole reply at once.
+        try await stream.append("The first paragraph opens here. It goes on a while.\n\nThe second one follows. And this is the end.")
+        let finishing = Task { try await stream.finish() }
+        for count in 1...4 {
+            await waitUntil { synthesizer.spoken.count == count }
+            synthesizer.finishCurrent(audio: Data([1, 0]))
+        }
+        _ = try await finishing.value
+        XCTAssertEqual(synthesizer.spoken, [
+            "The first paragraph opens here.", "It goes on a while.", "The second one follows.", "And this is the end."
+        ])
+    }
+
+    func testReadAloudTraceSaysHowTheReplyWasSplitWithoutItsWords() async throws {
+        let trace = LiveCallTrace.readAloud
+        // A stream a stopped reading left behind notes nothing into the next.
+        let stale = OnDeviceSpeechStream(
+            synthesizer: FakeSpeechSynthesizer(),
+            fallbackLanguage: "en",
+            onStart: { _ in },
+            onPCM16: { _, _ in }
+        )
+        trace.begin("Read Aloud", first: "Reading 61 characters at 1x, on Speaker")
+        try await stale.append("An older reading. ")
+        stale.cancel()
+        defer { trace.end("Ended") }
+        let synthesizer = FakeSpeechSynthesizer()
+        let stream = OnDeviceSpeechStream(
+            synthesizer: synthesizer,
+            fallbackLanguage: "en",
+            onStart: { _ in },
+            onPCM16: { _, _ in }
+        )
+        try await stream.append("The first one is here. The second follows. ")
+        try await stream.append("One more. And the end")
+        XCTAssertEqual(MessageReadAloudController.traceEngine(of: stream), "the iPhone voice")
+        let finishing = Task { try await stream.finish() }
+        for count in 1...4 {
+            await waitUntil { synthesizer.spoken.count == count }
+            synthesizer.finishCurrent(audio: Data([1, 0]))
+        }
+        _ = try await finishing.value
+        let steps = trace.steps.map { $0.split(separator: " ", maxSplits: 1).last.map(String.init) ?? "" }
+        XCTAssertEqual(steps, [
+            "Reading 61 characters at 1x, on Speaker",
+            "Queued 2 sentences (22, 19 characters)",
+            "Queued 1 sentence (9 characters)",
+            "Queued the rest (11 characters)",
+        ])
+        XCTAssertFalse(trace.report?.contains("second") ?? true, "the trace never holds the reply's words")
+        trace.end("Ended")
+        trace.note("Classic speaks afterwards")
+        XCTAssertEqual(trace.steps.last.map { $0.hasSuffix("Ended") }, true, "nothing is noted once the reading ended")
+        XCTAssertEqual(trace.report?.components(separatedBy: "\n").first, "Last Read Aloud reading: steps")
     }
 
     func testAReplyTooShortToTellWaitsForASentenceThatSaysItsLanguage() async throws {
@@ -241,7 +486,7 @@ extension HermesVoiceGatewayTimeoutTests {
             onStart: { _ in },
             onPCM16: { _, _ in }
         )
-        try await stream.append("42. ")
+        try await stream.append("42! ")
         synthesizer.finishCurrent(audio: Data([1, 0]))
         try await stream.append("Die Hauptstadt von Deutschland ist Berlin, und die Stadt ist im Sommer sehr schön. ")
         await waitUntil { synthesizer.spoken.count == 2 }

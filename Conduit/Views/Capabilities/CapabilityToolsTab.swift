@@ -38,13 +38,13 @@ struct CapabilityToolsTab: View {
         }) {
             if toolsets.isEmpty {
                 CapabilityEmptyState(
-                    title: query.isEmpty ? AppLocalization.string("No tools yet") : AppLocalization.string("No matching tools"),
+                    title: query.isEmpty ? AppLocalization.string("No tools yet", table: .bots) : AppLocalization.string("No matching tools", table: .bots),
                     symbol: "wrench.and.screwdriver",
                     message: query.isEmpty ? nil : AppLocalization.string("Nothing matches “\(query)”.")
                 )
             } else {
                 CapabilitySection(
-                    title: AppLocalization.string("Toolsets"),
+                    title: AppLocalization.string("Toolsets", table: .bots),
                     symbol: "wrench.and.screwdriver",
                     footer: AppLocalization.string("Changes apply to new sessions.")
                 ) {
@@ -78,12 +78,12 @@ struct CapabilityToolsTab: View {
                 Button {
                     setAll(enabled: true)
                 } label: {
-                    Label(AppLocalization.string("Turn All On"), systemImage: "checkmark.circle")
+                    Label(AppLocalization.string("Turn All On", table: .bots), systemImage: "checkmark.circle")
                 }
                 Button {
                     setAll(enabled: false)
                 } label: {
-                    Label(AppLocalization.string("Turn All Off"), systemImage: "circle")
+                    Label(AppLocalization.string("Turn All Off", table: .bots), systemImage: "circle")
                 }
             }
             .disabled(appState.capabilitiesAreKept || !appState.canChangeCapabilities)
@@ -143,7 +143,7 @@ enum CapabilityToolsetStyle {
     }
 
     static func needsKeysPill() -> CapabilityPillModel {
-        CapabilityPillModel(text: AppLocalization.string("Needs keys"), tint: .orange)
+        CapabilityPillModel(text: AppLocalization.string("Needs keys", table: .bots), tint: .orange)
     }
 }
 
@@ -245,7 +245,7 @@ struct CapabilityToolsetDetailPage: View {
                 terminalSection
             }
             if appState.capabilitiesAreCurrent, let config, config.hasCategory, !config.providers.isEmpty {
-                ConduitSettingsSection(title: AppLocalization.string("Backends"), symbol: "server.rack", tint: .conduitAccent) {
+                ConduitSettingsSection(title: AppLocalization.string("Backends", table: .bots), symbol: "server.rack", tint: .conduitAccent) {
                     ForEach(Array(config.providers.enumerated()), id: \.element.id) { index, provider in
                         if index > 0 { Divider().opacity(0.6) }
                         providerRow(provider, config: config)
@@ -289,7 +289,7 @@ struct CapabilityToolsetDetailPage: View {
             Button(AppLocalization.string("Save")) { save(keyValue, for: env) }
             Button(AppLocalization.string("Cancel"), role: .cancel) { keyValue = "" }
         } message: { env in
-            Text(verbatim: env.prompt == env.key ? AppLocalization.string("Saved to this profile on your host. Conduit never reads it back.") : env.prompt)
+            Text(verbatim: env.prompt == env.key ? AppLocalization.string("Saved to this profile on your host. Conduit never reads it back.", table: .bots) : env.prompt)
         }
         .confirmationDialog(
             Text("Use \(backendToConfirm?.label ?? "") anyway?"),
@@ -297,10 +297,10 @@ struct CapabilityToolsetDetailPage: View {
             titleVisibility: .visible,
             presenting: backendToConfirm
         ) { backend in
-            Button(AppLocalization.string("Use Anyway")) { select(backend) }
+            Button(AppLocalization.string("Use Anyway", table: .bots)) { select(backend) }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: { backend in
-            Text(verbatim: backend.detail ?? AppLocalization.string("It still needs setting up on your host."))
+            Text(verbatim: backend.detail ?? AppLocalization.string("It still needs setting up on your host.", table: .bots))
         }
     }
 
@@ -360,7 +360,7 @@ struct CapabilityToolsetDetailPage: View {
     @ViewBuilder
     private var terminalSection: some View {
         if let backends, !backends.isEmpty {
-            ConduitSettingsSection(title: AppLocalization.string("Runs commands in"), symbol: "terminal", tint: .conduitAura) {
+            ConduitSettingsSection(title: AppLocalization.string("Runs commands in", table: .bots), symbol: "terminal", tint: .conduitAura) {
                 ForEach(Array(backends.enumerated()), id: \.element.id) { index, backend in
                     if index > 0 { Divider().opacity(0.6) }
                     Button {
@@ -421,7 +421,7 @@ struct CapabilityToolsetDetailPage: View {
         case "ready":
             CapabilityPill(text: AppLocalization.string("Ready"), tint: .green)
         case "needs_setup":
-            CapabilityPill(text: AppLocalization.string("Needs setup"), tint: .orange)
+            CapabilityPill(text: AppLocalization.string("Needs setup", table: .bots), tint: .orange)
         case "unavailable":
             CapabilityPill(text: AppLocalization.string("Unavailable"))
         default:
@@ -432,7 +432,7 @@ struct CapabilityToolsetDetailPage: View {
     private static func providerStatusPill(_ status: String) -> CapabilityPillModel? {
         switch status {
         case "ready": return CapabilityPillModel(text: AppLocalization.string("Ready"), tint: .green)
-        case "needs_setup": return CapabilityPillModel(text: AppLocalization.string("Needs setup"), tint: .orange)
+        case "needs_setup": return CapabilityPillModel(text: AppLocalization.string("Needs setup", table: .bots), tint: .orange)
         case "needs_auth": return CapabilityPillModel(text: AppLocalization.string("Needs sign-in"), tint: .orange)
         case "needs_keys": return CapabilityToolsetStyle.needsKeysPill()
         default: return nil
@@ -478,7 +478,7 @@ struct CapabilityToolsetDetailPage: View {
                     .buttonStyle(.borderless)
                     .tint(.conduitAccent)
                     .disabled(!appState.canChangeCapabilities)
-                    .accessibilityLabel(Text(verbatim: env.isSet ? AppLocalization.string("Replace \(env.key)") : AppLocalization.string("Add \(env.key)")))
+                    .accessibilityLabel(Text(verbatim: env.isSet ? AppLocalization.string("Replace \(env.key)", table: .bots) : AppLocalization.string("Add \(env.key)")))
                 }
             }
             providerActions(provider, config: config)
@@ -494,14 +494,14 @@ struct CapabilityToolsetDetailPage: View {
                 ForEach(provider.capabilities, id: \.self) { capability in
                     if config.serves(capability, provider: provider) {
                         Label(
-                            capability == "extract" ? AppLocalization.string("Used for Extract") : AppLocalization.string("Used for Search"),
+                            capability == "extract" ? AppLocalization.string("Used for Extract", table: .bots) : AppLocalization.string("Used for Search", table: .bots),
                             systemImage: "checkmark"
                         )
                         .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(Color.conduitAccent)
                     } else {
                         CapabilityRowButton(
-                            title: capability == "extract" ? AppLocalization.string("Use for Extract") : AppLocalization.string("Use for Search")
+                            title: capability == "extract" ? AppLocalization.string("Use for Extract", table: .bots) : AppLocalization.string("Use for Search", table: .bots)
                         ) {
                             choose(provider, capability: capability)
                         }
@@ -514,7 +514,7 @@ struct CapabilityToolsetDetailPage: View {
                 .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(Color.conduitAccent)
         } else {
-            CapabilityRowButton(title: AppLocalization.string("Use This Backend")) {
+            CapabilityRowButton(title: AppLocalization.string("Use This Backend", table: .bots)) {
                 choose(provider, capability: nil)
             }
             .disabled(working != nil || !appState.canChangeCapabilities)
@@ -540,7 +540,7 @@ struct CapabilityToolsetDetailPage: View {
                 backends = fresh
                 backendsError = nil
             } else if backends == nil {
-                backendsError = AppLocalization.string("Couldn't read where the terminal runs.")
+                backendsError = AppLocalization.string("Couldn't read where the terminal runs.", table: .bots)
             }
         }
         let loaded = await configLoad
@@ -549,7 +549,7 @@ struct CapabilityToolsetDetailPage: View {
             config = loaded
             configError = nil
         } else if config == nil {
-            configError = AppLocalization.string("Couldn't read this toolset's backends.")
+            configError = AppLocalization.string("Couldn't read this toolset's backends.", table: .bots)
         }
     }
 
@@ -565,7 +565,7 @@ struct CapabilityToolsetDetailPage: View {
                 let needsNous = try await store.selectProvider(toolset: name, provider: provider.name, capability: capability)
                 guard serves(owner) else { return }
                 if needsNous {
-                    notice = AppLocalization.string("Sign in to Nous Portal on your host to use this backend.")
+                    notice = AppLocalization.string("Sign in to Nous Portal on your host to use this backend.", table: .bots)
                 }
                 // Shown as Hermes now holds it, as the kept answer is, so a
                 // failed read after it keeps the change on screen.

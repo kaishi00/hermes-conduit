@@ -53,14 +53,15 @@ enum ChatOnScreen {
         plugin.reports(capability)
     }
 
-    /// The device kind the plugin keeps one hold for. CarPlay and Siri are
-    /// where a message came from, never where a chat is read.
+    /// The device kind the plugin keeps one hold for. CarPlay, Siri, the
+    /// Watch and a widget are where a message came from, never what this
+    /// app runs on.
     @MainActor static var device: String {
         switch TurnSurface.device {
         case .ipad: return "ipad"
         case .mac: return "mac"
         case .vision: return "vision"
-        case .iphone, .carplay, .siri: return "iphone"
+        case .iphone, .carplay, .siri, .watch, .widget: return "iphone"
         }
     }
 
@@ -131,7 +132,8 @@ extension ChatOnScreen {
 }
 
 /// The notifications a chat on screen has made read (#1579): those this
-/// device holds for the chat, under any of its ids, that a tap would open
+/// device holds for the chat, under any of its ids (or for the group room
+/// on screen, the room a reply or a failed turn opens), that a tap would open
 /// here (NotificationDashboardOwnership, as routing decides). One that
 /// waits on the user (an approval, a question, a call, a calendar change)
 /// stays until it's answered, and one Conduit can't read never matches.
@@ -144,6 +146,7 @@ enum ReadChatNotifications {
     static func identifiers(
         of delivered: [(identifier: String, target: ConduitNotificationTarget?)],
         sessionIDs: Set<String>,
+        roomID: String? = nil,
         activeDashboardID: UUID?,
         savedDashboardIDs: [UUID],
         activeDashboardGatewayIDs: Set<String>
@@ -151,7 +154,9 @@ enum ReadChatNotifications {
         delivered.compactMap { identifier, target in
             guard let target, !waitingTypes.contains(target.type ?? ""), target.decision == nil, target.call == nil,
                   sessionIDs.contains(target.sessionId)
-                    || target.durableSessionID.map({ sessionIDs.contains($0) }) == true,
+                    || target.durableSessionID.map({ sessionIDs.contains($0) }) == true
+                    // A group room on screen reads its bots' replies and failures (issue 2064).
+                    || (roomID != nil && target.roomID == roomID),
                   NotificationDashboardOwnership.resolve(
                     targetDashboardID: target.dashboardID,
                     hasMalformedDashboardID: target.hasMalformedDashboardID,

@@ -11,6 +11,9 @@ final class QwenLiveSocket: GeminiLiveSocket {
     private var pendingTools: Set<String> = []
     private var toolNames: [String: String] = [:]
     private var deliveredTools: Set<String> = []
+    /// Qwen takes a picture only after some audio: its image buffer is
+    /// committed with the audio buffer.
+    private var hasSentAudio = false
     /// Privacy-safe steps for the call's trace: the turn detection Qwen
     /// applied and when it heard the user start and stop, with microphone
     /// levels (#1418), never what anyone said.
@@ -60,9 +63,24 @@ final class QwenLiveSocket: GeminiLiveSocket {
         if let setup = frame["setup"] as? [String: Any] {
             try await emit(Self.sessionUpdate(setup: setup, voice: voice))
         } else if let input = frame["realtimeInput"] as? [String: Any] {
+            // The sessions send microphone audio through `sendAudio`; this
+            // stays for a frame built whole.
             if let audio = input["audio"] as? [String: Any], let bytes = audio["data"] as? String {
+                hasSentAudio = true
                 try await emit(["type": "input_audio_buffer.append", "audio": bytes])
                 if let onTrace, let pcm16 = Data(base64Encoded: bytes), let step = turnTrace.add(pcm16) { onTrace(step) }
+            }
+            if let video = input["video"] as? [String: Any], let image = video["data"] as? String {
+                // A still photo (the call screen's Camera). It rides with the
+                // user's next words, committed with the audio buffer; a
+                // moment of silence first if no audio went yet, since Qwen
+                // takes a picture only after some.
+                // https://www.alibabacloud.com/help/en/model-studio/client-events
+                if !hasSentAudio {
+                    hasSentAudio = true
+                    try await emit(["type": "input_audio_buffer.append", "audio": Data(repeating: 0, count: 3200).base64EncodedString()])
+                }
+                try await emit(["type": "input_image_buffer.append", "image": image])
             }
             if input["audioStreamEnd"] as? Bool == true {
                 // End a muted utterance through VAD, without a second commit.
@@ -98,6 +116,21 @@ final class QwenLiveSocket: GeminiLiveSocket {
         }
     }
 
+    /// A microphone chunk goes out as Qwen's append frame, built off the
+    /// main actor on the network socket (issue 1959); `encode`'s Gemini
+    /// frame isn't needed, since Qwen takes the same base64 audio.
+    func sendAudio(_ pcm16: Data, encode: @escaping @Sendable (Data) throws -> String) async throws {
+        hasSentAudio = true
+        try await upstream.sendAudio(pcm16) { pcm16 in
+            try GeminiLiveProtocol.encode([
+                "type": "input_audio_buffer.append",
+                "audio": pcm16.base64EncodedString(),
+                "event_id": UUID().uuidString,
+            ])
+        }
+        if let onTrace, let step = turnTrace.add(pcm16) { onTrace(step) }
+    }
+
     static func sessionUpdate(setup: [String: Any], voice: String) -> [String: Any] {
         let parts = (setup["systemInstruction"] as? [String: Any])?["parts"] as? [[String: Any]] ?? []
         let declarations = (setup["tools"] as? [[String: Any]] ?? []).flatMap {
@@ -124,9 +157,48 @@ final class QwenLiveSocket: GeminiLiveSocket {
 
     func receive() async throws -> Data {
         while true {
-            let data = try await upstream.receive()
+            if let mapped = try await map(try await upstream.receive()) { return mapped }
+        }
+    }
+
+    /// The model's speech, the frames that come many a second, is mapped
+    /// and decoded off the main actor on the network socket (issue 1959);
+    /// every other event changes this adapter's state, so it is mapped here.
+    func receive<T: Sendable>(decoding decode: @escaping @Sendable (Data) -> T) async throws -> T {
+        while true {
+            let inbound = try await upstream.receive(decoding: { data -> QwenInbound<T> in
+                if let speech = QwenLiveSocket.mappedSpeech(data) { return .decoded(decode(speech)) }
+                return .event(data)
+            })
+            switch inbound {
+            case .decoded(let value):
+                return value
+            case .event(let data):
+                if let mapped = try await map(data) { return decode(mapped) }
+            }
+        }
+    }
+
+    /// A `response.audio.delta` as the Gemini frame the session reads;
+    /// nil for any other event.
+    nonisolated static func mappedSpeech(_ data: Data) -> Data? {
+        guard data.range(of: Data("response.audio.delta".utf8)) != nil,
+              let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              event["type"] as? String == "response.audio.delta",
+              let audio = event["delta"] as? String else { return nil }
+        return try? JSONSerialization.data(withJSONObject: [
+            "serverContent": ["modelTurn": ["parts": [["inlineData": [
+                "mimeType": "audio/pcm;rate=24000", "data": audio,
+            ]]]]],
+        ])
+    }
+
+    /// One Qwen event as the Gemini frame the session reads, nil for one
+    /// it doesn't need.
+    private func map(_ data: Data) async throws -> Data? {
+        do {
             guard let event = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let type = event["type"] as? String else { continue }
+                  let type = event["type"] as? String else { return nil }
             var mapped: [String: Any]?
             switch type {
             case "session.updated":
@@ -185,6 +257,7 @@ final class QwenLiveSocket: GeminiLiveSocket {
             default: break
             }
             if let mapped { return try JSONSerialization.data(withJSONObject: mapped) }
+            return nil
         }
     }
 
@@ -192,6 +265,13 @@ final class QwenLiveSocket: GeminiLiveSocket {
     func serverClose(within timeout: Duration) async -> GeminiLiveServerClose? {
         await upstream.serverClose(within: timeout)
     }
+}
+
+/// One upstream frame: the model's speech already decoded, or an event
+/// for the adapter to map.
+private enum QwenInbound<T: Sendable>: Sendable {
+    case decoded(T)
+    case event(Data)
 }
 
 enum QwenLiveError: LocalizedError {

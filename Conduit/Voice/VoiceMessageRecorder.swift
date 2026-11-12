@@ -4,9 +4,9 @@
 //
 //  Voice messages from a chat's composer: record, preview or throw away,
 //  then send the audio with what was said. The recording is an AAC file
-//  the chat keeps and plays; the words come from the dictation engine the
-//  person picked (Apple on the phone by default, or Hermes), recognized
-//  while they speak, so the agent reads the message rather than guessing
+//  the chat keeps and plays; the words come from the voice message engine
+//  the person picked (dictation's unless they chose another: Apple on the
+//  phone by default, or Hermes), recognized while they speak, so the agent reads the message rather than guessing
 //  at a file it can't hear. A recognizer that gives up (permission, a
 //  dropped connection, a time limit) never stops the recording: the
 //  message goes with the words so far, or none.
@@ -90,10 +90,10 @@ final class VoiceMessageRecorder: ObservableObject {
     var isActive: Bool { phase != .idle }
 
     /// Starts recording for the chat `sessionID`. `hermesGateway` makes the
-    /// connected Hermes' gateway, for the Hermes dictation engine.
+    /// connected Hermes' gateway, for the Hermes engine.
     func start(
         sessionID: String?,
-        engine choice: DictationEngine = .current(),
+        engine choice: DictationEngine = VoiceMessageEngine.current(),
         words: [String] = DictationCustomWords.load(),
         hermesGateway: () -> HermesVoiceGateway? = { nil }
     ) async {
@@ -113,7 +113,7 @@ final class VoiceMessageRecorder: ObservableObject {
         }
         guard self.generation == generation else { return }
         guard AVAudioApplication.shared.recordPermission == .granted else {
-            fail(AppLocalization.string("Voice messages need microphone access. You can allow it in Settings."))
+            fail(AppLocalization.string("Voice messages need microphone access. You can allow it in Settings.", table: .voice))
             return
         }
         // Words are a bonus: without a recognizer the audio still goes.
@@ -124,7 +124,7 @@ final class VoiceMessageRecorder: ObservableObject {
         }
         guard !audioCoordinator.hasCaptureOwner else {
             recognizer?.cancel()
-            fail(AppLocalization.string("The microphone is not available right now."))
+            fail(AppLocalization.string("The microphone is not available right now.", table: .voice))
             return
         }
         let url: URL
@@ -142,7 +142,7 @@ final class VoiceMessageRecorder: ObservableObject {
             recognizer?.cancel()
             stopAudio()
             releaseAudio()
-            fail(AppLocalization.string("The microphone is not available right now."))
+            fail(AppLocalization.string("The microphone is not available right now.", table: .voice))
             return
         }
         var recognizerInput: (any DictationAudioInput)?
@@ -185,7 +185,7 @@ final class VoiceMessageRecorder: ObservableObject {
             recognizer?.cancel()
             recognizer = nil
             try? FileManager.default.removeItem(at: url)
-            fail(AppLocalization.string("Couldn't save the voice message."))
+            fail(AppLocalization.string("Couldn't save the voice message.", table: .voice))
             return nil
         }
         // Until the preview takes it, so a cancel while the last words

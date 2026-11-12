@@ -20,7 +20,7 @@ struct WatchSettingsSection: View {
     @State private var confirmingClear = false
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Apple Watch"), symbol: "applewatch", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Apple Watch", table: .watchCarPlay), symbol: "applewatch", tint: .conduitAura) {
             Label {
                 Text(statusLine)
             } icon: {
@@ -34,8 +34,8 @@ struct WatchSettingsSection: View {
 
             Stepper(value: $jobsPerCall, in: 0...WatchJobSettings.maximumJobsPerCall) {
                 Text(jobsPerCall == 0
-                    ? AppLocalization.string("Jobs per Watch call: through the iPhone")
-                    : AppLocalization.string("Jobs per Watch call: \(String(jobsPerCall))"))
+                    ? AppLocalization.string("Jobs per Watch call: through the iPhone", table: .watchCarPlay)
+                    : AppLocalization.string("Jobs per Watch call: \(String(jobsPerCall))", table: .watchCarPlay))
             }
             .accessibilityIdentifier("voice.watchJobsPerCall")
             Text("Hermes jobs a Watch call can start, wrist up or down. Each runs as a normal Hermes chat under Voice Jobs, and Hermes' own approval settings apply.")
@@ -45,7 +45,7 @@ struct WatchSettingsSection: View {
                 value: voiceApprovals,
                 choices: [
                     (id: false, title: AppLocalization.string("Tap")),
-                    (id: true, title: AppLocalization.string("Tap or voice")),
+                    (id: true, title: AppLocalization.string("Tap or voice", table: .watchCarPlay)),
                 ],
                 onSelect: { voiceApprovals = $0 }
             ) {
@@ -54,8 +54,8 @@ struct WatchSettingsSection: View {
             .disabled(jobsPerCall == 0)
             .accessibilityIdentifier("voice.watchApprovals")
             Text(voiceApprovals
-                ? AppLocalization.string("A job's approval request shows on the Watch, and Gemini Live or Grok can also take your answer by voice. Voice only ever approves once. Text in a web page or a job's output could try to talk it into approving.")
-                : AppLocalization.string("A job's approval request shows on the Watch with Approve once and Deny."))
+                ? AppLocalization.string("A job's approval request shows on the Watch, and Gemini Live or Grok can also take your answer by voice. Voice only ever approves once. Text in a web page or a job's output could try to talk it into approving.", table: .watchCarPlay)
+                : AppLocalization.string("A job's approval request shows on the Watch with Approve once and Deny.", table: .watchCarPlay))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
 
@@ -77,7 +77,7 @@ struct WatchSettingsSection: View {
                     } label: {
                         Text("Clear Log")
                     }
-                    .confirmationDialog(AppLocalization.string("Clear the Watch call log?"), isPresented: $confirmingClear, titleVisibility: .visible) {
+                    .confirmationDialog(AppLocalization.string("Clear the Watch call log?", table: .watchCarPlay), isPresented: $confirmingClear, titleVisibility: .visible) {
                         Button(AppLocalization.string("Clear Log"), role: .destructive) { log.clear() }
                     }
                 }
@@ -132,10 +132,10 @@ struct WatchSettingsSection: View {
     // `isWatchAppInstalled` has read false at launch with the Watch app
     // installed, so reachability comes first.
     private var statusLine: String {
-        guard link.isActivated else { return AppLocalization.string("Checking for an Apple Watch…") }
-        guard link.isPaired else { return AppLocalization.string("No Apple Watch is paired with this iPhone.") }
-        if link.isReachable || link.isWatchAppInstalled { return AppLocalization.string("Conduit is on your Apple Watch.") }
-        return AppLocalization.string("Install Conduit on your Apple Watch from the Watch app on this iPhone.")
+        guard link.isActivated else { return AppLocalization.string("Checking for an Apple Watch…", table: .watchCarPlay) }
+        guard link.isPaired else { return AppLocalization.string("No Apple Watch is paired with this iPhone.", table: .watchCarPlay) }
+        if link.isReachable || link.isWatchAppInstalled { return AppLocalization.string("Conduit is on your Apple Watch.", table: .watchCarPlay) }
+        return AppLocalization.string("Install Conduit on your Apple Watch from the Watch app on this iPhone.", table: .watchCarPlay)
     }
 }
 
@@ -180,7 +180,7 @@ final class WatchGPTLiveSetup: ObservableObject {
         } catch {
             // A profile that turned the plugin off says how to turn it on.
             state = .unavailable(DashboardTicketBridgeError.pluginOffDetail(of: error)
-                ?? AppLocalization.string("Your Hermes host doesn't offer GPT-Live for the Watch. Update the Conduit notifier plugin."))
+                ?? PluginUpdateAsk.text(AppLocalization.string("Your Hermes host doesn't offer GPT-Live for the Watch. Update the Conduit notifier plugin.", table: .watchCarPlay)))
         }
     }
 
@@ -211,7 +211,7 @@ final class WatchGPTLiveSetup: ObservableObject {
         switch runtime.runtime {
         case "ready": state = .ready
         case "preparing": state = .preparing
-        case "failed": state = .failed(runtime.reason ?? AppLocalization.string("Hermes couldn't set up GPT-Live for the Watch."))
+        case "failed": state = .failed(runtime.reason ?? AppLocalization.string("Hermes couldn't set up GPT-Live for the Watch.", table: .watchCarPlay))
         default: state = .notSetUp
         }
     }

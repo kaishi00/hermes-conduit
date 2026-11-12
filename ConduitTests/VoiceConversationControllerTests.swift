@@ -995,7 +995,9 @@ final class VoiceConversationControllerTests: XCTestCase {
         let steer = Date()
         controller.ingestAudioLevel(0.1, at: steer)
         for step in 1...10 {
-            controller.ingestAudioLevel(0.03, at: steer.addingTimeInterval(Double(step) * 0.2))
+            // Quiet words rise and fall, as a voice does.
+            let level: Float = step.isMultiple(of: 2) ? 0.03 : 0.014
+            controller.ingestAudioLevel(level, at: steer.addingTimeInterval(Double(step) * 0.2))
         }
         await drainPendingMainActorWork()
         XCTAssertEqual(steers.texts, [], "the user is still talking")
@@ -2216,6 +2218,38 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(capture.finishUtteranceCount, 1)
         // The completed utterance resets the visible meter.
         XCTAssertEqual(controller.microphoneLevel, 0, accuracy: 0.0001)
+    }
+
+    func testAnswerStartedAtOnceEndsOverSteadyRoomNoise() async {
+        // Notifier issue 596: the user answers the moment the window opens,
+        // so the detector's cold start hears speech before the room and
+        // keeps the minimum floor. The room's noise, above that floor's
+        // continuation level, held the turn open until the 60 s cap.
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Right away")
+        let submitted = SubmitSpy()
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { await submitted.submit($0) },
+            interrupt: { true }
+        )
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+
+        let start = Date()
+        controller.ingestAudioLevel(0.2, at: start)
+        controller.ingestAudioLevel(0.05, at: start.addingTimeInterval(0.02))
+        // Then only the room, for four seconds at the tap's rate.
+        for index in 2..<200 {
+            let level: Float = index.isMultiple(of: 3) ? 0.011 : 0.009
+            controller.ingestAudioLevel(level, at: start.addingTimeInterval(Double(index) * 0.02))
+        }
+        await submitted.waitUntilSubmitted(1)
+
+        XCTAssertEqual(submitted.texts, ["Right away"], "the room's steady noise must not hold the turn open")
+        XCTAssertEqual(capture.finishUtteranceCount, 1)
     }
 
     func testSteadyAmbientNoiseDoesNotCreateTurns() async {
@@ -3820,7 +3854,7 @@ extension ContinuousConversationPreferenceTests {
 
         XCTAssertEqual(
             controller.state,
-            .failed(AppLocalization.string("Listening stopped while your phone was locked. Tap Listen to continue."))
+            .failed(AppLocalization.string("Listening stopped while your phone was locked. Tap Listen to continue.", table: .voice))
         )
     }
 }

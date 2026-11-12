@@ -43,11 +43,12 @@ final class GPTLiveSession {
     /// True when the host made the model speak first: a greeting, or a call
     /// Hermes placed (#544).
     private(set) var greetingApplied = false
-    /// The path the host confirmed it billed this call on; it also picks
-    /// the event set the call speaks.
+    /// The path the host confirmed it billed this call on.
     private(set) var billing: GPTLiveBilling = .subscription
-    private var dialect: GPTLiveProtocol.Dialect { GPTLiveProtocol.Dialect(billing) }
-    /// Builds the API's missing `turn.done`s.
+    /// The event set the call speaks: the GA events on the API key or on
+    /// Codex's GA endpoint, else the frameless ones (issue 2236).
+    private(set) var dialect: GPTLiveProtocol.Dialect = .frameless
+    /// Builds the GA events' missing `turn.done`s.
     private var turns = GPTLiveProtocol.TurnAssembler()
     /// Closes an API turn once nobody has said anything for a moment.
     private var quietTask: Task<Void, Never>?
@@ -117,6 +118,7 @@ final class GPTLiveSession {
         self.initialCaptureAuthorization = initialCaptureAuthorization
         sessionID = nil
         billing = .subscription
+        dialect = .frameless
         turns = GPTLiveProtocol.TurnAssembler()
         state = .connecting
         let peer = makePeer()
@@ -221,7 +223,12 @@ final class GPTLiveSession {
             onTrace?(Self.answerStep(answer))
             sessionID = answer.sessionID
             billing = answer.billing
-            briefingApplied = answer.briefingApplied
+            dialect = GPTLiveProtocol.Dialect(answer.billing, gaEvents: answer.gaEvents)
+            // Codex's GA endpoint drops the instructions the request
+            // carried (its session.started brings its own), so whatever the
+            // host says, the briefing goes as an append once the call
+            // starts (issue 2236).
+            briefingApplied = answer.briefingApplied && !Self.dropsRequestBriefing(answer)
             greetingApplied = answer.greetingApplied
             voiceNote = Self.voiceNote(requested: voice, applied: answer.voice)
             try await peer.acceptAnswer(answer.sdp)
@@ -240,8 +247,14 @@ final class GPTLiveSession {
             guard let self, self.isCurrent(peer), self.state == .connecting else { return }
             gptLiveLogger.error("GPT-Live never reported session.started")
             self.onTrace?("No session.started in time")
-            self.fail(AppLocalization.string("GPT-Live didn't start the conversation. Try again."))
+            self.fail(AppLocalization.string("GPT-Live didn't start the conversation. Try again.", table: .voice))
         }
+    }
+
+    /// True for a ChatGPT-plan call on Codex's GA endpoint, which replaces
+    /// whatever instructions the session request carried with its own.
+    nonisolated static func dropsRequestBriefing(_ answer: GPTLiveSessionAnswer) -> Bool {
+        answer.billing == .subscription && answer.gaEvents
     }
 
     /// Explains a chosen voice the host didn't use. Nil when none was asked
@@ -249,10 +262,11 @@ final class GPTLiveSession {
     nonisolated static func voiceNote(requested: String?, applied: String?) -> String? {
         guard let requested, !requested.isEmpty else { return nil }
         guard let applied else {
-            return AppLocalization.string("The Conduit plugin on your Hermes server didn't confirm the voice you chose. Update the plugin to pick a voice.")
+            return PluginUpdateAsk.text(AppLocalization.string("The Conduit plugin on your Hermes server didn't confirm the voice you chose. Update the plugin to pick a voice.", table: .voice),
+                                        lead: AppLocalization.string("The Conduit plugin on your Hermes server didn't confirm the voice you chose.", table: .voice))
         }
         guard applied.lowercased() != requested.lowercased() else { return nil }
-        return AppLocalization.string("Your Hermes server used the voice \(applied) instead of \(requested).")
+        return AppLocalization.string("Your Hermes server used the voice \(applied) instead of \(requested).", table: .voice)
     }
 
     // MARK: Call trace
@@ -272,12 +286,14 @@ final class GPTLiveSession {
     }
 
     /// What the host says it did with the request. "Applied" means the
-    /// text was in the instructions the host sent, not that the model
-    /// followed it.
+    /// text was in the session the host sent (its instructions, or the
+    /// subscription's seeded items), not that the model followed it; "cut
+    /// to fit" means the host shortened the memory or persona for Codex's
+    /// budget.
     nonisolated static func answerStep(_ answer: GPTLiveSessionAnswer) -> String {
         let builder = answer.source.map { $0 == "hermes" ? "built by Hermes" : "built by the plugin" } ?? "builder not reported"
-        let path = answer.billing == .api ? "API key" : "ChatGPT plan"
-        return "Host answered: \(builder), \(path), briefing applied \(answer.briefingApplied ? "yes" : "no")"
+        let path = answer.billing == .api ? "API key" : answer.gaEvents ? "ChatGPT plan, GA events" : "ChatGPT plan"
+        return "Host answered: \(builder), \(path), briefing applied \(answer.briefingApplied ? (answer.briefingClipped ? "yes, cut to fit" : "yes") : "no")"
             + ", opening applied \(answer.greetingApplied ? "yes" : "no")"
             + (traceCode(answer.voice).map { ", voice \($0)" } ?? "")
     }
@@ -296,7 +312,7 @@ final class GPTLiveSession {
 
     private func received(_ text: String) {
         guard let event = GPTLiveProtocol.decode(text) else { return }
-        guard dialect == .api else {
+        guard dialect == .ga else {
             process(event)
             return
         }
@@ -309,7 +325,7 @@ final class GPTLiveSession {
         scheduleQuietFlush()
     }
 
-    /// Ends the open API turn once the talk has been quiet for a moment.
+    /// Ends the open GA turn once the talk has been quiet for a moment.
     private func scheduleQuietFlush() {
         quietTask?.cancel()
         quietTask = nil
@@ -342,8 +358,8 @@ final class GPTLiveSession {
             onTrace?("GPT-Live error\(Self.traceCode(code).map { ": \($0)" } ?? "")")
             if state == .connecting {
                 fail(message.isEmpty
-                    ? AppLocalization.string("GPT-Live didn't start the conversation. Try again.")
-                    : AppLocalization.string("GPT-Live refused the conversation: \(message)"))
+                    ? AppLocalization.string("GPT-Live didn't start the conversation. Try again.", table: .voice)
+                    : AppLocalization.string("GPT-Live refused the conversation: \(message)", table: .voice))
                 return
             }
         case .sessionClosed:
@@ -383,7 +399,7 @@ final class GPTLiveSession {
         guard state == .ready || state == .connecting else { return }
         gptLiveLogger.notice("GPT-Live connection lost")
         onTrace?("Connection lost")
-        fail(AppLocalization.string("The GPT-Live connection was lost."))
+        fail(AppLocalization.string("The GPT-Live connection was lost.", table: .voice))
     }
 
     private func fail(_ message: String) {

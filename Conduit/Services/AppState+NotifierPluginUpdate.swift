@@ -21,8 +21,8 @@ extension AppState {
     /// would lose its connection while Hermes restarts.
     var notifierPluginUpdateBlocker: String? {
         if dashboardTicketBridge == nil { return AppLocalization.string("Connect to this dashboard first.") }
-        if isVoiceCallInProgress { return AppLocalization.string("End the call first: Hermes restarts during the update.") }
-        if activeGatewayRestart.isInProgress { return AppLocalization.string("Wait for the gateway restart to finish.") }
+        if isVoiceCallInProgress { return AppLocalization.string("End the call first: Hermes restarts during the update.", table: .notifications) }
+        if activeGatewayRestart.isInProgress { return AppLocalization.string("Wait for the gateway restart to finish.", table: .notifications) }
         return nil
     }
 
@@ -36,7 +36,8 @@ extension AppState {
         guard canUpdateNotifierPlugin else { return }
         notifierPluginUpdateTask?.cancel()
         let dashboardID = activeDashboardID
-        let runID = notifierPluginUpdate.start(on: dashboardID)
+        let restartOnly = notifierPlugin.updateRunsOnlyRestarts(install: install)
+        let runID = notifierPluginUpdate.start(on: dashboardID, first: restartOnly ? .restartingGateway(nil) : .downloading)
         let updater = NotifierPluginUpdater(request: { [weak self] path, method, body in
             guard let self, self.activeDashboardID == dashboardID, let bridge = self.dashboardTicketBridge else {
                 throw DashboardTicketBridgeError.notReady
@@ -48,6 +49,7 @@ extension AppState {
             guard let self, let dashboardID, self.activeDashboardID == dashboardID else { return false }
             return await self.renewDashboardSignIn(dashboardID: dashboardID)
         }, onHost: notifierPlugin.reports(NotifierPluginUpdater.selfUpdateCapability),
+           restartOnly: restartOnly,
            profile: activeProfile, report: { [weak self] json in
             guard let self, self.activeDashboardID == dashboardID else { return }
             self.applyNotifierPluginReport(json)
@@ -130,7 +132,7 @@ extension AppState {
         guard updated else { return outcome }
         guard await waitForGatewayAfterNotifierPluginUpdate(dashboardID: dashboardID) else {
             if Task.isCancelled || activeDashboardID != dashboardID { return outcome }
-            return .failed(detail: AppLocalization.string("The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host."))
+            return .failed(detail: AppLocalization.string("The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host.", table: .notifications))
         }
         if case .updated(let version?) = outcome { return .updated(version: version) }
         return .updated(version: notifierPlugin.runningVersion)
@@ -249,11 +251,11 @@ extension AppState {
     }
 
     /// What the notice offers. While Finish setting up is pending for this
-    /// dashboard, its plugin row on Chats is the one place that offers the
-    /// install.
+    /// dashboard, its plugin row is the one place that offers the install,
+    /// update or restart.
     var notifierPluginNoticeOffer: NotifierPluginNoticeOffer {
         let finishingSetup = activeDashboardID.map(dashboardsFinishingSetup.contains) ?? false
-        return notifierPlugin.noticeOffer(finishSetupOffersInstall: finishingSetup && V2ShellPreference.isOn)
+        return notifierPlugin.noticeOffer(finishSetupOffersPlugin: finishingSetup && V2ShellPreference.isOn)
     }
 
     /// "Not now" belongs to one dashboard and one asked-for version.

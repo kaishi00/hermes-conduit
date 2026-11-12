@@ -52,6 +52,61 @@ extension GatewayRestartTests {
         XCTAssertThrowsError(try CronNotificationsClient.parseChoices(["ok": true, "muted": [], "act": "a1"]))
     }
 
+    /// Issue 581: the plugin writes a delivered picture or file as the
+    /// `@image:`/`@file:` reference Hermes Desktop shows on the note's user
+    /// row; the card draws it as the transcript draws a `MEDIA:` tag, and
+    /// the folded card names it instead of showing its path.
+    func testABotChatReportDrawsItsPicturesAndFiles() {
+        let report = CronBotChatReport(job: "Quiz", report: [
+            "@image:/cards/quiz.png",
+            "Quiz: kapott?",
+            "@file:`/var/mit leer.pdf`",
+            "MEDIA:/old/plugin.png",
+            "See @image:/x.png here.",
+            "@file:/a b.pdf",
+            "```",
+            "@image:/example.png",
+            "```",
+        ].joined(separator: "\n"))
+        XCTAssertEqual(report.shown, [
+            "MEDIA:`/cards/quiz.png`",
+            "Quiz: kapott?",
+            "MEDIA:`/var/mit leer.pdf`",
+            "MEDIA:/old/plugin.png",
+            "See @image:/x.png here.",
+            "@file:/a b.pdf",
+            "```",
+            "@image:/example.png",
+            "```",
+        ].joined(separator: "\n"))
+        XCTAssertEqual(report.preview.components(separatedBy: "\n").prefix(4), ["quiz.png", "Quiz: kapott?", "mit leer.pdf", "plugin.png"])
+        XCTAssertEqual(CronBotChatReport(job: "News", report: "Rain at 9.").shown, "Rain at 9.")
+        // A list marker goes, so the tag is a line of its own and the folded
+        // card names it; a quote and a math block stay as written.
+        let marked = CronBotChatReport(job: "Q", report: "- @image:/cards/a.png\n  > @file:/cards/b.pdf\n$$\n@image:/x.png\n$$\n@file:\"")
+        XCTAssertEqual(marked.shown, "MEDIA:`/cards/a.png`\n  > @file:/cards/b.pdf\n$$\n@image:/x.png\n$$\n@file:\"")
+        XCTAssertEqual(marked.preview.components(separatedBy: "\n").first, "a.png")
+        let bracketMath = "\\[\n@image:/x.png\n\\]\n@image:/after.png"
+        XCTAssertEqual(CronBotChatReport(job: "Q", report: bracketMath).shown, "\\[\n@image:/x.png\n\\]\nMEDIA:`/after.png`")
+        // A CRLF report reads as an LF one: the fence closes, the bare
+        // reference after it is a picture.
+        let crlf = CronBotChatReport.parse("[Cron job \"Q\" report: shown in the chat, no reply asked for]\r\n```\r\n@image:/in/code.png\r\n```\r\n@image:/after.png\r\n")
+        XCTAssertEqual(crlf?.job, "Q")
+        XCTAssertEqual(crlf?.shown, "```\n@image:/in/code.png\n```\nMEDIA:`/after.png`")
+        // Two references on a line, quoted or run together, stay as written.
+        for twoFiles in ["@file:\"/tmp/a.pdf\" @file:\"/tmp/b.pdf\"", "@file:/tmp/a.pdf,@file:/tmp/b.pdf"] {
+            XCTAssertEqual(CronBotChatReport(job: "Q", report: twoFiles).shown, twoFiles)
+        }
+        // A backtick line inside a tilde fence doesn't close it.
+        XCTAssertEqual(
+            CronBotChatReport(job: "Q", report: "~~~\n```\n@image:/in/code.png\n~~~\n@image:/after.png").shown,
+            "~~~\n```\n@image:/in/code.png\n~~~\nMEDIA:`/after.png`"
+        )
+        // The folded card leaves a tag in code or math as written too.
+        let examples = CronBotChatReport(job: "Q", report: "```\nMEDIA:/example.png\n```\n$$\nMEDIA:/m.png\n$$\nMEDIA:/real.png")
+        XCTAssertEqual(examples.preview, "```\nMEDIA:/example.png\n```\n$$\nMEDIA:/m.png\n$$\nreal.png")
+    }
+
     func testABotChatReportReadsAsTheJobAndItsReport() {
         let report = CronBotChatReport.parse(
             "[Cron job \"Morning news\" report: shown in the chat, no reply asked for]\n\nRain at 9.\n\n- Bring a coat"

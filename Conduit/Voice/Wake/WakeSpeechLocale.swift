@@ -147,7 +147,7 @@ enum WakeSpeechLocale {
     ) -> (text: String, isUnheard: Bool)? {
         let heard = listening(for: phrases, localeFor: localeFor).contains { $0.phrases.contains(phrase) }
         if !heard, localeFor(phrase) != nil {
-            return (AppLocalization.string("“\(phrase)” isn't heard: wake listens in three languages at most."), true)
+            return (AppLocalization.string("“\(phrase)” isn't heard: wake listens in three languages at most.", table: .voice), true)
         }
         let script = Self.script(of: phrase)
         let inAppLocale = script.map { writes($0, appLocale.identifier) } ?? true
@@ -156,10 +156,10 @@ enum WakeSpeechLocale {
             if !inAppLocale, let main = script?.defaultLanguages.first {
                 language = languageName(Locale(identifier: main))
             }
-            return (AppLocalization.string("“\(phrase)” can't be heard: this iPhone has no on-device speech recognition for \(language)."), true)
+            return (AppLocalization.string("“\(phrase)” can't be heard: this iPhone has no on-device speech recognition for \(language).", table: .voice), true)
         }
         guard locale.identifier != appLocale.identifier else { return nil }
-        return (AppLocalization.string("Conduit listens for “\(phrase)” in \(languageName(locale))."), false)
+        return (AppLocalization.string("Conduit listens for “\(phrase)” in \(languageName(locale)).", table: .voice), false)
     }
 
     /// The name of the language a phrase is heard in.

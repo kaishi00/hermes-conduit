@@ -63,9 +63,9 @@ enum V2SessionFilter: Equatable, Hashable {
     var title: String {
         switch self {
         case .all: return AppLocalization.string("All")
-        case .starred: return AppLocalization.string("Starred")
+        case .starred: return AppLocalization.string("Starred", table: .chat)
         case .unread: return AppLocalization.string("Unread")
-        case .needsApproval: return AppLocalization.string("Needs approval")
+        case .needsApproval: return AppLocalization.string("Needs approval", table: .chat)
         case .running: return AppLocalization.string("Running")
         case .voice: return AppLocalization.string("Voice")
         case .scheduled: return AppLocalization.string("Scheduled")
@@ -116,21 +116,21 @@ enum V2SessionFilter: Equatable, Hashable {
 
     var emptyTitle: String {
         switch self {
-        case .starred: return AppLocalization.string("No starred chats")
+        case .starred: return AppLocalization.string("No starred chats", table: .chat)
         case .unread: return SessionStatusFilter.unread.emptyTitle
         case .needsApproval: return SessionStatusFilter.needsInput.emptyTitle
         case .running: return SessionStatusFilter.working.emptyTitle
-        default: return AppLocalization.string("No Sessions")
+        default: return AppLocalization.string("No Sessions", table: .chat)
         }
     }
 
     var emptyDescription: String {
         switch self {
-        case .starred: return AppLocalization.string("Swipe a chat or touch and hold it to star it.")
+        case .starred: return AppLocalization.string("Swipe a chat or touch and hold it to star it.", table: .chat)
         case .unread: return SessionStatusFilter.unread.emptyDescription
         case .needsApproval: return SessionStatusFilter.needsInput.emptyDescription
         case .running: return SessionStatusFilter.working.emptyDescription
-        default: return AppLocalization.string("Sessions will appear here once created.")
+        default: return AppLocalization.string("Sessions will appear here once created.", table: .chat)
         }
     }
 }
@@ -435,6 +435,8 @@ struct V2ChatsView: View, Equatable {
         _updates = StateObject(wrappedValue: V2ShownUpdates(appState, defaultsKeys: [
             Self.presentationKey, Self.filterKey, Self.expandedNestsKey, V2MainButtonPreference.key,
             ProjectChatsInChats.key, HiddenChatProjects.key,
+            V2SessionsBarPreferences.Profiles.key, V2SessionsBarPreferences.showsProjectsKey,
+            V2SessionsBarPreferences.showsPulseKey, V2SessionsBarPreferences.showsArtifactsKey,
         ]))
     }
 
@@ -455,8 +457,16 @@ struct V2ChatsView: View, Equatable {
     /// registry. Split, a project's page stays beside the open chat.
     private var showsLiveRows: Bool { shell.isTabActive && shell.showsChatRows && listInView }
 
-    /// Projects belong to one profile, so All shows chats only.
-    private var showingProjects: Bool { sessionPresentationRaw == "projects" && !appState.isAllProfilesChatsOn }
+    private var sessionsBar: V2SessionsBarControls {
+        V2SessionsBarControls.resolve(
+            defaults: updates.defaults,
+            pulseAvailable: appState.showsPulseScreen,
+            allProfilesChatsOn: appState.isAllProfilesChatsOn
+        )
+    }
+
+    /// Hidden Projects and All profiles both keep the list on Sessions.
+    private var showingProjects: Bool { sessionsBar.presentation == .projects }
 
     /// All's rows carry their profile's picture, unless the list groups by
     /// profile and the section says it.
@@ -547,20 +557,39 @@ struct V2ChatsView: View, Equatable {
                 .withAllProfilesChip()
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            MinimisedLiveVoiceBar()
+            V2ListCallBar()
         }
         .environmentObject(updates)
+        // The feed's every-minute read, drawn by the tab so hiding the bar's
+        // Pulse button doesn't stop it (Sessions bar, #2020).
+        .background(PulseFeedReader())
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.chats.title)
+        .background { searchCommand }
         .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
             updates.coalesces = beside
+        }
+        // Projects hidden, from the Settings tap or from a preference another
+        // device or window wrote: clear the stored page once it's seen, so
+        // showing Projects again doesn't resurrect a page the user was moved
+        // off. The resolve step already keeps the list on Sessions until then.
+        .onChange(of: sessionsBar.showsProjects, initial: true) { _, shows in
+            if V2SessionsBarControls.hidesStoredProjectsPage(sessionPresentationRaw, showsProjects: shows) {
+                sessionPresentationRaw = "sessions"
+            }
         }
         .onChange(of: isShown, initial: true) { _, shown in
             updates.isShown = shown
             // Anything over the list (a chat, a page, another tab) puts the
             // keyboard away and keeps the search: SwiftUI otherwise hands
             // focus back to the field on the way back, over the results.
-            if !shown { searchFocused = false }
+            // A pending ⌘F request goes with it, or the bar's field would
+            // take focus on the way back without the key being pressed
+            // there.
+            if !shown {
+                searchFocused = false
+                barSearchFocusPending = false
+            }
         }
         // Here rather than on the chats list, so an activation that arrives
         // while Projects is shown still opens its section on the way back.
@@ -645,8 +674,8 @@ struct V2ChatsView: View, Equatable {
         }
         .sheet(item: $projectPendingRename) { project in
             RenameSheet(
-                title: AppLocalization.string("Rename project"),
-                placeholder: AppLocalization.string("Project name"),
+                title: AppLocalization.string("Rename project", table: .chat),
+                placeholder: AppLocalization.string("Project name", table: .chat),
                 initialText: project.title,
                 normalize: { SessionRenameOperation.normalizedTitle($0, currentTitle: project.title) }
             ) { name in
@@ -664,7 +693,7 @@ struct V2ChatsView: View, Equatable {
             }
             Button("Cancel", role: .cancel) { projectPendingDeletion = nil }
         } message: {
-            Text(AppLocalization.string("This removes \(projectPendingDeletion?.title ?? "") from Hermes. Its folders, files and conversations are kept."))
+            Text(AppLocalization.string("This removes \(projectPendingDeletion?.title ?? "") from Hermes. Its folders, files and conversations are kept.", table: .chat))
         }
         .alert("Delete conversation?", isPresented: Binding(
             get: { sessionPendingDeletion != nil },
@@ -706,29 +735,33 @@ struct V2ChatsView: View, Equatable {
                 .macTooltip(AppLocalization.string("Search"))
             }
 
-            Button {
-                Haptics.selection()
-                sessionPresentationRaw = showingProjects ? "sessions" : "projects"
-            } label: {
-                V2CapsuleIcon(systemImage: "folder", tint: showingProjects ? Color.conduitAccent : nil)
-                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showingProjects)
+            if sessionsBar.showsProjects {
+                Button {
+                    Haptics.selection()
+                    sessionPresentationRaw = showingProjects ? "sessions" : "projects"
+                } label: {
+                    V2CapsuleIcon(systemImage: "folder", tint: showingProjects ? Color.conduitAccent : nil)
+                        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showingProjects)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .disabled(appState.isAllProfilesChatsOn)
+                .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects", table: .chat))
+                .macTooltip(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects", table: .chat))
             }
-            .buttonStyle(PressableButtonStyle())
-            .disabled(appState.isAllProfilesChatsOn)
-            .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
-            .macTooltip(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
 
-            if appState.showsPulseScreen {
+            if sessionsBar.showsPulse {
                 V2PulseButton()
             }
 
-            NavigationLink(value: V2Route.artifacts) {
-                V2CapsuleIcon(systemImage: "square.grid.2x2")
+            if sessionsBar.showsArtifacts {
+                NavigationLink(value: V2Route.artifacts) {
+                    V2CapsuleIcon(systemImage: "square.grid.2x2")
+                }
+                .buttonStyle(PressableButtonStyle())
+                .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
+                .accessibilityLabel(AppLocalization.string("Artifacts"))
+                .macTooltip(AppLocalization.string("Artifacts"))
             }
-            .buttonStyle(PressableButtonStyle())
-            .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
-            .accessibilityLabel(AppLocalization.string("Artifacts"))
-            .macTooltip(AppLocalization.string("Artifacts"))
 
             if !stacked {
                 filterMenu(waitingApprovalCount: waitingApprovalCount) { filterIcon(waitingApprovalCount: waitingApprovalCount) }
@@ -768,7 +801,7 @@ struct V2ChatsView: View, Equatable {
         let included = appState.allProfilesIncluded
         let ordered = included.filter { $0 == appState.activeProfile } + included.filter { $0 != appState.activeProfile }
         return Menu {
-            Section(AppLocalization.string("New chat in")) {
+            Section(AppLocalization.string("New chat in", table: .chat)) {
                 ForEach(ordered, id: \.self) { profile in
                     Button {
                         Haptics.medium()
@@ -824,6 +857,14 @@ struct V2ChatsView: View, Equatable {
     private func barUnstacked() {
         setBarStacked(false)
         barSearchOpen = false
+        // A pending focus was meant for the stacked field, which is going.
+        // The list's field is the one on screen now, so hand the request to
+        // it: dropping it loses a ⌘F the user pressed, and leaving it set
+        // focused the bar's field on some later stack nobody asked for.
+        if barSearchFocusPending {
+            barSearchFocusPending = false
+            searchFocused = true
+        }
     }
 
     /// A change (rotation, a profile added) fades the list's search row in
@@ -863,6 +904,37 @@ struct V2ChatsView: View, Equatable {
                 searchFocused = true
             }
         }
+    }
+
+    /// ⌘F, on an iPad keyboard or a Mac: open the list's search and put the
+    /// cursor in it, whichever way the bar is laid out. A hidden tab's list
+    /// stays mounted, so the action checks that the list is the screen and
+    /// nothing is presented over it before it does anything; a chat pushed
+    /// over it keeps the key to itself.
+    private var searchCommand: some View {
+        Button(AppLocalization.string("Search")) { focusSearchFromKeyboard() }
+            .keyboardShortcut(ConduitKeyboardShortcut.search.shortcut)
+            .frame(width: 1, height: 1)
+            .opacity(0.001)
+            .accessibilityHidden(true)
+    }
+
+    private func focusSearchFromKeyboard() {
+        // Not behind a sheet or alert this view (or anything else) presents.
+        guard isShown, KeyboardCommands.nothingInFront else { return }
+        // Only the stacked bar has a field of its own to open and focus. In
+        // the one-row layout the visible field belongs to the list, so a
+        // pending focus set here would miss it and then be consumed by some
+        // later stack, putting the cursor in the bar's field without the key
+        // being pressed there. Focus the on-screen field directly instead.
+        if barStacked == true, !showsBarSearch {
+            barSearchFocusPending = true
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { barSearchOpen = true }
+        } else {
+            barSearchFocusPending = false
+            searchFocused = true
+        }
+        appState.noteChatListInteraction()
     }
 
     /// The filter menu's button where the bar stacks: what the list shows,
@@ -936,7 +1008,7 @@ struct V2ChatsView: View, Equatable {
                     }
                 }
 
-                Section(AppLocalization.string("Sources")) {
+                Section(AppLocalization.string("Sources", table: .chat)) {
                     ForEach(sourceFilters, id: \.self) { option in
                         filterToggle(option)
                     }
@@ -957,7 +1029,7 @@ struct V2ChatsView: View, Equatable {
                                 appState.setAllProfilesGroupsByProfile(grouped)
                             }
                         )) {
-                            Label(AppLocalization.string("Group by profile"), systemImage: "rectangle.stack")
+                            Label(AppLocalization.string("Group by profile", table: .chat), systemImage: "rectangle.stack")
                         }
                         .menuActionDismissBehavior(.disabled)
                     }
@@ -974,7 +1046,7 @@ struct V2ChatsView: View, Equatable {
                         Haptics.selection()
                         showPinnedReplies = true
                     } label: {
-                        Label(AppLocalization.string("Pinned replies"), systemImage: "pin")
+                        Label(AppLocalization.string("Pinned replies", table: .chat), systemImage: "pin")
                     }
                     Button {
                         Haptics.light()
@@ -991,11 +1063,11 @@ struct V2ChatsView: View, Equatable {
         }
         .menuOrder(.fixed)
         // With Projects showing, the menu only makes projects.
-        .accessibilityLabel(showingProjects ? AppLocalization.string("Projects") : AppLocalization.string("Filter"))
-        .macTooltip(showingProjects ? AppLocalization.string("Projects") : AppLocalization.string("Filter"))
+        .accessibilityLabel(showingProjects ? AppLocalization.string("Projects") : AppLocalization.string("Filter", table: .chat))
+        .macTooltip(showingProjects ? AppLocalization.string("Projects") : AppLocalization.string("Filter", table: .chat))
         .accessibilityValue([
             showingProjects ? nil : spokenSelection,
-            waitingApprovalCount > 0 ? AppLocalization.string("\(waitingApprovalCount) waiting for approval") : nil
+            waitingApprovalCount > 0 ? AppLocalization.string("\(waitingApprovalCount) waiting for approval", table: .chat) : nil
         ].compactMap { $0 }.joined(separator: ", "))
     }
 
@@ -1027,14 +1099,14 @@ struct V2ChatsView: View, Equatable {
                 Haptics.selection()
                 setHiddenProjects([])
             } label: {
-                Label(AppLocalization.string("Show all projects"), systemImage: "eye")
+                Label(AppLocalization.string("Show all projects", table: .chat), systemImage: "eye")
             }
             .disabled(hiddenProjectCount == 0)
 
             Section {
                 projectToggle(
                     HiddenChatProjects.noProject,
-                    title: home ?? AppLocalization.string("Not in a project"),
+                    title: home ?? AppLocalization.string("Not in a project", table: .chat),
                     symbol: home == nil ? "tray" : "house",
                     hidden: hidden
                 )
@@ -1088,14 +1160,14 @@ struct V2ChatsView: View, Equatable {
         var parts = names
         if hidden.contains(HiddenChatProjects.noProject) {
             if let home = appState.projects.first(where: \.isHome)?.title {
-                parts.append(AppLocalization.string("\(home) hidden"))
+                parts.append(AppLocalization.string("\(home) hidden", table: .chat))
             } else {
-                parts.append(AppLocalization.string("Chats outside projects hidden"))
+                parts.append(AppLocalization.string("Chats outside projects hidden", table: .chat))
             }
         }
         let projectCount = hidden.subtracting([HiddenChatProjects.noProject]).count
         if projectCount > 0 {
-            parts.append(AppLocalization.string("\(projectCount) projects hidden"))
+            parts.append(AppLocalization.string("\(projectCount) projects hidden", table: .chat))
         }
         return parts.joined(separator: separator)
     }
@@ -1383,12 +1455,12 @@ struct V2ChatsView: View, Equatable {
                         filteredOutRows: !listed.sessions.isEmpty || !listed.cron.isEmpty
                     ),
                     emptyTitle: hidesEverything
-                        ? AppLocalization.string("No chats to show")
+                        ? AppLocalization.string("No chats to show", table: .chat)
                         : selection.emptyStateFilter.emptyTitle,
                     emptyDescription: hidesEverything
-                        ? AppLocalization.string("The chats here are hidden in Filter > Projects. Tick them again to show them.")
+                        ? AppLocalization.string("The chats here are hidden in Filter > Projects. Tick them again to show them.", table: .chat)
                         : isSearching
-                            ? AppLocalization.string("Try a different search.")
+                            ? AppLocalization.string("Try a different search.", table: .chat)
                             : selection.emptyStateFilter.emptyDescription,
                     retry: { Task { await appState.refreshSessionCatalog() } }
                 )
@@ -1646,7 +1718,7 @@ struct V2ChatsView: View, Equatable {
         .disabled(!collapsible)
         .listRowInsets(EdgeInsets())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(AppLocalization.string("\(name) profile")))
+        .accessibilityLabel(Text(AppLocalization.string("\(name) profile", table: .chat)))
         .accessibilityAddTraits(.isHeader)
         .accessibilityValue(collapsible
             ? (collapsed
@@ -1761,12 +1833,12 @@ struct V2ChatsView: View, Equatable {
     /// "In messages", with a spinner while Hermes is still searching.
     private var contentSearchHeader: some View {
         HStack(spacing: 6) {
-            sectionHeader(AppLocalization.string("In messages"))
+            sectionHeader(AppLocalization.string("In messages", table: .chat))
                 .fixedSize()
             if contentSearch.isSearching {
                 ProgressView()
                     .controlSize(.mini)
-                    .accessibilityLabel(AppLocalization.string("Searching messages"))
+                    .accessibilityLabel(AppLocalization.string("Searching messages", table: .chat))
             }
             Spacer(minLength: 0)
         }
@@ -1835,10 +1907,10 @@ struct V2ChatsView: View, Equatable {
 
     /// "Search Home" names the profile the list belongs to.
     private var searchPrompt: String {
-        if showingProjects { return AppLocalization.string("Search projects") }
-        if appState.isAllProfilesChatsOn { return AppLocalization.string("Search all profiles") }
+        if showingProjects { return AppLocalization.string("Search projects", table: .chat) }
+        if appState.isAllProfilesChatsOn { return AppLocalization.string("Search all profiles", table: .chat) }
         let name = appState.profileDisplayName(appState.activeProfile)
-        return AppLocalization.string("Search \(name)")
+        return AppLocalization.string("Search \(name)", table: .chat)
     }
 
     /// The 40 pt glass search capsule, with the active filters as one
@@ -1888,7 +1960,7 @@ struct V2ChatsView: View, Equatable {
                     .background(Color.conduitAccent, in: Capsule())
                 }
                 .buttonStyle(PressableButtonStyle())
-                .accessibilityLabel(AppLocalization.string("Remove filter \(spokenSelection)"))
+                .accessibilityLabel(AppLocalization.string("Remove filter \(spokenSelection)", table: .chat))
                 .transition(.scale(scale: 0.6, anchor: .leading).combined(with: .opacity))
             }
             TextField(searchPrompt, text: $searchText)
@@ -2001,12 +2073,12 @@ struct V2ChatsView: View, Equatable {
         let count = descendants.count
         let allJobs = !descendants.isEmpty && descendants.allSatisfy { category($0) == .voiceJob }
         var parts = [allJobs
-            ? AppLocalization.string("\(count) jobs")
+            ? AppLocalization.string("\(count) jobs", table: .chat)
             : AppLocalization.string("\(count) sessions")]
         let runningCount = descendants.filter { liveStatus($0) == .working }.count
         if runningCount > 0 { parts.append(AppLocalization.string("\(runningCount) running")) }
         let approvalCount = descendants.filter { liveStatus($0) == .needsInput }.count
-        if approvalCount > 0 { parts.append(AppLocalization.string("\(approvalCount) to approve")) }
+        if approvalCount > 0 { parts.append(AppLocalization.string("\(approvalCount) to approve", table: .chat)) }
         return parts.joined(separator: " · ")
     }
 
@@ -2076,9 +2148,9 @@ struct V2ChatsView: View, Equatable {
                     .listRowSeparator(.hidden)
             } else if displayedProjects.isEmpty && !isSearching && appState.projectsLoadFailed {
                 ContentUnavailableView {
-                    Label(AppLocalization.string("Couldn’t Load Projects"), systemImage: "exclamationmark.triangle")
+                    Label(AppLocalization.string("Couldn’t Load Projects", table: .chat), systemImage: "exclamationmark.triangle")
                 } description: {
-                    Text(AppLocalization.string("Hermes didn’t answer. Pull down or try again."))
+                    Text(AppLocalization.string("Hermes didn’t answer. Pull down or try again.", table: .chat))
                 } actions: {
                     Button(AppLocalization.string("Try Again")) {
                         Task { await appState.refreshProjects() }
@@ -2088,12 +2160,12 @@ struct V2ChatsView: View, Equatable {
                 .listRowSeparator(.hidden)
             } else if displayedProjects.isEmpty && !(isSearching && !pinned.isEmpty) {
                 ContentUnavailableView {
-                    Label(isSearching ? AppLocalization.string("No Matching Projects") : AppLocalization.string("No Projects"),
+                    Label(isSearching ? AppLocalization.string("No Matching Projects", table: .chat) : AppLocalization.string("No Projects", table: .chat),
                           systemImage: "folder")
                 } description: {
                     Text(!isSearching
-                        ? AppLocalization.string("Projects you make here or in Hermes Desktop show here.")
-                        : AppLocalization.string("Try a different search."))
+                        ? AppLocalization.string("Projects you make here or in Hermes Desktop show here.", table: .chat)
+                        : AppLocalization.string("Try a different search.", table: .chat))
                 } actions: {
                     if !isSearching {
                         Button(AppLocalization.string("New Project")) {
@@ -2154,8 +2226,8 @@ struct V2ChatsView: View, Equatable {
             V2ProjectRow(project: project, runningCount: runningCount(project), isUnread: isUnread)
         }
         .accessibilityHint(appState.isProjectEditable(project)
-            ? AppLocalization.string("Opens the conversations in this project. Swipe or touch and hold to rename or delete it.")
-            : AppLocalization.string("Opens the conversations in this project."))
+            ? AppLocalization.string("Opens the conversations in this project. Swipe or touch and hold to rename or delete it.", table: .chat)
+            : AppLocalization.string("Opens the conversations in this project.", table: .chat))
         .contextMenu {
             if appState.isProjectEditable(project) {
                 projectActions(project)
@@ -2454,7 +2526,7 @@ private struct V2ChatsRow: View {
         .accessibilityValue(Text([
             AppLocalization.string("From \(parentTitle)"),
             isUnread ? AppLocalization.string("Unread") : nil,
-            isStarred ? AppLocalization.string("Starred") : nil,
+            isStarred ? AppLocalization.string("Starred", table: .chat) : nil,
             status.accessibilityWord,
             session.updatedLabel
         ].compactMap { $0 }.joined(separator: ", ")))
@@ -2554,7 +2626,7 @@ private struct V2SessionActions: ViewModifier {
                         appState.toggleSessionStarred(session)
                     } label: {
                         Label(
-                            appState.isSessionStarred(session) ? AppLocalization.string("Unstar") : AppLocalization.string("Star"),
+                            appState.isSessionStarred(session) ? AppLocalization.string("Unstar", table: .chat) : AppLocalization.string("Star", table: .chat),
                             systemImage: appState.isSessionStarred(session) ? "star.slash" : "star"
                         )
                     }

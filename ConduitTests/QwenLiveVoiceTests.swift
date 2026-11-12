@@ -211,6 +211,33 @@ extension HermesVoiceGatewayTimeoutTests {
 
     /// Qwen's turn detection, speech start and end and the audio sent
     /// reach the call's trace (#1418), as Grok Live's and Local Live's do.
+    /// Issue 1959: the session reads frames through `receive(decoding:)`
+    /// and sends the microphone through `sendAudio`, which a network socket
+    /// runs off the main actor. Qwen maps the model's speech inside that
+    /// decode, and every other event on the main actor, as before.
+    @MainActor
+    func testQwenSpeechMapsInsideTheSocketsDecodeAndAudioGoesAsAnAppend() async throws {
+        let fake = QwenTestSocket()
+        let audio = Data([5, 6, 7, 8])
+        fake.frames = [["type": "response.audio.delta", "delta": audio.base64EncodedString()],
+                       ["type": "response.audio_transcript.delta", "delta": "Hi"],
+                       ["type": "response.done"]]
+        let socket = QwenLiveSocket(upstream: fake)
+        let decode: @Sendable (Data) -> [GeminiLiveProtocol.ServerEvent] = { GeminiLiveProtocol.decode($0) }
+        let speech = try await socket.receive(decoding: decode)
+        let words = try await socket.receive(decoding: decode)
+        let end = try await socket.receive(decoding: decode)
+        XCTAssertEqual(speech, [.audio(audio, sampleRate: 24000)])
+        XCTAssertEqual(words, [.outputTranscription("Hi")])
+        XCTAssertEqual(end, [.turnComplete])
+        XCTAssertNil(QwenLiveSocket.mappedSpeech(Data(#"{"type":"response.audio_transcript.delta","delta":"x"}"#.utf8)))
+
+        try await socket.sendAudio(audio) { _ in XCTFail("Qwen sends its own append"); return "" }
+        XCTAssertEqual(fake.sent.last?["type"] as? String, "input_audio_buffer.append")
+        XCTAssertEqual(fake.sent.last?["audio"] as? String, audio.base64EncodedString())
+        XCTAssertNotNil(fake.sent.last?["event_id"] as? String)
+    }
+
     @MainActor
     func testQwenTracesTurnDetectionAndTheUsersTurns() async throws {
         let fake = QwenTestSocket()
@@ -268,6 +295,31 @@ extension HermesVoiceGatewayTimeoutTests {
             XCTAssertTrue(error is QwenLiveError)
             XCTAssertFalse(error.localizedDescription.contains("sensitive provider body"))
         }
+    }
+
+    /// The call screen's Camera: Gemini takes the photo as one video frame,
+    /// and Qwen's adapter turns that frame into its image buffer, after a
+    /// moment of audio when none went yet, since Qwen takes a picture only
+    /// after some.
+    @MainActor
+    func testAPhotoGoesAsAVideoFrameAndQwenAppendsItToItsImageBuffer() async throws {
+        let jpeg = Data([0xFF, 0xD8, 0xFF, 0xD9])
+        let frame = GeminiLiveProtocol.message(for: .image(jpeg: jpeg))
+        let video = try XCTUnwrap((frame["realtimeInput"] as? [String: Any])?["video"] as? [String: Any])
+        XCTAssertEqual(video["mimeType"] as? String, "image/jpeg")
+        XCTAssertEqual(video["data"] as? String, jpeg.base64EncodedString())
+        XCTAssertFalse(LiveVoiceClientMessage.image(jpeg: jpeg).isAudio, "a backed-up connection never drops a photo as it may audio")
+
+        let fake = QwenTestSocket()
+        let socket = QwenLiveSocket(upstream: fake)
+        try await socket.send(GeminiLiveProtocol.encode(frame))
+        XCTAssertEqual(fake.sent.map { $0["type"] as? String }, ["input_audio_buffer.append", "input_image_buffer.append"])
+        XCTAssertEqual(fake.sent.last?["image"] as? String, jpeg.base64EncodedString())
+
+        fake.sent = []
+        try await socket.send(GeminiLiveProtocol.encode(frame))
+        XCTAssertEqual(fake.sent.map { $0["type"] as? String }, ["input_image_buffer.append"], "audio already went")
+        XCTAssertFalse(fake.sent.contains { $0["type"] as? String == "response.create" }, "a photo asks for no reply")
     }
 
     @MainActor

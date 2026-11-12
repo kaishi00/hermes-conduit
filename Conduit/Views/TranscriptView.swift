@@ -43,6 +43,9 @@ struct TranscriptView: UIViewControllerRepresentable {
     /// has none.
     var renderedScope: ChatRenderedScrollScope? = nil
     var layoutSettled: @MainActor (ChatRenderedScrollScope) -> Void = { _ in }
+    /// The composer ⌘V in the transcript pastes into, on a Mac (issue
+    /// 1692): the chat's or the room's.
+    var pasteTarget: ComposerPasteTarget? = nil
 
     func makeUIViewController(context: Context) -> TranscriptViewController {
         TranscriptViewController(appState: appState, scroller: scroller)
@@ -51,6 +54,7 @@ struct TranscriptView: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: TranscriptViewController, context: Context) {
         controller.rowContent = rowContent
         controller.layoutSettled = layoutSettled
+        controller.pasteTarget = pasteTarget
         let transaction = context.transaction
         controller.update(
             rows: rows,
@@ -154,17 +158,36 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         tap.cancelsTouchesInView = false
         tap.delegate = self
         collectionView.addGestureRecognizer(tap)
+        // On a Mac a click anywhere in the transcript, on a row too, leaves
+        // it the keys, so ⌘V pastes into the composer (issue 1692).
+        if ComposerLayout.transcriptTakesPaste() {
+            let pasteTap = UITapGestureRecognizer(target: self, action: #selector(takeKeysAfterClick))
+            pasteTap.cancelsTouchesInView = false
+            pasteTap.delegate = self
+            collectionView.addGestureRecognizer(pasteTap)
+            self.pasteTap = pasteTap
+        }
     }
+
+    /// Saves a chat trace when rows on screen aren't drawn (issue 1942).
+    private lazy var blankWatch = TranscriptBlankWatch(controller: self)
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
+        blankWatch.start()
         dropParkedIfIdle()
         // Fingers on the transcript and the swipe back over it, in the
         // recorder (issue 1687).
         TranscriptTouchTrace.watch(collectionView, navigationController: navigationController)
     }
 
+    override func viewDidDisappear(_ animated: Bool) {
+        super.viewDidDisappear(animated)
+        blankWatch.stop()
+    }
+
     func detach() {
+        blankWatch.stop()
         scroller.detach(collectionView)
         TranscriptTouchTrace.unwatch(collectionView)
         attached = false
@@ -454,13 +477,63 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     }
 
     @objc private func handleBackgroundTap() {
-        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        ReturnKeyTextView.putAwayFocus()
+    }
+
+    // MARK: - ⌘V on a Mac (issue 1692)
+
+    /// The composer ⌘V here pastes into; nil takes none.
+    var pasteTarget: ComposerPasteTarget?
+    private var pasteTap: UITapGestureRecognizer?
+
+    /// After a click that left nobody the keys (a click on the transcript
+    /// puts the composer's focus away), the transcript takes them, so ⌘V
+    /// still has somewhere to go. A click that selected text, or that a
+    /// field took, keeps its own.
+    @objc private func takeKeysAfterClick() {
+        // After the click's own handling: a row's tap puts focus away too.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.canBecomeFirstResponder, self.view.window != nil,
+                  FirstResponderProbe.current == nil else { return }
+            _ = self.becomeFirstResponder()
+        }
+    }
+
+    override var canBecomeFirstResponder: Bool {
+        pasteTarget != nil && ComposerLayout.transcriptTakesPaste()
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)) {
+            return pasteTarget != nil && ComposerLayout.transcriptTakesPaste() && ComposerPaste.clipboardHasSomething
+        }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
+    /// ⌘V (or Edit › Paste) with the transcript holding the keys: the
+    /// conversation's composer takes focus and the paste.
+    override func paste(_ sender: Any?) {
+        // A Mac's alone: an iPhone or iPad keeps ⌘V doing nothing here,
+        // so it never brings the on-screen keyboard up.
+        guard let pasteTarget, ComposerLayout.transcriptTakesPaste() else { return }
+        ComposerPaste.requests.send(pasteTarget)
     }
 
     /// Only touches on the collection view itself: one on a row is the
-    /// row's.
+    /// row's. The Mac's click that leaves the transcript the keys hears
+    /// them all.
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        touch.view === collectionView
+        if let pasteTap, gestureRecognizer === pasteTap { return true }
+        return touch.view === collectionView
+    }
+
+    /// The Mac's click recognizer never takes a click from anyone else's.
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        if let pasteTap { return gestureRecognizer === pasteTap || otherGestureRecognizer === pasteTap }
+        return false
     }
 }
 
@@ -515,6 +588,15 @@ final class TranscriptCell: UICollectionViewCell {
 
     private(set) var hosting: UIHostingController<TranscriptCellRoot>?
     private(set) var hostedRowID: String?
+    /// The size the hosted row last reported drawing at (its
+    /// onGeometryChange), for the row and content shown now. The cell's
+    /// measurement goes by it once there is one: a row whose fresh
+    /// measurement disagrees with how it draws (a Bot Chat's run of steps
+    /// measured 889.7 and drew at 1037) otherwise has the two take turns,
+    /// each one laying the transcript out again inside the same pass, and
+    /// the main thread never gets back to its run loop (build 265's
+    /// watchdog kill swiping out of a Bot Chat).
+    private(set) var drawnSize: CGSize?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -531,6 +613,15 @@ final class TranscriptCell: UICollectionViewCell {
     /// `parent`'s.
     func host(_ root: TranscriptCellRoot, rowID: String, in parent: UIViewController) {
         hostedRowID = rowID
+        // Another row, or the same row drawing something else: measured
+        // afresh until it reports how it draws.
+        drawnSize = nil
+        var root = root
+        let resized = root.resized
+        root.resized = { [weak self] size in
+            if let self, self.hostedRowID == rowID { self.drawnSize = size }
+            resized(size)
+        }
         if let hosting {
             hosting.rootView = root
             return
@@ -552,6 +643,8 @@ final class TranscriptCell: UICollectionViewCell {
     /// content as it is.
     func updateEnvironment(_ environment: TranscriptCellEnvironment) {
         guard let hosting, hosting.rootView.rowEnvironment != environment else { return }
+        // It may draw at another height (a text size): measured afresh.
+        drawnSize = nil
         hosting.rootView.rowEnvironment = environment
     }
 
@@ -561,16 +654,24 @@ final class TranscriptCell: UICollectionViewCell {
         let released = hosting
         hosting = nil
         hostedRowID = nil
+        drawnSize = nil
         return released
     }
 
-    /// The row's height at the cell's width: its SwiftUI ideal height, the
-    /// gap above it included.
+    /// The row's height at the cell's width, the gap above it included:
+    /// the height it reported drawing at this width (`drawnSize`), else its
+    /// SwiftUI ideal height.
     override func preferredLayoutAttributesFitting(
         _ layoutAttributes: UICollectionViewLayoutAttributes
     ) -> UICollectionViewLayoutAttributes {
         guard let hosting else { return layoutAttributes }
-        let size = hosting.sizeThatFits(in: CGSize(width: layoutAttributes.size.width, height: .greatestFiniteMagnitude))
+        let width = layoutAttributes.size.width
+        let size: CGSize
+        if let drawnSize, abs(drawnSize.width - width) <= 0.5 {
+            size = drawnSize
+        } else {
+            size = hosting.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
+        }
         guard size.height > 0, size.height.isFinite, abs(size.height - layoutAttributes.size.height) > 0.5,
               let attributes = layoutAttributes.copy() as? UICollectionViewLayoutAttributes else { return layoutAttributes }
         attributes.size.height = size.height
@@ -590,7 +691,8 @@ struct TranscriptCellRoot: View {
     /// in place (TranscriptCell.updateEnvironment).
     var rowEnvironment: TranscriptCellEnvironment
     let appState: AppState
-    let resized: @MainActor (CGSize) -> Void
+    /// The row's drawn size changed; the cell hears it first (`drawnSize`).
+    var resized: @MainActor (CGSize) -> Void
 
     var body: some View {
         TranscriptCellLayout {
@@ -607,7 +709,7 @@ struct TranscriptCellRoot: View {
         // away, as one on the transcript did.
         .contentShape(Rectangle())
         .onTapGesture {
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            ReturnKeyTextView.putAwayFocus()
         }
         .transcriptCellEnvironment(rowEnvironment)
         .environmentObject(appState)

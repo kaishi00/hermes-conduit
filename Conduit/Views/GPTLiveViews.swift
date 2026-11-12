@@ -86,7 +86,7 @@ struct GPTLiveSettingsSection: View {
     }
 
     private var apiVoiceChoices: [(id: String, title: String)] {
-        var choices = [(id: "", title: AppLocalization.string("Server default"))]
+        var choices = [(id: "", title: AppLocalization.string("Server default", table: .voice))]
         choices += GPTLiveVoice.apiNames.map { (id: $0, title: "\($0.prefix(1).uppercased())\($0.dropFirst())") }
         if !apiVoice.isEmpty, !GPTLiveVoice.apiNames.contains(apiVoice) {
             choices.append((id: apiVoice, title: apiVoice))
@@ -98,7 +98,7 @@ struct GPTLiveSettingsSection: View {
         var minutes = GPTLiveAPICallLimit.choices
         if !minutes.contains(apiMaxMinutes) { minutes.insert(apiMaxMinutes, at: 0) }
         return minutes.map { value -> (id: Int, title: String) in
-            guard value > 0 else { return (id: value, title: AppLocalization.string("No limit")) }
+            guard value > 0 else { return (id: value, title: AppLocalization.string("No limit", table: .voice)) }
             let title = Duration.seconds(value * 60)
                 .formatted(.units(allowed: [.hours, .minutes], width: .abbreviated).locale(AppLocalization.formattingLocale))
             return (id: value, title: title)
@@ -124,7 +124,7 @@ struct GPTLiveSettingsSection: View {
 
     private var voiceChoices: [(id: String, title: String)] {
         let options = GPTLiveVoice.all
-        var choices = [(id: "", title: AppLocalization.string("Server default"))]
+        var choices = [(id: "", title: AppLocalization.string("Server default", table: .voice))]
         choices += options.map { (id: $0.name, title: $0.label) }
         // A voice saved by a newer build that this one doesn't list.
         if !voice.isEmpty, !options.contains(where: { $0.name == voice }) {
@@ -164,7 +164,7 @@ struct GPTLiveSettingsSection: View {
                 Button {
                     Task { await check() }
                 } label: {
-                    Label(isChecking ? AppLocalization.string("Checking…") : AppLocalization.string("Check GPT-Live"), systemImage: "arrow.clockwise")
+                    Label(isChecking ? AppLocalization.string("Checking…") : AppLocalization.string("Check GPT-Live", table: .voice), systemImage: "arrow.clockwise")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 44)
                 }
@@ -320,9 +320,9 @@ struct GPTLiveSettingsSection: View {
             switch availability {
             // The host reports its own voice; a voice chosen here overrides it.
             case .available(let modelName, let hostVoice?) where (asked == .api ? apiVoice : voice).isEmpty:
-                line = AppLocalization.string("Available (\(modelName), voice \(hostVoice))")
+                line = AppLocalization.string("Available (\(modelName), voice \(hostVoice))", table: .voice)
             case .available(let modelName, _):
-                line = AppLocalization.string("Available (\(modelName))")
+                line = AppLocalization.string("Available (\(modelName))", table: .voice)
             default:
                 line = availability.userFacingReason
             }
@@ -363,7 +363,7 @@ struct GPTLiveVoiceSheet: View {
             statusText: isWaiting ? AppLocalization.string("Connecting…") : statusText,
             note: isWaiting ? nil : controller.limitNote ?? controller.voiceNote,
             transcript: isWaiting ? [] : controller.transcript,
-            assistantLabel: { AppLocalization.string("GPT-Live: \($0)") },
+            assistantLabel: { AppLocalization.string("GPT-Live: \($0)", table: .voice) },
             jobs: jobs,
             appState: appState,
             isMicrophoneMuted: controller.isMicrophoneMuted,
@@ -374,6 +374,8 @@ struct GPTLiveVoiceSheet: View {
             canInterrupt: false,
             onToggleMute: { controller.setMicrophoneMuted(!controller.isMicrophoneMuted) },
             onToggleSpeaker: { controller.setSpeakerMuted(!controller.isSpeakerMuted) },
+            // A call still waiting on Hermes has no chat to add a photo to.
+            showsCamera: !isWaiting,
             onEnd: onClose,
             onRetry: onRetry,
             // A call still waiting on Hermes has no mode to move yet.
@@ -388,7 +390,7 @@ struct GPTLiveVoiceSheet: View {
         // The status and new turns change without focus moving.
         .onChange(of: controller.phase) { _, _ in
             // A consent stop shows the question, not the Watch's wording.
-            let consentQuestion = controller.awaitingConsent.map { AppLocalization.string("Send your voice to \($0.company)?") }
+            let consentQuestion = controller.awaitingConsent.map { AppLocalization.string("Send your voice to \($0.company)?", table: .voice) }
             AccessibilityNotification.Announcement(consentQuestion ?? statusText).post()
         }
         // Said outright: the status only mentions the mute while listening.
@@ -396,14 +398,14 @@ struct GPTLiveVoiceSheet: View {
             // A new call clearing the last one's mute isn't the user's doing.
             guard controller.isActive, controller.phase != .connecting else { return }
             AccessibilityNotification.Announcement(muted
-                ? AppLocalization.string("Microphone muted")
-                : AppLocalization.string("Microphone unmuted")).post()
+                ? AppLocalization.string("Microphone muted", table: .voice)
+                : AppLocalization.string("Microphone unmuted", table: .voice)).post()
         }
         .onChange(of: controller.isSpeakerMuted) { _, muted in
             guard controller.isActive, controller.phase != .connecting else { return }
             AccessibilityNotification.Announcement(muted
-                ? AppLocalization.string("Assistant silenced")
-                : AppLocalization.string("Assistant's sound back on")).post()
+                ? AppLocalization.string("Assistant silenced", table: .voice)
+                : AppLocalization.string("Assistant's sound back on", table: .voice)).post()
         }
         .onChange(of: controller.voiceNote) { _, note in
             if let note { AccessibilityNotification.Announcement(note).post() }
@@ -415,8 +417,8 @@ struct GPTLiveVoiceSheet: View {
         .onChange(of: controller.finishedTurn) { _, turn in
             guard let turn else { return }
             AccessibilityNotification.Announcement(turn.speaker == .user
-                ? AppLocalization.string("You: \(turn.text)")
-                : AppLocalization.string("GPT-Live: \(turn.text)")).post()
+                ? AppLocalization.string("You: \(turn.text)", table: .voice)
+                : AppLocalization.string("GPT-Live: \(turn.text)", table: .voice)).post()
         }
     }
 
@@ -435,11 +437,11 @@ struct GPTLiveVoiceSheet: View {
     private var statusText: String {
         switch controller.phase {
         case .idle: return AppLocalization.string("Not connected")
-        case .connecting: return AppLocalization.string("Connecting to GPT-Live…")
-        case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
-        case .speaking: return controller.isSpeakerMuted ? AppLocalization.string("Speaking, silenced") : AppLocalization.string("Speaking")
-        case .paused: return AppLocalization.string("Paused while another sound plays")
-        case .ending: return AppLocalization.string("Ending conversation…")
+        case .connecting: return AppLocalization.string("Connecting to GPT-Live…", table: .voice)
+        case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted", table: .voice) : AppLocalization.string("Listening")
+        case .speaking: return controller.isSpeakerMuted ? AppLocalization.string("Speaking, silenced", table: .voice) : AppLocalization.string("Speaking")
+        case .paused: return AppLocalization.string("Paused while another sound plays", table: .voice)
+        case .ending: return AppLocalization.string("Ending conversation…", table: .voice)
         case .failed(let message): return message
         }
     }

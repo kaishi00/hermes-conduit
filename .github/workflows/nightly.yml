@@ -337,13 +337,47 @@ jobs:
       - name: Select Xcode
         run: sudo xcode-select -s /Applications/Xcode.app
 
+      - name: Pick the build cache
+        # The timing families are ConduitTests classes, so they build the
+        # app-only project and restore the slim cache the unit shards save
+        # (restore only: shard 1 saves it). A clean full build, Watch app
+        # and extensions included, ran 1162-1590 s beside the unit shards
+        # and twice outran the 1200 s budget (2026-11-09 and 11-11).
+        id: cache-key
+        env:
+          SPEC: project-tests.yml
+        run: |
+          set -euo pipefail
+          kind=full
+          if [ "$SPEC" = project-tests.yml ]; then kind=slim; fi
+          xcode=$(xcodebuild -version | awk 'NR==1 {v=$2} /Build version/ {b=$3} END {print v "-" b}')
+          prefix="dd-v1-$kind-$xcode-${ImageVersion:-image}"
+          echo "build cache: $prefix (spec $SPEC, runner image ${ImageOS:-?} ${ImageVersion:-?})"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "xcode-prefix=dd-v1-$kind-$xcode" >> "$GITHUB_OUTPUT"
+
+      - name: Restore the build cache
+        id: cache
+        uses: actions/cache/restore@v5
+        with:
+          path: |
+            ci-derived-data
+            !ci-derived-data/Logs
+          key: ${{ steps.cache-key.outputs.prefix }}-${{ github.sha }}
+          restore-keys: |
+            ${{ steps.cache-key.outputs.prefix }}-
+            ${{ steps.cache-key.outputs.xcode-prefix }}-
+
       - name: Install xcodegen
         run: brew install xcodegen
 
       - name: Generate Xcode project
-        run: xcodegen generate
+        # The app without its Watch app and extensions (project-tests.yml).
+        run: xcodegen generate --spec project-tests.yml
 
       - name: Build and boot the simulator in parallel
+        env:
+          BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run the timing families

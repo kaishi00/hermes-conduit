@@ -8,6 +8,16 @@
 import XCTest
 
 extension XCUIApplication {
+    /// Conduit as every UI test launches it: the backdrop holds still
+    /// (`ConduitBackdropMotionPolicy.isHeldStillForUITests`), since XCUITest
+    /// waits for the app to settle before each step and a drifting backdrop
+    /// never settles.
+    static func conduit() -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchEnvironment["CONDUIT_STILL_BACKDROP"] = "1"
+        return app
+    }
+
     /// V2 opens on Bots; the profile strip lives on Sessions. If a
     /// conversation is showing, Back returns to the tabs, and if the
     /// element still can't be tapped, the Sessions tab shows it. The shell

@@ -79,7 +79,7 @@ extension AppState {
                 let response = try await bridge.requestJSON(path: path)
                 guard isCurrent() else { return }
                 guard let values = SyncedPreferencesEngine.hostValues(response) else {
-                    controller.status = .failed(AppLocalization.string("The host's answer wasn't readable."))
+                    controller.status = .failed(AppLocalization.string("The host's answer wasn't readable.", table: .settings))
                     return
                 }
                 host = values
@@ -99,7 +99,7 @@ extension AppState {
             ])
             guard isCurrent() else { return }
             guard let values = SyncedPreferencesEngine.hostValues(response) else {
-                controller.status = .failed(AppLocalization.string("The host's answer wasn't readable."))
+                controller.status = .failed(AppLocalization.string("The host's answer wasn't readable.", table: .settings))
                 return
             }
             let entry = SyncedPreferencesEngine.apply(
@@ -131,13 +131,19 @@ extension AppState {
             .defaults("app.return_key_sends", ComposerReturnKey.preferenceKey, .bool, in: defaults),
             .defaults("app.stop_at_reply_start", ChatReplyStartPreference.key, .bool, in: defaults),
             .defaults("app.main_button_new_chat", V2MainButtonPreference.key, .bool, in: defaults),
+            .defaults("app.sessions_bar_profiles", V2SessionsBarPreferences.Profiles.key, .string, in: defaults),
+            sessionsBarProjectsSlot,
+            .defaults("app.sessions_bar_pulse", V2SessionsBarPreferences.showsPulseKey, .bool, in: defaults),
+            .defaults("app.sessions_bar_artifacts", V2SessionsBarPreferences.showsArtifactsKey, .bool, in: defaults),
             .defaults("app.chat_voice_button", ChatVoiceButtonAction.key, .string, in: defaults),
             .defaults("app.project_chats", ProjectChatsInChats.key, .string, in: defaults),
             .defaults("app.take_over_chats", ChatTakeoverPreference.automaticKey, .bool, in: defaults),
             .defaults("app.live_activities", LiveTurnActivities.enabledDefaultsKey, .bool, in: defaults),
             .defaults("dictation.engine", DictationEngine.preferenceKey, .string, in: defaults),
+            .defaults("voice_message.engine", VoiceMessageEngine.preferenceKey, .string, in: defaults),
             .defaults("dictation.custom_words", DictationCustomWords.preferenceKey, .strings, in: defaults),
             .defaults("voice.read_aloud_speed", ReadAloudSpeed.preferenceKey, .double, in: defaults),
+            .defaults("voice.read_replies_aloud", ReadRepliesAloud.preferenceKey, .bool, in: defaults),
             .defaults("voice.keep_screen_awake", VoiceScreenAwake.preferenceKey, .bool, in: defaults),
             .defaults("voice.animate_call_orb", LiveVoiceOrbPower.preferenceKey, .bool, in: defaults),
         ]
@@ -182,6 +188,25 @@ extension AppState {
                 defaults.set(stored, forKey: HiddenChatProjects.key)
             }
         )
+    }
+
+    /// Projects hidden takes a stored Projects page with it, whichever device
+    /// turned the switch off, so this device's list doesn't come back to a
+    /// page the ruling says showing Projects starts away from. The page is
+    /// this device's own, so only the write here clears it.
+    private var sessionsBarProjectsSlot: SyncedPreferenceSlot {
+        let defaults = syncedPreferences.defaults
+        let stored = SyncedPreferenceSlot.defaults(
+            "app.sessions_bar_projects", V2SessionsBarPreferences.showsProjectsKey, .bool, in: defaults
+        )
+        return SyncedPreferenceSlot(key: "app.sessions_bar_projects", read: stored.read, write: { value in
+            stored.write(value)
+            if (value as? Bool) == false {
+                let usesV2 = defaults.object(forKey: V2ShellPreference.key) as? Bool
+                    ?? V2ShellPreference.defaultValue
+                V2SessionsBarControls.clearStoredProjectsPageForSyncedOff(usesV2: usesV2, defaults: defaults)
+            }
+        })
     }
 
     /// Fields of the Voice preferences that stay on this device: who pays

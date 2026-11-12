@@ -490,6 +490,76 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         appState.closeGroupRoom()
     }
 
+    /// A resync that fills a bot message below the last one it held (the
+    /// last bot message unchanged) reads the room's boards again and, with
+    /// Read replies aloud on, reads that message.
+    func testAResyncsFillBelowTheLastBotMessageIsReadAndReadsBoards() async throws {
+        final class Box {
+            var events: [GroupEvent] = []
+            var skipsNextPoll = false
+            var boardReads = 0
+            var queued: [String] = []
+        }
+        let box = Box()
+        let room = self.room()
+        func message(_ seq: Int, fromMember: Bool) -> GroupEvent {
+            let actor: [String: String] = fromMember ? ["kind": "member", "id": "researcher", "profile": "researcher"]
+                : ["kind": "user", "id": "human"]
+            return GroupDecoders.event(AnyCodable.from([
+                "room_id": room.roomID,
+                "seq": seq,
+                "event_id": "srv-\(seq)",
+                "kind": fromMember ? "message.member" : "message.user",
+                "actor": actor,
+                "payload": ["text": "hello \(seq)", "thread_id": "main"],
+                "created_at": Double(seq) * 100,
+            ]))!
+        }
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                var events = box.events.filter { $0.seq > sinceSeq }
+                if box.skipsNextPoll, sinceSeq > 0 {
+                    // A poll that jumps past an event it hasn't seen.
+                    box.skipsNextPoll = false
+                    events = Array(events.suffix(1))
+                }
+                let latest = box.events.last?.seq ?? 0
+                return GroupLogPage(events: events, cursor: latest, latestSeq: latest, hasMore: false,
+                                    authorityGatewayID: "gw-a", authorityEpoch: 1)
+            }
+        )
+        defaults.set(true, forKey: ReadRepliesAloud.preferenceKey)
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        appState.roomBoardsReadOverride = { _ in
+            box.boardReads += 1
+            return ["boards": []]
+        }
+        appState.roomReadAloudQueueOverride = { id, _ in box.queued.append(id) }
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.129.0", capabilities: [RoomBoard.capability]))
+        await appState.refreshGroupChatSupport()
+
+        // The room opens holding 4, the last bot message, but not 3.
+        box.events = [message(1, fromMember: false), message(2, fromMember: true), message(4, fromMember: true)]
+        await appState.openGroupRoom(room)
+        await appState.roomBoardsTask?.value
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1, 2, 4])
+        XCTAssertEqual(box.queued, [], "The room's first read isn't read aloud")
+        let readsAtOpen = box.boardReads
+
+        box.events = [1, 2, 3, 4, 5, 6].map { message($0, fromMember: [2, 3, 4].contains($0)) }
+        box.skipsNextPoll = true
+        await appState.pollActiveRoom()
+        await appState.roomBoardsTask?.value
+        XCTAssertEqual(appState.activeRoomReplay.events.map(\.seq), [1, 2, 3, 4, 5, 6], "Resynced")
+        XCTAssertEqual(box.queued, [AppState.roomReadAloudID(roomID: room.roomID, eventID: "srv-3")])
+        XCTAssertGreaterThan(box.boardReads, readsAtOpen, "The filled message may have a board")
+        appState.closeGroupRoom()
+    }
+
     /// A dictation Retry that lands after its room was left: the words go
     /// after the room's kept draft and are there on reopen.
     func testRetriedDictationWordsReachALeftRoomsDraft() async throws {
@@ -1464,6 +1534,153 @@ final class GroupChatSessionSafetyTests: XCTestCase {
         await appState.openGroupRoom(self.room())
         XCTAssertEqual(appState.activeRoomSurface, nil)
         XCTAssertEqual(appState.activeSessionId, nil)
+    }
+
+    // MARK: - Notifications (issue 2064)
+
+    /// A room the list on hand lacks (one page of a long list, or a list
+    /// kept from before a read that failed) is asked about itself, so its
+    /// notification opens it; only Hermes saying it's gone drops the tap.
+    func testANotificationOpensARoomTheListOnHandLacks() async {
+        final class Box {
+            var page: ([GroupRoom], Int?) = ([], nil)
+            var listFails = false
+            var state: Result<GroupRoom, Error> = .failure(TestError())
+            var whileReading: (() -> Void)?
+            var afterRead: Result<GroupRoom, Error>?
+            var whileListing: (() -> Void)?
+        }
+        let box = Box()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in
+                box.whileListing?()
+                if box.listFails { throw TestError() }
+                return box.page
+            },
+            state: { _, _ in
+                box.whileReading?()
+                let read = box.state
+                if let next = box.afterRead { box.state = next; box.afterRead = nil }
+                return (try read.get(), nil)
+            },
+            log: { _, _, sinceSeq, _ in
+                GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                             authorityGatewayID: "gw-a", authorityEpoch: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        await appState.refreshGroupChatSupport()
+        XCTAssertTrue(appState.groupRoomsListed)
+
+        // The first page of a long list, without the room.
+        box.page = ([], 50)
+        box.state = .success(room)
+        var outcome = await appState.openNotificationRoom("room-1")
+        XCTAssertEqual(outcome, .opened)
+        XCTAssertEqual(appState.activeRoomSurface?.room.roomID, "room-1")
+        appState.closeGroupRoom()
+
+        // The list read fails and keeps the old list; the room's own read
+        // failing too leaves the tap to try again.
+        box.listFails = true
+        box.state = .failure(TestError())
+        outcome = await appState.openNotificationRoom("room-1")
+        XCTAssertEqual(outcome, .retry)
+        XCTAssertNil(appState.activeRoomSurface)
+
+        // Hermes saying the room is gone drops the tap.
+        box.state = .failure(RpcError(code: 4112, message: "hosted room not found"))
+        outcome = await appState.openNotificationRoom("room-1")
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("That chat is no longer available."))
+
+        // A room opened or closed while Hermes is asked owns the screen:
+        // the old tap's answer says nothing over it.
+        appState.errorMessage = nil
+        box.whileReading = { appState.closeGroupRoom() }
+        outcome = await appState.openNotificationRoom("room-1")
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertNil(appState.errorMessage)
+
+        // Gone between the lookup and the open's own read: said, not silent.
+        box.whileReading = nil
+        box.state = .success(room)
+        box.afterRead = .failure(RpcError(code: 4112, message: "hosted room not found"))
+        outcome = await appState.openNotificationRoom("room-1")
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertNil(appState.activeRoomSurface)
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("That chat is no longer available."))
+
+        // A chat opened while the roster is read again after that close owns
+        // the screen: the gone room's tap says nothing over it.
+        appState.errorMessage = nil
+        box.state = .success(room)
+        box.afterRead = .failure(RpcError(code: 4112, message: "hosted room not found"))
+        var reads = 0
+        box.whileReading = {
+            reads += 1
+            guard reads == 2 else { return }
+            box.whileListing = {
+                box.whileListing = nil
+                appState.beginExplicitChatViewportTransition()
+            }
+        }
+        outcome = await appState.openNotificationRoom("room-1")
+        XCTAssertEqual(outcome, .failed)
+        XCTAssertNil(appState.activeRoomSurface)
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertNil(box.whileListing, "The roster was read after the close")
+    }
+
+    /// A room's notifications are read once its messages come from Hermes,
+    /// not as it opens over a kept or empty transcript (issue 2064).
+    func testARoomIsReadOnceItsMessagesLoad() async throws {
+        final class Box {
+            var logFails = true
+        }
+        let box = Box()
+        let room = self.room()
+        let operations = GroupChatLifecycleOperations(
+            capabilities: { _ in self.capabilities(supported: true) },
+            list: { _ in ([room], nil) },
+            state: { _, _ in (room, nil) },
+            log: { _, _, sinceSeq, _ in
+                if box.logFails { throw TestError() }
+                return GroupLogPage(events: [], cursor: sinceSeq, latestSeq: 0, hasMore: false,
+                                    authorityGatewayID: "gw-a", authorityEpoch: 1)
+            }
+        )
+        let appState = makeAppState(operations: operations)
+        connect(appState)
+        appState.showSidebar = false
+        await appState.refreshGroupChatSupport()
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.activeRoomSurface?.room.roomID, "room-1")
+        XCTAssertNil(appState.roomShownOnScreen, "Its messages didn't load")
+
+        // A poll that catches it up reads it.
+        box.logFails = false
+        let screen = UUID()
+        appState.noteRoomView(screen, shows: false)
+        appState.noteRoomView(screen, shows: true)
+        for _ in 0..<200 where appState.roomShownOnScreen == nil {
+            try await Task.sleep(nanoseconds: 5_000_000)
+        }
+        XCTAssertEqual(appState.roomShownOnScreen, "room-1")
+        appState.showSidebar = true
+        XCTAssertNil(appState.roomShownOnScreen, "The list covers it")
+        appState.showSidebar = false
+        appState.noteRoomView(screen, shows: nil)
+
+        // Opened again with its messages loading at once: read.
+        appState.closeGroupRoom()
+        XCTAssertNil(appState.roomShownOnScreen)
+        await appState.openGroupRoom(room)
+        XCTAssertEqual(appState.roomShownOnScreen, "room-1")
+        appState.closeGroupRoom()
     }
 
     private static func makeBot(_ name: String) -> BotProfile {

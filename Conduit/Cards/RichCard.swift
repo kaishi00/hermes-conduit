@@ -39,6 +39,8 @@ struct RichCard: Identifiable, Equatable, Hashable {
         case progress
         case callout
         case diff
+        case review
+        case composed
     }
 
     enum TravelMode: String {
@@ -84,6 +86,14 @@ struct RichCard: Identifiable, Equatable, Hashable {
     let callout: RichCallout?
     /// Changes line by line (RichDiffCard.swift).
     let diff: RichDiff?
+    /// Options to look at and mark (RichReviewCard.swift).
+    let review: RichReview?
+    /// A card Hermes built (RichComposedCard.swift).
+    let sections: [RichSection]
+    /// Buttons at any card's foot.
+    let actions: [RichButton]
+    /// The card as the chat holds it, normalized: what a tap sends back.
+    let normalizedJSON: String
 
     init?(normalized json: [String: Any], id: Int) {
         guard let kind = (json["type"] as? String).flatMap(Kind.init(rawValue:)) else { return nil }
@@ -121,6 +131,11 @@ struct RichCard: Identifiable, Equatable, Hashable {
         progress = (json["progress"] as? [[String: Any]] ?? []).compactMap(RichProgress.init(json:))
         callout = RichCallout(json: json["callout"])
         diff = RichDiff(json: json["diff"])
+        review = RichReview(json: json["review"])
+        sections = (json["sections"] as? [[String: Any]] ?? []).compactMap(RichSection.init(json:))
+        actions = (json["actions"] as? [[String: Any]] ?? []).compactMap(RichButton.init(json:))
+        normalizedJSON = (try? JSONSerialization.data(withJSONObject: json, options: [.sortedKeys]))
+            .flatMap { String(data: $0, encoding: .utf8) } ?? ""
         switch kind {
         case .map, .place, .places: guard !places.isEmpty else { return nil }
         case .stats: guard !stats.isEmpty else { return nil }
@@ -138,6 +153,8 @@ struct RichCard: Identifiable, Equatable, Hashable {
         case .progress: guard !progress.isEmpty else { return nil }
         case .callout: guard callout != nil else { return nil }
         case .diff: guard diff != nil else { return nil }
+        case .review: guard review != nil else { return nil }
+        case .composed: guard !sections.isEmpty else { return nil }
         }
     }
 

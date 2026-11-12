@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 /// What the call is doing, as the sheet draws it.
 enum LiveVoiceCallPhase: Equatable {
@@ -53,6 +54,9 @@ struct LiveVoiceCallSheet: View {
     /// Nil for an engine that is only interrupted by speaking over it: the
     /// sheet then has no Interrupt button.
     var onInterrupt: (() -> Void)?
+    /// Shows the Camera, which puts a photo on the call's chat
+    /// (`AppState.addVoicePhoto`).
+    var showsCamera = false
     let onEnd: () -> Void
     let onRetry: () -> Void
     /// The voice mode menu under the title, and Switch voice on a failed
@@ -452,7 +456,7 @@ struct LiveVoiceCallSheet: View {
 
     private func label(for entry: VoiceConversationTranscriptEntry) -> String {
         entry.speaker == .user
-            ? AppLocalization.string("You: \(entry.text)")
+            ? AppLocalization.string("You: \(entry.text)", table: .voice)
             : assistantLabel(entry.text)
     }
 
@@ -481,11 +485,11 @@ struct LiveVoiceCallSheet: View {
                 }
                 LiveVoiceCallButton(
                     symbol: isSpeakerMuted ? LiveVoiceCallButton.silencedSymbol : LiveVoiceCallButton.silenceSymbol,
-                    title: isSpeakerMuted ? AppLocalization.string("Sound on") : AppLocalization.string("Silence"),
+                    title: isSpeakerMuted ? AppLocalization.string("Sound on", table: .voice) : AppLocalization.string("Silence", table: .voice),
                     style: isSpeakerMuted ? .selected : .normal,
                     voiceOverLabel: isSpeakerMuted
-                        ? AppLocalization.string("Turn the assistant's sound back on")
-                        : AppLocalization.string("Silence the assistant"),
+                        ? AppLocalization.string("Turn the assistant's sound back on", table: .voice)
+                        : AppLocalization.string("Silence the assistant", table: .voice),
                     action: onToggleSpeaker
                 )
                 .disabled(!canMute)
@@ -497,16 +501,20 @@ struct LiveVoiceCallSheet: View {
                         symbol: "stop.fill",
                         title: AppLocalization.string("Interrupt"),
                         voiceOverHint: canInterrupt
-                            ? AppLocalization.string("Stops the assistant so you can speak")
-                            : AppLocalization.string("Available while the assistant is speaking"),
+                            ? AppLocalization.string("Stops the assistant so you can speak", table: .voice)
+                            : AppLocalization.string("Available while the assistant is speaking", table: .voice),
                         action: onInterrupt
                     )
                     .disabled(!canInterrupt)
                 }
+                if showsPhoto {
+                    LiveVoiceCallPhotoButton(appState: appState)
+                        .disabled(!canMute)
+                }
             }
             LiveVoiceCallButton(
                 symbol: "text.bubble.fill",
-                title: AppLocalization.string("Transcript"),
+                title: AppLocalization.string("Transcript", table: .voice),
                 style: showsTranscript ? .selected : .normal,
                 action: { showsTranscript.toggle() }
             )
@@ -516,7 +524,7 @@ struct LiveVoiceCallSheet: View {
                 title: AppLocalization.string("End"),
                 style: .destructive,
                 voiceOverLabel: AppLocalization.string("End call"),
-                voiceOverHint: AppLocalization.string("Hangs up the call"),
+                voiceOverHint: AppLocalization.string("Hangs up the call", table: .voice),
                 action: onEnd
             )
         }
@@ -531,7 +539,12 @@ struct LiveVoiceCallSheet: View {
     private var controlSlots: Int {
         let shared = 2 // Transcript, End
         if phase == .failed { return shared + 1 + (modeSwitch == nil ? 0 : 1) }
-        return shared + 2 + (onInterrupt == nil ? 0 : 1) + (callSpeaker.isShown ? 1 : 0)
+        return shared + 2 + (onInterrupt == nil ? 0 : 1) + (callSpeaker.isShown ? 1 : 0) + (showsPhoto ? 1 : 0)
+    }
+
+    /// The Camera, on a device that has one.
+    private var showsPhoto: Bool {
+        showsCamera && CameraCapture.isAvailable
     }
 }
 
@@ -677,8 +690,8 @@ private struct LiveVoiceAskFirstButton: View {
     private func showCaption(for on: Bool) {
         captionTask?.cancel()
         let text = on
-            ? AppLocalization.string("Asking before sending to Hermes")
-            : AppLocalization.string("Sending straight to Hermes")
+            ? AppLocalization.string("Asking before sending to Hermes", table: .voice)
+            : AppLocalization.string("Sending straight to Hermes", table: .voice)
         withAnimation(.easeOut(duration: 0.2)) { caption = text }
         // The caption itself is hidden from VoiceOver: said once instead.
         AccessibilityNotification.Announcement(text).post()
@@ -774,7 +787,7 @@ struct LiveVoiceCallModeMenuButton: View {
     private static let symbol = "arrow.triangle.swap"
 
     var body: some View {
-        let title = AppLocalization.string("Switch voice")
+        let title = AppLocalization.string("Switch voice", table: .voice)
         LiveVoiceCallButtonFace(
             symbol: Self.symbol,
             title: title,
@@ -796,8 +809,8 @@ struct LiveVoiceCallButtonIcon: View {
     @ScaledMetric(relativeTo: .title3) private var scaledDiameter: CGFloat = 62
     @Environment(\.liveVoiceCallButtonSlotWidth) private var slotWidth
     /// Capped so five buttons still fit across a phone at the largest
-    /// text sizes, and narrower when a row holds six (Speaker in a call
-    /// from Hermes); the glyph inside keeps scaling.
+    /// text sizes, and narrower when a row holds six or seven (Camera, and
+    /// Speaker in a call from Hermes); the glyph inside keeps scaling.
     private var diameter: CGFloat {
         let fits = slotWidth.map { max(44, $0 - 6) } ?? .infinity
         return min(scaledDiameter, 66, fits)
@@ -1090,7 +1103,7 @@ struct V2CallCaptions: View {
                     .truncationMode(.head)
                     .minimumScaleFactor(0.6)
                     .frame(maxWidth: .infinity, alignment: .leading)
-                    .accessibilityLabel(Text(verbatim: AppLocalization.string("You: \(pending)")))
+                    .accessibilityLabel(Text(verbatim: AppLocalization.string("You: \(pending)", table: .voice)))
                     .accessibilityHint(Text("Still listening"))
             }
         }
@@ -1208,7 +1221,7 @@ private struct LiveVoiceCallButtonSlotWidthKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// The width each button of a call's control row has, so a row of six
+    /// The width each button of a call's control row has, so a row of seven
     /// shrinks its circles to fit instead of running off the screen.
     var liveVoiceCallButtonSlotWidth: CGFloat? {
         get { self[LiveVoiceCallButtonSlotWidthKey.self] }

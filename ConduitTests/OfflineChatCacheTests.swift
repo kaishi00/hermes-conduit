@@ -1041,7 +1041,7 @@ final class OfflineChatCacheTests: XCTestCase {
     // MARK: - Unreachable server vs. sign-in
 
     func testUnreachableRestoreKeepsTheCopyInsteadOfSignIn() {
-        for failure: ConnectionFailure in [.offline, .hostNotFound, .unreachable, .connectionRefused, .timedOut, .dashboardUnavailable] {
+        for failure: ConnectionFailure in [.offline, .hostNotFound, .unreachable, .connectionRefused, .timedOut, .dashboardUnavailable, .accessDenied] {
             let (appState, store, dashboard) = makeAppState()
             seedCopy(store, dashboard: dashboard)
             appState.presentOfflineChatIfAvailable(dashboardID: dashboard)
@@ -2470,7 +2470,7 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertFalse(request.focuses)
         XCTAssertEqual(
             appState.composerNotice,
-            AppLocalization.string("Your message to “\("A")” wasn't sent. It's back in that chat's draft.")
+            AppLocalization.string("Your message to “\("A")” wasn't sent. It's back in that chat's draft.", table: .chat)
         )
         XCTAssertTrue(appState.messages.isEmpty, "Nothing was sent")
     }
@@ -2506,6 +2506,79 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(appState.pendingComposerSend)
         await waitUntil { store.loadPendingSends(dashboardID: dashboard).isEmpty }
         XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+    }
+
+    /// Issue 2095: a send `rpc` refused before writing it (the socket had
+    /// closed under it, its receive not failed yet) waits in its chat for
+    /// the reconnect it starts, rather than coming back to the composer.
+    func testASendThatFoundTheSocketClosedWaitsForTheReconnect() async throws {
+        let sent = SentPrompts()
+        var attempts = 0
+        let (appState, store, dashboard) = makeAppState(
+            lifecycleOperations: ChatResumeLifecycleOperations(sendPrompt: { _, sessionID, text in
+                attempts += 1
+                if attempts == 1 { throw HermesError.notConnected }
+                sent.prompts.append((sessionID, text))
+                return .accepted
+            }),
+            reconnectScheduler: { _, _ in {} }
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.sessions = [session("stored-a")]
+        appState.activeSessionId = "stored-a"
+        appState.isConnected = true
+
+        let went = await appState.submitComposer(text: "Hello")
+
+        XCTAssertTrue(went, "Kept, so the composer doesn't put the words back")
+        XCTAssertEqual(attempts, 1)
+        XCTAssertTrue(sent.prompts.isEmpty)
+        XCTAssertEqual(appState.pendingComposerSend?.draftText, "Hello")
+        XCTAssertFalse(appState.isConnected, "The drop is known at once")
+        XCTAssertEqual(appState.turnState, .reconnecting)
+        XCTAssertFalse(appState.messages.contains { $0.content == "Hello" }, "The waiting message shows in its place")
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertTrue(appState.composerRestoreRequests.isEmpty)
+        await waitUntil { store.loadPendingSends(dashboardID: dashboard).count == 1 }
+    }
+
+    /// A send with a picture can't wait as text: it still comes back, and
+    /// says why.
+    func testAPictureWhoseUploadFoundTheSocketClosedSaysWhyUntilItsChatIsLeft() async throws {
+        var operations = ChatResumeLifecycleOperations(sendPrompt: { _, _, _ in .accepted })
+        // The upload is what finds the socket closed.
+        operations.uploadAttachment = { _, _, _ in throw HermesError.notConnected }
+        let (appState, _, _) = makeAppState(lifecycleOperations: operations, reconnectScheduler: { _, _ in {} })
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.sessions = [session("stored-a")]
+        appState.activeSessionId = "stored-a"
+        appState.isConnected = true
+        let photo = Attachment(
+            id: UUID().uuidString,
+            name: "photo.jpg",
+            uri: "file:///tmp/photo.jpg",
+            mimeType: "image/jpeg",
+            kind: .image
+        )
+
+        let went = await appState.submitComposer(text: "What is this?", attachments: [photo])
+
+        XCTAssertFalse(went)
+        XCTAssertNil(appState.pendingComposerSend)
+        XCTAssertFalse(appState.isConnected, "The reconnect starts all the same")
+        XCTAssertNotNil(appState.errorMessage, "Said under the composer, now shown while it's unlocked too")
+        let failure = try XCTUnwrap(appState.sendFailureShown)
+
+        // Leaving its chat takes the line with it.
+        appState.sessions.append(session("stored-b"))
+        appState.activeSessionId = "stored-b"
+        // The recovery's own sync may have said something since: that stays.
+        XCTAssertNotEqual(appState.errorMessage, failure)
+        XCTAssertNil(appState.sendFailureShown)
     }
 
     /// Queue (#842): Hermes keeps the message as the next turn, so it goes
@@ -2680,7 +2753,7 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.composerRestoreRequests.first?.draft.text, "Hello")
         XCTAssertEqual(
             appState.composerNotice,
-            AppLocalization.string("Your message wasn't sent. It's back in the composer.")
+            AppLocalization.string("Your message wasn't sent. It's back in the composer.", table: .chat)
         )
     }
 
@@ -2738,6 +2811,31 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(store.loadPendingSends(dashboardID: dashboard).map(\.id), [newer.id])
     }
 
+    func testACardsChatIsTheSameUnderItsOtherIds() throws {
+        let (appState, _, _) = makeAppState()
+        var row = session("stored-a")
+        row.storedSessionId = "stored-a"
+        row.alternateIds = ["runtime-a"]
+        appState.sessions = [row]
+        func chat(_ dashboard: String, _ profile: String, _ id: String) throws -> String {
+            try XCTUnwrap(RichCardActionContext.chat(dashboard: dashboard, profile: profile, sessionID: id))
+        }
+        XCTAssertTrue(appState.richCardChatsAreSame(try chat("d", "default", "runtime-a"), try chat("d", "default", "stored-a")),
+                      "a new chat's durable id is the same chat, so its card keeps what was typed")
+        XCTAssertFalse(appState.richCardChatsAreSame(try chat("d", "default", "runtime-a"), try chat("e", "default", "stored-a")))
+        XCTAssertFalse(appState.richCardChatsAreSame(try chat("d", "default", "stored-a"), try chat("d", "work", "stored-a")))
+        XCTAssertFalse(appState.richCardChatsAreSame(try chat("d", "default", "stored-a"), try chat("d", "default", "stored-b")))
+        XCTAssertFalse(RichCardActionContext.mayFollowUp(tappedIn: try chat("d", "default", "runtime-a"),
+                                                         openChat: try chat("d", "default", "stored-b"),
+                                                         composerIsEnabled: true, draft: "",
+                                                         sameChat: appState.richCardChatsAreSame))
+        XCTAssertTrue(RichCardActionContext.mayFollowUp(tappedIn: try chat("d", "default", "runtime-a"),
+                                                        openChat: try chat("d", "default", "stored-a"),
+                                                        composerIsEnabled: true, draft: "",
+                                                        sameChat: appState.richCardChatsAreSame),
+                      "a tap's message still goes once the chat gets its durable id")
+    }
+
     func testAWaitingSendCannotFollowAReattributedRuntimeAlias() throws {
         let (appState, _, dashboard) = makeAppState()
         let pending = PendingComposerSend(
@@ -2767,6 +2865,25 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertNil(appState.pendingComposerSend)
         XCTAssertEqual(appState.composerRestoreRequests.first?.key.sessionID, "stored-a")
         XCTAssertTrue(appState.messages.isEmpty)
+    }
+
+    func testACardTapKeepsToItsChatAcrossARotationButNotAReattribution() throws {
+        let (appState, _, _) = makeAppState()
+        var original = session("stored-a")
+        original.storedSessionId = "stored-a"
+        original.alternateIds = ["runtime-old", "runtime-new"]
+        appState.sessions = [original]
+        appState.activeSessionId = "runtime-old"
+        let tapped = try XCTUnwrap(appState.richCardChat)
+        appState.activeSessionId = "runtime-new"
+        XCTAssertEqual(appState.richCardChat, tapped, "the same chat under its next runtime id")
+        var other = session("stored-b")
+        other.storedSessionId = "stored-b"
+        other.alternateIds = ["runtime-new"]
+        appState.sessions = [other]
+        XCTAssertNotEqual(appState.richCardChat, tapped, "the runtime id now belongs to B")
+        XCTAssertFalse(RichCardActionContext.mayFollowUp(
+            tappedIn: tapped, openChat: appState.richCardChat, composerIsEnabled: true, draft: ""))
     }
 
     func testANewChatsWaitingMessageCannotFollowAReattributedCreatedRuntime() throws {
@@ -3052,7 +3169,8 @@ final class OfflineChatCacheTests: XCTestCase {
         store existingStore: OfflineChatCacheStore? = nil,
         configureDefaults: (UserDefaults) -> Void = { _ in },
         sessionCatalogLoader: ((Bool) async throws -> [SessionSummary])? = nil,
-        lifecycleOperations: ChatResumeLifecycleOperations = .live
+        lifecycleOperations: ChatResumeLifecycleOperations = .live,
+        reconnectScheduler: ChatResumeReconnectScheduler? = nil
     ) -> (AppState, OfflineChatCacheStore, UUID) {
         let defaults = makeScratchDefaults("OfflineChatCacheTests")
         configureDefaults(defaults)
@@ -3065,6 +3183,7 @@ final class OfflineChatCacheTests: XCTestCase {
             dashboardRegistry: registry,
             clearSessionPresentationCache: {},
             sessionCatalogLoader: sessionCatalogLoader,
+            reconnectScheduler: reconnectScheduler,
             chatResumeLifecycleOperations: lifecycleOperations,
             sessionPresentationCache: SessionPresentationCache(defaults: defaults),
             offlineChatCache: store

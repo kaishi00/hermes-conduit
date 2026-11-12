@@ -40,6 +40,7 @@ struct SelectionFixtureView: View {
     | --- | --- |
     | alpha cell | beta cell |
     | [skills link](https://example.com/skills) | delta cell |
+    | `coleam00/excalidraw-diagram-skill` | `my-app.vercel.app/docs` |
     """
 
     @State private var pasteboardText = ""

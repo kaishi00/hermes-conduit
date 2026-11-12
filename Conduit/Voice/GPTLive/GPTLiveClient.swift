@@ -22,7 +22,7 @@ extension GPTLiveBilling {
     var badge: String {
         switch self {
         case .subscription: return AppLocalization.string("ChatGPT plan")
-        case .api: return AppLocalization.string("API key · billed per minute")
+        case .api: return AppLocalization.string("API key · billed per minute", table: .voice)
         }
     }
 }
@@ -47,11 +47,11 @@ enum GPTLiveAvailability: Equatable {
             return nil
         case .unavailable(let reason):
             if let reason, !reason.isEmpty {
-                return AppLocalization.string("GPT-Live is not available on this Hermes server: \(reason)")
+                return AppLocalization.string("GPT-Live is not available on this Hermes server: \(reason)", table: .voice)
             }
             return AppLocalization.string("GPT-Live is not available on this Hermes server.")
         case .pluginMissing:
-            return AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
+            return PluginUpdateAsk.text(AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server."))
         }
     }
 }
@@ -63,18 +63,28 @@ struct GPTLiveSessionAnswer: Equatable {
     /// The voice the host started the call with; nil from a host that
     /// doesn't report it (an older plugin).
     var voice: String? = nil
-    /// True when the host put Conduit's briefing into the session's
-    /// instructions; an older plugin ignores it and the briefing must be sent
-    /// as context after the call starts.
+    /// True when the host put Conduit's briefing into the session (the
+    /// public API's instructions, or the subscription's first seeded item,
+    /// notifier 0.164.4+); an older plugin ignores it and the briefing must
+    /// be sent as context after the call starts.
     var briefingApplied: Bool = false
+    /// True when the host cut what Hermes remembers (then the persona) to
+    /// fit Codex's seeded-items budget (notifier #719). Read only for the
+    /// call trace.
+    var briefingClipped: Bool = false
     /// True when the host made the model speak first: a greeting (#290) or
     /// the opening of a call Hermes placed (`call_opening`, #544). An older
     /// plugin keeps it silent and the opening is asked for after the call
     /// starts.
     var greetingApplied: Bool = false
-    /// The path the host confirmed it billed. The call speaks that path's
-    /// protocol (the subscription's Codex events or the public API's).
+    /// The path the host confirmed it billed.
     var billing: GPTLiveBilling = .subscription
+    /// True when the host started a ChatGPT-plan call on Codex's GA
+    /// endpoint (`events: "ga"`), which speaks the GA Live events like an
+    /// API-key call and drops the instructions the request carried. An
+    /// older plugin, or an account the GA endpoint hasn't reached, speaks
+    /// the frameless events (issue 2236).
+    var gaEvents: Bool = false
     /// Who built the session: "hermes" (Hermes' own GPT-Live code) or
     /// "plugin" (the plugin's). Nil from a host that doesn't say. Read
     /// only for the call trace (#1611).
@@ -100,11 +110,14 @@ enum GPTLiveClientError: LocalizedError, Equatable {
         case .host(let detail):
             return detail
         case .malformedResponse:
-            return AppLocalization.string("Hermes returned an invalid GPT-Live answer.")
+            return AppLocalization.string("Hermes returned an invalid GPT-Live answer.", table: .voice)
         case .notSubscription:
-            return AppLocalization.string("Hermes did not start GPT-Live on the ChatGPT subscription, so Conduit did not connect.")
+            return AppLocalization.string("Hermes did not start GPT-Live on the ChatGPT subscription, so Conduit did not connect.", table: .voice)
         case .notAPIKey:
-            return AppLocalization.string("Hermes did not start GPT-Live on the API key, so Conduit did not connect. Update the Hermes notifier plugin.")
+            return PluginUpdateAsk.text(
+                AppLocalization.string("Hermes did not start GPT-Live on the API key, so Conduit did not connect. Update the Hermes notifier plugin.", table: .voice),
+                lead: AppLocalization.string("Hermes did not start GPT-Live on the API key, so Conduit did not connect.", table: .voice)
+            )
         }
     }
 }
@@ -224,7 +237,10 @@ final class GPTLiveClient: GPTLiveSessionProviding {
             return .unavailable(reason: response["reason"] as? String ?? response["detail"] as? String ?? response["error"] as? String)
         }
         guard let api = response["api"] as? [String: Any] else {
-            return .unavailable(reason: AppLocalization.string("GPT-Live on an API key needs the Hermes notifier plugin 0.22 or newer."))
+            return .unavailable(reason: PluginUpdateAsk.text(
+                AppLocalization.string("GPT-Live on an API key needs the Hermes notifier plugin 0.22 or newer.", table: .voice),
+                lead: AppLocalization.string("Needs Conduit plugin \("0.22") or later.")
+            ))
         }
         guard api["available"] as? Bool == true, api["auth"] as? String == GPTLiveBilling.api.rawValue else {
             return .unavailable(reason: api["reason"] as? String)
@@ -260,8 +276,10 @@ final class GPTLiveClient: GPTLiveSessionProviding {
             sdp: sdp,
             voice: voice,
             briefingApplied: response["briefing_applied"] as? Bool == true,
+            briefingClipped: response["briefing_clipped"] as? Bool == true,
             greetingApplied: response["greeting_applied"] as? Bool == true,
             billing: billing,
+            gaEvents: response["events"] as? String == "ga",
             // Only the two names the plugin sends: nothing else the host
             // says reaches the trace.
             source: (response["source"] as? String).flatMap { ["hermes", "plugin"].contains($0) ? $0 : nil }

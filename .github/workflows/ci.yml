@@ -40,10 +40,10 @@ name: CI
 
 on:
   push:
-    branches: [main, bot-workstreams]
+    branches: [main, linked-rooms]
   pull_request:
-    # bot-workstreams: Bot Mode as a coordinator, kept off main until Eric says.
-    branches: [main, bot-workstreams]
+    # linked-rooms: the Linked Rooms app side, kept off main until it all works.
+    branches: [main, linked-rooms]
 
 # A PR's newer push supersedes its older run. A push is grouped by its own
 # commit instead, so every merge gets a full run: branch protection does not
@@ -248,8 +248,9 @@ jobs:
 
       - name: Localization catalog coverage
         # Cheap Linux guard: every String(localized:) / SwiftUI literal call
-        # site must resolve to a key in Conduit/Localizable.xcstrings, so a
-        # translated string can never silently render English again.
+        # site must resolve to a key in Conduit/Localizable.xcstrings (or the
+        # feature table in Conduit/Strings/ it names), so a translated string
+        # can never silently render English again.
         run: python3 scripts/check-l10n-coverage.py --repo-root .
 
       - name: Text follows Text Size

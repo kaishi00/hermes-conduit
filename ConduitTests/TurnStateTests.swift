@@ -8,6 +8,16 @@ final class TurnStateTests: XCTestCase {
         XCTAssertEqual(TurnState.fromGatewayRunning(nil), .unsupportedGateway)
     }
 
+    /// A chat call started while the turn's state is still read back
+    /// leaves a running turn off its seed, as while it runs (#1991).
+    func testATurnStillBeingReadBackMayBeRunning() {
+        XCTAssertTrue(TurnState.running.mayBeRunning)
+        XCTAssertTrue(TurnState.synchronizing.mayBeRunning)
+        XCTAssertTrue(TurnState.reconnecting.mayBeRunning)
+        XCTAssertFalse(TurnState.idle.mayBeRunning)
+        XCTAssertFalse(TurnState.unsupportedGateway.mayBeRunning)
+    }
+
     /// Hermes reattaches a live empty chat (no stored row yet) without
     /// `running`: it is idle, not an old gateway (App Store review
     /// 2026-11-02; Eric, 2026-11-04, a New Chat left and come back to).

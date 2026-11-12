@@ -1426,6 +1426,142 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(VoiceResumeContext.continuing(long).recent.count, VoiceResumePlan.recentTurnCount)
     }
 
+    func testAChatCallIsSeededWithTheChatsLatestTurns() throws {
+        // Issue 1983: a call started from a chat sent GPT-Live 0 history items.
+        func row(_ id: String, _ role: MessageRole, _ text: String) -> ChatMessage {
+            ChatMessage(id: id, role: role, content: text, timestamp: "2026-11-08T00:00:00Z")
+        }
+        let messages = [
+            row("1", .user, "Plan the trip to Kyoto"),
+            row("2", .system, "Voice call"),
+            row("3", .assistant, "Here's the plan. [Open job](conduit://session/stored-1)\nMEDIA:/opt/data/cache/kyoto-plan.pdf"),
+            row("4", .assistant, "   "),
+            row("5", .user, "Book the hotel"),
+        ]
+        let context = try XCTUnwrap(VoiceResumeContext.chat(messages))
+        XCTAssertTrue(context.fromChat)
+        XCTAssertNil(context.summary)
+        // The question still waiting for its reply is left off the end.
+        XCTAssertEqual(context.recent.map(\.speaker), [.user, .assistant])
+        XCTAssertFalse(context.recent[1].text.contains("conduit://"))
+        XCTAssertFalse(context.recent[1].text.contains("/opt/data"), "a file is named, never given by its path")
+        XCTAssertTrue(context.recent[1].text.contains("kyoto-plan.pdf"))
+        XCTAssertEqual(context.gptLiveHistory.count, 2)
+
+        // The chat's turns are context the call follows on from; it can still
+        // open with its greeting.
+        let block = context.instructionBlock
+        XCTAssertTrue(block.contains("User: Plan the trip to Kyoto"))
+        XCTAssertFalse(block.contains("wait for the user to speak first"))
+        XCTAssertTrue(block.contains("attached to one of the user's Hermes chats"))
+        let gptBlock = context.summaryInstructionBlock
+        XCTAssertFalse(gptBlock.contains("Kyoto"), "GPT-Live has the turns as history")
+        XCTAssertFalse(gptBlock.contains("wait for the user to speak first"))
+
+        // While Hermes is still answering, the question goes with the
+        // progress notes the running turn sealed.
+        let notes: Set<String> = ["interim-7", "interim-10", "interim-15"]
+        let running = messages.dropLast() + [row("6", .user, "Book the hotel"), row("interim-7", .assistant, "Checking availability…")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(Array(running), runningNotes: notes)).recent.count, 2)
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(Array(running))).recent.count, 4)
+        // A steer is part of the running turn: the question it steers goes too.
+        var steer = row("8", .user, "Make it near the station")
+        steer.displayKind = ChatMessage.steerDisplayKind
+        let steered = try XCTUnwrap(VoiceResumeContext.chat(Array(running) + [steer], runningNotes: notes)).recent
+        XCTAssertEqual(steered.map(\.text).last, context.recent.last?.text)
+        XCTAssertFalse(steered.contains { $0.text.contains("hotel") || $0.text.contains("station") })
+        // A message queued behind the running turn goes with it, and a
+        // blank row doesn't end the turn.
+        let queued = Array(running) + [row("13", .assistant, "  "), row("14", .user, "And a car?")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(queued, runningNotes: notes)).recent.map(\.text), context.recent.map(\.text))
+        // The running reply goes on after a queued message: its later notes
+        // don't let the question through.
+        let laterNote = queued + [row("interim-15", .assistant, "Still checking…")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(laterNote, runningNotes: notes)).recent.map(\.text), context.recent.map(\.text))
+        // A turn typed on another device has no row here: the answered
+        // exchange before it stays, and its progress notes go.
+        let answered = Array(messages.dropLast()) + [row("6", .user, "Book the hotel"), row("9", .assistant, "Booked the Kyoto Inn.")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(answered, runningNotes: notes)).recent.last?.text, "Booked the Kyoto Inn.")
+        let remote = answered + [row("interim-10", .assistant, "Looking up trains…")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(remote, runningNotes: notes)).recent.last?.text, "Booked the Kyoto Inn.")
+        // Once a sync brings its question here, that goes too.
+        let synced = answered + [row("19", .user, "Trains?"), row("interim-10", .assistant, "Looking up trains…")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(synced, runningNotes: notes)).recent.last?.text, "Booked the Kyoto Inn.")
+        // A finished reply that kept its interim row's id is no running
+        // note: a new question running after it leaves it in.
+        let finishedInterim = Array(messages.dropLast()) + [row("6", .user, "Book the hotel"), row("interim-old", .assistant, "Booked the Kyoto Inn."),
+                                                             row("16", .user, "Trains?"), row("interim-7", .assistant, "Checking…")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(finishedInterim, runningNotes: notes)).recent.last?.text, "Booked the Kyoto Inn.")
+        // A reread transcript gives the running turn's notes as stored
+        // commentary with no reply yet (or an empty one): they go with the
+        // question.
+        let reread = Array(messages.dropLast()) + [row("17", .user, "Trains?"), row("18-commentary-0", .assistant, "Checking.")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(reread, runningNotes: [])).recent.map(\.text), context.recent.map(\.text))
+        let emptyReply = reread + [row("18", .assistant, "")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(emptyReply, runningNotes: [])).recent.map(\.text), context.recent.map(\.text))
+        // A stored reply's progress notes come before it, so a finished
+        // exchange keeps its reply.
+        let stored = Array(messages.dropLast()) + [row("11", .user, "Trains?"), row("12-commentary-0", .assistant, "Checking."), row("12", .assistant, "The 9:10.")]
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat(stored, runningNotes: notes)).recent.last?.text, "The 9:10.")
+
+        // Tool steps, approvals, questions and prompts never reach the seed,
+        // whatever text they carry.
+        var tool = row("t", .assistant, "TOOL-TEXT")
+        tool.tool = ToolActivity(id: "t", name: "terminal", input: "{}", output: "TOOL-TEXT", status: .complete)
+        var approval = row("a", .assistant, "APPROVAL-TEXT")
+        approval.approval = ApprovalActivity(sessionId: "s", requestId: "r", command: "deploy", description: "APPROVAL-TEXT",
+                                             choices: nil, allowPermanent: false, smartDenied: false, status: .pending, choice: nil, error: nil)
+        var clarify = row("c", .assistant, "CLARIFY-TEXT")
+        clarify.clarify = ClarifyActivity(requestId: "q", question: "CLARIFY-TEXT", choices: [])
+        var prompt = row("p", .assistant, "PROMPT-TEXT")
+        prompt.inputPrompt = InputPromptActivity(requestId: "srq", sessionId: "s", kind: .secret)
+        let mixed = try XCTUnwrap(VoiceResumeContext.chat([row("1", .user, "Deploy it"), tool, approval, clarify, prompt, row("2", .assistant, "Deployed.")]))
+        XCTAssertEqual(mixed.recent.map(\.text), ["Deploy it", "Deployed."])
+
+        // A user turn names its attachments, never their paths.
+        var shared = row("8", .user, "What's on this?")
+        shared.attachments = [Attachment(id: "a", name: "/Users/me/Desktop/board.jpg", uri: "file:///private/board.jpg", mimeType: "image/jpeg", kind: .image)]
+        let named = try XCTUnwrap(VoiceResumeContext.chat([shared, row("9", .assistant, "A to-do list.")])).recent[0].text
+        XCTAssertEqual(named, "What's on this? [Attached: board.jpg (image)]")
+        shared.attachments?[0].name = #"C:\Users\me\board.jpg"#
+        XCTAssertEqual(try XCTUnwrap(VoiceResumeContext.chat([shared, row("9", .assistant, "A to-do list.")])).recent[0].text,
+                       "What's on this? [Attached: board.jpg (image)]", "a Windows path too")
+
+        // A clipped turn still names its files.
+        var long = row("10", .user, String(repeating: "word ", count: 400))
+        long.attachments = shared.attachments
+        let clipped = try XCTUnwrap(VoiceResumeContext.chat([long, row("11", .assistant, String(repeating: "line ", count: 400) + "\nMEDIA:/opt/data/cache/report.pdf")])).recent
+        XCTAssertTrue(clipped[0].text.hasSuffix("[Attached: board.jpg (image)]"))
+        XCTAssertTrue(clipped[1].text.contains("report.pdf"))
+        XCTAssertTrue(clipped.allSatisfy { $0.text.count <= VoiceResumePlan.turnCharacterLimit })
+        // A name the cut lands in goes whole after it, once.
+        let straddle = String(repeating: "x", count: 1_150) + " (a file in the chat: report.pdf) " + String(repeating: "y", count: 200)
+        let fitted = VoiceResumeContext.fitting(straddle, naming: [])
+        XCTAssertEqual(fitted.components(separatedBy: "(a file in the chat:").count, 2)
+        XCTAssertTrue(fitted.hasSuffix("… (a file in the chat: report.pdf)"))
+        // A name with brackets in it goes whole too.
+        let bracketed = String(repeating: "x", count: 1_300) + " (a file in the chat: report(1).pdf)"
+        XCTAssertTrue(VoiceResumeContext.fitting(bracketed, naming: []).hasSuffix("… (a file in the chat: report(1).pdf)"))
+        // Files that leave no room for text: as many as fit, within the limit.
+        let crowded = (0..<80).map { "[Attached: photo-\($0)-from-the-trip.jpg (image)]" }
+        let onlyFiles = VoiceResumeContext.fitting("Look", naming: crowded)
+        XCTAssertLessThanOrEqual(onlyFiles.count, VoiceResumePlan.turnCharacterLimit)
+        XCTAssertTrue(onlyFiles.hasPrefix("[Attached: photo-0-from-the-trip.jpg (image)]"))
+        XCTAssertEqual(onlyFiles, crowded.prefix(25).joined(separator: " "))
+        // One name too long for any turn: the turn is clipped, never dropped.
+        let huge = VoiceResumeContext.fitting("Look", naming: ["[Attached: \(String(repeating: "n", count: 1_300)).jpg (image)]"])
+        XCTAssertTrue(huge.hasPrefix("Look [Attached:"))
+        XCTAssertEqual(huge.count, VoiceResumePlan.turnCharacterLimit)
+
+        XCTAssertNil(VoiceResumeContext.chat([]))
+        XCTAssertNil(VoiceResumeContext.chat([row("1", .user, "Hello?")]), "nothing answered yet: no seed")
+        // A long chat keeps its newest turns within the word-for-word budget.
+        let many = (0..<60).map { row("\($0)", $0 % 2 == 0 ? .user : .assistant, "Turn \($0)") }
+        let recent = try XCTUnwrap(VoiceResumeContext.chat(many)).recent
+        XCTAssertEqual(recent.count, VoiceResumePlan.recentTurnCount)
+        XCTAssertEqual(recent.last?.text, "Turn 59")
+    }
+
     func testACallKeptWithItsChatShowsItsCardAndNeverOwnsTheChat() {
         let start = Date(timeIntervalSince1970: 1_000)
         var links = VoiceCallChatLinks()
@@ -1468,5 +1604,43 @@ extension HermesVoiceGatewayTimeoutTests {
         // The outbox keeps turns as Codable: the cards survive it.
         let decoded = try JSONDecoder().decode(VoiceTranscriptTurn.self, from: JSONEncoder().encode(turn))
         XCTAssertEqual(decoded, turn)
+    }
+
+    /// Issue 1936: a queued call whose row is gone is kept as a new row, its
+    /// live model's cards with it.
+    func testOutboxKeepsCardsWhenItRebuildsACallWhoseRowIsGone() async throws {
+        let normalized: [[String: Any]] = [["type": "place", "places": [["name": "Tartine"]]]]
+        let cards = try JSONSerialization.data(withJSONObject: normalized)
+        let request = VoiceTranscriptSaveRequest(
+            callID: "call-1", engine: .geminiLive, sessionID: "row-1", title: "Breakfast",
+            turns: [
+                VoiceTranscriptTurn(index: 0, role: .user, text: "Where for breakfast?", at: Date()),
+                VoiceTranscriptTurn(index: 1, role: .assistant, text: "Breakfast", at: Date(), cards: cards),
+            ]
+        )
+        let defaults = makeScratchDefaults("VoiceOutboxRowGoneCards")
+        defaults.set("default", forKey: "conduit.activeProfile")
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        appState.connection = HermesConnection(baseUrl: "https://example.com", ticket: "test-ticket")
+        let script = ScriptedVoiceHistoryRequests()
+        appState.voiceHistoryClient = VoiceHistoryClient(request: script.request)
+        var outbox = VoiceTranscriptOutbox()
+        outbox.add(.init(
+            dashboard: appState.activeDashboardID?.uuidString ?? "-", profile: appState.activeProfile,
+            request: request, queuedAt: Date()
+        ))
+        outbox.store(in: defaults)
+
+        script.responses = [.failure(DashboardTicketBridgeError.http(status: 422, detail: ""))]
+        await appState.saveQueuedVoiceCallsNow()
+        let kept = try XCTUnwrap(VoiceTranscriptOutbox.load(from: defaults).entries.first?.request)
+        XCTAssertNil(kept.sessionID, "kept as a new row")
+        XCTAssertEqual(kept.turns.map(\.cards), [nil, cards], "the rebuilt turns keep their cards")
+
+        script.responses = [.success(["ok": true, "session_id": "row-2", "written": 2])]
+        await appState.saveQueuedVoiceCallsNow()
+        let turns = try XCTUnwrap(script.calls.last?.body?["turns"] as? [[String: Any]])
+        let sent = try XCTUnwrap(turns.last?["cards"] as? [[String: Any]])
+        XCTAssertEqual((sent.first?["places"] as? [[String: Any]])?.first?["name"] as? String, "Tartine")
     }
 }

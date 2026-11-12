@@ -7,3 +7,8 @@
 *.yaml text eol=lf
 *.md text eol=lf
 *.swift text
+
+# String Catalogs are written by tools (scripts/l10n.py, Xcode): GitHub
+# folds their diffs in a pull request by default (issue 823). Expand one to
+# review translations.
+*.xcstrings linguist-generated=true
