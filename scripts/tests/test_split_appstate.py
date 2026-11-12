@@ -207,11 +207,21 @@ final class AppState: ObservableObject {
     private(set) var loadState = LoadState()
     private(set) var other = LoadState()
     private(set) var count = 0
+    private(set) var bits = 0
+    private(set) var masks = [0]
+    private(set) var shifted = LoadState()
+    private(set) var unshifted = 0
+    private(set) var weakly = 0
 
     func connect() {
         loadState.reset()
         _ = other.n
         count &+= 1
+        bits &<<= 1
+        masks[0] &>>= 2
+        shifted.n &<<= 3
+        _ = unshifted &<< 1
+        Task { [weak self] in self?.weakly = 1 }
     }
 }
 ''')
@@ -221,6 +231,11 @@ final class AppState: ObservableObject {
         self.assertIn("\n    var loadState = LoadState()", app)
         self.assertIn("private(set) var other = LoadState()", app)
         self.assertIn("\n    var count = 0", app, "&+= writes it")
+        self.assertIn("\n    var bits = 0", app, "&<<= writes it")
+        self.assertIn("\n    var masks = [0]", app, "&>>= through a subscript writes it")
+        self.assertIn("\n    var shifted = LoadState()", app, "&<<= through a property writes it")
+        self.assertIn("private(set) var unshifted = 0", app, "a plain shift only reads it")
+        self.assertIn("\n    var weakly = 0", app, "self?. writes it")
 
     def test_cuts_a_long_region_at_a_declaration(self):
         split.STEPS = [{"AppState+Connection.swift": ["Connection|until connect"],

@@ -549,8 +549,8 @@ def writes(masked_lines, name):
     mutation = MUTATION
     if APP_MUTATING:
         mutation += r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(" + "|".join(sorted(APP_MUTATING)) + r")\b(?!\s*:)"
-    pat = re.compile(r"(?<![\w.])(self\.)?" + re.escape(name) + r"\b(?=" + mutation + r")"
-                     r"|&(self\.)?" + re.escape(name) + r"\b")
+    pat = re.compile(r"(?<![\w.])(self\??\.)?" + re.escape(name) + r"\b(?=" + mutation + r")"
+                     r"|&(self\??\.)?" + re.escape(name) + r"\b")
     return pat.search("\n".join(masked_lines)) is not None
 
 
@@ -579,7 +579,7 @@ def references(masked_lines, name):
     an argument label."""
     n = re.escape(name)
     pat = re.compile(r"(?<![\w.])\$?" + n + r"\b(?!:)"
-                     r"|(?:\bself|\bSelf|\bAppState|\\)\." + n + r"\b")
+                     r"|(?:\bself\??|\bSelf|\bAppState|\\)\." + n + r"\b")
     return pat.search("\n".join(masked_lines)) is not None
 
 

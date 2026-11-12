@@ -189,7 +189,7 @@ final class AppState: ObservableObject {
     /// (a color drag sets one per tick) never samples the photos again.
     var profileGlowPalettes: (avatarRevision: Int, byURL: [URL: [ProfileGlowRGB]]) = (0, [:])
     @Published private(set) var isProfileSwitching = false
-    @Published private(set) var appIconChoice: AppIconChoice
+    @Published var appIconChoice: AppIconChoice
     @Published var dashboardTicketBridge: DashboardTicketBridge?
     private var voiceAssistantObservers: [UUID: @MainActor (VoiceAssistantEvent) -> Void] = [:]
     /// The turn Voice cancelled, by its execution generation (see
