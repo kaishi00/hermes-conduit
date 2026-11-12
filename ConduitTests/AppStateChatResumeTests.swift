@@ -53,6 +53,47 @@ final class AppStateChatResumeTests: XCTestCase {
         appState.forgetNotificationRouteFailure()
         appState.publishNotificationRouteFailure(for: tapA)
         XCTAssertNil(appState.errorMessage)
+
+        // A chat the user opened after the route's latest attempt never
+        // wears its words; one the route's own next attempt opened does.
+        appState.chatSyncErrorMessage = "fourth"
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil))
+        appState.beginExplicitChatViewportTransition()
+        appState.publishNotificationRouteFailure(for: tapA)
+        XCTAssertNil(appState.errorMessage, "a chat opened since isn't the route's")
+        appState.chatSyncErrorMessage = "fifth"
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil))
+        appState.noteNotificationRouteAttempt(for: tapA, transition: appState.beginExplicitChatViewportTransition())
+        appState.publishNotificationRouteFailure(for: tapA)
+        XCTAssertEqual(appState.errorMessage, "fifth", "the route's own next attempt keeps them")
+        appState.errorMessage = nil
+
+        // With a room on screen the chat's line is the one behind it: that
+        // line is held and put back, and the room's banner is left alone.
+        let room = GroupRoom(
+            roomID: "room-1", name: "Planning", members: [],
+            authorityGatewayID: "gw-a", authorityEpoch: 1, revision: 1,
+            createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 0
+        )
+        appState.setActiveRoomSurfaceForTesting(AppState.GroupRoomSurface(dashboardID: UUID(), room: room))
+        appState.errorMessage = "room banner"
+        appState.chatErrorBehindRoom = "chat line"
+        let roomBefore = appState.notificationRouteErrorSnapshot()
+        appState.chatSyncErrorMessage = "behind the room"
+        appState.holdNotificationRouteFailure(for: tapA, restoring: roomBefore)
+        XCTAssertEqual(appState.chatErrorBehindRoom, "chat line")
+        XCTAssertEqual(appState.errorMessage, "room banner")
+        appState.setActiveRoomSurfaceForTesting(nil)
+        appState.publishNotificationRouteFailure(for: tapA)
+        XCTAssertEqual(appState.errorMessage, "behind the room", "said on the chat once the room is gone")
+
+        // An open that closed the room took both lines: the chat now showing
+        // gets neither back, the room's banner least of all.
+        appState.chatSyncErrorMessage = "after the room closed"
+        appState.holdNotificationRouteFailure(for: tapA, restoring: roomBefore)
+        XCTAssertNil(appState.errorMessage)
+        appState.publishNotificationRouteFailure(for: tapA)
+        XCTAssertEqual(appState.errorMessage, "after the room closed")
     }
 
     func testPendingClarifyMessageIDIsCachedWhenTranscriptChanges() {
