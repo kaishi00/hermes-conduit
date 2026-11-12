@@ -36,7 +36,9 @@ private struct SheetAboveAll<Item: Identifiable, Sheet: View>: ViewModifier {
                     return host.route(for: AnyHashable(item.id)) == .root ? item : nil
                 },
                 set: { item = $0 }
-            ), content: sheet)
+            )) { shown in
+                sheet(shown)
+            }
             .onChange(of: item.map { AnyHashable($0.id) }, initial: true) { _, id in
                 follow(id)
             }
