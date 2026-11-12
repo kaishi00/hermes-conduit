@@ -3397,6 +3397,7 @@ final class MessageNormalizerTests: XCTestCase {
         A background subagent you dispatched earlier has finished.
 
         Original goal: Summarize the inbox
+        and flag anything urgent
         Role: leaf
         Status: interrupted   API calls: 3   Duration: 12.5s
         --- RESULT ---
@@ -3410,7 +3411,7 @@ final class MessageNormalizerTests: XCTestCase {
             ])
         ])
         let entry = try XCTUnwrap(messages.first?.delegationReport?.entries.first)
-        XCTAssertEqual(entry.goal, "Summarize the inbox")
+        XCTAssertEqual(entry.goal, "Summarize the inbox and flag anything urgent", "a goal over lines stays whole")
         XCTAssertEqual(entry.outcome, .stopped)
         XCTAssertEqual(entry.duration, 12.5)
         XCTAssertEqual(entry.result, "The subagent was interrupted before completing.")

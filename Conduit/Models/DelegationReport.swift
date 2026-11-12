@@ -82,8 +82,14 @@ struct DelegationReport: Equatable, Codable {
         let lines = text.components(separatedBy: "\n")
         guard let resultIndex = lines.firstIndex(of: "--- RESULT ---"),
               let statusLine = lines[..<resultIndex].last(where: { $0.hasPrefix("Status: ") }) else { return nil }
-        let goal = lines[..<resultIndex].first(where: { $0.hasPrefix("Original goal: ") })
-            .map { String($0.dropFirst("Original goal: ".count)) } ?? ""
+        // A goal can run over lines, up to the preamble's next field.
+        var goal = ""
+        if let goalIndex = lines[..<resultIndex].firstIndex(where: { $0.hasPrefix("Original goal: ") }) {
+            let rest = lines[(goalIndex + 1)..<resultIndex].prefix { line in
+                !preambleFields.contains { line.hasPrefix($0) }
+            }
+            goal = ([String(lines[goalIndex].dropFirst("Original goal: ".count))] + rest).joined(separator: "\n")
+        }
         return Entry(
             number: 1,
             goal: oneLine(goal),
@@ -92,6 +98,9 @@ struct DelegationReport: Equatable, Codable {
             result: cleaned(lines[(resultIndex + 1)...].joined(separator: "\n"))
         )
     }
+
+    /// The lines `_preamble` writes after the goal, and the status line.
+    private static let preambleFields = ["Context you provided: ", "Toolsets: ", "Role: ", "Status: "]
 
     /// Hermes' early word that one agent of a batch still running failed:
     /// `Task:`, `Status:` and the error.
