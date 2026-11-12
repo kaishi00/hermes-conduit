@@ -1670,13 +1670,15 @@ private struct ProjectSessionsSheet: View {
                             .listRowSeparator(.hidden)
                     } else if loadFailed, detail == nil {
                         ContentUnavailableView {
-                            Label(AppLocalization.string("Couldn’t Load Projects", table: .chat), systemImage: "exclamationmark.triangle")
+                            Label(AppLocalization.string("Conversations unavailable"), systemImage: "exclamationmark.triangle")
                         } description: {
                             Text(AppLocalization.string("Couldn't load this project's conversations."))
                         } actions: {
                             Button(AppLocalization.string("Try Again")) {
                                 Task { await load() }
                             }
+                            // Offline it couldn't run; reconnecting reloads.
+                            .disabled(!appState.isConnected)
                         }
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
