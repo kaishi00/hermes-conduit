@@ -5525,7 +5525,7 @@ final class AppState: ObservableObject {
     /// ended elsewhere (its messages move the catalog, which a gateway's
     /// `sessions.changed` reads at once) shows Running or stops without
     /// waiting out the backoff (issue 851).
-    @Published private(set) var chatListCatalogGeneration = 0 {
+    @Published var chatListCatalogGeneration = 0 {
         didSet {
             // Any wait past 4 s: a later step, or the first one stretched
             // by Low Power or Low Data Mode.
