@@ -198,7 +198,9 @@ extension HermesVoiceGatewayTimeoutTests {
             data.append(UInt8(bits & 0xFF))
             data.append(UInt8(bits >> 8))
         }
-        let cuts = [0, 341 * 2, 342 * 2 + 682, 1_400, 1_401 * 2 - 1, 2_000]
+        // Byte offsets into the 2,000-byte stream: chunks of 341, 342, 17,
+        // 1 and 299 samples.
+        let cuts = [0, 341 * 2, 683 * 2, 1_400, 1_402, 2_000]
         let pieces = zip(cuts, cuts.dropFirst()).map { pcm[pcm.startIndex + $0..<pcm.startIndex + $1] }
         var sequential = GrokInputUpsampler()
         let expected = pieces.map { sequential.upsample(Data($0)) }
