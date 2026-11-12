@@ -1276,6 +1276,7 @@ extension AppState {
                 // with its command, replace this one.
                 messages[updatedIndex].approval?.status = .pending
                 messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = nil
                 cacheMessagePresentation()
                 schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
                 return
