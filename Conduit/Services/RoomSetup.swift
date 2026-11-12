@@ -273,3 +273,45 @@ extension AppState {
         }
     }
 }
+
+/// The rooms a change of what rooms may use stops an agent answering in:
+/// those going on with other people's agents, each holding it to the tools
+/// it had when it started (designs/cross-owner-agents, decision 13).
+enum RoomSetupRooms {
+    /// The names of the rooms `profile` is in now with other people's
+    /// agents, those this Hermes hosts and those hosted elsewhere, sorted;
+    /// nil while either list hasn't been read, when nobody can say.
+    static func holding(profile: String, rooms: [GroupRoom]?, copies: [RoomCopy]?) -> [String]? {
+        guard let rooms, let copies else { return nil }
+        let key = profile.lowercased()
+        let hosted = rooms.filter { room in
+            !room.isDisbanded && room.members.contains(where: \.isPeer)
+                && room.members.contains { !$0.isPeer && $0.out == nil && $0.profile?.lowercased() == key }
+        }.map(\.name)
+        let elsewhere = copies.filter { copy in
+            !copy.isOver && copy.yours.contains { $0.profile.lowercased() == key }
+        }.map(\.name)
+        let names = (hosted + elsewhere).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
+        return Array(Set(names)).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
+    }
+
+    /// The confirmation's words: the rooms named when they're known.
+    static func message(profileName: String, rooms: [String]?) -> String {
+        guard let rooms, !rooms.isEmpty else {
+            return AppLocalization.string("\(profileName) then stops answering in rooms already started with other people's agents, which hold it to the tools it had when they started. New rooms use these.", table: .rooms)
+        }
+        let named = ListFormatter.localizedString(byJoining: rooms)
+        return AppLocalization.string("\(profileName) then stops answering in \(named), which hold it to the tools it had when they started. New rooms use these.", table: .rooms)
+    }
+}
+
+extension AppState {
+    /// RoomSetupRooms.holding for this dashboard's rooms as last read.
+    func roomsHoldingTools(of profile: String) -> [String]? {
+        RoomSetupRooms.holding(
+            profile: profile,
+            rooms: groupRoomsListed ? groupRooms : nil,
+            copies: canInviteLinkedPeople ? linkedRoomCopies?.copies : []
+        )
+    }
+}

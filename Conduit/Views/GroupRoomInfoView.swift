@@ -19,6 +19,10 @@ struct GroupRoomInfoSheet: View {
     @State private var takingOut: GroupMember?
     @State private var confirmingLeave = false
     @State private var working = false
+    /// What each of your agents may do here, by profile, read when Group
+    /// Info opens and again when you come back from its choices: shown on
+    /// its row, so nobody has to guess why a bot won't look something up.
+    @State private var agentTools: [String: RoomChoices] = [:]
     /// A refusal's title and the plugin's words.
     @State private var refusal: (title: String, message: String)?
     /// Whether the sheet is still up, for a room chat that fails after Done.
@@ -122,6 +126,13 @@ struct GroupRoomInfoSheet: View {
                             HStack {
                                 GroupRoomMemberRow(member: member, route: nil)
                                 Spacer(minLength: 8)
+                                if let tools = agentTools[profile].map({ RoomInviteChoicesView.toolsLabel($0.tools) }),
+                                   !tools.isEmpty {
+                                    Text(tools)
+                                        .scaledFont(.footnote)
+                                        .foregroundStyle(.secondary)
+                                        .lineLimit(1)
+                                }
                                 SettingsChevron()
                             }
                             .contentShape(Rectangle())
@@ -157,10 +168,30 @@ struct GroupRoomInfoSheet: View {
                 })
             }
             if offersChoices {
-                Text(AppLocalization.string("Tap one of your agents to choose what it may do and share here.", table: .rooms))
+                Text(AppLocalization.string("Tap one of your agents to choose what it may do and share here. Other people choose for theirs.", table: .rooms))
                     .settingsCaption()
             }
         }
+        // Read again on coming back from an agent's choices, too.
+        .onAppear {
+            guard offersChoices else { return }
+            let profiles = members.filter { !$0.isPeer && $0.out == nil }.compactMap(\.profile).filter { !$0.isEmpty }
+            Task { await loadAgentTools(roomID: room.roomID, profiles: profiles) }
+        }
+    }
+
+    /// Each agent's choices for the room, one read each; one that fails
+    /// shows no line rather than a wrong one.
+    private func loadAgentTools(roomID: String, profiles: [String]) async {
+        let client = appState.roomChoicesClient
+        var read: [String: RoomChoices] = [:]
+        // A room holds at most six agents, so one read after another.
+        for profile in Array(Set(profiles)).sorted() {
+            if let choices = try? await client.choices(roomID: roomID, profile: profile) { read[profile] = choices }
+        }
+        // Another room opened meanwhile.
+        guard appState.activeRoomSurface?.room.roomID == roomID else { return }
+        if read != agentTools { agentTools = read }
     }
 }
 
