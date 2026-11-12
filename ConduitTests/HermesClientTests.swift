@@ -3279,8 +3279,10 @@ final class HermesClientTests: XCTestCase {
             profile: nil,
             transportFactory: { FakeTransport() }
         )
+        outgoing.sendsChangeEvents = true
         XCTAssertTrue(outgoing.handOffSocket(to: incoming))
         XCTAssertTrue(incoming.speaksSessionAuthority)
+        XCTAssertTrue(incoming.sendsChangeEvents, "The same socket's gateway still pushes sessions.changed")
         count = socket.sentTexts.count
         let confirm = Task<ModelSwitchOutcome, Error> {
             try await incoming.setModel("sess-1", model: "big", provider: "custom", confirmed: true)

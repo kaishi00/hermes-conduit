@@ -6381,7 +6381,10 @@ final class AppState: ObservableObject {
     /// waiting out the backoff (issue 851).
     @Published private(set) var chatListCatalogGeneration = 0 {
         didSet {
-            if !chatListPollPacer.backoff.isAtShortest { chatListPollSleep.wake() }
+            // Any wait past 4 s: a later step, or the first one stretched
+            // by Low Power or Low Data Mode.
+            let wait = PollCadence.stretched(chatListPollPacer.backoff.interval, by: deviceConditions())
+            if wait > PollCadence.chatListSteps[0] { chatListPollSleep.wake() }
         }
     }
     /// The chat New Chat (or a project's new chat) just made here. Hermes
@@ -24741,8 +24744,10 @@ final class AppState: ObservableObject {
             registry = []
         }
         // A gateway that pushes `sessions.changed` has each change read as
-        // it comes: the timed read is only its backstop (issue 851).
-        let fallback = followsChanges
+        // it comes: the timed read is only its backstop (issue 851). One
+        // held back by a turn here keeps the 30 s read, so a chat deleted
+        // elsewhere during a long reply leaves as it did before.
+        let fallback = followsChanges && !catalogChangeSignal.isPending
             ? ChatListCatalogFreshness.fallbackIntervalFollowingChanges
             : ChatListCatalogFreshness.fallbackInterval
         if chatListCatalogFreshness.shouldRead(olderThan: fallback, now: chatSyncNow()) {

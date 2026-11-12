@@ -782,6 +782,36 @@ final class ChatSyncTests: XCTestCase {
         XCTAssertEqual(box.loads, 2, "The backstop still reads once")
     }
 
+    /// A change held back by a turn running here keeps the 30 s read, so a
+    /// chat deleted elsewhere during a long reply still leaves.
+    func testAChangeHeldByATurnHereKeepsTheThirtySecondRead() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        followChanges(appState)
+        let profile = appState.activeProfile
+        box.catalog = [row("open", profile: profile), row("deleted", profile: profile)]
+        await appState.loadSessions()
+        XCTAssertEqual(box.loads, 1)
+        appState.activeSessionId = "open"
+        appState.handleStreamEvent(.sessionBusy(sessionId: "open", busy: true))
+        XCTAssertTrue(appState.turnState.isRunning)
+        // Hermes runs it too, so the open chat's own check reads nothing.
+        box.live = [LiveSessionStatus(runtimeSessionId: "rt-open", storedSessionId: "open", status: "working", messageCount: 2)]
+
+        box.catalog = [row("open", profile: profile)]
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        XCTAssertEqual(box.loads, 1, "Held while the turn runs here")
+        for _ in 0..<8 { // 0 … 28 s
+            await poll(appState)
+            box.now += 4
+        }
+        XCTAssertEqual(box.loads, 1)
+        await poll(appState) // 32 s
+        XCTAssertEqual(box.loads, 2, "The backstop reads it at 30 s, as before change events")
+        XCTAssertEqual(appState.sessions.map(\.id), ["open"])
+    }
+
     func testAQuietListFollowingChangeEventsWaitsUpToTwoMinutes() async {
         let box = Box()
         let appState = makeAppState(box)
