@@ -687,7 +687,7 @@ GPT-Live, Grok Live and Local Live hand questions about it to Hermes; Classic
 voice's next turn carries it) · a call from Hermes (the same call screen) ·
 Ask Hermes About Screen's screenshot (the same waiting picture, notes and
 banner) · the composer, which shows the waiting photo as it does a screenshot
-(see Attaching files) · a new chat that the photo waits on and an empty new
+(see Attaching files) · a call kept with a workstream, whose requests take only words, and the result GPT-Live's delegation reads (see Bot workstreams) · a new chat that the photo waits on and an empty new
 chat Hermes lost, which hand it on as a photo (see both entries) · the call
 screen's row of buttons (see Audio route, Speaker and mute) · what models
 read: the quiet notes and the call's instructions · README.md's voice
@@ -697,7 +697,7 @@ neither has a camera surface.
 **Code**
 - The button: `Conduit/Views/VoicePhotoButton.swift` (VoicePhotoButton, LiveVoiceCallPhotoButton), `Conduit/Views/LiveVoiceCallSheet.swift` (showsCamera, showsPhoto), `Conduit/Views/GeminiLiveViews.swift`, `Conduit/Views/GPTLiveViews.swift`, `Conduit/Views/VoiceConversationSheet.swift` (Classic, both layouts)
 - Where it goes: `Conduit/Services/AppState+VoicePhoto.swift` (VoicePhotoTarget, addVoicePhoto), `Conduit/Services/AppState+ScreenQuestion.swift` (SharedPictureKind, setPendingScreenshot, pendingScreenshotEntry, voiceScreenshotKind), `Conduit/Services/AppState.swift` (submitComposer takes the waiting picture; liveVoiceThreadInstructions)
-- What the call hears: `Conduit/Voice/VoiceBackgroundJobs.swift` (notePhotoShared, notePhotoMissedModel, retractScreenshotNote and their prompts), `Conduit/Services/AppState+BotWorkstreams.swift` (sendCallRequestToWorkstream's workstreamCallLeftPicture)
+- What the call hears: `Conduit/Voice/VoiceBackgroundJobs.swift` (notePhotoShared, notePhotoMissedModel, retractScreenshotNote and their prompts), `Conduit/Services/AppState+BotWorkstreams.swift` (sendCallRequestToWorkstream's workstreamCallLeftPicture), `Conduit/Voice/GPTLive/GPTLiveDelegationBridge.swift` (a sent request read by workstreamCallSent's start)
 - The model's copy: `Conduit/Voice/LiveVoicePhoto.swift` (LiveVoicePhotoFrame), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (canShowPhoto, showPhoto), `Shared/GeminiLive/GeminiLiveProtocol.swift` (LiveVoiceClientMessage.image, imageMessage), `Shared/GeminiLive/QwenLiveSocket.swift` (input_image_buffer.append), `Shared/GrokLive/GrokLiveProtocol.swift` and `Shared/LocalLive/LocalLiveSession.swift` (dropped)
 - The banner: `Conduit/Views/ScreenQuestionViews.swift` (ScreenQuestionVoiceBanner's kind), `Conduit/Views/RootView.swift`
 - Tests: `ConduitTests/AppStateScreenQuestionTests.swift`, `ConduitTests/QwenLiveVoiceTests.swift`, `ConduitTests/GrokLiveVoiceTests.swift`, `ConduitTests/ComposerCameraCaptureTests.swift`
