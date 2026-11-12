@@ -42,6 +42,12 @@ struct WorkspaceCodeEditor: UIViewRepresentable {
         context.coordinator.parent = self
         if view.text != text {
             view.text = text
+            context.coordinator.language = language
+            context.coordinator.highlight(view, now: true)
+        } else if context.coordinator.language != language {
+            // The file's language can arrive after its draft (a tab
+            // reopened while the file loads again).
+            context.coordinator.language = language
             context.coordinator.highlight(view, now: true)
         }
         if context.coordinator.findRequest != findRequest {
@@ -54,11 +60,14 @@ struct WorkspaceCodeEditor: UIViewRepresentable {
     final class Coordinator: NSObject, UITextViewDelegate {
         var parent: WorkspaceCodeEditor
         var findRequest: Int
+        /// The language the text was last colored as.
+        var language: String
         private var pending: Task<Void, Never>?
 
         init(_ parent: WorkspaceCodeEditor) {
             self.parent = parent
             self.findRequest = parent.findRequest
+            self.language = parent.language
         }
 
         func textViewDidChange(_ textView: UITextView) {

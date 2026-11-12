@@ -10,7 +10,7 @@ final class WorkspaceFilesClient {
     /// `GET /workspace/resolve` (plugin 0.132): where a file a reply names
     /// by its name or a relative path is (issue 1809).
     static let resolveCapability = "workspace-resolve"
-    /// `POST /workspace/duplicate` with `to` (plugin 0.164.12): Copy, then
+    /// `POST /workspace/duplicate` with `to` (plugin 0.164.13): Copy, then
     /// Paste into another folder (issue 1438).
     static let copyCapability = "workspace-copy"
     static let path = "/api/plugins/conduit_push/workspace"

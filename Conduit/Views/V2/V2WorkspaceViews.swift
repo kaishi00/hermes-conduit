@@ -1127,7 +1127,9 @@ struct WorkspaceFileSheet: View {
     @State private var imageGallery = ImageGallerySource()
     @State private var drafts: [String: Draft] = [:]
     @State private var saving = false
-    @State private var conflict = false
+    /// The file whose save the host refused as changed since it was read:
+    /// Replace It saves this one, whichever tab shows now.
+    @State private var conflicted: WorkspaceEntry?
     /// The tab whose changes Cancel or its close button would discard.
     @State private var discarding: WorkspaceEntry?
     /// Done with changes in tabs: discard them all?
@@ -1168,9 +1170,15 @@ struct WorkspaceFileSheet: View {
         }
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(hasChanges)
-        .alert(AppLocalization.string("This file changed on your Hermes host"), isPresented: $conflict) {
-            Button(AppLocalization.string("Replace It"), role: .destructive) { Task { await save(force: true) } }
-            Button(AppLocalization.string("Keep Editing"), role: .cancel) {}
+        .alert(AppLocalization.string("This file changed on your Hermes host"), isPresented: Binding(
+            get: { conflicted != nil }, set: { if !$0 { conflicted = nil } }
+        )) {
+            Button(AppLocalization.string("Replace It"), role: .destructive) {
+                guard let file = conflicted else { return }
+                conflicted = nil
+                Task { await save(file, force: true) }
+            }
+            Button(AppLocalization.string("Keep Editing"), role: .cancel) { conflicted = nil }
         } message: {
             Text("It changed after you opened it. Replace it with your version, or keep editing and copy what you need.")
         }
@@ -1320,7 +1328,7 @@ struct WorkspaceFileSheet: View {
                 if saving {
                     ProgressView()
                 } else {
-                    Button(AppLocalization.string("Save")) { Task { await save(force: false) } }
+                    Button(AppLocalization.string("Save")) { Task { await save(shown, force: false) } }
                         .disabled(drafts[shown.path]?.changed != true)
                         .keyboardShortcut("s", modifiers: .command)
                 }
@@ -1421,8 +1429,7 @@ struct WorkspaceFileSheet: View {
         }
     }
 
-    private func save(force: Bool) async {
-        let file = shown
+    private func save(_ file: WorkspaceEntry, force: Bool) async {
         guard let edited = drafts[file.path] else { return }
         let text = edited.text
         saving = true
@@ -1433,7 +1440,7 @@ struct WorkspaceFileSheet: View {
         }
         if let error {
             if case DashboardTicketBridgeError.http(status: 409, _) = error {
-                conflict = true
+                conflicted = file
             } else {
                 failure = UserFacingError.message(for: error)
             }
