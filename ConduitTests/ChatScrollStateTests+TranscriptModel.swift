@@ -82,6 +82,37 @@ extension ChatScrollStateTests {
         XCTAssertEqual(rows(input, chat).first?.kind, .loadEarlier(isLoading: true))
     }
 
+    /// Issue 2142: the turn has ended and its delegate agents still work.
+    /// The chat says it waits for them; the turn itself isn't running.
+    @MainActor
+    func testAnEndedTurnWaitsForItsBackgroundAgents() {
+        let chat = targets([message("u1", .user), message("a1", .assistant)])
+        var input = TranscriptModel.Input(targetsRevision: 1)
+        input.live = TranscriptModel.LiveTurn(agentsAwaited: 2)
+        let drawn = rows(input, chat)
+        XCTAssertEqual(drawn.map(\.id), ["u1", "a1", TranscriptRow.awaitingAgentsID])
+        XCTAssertEqual(drawn.last?.kind, .awaitingAgents(2))
+
+        input.live.agentsAwaited = 1
+        XCTAssertEqual(
+            TranscriptChangeSet.between(drawn, rows(input, chat)).changed, [TranscriptRow.awaitingAgentsID],
+            "one finishing redraws the line with the new count"
+        )
+        input.live.agentsAwaited = 0
+        XCTAssertEqual(rows(input, chat).map(\.id), ["u1", "a1"], "the last one finishing clears it")
+
+        // A running turn has its own line: the agents are part of it.
+        input.live = TranscriptModel.LiveTurn(isBusy: true, agentsAwaited: 2)
+        XCTAssertEqual(rows(input, chat).map(\.id), ["u1", "a1", TranscriptRow.workingID])
+        input.live = TranscriptModel.LiveTurn(shape: LiveTurnShape(streams: true), agentsAwaited: 2)
+        XCTAssertEqual(rows(input, chat).map(\.id), ["u1", "a1", TranscriptRow.streamingID], "a reply still finishing")
+        input.live = TranscriptModel.LiveTurn(repliesElsewhere: true, agentsAwaited: 2)
+        XCTAssertEqual(rows(input, chat).map(\.id), ["u1", "a1", TranscriptRow.workingID])
+        // Under a saved copy of another chat, the agents aren't that chat's.
+        input.live = TranscriptModel.LiveTurn(isShown: false, agentsAwaited: 2)
+        XCTAssertEqual(rows(input, chat).map(\.id), ["u1", "a1"])
+    }
+
     @MainActor
     func testAChatWithNoRowsDrawsItsWelcomeOrTheSavedCopysStatus() {
         let pending = pendingSend()

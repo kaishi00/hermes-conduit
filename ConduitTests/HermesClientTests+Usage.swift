@@ -7,6 +7,7 @@
 //
 
 import Foundation
+import UIKit
 import XCTest
 @testable import Conduit
 
@@ -147,5 +148,84 @@ extension HermesClientTests {
         XCTAssertEqual(limited.map(\.model), ["gpt-x"])
 
         XCTAssertEqual(quotas[2].limit, .account(resetsAt: nil))
+    }
+
+    /// A provider's row in the Model lists reads its quota from the same
+    /// `model.options` row, in one line: the tightest account-wide window,
+    /// a pool's account with the most left, or a limit.
+    func testAProviderRowCarriesItsQuotaSummary() throws {
+        let reset = "2026-10-22T03:00:00+00:00"
+        let row: [String: Any] = [
+            "slug": "opencode-go", "name": "OpenCode Go", "models": ["glm-5"],
+            "usage": ["windows": [
+                ["label": "5 hours", "used_percent": 20, "resets_at": reset, "scope": "account"] as [String: Any],
+                ["label": "Weekly", "used_percent": 35, "resets_at": "2026-10-25T00:00:00+00:00", "scope": "account"] as [String: Any],
+                ["label": "One family", "used_percent": 99, "scope": "model"] as [String: Any],
+            ] as [[String: Any]]] as [String: Any],
+        ]
+        let provider = try XCTUnwrap(ProviderInfo(from: AnyCodable.from(row)))
+        let summary = try XCTUnwrap(provider.quota?.summary)
+        XCTAssertEqual(try XCTUnwrap(summary.left), 0.65, accuracy: 0.0001)
+        XCTAssertEqual(summary.resetsAt, ISO8601DateFormatter().date(from: "2026-10-25T00:00:00Z"))
+        XCTAssertFalse(summary.isLimited)
+
+        // No usage: no quota, as for most API keys.
+        XCTAssertNil(ProviderInfo(from: AnyCodable.from(["slug": "zai", "models": ["glm-5"]] as [String: Any]))?.quota)
+
+        // A pool: the usable account with the most left; a limited one is skipped.
+        let pool = ProviderQuota(row: ["slug": "openai-codex", "usage": ["accounts": [
+            ["id": "a", "state": "limited", "resets_at": reset, "windows": [["label": "Session", "used_percent": 100] as [String: Any]]] as [String: Any],
+            ["id": "b", "state": "ready", "windows": [["label": "Session", "used_percent": 70] as [String: Any]]] as [String: Any],
+            ["id": "c", "state": "ready", "windows": [["label": "Session", "used_percent": 40] as [String: Any]]] as [String: Any],
+        ] as [[String: Any]]] as [String: Any]])
+        XCTAssertEqual(try XCTUnwrap(pool?.summary?.left), 0.6, accuracy: 0.0001)
+
+        // Every signed-in account limited: limited until the first frees.
+        let spent = ProviderQuota(row: ["slug": "openai-codex", "usage": ["accounts": [
+            ["id": "a", "state": "limited", "resets_at": "2026-10-23T00:00:00+00:00"] as [String: Any],
+            ["id": "b", "state": "limited", "resets_at": reset] as [String: Any],
+            ["id": "c", "state": "unavailable"] as [String: Any],
+        ] as [[String: Any]]] as [String: Any]])
+        XCTAssertEqual(spent?.summary, ProviderQuotaSummary(left: nil, resetsAt: ISO8601DateFormatter().date(from: "2026-10-22T03:00:00Z")))
+
+        // An account-wide rate limit wins over any window.
+        let limited = ProviderQuota(row: ["slug": "nous", "limit": ["scope": "account"], "usage": ["windows": [
+            ["label": "Month", "used_percent": 10] as [String: Any],
+        ]]] as [String: Any])
+        XCTAssertEqual(limited?.summary, ProviderQuotaSummary(left: nil, resetsAt: nil))
+
+        let now = try XCTUnwrap(ISO8601DateFormatter().date(from: "2026-10-22T01:00:00Z"))
+        // In the app language's own digits and separators.
+        let locale = AppLocalization.formattingLocale
+        let whole = (1.0).formatted(.percent.precision(.fractionLength(0)).locale(locale))
+        let sliver = (0.004).formatted(.percent.precision(.fractionLength(0...1)).locale(locale))
+        XCTAssertTrue(ProviderQuotaLine.text(ProviderQuotaSummary(left: 1, resetsAt: nil), now: now).contains(whole))
+        XCTAssertTrue(ProviderQuotaLine.text(ProviderQuotaSummary(left: 0.004, resetsAt: nil), now: now).contains(sliver))
+        XCTAssertEqual(ProviderQuotaLine.text(ProviderQuotaSummary(left: 0, resetsAt: nil), now: now), AppLocalization.string("Limited"))
+    }
+
+    /// Every provider Hermes ships gets its logo by slug, a custom
+    /// endpoint by a word in its name, and every logo named is bundled.
+    func testProviderLogosMatchSlugsAndNamesAndAreBundled() {
+        XCTAssertEqual(ProviderLogo.asset(slug: "openrouter"), "provider-openrouter")
+        XCTAssertEqual(ProviderLogo.asset(slug: "OpenCode-Go"), "provider-opencode")
+        XCTAssertEqual(ProviderLogo.asset(slug: "kimi-coding-cn"), "provider-kimi")
+        XCTAssertEqual(ProviderLogo.asset(slug: "custom:ollama-cloud"), "provider-ollama")
+        XCTAssertEqual(ProviderLogo.asset(slug: "lab-vllm", name: "Lab vLLM"), "provider-vllm")
+        XCTAssertEqual(ProviderLogo.asset(slug: "together", name: "Together AI"), "provider-together")
+        XCTAssertEqual(ProviderLogo.asset(slug: "my-box", name: "LM Studio"), "provider-lmstudio")
+        // A host before the models it serves.
+        XCTAssertEqual(ProviderLogo.asset(slug: "work", name: "Azure OpenAI"), "provider-azure")
+        // Whole words only: "xai" isn't inside another word.
+        XCTAssertNil(ProviderLogo.asset(slug: "moa", name: "Mixture of Agents"))
+        XCTAssertNil(ProviderLogo.asset(slug: "xiaomi", name: "Xiaomi MiMo"))
+        XCTAssertEqual(ProviderLogo.initial("Xiaomi MiMo"), "X")
+        XCTAssertEqual(ProviderLogo.initial("  z.ai"), "Z")
+
+        let bundle = Bundle(for: AppState.self)
+        let logos = Set(ProviderLogo.bySlug.values).union(ProviderLogo.byWord.map(\.logo))
+        for logo in logos.sorted() {
+            XCTAssertNotNil(UIImage(named: "provider-" + logo, in: bundle, with: nil), logo)
+        }
     }
 }

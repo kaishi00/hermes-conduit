@@ -185,7 +185,9 @@ struct NeedsYouSheet: View {
                                 NeedsYouRow(item: item)
                             }
                             .buttonStyle(.plain)
-                            .accessibilityHint(AppLocalization.string("Opens the chat at its card"))
+                            .accessibilityHint(item.roomID == nil
+                                ? AppLocalization.string("Opens the chat at its card")
+                                : AppLocalization.string("Opens this group chat."))
                         }
                     }
                 }

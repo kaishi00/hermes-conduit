@@ -6,7 +6,7 @@
 //  a folder's, paged left and right, closed with a swipe down. Pinch and a
 //  double tap zoom; a zoomed picture pans, and its edge hands the swipe on
 //  to the next one. Share offers Save Image, Copy and Save to Files, as
-//  Quick Look did. Videos, audio and documents still open in Quick Look
+//  Quick Look did, and Save to Hermes Album (PhonePhotoAlbum). Videos, audio and documents still open in Quick Look
 //  (MediaPreviewPresenter); only pictures page here.
 //
 //  A gallery is a list of items, each fetching its own original when its
@@ -428,7 +428,8 @@ final class ImageGalleryViewController: UIViewController {
 
     @objc private func shareCurrent() {
         guard let file = files[index] else { return }
-        let controller = UIActivityViewController(activityItems: [file.url], applicationActivities: nil)
+        let controller = UIActivityViewController(activityItems: [file.url],
+                                                  applicationActivities: [SaveToHermesAlbumActivity()])
         if let popover = controller.popoverPresentationController {
             popover.sourceView = shareButton
             popover.sourceRect = shareButton.bounds
@@ -911,5 +912,42 @@ private extension UIFont {
     func withWeight(_ weight: UIFont.Weight) -> UIFont {
         let descriptor = fontDescriptor.addingAttributes([.traits: [UIFontDescriptor.TraitKey.weight: weight]])
         return UIFont(descriptor: descriptor, size: 0)
+    }
+}
+
+
+/// The share sheet's Save to Hermes Album: the picture goes into an album
+/// called Hermes in Photos, made the first time.
+final class SaveToHermesAlbumActivity: UIActivity {
+    private var file: URL?
+
+    override class var activityCategory: UIActivity.Category { .action }
+    override var activityType: UIActivity.ActivityType? { UIActivity.ActivityType("com.milim.relay.save-to-hermes-album") }
+    override var activityTitle: String? { AppLocalization.string("Save to Hermes Album") }
+    override var activityImage: UIImage? { UIImage(systemName: "rectangle.stack.badge.plus") }
+
+    override func canPerform(withActivityItems activityItems: [Any]) -> Bool {
+        activityItems.contains { ($0 as? URL)?.isFileURL == true }
+    }
+
+    override func prepare(withActivityItems activityItems: [Any]) {
+        file = activityItems.lazy.compactMap { $0 as? URL }.first { $0.isFileURL }
+    }
+
+    override func perform() {
+        guard let file else {
+            activityDidFinish(false)
+            return
+        }
+        Task { @MainActor in
+            do {
+                try await PhonePhotoAlbum.save(fileURL: file)
+                Haptics.success()
+                activityDidFinish(true)
+            } catch {
+                Haptics.error()
+                activityDidFinish(false)
+            }
+        }
     }
 }

@@ -563,6 +563,22 @@ final class AppStateVoiceCapabilityTests: XCTestCase {
         }
     }
 
+    // Issue 1980: the glows' phase is an input of their own view, so a
+    // new phase is a change SwiftUI redraws on each tick, and the glows
+    // move with it rather than sitting still and jumping later.
+    func testBackdropGlowsAreANewViewAtEachPhaseAndMoveWithIt() {
+        let early = ConduitBackdropGlows(drift: 0.03, warmColor: .orange, auraColor: .blue)
+        let later = ConduitBackdropGlows(drift: 0.91, warmColor: .orange, auraColor: .blue)
+        XCTAssertNotEqual(early, later)
+        XCTAssertEqual(early, ConduitBackdropGlows(drift: 0.03, warmColor: .orange, auraColor: .blue))
+
+        let size = CGSize(width: 1000, height: 1000)
+        XCTAssertEqual(ConduitBackdropGlows.warmOffset(drift: 0, in: size).width, -180, accuracy: 0.001)
+        XCTAssertEqual(ConduitBackdropGlows.warmOffset(drift: 1, in: size).width, 300, accuracy: 0.001)
+        XCTAssertEqual(ConduitBackdropGlows.auraOffset(drift: 0, in: size).width, 260, accuracy: 0.001)
+        XCTAssertEqual(ConduitBackdropGlows.auraOffset(drift: 1, in: size).width, -320, accuracy: 0.001)
+    }
+
     func testAgentMarkBreathStartsAtRestAndPeaksHalfwayThrough() {
         XCTAssertEqual(ConduitAgentMark.breath(at: 0), 0, accuracy: 0.000_001)
         XCTAssertEqual(ConduitAgentMark.breath(at: ConduitAgentMark.breathDuration / 2), 1, accuracy: 0.000_001)

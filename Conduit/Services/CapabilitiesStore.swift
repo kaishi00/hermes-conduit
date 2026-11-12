@@ -63,6 +63,8 @@ final class CapabilitiesStore {
     /// dashboard and profile, the plugin catalog once per dashboard.
     enum KeptRoute {
         static let officialSkills = "/api/skills/hub/official"
+        /// The skill hub's sources, featured skills and installed ones.
+        static let skillHub = "/api/skills/hub/sources"
         /// The year's calls per tool: the usage answer's `tools` alone.
         static let toolCalls = "conduit:capability-tool-calls"
         /// The servers and the catalog as Conduit read them (their Codable
@@ -88,7 +90,7 @@ final class CapabilitiesStore {
     /// catalog counts on its own: its read can fail while the list's
     /// answers, and it then stays the kept one.
     enum KeptList: Hashable {
-        case officialSkills, toolCalls, connectors, connectorCatalog, plugins, pluginCatalog
+        case officialSkills, skillHub, toolCalls, connectors, connectorCatalog, plugins, pluginCatalog
     }
 
     /// The lists showing their kept copy: each asks Hermes again when its
@@ -98,7 +100,27 @@ final class CapabilitiesStore {
 
     // Skills
     private(set) var officialSkills: [OfficialSkill] = []
+    /// A read of the official skills is on its way, so the tab can say so.
+    private(set) var officialSkillsLoading = false
+    /// The newest read of the official skills: only it clears the flag.
+    /// Its own count, since a change bumps `skillsEpoch` without a read.
+    @ObservationIgnored private var officialSkillsRead = 0
+    /// The last read of the official skills failed: with none shown, the
+    /// tab says so with Try Again rather than "No skills yet".
+    private(set) var officialSkillsFailed = false
     private(set) var skillInstalls: [String: CapabilityInstallState] = [:]
+    /// The skill hub, nil until read (or kept).
+    private(set) var skillHub: SkillHubSnapshot?
+    /// Hub skills the profile has installed, identifier -> name: from the
+    /// hub's read or the latest search, so a search still marks them when
+    /// the sources read failed.
+    private(set) var hubInstalled: [String: String] = [:]
+    private(set) var skillHubError: String?
+    /// A Hermes without the hub's routes: Browse Skill Hub isn't offered.
+    private(set) var skillHubMissing = false
+    /// Hub skills being removed, by name, and why one failed.
+    private(set) var skillRemovals: [String: CapabilityInstallState] = [:]
+    private(set) var skillsUpdate: CapabilityInstallState?
 
     // Tools
     /// Tool name -> calls over the last year; nil until read.
@@ -116,6 +138,14 @@ final class CapabilitiesStore {
     // Plugins
     private(set) var plugins: [AgentPluginRow] = []
     private(set) var pluginCatalog: [PluginCatalogEntry] = []
+    /// A read of the plugin catalog is on its way, so the tab can say so.
+    private(set) var pluginCatalogLoading = false
+    /// The newest read of the catalog: only it clears the flag. Its own
+    /// count, since a change bumps `pluginsEpoch` without a read.
+    @ObservationIgnored private var pluginCatalogRead = 0
+    /// The last read of the catalog failed: with none shown, the tab says
+    /// so with Try Again rather than leaving the catalog out.
+    private(set) var pluginCatalogFailed = false
     private(set) var pluginsLoaded = false
     private(set) var pluginsError: String?
     private(set) var pluginBusy: Set<String> = []
@@ -135,6 +165,10 @@ final class CapabilitiesStore {
     /// refresh that answers late can't bring back an older list or undo a
     /// switch just flipped.
     @ObservationIgnored private var skillsEpoch = 0
+    /// Bumped by every hub read and every install or removal: an answer
+    /// asked before a newer one, or before a change, never puts back the
+    /// installed skills it saw.
+    @ObservationIgnored private var skillHubEpoch = 0
     @ObservationIgnored private var connectorsEpoch = 0
     /// The read whose list is showing.
     @ObservationIgnored private var connectorsShownEpoch = 0
@@ -164,7 +198,15 @@ final class CapabilitiesStore {
         self.dashboardAnswers = dashboardAnswers
         generation &+= 1
         officialSkills = []
+        officialSkillsLoading = false
+        officialSkillsFailed = false
         skillInstalls = [:]
+        skillHub = nil
+        hubInstalled = [:]
+        skillHubError = nil
+        skillHubMissing = false
+        skillRemovals = [:]
+        skillsUpdate = nil
         toolCalls = nil
         servers = []
         connectorCatalog = []
@@ -175,6 +217,8 @@ final class CapabilitiesStore {
         connectorInstalls = [:]
         plugins = []
         pluginCatalog = []
+        pluginCatalogLoading = false
+        pluginCatalogFailed = false
         pluginsLoaded = false
         pluginsError = nil
         pluginBusy = []
@@ -187,6 +231,11 @@ final class CapabilitiesStore {
         if let kept = answers?.kept(KeptRoute.officialSkills) {
             officialSkills = Self.officialSkills(from: kept)
             showsKept.insert(.officialSkills)
+        }
+        if let kept = answers?.kept(KeptRoute.skillHub) {
+            skillHub = SkillHubSnapshot(kept)
+            hubInstalled = skillHub?.installed ?? [:]
+            showsKept.insert(.skillHub)
         }
         if let kept = answers?.kept(KeptRoute.toolCalls) {
             toolCalls = CapabilityToolsetOrdering.toolCallCounts(from: kept)
@@ -215,6 +264,52 @@ final class CapabilitiesStore {
     /// detail page never reads the previous dashboard or profile.
     func serves(_ owner: CapabilitySnapshotOwner) -> Bool {
         requester.map { ObjectIdentifier($0) } == owner.bridge && profile == owner.profile
+    }
+
+    // MARK: Plugin settings
+
+    /// Saves a plugin's settings form: each new secret to the profile's
+    /// `.env` (never read back), then the values through Hermes' plugin
+    /// settings call (`write`, given the values and the profile), which
+    /// also tells the plugin they changed. Answers the fields as Hermes now
+    /// has them. Only on the default profile, where Hermes keeps plugin
+    /// settings. A dashboard or profile switch while a write waits stops the
+    /// rest, so no key or value lands on the new host or profile; when some
+    /// keys were already saved, the error says so.
+    /// `generation` is the store's when Save was pressed: a switch before
+    /// the save starts writes nothing.
+    func savePluginSettings(
+        save: PluginSettings.Save,
+        generation pressed: Int? = nil,
+        write: @escaping @MainActor ([String: Any], String) async throws -> [PluginSettingField]?
+    ) async throws -> [PluginSettingField]? {
+        let token = pressed ?? generation
+        guard token == generation else { throw CapabilitiesStoreError.profileChanged }
+        try requirePluginProfile()
+        let profile = profile
+        let envPath = scoped("/api/env")
+        var written: [String] = []
+        do {
+            for (env, value) in save.secrets.sorted(by: { $0.key < $1.key }) {
+                guard token == generation else { throw CapabilitiesStoreError.profileChanged }
+                _ = try await request(envPath, method: "PUT", body: DashboardPath.bodyWithProfile(["key": env, "value": value], profile: profile))
+                written.append(env)
+            }
+            guard token == generation else { throw CapabilitiesStoreError.profileChanged }
+            let values = PluginSettings.body(save.values)
+            return try await ProfileConfigWriteQueue.runThrowing {
+                guard token == self.generation else { throw CapabilitiesStoreError.profileChanged }
+                return try await write(values, profile)
+            }
+        } catch where !written.isEmpty && !(error is CancellationError) {
+            // Keys already in `.env` stay there: say which, rather than
+            // suggest the whole save was undone.
+            throw PluginSettings.PartialSave(
+                saved: written,
+                switched: error as? CapabilitiesStoreError == .profileChanged,
+                reason: UserFacingError.message(for: error)
+            )
+        }
     }
 
     // MARK: Requests
@@ -328,8 +423,17 @@ final class CapabilitiesStore {
         let token = generation
         skillsEpoch &+= 1
         let epoch = skillsEpoch
-        guard let response = try? await read(scoped(KeptRoute.officialSkills), keptAs: KeptRoute.officialSkills, in: answers) else { return }
-        guard token == generation, epoch == skillsEpoch else { return }
+        officialSkillsRead &+= 1
+        let skillsRead = officialSkillsRead
+        officialSkillsLoading = true
+        defer { if token == generation, skillsRead == officialSkillsRead { officialSkillsLoading = false } }
+        let answer = try? await read(scoped(KeptRoute.officialSkills), keptAs: KeptRoute.officialSkills, in: answers)
+        // Only the newest read that wasn't cut off says whether the catalog
+        // failed; one a change overtook can still say it was read.
+        if token == generation, skillsRead == officialSkillsRead, !Task.isCancelled {
+            if answer != nil { officialSkillsFailed = false } else if epoch == skillsEpoch { officialSkillsFailed = true }
+        }
+        guard let response = answer, token == generation, epoch == skillsEpoch else { return }
         officialSkills = Self.officialSkills(from: response)
         showsKept.remove(.officialSkills)
     }
@@ -374,14 +478,20 @@ final class CapabilitiesStore {
     /// background) and waits for it. True once it's installed.
     @discardableResult
     func installSkill(_ skill: OfficialSkill) async -> Bool {
+        await installSkill(identifier: skill.identifier, name: skill.name)
+    }
+
+    /// Installs a skill from the catalog or the hub by its identifier.
+    @discardableResult
+    func installSkill(identifier: String, name: String? = nil) async -> Bool {
         let token = generation
         let answers = self.answers
-        skillInstalls[skill.identifier] = .running
+        skillInstalls[identifier] = .running
         do {
             let started = try await request(
                 scoped("/api/skills/hub/install"),
                 method: "POST",
-                body: scopedBody(["identifier": skill.identifier]),
+                body: scopedBody(["identifier": identifier]),
                 timeout: 45_000
             )
             guard let action = started["name"] as? String else {
@@ -390,26 +500,164 @@ final class CapabilitiesStore {
             let status = try await waitForAction(action, token: token)
             if status.succeeded {
                 await keepChange(KeptRoute.officialSkills, list: "skills", field: "installed", to: true, in: answers) {
-                    OfficialSkill($0)?.identifier == skill.identifier
+                    OfficialSkill($0)?.identifier == identifier
                 }
             }
             guard token == generation else { return false }
             guard status.succeeded else {
-                skillInstalls[skill.identifier] = .failed(status.failureReason ?? AppLocalization.string("The install didn't finish."))
+                skillInstalls[identifier] = .failed(status.failureReason ?? AppLocalization.string("The install didn't finish."))
                 return false
             }
-            skillInstalls[skill.identifier] = nil
-            if let index = officialSkills.firstIndex(where: { $0.identifier == skill.identifier }) {
+            skillInstalls[identifier] = nil
+            if let index = officialSkills.firstIndex(where: { $0.identifier == identifier }) {
                 skillsEpoch &+= 1
                 officialSkills[index].installed = true
             }
+            skillHubEpoch &+= 1
+            // Hermes keys a hub skill by identifier and names it as the
+            // catalog does until the next read says otherwise.
+            hubInstalled[identifier] = hubInstalled[identifier] ?? name ?? identifier.split(separator: "/").last.map(String.init) ?? identifier
             if showsKept.contains(.officialSkills) { await loadOfficialSkills() }
+            if skillHub != nil { await loadSkillHub() }
             return true
         } catch {
             guard token == generation, !(error is CancellationError) else { return false }
-            skillInstalls[skill.identifier] = .failed(UserFacingError.message(for: error))
+            skillInstalls[identifier] = .failed(UserFacingError.message(for: error))
             return false
         }
+    }
+
+    // MARK: Skill hub
+
+    /// The hub's sources, featured skills and installed ones, kept for the
+    /// Browse Skill Hub page to open on (#1533). A Hermes without the
+    /// route has no hub to browse.
+    func loadSkillHub() async {
+        let token = generation
+        skillHubEpoch &+= 1
+        let epoch = skillHubEpoch
+        do {
+            let response = try await read(scoped(KeptRoute.skillHub), keptAs: KeptRoute.skillHub, in: answers, timeout: 45_000)
+            guard token == generation, epoch == skillHubEpoch else { return }
+            let hub = SkillHubSnapshot(response)
+            skillHub = hub
+            hubInstalled = hub.installed
+            skillHubError = nil
+            skillHubMissing = false
+            showsKept.remove(.skillHub)
+        } catch {
+            guard token == generation, epoch == skillHubEpoch, !(error is CancellationError) else { return }
+            if Self.isMissingRoute(error) {
+                skillHubMissing = true
+                return
+            }
+            // A failed read keeps what's shown.
+            skillHubError = UserFacingError.message(for: error)
+        }
+    }
+
+    /// Searches every source Hermes has (or one). Not kept: a search is
+    /// asked again each time.
+    func searchSkillHub(_ query: String, source: String? = nil) async throws -> SkillHubResults {
+        var path = "/api/skills/hub/search?q=\(Self.component(query))&limit=\(SkillHub.searchLimit)"
+        if let source { path += "&source=\(Self.component(source))" }
+        let token = generation
+        let epoch = skillHubEpoch
+        let response = try await request(scoped(path), timeout: 45_000)
+        let results = SkillHubResults(response)
+        guard token == generation else { throw CancellationError() }
+        if epoch == skillHubEpoch { hubInstalled = results.installed }
+        return results
+    }
+
+    /// Hermes' install-time scan of a hub skill, without installing it.
+    /// Never kept: a scan is the skill as it is now.
+    func scanHubSkill(identifier: String) async throws -> SkillHubScan {
+        SkillHubScan(try await request(scoped("/api/skills/hub/scan?identifier=\(Self.component(identifier))"), timeout: 90_000))
+    }
+
+    /// Removes a skill installed from the hub (`hermes skills uninstall`)
+    /// and waits for it. True once it's gone.
+    @discardableResult
+    func removeHubSkill(name: String) async -> Bool {
+        let token = generation
+        skillRemovals[name] = .running
+        do {
+            let started = try await request(
+                scoped("/api/skills/hub/uninstall"),
+                method: "POST",
+                body: scopedBody(["name": name]),
+                timeout: 45_000
+            )
+            guard let action = started["name"] as? String else {
+                throw CapabilitiesStoreError.declined(AppLocalization.string("Hermes didn't start removing it."))
+            }
+            let status = try await waitForAction(action, token: token)
+            guard token == generation else { return false }
+            guard status.succeeded else {
+                skillRemovals[name] = .failed(status.failureReason ?? AppLocalization.string("Removing it didn't finish."))
+                return false
+            }
+            skillRemovals[name] = nil
+            skillHubEpoch &+= 1
+            hubInstalled = hubInstalled.filter { $0.value != name }
+            // An official skill removed here can be installed again from
+            // the catalog's list.
+            let answers = self.answers
+            await keepChange(KeptRoute.officialSkills, list: "skills", field: "installed", to: false, in: answers) {
+                OfficialSkill($0)?.name == name
+            }
+            if let index = officialSkills.firstIndex(where: { $0.name == name }) {
+                skillsEpoch &+= 1
+                officialSkills[index].installed = false
+            }
+            if skillHub != nil { await loadSkillHub() }
+            if !officialSkills.isEmpty { await loadOfficialSkills() }
+            return true
+        } catch {
+            guard token == generation, !(error is CancellationError) else { return false }
+            skillRemovals[name] = .failed(UserFacingError.message(for: error))
+            return false
+        }
+    }
+
+    /// Updates every skill installed from the hub (`hermes skills update`)
+    /// and waits for it.
+    @discardableResult
+    func updateHubSkills() async -> Bool {
+        let token = generation
+        skillsUpdate = .running
+        do {
+            let started = try await request(scoped("/api/skills/hub/update"), method: "POST", body: scopedBody([:]), timeout: 45_000)
+            // `skills-update` is the fixed action name Hermes' update route
+            // spawns, so an answer without one still points at it.
+            let action = started["name"] as? String ?? "skills-update"
+            let status = try await waitForAction(action, token: token)
+            guard token == generation else { return false }
+            guard status.succeeded else {
+                skillsUpdate = .failed(status.failureReason ?? AppLocalization.string("The update didn't finish."))
+                return false
+            }
+            skillsUpdate = nil
+            return true
+        } catch {
+            guard token == generation, !(error is CancellationError) else { return false }
+            skillsUpdate = .failed(UserFacingError.message(for: error))
+            return false
+        }
+    }
+
+    /// A route this Hermes doesn't have.
+    static func isMissingRoute(_ error: Error) -> Bool {
+        if case DashboardTicketBridgeError.http(let status, let detail) = error {
+            guard !DashboardTicketBridgeError.isPluginOffDetail(detail) else { return false }
+            if status == 405 { return true }
+            // Only the framework's bare Not Found means no route: a profile
+            // that's gone answers 404 with its own detail.
+            let bare = detail.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return status == 404 && (bare.isEmpty || bare == "not found")
+        }
+        return false
     }
 
     // MARK: Tools
@@ -894,12 +1142,19 @@ final class CapabilitiesStore {
         let token = generation
         pluginsEpoch &+= 1
         let epoch = pluginsEpoch
+        pluginCatalogRead &+= 1
+        let catalogRead = pluginCatalogRead
+        pluginCatalogLoading = true
+        defer { if token == generation, catalogRead == pluginCatalogRead { pluginCatalogLoading = false } }
         async let hubResponse = read(scoped(KeptRoute.plugins), keptAs: KeptRoute.plugins, in: answers)
         // The same for every profile: kept once per dashboard.
         async let catalogResponse = try? read(KeptRoute.pluginCatalog, keptAs: KeptRoute.pluginCatalog, in: dashboardAnswers)
         do {
             let plugins = AgentPluginRow.list(from: try await hubResponse)
             let catalog = await catalogResponse
+            if token == generation, catalogRead == pluginCatalogRead, !Task.isCancelled {
+                if catalog != nil { pluginCatalogFailed = false } else if epoch == pluginsEpoch { pluginCatalogFailed = true }
+            }
             guard token == generation, epoch == pluginsEpoch else { return }
             self.plugins = plugins
             // A catalog read that fails keeps the catalog shown: a kept one
@@ -911,7 +1166,10 @@ final class CapabilitiesStore {
             pluginsError = nil
             showsKept.remove(.plugins)
         } catch {
-            _ = await catalogResponse
+            let catalog = await catalogResponse
+            if token == generation, catalogRead == pluginCatalogRead, !Task.isCancelled {
+                if catalog != nil { pluginCatalogFailed = false } else if epoch == pluginsEpoch { pluginCatalogFailed = true }
+            }
             // A read cut off by leaving the tab isn't a failure: the tab
             // asks again when it next shows, as the Connectors tab does.
             guard token == generation, epoch == pluginsEpoch, !(error is CancellationError) else { return }

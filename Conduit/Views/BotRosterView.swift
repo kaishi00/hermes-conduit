@@ -22,6 +22,14 @@ struct BotRosterView: View {
     @State private var showsHiddenBots = false
     /// New Group Chat from a bot's Groups menu starts with that bot picked.
     @State private var groupSheetBot: BotProfile?
+    /// A room with people you've linked that hasn't started, shown with who's
+    /// invited and how they answered.
+    @State private var presentedDraft: RoomDraft?
+    /// An invite to a room someone you've linked hosts, with its join card.
+    @State private var presentedInvite: RoomInvite?
+    /// An approval one of your agents waits for in a room someone else
+    /// hosts, with its card.
+    @State private var presentedApproval: RoomApproval?
     /// The bot whose Bot Overview shows (Bots Home's ⓘ or status pill).
     @State private var overviewBot: BotProfile?
     /// Edit Bot tapped in the overview: the editor opens once it's gone,
@@ -153,6 +161,15 @@ struct BotRosterView: View {
             ConnectionRepairSetupSheet(context: context)
                 .environmentObject(appState)
         }
+        // A Bot Chat opened from here that didn't open says why here.
+        .onChange(of: appState.botsListNotice, initial: true) { _, notice in
+            guard let notice else { return }
+            managementNotice = notice
+            appState.botsListNotice = nil
+        }
+        // Another dashboard's or profile's list: this one's notice isn't about it.
+        .onChange(of: appState.activeDashboardID) { _, _ in managementNotice = nil }
+        .onChange(of: appState.activeProfile) { _, _ in managementNotice = nil }
         .sheet(item: $overviewBot, onDismiss: {
             if let bot = editAfterOverview {
                 editAfterOverview = nil
@@ -173,8 +190,7 @@ struct BotRosterView: View {
                     // (Eric 2026-11-04), unless it opens beside the list.
                     if openBeside == nil { appState.botZoom.tap(bot.name) }
                     Task {
-                        if await !appState.openBotChat(for: bot) { appState.botZoom.openFailed(bot.name) }
-                        appState.endOpeningBotChat(bot.name)
+                        if await !appState.openBotChatFromList(bot) { appState.botZoom.openFailed(bot.name) }
                     }
                 },
                 onClose: { overviewBot = nil },
@@ -196,7 +212,6 @@ struct BotRosterView: View {
                 appState.beginOpeningBotChat(bot.name)
                 Task {
                     await appState.openNewBotChat(for: bot, introduces: introduces)
-                    appState.endOpeningBotChat(bot.name)
                 }
             }
             .environmentObject(appState)
@@ -276,9 +291,14 @@ struct BotRosterView: View {
         appState.shownBotRoster.filter(\.isHiddenByMeta)
     }
 
-    /// A new group picks from Hermes' bots, never the kept copy's.
+    /// A new group picks from Hermes' bots, never the kept copy's. It needs
+    /// two bots, or one and someone you've linked to invite
+    /// (GroupCreateLimits).
     private var canStartGroups: Bool {
-        hostedGroupsAvailable && appState.botRoster.lazy.filter { !$0.isHiddenByMeta }.count >= 2
+        hostedGroupsAvailable && GroupCreateLimits.offersNewGroup(
+            visibleBots: appState.botRoster.lazy.filter { !$0.isHiddenByMeta }.count,
+            invitesPeople: !appState.invitableLinkedPeople.isEmpty
+        )
     }
 
     /// `profiles.list` is gateway-wide and deliberately sent UNSCOPED: the
@@ -297,7 +317,21 @@ struct BotRosterView: View {
     }
 
     private var hasGroupRows: Bool {
-        !appState.shownGroupRooms.isEmpty || !appState.shownDesktopGroupChats.isEmpty
+        !appState.shownGroupRooms.isEmpty || !appState.shownDesktopGroupChats.isEmpty || hasLinkedRoomRows
+    }
+
+    /// The rooms with people you've linked that haven't started, the
+    /// invites to theirs, the approvals your agents wait for in them and
+    /// the rooms they host your agents in (Linked Rooms).
+    private var hasLinkedRoomRows: Bool {
+        hasLinkedPendingRows || (hostedGroupsAvailable && !appState.linkedRoomCopyRows.isEmpty)
+    }
+
+    /// Linked Rooms' rows that wait on someone: approvals, drafts and
+    /// invites. Bots Home shows them as rows over the tiles.
+    private var hasLinkedPendingRows: Bool {
+        hostedGroupsAvailable && (!appState.linkedRoomDraftRows.isEmpty || !appState.linkedRoomInviteRows.isEmpty
+            || !appState.linkedRoomApprovalRows.isEmpty)
     }
 
     private var groupProbeFailure: String? {
@@ -829,6 +863,18 @@ struct BotRosterView: View {
             GroupCreateSheet(preselected: [bot.name])
                 .environmentObject(appState)
         }
+        .sheet(item: $presentedDraft) { draft in
+            RoomDraftSheet(draft: draft)
+                .environmentObject(appState)
+        }
+        .sheet(item: $presentedInvite) { invite in
+            RoomInviteSheet(invite: invite)
+                .environmentObject(appState)
+        }
+        .sheet(item: $presentedApproval) { approval in
+            RoomApprovalSheet(approval: approval)
+                .environmentObject(appState)
+        }
     }
 
     private var homeScroll: some View {
@@ -925,8 +971,11 @@ struct BotRosterView: View {
     /// Group Chat rows, below the Bots section: hosted rooms (once the
     /// gateway advertised the foundation `groups.*` methods, or the ones it
     /// listed last time until it answers — an unsupported gateway never
-    /// shows a dead control) plus the group chats Hermes Desktop mirrored to
-    /// the gateway, which need no `groups.*` support.
+    /// shows a dead control), the rooms with people you've linked that
+    /// haven't started, the invites to theirs and the approvals your agents
+    /// wait for in them (first: they wait on you), plus the group chats
+    /// Hermes Desktop mirrored to the gateway, which need no `groups.*`
+    /// support.
     @State private var showingGroupCreateSheet = false
 
     private var showsGroupSection: Bool {
@@ -942,12 +991,57 @@ struct BotRosterView: View {
                 .padding(.vertical, 3)
                 .rosterListRow(divider: false)
         }
+        linkedApprovalRows
         ForEach(appState.shownGroupRooms) { room in
             GroupRosterRow(room: room)
         }
+        linkedRoomRows
         ForEach(appState.shownDesktopGroupChats) { group in
             DesktopGroupRosterRow(group: group) {
                 presentedDesktopGroup = group
+            }
+        }
+    }
+
+    /// The approvals your agents wait for in rooms someone you've linked
+    /// hosts: first, since they wait on you.
+    @ViewBuilder
+    private var linkedApprovalRows: some View {
+        if hostedGroupsAvailable {
+            ForEach(appState.linkedRoomApprovalRows) { approval in
+                RoomApprovalRosterRow(approval: approval) {
+                    presentedApproval = approval
+                }
+            }
+        }
+    }
+
+    /// The rooms someone you've linked hosts your agents in, yours with
+    /// them that haven't started, and the invites to theirs.
+    @ViewBuilder
+    private var linkedRoomRows: some View {
+        if hostedGroupsAvailable {
+            ForEach(appState.linkedRoomCopyRows) { copy in
+                RoomCopyRosterRow(copy: copy)
+            }
+            linkedPendingRows
+        }
+    }
+
+    /// Yours with people you've linked that haven't started, and the
+    /// invites to theirs.
+    @ViewBuilder
+    private var linkedPendingRows: some View {
+        if hostedGroupsAvailable {
+            ForEach(appState.linkedRoomDraftRows) { draft in
+                RoomDraftRosterRow(draft: draft) {
+                    presentedDraft = draft
+                }
+            }
+            ForEach(appState.linkedRoomInviteRows) { invite in
+                RoomInviteRosterRow(invite: invite) {
+                    presentedInvite = invite
+                }
             }
         }
     }
@@ -964,6 +1058,7 @@ struct BotRosterView: View {
         if showsGroupSection {
             Section(AppLocalization.string("Group Chats")) {
                 groupRows
+                    .modifier(HomeRoomLooksReader())
                 if canStartGroups {
                     Button(action: startNewGroup) {
                         newGroupCard
@@ -1004,6 +1099,15 @@ struct BotRosterView: View {
                     .padding(.horizontal, 16)
                     .padding(.vertical, 3)
             }
+            // Linked Rooms' approvals, drafts and invites, as rows above
+            // the tiles; rooms others host are tiles among yours.
+            if hasLinkedPendingRows {
+                VStack(spacing: 0) {
+                    linkedApprovalRows
+                    linkedPendingRows
+                }
+                .padding(.bottom, 4)
+            }
             if showsRoomHint {
                 // No rooms yet: how to start one, gone with the first.
                 Text(AppLocalization.string("Hold one bot over another to start a room."))
@@ -1013,11 +1117,18 @@ struct BotRosterView: View {
                     .padding(.horizontal, 16)
                     .padding(.top, 2)
                     .padding(.bottom, 16)
+                    // So the last linked room's faces go when it does.
+                    .modifier(HomeRoomLooksReader())
             } else {
                 BotRoomGrid(onDropAtEnd: { dropRoom($0, onto: nil) }) { homeRoomTiles }
                     .padding(.horizontal, 16)
                     .padding(.top, 4)
                     .padding(.bottom, 16)
+                    .modifier(HomeRoomLooksReader())
+                    // The rooms' rings tick here too, so a guest's room with
+                    // no bots of their own still follows its work (the read
+                    // is shared with the portraits' and runs once a tick).
+                    .modifier(BotsTalkingRoomsReader())
                     // Whether a room's menu offers Generate Group Picture,
                     // asked as the open room's menu asks it.
                     .task(id: "\(appState.isConnected)|\(appState.canSetGroupRoomPictures)|\(homeRooms.isEmpty)") {
@@ -1033,7 +1144,7 @@ struct BotRosterView: View {
     /// Store screenshots, like the tip.
     private var showsRoomHint: Bool {
         !BotsHomeGesturesTip.hiddenForTesting && canStartGroups && groupProbeFailure == nil && homeRooms.isEmpty
-            && appState.shownDesktopGroupChats.isEmpty && newRoom.isEmpty && visibleBots.count >= 2
+            && appState.shownDesktopGroupChats.isEmpty && !hasLinkedRoomRows && newRoom.isEmpty && visibleBots.count >= 2
     }
 
     /// Bots Home's rooms as small portraits: the hosted rooms, Desktop's,
@@ -1044,6 +1155,12 @@ struct BotRosterView: View {
             GroupRoomPortrait(room: room, actions: roomActions(room))
                 .matchedGeometryEffect(id: room.roomID == landingRoomID ? BotsHomeAnchorKey.newRoom : room.roomID,
                                        in: roomTiles)
+        }
+        // Rooms others host your agents in, among yours (Eric, 2026-11-08).
+        if hostedGroupsAvailable {
+            ForEach(appState.linkedRoomCopyRows) { copy in
+                RoomCopyPortrait(copy: copy)
+            }
         }
         ForEach(appState.shownDesktopGroupChats) { group in
             DesktopGroupPortrait(group: group) {
@@ -1227,12 +1344,16 @@ struct GroupRosterRow: View {
         } label: {
             RosterIconRow(title: room.name, subtitle: subtitleText) { size in
                 GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: size)
+                    .environment(\.groupRoomLooks, appState.homeRoomLooks(roomID: room.roomID))
+                    .modifier(RoomTileBadge(systemImage: RoomTileBadge.linked, shown: room.isLinked))
             }
         }
         .buttonStyle(.plain)
         .rosterListRow(selection: .room(room.roomID, beside: openBeside))
         .accessibilityLabel(Text(room.name))
-        .accessibilityValue(Text(subtitleText))
+        .accessibilityValue(Text(room.isLinked
+            ? [AppLocalization.string("With linked people"), subtitleText].joined(separator: ", ")
+            : subtitleText))
         .accessibilityHint(Text(AppLocalization.string("Opens this group chat.")))
         .v2SelectedTrait(.room(room.roomID, beside: openBeside))
     }
@@ -1281,8 +1402,7 @@ private struct BotRosterRow: View {
             Haptics.light()
             appState.beginOpeningBotChat(bot.name)
             Task {
-                await appState.openBotChat(for: bot)
-                appState.endOpeningBotChat(bot.name)
+                await appState.openBotChatFromList(bot)
             }
         } label: {
             // V2: a chat-style row, no card. Picture, name and time, then

@@ -320,12 +320,18 @@ enum HealthSyncPause: Codable, Equatable {
     /// The host refused a batch for a reason a retry won't fix.
     case refused(String)
 
-    var message: String {
+    var message: String { message(managedBy: PluginUpdateAsk.managedBy) }
+
+    /// The words for a destination whose host's plugin is kept up to date
+    /// by `managedBy` (nil when the host doesn't manage it), which may not
+    /// be the active dashboard's.
+    func message(managedBy: String?) -> String {
         switch self {
         case .signInRequired:
             return AppLocalization.string("Paused: sign in to this dashboard again. Sharing catches up when you open Conduit.")
         case .pluginMissing:
-            return AppLocalization.string("Paused: update the Conduit plugin on this host to share health data.")
+            return PluginUpdateAsk.text(AppLocalization.string("Paused: update the Conduit plugin on this host to share health data."),
+                                        lead: AppLocalization.string("Sharing is paused."), managedBy: managedBy)
         case .otherDashboard:
             return AppLocalization.string("Waiting: health data goes only to the dashboard it was turned on for. Switch back to it to sync.")
         case .pluginOff(let remedy):

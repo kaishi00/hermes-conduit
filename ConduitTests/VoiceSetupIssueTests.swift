@@ -50,6 +50,28 @@ extension CarPlayVoiceCoordinatorTests {
         XCTAssertTrue(VoiceSetupIssue.microphoneDenied.message.contains("iPhone Settings > Conduit"))
     }
 
+    /// Issue 2208: on a Mac the iPad app's settings URLs opened its own
+    /// settings window, and the words named iPhone Settings. Each place
+    /// to allow something is worded for the device, and a Mac's Open
+    /// Settings goes to that pane of System Settings.
+    func testPermissionTextsAndSettingsLinksFollowTheDevice() {
+        XCTAssertEqual(SystemSettings.worded(iPhone: "phone", iPad: "pad", mac: "mac", on: .iPhone), "phone")
+        XCTAssertEqual(SystemSettings.worded(iPhone: "phone", iPad: "pad", mac: "mac", on: .iPad), "pad")
+        XCTAssertEqual(SystemSettings.worded(iPhone: "phone", iPad: "pad", mac: "mac", on: .mac), "mac")
+        XCTAssertEqual(
+            SystemSettings.macURL(for: .notifications, bundleID: "com.milim.relay")?.absoluteString,
+            "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=com.milim.relay"
+        )
+        XCTAssertEqual(
+            SystemSettings.macURL(for: .microphone, bundleID: "com.milim.relay")?.absoluteString,
+            "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"
+        )
+        let panes: [SystemSettings.Pane] = [.notifications, .microphone, .speechRecognition, .camera, .location, .contacts]
+        XCTAssertEqual(Set(panes.compactMap { SystemSettings.macURL(for: $0, bundleID: nil)?.absoluteString }).count, panes.count)
+        // The unit tests run on an iPhone simulator.
+        XCTAssertEqual(SystemSettings.notificationsOffText, "Notifications are off for Conduit in iPhone Settings.")
+    }
+
     func testOnlyTheErrorStateTakesTheIssueTitle() {
         XCTAssertEqual(
             CarPlayVoiceState.error.titleVariants(errorIssue: .voiceOff),

@@ -199,6 +199,21 @@ extension ConnectionFailureTests {
     }
 
     @MainActor
+    func testChatViewportWatchSavesABlankScreenOnceAMinute() {
+        var time: CFAbsoluteTime = 1_000
+        var saved: [ChatTraceReason] = []
+        let watch = ChatViewportWatch(now: { time }, save: { saved.append($0) })
+        watch.blankScreen()
+        XCTAssertEqual(saved, [.blank], "the blank watch's finding saves a trace")
+        time = 1_030
+        watch.blankScreen()
+        XCTAssertEqual(saved, [.blank], "at most once a minute")
+        time = 1_061
+        watch.blankScreen()
+        XCTAssertEqual(saved, [.blank, .blank], "and again after it")
+    }
+
+    @MainActor
     func testChatViewportWatchSavesALayoutStormButNotStreamingOrScrolling() {
         var time: CFAbsoluteTime = 1_000
         var saved: [ChatTraceReason] = []

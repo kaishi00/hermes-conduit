@@ -35,6 +35,8 @@
 //
 //  `conduit://connect?url=…` is a dashboard sign-in code, read by
 //  DashboardConnectLink before these, inside the app and from outside.
+//  `conduit://link/…` is a Link invite (RoomLinkURL), read by
+//  routeRoomLink before these too, inside the app and from outside.
 //
 
 import Foundation

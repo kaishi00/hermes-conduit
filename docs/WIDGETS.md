@@ -2,11 +2,13 @@
 
 Conduit provides two medium Home Screen widgets: **Native** and **Conduit-chan**. Both offer the same actions: open or resume the selected conversation, start a new chat, and start Talk. Each widget instance has its own configuration.
 
+The **Pulse** widget (small, medium and large) lists Pulse's newest open cards. **Done** and **Not now** (until later today) work in place, and **Do it** sends the card's message to Hermes with Conduit in the background: to the chat the card came from, or for a card from no chat, to a new chat or to the Bot Chat of the bot picked in Settings > Pulse > Do it. A tap on a card opens it on the Pulse screen. It needs no configuration: it shows the workspace in use, on a dashboard whose plugin serves Pulse.
+
 ## Add and configure a widget
 
 1. Keep Conduit installed and open it after adding or changing a workspace or conversation. The app publishes the local list used by the widget configuration picker.
 2. Touch and hold the Home Screen, choose **Add Widget**, and search for **Conduit**.
-3. Add **Native**, **Conduit-chan**, or both. These entries currently support the medium size on iPhone and iPad.
+3. Add **Native**, **Conduit-chan**, or both. These entries currently support the medium size on iPhone and iPad. To add **Pulse**, swipe to it in the gallery and pick its size.
 4. Touch and hold a widget, choose **Edit Widget**, then select **Follow current workspace** or a saved workspace. A conversation can be selected from that workspace's saved choices. Turn on **Hide conversation title** to show generic resume text.
 
 The workspace and conversation pickers read the app's local widget snapshot. They do not discover remote workspaces or conversations. A workspace or conversation may not appear until Conduit has visited or refreshed it while connected. Following the current workspace updates when the app changes its selected workspace.
@@ -19,7 +21,7 @@ The Talk readiness scenario may add `-CONDUIT_UI_TEST_WIDGET_HOLD_READINESS` to 
 
 ## Saved data and recovery
 
-The widget snapshot contains display labels and identifiers only. It does not contain credentials, Keychain items, gateway URLs, tickets, transcripts, or notification encryption material. Ordinary network loss keeps the last published destinations available. Signing out or removing a workspace removes its widget metadata.
+The launcher widgets' snapshot contains display labels and identifiers only. It does not contain credentials, Keychain items, gateway URLs, tickets, transcripts, or notification encryption material. Ordinary network loss keeps the last published destinations available. Signing out or removing a workspace removes its widget metadata.
 
 The snapshot is a bounded cache: up to 100 workspace records and 20 conversation choices per workspace. It prioritizes the last conversation, pinned conversations, then recent conversations. Cache eviction does not establish that a conversation was deleted. If a configured workspace or conversation is no longer present in the available snapshot, the widget offers **Open Conduit to refresh** and does not silently substitute another conversation. A server-confirmed missing target is handled by Conduit's in-app recovery feedback.
 
@@ -27,9 +29,11 @@ Conversation titles can be hidden in the widget configuration. Visible titles ar
 
 ## App Group and signing prerequisites
 
-The app and `ConduitWidgets` extension share the dedicated App Group `group.com.milim.relay.launcher`. It stores the widget-only snapshot. The widget extension entitlement must contain only this group; the app keeps its existing entitlements and adds the widget group. The notification App Group is not used by the widget extension.
+The app and `ConduitWidgets` extension share the dedicated App Group `group.com.milim.relay.launcher`. It stores the launcher widgets' snapshot and the Pulse widget's last read.
 
-Device installation or archive signing requires the `com.milim.relay.widgets` extension App ID, a provisioning profile matching the configured **Conduit Widgets App Store** profile name, and the launcher App Group enabled for both the app and extension identifiers. Simulator builds can use the established unsigned simulator configuration. Do not copy signing credentials into project files or this document.
+The widget extension is also in the notifications App Group, `group.com.milim.relay.notifications`, for one Keychain item: what the Pulse widget reads Pulse with (the dashboard in use, a host pass for it, and the Pulse features its plugin serves). Conduit keeps it only while a Pulse widget is on the Home Screen and the plugin serves Pulse, and removes it otherwise, at sign-out and when the dashboard is removed. The pass is made like Location sharing's (the session cookies or a native sign-in's access token, plus proxy headers); the widget never refreshes a sign-in, so one that expires shows **Open Conduit to refresh** until Conduit next connects. A Pulse push reloads the widget from the Notification Service Extension, and WidgetKit reloads it about every 30 minutes.
+
+Device installation or archive signing requires the `com.milim.relay.widgets` extension App ID, a provisioning profile matching the configured **Conduit Widgets App Store** profile name, the launcher App Group enabled for both the app and extension identifiers, and the notifications App Group enabled for the extension identifier (a profile made before that group was enabled must be regenerated). Simulator builds can use the established unsigned simulator configuration. Do not copy signing credentials into project files or this document.
 
 ## Verification record
 

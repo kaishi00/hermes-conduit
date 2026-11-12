@@ -8,9 +8,12 @@ extension AppState {
 
     private var widgetReload: () -> Void {
         if let widgetSnapshotReloadOverride { return widgetSnapshotReloadOverride }
+        let store = widgetStore
         return {
             WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.native)
             WidgetCenter.shared.reloadTimelines(ofKind: ConduitWidgetKind.character)
+            // Spotlight and Siri know the same chats the widget offers.
+            MainActor.assumeIsolated { ConduitChatSpotlight.refresh(from: store) }
         }
     }
 
@@ -108,6 +111,8 @@ extension AppState {
         do { try publisher.updateLanguage(AppLanguageStore.shared.selection.rawValue) }
         catch { /* Retain the last valid snapshot if the cache cannot be written. */ }
         publishWidgetSnapshot()
+        // The Pulse widget words its cards in the app's language.
+        reloadPulseWidget()
     }
 
     func publishWidgetCurrentWorkspace(dashboardID: UUID?, profile: String) {
@@ -123,6 +128,7 @@ extension AppState {
         let publisher = WidgetSnapshotPublisher(store: store, reload: widgetReload)
         do { try publisher.remove(dashboardID: dashboardID) }
         catch { /* Keep the previous valid cache if atomic replacement fails. */ }
+        removePulseWidget(dashboardID: dashboardID)
     }
 
     func retainWidgetProfiles(_ profiles: Set<String>, dashboardID: UUID) {

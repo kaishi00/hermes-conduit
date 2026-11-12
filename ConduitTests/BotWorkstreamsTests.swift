@@ -69,12 +69,43 @@ extension BotModeTests {
         XCTAssertEqual(snapshot.replacing(try XCTUnwrap(BotWorkItem(row: ["ref": "W9", "kind": "workstream"]))), snapshot)
     }
 
+    /// Issue 2142: a workstream whose turn ended while delegate agents it
+    /// started still run stays Working, and its card says what it waits for.
+    func testAWorkstreamWaitingForItsAgentsSaysSo() throws {
+        let waiting = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W1", "kind": "workstream", "status": "running", "agents": 2,
+            "checklist": [["step": "Find the cause", "state": "doing"]],
+        ]))
+        XCTAssertEqual(waiting.awaitedAgentCount, 2)
+        XCTAssertTrue(waiting.isWorking)
+        XCTAssertEqual(waiting.doing, AppLocalization.string("Waiting for \(2) background agents"))
+        let working = try XCTUnwrap(BotWorkItem(row: [
+            "ref": "W2", "kind": "workstream", "status": "running",
+            "checklist": [["step": "Find the cause", "state": "doing"]],
+        ]))
+        XCTAssertEqual(working.awaitedAgentCount, 0, "an older plugin names none")
+        XCTAssertEqual(working.doing, "Find the cause")
+        let done = try XCTUnwrap(BotWorkItem(row: ["ref": "W3", "kind": "workstream", "status": "done", "agents": 1]))
+        XCTAssertNil(done.doing)
+        XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "A1", "kind": "ask_out", "agents": 3])).awaitedAgentCount, 0)
+    }
+
     /// A workstream's worktree branch, for the user to merge.
     func testAWorkstreamsWorktreeBranchIsShown() throws {
         let branched = try XCTUnwrap(BotWorkItem(row: ["ref": "W3", "kind": "workstream", "status": "done",
                                                         "branch": " hermes-subagent/subagent-work-default-w3-ab12 "]))
         XCTAssertEqual(branched.branch, "hermes-subagent/subagent-work-default-w3-ab12")
         XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W4", "kind": "workstream"])).branch, "")
+    }
+
+    /// Work started from a group room names the room it reports back into;
+    /// an ask never does.
+    func testWorkStartedFromAGroupRoomNamesTheRoom() throws {
+        let fromRoom = try XCTUnwrap(BotWorkItem(row: ["ref": "W9", "kind": "workstream", "status": "running",
+                                                        "room": " room-1 "]))
+        XCTAssertEqual(fromRoom.room, "room-1")
+        XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "W10", "kind": "workstream"])).room, "")
+        XCTAssertEqual(try XCTUnwrap(BotWorkItem(row: ["ref": "A1", "kind": "ask_out", "room": "room-1"])).room, "")
     }
 
     /// A voice call's job is marked as the call's; anything else is the bot's own.
@@ -483,6 +514,16 @@ extension BotModeTests {
             "See [an earlier chat](conduit://session/old) @session:old and [Open W3](conduit://session/c) @session:furina/other"))
         XCTAssertEqual(unrelated.text,
                        "See [an earlier chat](conduit://session/old) @session:old and @session:furina/other")
+        // A bot that words the link with its title (Zhongli 2026-11-07) still gets the card, Desktop's reference
+        // going with it; a title that only mentions a ref further in stays a link.
+        let titled = try XCTUnwrap(BotWorkLinks.split(
+            "The build is commissioned — [W7: Provision OmniRoute LXC on seele](conduit://session/20261107_w7?profile=zhongli) "
+                + "@session:zhongli/20261107_w7. The rite as ordered."))
+        XCTAssertEqual(titled.text, "The build is commissioned —. The rite as ordered.")
+        XCTAssertEqual(titled.links.map(\.ref), ["W7"])
+        XCTAssertEqual(titled.links.first?.profile, "zhongli")
+        XCTAssertEqual(try XCTUnwrap(BotWorkLinks.split("Done: [W8 — Rotate keys](conduit://session/w8)")).links.map(\.ref), ["W8"])
+        XCTAssertNil(BotWorkLinks.split("See [the notes from W7](conduit://session/w7)"))
     }
 
     /// A read asked for after an action, while one was under way, makes
@@ -608,8 +649,130 @@ extension BotModeTests {
         XCTAssertNil(BotWorkSettings(response: ["ok": false, "policy": "strict", "max_running": 2]))
     }
 
+    func testQuickStepsAreOfferedOnlyWhereThePluginTakesThem() throws {
+        // Eric 2026-11-10: how many steps a Quick Things Here turn does itself is the user's pick.
+        let older = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "lookups", "max_running": 2]))
+        XCTAssertNil(older.quickSteps)
+        XCTAssertTrue(older.quickStepsChoices.isEmpty)
+        let newer = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "lookups", "max_running": 2, "quick_steps": 5, "quick_steps_choices": [5, 10, 20],
+        ]))
+        XCTAssertEqual(newer.quickSteps, 5)
+        XCTAssertEqual(BotWorkSettingsView.quickStepsChoices(newer).map(\.id), [5, 10, 20])
+        XCTAssertEqual(BotWorkSettingsView.quickStepsChoices(newer).map(\.title), ["5", "10", "20"])
+        var picked = newer
+        picked.quickSteps = 20
+        XCTAssertEqual(picked.change(from: newer) as? [String: Int], ["quick_steps": 20])
+        XCTAssertTrue(newer.change(from: newer).isEmpty)
+        // A count a newer plugin kept still shows as the bot's own.
+        var other = newer
+        other.quickSteps = 15
+        XCTAssertEqual(BotWorkSettingsView.quickStepsChoices(other).map(\.id), [5, 10, 15, 20])
+        // A plugin with one count and a bot on another still offers both; a count of 0 is none.
+        let single = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "lookups", "max_running": 2, "quick_steps": 20, "quick_steps_choices": [5],
+        ]))
+        XCTAssertEqual(BotWorkSettingsView.quickStepsChoices(single).map(\.id), [5, 20])
+        XCTAssertNil(BotWorkSettings(response: [
+            "ok": true, "policy": "lookups", "max_running": 2, "quick_steps": 0, "quick_steps_choices": [5, 10],
+        ])?.quickSteps)
+    }
+
+    func testCoordinationIsOfferedOnlyWhereThePluginKeepsIt() throws {
+        // Eric 2026-11-10: how independently the Bot Chat keeps its workstreams in step.
+        let older = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "lookups", "max_running": 2]))
+        XCTAssertNil(older.coordination)
+        let newer = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "lookups", "max_running": 2, "coordination": "ask",
+        ]))
+        XCTAssertEqual(newer.coordination, .ask)
+        var picked = newer
+        picked.coordination = .auto
+        XCTAssertEqual(picked.change(from: newer) as? [String: String], ["coordination": "auto"])
+        XCTAssertTrue(newer.change(from: newer).isEmpty)
+        for coordination in BotWorkSettings.Coordination.allCases {
+            XCTAssertTrue(BotWorkSettingsView.coordinationCaption(coordination, botName: "Furina").contains("Furina"))
+        }
+        // Leave alone on a workstream's card, as the plugin offers it.
+        let alone = try XCTUnwrap(BotWorkItem(row: ["ref": "W1", "kind": "workstream", "status": "running",
+                                                    "left_alone": true, "manage": ["pin", "coordinate"]]))
+        XCTAssertTrue(alone.isLeftAlone)
+        XCTAssertEqual(alone.manage, [.pin, .coordinate])
+        let coordinated = try XCTUnwrap(BotWorkItem(row: ["ref": "W2", "kind": "workstream", "status": "running",
+                                                          "manage": ["pin", "leave_alone"]]))
+        XCTAssertFalse(coordinated.isLeftAlone)
+        XCTAssertEqual(coordinated.manage, [.pin, .leaveAlone])
+    }
+
+    func testTheCoordinationListIsReadWithTheLinesBehindEachEntry() throws {
+        // Milestone 2 (Eric 2026-11-10): what the Bot Chat did to keep the work in step, and why.
+        XCTAssertNil(try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina")).coordination)
+        var response = workResponse()
+        response["coordination"] = ["mode": "ask", "items": [
+            ["id": "P1", "kind": "proposal", "ref": "W2", "title": "Deploy", "at": 1_800_000_300.0,
+             "text": "Move W2 to the v2 API", "status": "approved", "answer": "yes, go", "why": []],
+            ["id": "E7", "kind": "sent", "ref": "W2", "title": "Deploy", "at": 1_800_000_200.0,
+             "text": "v1 is gone, check first", "how": "added to the turn it was working on", "state": "delivered",
+             "why": [["ref": "W1", "title": "Login bug", "kind": "found", "text": "v1 returns 410",
+                      "at": 1_800_000_000.0],
+                     ["ref": "W2", "title": "Deploy", "kind": "user", "text": "Keep v1", "at": 1_800_000_050.0],
+                     ["ref": "W1", "kind": "found", "text": "", "at": 1_800_000_060.0]]],
+            ["id": "E5", "kind": "flag", "ref": "W1", "title": "Login bug", "at": 1_800_000_100.0,
+             "text": "W1 found v1 is gone, and W2 moves to it", "with": ["W2"], "woke": false,
+             "why": [["ref": "W1", "title": "Login bug", "kind": "found", "text": "v1 returns 410",
+                      "at": 1_800_000_000.0]]],
+            ["id": "P2", "kind": "proposal", "ref": "W1", "refs": ["W1", "W3", "W1"], "title": "Login bug · Docs",
+             "at": 1_800_000_050.0, "text": "Drop v1 in both", "status": "open", "answer": "", "why": []],
+            ["id": "E9", "kind": "later", "at": 1_800_000_400.0],
+            ["kind": "sent", "at": 1_800_000_400.0],
+        ]]
+        let list = try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina")?.coordination)
+        XCTAssertEqual(list.mode, "ask")
+        XCTAssertEqual(list.items.map(\.id), ["P1", "E7", "E5", "P2"])  // a kind this build doesn't know is left out
+        let proposal = list.items[0], sent = list.items[1], flag = list.items[2]
+        XCTAssertEqual(proposal.headline, "Asked you about W2")
+        XCTAssertEqual(proposal.refs, ["W2"])  // a plugin before 0.158.0 sends only ref
+        // One question for related work (plugin 0.158.0+) names each workstream it covers, once.
+        XCTAssertEqual(list.items[3].headline, "Asked you about W1, W3")
+        XCTAssertEqual(list.items[3].stateText, "No answer yet")
+        XCTAssertEqual(proposal.stateText, "You approved")
+        XCTAssertEqual(proposal.answer, "yes, go")
+        XCTAssertNil(proposal.whyCaption(botName: "Furina"))
+        XCTAssertEqual(sent.headline, "Sent to W2")
+        XCTAssertEqual(sent.stateText, "In its chat")
+        XCTAssertEqual(sent.why.map(\.saidBy), ["W1 found", "You told W2"])  // a line with no words is left out
+        XCTAssertEqual(sent.whyCaption(botName: "Furina"), "What was on Furina’s board in the half hour before.")
+        XCTAssertEqual(flag.headline, "W1 may affect W2")
+        XCTAssertEqual(flag.stateText, "Kept on the board")
+        XCTAssertEqual(flag.why.first?.text, "v1 returns 410")
+        XCTAssertEqual(flag.at, Date(timeIntervalSince1970: 1_800_000_100))
+        response["coordination"] = ["mode": "off", "items": []]
+        XCTAssertEqual(BotWorkSnapshot(response: response, profile: "furina")?.coordination?.items, [])
+    }
+
+    func testEverythingHereIsOfferedOnlyWhereThePluginTakesIt() throws {
+        // Notifier issue 619 (Eric 2026-11-08): three choices by what the user notices.
+        let older = try XCTUnwrap(BotWorkSettings(response: ["ok": true, "policy": "lookups", "max_running": 2]))
+        XCTAssertEqual(older.policies, BotWorkSettings.olderPolicies)
+        XCTAssertEqual(BotWorkSettingsView.policyChoices(older).map(\.id), [.lookups, .strict])
+        let newer = try XCTUnwrap(BotWorkSettings(response: [
+            "ok": true, "policy": "open", "policies": ["off", "strict", "lookups", "open", "later"], "max_running": 2,
+        ]))
+        XCTAssertEqual(newer.policy, .open)
+        XCTAssertTrue(newer.isOn)
+        XCTAssertEqual(newer.policies, [.off, .strict, .lookups, .open])
+        XCTAssertEqual(BotWorkSettingsView.policyChoices(newer).map(\.id), [.lookups, .open, .strict])
+        var picked = newer
+        picked.policy = .lookups
+        XCTAssertEqual(picked.change(from: newer)["policy"] as? String, "lookups")
+        for policy in BotWorkSettings.Policy.allCases {
+            XCTAssertFalse(BotWorkSettingsView.policyCaption(policy, botName: "Furina").isEmpty)
+        }
+    }
+
     func testAWorkSettingsChangeSendsOnlyWhatChanged() {
-        let old = BotWorkSettings()
+        let old = BotWorkSettings(maxRunning: 2)
+        XCTAssertEqual(BotWorkSettings().maxRunning, 4)  // the plugin's default (Eric 2026-11-10)
         XCTAssertEqual(old.policy, .lookups)  // the plugin's default (Eric 2026-11-03)
         var toggled = BotWorkSettings(policy: .off)
         toggled.isOnSetting = true
@@ -1481,6 +1644,45 @@ extension BotModeTests {
         XCTAssertEqual(use.waitingRefs, ["W2"])
         XCTAssertEqual(BotScreenUse.name(of: try XCTUnwrap(use.last)), "W1")
         XCTAssertNil(BotScreenUse(nil))
+    }
+
+    /// Opened from a chat's menu (issue 2132), the sheet names that chat as
+    /// "this chat" whatever its kind; any other chat keeps its own name.
+    func testBotScreenUseNamesTheOpenChat() throws {
+        let use = try XCTUnwrap(BotScreenUse([
+            "controlling": ["session_id": "s1", "kind": "chat", "title": "Trip plans"],
+            "last": ["session_id": "w1", "kind": "workstream", "ref": "W1"],
+        ]))
+        let controlling = try XCTUnwrap(use.controlling)
+        XCTAssertTrue(controlling.isChat(in: ["s1", "durable-1"]))
+        XCTAssertFalse(controlling.isChat(in: []))
+        XCTAssertEqual(BotScreenUse.name(of: controlling), "Trip plans")
+        XCTAssertEqual(BotScreenUse.name(of: controlling, openChat: ["s1"]), AppLocalization.string("this chat"))
+        XCTAssertEqual(BotScreenUse.name(of: try XCTUnwrap(use.last), openChat: ["s1"]), "W1")
+        XCTAssertEqual(BotScreenUse.controllingLine(controlling, openChat: ["s1"]),
+                       AppLocalization.string("This chat is using the screen"))
+        XCTAssertEqual(BotScreenUse.controllingLine(controlling),
+                       AppLocalization.string("\("Trip plans") is using the screen"))
+    }
+
+    /// Which bot's screen a chat's menu opens (issue 2132): a Bot Chat's or
+    /// workstream's bot, an ordinary chat's profile, never a room or a saved copy.
+    func testBotScreenMenuProfile() {
+        func profile(inRoom: Bool = false, botChat: String? = nil, workstream: String? = nil, savedCopy: Bool = false,
+                     session: String? = "s1", row: String? = nil) -> String? {
+            BotScreenUse.menuProfile(inRoom: inRoom, botChatProfile: botChat, workstreamProfile: workstream,
+                                     savedCopy: savedCopy, sessionID: session, rowProfile: row, activeProfile: "work")
+        }
+        XCTAssertEqual(profile(botChat: "furina"), "furina")
+        XCTAssertEqual(profile(workstream: "furina"), "furina")
+        XCTAssertEqual(profile(row: "furina"), "furina")
+        XCTAssertEqual(profile(row: ""), "work")
+        XCTAssertEqual(profile(), "work")
+        XCTAssertNil(profile(inRoom: true, botChat: "furina"))
+        XCTAssertNil(profile(inRoom: true))
+        XCTAssertNil(profile(savedCopy: true))
+        XCTAssertNil(profile(session: nil))
+        XCTAssertNil(profile(session: ""))
     }
 
     func testBotScreenKeysyms() {

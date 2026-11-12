@@ -4,8 +4,8 @@
 //
 //  Chat traces (#1533): the chat recorder's lines (ChatViewportTrace) saved
 //  when a watcher sees what a tester would report, a chat jumping, its
-//  layout running nonstop or the main thread stalling, or when the user
-//  sends them from Diagnostics & logs. A trace names counts, sizes, offsets
+//  layout running nonstop, its rows on screen undrawn or the main thread
+//  stalling, or when the user sends them from Diagnostics & logs. A trace names counts, sizes, offsets
 //  and timings, never message text, titles or file names. The newest stall
 //  trace rides with the crash or freeze report Conduit offers once
 //  (CrashReportOffer), and Diagnostics & logs sends or shares the rest. They
@@ -31,6 +31,10 @@ enum ChatTraceReason: String, CaseIterable {
     /// build saves it since rooms moved onto the transcript (#1533); kept
     /// so a trace an older build saved still lists and sends.
     case rebuild
+    /// Rows crossed the screen and no cell drew them, two checks in a row
+    /// (TranscriptBlankWatch, issue 1942). A relay older than the one that
+    /// lists it in TRACE_REASONS refuses its trace.
+    case blank
     /// The user sent the chat's trace from Diagnostics & logs.
     case manual
 }

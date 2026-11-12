@@ -435,6 +435,8 @@ struct V2ChatsView: View, Equatable {
         _updates = StateObject(wrappedValue: V2ShownUpdates(appState, defaultsKeys: [
             Self.presentationKey, Self.filterKey, Self.expandedNestsKey, V2MainButtonPreference.key,
             ProjectChatsInChats.key, HiddenChatProjects.key,
+            V2SessionsBarPreferences.Profiles.key, V2SessionsBarPreferences.showsProjectsKey,
+            V2SessionsBarPreferences.showsPulseKey, V2SessionsBarPreferences.showsArtifactsKey,
         ]))
     }
 
@@ -455,8 +457,16 @@ struct V2ChatsView: View, Equatable {
     /// registry. Split, a project's page stays beside the open chat.
     private var showsLiveRows: Bool { shell.isTabActive && shell.showsChatRows && listInView }
 
-    /// Projects belong to one profile, so All shows chats only.
-    private var showingProjects: Bool { sessionPresentationRaw == "projects" && !appState.isAllProfilesChatsOn }
+    private var sessionsBar: V2SessionsBarControls {
+        V2SessionsBarControls.resolve(
+            defaults: updates.defaults,
+            pulseAvailable: appState.showsPulseScreen,
+            allProfilesChatsOn: appState.isAllProfilesChatsOn
+        )
+    }
+
+    /// Hidden Projects and All profiles both keep the list on Sessions.
+    private var showingProjects: Bool { sessionsBar.presentation == .projects }
 
     /// All's rows carry their profile's picture, unless the list groups by
     /// profile and the section says it.
@@ -550,17 +560,36 @@ struct V2ChatsView: View, Equatable {
             MinimisedLiveVoiceBar()
         }
         .environmentObject(updates)
+        // The feed's every-minute read, drawn by the tab so hiding the bar's
+        // Pulse button doesn't stop it (Sessions bar, #2020).
+        .background(PulseFeedReader())
         .toolbar(.hidden, for: .navigationBar)
         .navigationTitle(V2Tab.chats.title)
+        .background { searchCommand }
         .onChange(of: shell.hasChatBeside, initial: true) { _, beside in
             updates.coalesces = beside
+        }
+        // Projects hidden, from the Settings tap or from a preference another
+        // device or window wrote: clear the stored page once it's seen, so
+        // showing Projects again doesn't resurrect a page the user was moved
+        // off. The resolve step already keeps the list on Sessions until then.
+        .onChange(of: sessionsBar.showsProjects, initial: true) { _, shows in
+            if V2SessionsBarControls.hidesStoredProjectsPage(sessionPresentationRaw, showsProjects: shows) {
+                sessionPresentationRaw = "sessions"
+            }
         }
         .onChange(of: isShown, initial: true) { _, shown in
             updates.isShown = shown
             // Anything over the list (a chat, a page, another tab) puts the
             // keyboard away and keeps the search: SwiftUI otherwise hands
             // focus back to the field on the way back, over the results.
-            if !shown { searchFocused = false }
+            // A pending ⌘F request goes with it, or the bar's field would
+            // take focus on the way back without the key being pressed
+            // there.
+            if !shown {
+                searchFocused = false
+                barSearchFocusPending = false
+            }
         }
         // Here rather than on the chats list, so an activation that arrives
         // while Projects is shown still opens its section on the way back.
@@ -706,29 +735,33 @@ struct V2ChatsView: View, Equatable {
                 .macTooltip(AppLocalization.string("Search"))
             }
 
-            Button {
-                Haptics.selection()
-                sessionPresentationRaw = showingProjects ? "sessions" : "projects"
-            } label: {
-                V2CapsuleIcon(systemImage: "folder", tint: showingProjects ? Color.conduitAccent : nil)
-                    .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showingProjects)
+            if sessionsBar.showsProjects {
+                Button {
+                    Haptics.selection()
+                    sessionPresentationRaw = showingProjects ? "sessions" : "projects"
+                } label: {
+                    V2CapsuleIcon(systemImage: "folder", tint: showingProjects ? Color.conduitAccent : nil)
+                        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: showingProjects)
+                }
+                .buttonStyle(PressableButtonStyle())
+                .disabled(appState.isAllProfilesChatsOn)
+                .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
+                .macTooltip(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
             }
-            .buttonStyle(PressableButtonStyle())
-            .disabled(appState.isAllProfilesChatsOn)
-            .accessibilityLabel(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
-            .macTooltip(showingProjects ? AppLocalization.string("Show sessions") : AppLocalization.string("Browse projects"))
 
-            if appState.showsPulseScreen {
+            if sessionsBar.showsPulse {
                 V2PulseButton()
             }
 
-            NavigationLink(value: V2Route.artifacts) {
-                V2CapsuleIcon(systemImage: "square.grid.2x2")
+            if sessionsBar.showsArtifacts {
+                NavigationLink(value: V2Route.artifacts) {
+                    V2CapsuleIcon(systemImage: "square.grid.2x2")
+                }
+                .buttonStyle(PressableButtonStyle())
+                .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
+                .accessibilityLabel(AppLocalization.string("Artifacts"))
+                .macTooltip(AppLocalization.string("Artifacts"))
             }
-            .buttonStyle(PressableButtonStyle())
-            .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
-            .accessibilityLabel(AppLocalization.string("Artifacts"))
-            .macTooltip(AppLocalization.string("Artifacts"))
 
             if !stacked {
                 filterMenu(waitingApprovalCount: waitingApprovalCount) { filterIcon(waitingApprovalCount: waitingApprovalCount) }
@@ -824,6 +857,14 @@ struct V2ChatsView: View, Equatable {
     private func barUnstacked() {
         setBarStacked(false)
         barSearchOpen = false
+        // A pending focus was meant for the stacked field, which is going.
+        // The list's field is the one on screen now, so hand the request to
+        // it: dropping it loses a ⌘F the user pressed, and leaving it set
+        // focused the bar's field on some later stack nobody asked for.
+        if barSearchFocusPending {
+            barSearchFocusPending = false
+            searchFocused = true
+        }
     }
 
     /// A change (rotation, a profile added) fades the list's search row in
@@ -863,6 +904,37 @@ struct V2ChatsView: View, Equatable {
                 searchFocused = true
             }
         }
+    }
+
+    /// ⌘F, on an iPad keyboard or a Mac: open the list's search and put the
+    /// cursor in it, whichever way the bar is laid out. A hidden tab's list
+    /// stays mounted, so the action checks that the list is the screen and
+    /// nothing is presented over it before it does anything; a chat pushed
+    /// over it keeps the key to itself.
+    private var searchCommand: some View {
+        Button(AppLocalization.string("Search")) { focusSearchFromKeyboard() }
+            .keyboardShortcut(ConduitKeyboardShortcut.search.shortcut)
+            .frame(width: 1, height: 1)
+            .opacity(0.001)
+            .accessibilityHidden(true)
+    }
+
+    private func focusSearchFromKeyboard() {
+        // Not behind a sheet or alert this view (or anything else) presents.
+        guard isShown, KeyboardCommands.nothingInFront else { return }
+        // Only the stacked bar has a field of its own to open and focus. In
+        // the one-row layout the visible field belongs to the list, so a
+        // pending focus set here would miss it and then be consumed by some
+        // later stack, putting the cursor in the bar's field without the key
+        // being pressed there. Focus the on-screen field directly instead.
+        if barStacked == true, !showsBarSearch {
+            barSearchFocusPending = true
+            withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { barSearchOpen = true }
+        } else {
+            barSearchFocusPending = false
+            searchFocused = true
+        }
+        appState.noteChatListInteraction()
     }
 
     /// The filter menu's button where the bar stacks: what the list shows,

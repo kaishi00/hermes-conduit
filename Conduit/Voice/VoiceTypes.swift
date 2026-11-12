@@ -431,6 +431,18 @@ enum ReadAloudSpeed: Double, CaseIterable, Identifiable {
     }
 }
 
+/// Read replies aloud (notifier issue 674): the open chat's replies are read
+/// as they stream, whatever way the message was sent, and a group room's
+/// new messages one after another. A device-wide choice like the speed;
+/// off by default, when only the speaker button under a reply reads it.
+enum ReadRepliesAloud {
+    static let preferenceKey = "conduit.voice.readRepliesAloud"
+
+    static func isOn(_ defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: preferenceKey)
+    }
+}
+
 /// A prebuilt Gemini Live voice: its API name and Google's one-word
 /// description of how it sounds.
 struct GeminiLiveVoice: Equatable, Identifiable {
@@ -713,7 +725,11 @@ enum VoiceAudioError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .microphonePermissionDenied: return AppLocalization.string("Conduit needs the microphone for voice. Allow it in iPhone Settings > Conduit.")
+        case .microphonePermissionDenied: return SystemSettings.worded(
+            iPhone: AppLocalization.string("Conduit needs the microphone for voice. Allow it in iPhone Settings > Conduit."),
+            iPad: AppLocalization.string("Conduit needs the microphone for voice. Allow it in iPad Settings > Conduit."),
+            mac: AppLocalization.string("Conduit needs the microphone for voice. Allow it in System Settings → Privacy & Security → Microphone.")
+        )
         case .noAudioCaptured: return AppLocalization.string("No speech was captured.")
         case .unavailable(let detail): return detail
         }
@@ -829,6 +845,12 @@ protocol SpeechPlaybackService: AnyObject {
     var keepsRateAdjustable: Bool { get set }
     /// Retimes the audio already playing as well as the next stream.
     func changeRate(_ rate: Float)
+    /// Holds the audio session as this service's `ownershipIntent` while
+    /// nothing plays, so the gap between one stream's end and the next's
+    /// start doesn't deactivate it (other audio coming back up, Now Playing
+    /// lost; issue 2148). Returns the release, safe to call more than once;
+    /// nil when the session can't be held.
+    func holdSession(onTakenOver: (@MainActor () -> Void)?) -> (@MainActor () -> Void)?
 }
 
 extension SpeechPlaybackService {
@@ -856,6 +878,9 @@ extension SpeechPlaybackService {
     }
 
     func changeRate(_ rate: Float) { playbackRate = rate }
+
+    /// Services that don't own an audio session hold nothing.
+    func holdSession(onTakenOver: (@MainActor () -> Void)?) -> (@MainActor () -> Void)? { nil }
 }
 
 @MainActor

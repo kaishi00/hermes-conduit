@@ -252,7 +252,8 @@ extension AppState {
             mainProfileNames: mainProfileNamesByDashboard,
             activeDashboardID: activeDashboardID?.uuidString,
             accent: UserDefaults.standard.string(forKey: ConduitAccent.storageKey) ?? ConduitAccent.defaultValue.rawValue,
-            notificationsEncryption: Self.watchNotificationsEncryption(activeDashboardID.flatMap(notificationsEncryption(of:)))
+            notificationsEncryption: Self.watchNotificationsEncryption(activeDashboardID.flatMap(notificationsEncryption(of:))),
+            pluginAsk: PluginUpdateAsk.managedAsk
         ))
     }
 

@@ -14,6 +14,7 @@
 //
 
 import AVFAudio
+import Combine
 import Foundation
 import OSLog
 import UIKit
@@ -281,7 +282,17 @@ final class GeminiLiveConversationController: ObservableObject {
     /// The mode still needing the user's OK before this call may reach its
     /// provider, or nil (`LiveVoiceProviderConsent.missing`).
     private let missingConsent: @MainActor () -> LiveVoiceModeName?
-    @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
+    ///
+    /// Published through `transcriptPacer`: a new or removed line at once,
+    /// a line growing word by word at most ten times a second (issue 1960).
+    private(set) var transcript: [VoiceConversationTranscriptEntry] = [] {
+        didSet { transcriptPacer.changed(count: transcript.count) }
+    }
+    /// Fires after `transcript` changes, at the pace it publishes.
+    var transcriptChanges: AnyPublisher<Void, Never> { transcriptPacer.changes.eraseToAnyPublisher() }
+    private lazy var transcriptPacer = LiveTranscriptPublishPacer { [weak self] in
+        self?.objectWillChange.send()
+    }
     @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
     /// Whether a call starting now starts with the microphone off: a call
     /// from Hermes the user muted in CallKit before this call was running.
@@ -542,7 +553,7 @@ final class GeminiLiveConversationController: ObservableObject {
             guard status.isAvailable else {
                 initialWidgetCaptureAuthorization = nil
                 hostIssue = LiveVoiceHostIssue(status)
-                phase = .failed(status.userFacingReason(for: provider) ?? GeminiLiveAvailability.notAvailable(for: provider))
+                phase = .failed(PluginUpdateAsk.reason(status.userFacingReason(for: provider)) ?? GeminiLiveAvailability.notAvailable(for: provider))
                 return
             }
         } catch {
@@ -1058,7 +1069,9 @@ final class GeminiLiveConversationController: ObservableObject {
             returnHeldOutcomes()
             // Ending: the goodbye finishes closing instead of offering a
             // retry (the end task closes the conversation).
-            if endRequestedAt == nil { phase = .failed(message) }
+            // A session's plugin-missing words (Shared/) are reworded on a
+            // host that manages the plugin.
+            if endRequestedAt == nil { phase = .failed(PluginUpdateAsk.reason(message) ?? message) }
         case .connecting:
             if endRequestedAt == nil { phase = .connecting }
         case .idle, .stopped:
@@ -1409,6 +1422,24 @@ final class GeminiLiveConversationController: ObservableObject {
         if let lastUserSpeechAt, current.timeIntervalSince(lastUserSpeechAt) < Self.userQuietInterval { return false }
         if let lastModelTurnEndedAt, current.timeIntervalSince(lastModelTurnEndedAt) < Self.modelQuietInterval { return false }
         return true
+    }
+
+    /// Whether a photo can go to the model now: a connection is up and the
+    /// call isn't ending.
+    var canShowPhoto: Bool {
+        isActive && endRequestedAt == nil && session?.isReady == true
+    }
+
+    /// A photo the user showed the call (the call screen's Camera), sent at
+    /// once: a picture never interrupts a reply, and the model sees it with
+    /// the user's next words. Only for a session that takes one (Gemini,
+    /// Qwen). `onFailure` runs when it never reached the socket.
+    func showPhoto(_ jpeg: Data, onFailure: @escaping @MainActor () -> Void) {
+        guard canShowPhoto, let session else {
+            onFailure()
+            return
+        }
+        session.send(.image(jpeg: jpeg), onFailure: onFailure)
     }
 
     /// Sends at most one queued update, and only while idle; the model's

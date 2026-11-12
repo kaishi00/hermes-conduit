@@ -43,6 +43,23 @@ struct RootView: View {
             ConnectLinkSheet(link: link)
                 .environmentObject(appState)
         }
+        // A Link invite, the same way: it waits there for Conduit to
+        // connect when it opened Conduit.
+        .sheet(item: $appState.pendingRoomLink) { invite in
+            RoomLinkOpenedSheet(invite: invite)
+                .environmentObject(appState)
+        }
+        // An invite to a room whose notification was tapped: its join card.
+        .sheet(item: $appState.presentedRoomInvite) { invite in
+            RoomInviteSheet(invite: invite)
+                .environmentObject(appState)
+        }
+        // An approval in a room hosted elsewhere whose notification was
+        // tapped: its card.
+        .sheet(item: $appState.presentedRoomApproval) { approval in
+            RoomApprovalSheet(approval: approval)
+                .environmentObject(appState)
+        }
         // A draft shared from another app before Conduit listed any chats,
         // with more than one dashboard it could be for (#812). An alert, so
         // it shows the same on iPad, where a dialog would need an anchor.
@@ -131,6 +148,8 @@ struct MainView: View {
     /// The page Settings opens at next, for an in-app settings link.
     @State private var settingsOpensAt: ConduitAppLink.SettingsLink?
     @State private var chatTitlePendingRename: SessionSummary?
+    /// The Keyboard Shortcuts sheet, from ⌘/ (KeyboardShortcuts.swift).
+    @State private var showsKeyboardShortcuts = false
     @State private var chatTitlePendingDeletion: SessionSummary?
 
     private var sidebarPresentation: SidebarPresentation {
@@ -437,11 +456,34 @@ struct MainView: View {
         }
         // A widget's New Chat or Talk asks Settings out of the way
         // (revealChatForWidgetLaunch); the chat it opens must end up on top.
+        // The sheet's pages belong to the dashboard it opened on, as the
+        // V2 tab's start over on a switch (V2SettingsTab): a switch made
+        // under it, by a notification's route, closes it (issue 2016).
+        .onChange(of: appState.activeDashboardID) { _, _ in
+            shouldPresentSettingsAfterSidebarDismissal = false
+            settingsOpensAt = nil
+            settingsPresentation = nil
+        }
         .onChange(of: appState.settingsDismissRequest) { _, _ in
             // A drawer closing on its way to Settings doesn't open it either.
             shouldPresentSettingsAfterSidebarDismissal = false
             settingsOpensAt = nil
             settingsPresentation = nil
+        }
+        // ⌘, in the drawer shell, which has no tabs: Settings' sheet. V2
+        // selects its tab (V2Shell).
+        .onReceive(KeyboardCommands.tabRequests) { tab in
+            guard !useV2Shell, tab == .settings, settingsPresentation == nil else { return }
+            presentSettings()
+        }
+        // ⌘/: the list of shortcuts, with nothing else in front. With the
+        // list up, the sheet closes itself (KeyboardShortcutsSheet).
+        .onReceive(KeyboardCommands.shortcutListRequests) { _ in
+            guard !showsKeyboardShortcuts, KeyboardCommands.nothingInFront else { return }
+            showsKeyboardShortcuts = true
+        }
+        .sheet(isPresented: $showsKeyboardShortcuts) {
+            KeyboardShortcutsSheet()
         }
         .onChange(of: appState.settingsLinkRequest) { _, page in
             // V2 opens the page in its Settings tab (V2Shell).
@@ -489,8 +531,10 @@ struct MainView: View {
     private var voiceScreenshotBanner: some View {
         ScreenQuestionVoiceBanner(
             screenshot: appState.voiceScreenshot,
+            kind: appState.voiceScreenshotKind,
             onDiscard: appState.discardVoiceScreenshot,
-            onNewChat: appState.canMoveVoiceScreenshotToNewChat
+            // A photo was taken for the conversation's own chat.
+            onNewChat: appState.canMoveVoiceScreenshotToNewChat && appState.voiceScreenshotKind == .screenshot
                 ? { Task { await appState.moveVoiceScreenshotToNewChat() } }
                 : nil
         )
@@ -515,7 +559,7 @@ struct MainView: View {
                 )
                 .frame(width: persistentSidebarWidth)
                 // The leading column's share of the window's side insets.
-                .environment(\.windowSideInsets, windowSideInsets?.reaching(.leading))
+                .environment(\.windowSideInsets, windowSideInsets?.reaching(.leading, width: persistentSidebarWidth))
 
                 // Drags the sidebar's width, as V2's list (#1487).
                 ColumnDivider(
@@ -529,7 +573,7 @@ struct MainView: View {
                 )
 
                 chatNavigationContent
-                    .environment(\.windowSideInsets, windowSideInsets?.reaching(.trailing))
+                    .environment(\.windowSideInsets, windowSideInsets?.reaching(.trailing, width: availableWindowWidth - persistentSidebarWidth - 1))
             }
         } else {
             chatNavigationContent
@@ -746,6 +790,10 @@ struct MainView: View {
             },
             onEdit: inCall ? nil : { prompt in
                 Task { await appState.editPresentedConfirm(prompt) }
+            },
+            // Typed on the panel, so it stays open over a call too.
+            onSayInstead: { prompt, text in
+                Task { await appState.answerPresentedConfirm(prompt, outcome: .edit, via: .tap, editText: text) }
             }
         )
     }
@@ -753,7 +801,7 @@ struct MainView: View {
     private var windowWidthReader: some View {
         GeometryReader { proxy in
             Color.clear.preference(key: MainViewWindowWidthKey.self, value: proxy.size.width)
-                .onGeometryChange(for: WindowSideInsets.self) { WindowSideInsets($0.safeAreaInsets) } action: { insets in
+                .onGeometryChange(for: WindowSideInsets.self) { WindowSideInsets($0.safeAreaInsets, width: $0.size.width) } action: { insets in
                     if windowSideInsets != insets { windowSideInsets = insets }
                 }
         }

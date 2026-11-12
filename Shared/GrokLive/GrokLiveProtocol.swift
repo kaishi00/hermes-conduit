@@ -161,6 +161,10 @@ enum GrokLiveProtocol {
                     "content": [["type": "input_text", "text": text]],
                 ] as [String: Any],
             ]], false)
+        case .image:
+            // xAI documents no picture input: nothing is sent, and questions
+            // about the photo go to Hermes with the chat's next turn.
+            return ([], false)
         case .toolResponse(let id, _, let result, let scheduling):
             let output = (try? JSONSerialization.data(withJSONObject: result, options: [.sortedKeys]))
                 .map { String(decoding: $0, as: UTF8.self) } ?? "{}"

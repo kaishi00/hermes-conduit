@@ -15,6 +15,12 @@ import UserNotifications
 import XCTest
 @testable import Conduit
 
+/// Whether an ask for the scheduled jobs has returned.
+@MainActor
+private final class ScheduledJobsAskDone {
+    var done = false
+}
+
 @MainActor
 final class AppStateMultiDashboardTests: XCTestCase {
 
@@ -411,6 +417,19 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertEqual(relaunched.lastDashboardURL, "https://hermes.example.test/new")
     }
 
+    func testSelectingADashboardWordsPluginAsksWithItsLastReportedManager() {
+        let home = dashboard("Home", "https://home.example.test")
+        let farm = dashboard("Farm", "https://farm.example.test")
+        NotifierPluginStatus.Remembered.remember("Family farm", for: farm.id, in: defaults)
+        addTeardownBlock { PluginUpdateAsk.setActive(managedBy: nil) }
+        let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: home.id, dashboards: [home, farm]))
+        XCTAssertNil(PluginUpdateAsk.managedBy)
+        appState.selectDashboardTarget(farm.id)
+        XCTAssertEqual(PluginUpdateAsk.managedBy, "Family farm")
+        appState.selectDashboardTarget(home.id)
+        XCTAssertNil(PluginUpdateAsk.managedBy)
+    }
+
     func testSwitchingBackMovesTheDashboardAndForgetsThePasswordForTheOldAddress() async {
         let home = dashboard("Home", "http://127.0.0.1:1")
         let work = dashboard("Work", "https://work.example.test")
@@ -784,6 +803,7 @@ extension AppStateMultiDashboardTests {
             isArchived: false,
             lineageRootId: nil
         )]
+        appState.cronJobs = [CronJob(enabled: true, id: "mac-job")]
 
         await appState.switchDashboard(to: vps.id)
 
@@ -792,12 +812,125 @@ extension AppStateMultiDashboardTests {
         XCTAssertFalse(appState.isConnected)
         XCTAssertNil(appState.connection)
         XCTAssertTrue(appState.sessions.isEmpty, "the outgoing server's session catalog is retired at the switch boundary")
+        XCTAssertTrue(appState.cronJobs.isEmpty, "so are its scheduled jobs (issue 2094)")
         // ...the target is selected and presents its sign-in...
         XCTAssertEqual(appState.activeDashboardID, vps.id)
         XCTAssertTrue(appState.showLogin)
         // ...and the outgoing dashboard stays saved with its auth intact.
         XCTAssertNotNil(appState.savedDashboardRegistry.dashboard(with: mac.id))
         XCTAssertNotNil(KeychainHelper.loadConnection(dashboardID: mac.id))
+    }
+
+    /// A second ask for the scheduled jobs joins the read out rather than
+    /// returning with nothing read: the Tasks tab's task restarted mid-read
+    /// (away and back) cancels the first ask, and the read still lands for
+    /// the second, from one request. A finished read doesn't hold the next
+    /// one back.
+    func testAScheduledJobsAskJoinsTheReadOutWhenTheFirstIsCancelled() async throws {
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        addTeardownBlock { @MainActor in
+            held.releaseAll()
+            held.bridge.invalidate()
+        }
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let first = Task { await appState.loadCronJobs() }
+        try await held.waitForRequests(1)
+        first.cancel()
+        let secondDone = ScheduledJobsAskDone()
+        let second = Task {
+            await appState.loadCronJobs()
+            secondDone.done = true
+        }
+        try await Task.sleep(for: .milliseconds(100))
+        XCTAssertFalse(secondDone.done, "the second ask waits for the read out")
+        XCTAssertEqual(held.sent.count, 1, "and sends nothing of its own")
+        XCTAssertTrue(appState.cronJobsLoading)
+
+        try await held.answer(["jobs": [["id": "j1", "enabled": true, "name": "Morning"]]])
+        await second.value
+        await first.value
+        XCTAssertTrue(secondDone.done)
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["j1"], "the read landed though the first ask was cancelled")
+        XCTAssertFalse(appState.cronJobsLoading)
+
+        let again = Task { await appState.loadCronJobs() }
+        try await held.waitForRequests(2)
+        try await held.answer(["jobs": [[String: Any]]()])
+        await again.value
+        XCTAssertEqual(held.sent.count, 2, "a finished read doesn't hold the next back")
+        XCTAssertTrue(appState.cronJobs.isEmpty)
+    }
+
+    /// A failed read says so, ends the spinner and doesn't hold the next
+    /// ask back (issue 2109).
+    func testAFailedScheduledJobsReadSaysSoAndTheNextAskReadsAgain() async throws {
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        addTeardownBlock { @MainActor in
+            held.releaseAll()
+            held.bridge.invalidate()
+        }
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+
+        let first = Task { await appState.loadCronJobs() }
+        try await held.answer(["error": "down"], toPathEnding: "/api/cron/jobs", status: 500)
+        await first.value
+        XCTAssertFalse(appState.cronJobsLoading)
+        XCTAssertNotNil(appState.errorMessage, "the failed read says so")
+
+        let again = Task { await appState.loadCronJobs() }
+        try await held.answer(["jobs": [["id": "j1", "enabled": true, "name": "Morning"]]], toPathEnding: "/api/cron/jobs")
+        await again.value
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["j1"])
+    }
+
+    /// Profile A, B, then A again while A's first read is out: that read's
+    /// end neither clears the newer A read's hold nor commits over it, as
+    /// each read carries its own token (issue 2109).
+    func testAnOlderScheduledJobsReadDoesNotEndTheNewerReadForTheSameProfile() async throws {
+        let held = HeldDashboardRequests(baseURL: "http://127.0.0.1:1", dashboardID: UUID())
+        addTeardownBlock { @MainActor in
+            held.releaseAll()
+            held.bridge.invalidate()
+        }
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        appState.installDashboardTicketBridgeForTesting(held.bridge)
+        let profile = appState.activeProfile
+
+        let older = Task { await appState.loadCronJobs() }
+        try await held.waitForRequests(1)
+        appState.setActiveProfileForTesting("work")
+        let other = Task { await appState.loadCronJobs() }
+        // The work read is out before the switch back, so it reads "work".
+        for _ in 0..<1_000 where held.sent.filter({ $0.path.hasSuffix("/api/cron/jobs") }).count < 2 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        appState.setActiveProfileForTesting(profile)
+        let newer = Task { await appState.loadCronJobs() }
+        for _ in 0..<1_000 where held.sent.filter({ $0.path.hasSuffix("/api/cron/jobs") }).count < 3 {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertEqual(held.sent.filter { $0.path.hasSuffix("/api/cron/jobs") }.count, 3, "each profile change starts its own read")
+
+        let cronReads = held.sent.indices.filter { held.sent[$0].path.hasSuffix("/api/cron/jobs") }
+        let olderPlace = cronReads[0], newerPlace = cronReads[2]
+        XCTAssertFalse(held.sent[newerPlace].query?.contains("work") ?? false)
+
+        // The newer read lands first, then the older one: the older read
+        // neither overwrites the newer list nor ends anything (#2113 review).
+        try await held.answer(["jobs": [["id": "new", "enabled": true, "name": "New"]]], at: newerPlace)
+        await newer.value
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["new"])
+        XCTAssertFalse(appState.cronJobsLoading)
+        try await held.answer(["jobs": [["id": "old", "enabled": true, "name": "Old"]]], at: olderPlace)
+        await older.value
+        XCTAssertEqual(appState.cronJobs.map(\.id), ["new"], "the older read commits nothing over the newer")
+
+        held.releaseAll()
+        await other.value
+        XCTAssertFalse(appState.cronJobsLoading)
     }
 
     func testFailedCredentialSwitchDoesNotBlockLaterSelection() async {
@@ -1373,6 +1506,52 @@ extension AppStateMultiDashboardTests {
                        Set(["title_generation", "voice_chat"]), "the read after the save is kept")
     }
 
+    /// Edit Bot > Work's Watch Model reads and saves the work watch's slot in
+    /// the bot's own profile, kept apart from the open profile's slots.
+    func testAnotherProfilesHelperModelIsReadAndSavedInThatProfile() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let load = Task { try await appState.loadHelperModels(inProfile: "second") }
+        try await held.waitForRequests(1)
+        try await held.answer(["tasks": [
+            ["task": HelperModelSlot.workWatch, "provider": "auto", "model": "", "label": "Conduit work watch", "plugin": "conduit_push"],
+        ]])
+        let slots = try await load.value
+        XCTAssertEqual(slots.map(\.id), [HelperModelSlot.workWatch])
+        XCTAssertEqual(held.sent.first?.query, "profile=second")
+        XCTAssertEqual(appState.keptHelperModel(task: HelperModelSlot.workWatch, inProfile: "second")?.followsChats, true)
+        XCTAssertNil(appState.keptHelperModels(), "the open profile's kept slots are untouched")
+
+        let pick = VoiceReplyModelSetting(task: HelperModelSlot.workWatch, provider: "openrouter", model: "fast/watch", reasoningEffort: nil)
+        let save = Task { await appState.setHelperModel(pick, confirmed: true, profile: "second") }
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": [HelperModelSlot.workWatch]])
+        let saved = await save.value
+        XCTAssertEqual(saved, .saved)
+        XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary, "/api/model/set"],
+                       "no read of the open profile follows another profile's save")
+        XCTAssertEqual(held.sent.last?.query, "profile=second")
+        XCTAssertEqual(appState.keptHelperModel(task: HelperModelSlot.workWatch, inProfile: "second")?.model, "fast/watch")
+        XCTAssertNil(appState.keptHelperModels())
+
+        // Another profile's save leaves the open profile's read under way
+        // shared: a reader asking after the save joins it.
+        let open = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(3)
+        let again = Task { await appState.setHelperModel(pick, confirmed: true, profile: "second") }
+        try await held.waitForRequests(4)
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": [HelperModelSlot.workWatch]], at: 1)
+        let savedAgain = await again.value
+        XCTAssertEqual(savedAgain, .saved)
+        let joined = Task { try await appState.loadHelperModels() }
+        for _ in 0..<5 { await Task.yield() }
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]])
+        let openSlots = try await open.value
+        let joinedSlots = try await joined.value
+        XCTAssertEqual(openSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(joinedSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(held.sent.count, 4, "the reader after the save joined the open profile's read")
+    }
+
     /// The Model page and its Helper models section read together: one
     /// request answers both.
     func testHelperModelReadersAskingTogetherShareOneRead() async throws {
@@ -1412,6 +1591,50 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(afterSlots.first?.setting.model, "big/model", "the read after the save")
         XCTAssertEqual(held.sent.map(\.path), [AppState.KeptRoute.modelAuxiliary, "/api/model/set", AppState.KeptRoute.modelAuxiliary],
                        "the read after the save joined the save's own")
+    }
+
+    /// A read is shared across spellings of one profile, as a save drops it.
+    func testHelperModelReadersShareOneReadAcrossAProfilesSpellings() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let first = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        appState.setActiveProfileForTesting(" Default ")
+        let second = Task { try await appState.loadHelperModels() }
+        for _ in 0..<5 { await Task.yield() }
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]],
+                              toPathEnding: AppState.KeptRoute.modelAuxiliary)
+        let firstSlots = try await first.value
+        let secondSlots = try await second.value
+        XCTAssertEqual(firstSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(secondSlots.map(\.id), ["title_generation"])
+        XCTAssertEqual(held.sent.filter { $0.path == AppState.KeptRoute.modelAuxiliary }.count, 1, "one request for both")
+    }
+
+    /// A save drops its own profile's read even when that profile isn't
+    /// open: a switch leaves a read under way, and switching back mustn't
+    /// join it and show the pick from before the save.
+    func testAHelperModelSaveDropsItsProfilesReadAfterASwitchAway() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let before = Task { try await appState.loadHelperModels() }
+        try await held.waitForRequests(1)
+        appState.setActiveProfileForTesting("second")
+        let pick = VoiceReplyModelSetting(task: "title_generation", provider: "openrouter", model: "big/model", reasoningEffort: nil)
+        let save = Task { await appState.setHelperModel(pick, confirmed: true, profile: "default") }
+        try await held.answer(["ok": true, "scope": "auxiliary", "tasks": ["title_generation"]], toPathEnding: "/api/model/set")
+        let saved = await save.value
+        XCTAssertEqual(saved, .saved)
+        appState.setActiveProfileForTesting("default")
+        let after = Task { try await appState.loadHelperModels() }
+        let reads = { held.sent.filter { $0.path == AppState.KeptRoute.modelAuxiliary }.count }
+        for _ in 0..<200 where reads() < 2 { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(reads(), 2, "the read after the save is its own, not the one from before it")
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "auto", "model": ""]]],
+                              toPathEnding: AppState.KeptRoute.modelAuxiliary)
+        _ = try await before.value
+        try await held.answer(["tasks": [["task": "title_generation", "provider": "openrouter", "model": "big/model"]]],
+                              toPathEnding: AppState.KeptRoute.modelAuxiliary)
+        let afterSlots = try await after.value
+        XCTAssertEqual(afterSlots.first?.setting.model, "big/model", "the pick from the save, not from before it")
     }
 
     private func heldSwitchFixture() -> (appState: AppState, held: HeldDashboardRequests, vps: SavedDashboard) {
@@ -1654,6 +1877,75 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(explorer.entries.isEmpty, "nor its listing")
     }
 
+    /// A picture sent into a room is read back through the plugin's room
+    /// files (issue 2035), only from a plugin that serves it, and a refusal
+    /// says the file is gone rather than that the host was out of reach.
+    func testRoomPicturesReadThroughThePluginsRoomFiles() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        XCTAssertNil(appState.roomFilePicturesResolver, "an older plugin's pictures stay by name")
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.142.0", capabilities: [GroupRoomFilesClient.pictureCapability]))
+        let resolver = try XCTUnwrap(appState.roomFilePicturesResolver)
+        XCTAssertTrue(appState.roomFilePicturesResolver === resolver, "one resolver, so the rows holding it compare equal")
+        XCTAssertNil(appState.roomFileReadsResolver, "a 0.142 plugin reads pictures only; other files stay names")
+        appState.setNotifierPluginStateForTesting(.reported(
+            version: "0.143.0", capabilities: [GroupRoomFilesClient.pictureCapability, GroupRoomFilesClient.readCapability]
+        ))
+        let reads = try XCTUnwrap(appState.roomFileReadsResolver)
+        XCTAssertFalse(reads === resolver, "what the room reads changed, so its rows draw again")
+        XCTAssertTrue(appState.roomFilePicturesResolver === reads, "pictures and other files read through one room reader")
+        XCTAssertTrue(reads.roomFileReads.pluginPictures && reads.roomFileReads.pluginFiles)
+        XCTAssertTrue(GroupRoomFilesClient.isStoredFile(Attachment(
+            id: "d", name: "report.pdf", uri: "/h/conduit/room-files/20261108-c/report.pdf", mimeType: "application/pdf", kind: .document
+        )))
+        XCTAssertFalse(GroupRoomFilesClient.isStoredFile(Attachment(
+            id: "e", name: "report.pdf", uri: "/h/projects/report.pdf", mimeType: "application/pdf", kind: .document
+        )), "a file the room didn't store keeps its name")
+        XCTAssertFalse(GroupRoomFilesClient.isStoredFile(Attachment(
+            id: "f", name: "photo.jpg", uri: "/w/conduit/room-files/photo.jpg", mimeType: "image/jpeg", kind: .image
+        )), "a path outside an upload's folder keeps its name")
+        let inline = await resolver.inlineImageDataURL(InlineImageRef(sessionId: "s", profile: "default", rowId: 1, index: 0))
+        XCTAssertNil(inline, "room files hold no pictures inside messages")
+
+        let path = "/h/conduit/room-files/20261108-a/my photo.jpg"
+        let read = Task { await resolver.read(for: path) }
+        try await held.waitForRequests(1)
+        try await held.answer(["dataUrl": "data:image/jpeg;base64,/9j/"], toPathEnding: "/room-files/data-url")
+        let answered = await read.value
+        XCTAssertEqual(answered, .dataURL("data:image/jpeg;base64,/9j/"))
+        XCTAssertEqual(held.sent.last?.path, GroupRoomFilesClient.readPath)
+        XCTAssertEqual(held.sent.last?.query?.removingPercentEncoding, "path=\(path)")
+
+        let refused = Task { await resolver.read(for: "/elsewhere/x.jpg") }
+        try await held.waitForRequests(2)
+        try await held.answer(["detail": "Not a room file"], status: 404)
+        let gone = await refused.value
+        XCTAssertEqual(gone, .gone)
+
+        // The sender's own picture is kept under the key its message's
+        // preview and the viewer look it up by, so it shows without a read.
+        let cache = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        let staged = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString + "-photo.jpg")
+        try Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]).write(to: staged)
+        addTeardownBlock {
+            try? FileManager.default.removeItem(at: cache)
+            try? FileManager.default.removeItem(at: staged)
+        }
+        let photo = Attachment(id: "p", name: "my photo.jpg", uri: staged.absoluteString, mimeType: "image/jpeg", kind: .image)
+        let notes = Attachment(id: "n", name: "notes.txt", uri: staged.absoluteString, mimeType: "text/plain", kind: .document)
+        await appState.keepSentRoomPictures(
+            [photo, notes],
+            references: ["@file:`\(path)`", "@file:/h/conduit/room-files/20261108-b/notes.txt"],
+            resolver: resolver,
+            in: cache
+        )
+        let shown = MessageNormalizer.splitLeadingFileReferences("@file:`\(path)`", messageId: "room").attachments
+        let key = try XCTUnwrap(resolver.imageCacheKey(for: try XCTUnwrap(shown.first)))
+        let kept = try XCTUnwrap(TranscriptImageCache.cachedFile(for: key, in: cache))
+        XCTAssertEqual(kept.pathExtension, "jpg")
+        XCTAssertEqual(try Data(contentsOf: kept), Data([0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3]))
+        XCTAssertEqual(try FileManager.default.contentsOfDirectory(atPath: cache.path).count, 1, "only the picture is kept")
+    }
+
     /// A folder opens on its listing and recent files as the plugin gave
     /// them last time, before Hermes answers, and a read that fails keeps
     /// them up (#1533).
@@ -1663,12 +1955,13 @@ extension AppStateMultiDashboardTests {
         let first = WorkspaceExplorer()
         first.attach(appState)
         let open = Task { await first.open(root: "/w/app", profile: appState.activeProfile) }
-        try await held.waitForRequests(1)
-        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]])
+        // The listing and the recent files are read together (issue 1964),
+        // so either can go first: each is answered by its path.
         try await held.waitForRequests(2)
-        try await held.answer(["ok": true, "entries": [["name": "notes.md", "path": "/w/app/notes.md"]]])
+        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/app/src", "isDirectory": true]]], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [["name": "notes.md", "path": "/w/app/notes.md"]]], toPathEnding: "/workspace/recent")
         await open.value
-        XCTAssertEqual(held.sent.map(\.path), [
+        XCTAssertEqual(Set(held.sent.map(\.path)), [
             "/api/plugins/conduit_push/workspace/list", "/api/plugins/conduit_push/workspace/recent",
         ])
 
@@ -1678,8 +1971,8 @@ extension AppStateMultiDashboardTests {
         try await held.waitForRequests(3)
         XCTAssertEqual(next.rows().map { $0.entry.name }, ["src"], "Shown before Hermes answers")
         XCTAssertEqual(next.recent.map(\.name), ["notes.md"])
-        try await held.answer(["error": "boom"], status: 500)
         try await held.waitForRequests(4)
+        try await held.answer(["error": "boom"], status: 500)
         try await held.answer(["error": "boom"], status: 500)
         await reopen.value
 
@@ -1710,6 +2003,49 @@ extension AppStateMultiDashboardTests {
         }
         XCTAssertTrue(held.sent.contains { $0.path == NotifierPluginStatus.path })
         XCTAssertEqual(asking.rows().map { $0.entry.name }, ["src"], "The kept listing stays while it asks")
+    }
+
+    /// A profile with the plugin turned off (issue 1438): Hermes answers
+    /// the workspace routes "Plugin not found" though the dashboard's own
+    /// profile reports them. The folder browses through Hermes' own listing,
+    /// offers no changes, says how to turn the plugin on, and asks again on
+    /// a refresh.
+    func testAFolderOnAProfileWithThePluginOffBrowsesThroughHermes() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.164.0", capabilities: [WorkspaceFilesClient.capability]))
+        let refused: [String: Any] = ["detail": "Plugin not found"]
+        let explorer = WorkspaceExplorer()
+        explorer.attach(appState)
+        let open = Task { await explorer.open(root: "/w/atlas", profile: "atlas") }
+        try await held.waitForRequests(2)
+        try await held.answer(refused, toPathEnding: "/workspace/list", status: 404)
+        try await held.answer(refused, toPathEnding: "/workspace/recent", status: 404)
+        try await held.answer(["entries": [["name": "src", "path": "/w/atlas/src", "isDirectory": true]]], toPathEnding: "/api/fs/list")
+        await open.value
+
+        XCTAssertNil(explorer.error, "the folder still opens")
+        XCTAssertEqual(explorer.rows().map { $0.entry.name }, ["src"])
+        XCTAssertFalse(explorer.canChange, "no search, Add menu or changes")
+        let remedy = try XCTUnwrap(explorer.pluginOff)
+        XCTAssertTrue(remedy.contains("atlas") && remedy.contains("plugins.enabled"), remedy)
+        XCTAssertEqual(held.sent.last(where: { $0.path == "/api/fs/list" })?.query?.contains("profile=atlas"), true)
+
+        // A folder in the tree reads Hermes' listing straight away.
+        let opened = Task { await explorer.toggle(WorkspaceEntry(name: "src", path: "/w/atlas/src", isDirectory: true)) }
+        try await held.answer(["entries": [["name": "main.py", "path": "/w/atlas/src/main.py"]]], toPathEnding: "/api/fs/list")
+        _ = await opened.value
+        XCTAssertEqual(explorer.rows().map { $0.entry.name }, ["src", "main.py"])
+        XCTAssertEqual(held.sent.filter { $0.path.hasSuffix("/workspace/list") }.count, 1)
+
+        // Turned on, a refresh finds the plugin answering again.
+        let refresh = Task { await explorer.refresh() }
+        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/atlas/src", "isDirectory": true]]], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [["name": "main.py", "path": "/w/atlas/src/main.py"]]], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [["name": "notes.md", "path": "/w/atlas/notes.md"]]], toPathEnding: "/workspace/recent")
+        await refresh.value
+        XCTAssertNil(explorer.pluginOff)
+        XCTAssertTrue(explorer.canChange)
+        XCTAssertEqual(explorer.recent.map(\.name), ["notes.md"])
     }
 
     func testATappedFileNameAsksThePluginAndALaterTapWins() async throws {
@@ -2080,6 +2416,31 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(appState.keptDelegationPaused(), true, "Another profile's page opens on it")
         await appState.switchDashboard(to: vps.id)
         XCTAssertNil(appState.keptDelegationPaused(), "Another dashboard's page doesn't")
+    }
+
+    /// Settings > Passwords & logins opens on the list kept for the
+    /// dashboard and profile: never another profile's vault, or another
+    /// dashboard's.
+    func testThePasswordsPageOpensOnTheProfilesKeptVault() async throws {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = try XCTUnwrap(appState.activeDashboardID)
+        let snapshot = CredentialVaultSnapshot(
+            items: [VaultItem(id: "a1", kind: "login", label: "GitHub", origin: "https://github.com", identifier: "me@example.com", identifierType: "email", hasOTP: true)],
+            sources: [VaultSource(name: "bitwarden", displayName: "Bitwarden", enabled: true, needsUnlock: true, unlocked: false, installed: true)]
+        )
+        let json = try XCTUnwrap(JSONSerialization.jsonObject(with: JSONEncoder().encode(snapshot)) as? [String: Any])
+        appState.offlineChatCacheForTesting.recordAnswer(
+            json, route: AppState.credentialVaultRoute, dashboardID: mac, profile: appState.activeProfile
+        )
+
+        XCTAssertEqual(appState.keptCredentialVault(), snapshot)
+        let profile = appState.activeProfile
+        appState.setActiveProfileForTesting("work")
+        XCTAssertNil(appState.keptCredentialVault(), "Another profile has a vault of its own")
+        appState.setActiveProfileForTesting(profile)
+        XCTAssertEqual(appState.keptCredentialVault(), snapshot)
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertNil(appState.keptCredentialVault(), "Another dashboard's page doesn't")
     }
 
     /// A config save is what the settings pages open on next, without
@@ -2769,6 +3130,101 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(saved.soul, written.soul)
     }
 
+    /// Settings > Edit profile > Personality reads and keeps the profile's
+    /// SOUL as Edit Bot does, so both open on the same copy; a save writes
+    /// the SOUL alone and is what both open on next, and one Hermes turns
+    /// down says so and keeps the SOUL it had.
+    func testEditProfileSavesTheSoulEditBotShows() async throws {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac])
+        let details = BotProfileDetails(
+            description: "", soul: "You are Hermes.", provider: "openrouter", model: "kimi-k2",
+            capabilities: BotCapabilities()
+        )
+        let hermes = BotEditorHermes(details: details, setup: BotMcpSetupSnapshot(catalog: [], servers: [:]))
+        var operations = ChatResumeLifecycleOperations()
+        operations.describeBotProfile = { _, profile in try await hermes.describe(profile) }
+        operations.configureBotSections = { _, _, sections in hermes.configure(sections) }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: registry,
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: operations,
+            groupChatOperations: .live,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+            profileAppearanceStore: makeAppearanceStore()
+        )
+        connectRoster(appState, to: mac)
+
+        XCTAssertNil(appState.keptProfileSoul("default"), "Nothing kept yet")
+        let loaded = await appState.loadProfileSoul("default")
+        XCTAssertEqual(loaded, "You are Hermes.")
+        XCTAssertEqual(hermes.asked, ["default"])
+        XCTAssertEqual(appState.keptBotDetails(rosterBot("default"))?.soul, "You are Hermes.", "Edit Bot opens on the same copy")
+
+        hermes.applied = ["soul": true]
+        let saved = await appState.saveProfileSoul("You are Hermes, briefly.", profile: "default")
+        XCTAssertNil(saved)
+        XCTAssertEqual(hermes.configured, [["soul"]], "Only the SOUL is written")
+        XCTAssertEqual(appState.keptProfileSoul("default"), "You are Hermes, briefly.")
+        XCTAssertEqual(appState.keptBotDetails(rosterBot("default"))?.soul, "You are Hermes, briefly.")
+
+        hermes.applied = ["soul": false]
+        let refused = await appState.saveProfileSoul("Something else.", profile: "default")
+        XCTAssertEqual(refused, AppLocalization.string("The personality was not saved."))
+        XCTAssertEqual(appState.keptProfileSoul("default"), "You are Hermes, briefly.", "A refused save keeps nothing")
+
+        appState.isConnected = false
+        let offline = await appState.saveProfileSoul("Offline.", profile: "default")
+        XCTAssertEqual(offline, AppLocalization.string("Connect to Hermes to change the personality."))
+        XCTAssertEqual(hermes.configured.count, 2, "Offline writes nothing")
+    }
+
+    /// A read whose answer is the same as what's kept writes nothing, but
+    /// its turn still counts: an older read landing after it with another
+    /// answer doesn't put that one back (issue 2152, #2159 review).
+    func testAnUnchangedKeptReadStillCountsItsTurn() async throws {
+        let mac = dashboard("Mac", "https://mac-\(UUID().uuidString.lowercased()).invalid")
+        let registry = SavedDashboardRegistry(activeDashboardID: mac.id, dashboards: [mac])
+        let appState = rosterAppState(registry)
+        connectRoster(appState, to: mac)
+        let owner = try XCTUnwrap(appState.currentDashboardRuntimeOwner())
+        let route = "test.unchangedKeptRead"
+        let profile = AppState.KeptRoute.everyProfile
+        let kept = KeptNamesForTest(names: ["a"])
+        _ = try await appState.keepingRead(as: route, profile: profile, owner: owner) { kept }
+        let keptTurn = appState.keptAnswerTurn(route, profile: profile)
+        XCTAssertEqual(appState.keptRead(KeptNamesForTest.self, route, profile: profile), kept)
+
+        // An older read is asked and waits; a newer one answers what's kept.
+        let gate = KeptReadGate()
+        let older = Task { @MainActor in
+            try await appState.keepingRead(as: route, profile: profile, owner: owner) { () async throws -> KeptNamesForTest in
+                gate.asked = true
+                while !gate.mayAnswer { try await Task.sleep(for: .milliseconds(10)) }
+                return KeptNamesForTest(names: ["old"])
+            }
+        }
+        for _ in 0..<1_000 where !gate.asked { try await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertTrue(gate.asked)
+        var compared = 0
+        let newer = try await appState.keepingRead(
+            as: route, profile: profile, owner: owner,
+            unchanged: { compared += 1; return $0 == kept }
+        ) { kept }
+        XCTAssertEqual(newer, kept)
+        XCTAssertEqual(compared, 1)
+        XCTAssertGreaterThan(appState.keptAnswerTurn(route, profile: profile), keptTurn, "its turn counts")
+        XCTAssertEqual(appState.keptRead(KeptNamesForTest.self, route, profile: profile), kept)
+
+        gate.mayAnswer = true
+        let olderAnswer = try await older.value
+        XCTAssertEqual(olderAnswer, KeptNamesForTest(names: ["old"]), "the older read still answers its caller")
+        XCTAssertEqual(appState.keptRead(KeptNamesForTest.self, route, profile: profile), kept,
+                       "but isn't kept over the newer one")
+    }
+
     /// Hosted rooms and their pictures open as Hermes and the host listed
     /// them last time on this dashboard, until `groups.list` answers; the
     /// kept pictures then carry over, so only one whose revision moved is
@@ -2918,6 +3374,12 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(next.skills.first?.enabled, true)
         XCTAssertEqual(next.toolsets.map(\.label), ["Web"])
         XCTAssertTrue(nextHeld.sent.isEmpty)
+        // Edit Bot's Skills page opens on the same kept list for its
+        // categories, per profile.
+        let keptDetails = next.keptBotSkillDetails(profile: "default")
+        XCTAssertEqual(keptDetails?.map(\.name), ["sql", "pdf"])
+        XCTAssertEqual(keptDetails?.first?.category, "data")
+        XCTAssertNil(next.keptBotSkillDetails(profile: "nova"), "Each profile keeps its own")
 
         let reload = Task { await next.loadCapabilities() }
         try await nextHeld.waitForRequests(2)
@@ -3021,4 +3483,16 @@ private final class BotEditorHermes {
         held?.resume()
         held = nil
     }
+}
+
+/// What `testAnUnchangedKeptReadStillCountsItsTurn` keeps.
+private struct KeptNamesForTest: Codable, Equatable {
+    var names: [String]
+}
+
+/// Holds that test's older read until it may answer.
+@MainActor
+private final class KeptReadGate {
+    var asked = false
+    var mayAnswer = false
 }

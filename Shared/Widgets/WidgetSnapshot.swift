@@ -5,6 +5,8 @@ import Foundation
 enum ConduitWidgetKind {
     static let native = "com.milim.relay.widgets.native"
     static let character = "com.milim.relay.widgets.character"
+    /// Pulse's open cards, with Done, Do it and Not now (issue 2190).
+    static let pulse = "com.milim.relay.widgets.pulse"
 }
 
 struct WidgetWorkspaceID: Codable, Hashable {

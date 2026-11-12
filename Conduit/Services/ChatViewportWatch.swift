@@ -12,6 +12,9 @@ import Foundation
 ///   counts) and the reader isn't scrolling, which is what a chat that
 ///   stops taking scrolls and typing would look like.
 ///
+/// - A blank screen: rows cross what the reader sees and no cell draws
+///   them, two checks a second apart (TranscriptBlankWatch, issue 1942).
+///
 /// Each saves at most once a minute. A stall is MainThreadHangWatchdog's.
 @MainActor
 final class ChatViewportWatch {
@@ -86,6 +89,12 @@ final class ChatViewportWatch {
             format: "jump %.1f -> %.1f with nothing asking (viewport %.1f)", old, new, viewportHeight
         ))
         saveOnce(.jump, at: time)
+    }
+
+    /// TranscriptBlankWatch found the rows on screen undrawn, and logged
+    /// what the transcript held.
+    func blankScreen() {
+        saveOnce(.blank, at: now())
     }
 
     /// A layout pass changed the transcript's frames, its size or its

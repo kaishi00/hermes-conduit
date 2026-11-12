@@ -41,15 +41,27 @@ struct IPhoneVoiceSettingsView: View {
                 }
             }
             if loaded, candidates.isEmpty {
-                Text(AppLocalization.string("No voice for \(languageName(language)) is installed on this iPhone yet. To download one, search iPhone Settings for “Voices”."))
+                Text(verbatim: SystemSettings.worded(
+                    iPhone: AppLocalization.string("No voice for \(languageName(language)) is installed on this iPhone yet. To download one, search iPhone Settings for “Voices”."),
+                    iPad: AppLocalization.string("No voice for \(languageName(language)) is installed on this iPad yet. To download one, search iPad Settings for “Voices”."),
+                    mac: AppLocalization.string("No voice for \(languageName(language)) is installed on this Mac yet. To download one, search System Settings for “Voices”.")
+                ))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
             } else if loaded, candidates.allSatisfy(\.isScreenReaderVoice) {
-                Text(AppLocalization.string("Only a screen-reader voice for \(languageName(language)) is installed on this iPhone, so replies sound robotic. To download a natural one, search iPhone Settings for “Voices”; it shows up here once it's done."))
+                Text(verbatim: SystemSettings.worded(
+                    iPhone: AppLocalization.string("Only a screen-reader voice for \(languageName(language)) is installed on this iPhone, so replies sound robotic. To download a natural one, search iPhone Settings for “Voices”; it shows up here once it's done."),
+                    iPad: AppLocalization.string("Only a screen-reader voice for \(languageName(language)) is installed on this iPad, so replies sound robotic. To download a natural one, search iPad Settings for “Voices”; it shows up here once it's done."),
+                    mac: AppLocalization.string("Only a screen-reader voice for \(languageName(language)) is installed on this Mac, so replies sound robotic. To download a natural one, search System Settings for “Voices”; it shows up here once it's done.")
+                ))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
             } else if loaded, !candidates.contains(where: \.isNatural) {
-                Text(AppLocalization.string("This iPhone has no Enhanced or Premium voice for \(languageName(language)) yet, so replies use a basic one. To download one, search iPhone Settings for “Voices”; it shows up here once it's done."))
+                Text(verbatim: SystemSettings.worded(
+                    iPhone: AppLocalization.string("This iPhone has no Enhanced or Premium voice for \(languageName(language)) yet, so replies use a basic one. To download one, search iPhone Settings for “Voices”; it shows up here once it's done."),
+                    iPad: AppLocalization.string("This iPad has no Enhanced or Premium voice for \(languageName(language)) yet, so replies use a basic one. To download one, search iPad Settings for “Voices”; it shows up here once it's done."),
+                    mac: AppLocalization.string("This Mac has no Enhanced or Premium voice for \(languageName(language)) yet, so replies use a basic one. To download one, search System Settings for “Voices”; it shows up here once it's done.")
+                ))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
             }
@@ -125,8 +137,11 @@ struct IPhoneVoiceSettingsView: View {
 
     private func title(for voice: IPhoneVoiceOption, showsRegion: Bool = false) -> String {
         var name = voice.name
-        if showsRegion, let region = Locale(identifier: voice.language).region?.identifier,
-           let regionName = displayLocale.localizedString(forRegionCode: region) {
+        if IPhoneVoices.isCantonese(voice.language) {
+            // Listed with Traditional Chinese's Mandarin voices: say which speaks Cantonese.
+            name += " · " + (displayLocale.localizedString(forLanguageCode: "yue") ?? "Cantonese")
+        } else if showsRegion, let region = Locale(identifier: voice.language).region?.identifier,
+                  let regionName = displayLocale.localizedString(forRegionCode: region) {
             name += " · " + regionName
         }
         switch voice.quality {

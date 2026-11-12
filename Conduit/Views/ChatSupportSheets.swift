@@ -158,10 +158,11 @@ struct GatewayDiagnosticsSheet: View {
         }
     }
 
-    /// The connection timeline, then the last call from Hermes (#449) and
-    /// the last Grok Live, Qwen Live or Local Live call's steps, so one Copy takes them all.
+    /// The connection timeline, then the last call from Hermes (#449), the
+    /// last Grok Live, Qwen Live or Local Live call's steps and the last
+    /// Read Aloud reading's (issue 1641), so one Copy takes them all.
     private var lastConnectionReport: String? {
-        let reports = [appState.connectionTimeline?.report, HermesCallTrace.shared.timeline?.report, LiveCallTrace.shared.report].compactMap { $0 }
+        let reports = [appState.connectionTimeline?.report, HermesCallTrace.shared.timeline?.report, LiveCallTrace.shared.report, LiveCallTrace.readAloud.report].compactMap { $0 }
         return reports.isEmpty ? nil : reports.joined(separator: "\n\n")
     }
 
@@ -607,7 +608,7 @@ private struct ChatTracesSection: View {
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("Chat traces"), symbol: "waveform.path.ecg", tint: .conduitAccent) {
             VStack(alignment: .leading, spacing: 10) {
-                Text("Conduit notes how the open chat scrolls and lays out: row counts, sizes and timings, never what the messages say. When a chat jumps, freezes or stops scrolling, it saves the last few minutes on this device.")
+                Text("Conduit notes how the open chat scrolls and lays out: row counts, sizes and timings, never what the messages say. When a chat jumps, freezes, stops scrolling or shows none of its messages, it saves the last few minutes on this device.")
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 Text("If a chat jumped or got stuck, send its traces right after, while they still hold that moment.")

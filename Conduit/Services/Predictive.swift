@@ -252,6 +252,17 @@ enum Predictive {
     }
 }
 
+/// Whether the composer is empty (PredictiveStore.isEmpty), published only
+/// when that changes.
+@MainActor
+final class ComposerEmptiness: ObservableObject {
+    @Published private(set) var isEmpty = true
+
+    func update(_ empty: Bool) {
+        if empty != isEmpty { isEmpty = empty }
+    }
+}
+
 /// What the suggestion row above the composer shows. Kept apart from
 /// AppState so a new guess redraws the row, not the chat.
 @MainActor
@@ -271,7 +282,33 @@ final class PredictiveStore: ObservableObject {
     /// The draft those guesses were asked for.
     @Published private(set) var answeredDraft: String?
     /// The composer's draft as it stands.
-    @Published private(set) var draft = ""
+    @Published private(set) var draft = "" {
+        didSet { emptiness.update(isEmpty) }
+    }
+    /// Photos, files or a screenshot staged in the composer, which a send
+    /// from a card would take along: its send and tap buttons wait, as for
+    /// a draft.
+    @Published private(set) var hasStagedAttachments = false {
+        didSet { emptiness.update(isEmpty) }
+    }
+    /// Whether the composer is empty, published only as that changes: what
+    /// a card's buttons and a board's follow-ups observe, rather than this
+    /// store's every keystroke and guess (issue 2150).
+    let emptiness = ComposerEmptiness()
+
+    /// Nothing in the composer that a message sent in its place would take
+    /// along: no words, nothing staged.
+    var isEmpty: Bool {
+        draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && !hasStagedAttachments
+    }
+
+    func stagedAttachmentsChanged(_ staged: Bool) {
+        guard staged != hasStagedAttachments else { return }
+        hasStagedAttachments = staged
+        // Replies coming back into view start their tap guard again, so a
+        // tap meant for what was there doesn't send one.
+        if !staged { shownAt = Date() }
+    }
     /// Typing since the last guesses: the row folds to its ✦ button.
     @Published private(set) var isFolded = false
     /// The row hidden in these chats with "Hide for this chat".
@@ -379,6 +416,7 @@ final class PredictiveStore: ObservableObject {
         clear()
         forgetFollowUps()
         draft = ""
+        // What's staged stays the composer's: it reports it again on any change.
     }
 
     /// Whether a tap now would be on a row that only just appeared.

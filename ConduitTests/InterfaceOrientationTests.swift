@@ -12,11 +12,18 @@ final class InterfaceOrientationTests: XCTestCase {
         )
     }
 
-    func testUniversalOrientationsRemainPortraitOnlyForIPhone() throws {
+    /// The iPhone lists landscape so a bot's screen in full screen can turn
+    /// sideways; `InterfaceOrientationGate` keeps every other screen in
+    /// portrait (#2172), and HermesClientTests checks the gate.
+    func testIPhoneOrientationsListLandscapeForTheGate() throws {
         let info = try appInfoDictionary()
         XCTAssertEqual(
             info["UISupportedInterfaceOrientations"] as? [String],
-            ["UIInterfaceOrientationPortrait"]
+            [
+                "UIInterfaceOrientationPortrait",
+                "UIInterfaceOrientationLandscapeLeft",
+                "UIInterfaceOrientationLandscapeRight"
+            ]
         )
     }
 

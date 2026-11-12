@@ -195,6 +195,7 @@ struct ModelPageProviders: View {
 /// The top of the Model page: each provider this profile is connected to,
 /// and Add a provider.
 struct ProvidersSettingsSection: View {
+    @EnvironmentObject private var appState: AppState
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @ObservedObject var service: ProviderSettingsService
     let context: ProviderModelContext
@@ -221,7 +222,7 @@ struct ProvidersSettingsSection: View {
                         ProviderDetailPage(service: service, entryID: entry.id, context: context)
                             .v2TabBarClearance()
                     } label: {
-                        ProviderRow(entry: entry, isDefault: isDefault(entry))
+                        ProviderRow(entry: entry, isDefault: isDefault(entry), quota: quota(entry))
                     }
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.providers.\(entry.id)")
@@ -239,6 +240,7 @@ struct ProvidersSettingsSection: View {
         .task { await service.reload() }
         .sheet(isPresented: $adding) {
             AddProviderSheet(service: service, retryCatalog: { await context.reloadCatalog() })
+                .environmentObject(appState)
         }
     }
 
@@ -252,6 +254,10 @@ struct ProvidersSettingsSection: View {
         }
     }
 
+    private func quota(_ entry: ProviderEntry) -> ProviderQuotaSummary? {
+        context.catalog.flatMap { entry.catalogRow(in: $0.providers) }?.quota?.summary
+    }
+
     private func isDefault(_ entry: ProviderEntry) -> Bool {
         guard let catalog = context.catalog else { return entry.endpoint?.isCurrent == true }
         return entry.catalogRow(in: catalog.providers)?.name == catalog.selection.provider
@@ -263,20 +269,34 @@ private struct ProviderRow: View {
     let entry: ProviderEntry
     var isDefault = false
     var showsChevron = true
+    /// Its quota, from Hermes' model catalog, where the section has it.
+    var quota: ProviderQuotaSummary?
 
     var body: some View {
         HStack(spacing: 12) {
-            Image(systemName: ProviderText.symbol(entry))
-                .foregroundStyle(ProviderText.color(entry))
-                .frame(width: 22)
-                .accessibilityHidden(true)
+            // The logo names the provider; a key or sign-in that needs a
+            // look keeps its warning on it.
+            ProviderLogoView(slug: entry.id, title: entry.name, size: 22)
+                .overlay(alignment: .bottomTrailing) {
+                    if ProviderText.needsLook(entry) {
+                        Image(systemName: "exclamationmark.circle.fill")
+                            .font(.system(size: 10, weight: .bold))
+                            .foregroundStyle(.orange)
+                            .background(Circle().fill(Color(.systemBackground)))
+                            .offset(x: 4, y: 4)
+                            .accessibilityHidden(true)
+                    }
+                }
             VStack(alignment: .leading, spacing: 2) {
                 Text(verbatim: entry.name)
                     .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
                 Text(verbatim: isDefault ? ProviderText.status(entry) + " · " + AppLocalization.string("Default model") : ProviderText.status(entry))
                     .scaledFont(.caption)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(ProviderText.needsLook(entry) ? Color.orange : Color.secondary)
+                if let quota {
+                    ProviderQuotaLine(summary: quota)
+                }
             }
             Spacer(minLength: 8)
             if showsChevron {
@@ -353,6 +373,14 @@ enum ProviderText {
         }
     }
 
+    /// A key that doesn't reach every profile, or an old copy of one.
+    static func needsLook(_ entry: ProviderEntry) -> Bool {
+        switch entry.status {
+        case .oldCopy, .mainProfileOnly: return true
+        default: return false
+        }
+    }
+
     static func color(_ entry: ProviderEntry) -> Color {
         switch entry.status {
         case .oldCopy, .mainProfileOnly: return .orange
@@ -399,14 +427,18 @@ struct AddProviderSheet: View {
                     NavigationLink {
                         CustomEndpointForm(service: service, existing: nil, onSaved: { dismiss() })
                     } label: {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(AppLocalization.string("Custom endpoint"))
-                                .scaledFont(.subheadline.weight(.semibold))
-                                .foregroundStyle(.primary)
-                            Text(AppLocalization.string("Any OpenAI-compatible server, such as vLLM, LM Studio or Ollama"))
-                                .scaledFont(.caption).foregroundStyle(.secondary)
+                        HStack(spacing: 8) {
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(AppLocalization.string("Custom endpoint"))
+                                    .scaledFont(.subheadline.weight(.semibold))
+                                    .foregroundStyle(.primary)
+                                Text(AppLocalization.string("Any OpenAI-compatible server, such as vLLM, LM Studio or Ollama"))
+                                    .scaledFont(.caption).foregroundStyle(.secondary)
+                            }
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            SettingsChevron()
                         }
-                        .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                        .frame(minHeight: 44)
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
@@ -586,9 +618,9 @@ struct ProviderDetailPage: View {
                             CustomEndpointForm(service: service, existing: (name: entry.name, endpoint: endpoint), onSaved: {})
                                 .v2TabBarClearance()
                         } label: {
-                            Label(AppLocalization.string("Edit endpoint"), systemImage: "pencil")
-                                .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+                            SettingsLinkRow(title: AppLocalization.string("Edit endpoint"))
                         }
+                        .buttonStyle(.plain)
                         // The kept address has no path; editing waits for Hermes' full one.
                         .disabled(!service.answered)
                         .accessibilityIdentifier("settings.providers.endpoint.edit")
@@ -1594,9 +1626,29 @@ private struct CustomEndpointForm: View {
                     Text(verbatim: checkMessage).scaledFont(.caption).foregroundStyle(checkFailed ? .orange : .secondary)
                 }
                 if !draft.models.isEmpty {
-                    ConduitMenuPicker(value: draft.model, choices: draft.models.map { (id: $0, title: $0) }, onSelect: { draft.model = $0 }) {
-                        Text(AppLocalization.string("Model")).foregroundStyle(.secondary)
+                    // The endpoint's own models, on the Model page every
+                    // model setting opens, as one provider.
+                    let endpoint = ProviderInfo(
+                        name: draft.trimmedName.isEmpty ? AppLocalization.string("Your own server") : draft.trimmedName,
+                        models: draft.models.map { ModelInfo(id: $0, label: nil, reasoningCapable: false) }
+                    )
+                    NavigationLink {
+                        ModelChooserPage(
+                            catalog: ModelChooserCatalog(providers: [endpoint], loaded: true, answered: true),
+                            retry: { check() },
+                            pick: draft.model.isEmpty ? nil : ModelChooserPick(provider: endpoint.name, model: draft.model),
+                            isPicked: { _, item in item.id == draft.model },
+                            onDefault: {},
+                            onPick: { _, item in draft.model = item.id }
+                        )
+                    } label: {
+                        ModelChooserLinkRow(
+                            title: AppLocalization.string("Model"),
+                            value: draft.model.isEmpty ? AppLocalization.string("Not set") : draft.model
+                        )
                     }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.providers.endpoint.model")
                 } else {
                     TextField(AppLocalization.string("Model name"), text: $draft.model)
                         .textFieldStyle(.roundedBorder)

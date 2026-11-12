@@ -18,6 +18,8 @@ import SwiftUI
 /// What Settings needs to show the profile's call settings.
 struct HermesCallSettingsModel {
     var profile: String
+    /// The server the settings are on; with the profile, whose they are.
+    var dashboardID: UUID?
     /// The profile's bot as Conduit shows it, the name its contact gets.
     var botName: String = HermesCallerName.fallback
     /// Nil until read from the host.
@@ -31,6 +33,9 @@ struct HermesCallSettingsModel {
     /// This iPhone's saved places (Settings > Location), for "Don't call me
     /// while I'm at"; their ids are what the host keeps.
     var places: [LocationSavedPlace] = []
+
+    /// Whose settings these are: the server and the profile.
+    var owner: String { "\(dashboardID?.uuidString ?? "")|\(profile)" }
 }
 
 /// Formats for the call settings, in the app's language.
@@ -103,6 +108,9 @@ struct HermesCallsSettingsPage: View {
     var body: some View {
         SettingsDetailContainer {
             HermesCallSettingsSection(model: model, startTestCall: startTestCall, startWatch: startWatch)
+                // Another profile's or server's settings start their own
+                // draft rather than take this one's (issue 1974).
+                .id(model.owner)
             HermesCallsHowToSection(settings: model.status?.settings, hearsMissedCalls: hearsMissedCalls)
         }
         .scrollDismissesKeyboard(.interactively)
@@ -191,6 +199,11 @@ struct HermesCallSettingsSection: View {
     @State private var loadFailed = false
     @State private var addsContact = false
     @State private var saveTask: Task<Void, Never>?
+    /// Whose settings the draft holds, and how they're saved: a switch of
+    /// profile or server can hand this view another's model before it
+    /// goes, and the draft still saves to its own (issue 1974).
+    @State private var draftOwner: String
+    @State private var draftSave: (HermesCallSettings) async -> Bool
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(model: HermesCallSettingsModel, startTestCall: (() -> Void)? = nil, startWatch: ((String) -> Void)? = nil) {
@@ -200,7 +213,12 @@ struct HermesCallSettingsSection: View {
         let settings = model.status?.settings ?? HermesCallSettings()
         _draft = State(initialValue: settings)
         _rulesText = State(initialValue: settings.rules ?? "")
+        _draftOwner = State(initialValue: model.owner)
+        _draftSave = State(initialValue: model.save)
     }
+
+    /// Whether the model shown is the draft's own.
+    private var modelOwnsDraft: Bool { model.owner == draftOwner }
 
     /// Saved once the user stops tapping, so a stepper run is one save.
     /// Saves go one at a time, so the newest change lands last; one the host
@@ -212,9 +230,11 @@ struct HermesCallSettingsSection: View {
         let previous = saveTask
         previous?.cancel()
         let settings = draft
-        let save = model.save
+        // Another's model has no say over this draft: it saves to its own.
+        let ownModel = modelOwnsDraft
+        let save = ownModel ? model.save : draftSave
         let current = model.current
-        let editTimeSettings = model.status?.settings
+        let editTimeSettings = ownModel ? model.status?.settings : nil
         saveTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(500))
             await previous?.value
@@ -223,7 +243,7 @@ struct HermesCallSettingsSection: View {
             guard !Task.isCancelled else { return }
             saveTask = nil
             // What the host holds now, including saves since this edit.
-            if !saved, let hostSettings = current() ?? editTimeSettings {
+            if !saved, ownModel, let hostSettings = current() ?? editTimeSettings {
                 withAnimation(animation) { draft = hostSettings }
             }
         }
@@ -387,7 +407,7 @@ struct HermesCallSettingsSection: View {
             // The host's answer, unless a change of this view is on its way.
             // (A change still waiting when the view goes is saved anyway:
             // its task outlives the view.)
-            guard saveTask == nil, let settings = newValue?.settings else { return }
+            guard saveTask == nil, modelOwnsDraft, let settings = newValue?.settings else { return }
             draft = settings
         }
         // The host's note, unless the user is writing one.

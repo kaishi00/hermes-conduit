@@ -179,6 +179,33 @@ enum NotificationE2E {
         (userInfo["conduit"] as? [String: Any]) ?? ((userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any])
     }
 
+    /// A plaintext push's routing, from the copy that carries the most. The
+    /// relay's optimized APNs layout keeps a structured decision, a call's
+    /// details (#449) and a turn's group room (issue 2064) ONLY in
+    /// body.conduit, with the top-level conduit copy reduced to a routing
+    /// stub for raw-APNs readers, so whichever copy carries one wins, nested
+    /// first. The relay builds body.conduit from that same stub, so a nested
+    /// copy naming another chat, type or pairing than the stub `evaluate`
+    /// checked is not taken. Payloads with none fall back to plain routing,
+    /// preferring the legacy top-level copy.
+    static func plaintextRouting(_ userInfo: [AnyHashable: Any]) -> [String: Any] {
+        let direct = userInfo["conduit"] as? [String: Any]
+        let nested = (userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any]
+        func carriesMore(_ copy: [String: Any]?) -> Bool {
+            copy?["decision"] is [String: Any] || copy?["call"] is [String: Any] || copy?["room"] is [String: Any]
+        }
+        func agreesWithStub(_ copy: [String: Any]) -> Bool {
+            guard let direct else { return true }
+            return routingIdentity.allSatisfy { (copy[$0] as? String) == (direct[$0] as? String) }
+        }
+        if carriesMore(nested), let nested, agreesWithStub(nested) { return nested }
+        if carriesMore(direct) { return direct ?? [:] }
+        return direct ?? nested ?? [:]
+    }
+
+    /// The stub's fields that say which push this is and where it's from.
+    private static let routingIdentity = ["type", "session_id", "profile", "gateway", "gateway_id", "dashboard_id"]
+
     /// `knownGatewayIDs` are the keyless relay pairings this iPhone may still
     /// trust plaintext from (see `knownGatewayIDs(listed:previous:holdsKeys:)`),
     /// shared through the App Group so the extension applies the same rule.
@@ -642,21 +669,148 @@ enum NotificationSharedSettings {
 enum ReadChatHint {
     static let userInfoKey = "conduit_chat"
 
-    /// The routing fields that name the chat, its dashboard and the kind
-    /// of push (one that waits on the user isn't cleared).
-    static func note(_ routing: [String: Any]) -> [String: String] {
+    /// The routing fields that name the chat (or the room), its dashboard
+    /// and the kind of push (one that waits on the user isn't cleared).
+    /// `plaintext` marks a keyless pairing's push, trusted unverified, so
+    /// it replaces only another such push of its room, never a verified one.
+    static func note(_ routing: [String: Any], plaintext: Bool = false) -> [String: String] {
         var note: [String: String] = [:]
         for field in ["session_id", "stored_session_id", "session_key", "dashboard_id", "gateway_id", "type"] {
             if let value = routing[field] as? String, !value.isEmpty { note[field] = value }
         }
+        // The group room a turn's push opens (issue 2064), so reading that
+        // room clears it and the room's next reply replaces it.
+        if let room = ((routing["room"] as? [String: Any])?["id"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines),
+           !room.isEmpty { note["room_id"] = room }
+        if plaintext { note["plaintext"] = "1" }
         return note
     }
 
+    /// The pushes from a group room this Hermes hosts that keep one
+    /// notification per room, each replacing the last (Eric, 2026-11-09,
+    /// issue 2064): a bot's reply, a failed turn and a finished background
+    /// task. An approval keeps its own until it's answered. Each bot's
+    /// profile pairs and seals on its own, so the relay can't collapse them
+    /// across bots; the extension does, by the room in the note.
+    static let roomReplacingTypes: Set<String> = ["response.ready", "turn.failed", "background_task.finished"]
+
+    /// The Notification Center stack a room's pushes share, or nil for a
+    /// push that keeps its own. A keyless pairing's plaintext pushes stack
+    /// apart from verified ones, so one can't take a verified one's place.
+    static func roomThread(_ note: [String: String]) -> String? {
+        guard let room = note["room_id"], let type = note["type"], roomReplacingTypes.contains(type) else { return nil }
+        let trust = note["plaintext"] == "1" ? "plain:" : ""
+        return "room:\(trust)\(note["dashboard_id"] ?? note["gateway_id"] ?? "-"):\(room)"
+    }
+
+    /// Whether a delivered notification's note is an earlier push of the
+    /// room `note` is for, on the same dashboard: the new one replaces it.
+    static func replaces(_ note: [String: String], delivered: [AnyHashable: Any]) -> Bool {
+        guard let thread = roomThread(note), let other = read(delivered) else { return false }
+        let strings = other.compactMapValues { $0 as? String }
+        return roomThread(strings) == thread
+    }
+
     /// Trusted as the extension's own: it drops any note a push arrives
-    /// with and writes one only on a push it verified. A push that skipped
+    /// with and writes one only on a push it verified, or a keyless
+    /// pairing's group room push it trusts as plaintext. A push that skipped
     /// the extension could carry one, which only clears; taps verify.
     static func read(_ userInfo: [AnyHashable: Any]) -> [String: Any]? {
         guard let note = userInfo[userInfoKey] as? [String: Any], note["session_id"] is String else { return nil }
         return note
+    }
+}
+
+/// The room notifications the extension handed to iOS in the last few
+/// seconds (issue 2064). Two bots finishing together each read Notification
+/// Center before the other's notification is in it, so neither would
+/// replace the other: the later one waits for the earlier to show, then
+/// replaces it.
+struct RoomHandoffs: Codable, Equatable {
+    /// How long ago a handoff may be for the next one in its room to wait on it.
+    static let window: TimeInterval = 3
+    /// The longest a notification waits for an earlier one to show.
+    static let wait: TimeInterval = 1.5
+
+    struct Entry: Codable, Equatable {
+        let id: String
+        let thread: String
+        let at: Date
+    }
+
+    private(set) var entries: [Entry] = []
+
+    /// Notes `id` handed over in `thread`, and answers the room's last
+    /// handoff still within the window. Only the last: it waited on (and
+    /// replaced) the one before it, so a third bot in a burst doesn't wait
+    /// out the deadline on a notification already gone. A clock that moved
+    /// back keeps what's in flight, and still drops what's long past.
+    mutating func record(_ id: String, thread: String, now: Date) -> [String] {
+        entries.removeAll { $0.id == id || abs(now.timeIntervalSince($0.at)) >= Self.window }
+        let earlier = entries.last { $0.thread == thread }.map { [$0.id] } ?? []
+        entries.append(Entry(id: id, thread: thread, at: now))
+        return earlier
+    }
+
+    /// The handoffs in `thread` noted after `date`, other than `own`: a
+    /// newer notification an earlier one, slow to look up what shows, must
+    /// not remove (issue 2070).
+    func handedOver(in thread: String, after date: Date, except own: String) -> Set<String> {
+        Set(entries.filter { $0.thread == thread && $0.id != own && $0.at > date }.map(\.id))
+    }
+
+    private static let key = "conduit.notifications.roomHandoffs"
+    private static let lock = NSLock()
+
+    /// `record` on the list kept in the app group, one handoff at a time,
+    /// and the time it was noted at. The time is taken inside the lock, so
+    /// the list's order is the handoffs' order: one recorded after this one
+    /// is never also earlier than it (issue 2117).
+    static func record(
+        _ id: String, thread: String, defaults: UserDefaults?, now: () -> Date = { Date() }
+    ) -> (earlier: [String], at: Date) {
+        lock.withLock {
+            let at = now()
+            var handoffs = defaults?.data(forKey: key)
+                .flatMap { try? JSONDecoder().decode(RoomHandoffs.self, from: $0) } ?? RoomHandoffs()
+            let earlier = handoffs.record(id, thread: thread, now: at)
+            if let data = try? JSONEncoder().encode(handoffs) { defaults?.set(data, forKey: key) }
+            return (earlier, at)
+        }
+    }
+
+    /// A notification Notification Center shows, as a room push weighs it.
+    struct Shown: Equatable {
+        let id: String
+        let date: Date
+        /// Whether the push's note says it replaces this one (same room).
+        let sameRoom: Bool
+    }
+
+    /// What a room push recorded at `recordedAt` removes of what's shown
+    /// (`gone`), and which of the handoffs it waits on haven't shown yet
+    /// (`waiting`). Never its own (`own`), which a timeout may already have
+    /// shown, nor one handed over (`newer`) or shown after it: a lookup
+    /// slower than the newer push's wait lands after that one showed, and
+    /// its newer reply stays (issue 2070). A `pending` handoff goes once it
+    /// shows, unless it is newer.
+    static func replacing(
+        _ shown: [Shown], own: String, newer: Set<String>, recordedAt: Date, pending: Set<String>
+    ) -> (gone: Set<String>, waiting: Set<String>) {
+        let ids = Set(shown.map(\.id))
+        let earlier = shown
+            .filter { $0.id != own && !newer.contains($0.id) && $0.date < recordedAt && $0.sameRoom }
+            .map(\.id)
+        let gone = Set(earlier).union(pending.intersection(ids).subtracting(newer)).subtracting([own])
+        return (gone, pending.subtracting(ids))
+    }
+
+    /// `handedOver` on the list kept in the app group.
+    static func handedOver(in thread: String, after date: Date, except own: String, defaults: UserDefaults?) -> Set<String> {
+        lock.withLock {
+            let handoffs = defaults?.data(forKey: key)
+                .flatMap { try? JSONDecoder().decode(RoomHandoffs.self, from: $0) } ?? RoomHandoffs()
+            return handoffs.handedOver(in: thread, after: date, except: own)
+        }
     }
 }

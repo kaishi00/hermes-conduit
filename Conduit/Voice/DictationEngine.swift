@@ -2,9 +2,9 @@
 //  DictationEngine.swift
 //  Conduit
 //
-//  Which speech recognizer the composer's dictate button uses, and the
-//  person's own words (names, companies, jargon) every engine is told to
-//  expect. Both are device-only preferences.
+//  Which speech recognizer the composer's dictate button uses, which one
+//  writes a voice message's transcript, and the person's own words (names,
+//  companies, jargon) every engine is told to expect.
 //
 
 import Foundation
@@ -64,6 +64,36 @@ enum DictationEngine: String, CaseIterable, Identifiable {
 
     static func resolved(_ raw: String?, isSupported: (DictationEngine) -> Bool) -> DictationEngine {
         guard let raw, let engine = DictationEngine(rawValue: raw), isSupported(engine) else { return .apple }
+        return engine
+    }
+}
+
+/// The engine that writes a voice message's transcript. Unset, it follows
+/// dictation's (issue 2074): dictation's words are read over before they
+/// go, a voice message's go as they are and are what the agent reads, so
+/// someone may keep dictation on the iPhone and send voice messages
+/// through Hermes, or the other way round.
+enum VoiceMessageEngine {
+    static let preferenceKey = "conduit.voiceMessage.engine"
+
+    /// The stored choice, or dictation's when there is none, or it is
+    /// unknown or not supported on this device.
+    static func current(defaults: UserDefaults = .standard) -> DictationEngine {
+        resolved(
+            defaults.string(forKey: preferenceKey),
+            dictation: DictationEngine.current(defaults: defaults),
+            isSupported: { $0.isSupportedOnThisDevice }
+        )
+    }
+
+    static func resolved(_ raw: String?, dictation: DictationEngine, isSupported: (DictationEngine) -> Bool) -> DictationEngine {
+        ownChoice(raw, isSupported: isSupported) ?? dictation
+    }
+
+    /// The engine chosen for voice messages alone, or nil when they follow
+    /// dictation's.
+    static func ownChoice(_ raw: String?, isSupported: (DictationEngine) -> Bool) -> DictationEngine? {
+        guard let raw, let engine = DictationEngine(rawValue: raw), isSupported(engine) else { return nil }
         return engine
     }
 }

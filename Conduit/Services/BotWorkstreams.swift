@@ -19,6 +19,9 @@ struct BotWorkItem: Identifiable, Equatable {
     enum Action: String, CaseIterable {
         case send, stop, `continue`, check
         case pin, unpin, resolve, reopen
+        /// Leave alone: the Bot Chat sends it nothing and doesn't stop it in
+        /// a turn the user didn't start; `coordinate` hands it back.
+        case leaveAlone = "leave_alone", coordinate
         /// Answers the approval its "Needs you" card shows (`approval`).
         case approve, deny
     }
@@ -67,6 +70,8 @@ struct BotWorkItem: Identifiable, Equatable {
     /// "user" or "bot" while it's resolved.
     let resolvedBy: String
     let isPinned: Bool
+    /// The user set it to Leave alone (Edit Bot > Work's Coordination).
+    let isLeftAlone: Bool
     /// A restart cut it off during a step that can change things, so it may
     /// or may not have taken effect: Check first is offered.
     let isUncertain: Bool
@@ -89,6 +94,10 @@ struct BotWorkItem: Identifiable, Equatable {
     let startedInCall: String
     /// The call that started it, either way: the card's "From a voice call".
     var call: String { fromCall.isEmpty ? startedInCall : fromCall }
+    /// The group room it reports back into: the room it was started from,
+    /// or last sent to from (room_work in the plugin); empty for work the
+    /// Bot Chat hears.
+    let room: String
     /// The bot's screen (Bot Screen): "controlling" while it drives it now,
     /// "waiting" while it waits for it, else empty. Apart from when it used
     /// it last, which says nothing about now (Eric 2026-11-05).
@@ -97,6 +106,9 @@ struct BotWorkItem: Identifiable, Equatable {
     /// What it waits on the user to do on the bot's screen ("Sign in to
     /// GitHub"); empty when nothing.
     let screenAsk: String
+    /// Its own turn has ended and this many delegate agents it started
+    /// still run (plugin 0.162.1+): it stays Working, waiting for them.
+    let awaitedAgentCount: Int
 
     var id: String { ref }
 
@@ -124,6 +136,7 @@ struct BotWorkItem: Identifiable, Equatable {
         closedAt = closed > 0 ? Date(timeIntervalSince1970: closed) : nil
         resolvedBy = row["resolved_by"] as? String ?? ""
         isPinned = row["pinned"] as? Bool ?? false
+        isLeftAlone = row["left_alone"] as? Bool ?? false
         isUncertain = row["uncertain"] as? Bool ?? false
         branch = (row["branch"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         fromCall = ["phone", "watch"].contains(row["from_call"] as? String ?? "") ? row["from_call"] as? String ?? "" : ""
@@ -133,6 +146,8 @@ struct BotWorkItem: Identifiable, Equatable {
         let used = (row["screen_used_at"] as? NSNumber)?.doubleValue ?? 0
         screenUsedAt = used > 0 ? Date(timeIntervalSince1970: used) : nil
         screenAsk = (row["screen_ask"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        awaitedAgentCount = kind == .workstream ? max(0, (row["agents"] as? NSNumber)?.intValue ?? 0) : 0
+        room = kind == .workstream ? (row["room"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines) : ""
         actions = (row["actions"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         manage = (row["manage"] as? [String] ?? []).compactMap(Action.init(rawValue:))
         if let asked = row["approval"] as? [String: Any], let requestID = asked["request_id"] as? String,
@@ -163,10 +178,13 @@ struct BotWorkItem: Identifiable, Equatable {
         kind == .workstream && !isClosed && (status == "needs_you" || status == "interrupted" || !screenAsk.isEmpty)
     }
 
-    /// What it's doing now: its checklist's step in progress, else the tool
-    /// step it's on.
+    /// What it's doing now: waiting for the delegate agents it started,
+    /// else its checklist's step in progress, else the tool step it's on.
     var doing: String? {
         guard isWorking || status == "needs_you" else { return nil }
+        if isWorking, awaitedAgentCount > 0 {
+            return AppLocalization.string("Waiting for \(awaitedAgentCount) background agents")
+        }
         if let line = checklist.first(where: { $0.state == .doing }) { return line.text }
         return step.isEmpty ? nil : step
     }
@@ -234,11 +252,143 @@ struct BotWorkItem: Identifiable, Equatable {
     }
 }
 
+/// What a Bot Chat did to keep its workstreams in step over the last day,
+/// as the plugin's ledger has it (plugin 0.155+): what its helper model
+/// flagged, what the Bot Chat sent on its own, and what it asked the user,
+/// each with the lines behind it.
+struct BotWorkCoordination: Equatable {
+    struct Line: Equatable, Identifiable {
+        let id: Int
+        let ref: String
+        let title: String
+        /// "found", "assumes", "changed", "user" (the user's words in that
+        /// workstream's chat) or "flag".
+        let kind: String
+        let text: String
+        let at: Date
+
+        /// Who said it, for the line above its words.
+        var saidBy: String {
+            switch kind {
+            case "found": return AppLocalization.string("\(ref) found")
+            case "assumes": return AppLocalization.string("\(ref) relies on")
+            case "changed": return AppLocalization.string("\(ref) changed")
+            case "user": return AppLocalization.string("You told \(ref)")
+            default: return AppLocalization.string("Noticed about \(ref)")
+            }
+        }
+    }
+
+    struct Item: Equatable, Identifiable {
+        enum Kind: String {
+            case flag, sent, proposal
+        }
+
+        let id: String
+        let kind: Kind
+        let ref: String
+        /// Every workstream a proposal is about (plugin 0.158.0+ asks one
+        /// question for related work); just `ref` from an older plugin.
+        let refs: [String]
+        let title: String
+        let at: Date
+        let text: String
+        /// A flag's other workstreams, and whether it started a turn of the
+        /// Bot Chat (past the hourly limit it's only kept on the board).
+        let with: [String]
+        let woke: Bool
+        /// A send's state: "delivered", "waiting" or "not_arrived".
+        let state: String
+        /// A proposal's: "open", "approved" or "declined", and the user's words.
+        let status: String
+        let answer: String
+        let why: [Line]
+
+        init?(row: [String: Any]) {
+            guard let id = row["id"] as? String, !id.isEmpty,
+                  let kind = Kind(rawValue: row["kind"] as? String ?? ""),
+                  let at = (row["at"] as? NSNumber)?.doubleValue else { return nil }
+            self.id = id
+            self.kind = kind
+            ref = row["ref"] as? String ?? ""
+            var seen = Set<String>()
+            let listed = (row["refs"] as? [String] ?? []).filter { !$0.isEmpty && seen.insert($0).inserted }
+            refs = listed.isEmpty ? (ref.isEmpty ? [] : [ref]) : listed
+            title = row["title"] as? String ?? ""
+            self.at = Date(timeIntervalSince1970: at)
+            text = row["text"] as? String ?? ""
+            with = (row["with"] as? [String] ?? []).filter { !$0.isEmpty }
+            woke = row["woke"] as? Bool ?? true
+            state = row["state"] as? String ?? ""
+            status = row["status"] as? String ?? ""
+            answer = row["answer"] as? String ?? ""
+            why = (row["why"] as? [[String: Any]] ?? []).enumerated().compactMap { index, line in
+                guard let text = line["text"] as? String, !text.isEmpty,
+                      let at = (line["at"] as? NSNumber)?.doubleValue else { return nil }
+                return Line(id: index, ref: line["ref"] as? String ?? "", title: line["title"] as? String ?? "",
+                            kind: line["kind"] as? String ?? "", text: text, at: Date(timeIntervalSince1970: at))
+            }
+        }
+
+        /// What happened, in a line.
+        var headline: String {
+            switch kind {
+            case .flag:
+                return AppLocalization.string("\(ref) may affect \(with.joined(separator: ", "))")
+            case .sent:
+                return AppLocalization.string("Sent to \(ref)")
+            case .proposal:
+                let about = refs.joined(separator: ", ")
+                return about.isEmpty ? AppLocalization.string("Asked you") : AppLocalization.string("Asked you about \(about)")
+            }
+        }
+
+        /// How far it got, or nil when there's nothing to add.
+        var stateText: String? {
+            switch kind {
+            case .flag:
+                return woke ? nil : AppLocalization.string("Kept on the board")
+            case .sent:
+                switch state {
+                case "delivered": return AppLocalization.string("In its chat")
+                case "not_arrived": return AppLocalization.string("Didn’t arrive")
+                default: return AppLocalization.string("Not in its chat yet")
+                }
+            case .proposal:
+                switch status {
+                case "approved": return AppLocalization.string("You approved")
+                case "declined": return AppLocalization.string("You declined")
+                default: return AppLocalization.string("No answer yet")
+                }
+            }
+        }
+
+        /// What the lines behind it are, said above them.
+        func whyCaption(botName: String) -> String? {
+            switch kind {
+            case .flag: return AppLocalization.string("What a helper model read while the work ran.")
+            case .sent: return AppLocalization.string("What was on \(botName)’s board in the half hour before.")
+            case .proposal: return nil
+            }
+        }
+    }
+
+    /// "ask" or "auto"; "off" lists nothing.
+    let mode: String
+    let items: [Item]
+
+    init?(_ response: [String: Any]?) {
+        guard let response, let mode = response["mode"] as? String else { return nil }
+        self.mode = mode
+        items = (response["items"] as? [[String: Any]] ?? []).compactMap(Item.init(row:))
+    }
+}
+
 /// One bot's work as the plugin last listed it.
 struct BotWorkSnapshot: Equatable {
     /// The bot's profile the list was read for.
     let profile: String
-    /// "off" while the bot's workstreams are off; "strict" or "lookups".
+    /// "off" while the bot's workstreams are off; "strict", "lookups" or "open".
     let policy: String
     let botName: String
     var items: [BotWorkItem]
@@ -251,6 +401,9 @@ struct BotWorkSnapshot: Equatable {
     /// Who drives the bot's screen now and who used it last; nil from a
     /// plugin before Bot Screen.
     let screen: BotScreenUse?
+    /// What the Bot Chat did to keep the work in step; nil from a plugin
+    /// before the list (0.155).
+    let coordination: BotWorkCoordination?
 
     init?(response: [String: Any], profile: String) {
         guard response["ok"] as? Bool == true, let rows = response["work"] as? [[String: Any]] else { return nil }
@@ -265,6 +418,7 @@ struct BotWorkSnapshot: Equatable {
         resolvedCount = (response["resolved_count"] as? NSNumber)?.intValue ?? 0
         knownSessionIDs = Set((response["workstream_sessions"] as? [String] ?? []).filter { !$0.isEmpty })
         screen = BotScreenUse(response["screen"] as? [String: Any])
+        coordination = BotWorkCoordination(response["coordination"] as? [String: Any])
     }
 
     var isOn: Bool { policy != "off" }
@@ -464,8 +618,13 @@ final class BotWorkstreamsClient {
 /// workstreams run at once, what a restart does, and what its workstreams
 /// ask approval for. Kept by the plugin, so every device shows the same.
 struct BotWorkSettings: Equatable {
+    /// What the Bot Chat does itself (notifier issue 619, Eric 2026-11-08):
+    /// strict only coordinates; lookups ("Quick Things Here") does quick
+    /// things, any tool for a few steps of a turn; open ("Everything Here")
+    /// does everything. Under each, what shows or asks the user stays in the
+    /// Bot Chat.
     enum Policy: String, CaseIterable {
-        case off, strict, lookups
+        case off, strict, lookups, open
     }
 
     enum AfterRestart: String, CaseIterable {
@@ -481,7 +640,18 @@ struct BotWorkSettings: Equatable {
         case off
     }
 
+    /// How independently the Bot Chat keeps its workstreams working together
+    /// in the turns it starts itself, a work update's (Eric 2026-11-10): it
+    /// asks before it starts, stops or redirects work, does those on its
+    /// own, or only passes reports on.
+    enum Coordination: String, CaseIterable {
+        case off, ask, auto
+    }
+
     var policy: Policy
+    /// The settings this plugin takes: one from before Everything Here
+    /// doesn't list them, and takes off, strict and lookups.
+    var policies: [Policy]
     var maxRunning: Int
     var maxRunningLimit: Int
     var afterRestart: AfterRestart
@@ -491,6 +661,14 @@ struct BotWorkSettings: Equatable {
     /// The model new workstreams start on; nil for the bot's own, the one
     /// its Bot Chat uses (Eric 2026-11-03).
     var workstreamModel: Model?
+    /// nil on a plugin from before Coordination, which shows no such choice.
+    var coordination: Coordination?
+    /// How many steps a Quick Things Here turn does in the Bot Chat before
+    /// the rest goes to a workstream (Eric 2026-11-10); nil on a plugin
+    /// that doesn't take it, which holds it at 5 and shows no such choice.
+    var quickSteps: Int?
+    /// The step counts this plugin takes.
+    var quickStepsChoices: [Int]
     /// Why workstreams can't run on this Hermes, as the plugin says it.
     var unavailable: String?
 
@@ -522,6 +700,9 @@ struct BotWorkSettings: Equatable {
         }
     }
 
+    /// What a plugin from before Everything Here takes.
+    static let olderPolicies: [Policy] = [.off, .strict, .lookups]
+
     var isOn: Bool { policy != .off }
 
     /// Edit Bot > Work's Coordinate Work toggle: turning it on comes back
@@ -532,16 +713,21 @@ struct BotWorkSettings: Equatable {
         set { policy = newValue ? (policy == .off ? .lookups : policy) : .off }
     }
 
-    init(policy: Policy = .lookups, maxRunning: Int = 2, maxRunningLimit: Int = 6,
+    init(policy: Policy = .lookups, policies: [Policy] = Self.olderPolicies, maxRunning: Int = 4, maxRunningLimit: Int = 6,
          afterRestart: AfterRestart = .continue, approvals: Approvals = .chats,
-         chatApprovals: String = "manual", workstreamModel: Model? = nil, unavailable: String? = nil) {
+         chatApprovals: String = "manual", workstreamModel: Model? = nil, coordination: Coordination? = nil,
+         quickSteps: Int? = nil, quickStepsChoices: [Int] = [], unavailable: String? = nil) {
         self.policy = policy
+        self.policies = policies
         self.maxRunning = maxRunning
         self.maxRunningLimit = maxRunningLimit
         self.afterRestart = afterRestart
         self.approvals = approvals
         self.chatApprovals = chatApprovals
         self.workstreamModel = workstreamModel
+        self.coordination = coordination
+        self.quickSteps = quickSteps
+        self.quickStepsChoices = quickStepsChoices
         self.unavailable = unavailable
     }
 
@@ -550,14 +736,19 @@ struct BotWorkSettings: Equatable {
               let policy = (response["policy"] as? String).flatMap(Policy.init(rawValue:)),
               let maxRunning = response["max_running"] as? Int else { return nil }
         let limit = max(response["max_running_limit"] as? Int ?? maxRunning, 1)
+        let listed = (response["policies"] as? [String])?.compactMap(Policy.init(rawValue:))
         self.init(
             policy: policy,
+            policies: listed.map { $0.isEmpty ? Self.olderPolicies : $0 } ?? Self.olderPolicies,
             maxRunning: min(max(maxRunning, 1), limit),
             maxRunningLimit: limit,
             afterRestart: (response["after_restart"] as? String).flatMap(AfterRestart.init(rawValue:)) ?? .continue,
             approvals: (response["workstream_approvals"] as? String).flatMap(Approvals.init(rawValue:)) ?? .chats,
             chatApprovals: (response["chat_approvals"] as? String) ?? "manual",
             workstreamModel: Model(response["workstream_model"]),
+            coordination: (response["coordination"] as? String).flatMap(Coordination.init(rawValue:)),
+            quickSteps: (response["quick_steps"] as? Int).flatMap { $0 > 0 ? $0 : nil },
+            quickStepsChoices: (response["quick_steps_choices"] as? [Int]) ?? [],
             unavailable: (response["unavailable"] as? String).flatMap { $0.isEmpty ? nil : $0 }
         )
     }
@@ -569,6 +760,8 @@ struct BotWorkSettings: Equatable {
         if maxRunning != old.maxRunning { body["max_running"] = maxRunning }
         if afterRestart != old.afterRestart { body["after_restart"] = afterRestart.rawValue }
         if approvals != old.approvals { body["workstream_approvals"] = approvals.rawValue }
+        if coordination != old.coordination, let coordination { body["coordination"] = coordination.rawValue }
+        if quickSteps != old.quickSteps, let quickSteps { body["quick_steps"] = quickSteps }
         if workstreamModel != old.workstreamModel {
             // null: back to the bot's own.
             body["workstream_model"] = workstreamModel.map { $0.body as Any } ?? NSNull()
@@ -761,8 +954,12 @@ enum BotWorkLinks {
         let url: URL
     }
 
+    /// The link's words: "Open W3" as the plugin writes it, or the ref
+    /// with the bot's own title after it ("W7: Provision the LXC", Zhongli
+    /// 2026-11-07; the plugin puts those back too, from notifier 0.137.3).
+    private static let label = #"(?:Open )?(W\d+)(?:(?::|\s+[—–-])[^\]\n]*)?"#
     private static let pattern = try! NSRegularExpression(
-        pattern: #"\[(?:Open )?(W\d+)\]\((conduit://session/[^)\s]+)\)"#)
+        pattern: #"\["# + label + #"\]\((conduit://session/[^)\s]+)\)"#)
 
     /// Hermes Desktop's session reference the plugin puts right after each
     /// work link ("[Open W3](conduit://session/…) @session:<profile>/<id>"),
@@ -772,7 +969,7 @@ enum BotWorkLinks {
     /// own session; any other reference stays a chat link
     /// (HermesSessionReference). Group 1 is the work link, group 2 its id.
     private static let desktopRef = try! NSRegularExpression(
-        pattern: #"(\[(?:Open )?W\d+\]\(conduit://session/([^)?\s]+)[^)\s]*\))[ \t]*"#
+        pattern: #"(\[(?:Open )?W\d+(?:(?::|\s+[—–-])[^\]\n]*)?\]\(conduit://session/([^)?\s]+)[^)\s]*\))[ \t]*"#
             + #"(?<![\w/`@])@session:(?:[A-Za-z0-9][A-Za-z0-9_-]{0,63}/)?\2(?![A-Za-z0-9_]|[.:-][A-Za-z0-9_])"#)
 
     /// The reply's text without those links (and Desktop's references to

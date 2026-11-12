@@ -88,6 +88,55 @@ extension ContinuousConversationPreferenceTests {
         XCTAssertEqual(capture.startCount, 0, "only a press opens the microphone")
     }
 
+    func testPushToTalkWidgetTalkEndsItsLaunchWhenTheCallWaitsForAPress() async {
+        // Issue 1934: a widget's Talk under push to talk opened the call,
+        // then 30 seconds later said the widget action expired over it.
+        let capture = MockCapture(permissionGranted: true)
+        let controller = makePushToTalkController(capture: capture, gateway: MockGateway(), submitted: SubmitSpy())
+        var current = true
+        var consumed = 0
+        let lease = WidgetLaunchLease(isCurrent: { current }, captureDidStart: { consumed += 1 })
+        let authorization = lease.initialCaptureAuthorization()
+        controller.installInitialWidgetCaptureAuthorization(authorization)
+
+        await controller.startListening()
+        XCTAssertEqual(controller.state, .idle)
+        XCTAssertEqual(capture.startCount, 0, "only a press opens the microphone")
+        XCTAssertEqual(consumed, 1, "the call waiting for a press ends the launch, so it never expires")
+
+        current = false
+        XCTAssertTrue(authorization.mayStartCapture)
+        await controller.beginPushToTalk()
+        XCTAssertEqual(controller.state, .listening, "a press after the launch's deadline still listens")
+        XCTAssertEqual(capture.startCount, 1)
+        XCTAssertEqual(consumed, 1)
+    }
+
+    /// Issue 1935: a push to talk call screen still waiting for its first
+    /// press has no session yet; turning a live mode on still closes it, so
+    /// the press can't open Classic's microphone under the new mode.
+    func testTurningOnALiveModeClosesAPushToTalkScreenWaitingForItsFirstPress() {
+        // Local Live too: with no session there is no Classic call for the
+        // car to keep following (#1378).
+        for enable in [
+            { (appState: AppState) in appState.setGeminiLiveEnabled(true) },
+            { (appState: AppState) in appState.setLocalLiveEnabled(true) },
+        ] {
+            let defaults = makeScratchDefaults("PushToTalkLiveModeSwitch")
+            let appState = AppState(defaults: defaults, loadSavedConnection: false)
+            var preferences = VoiceProfilePreferences()
+            preferences.pushToTalk = true
+            appState.voiceConversationController.setProfilePreferences(preferences)
+            appState.showVoiceSheet = true
+            XCTAssertTrue(appState.voiceConversationController.isPushToTalkActive)
+            XCTAssertFalse(appState.voiceConversationController.hasConversationSession, "no session before the first press")
+
+            enable(appState)
+
+            XCTAssertFalse(appState.showVoiceSheet, "the Classic call screen closes with the switch")
+        }
+    }
+
     func testPushToTalkDoesNotListenAgainAfterAReply() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Question", startsPlaybackOnOpen: true)
