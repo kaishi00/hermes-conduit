@@ -455,10 +455,11 @@ extension HermesVoiceGatewayTimeoutTests {
             onStart: { _ in },
             onPCM16: { _, _ in }
         )
-        try await stream.append("The first one is here. The second follows. And the end")
+        try await stream.append("The first one is here. The second follows. ")
+        try await stream.append("One more. And the end")
         XCTAssertEqual(MessageReadAloudController.traceEngine(of: stream), "the iPhone voice")
         let finishing = Task { try await stream.finish() }
-        for count in 1...3 {
+        for count in 1...4 {
             await waitUntil { synthesizer.spoken.count == count }
             synthesizer.finishCurrent(audio: Data([1, 0]))
         }
@@ -467,6 +468,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(steps, [
             "Reading 61 characters at 1x, on Speaker",
             "Queued 2 sentences (22, 19 characters)",
+            "Queued 1 sentence (9 characters)",
             "Queued the rest (11 characters)",
         ])
         XCTAssertFalse(trace.report?.contains("second") ?? true, "the trace never holds the reply's words")

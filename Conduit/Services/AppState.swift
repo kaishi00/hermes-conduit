@@ -5908,6 +5908,10 @@ final class AppState: ObservableObject {
     /// checked without opening a socket.
     var readAloudGatewayFactoryForTesting: ((String) -> VoiceGatewayService?)?
 
+    /// Test-only seam: stands in for `isLiveVoiceCallActive` in the voice
+    /// Camera's live-call path, which needs a running call's controller.
+    var liveVoiceCallActiveForTesting: Bool?
+
     /// Test-only seam: when set, the voice capability refresh requests
     /// through it instead of the dashboard bridge, keeping
     /// `refreshVoiceCapabilities` hermetic in tests. Mirrors the
