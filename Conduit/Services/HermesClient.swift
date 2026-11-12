@@ -6144,7 +6144,7 @@ enum MessageNormalizer {
             // from the report Hermes wrote for the model, and only when no
             // `display_content` projection replaced it (issue 1553).
             if displayKind == .asyncDelegationComplete, projectedContent == nil, !isToolResult {
-                base.delegationReport = DelegationReport.parse(extractedContent)
+                base.delegationReport = DelegationReport.parse(rawContent)
             }
 
             // External session history occasionally includes a role-less

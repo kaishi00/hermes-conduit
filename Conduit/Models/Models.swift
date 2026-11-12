@@ -1059,7 +1059,7 @@ struct DelegateAgentActivity: Identifiable, Equatable {
     }
 
     /// The card ended `as` a status at `now`, its running time kept.
-    func ended(as status: Status, at now: Date = Date()) -> DelegateAgentActivity {
+    func ended(as status: Status, at now: Date) -> DelegateAgentActivity {
         var ended = self
         ended.status = status
         ended.currentTool = nil
@@ -1085,7 +1085,7 @@ struct DelegateAgentActivity: Identifiable, Equatable {
         // keeps its time; an end with no time of its own counts from it.
         merged.startedAt = startedAt ?? update.startedAt
         if !status.isActive {
-            merged.duration = duration
+            merged.duration = duration ?? update.duration
         } else if !merged.status.isActive, merged.duration == nil, let start = merged.startedAt {
             merged.duration = max(0, update.updatedAt.timeIntervalSince(start))
         }
@@ -1150,9 +1150,11 @@ struct DelegateAgentActivity: Identifiable, Equatable {
                   agent.sessionId == sessionId,
                   agent.updatedAt < cutoff,
                   !liveIDs.contains(agent.id) else { return agent }
-            // It ended some time after its last news, unseen: that's the
-            // nearest end there is.
-            return agent.ended(as: .completed, at: agent.updatedAt)
+            // It ended some time after its last news, unseen: how long it
+            // ran isn't known, so the card shows no time.
+            var ended = agent.ended(as: .completed, at: cutoff)
+            ended.duration = nil
+            return ended
         }
     }
 }
