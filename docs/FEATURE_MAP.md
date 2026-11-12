@@ -804,7 +804,7 @@ tabs in a Duo's status strip)
 - The round button's touch-and-hold Recent menu goes with it while a chat is beside the list; the chat's own button offers a call or dictation, not Recent, so closing the chat brings the menu back (2026-10-26, #1319).
 - Split, Settings opens in the chat's column with the Chats list kept beside it, and the bar stays under the list; a chat tapped there opens in Chats. Tasks and a list shown alone have no list column and center the bar under the screen, at the list column's width (Eric, 2026-10-26, #1319; replaces #1169's bar kept at the leading edge).
 - Under a list the user widened, the bar keeps the standard list width, centered under the list's column (2026-10-29, #1492, see Resizable columns on a split window).
-- Split, a chat or room beside the list shows a minimised call's bar (and a reading's player) by its composer, so the list column leaves it out: the call shows once, not over both columns. Being the only one, the chat's bar stays while words are typed there, where one column hides it (ChatView's bottomBar). Settings covering the chat column gives it back to the list; Tasks, with no list column, keeps its own (2026-11-12, #2270, issue 1534).
+- Split, a chat or room beside the list shows a minimised call's bar (and a reading's player) by its composer, so the list column leaves it out: the call shows once, not over both columns. Being the only one, the chat's bar stays while words are typed there, where one column hides it (ChatView.showsMinimisedCallBar; test: testChatKeepsTheOnlyCallBarWhileTypingBesideTheList). Settings covering the chat column gives it back to the list; Tasks, with no list column, keeps its own (2026-11-12, #2270, issue 1534).
 
 **Open gaps**
 - Recent isn't reachable beside a chat on a split window (see Rulings).
@@ -3704,7 +3704,9 @@ keyboard line (done, #2270) · no Settings caption describes it
   focus and the paste, as if ⌘V had come to its field (a long paste
   offered as an attachment, a picture attached). A click that selected
   text or that a field took keeps its own. A chat that can't take text
-  gets nothing (2026-11-12, #2270, issue 1692).
+  gets nothing. An iPhone or iPad keeps ⌘V in the transcript doing
+  nothing, so it never brings the on-screen keyboard up (2026-11-12, #2270,
+  issue 1692).
 
 **Open gaps**
 - Not yet seen on a device: a Mac and an iPad with a keyboard sending from

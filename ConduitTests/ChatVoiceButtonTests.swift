@@ -140,6 +140,15 @@ extension ComposerFullEditorTests {
         XCTAssertEqual(ComposerBar.trailingInset(keepsButtonSpot: false, roundButtonBeside: true, voiceMessageHeld: false, restsWhenIdle: false), 14)
     }
 
+    func testChatKeepsTheOnlyCallBarWhileTypingBesideTheList() {
+        // One column: typing hides the bar, as before.
+        XCTAssertTrue(ChatView.showsMinimisedCallBar(composerTyping: false, besideList: false))
+        XCTAssertFalse(ChatView.showsMinimisedCallBar(composerTyping: true, besideList: false))
+        // Beside the list, which leaves its bar to the chat's, it stays.
+        XCTAssertTrue(ChatView.showsMinimisedCallBar(composerTyping: true, besideList: true))
+        XCTAssertTrue(ChatView.showsMinimisedCallBar(composerTyping: false, besideList: true))
+    }
+
     func testMacOpensConversationsReadyToTypeAndPastesFromTheTranscript() {
         // Issue 1692: a Mac focuses the composer of a chat or room that
         // opens, and ⌘V in its transcript pastes there.

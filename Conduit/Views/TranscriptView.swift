@@ -505,7 +505,7 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
 
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
         if action == #selector(paste(_:)) {
-            return pasteTarget != nil && ComposerPaste.clipboardHasSomething
+            return pasteTarget != nil && ComposerLayout.transcriptTakesPaste() && ComposerPaste.clipboardHasSomething
         }
         return super.canPerformAction(action, withSender: sender)
     }
@@ -513,7 +513,9 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     /// ⌘V (or Edit › Paste) with the transcript holding the keys: the
     /// conversation's composer takes focus and the paste.
     override func paste(_ sender: Any?) {
-        guard let pasteTarget else { return }
+        // A Mac's alone: an iPhone or iPad keeps ⌘V doing nothing here,
+        // so it never brings the on-screen keyboard up.
+        guard let pasteTarget, ComposerLayout.transcriptTakesPaste() else { return }
         ComposerPaste.requests.send(pasteTarget)
     }
 

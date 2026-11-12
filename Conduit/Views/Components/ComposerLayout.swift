@@ -80,11 +80,10 @@ enum ComposerPaste {
     static let requests = PassthroughSubject<ComposerPasteTarget, Never>()
 
     /// The clipboard holds something a composer takes: words, a link, a
-    /// picture or a file. Read from its types only, so asking never raises
-    /// the paste prompt.
+    /// picture or a file, all of which list a type. Read from its types
+    /// only, so asking never raises the paste prompt.
     static var clipboardHasSomething: Bool {
-        let pasteboard = UIPasteboard.general
-        return pasteboard.hasStrings || pasteboard.hasURLs || pasteboard.hasImages || !pasteboard.types.isEmpty
+        !UIPasteboard.general.types.isEmpty
     }
 }
 
