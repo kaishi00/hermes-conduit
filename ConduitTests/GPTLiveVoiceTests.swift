@@ -712,17 +712,14 @@ extension HermesVoiceGatewayTimeoutTests {
         let center = NotificationCenter()
         let link = GPTLiveAudioLink(audio: audio, center: center)
         try? link.start()
-        center.post(name: AVAudioSession.interruptionNotification, object: nil,
-                    userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+        AudioSessionInterruption.began.post(on: center)
         await settle()
         XCTAssertTrue(link.isInterrupted)
-        center.post(name: AVAudioSession.interruptionNotification, object: nil,
-                    userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue])
+        AudioSessionInterruption.ended(shouldResume: true).post(on: center)
         await settle()
         XCTAssertFalse(link.isInterrupted)
         link.stop()
-        center.post(name: AVAudioSession.interruptionNotification, object: nil,
-                    userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.began.rawValue])
+        AudioSessionInterruption.began.post(on: center)
         await settle()
         XCTAssertFalse(link.isInterrupted, "Observers are gone after stop")
     }

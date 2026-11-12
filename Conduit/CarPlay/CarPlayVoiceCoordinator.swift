@@ -446,16 +446,12 @@ final class CarPlayVoiceCoordinator {
     private func observeAudioInterruptions() {
         guard interruptionObservers.isEmpty else { return }
         let ended = NotificationCenter.default.addObserver(
-            forName: AVAudioSession.interruptionNotification, object: nil, queue: .main
+            forName: .audioSessionInterruption, object: nil, queue: .main
         ) { [weak self] notification in
-            guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-                  AVAudioSession.InterruptionType(rawValue: raw) == .ended else { return }
             // Only when the system says to: an interruption that ends
             // without shouldResume (the other app still wants the audio, or
             // the driver declined) leaves the microphone off.
-            let options = (notification.userInfo?[AVAudioSessionInterruptionOptionKey] as? UInt)
-                .map(AVAudioSession.InterruptionOptions.init(rawValue:)) ?? []
-            guard options.contains(.shouldResume) else { return }
+            guard AudioSessionInterruption(notification) == .ended(shouldResume: true) else { return }
             MainActor.assumeIsolated { self?.audioInterruptionEnded() }
         }
         // In a call from Hermes CallKit gives the audio back instead, and

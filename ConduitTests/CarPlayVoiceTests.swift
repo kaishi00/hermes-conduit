@@ -1443,10 +1443,7 @@ final class CarPlayVoiceCoordinatorTests: XCTestCase {
     }
 
     private static func postInterruptionEnded(shouldResume: Bool) {
-        NotificationCenter.default.post(name: AVAudioSession.interruptionNotification, object: nil, userInfo: [
-            AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue,
-            AVAudioSessionInterruptionOptionKey: shouldResume ? AVAudioSession.InterruptionOptions.shouldResume.rawValue : UInt(0),
-        ])
+        AudioSessionInterruption.ended(shouldResume: shouldResume).post()
     }
 
     /// Long enough for the resume's delay and its listening turn.

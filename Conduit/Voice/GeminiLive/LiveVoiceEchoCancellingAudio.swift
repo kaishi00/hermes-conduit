@@ -107,8 +107,8 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleInterruption(_:)),
-            name: AVAudioSession.interruptionNotification,
-            object: session
+            name: .audioSessionInterruption,
+            object: nil
         )
         NotificationCenter.default.addObserver(
             self,
@@ -465,8 +465,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
     }
 
     @objc private func handleInterruption(_ notification: Notification) {
-        guard let raw = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-              AVAudioSession.InterruptionType(rawValue: raw) == .began else { return }
+        guard AudioSessionInterruption(notification) == .began else { return }
         let observed = lifetimeForObservers
         Task { @MainActor [weak self] in self?.stopAfterInterruption(observed: observed) }
     }

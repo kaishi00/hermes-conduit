@@ -97,7 +97,25 @@ final class SharedAVAudioSessionBackend: VoiceAudioSessionBackend {
     }
 
     func setActive(_ active: Bool, options: AVAudioSession.SetActiveOptions) throws {
-        try AVAudioSession.sharedInstance().setActive(active, options: options)
+        let session = AVAudioSession.sharedInstance()
+        // iOS 27 deactivates without blocking: the call returns at once and
+        // the audio server winds the session down on its own (issue 826),
+        // so the serial queue is free for the next change. Activation keeps
+        // setActive: callers need the session live (or its error) before
+        // they start an engine, and the async form's completion arrives on
+        // a queue of the system's choosing, which this queue must not wait
+        // on while the main thread waits on it.
+        if !active, #available(iOS 27, *) {
+            let deactivation: AVAudioSessionDeactivationOptions =
+                options.contains(.notifyOthersOnDeactivation) ? .notifyOthersOnDeactivation : []
+            session.deactivate(options: deactivation) { _, error in
+                if let error {
+                    audioSessionLogger.error("audio session deactivation failed: \(LogRedaction.describing(error), privacy: .public)")
+                }
+            }
+            return
+        }
+        try session.setActive(active, options: options)
     }
 
     func overrideOutputToSpeaker() throws {

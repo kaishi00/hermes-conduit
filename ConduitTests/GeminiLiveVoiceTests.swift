@@ -2341,11 +2341,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(controller.phase, .paused)
 
         input.startError = nil
-        center.post(
-            name: AVAudioSession.interruptionNotification,
-            object: nil,
-            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue]
-        )
+        AudioSessionInterruption.ended(shouldResume: true).post(on: center)
         for _ in 0..<50 where controller.phase == .paused { await settle() }
         XCTAssertEqual(controller.phase, .listening, "The call carries on once the alarm stops")
         XCTAssertTrue(input.running)
@@ -2370,11 +2366,7 @@ extension VoiceConversationControllerTests {
         session.becomeReady()
         XCTAssertEqual(controller.phase, .paused)
 
-        center.post(
-            name: AVAudioSession.interruptionNotification,
-            object: nil,
-            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue]
-        )
+        AudioSessionInterruption.ended(shouldResume: true).post(on: center)
         for _ in 0..<50 where controller.phase == .paused { await settle() }
         XCTAssertEqual(controller.phase, .listening)
         XCTAssertTrue(controller.isMicrophoneMuted)
@@ -2413,11 +2405,7 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(session.stopped, 0)
 
         input.startError = nil
-        center.post(
-            name: AVAudioSession.interruptionNotification,
-            object: nil,
-            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue]
-        )
+        AudioSessionInterruption.ended(shouldResume: true).post(on: center)
         for _ in 0..<50 where controller.phase == .paused { await settle() }
         XCTAssertEqual(controller.phase, .listening)
         XCTAssertTrue(input.running)

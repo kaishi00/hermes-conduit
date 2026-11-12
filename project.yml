@@ -128,6 +128,9 @@ targets:
         excludes:
           - "Widgets/**"
       - path: Shared/WatchVoice
+      # Audio session interruptions read from whichever notifications the
+      # running watchOS posts (issue 826).
+      - path: Shared/AudioSession
       # The iPhone's own Gemini Live code: the Watch runs the same session
       # (designs/apple-watch-voice-direct.md).
       - path: Shared/GeminiLive
