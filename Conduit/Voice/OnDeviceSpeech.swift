@@ -97,7 +97,7 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         // go quiet past the watchdog partway and lose the rest (issue 2191).
         let sentences = Self.takeCompleteSentences(from: &pending)
         if !sentences.isEmpty {
-            LiveCallTrace.readAloud.note("Queued \(sentences.count) sentences (\(sentences.map { String($0.count) }.joined(separator: ", ")) characters)", run: traceRun)
+            LiveCallTrace.readAloud.note("Queued \(sentences.count) \(sentences.count == 1 ? "sentence" : "sentences") (\(sentences.map { String($0.count) }.joined(separator: ", ")) characters)", run: traceRun)
         }
         queue.append(contentsOf: sentences)
         speakNext()

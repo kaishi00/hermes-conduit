@@ -569,7 +569,9 @@ final class MessageReadAloudController: ObservableObject {
         self.speed = speed
         storeSpeed(speed)
         switch state {
-        case .preparing, .playing: playback.changeRate(speed.rate)
+        case .preparing, .playing:
+            LiveCallTrace.readAloud.note("Speed set to \(String(format: "%gx", speed.rawValue))")
+            playback.changeRate(speed.rate)
         case .idle, .failed: break
         }
     }
