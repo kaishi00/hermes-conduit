@@ -27,6 +27,14 @@ enum SpokenApprovalTarget: Equatable {
 
 @MainActor
 enum SpokenApprovals {
+    /// A phone change only its card answers, never a spoken yes or no: a
+    /// photo goes once the user sees it there, and a shortcut runs from its
+    /// card's Run, where its input shows. Such a card still counts as
+    /// waiting, so a yes with it waiting answers nothing else.
+    static func answeredOnlyOnCard(_ kind: PhoneChange.Kind) -> Bool {
+        kind == .sendPhoto || kind == .runShortcut
+    }
+
     /// What waits on the user while they speak.
     struct Waiting {
         var phoneChanges: [String] = []
@@ -59,7 +67,7 @@ enum SpokenApprovals {
         // "No", "no thanks", "never mind": a no with nothing more. "No, make
         // it 5" is a change, which only Hermes can make.
         let heard = VoiceThreadRouting.heldRequestAnswer(words)
-        let declines = heard == .no(change: nil)
+        var declines = heard == .no(change: nil)
         var ledByNo = false
         if case .no = heard { ledByNo = true }
         let target: SpokenApprovalTarget
@@ -74,9 +82,18 @@ enum SpokenApprovals {
             // A yes, or a short "change it" / "delete it" naming the change.
             approves = PhoneVoiceTools.confirmsChange(words, cancelsAlarm: cancelsAlarm)
         } else if let prompt = waiting.presented.first {
+            // A Link's question is answered only on the panel: it still
+            // counts as waiting, but no yes or no answers it.
+            guard prompt.canConfirm else { return nil }
             target = .presented(id: prompt.id)
-            // A yes, or one of the phrases Hermes gave ("send it").
-            approves = prompt.isConfirmed(by: words)
+            // A yes, or one of the phrases Hermes gave ("send it"). A
+            // Link's ask, which goes to another person's Hermes and isn't
+            // said aloud here, takes only its phrase ("share it"), and so
+            // does a room's work ask ("start it", "send it").
+            approves = prompt.isConfirmed(by: words, bareYes: prompt.link == nil && prompt.room?.work != true)
+            // The panel's own no, said aloud ("Don't start", "don't send it"),
+            // declines rather than reading as a change.
+            if !declines, prompt.room?.work == true { declines = Self.saysDont(prompt.actionLabel, in: words) }
         } else if let messageID = waiting.chatApprovals.first {
             target = .chatApproval(messageID: messageID)
             approves = VoiceCallDecisionOutcome.isYes(words)
@@ -92,5 +109,18 @@ enum SpokenApprovals {
         if ledByNo, !cancelsAlarm { return declines ? (target, false) : nil }
         if approves { return (target, true) }
         return declines ? (target, false) : nil
+    }
+
+    /// "Don't start", "do not start it": the action's no, with nothing more.
+    static func saysDont(_ action: String, in words: String) -> Bool {
+        let said = words.lowercased().replacingOccurrences(of: "’", with: "'")
+            .split(whereSeparator: { !$0.isLetter && $0 != "'" }).map(String.init)
+        let verb = action.lowercased()
+        guard !verb.isEmpty else { return false }
+        for lead in [["don't"], ["dont"], ["do", "not"]] where said.starts(with: lead) {
+            let rest = Array(said.dropFirst(lead.count))
+            return rest == [verb] || rest == [verb, "it"]
+        }
+        return false
     }
 }

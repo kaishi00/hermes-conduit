@@ -47,7 +47,13 @@ final class VoiceConversationController: ObservableObject {
     /// regardless of whether the speech detector classifies it as speech,
     /// and returns to zero whenever capture is paused, stopped, suspended,
     /// or interrupted.
-    @Published private(set) var microphoneLevel: Float = 0
+    ///
+    /// Read from `microphoneMeter`, which publishes on its own: the meter
+    /// ticks up to 20 times a second, and only the level bars draw it. On
+    /// the controller every tick re-rendered the whole voice sheet
+    /// (issue 1970).
+    var microphoneLevel: Float { microphoneMeter.level }
+    let microphoneMeter = VoiceMicrophoneMeter()
     /// Publication clock for meter throttling: level events arrive at tap
     /// buffer rate (~50 Hz), far faster than any useful UI animation, and
     /// every @Published assignment re-renders observing surfaces.
@@ -549,6 +555,10 @@ final class VoiceConversationController: ObservableObject {
         // relisten (after a reply, an empty transcript, a spoken Stop, the
         // voice screen opening) settles to wait for the next press instead.
         if isPushToTalkActive, !isPushToTalkHeld {
+            // A widget's or Shortcut's Talk has done its part once the call
+            // waits for the press: the launch ends here, so its deadline
+            // never reports it expired over a call the user is in (#1934).
+            widgetAuthorization?.conversationDidSettle()
             if isSteeringTurn {
                 resumeTurnAfterSteer()
             } else if isVoiceSessionActive {
@@ -1007,7 +1017,7 @@ final class VoiceConversationController: ObservableObject {
         switch state {
         case .listening:
             if utteranceStartedAt == nil { utteranceStartedAt = date }
-            switch speechDetector.observe(level) {
+            switch speechDetector.observe(level, at: date) {
             case .started, .continued:
                 lastSpeechAt = date
                 openLiveTranscriptionIfNeeded()
@@ -1248,7 +1258,7 @@ final class VoiceConversationController: ObservableObject {
             // @Published state.
             guard state != .transcribing else { return }
             if lastMeterPublication == nil || date.timeIntervalSince(lastMeterPublication!) >= 0.05 {
-                microphoneLevel = level
+                microphoneMeter.level = level
                 lastMeterPublication = date
             }
             guard !isProviderTestRunning else { return }
@@ -1284,7 +1294,7 @@ final class VoiceConversationController: ObservableObject {
     /// Zeroes the visible meter and clears the publication clock so the
     /// first event of a fresh capture window always publishes.
     private func resetMicrophoneMeter() {
-        microphoneLevel = 0
+        microphoneMeter.level = 0
         lastMeterPublication = nil
     }
 
@@ -2540,4 +2550,11 @@ final class VoiceConversationController: ObservableObject {
     private func isCurrent(_ generation: UInt64) -> Bool {
         generation == operationGeneration && isApplicationForegroundActive && isVoiceSessionActive
     }
+}
+
+/// The classic voice microphone's level, published apart from its
+/// controller so a tick re-renders only the bars reading it (issue 1970).
+@MainActor
+final class VoiceMicrophoneMeter: ObservableObject {
+    @Published fileprivate(set) var level: Float = 0
 }

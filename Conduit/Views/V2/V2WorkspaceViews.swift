@@ -376,10 +376,20 @@ struct WorkspaceFolderView: View {
         } else if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, explorer.canChange {
             searchResults
         } else {
-            // Not while the plugin hasn't said (offline, just connected).
-            if !explorer.canChange, !appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
+            // The profile has the plugin off (issue 1438): how to turn it on.
+            if let remedy = explorer.pluginOff {
                 Label {
-                    Text("Update the Conduit plugin on your Hermes host to search this folder and make, move or delete files here. Settings › Conduit plugin can update it.")
+                    Text(verbatim: remedy)
+                } icon: {
+                    Image(systemName: "puzzlepiece.extension")
+                }
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 8)
+            // Not while the plugin hasn't said (offline, just connected).
+            } else if !explorer.canChange, !appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
+                Label {
+                    Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to search this folder and make, move or delete files here. Settings › Conduit plugin can update it.")))
                 } icon: {
                     Image(systemName: "arrow.down.circle")
                 }
@@ -388,7 +398,8 @@ struct WorkspaceFolderView: View {
                 .padding(.vertical, 8)
             }
             // Kept ones show until the plugin says it doesn't serve them.
-            if !explorer.recent.isEmpty, appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
+            if !explorer.recent.isEmpty, explorer.pluginOff == nil,
+               appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
                 recentSection
             }
             let rows = explorer.rows()
@@ -854,7 +865,15 @@ struct WorkspaceFolderView: View {
     private func show(_ reveal: WorkspaceReveal) async {
         // The folder holding it, the chat's first: a file in none of them
         // opens to read, outside the tree, with nothing to change.
-        if let holder = roots.first(where: { Self.path(reveal.path, isIn: $0.path) }) {
+        let holder = roots.first(where: { Self.path(reveal.path, isIn: $0.path) })
+        // A file to read starts reading now, while its folders are listed,
+        // in the profile `explorer.view` will read it in (issue 1964).
+        let kind = WorkspaceFileKind(name: (reveal.path as NSString).lastPathComponent)
+        if kind == .text || kind == .markdown, !(reveal.path as NSString).pathExtension.isEmpty {
+            let profile = holder == nil ? (explorer.scope?.profile ?? appState.workspaceProfile) : appState.workspaceProfile
+            explorer.prefetchText(reveal.path, profile: profile)
+        }
+        if let holder {
             if root?.path != holder.path { rootPath = holder.path }
             // Also when the picker already names it but the explorer hasn't
             // opened it yet (the first appearance); opening it again is free.
@@ -1182,7 +1201,7 @@ struct WorkspaceCodeText: View {
                     HStack(alignment: .firstTextBaseline, spacing: 10) {
                         Text(verbatim: "\(index + 1)")
                             .scaledFont(.caption2.monospacedDigit())
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.conduitTertiary)
                             .frame(minWidth: 30, alignment: .trailing)
                             .accessibilityHidden(true)
                         Text(verbatim: line.isEmpty ? " " : line)

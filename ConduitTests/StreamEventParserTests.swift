@@ -632,6 +632,60 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertNil(b.model)
     }
 
+    /// Issue 2142: a chat opened while its delegate agents run never saw
+    /// them start, so Hermes' roster (`subagent.list`) gives it their cards.
+    func testARosterRowIsTheCardItsEventsWouldHaveMade() throws {
+        func row(_ json: String) throws -> [String: AnyCodable]? {
+            try JSONDecoder().decode(AnyCodable.self, from: Data(json.utf8)).objectValue
+        }
+        let running = try XCTUnwrap(DelegateAgentActivity(
+            rosterRow: row(#"{"subagent_id": "a", "goal": "Research", "model": "glm", "status": "running", "last_tool": "web_search", "depth": 0}"#),
+            sessionId: "s1"
+        ))
+        XCTAssertEqual(running.id, "a")
+        XCTAssertEqual(running.goal, "Research")
+        XCTAssertEqual(running.model, "glm")
+        XCTAssertEqual(running.status, .running)
+        XCTAssertEqual(running.currentTool, "web_search")
+        XCTAssertEqual(running.sessionId, "s1")
+        XCTAssertTrue(running.hasGatewayID, "the roster can end it later")
+
+        let queued = try XCTUnwrap(DelegateAgentActivity(rosterRow: row(#"{"subagent_id": "b", "status": "queued", "model": ""}"#), sessionId: "s1"))
+        XCTAssertEqual(queued.status, .queued)
+        XCTAssertNil(queued.model)
+        let unnamed = try XCTUnwrap(DelegateAgentActivity(rosterRow: row(#"{"subagent_id": "c", "status": "thinking"}"#), sessionId: "s1"))
+        XCTAssertEqual(unnamed.status, .running, "the roster lists the agents Hermes still has")
+        let timedOut = try XCTUnwrap(DelegateAgentActivity(rosterRow: row(#"{"subagent_id": "d", "status": "timeout"}"#), sessionId: "s1"))
+        XCTAssertEqual(timedOut.status, .failed)
+        let cancelled = try XCTUnwrap(DelegateAgentActivity(rosterRow: row(#"{"subagent_id": "e", "status": "cancelled"}"#), sessionId: "s1"))
+        XCTAssertEqual(cancelled.status, .interrupted, "an ended agent the roster still lists doesn't keep the chat waiting")
+        XCTAssertNil(DelegateAgentActivity(rosterRow: try row(#"{"subagent_id": "", "goal": "g"}"#), sessionId: "s1"))
+        XCTAssertNil(DelegateAgentActivity(rosterRow: nil, sessionId: "s1"))
+    }
+
+    func testARosterAddsOnlyTheAgentsTheChatHasNoCardFor() {
+        func agent(_ id: String, _ status: DelegateAgentActivity.Status, goal: String = "g") -> DelegateAgentActivity {
+            DelegateAgentActivity(id: id, goal: goal, status: status, taskCount: 1, taskIndex: 0, stream: [], hasGatewayID: true, sessionId: "s1")
+        }
+        let cards = [agent("a", .completed, goal: "as its events left it")]
+        let adopted = DelegateAgentActivity.adopting(cards, roster: [agent("a", .running), agent("b", .running), agent("c", .queued)])
+        XCTAssertEqual(adopted.map(\.id), ["a", "b", "c"])
+        XCTAssertEqual(adopted[0], cards[0], "an end the chat heard stands over a roster read before it")
+        XCTAssertEqual(DelegateAgentActivity.activeCount(adopted), 2, "queued and running both keep the chat waiting")
+        XCTAssertEqual(DelegateAgentActivity.adopting(cards, roster: []), cards)
+        XCTAssertEqual(DelegateAgentActivity.activeCount(cards), 0)
+
+        // Issue 2206: a card kept from before a resume moves to the runtime
+        // the roster was read for, keeping what its events said.
+        var resumed = agent("b", .running)
+        resumed.sessionId = "s2"
+        let moved = DelegateAgentActivity.adopting([agent("b", .running, goal: "kept")], roster: [resumed])
+        XCTAssertEqual(moved.map(\.sessionId), ["s2"])
+        XCTAssertEqual(moved.first?.goal, "kept")
+        let notMoved = DelegateAgentActivity.adopting([agent("b", .running)], roster: [resumed], moving: false)
+        XCTAssertEqual(notMoved.map(\.sessionId), ["s1"], "an earlier runtime's roster moves no card")
+    }
+
     func testFirstReportedEndWins() {
         let done = DelegateAgentActivity(id: "a", goal: "g", status: .completed, taskCount: 1, taskIndex: 0, stream: [])
         let lateFail = DelegateAgentActivity(id: "a", goal: "g", status: .failed, taskCount: 1, taskIndex: 0, stream: [])
@@ -958,6 +1012,49 @@ final class StreamEventParserTests: XCTestCase {
         }
         XCTAssertEqual(activity.summary, "Memory updated")
         XCTAssertNil(activity.details)
+    }
+
+    /// Hermes' fixed English summaries read in the app's language; a
+    /// summary naming something (a skill) stays as Hermes wrote it.
+    func testFixedReviewSummariesGoThroughTheAppLanguage() {
+        let memory = AppLocalization.string("\(AppLocalization.string("Memory")) updated")
+        // The parsed review keeps Hermes' words; the card localizes them.
+        XCTAssertEqual(MessageNormalizer.reviewActivity(fromText: "💾 Self-improvement review: Memory updated")?.summary, "Memory updated")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated"), memory)
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("User profile updated"),
+                       AppLocalization.string("\(AppLocalization.string("User profile")) updated"))
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · User profile updated"),
+                       "\(memory) · \(AppLocalization.string("\(AppLocalization.string("User profile")) updated"))")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · Memory updated"), memory)
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("📝 Skill 'hermes-release' patched"), "📝 Skill 'hermes-release' patched")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · 📝 Skill 'x' created: y"), "Memory updated · 📝 Skill 'x' created: y")
+    }
+
+    /// The same summaries with French selected, so a summary left in
+    /// English fails here.
+    func testFixedReviewSummariesReadInFrench() {
+        let standard = UserDefaults.standard
+        let saved = standard.object(forKey: AppLanguageStore.defaultsKey)
+        standard.set("fr", forKey: AppLanguageStore.defaultsKey)
+        defer {
+            if let saved {
+                standard.set(saved, forKey: AppLanguageStore.defaultsKey)
+            } else {
+                standard.removeObject(forKey: AppLanguageStore.defaultsKey)
+            }
+        }
+        // Parsed in French, the review still keeps Hermes' words, so a
+        // saved one matches its transcript row and follows a later change.
+        XCTAssertEqual(MessageNormalizer.reviewActivity(fromText: "💾 Self-improvement review: Memory updated")?.summary,
+                       "Memory updated")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated"), "Mémoire : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · "), "Mémoire : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · · Skill updated."),
+                       "Mémoire : mise à jour · Compétence : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("User profile updated · Skill updated"),
+                       "Profil utilisateur : mise à jour · Compétence : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · Memory updated"), "Mémoire : mise à jour")
+        XCTAssertEqual(MessageNormalizer.localizedReviewSummary("📝 Skill 'hermes-release' patched"), "📝 Skill 'hermes-release' patched")
     }
 
     func testReviewSummaryWithEmptyTextReturnsNil() {

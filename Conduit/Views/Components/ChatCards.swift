@@ -49,9 +49,7 @@ struct ChatPlanDock: View {
                         // A tap on the line asks for the card: the
                         // keyboard goes, and the card opens.
                         if isCompact {
-                            UIApplication.shared.sendAction(
-                                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
-                            )
+                            ReturnKeyTextView.putAwayFocus()
                         }
                     }
                         .transition(popTransition)

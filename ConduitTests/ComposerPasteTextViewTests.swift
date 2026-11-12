@@ -20,6 +20,37 @@ final class ComposerPasteTextViewTests: XCTestCase {
     // rather than a hung pasteboard read. Writes and clears are safe, so
     // isolation here uses clears only — never an unsolicited read.
 
+    /// A suggestion pick (a slash command, an @mention) replaces the draft
+    /// with the cursor after what it put in, wherever the cursor was, so
+    /// the next word follows the pick (issue 2048).
+    func testAPickedSuggestionPutsTheCursorAfterIt() {
+        var value = ""
+        let identity = UUID()
+        let editor = ComposerPasteTextView(
+            text: Binding(get: { value }, set: { value = $0 }),
+            isFocused: .constant(false),
+            measuredHeight: .constant(44),
+            enabled: true,
+            onPastedImage: { _ in },
+            onPastedImageError: { _ in },
+            editorIdentity: identity
+        )
+        let coordinator = ComposerPasteTextView.Coordinator(editor)
+        let textView = ImagePasteTextView()
+        coordinator.apply(text: "/skil", programmaticRevision: 1, editorIdentity: identity, to: textView)
+        textView.selectedRange = NSRange(location: 5, length: 0)
+
+        coordinator.apply(text: "/skill-scout ", programmaticRevision: 2, cursorAtEnd: true, editorIdentity: identity, to: textView)
+        XCTAssertEqual(textView.text, "/skill-scout ")
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 13, length: 0))
+
+        // Moved back into the word first, the pick still ends after it.
+        coordinator.apply(text: "hi @ra", programmaticRevision: 3, editorIdentity: identity, to: textView)
+        textView.selectedRange = NSRange(location: 1, length: 0)
+        coordinator.apply(text: "hi @raiden ", programmaticRevision: 4, cursorAtEnd: true, editorIdentity: identity, to: textView)
+        XCTAssertEqual(textView.selectedRange, NSRange(location: 11, length: 0))
+    }
+
     func testAPastedImageLinkThatAnsweredWithAPageIsRefused() {
         XCTAssertNil(PastedRemoteImage.image(from: Data("<html><body>Not found</body></html>".utf8)))
     }
@@ -960,6 +991,109 @@ final class ComposerPasteTextViewTests: XCTestCase {
         editor.setFocusIntent(false)
         settleFocus()
         XCTAssertFalse(editor.isFirstResponder)
+    }
+
+    /// Issue 2208: on a Mac a send keeps the field focused, and a sync or
+    /// reconnect once the reply came turned typing off, which ended the
+    /// editing and let go of focus for good. Off under focus, the field
+    /// keeps the composer's wish (after the asking update, issue 1781) and
+    /// takes focus back once typing is on again; not when another field
+    /// took focus meanwhile.
+    func testAFieldTurnedOffUnderFocusTakesItBackOnceOnUnlessAnotherFieldTookIt() {
+        let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 320, height: 120))
+        window.makeKeyAndVisible()
+        defer { window.isHidden = true }
+        var isFocused = false
+        let view = ComposerPasteTextView(
+            text: .constant(""),
+            isFocused: Binding(get: { isFocused }, set: { isFocused = $0 }),
+            measuredHeight: .constant(44),
+            enabled: true,
+            onPastedImage: { _ in },
+            onPastedImageError: { _ in },
+            editorIdentity: UUID()
+        )
+        let coordinator = ComposerPasteTextView.Coordinator(view)
+        let field = ImagePasteTextView(frame: CGRect(x: 0, y: 0, width: 320, height: 44))
+        field.delegate = coordinator
+        field.onFocusTakenWhileOff = { isFocused = false }
+        field.isEditable = true
+        window.addSubview(field)
+        field.setFocusIntent(true)
+        settleFocus()
+        XCTAssertTrue(field.isFirstResponder)
+        XCTAssertTrue(isFocused)
+
+        // Off: after the asking update, and the composer still wants focus.
+        field.setTyping(false)
+        XCTAssertTrue(field.isEditable, "turned off inside the asking update")
+        settleFocus()
+        XCTAssertFalse(field.isEditable)
+        XCTAssertFalse(field.isFirstResponder)
+        XCTAssertTrue(isFocused, "typing off isn't the user leaving the field")
+
+        // On again: focus comes back.
+        field.setTyping(true)
+        settleFocus()
+        XCTAssertTrue(field.isFirstResponder)
+
+        // Off, then another field takes focus: on again, it stays there.
+        field.setTyping(false)
+        settleFocus()
+        let other = UITextField(frame: CGRect(x: 0, y: 60, width: 320, height: 44))
+        window.addSubview(other)
+        XCTAssertTrue(other.becomeFirstResponder())
+        XCTAssertFalse(isFocused)
+        field.setTyping(true)
+        settleFocus()
+        XCTAssertFalse(field.isFirstResponder)
+        XCTAssertTrue(other.isFirstResponder)
+
+        // Leaving a field that's on is still the focus going.
+        field.setFocusIntent(true)
+        settleFocus()
+        XCTAssertTrue(field.isFirstResponder)
+        XCTAssertTrue(isFocused)
+        _ = field.resignFirstResponder()
+        XCTAssertFalse(isFocused)
+
+        // Off, then the keyboard is put away (a tap on the transcript):
+        // on again, the field stays unfocused.
+        field.setFocusIntent(true)
+        settleFocus()
+        XCTAssertTrue(isFocused)
+        field.setTyping(false)
+        settleFocus()
+        ReturnKeyTextView.putAwayFocus()
+        XCTAssertFalse(isFocused)
+        field.setTyping(true)
+        settleFocus()
+        XCTAssertFalse(field.isFirstResponder)
+
+        // On again with the restore still queued, then the keyboard is put
+        // away: the queued restore doesn't take focus back.
+        field.setFocusIntent(true)
+        settleFocus()
+        field.setTyping(false)
+        settleFocus()
+        field.setTyping(true)
+        ReturnKeyTextView.putAwayFocus()
+        XCTAssertFalse(isFocused)
+        settleFocus()
+        XCTAssertFalse(field.isFirstResponder)
+
+        // On again with the restore still queued, then another field takes
+        // focus: the queued restore leaves it there.
+        field.setFocusIntent(true)
+        settleFocus()
+        field.setTyping(false)
+        settleFocus()
+        field.setTyping(true)
+        XCTAssertTrue(other.becomeFirstResponder())
+        XCTAssertFalse(isFocused)
+        settleFocus()
+        XCTAssertFalse(field.isFirstResponder)
+        XCTAssertTrue(other.isFirstResponder)
     }
 
     /// Lets the focus change queued after an update run.

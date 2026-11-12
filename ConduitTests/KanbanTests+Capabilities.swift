@@ -44,6 +44,17 @@ extension KanbanTests {
         XCTAssertEqual(OfficialSkill(["name": "solo"])?.identifier, "solo")
         XCTAssertEqual(CapabilitySkillOrdering.prettyCategory("software_development"), "Software Development")
         XCTAssertEqual(CapabilitySkillOrdering.prettyCategory(nil), "General")
+        XCTAssertEqual(CapabilitySkillOrdering.prettyCategory("autonomous-ai-agents"), "Autonomous AI Agents")
+        XCTAssertEqual(CapabilitySkillOrdering.prettyCategory("mcp"), "MCP")
+        let available = CapabilitySkillOrdering.available(catalog, installedNames: [], query: "")
+        XCTAssertEqual(CapabilitySkillOrdering.categories(available), ["general", "research"])
+        XCTAssertEqual(
+            CapabilitySkillOrdering.grouped(available, category: nil).map { "\($0.category): \($0.skills.map(\.name))" },
+            ["general: [\"notes\", \"pdf-tools\"]", "research: [\"arxiv\"]"],
+            "Categories A-Z by their shown name, each one's skills A-Z"
+        )
+        XCTAssertEqual(CapabilitySkillOrdering.grouped(available, category: "research").map(\.category), ["research"])
+        XCTAssertEqual(CapabilitySkillOrdering.categories([], keeping: "research"), ["research"], "a picked category stays in the menu")
     }
 
     func testCapabilitySkillFrontmatterKeepsTopLevelFields() {
@@ -481,6 +492,7 @@ extension KanbanTests {
         // A refresh leaves, then a newer one reads the list after a change.
         let older = Task { await store.loadPlugins() }
         while held == nil { await Task.yield() }
+        XCTAssertTrue(store.pluginCatalogLoading, "the tab says the catalog is loading while it's read")
         requester.responses["/api/dashboard/plugins/hub"] = ["plugins": [
             ["name": "Weather", "source": "git", "runtime_status": "enabled"],
             ["name": "Maps", "source": "git", "runtime_status": "enabled"],
@@ -491,6 +503,47 @@ extension KanbanTests {
 
         XCTAssertEqual(Set(store.plugins.map(\.name)), ["Weather", "Maps"], "the older answer arrived last but is older")
         XCTAssertEqual(store.plugins.first { $0.name == "Weather" }?.isEnabled, true)
+        XCTAssertFalse(store.pluginCatalogLoading, "the newest read cleared it, and the older one's end doesn't set it again")
+
+        // The official skills say so the same way.
+        var heldSkills: CheckedContinuation<Void, Never>?
+        requester.responses["/api/skills/hub/official"] = ["skills": [[String: Any]]()]
+        requester.beforeAnswering = { path in
+            guard path.hasPrefix("/api/skills/hub/official"), heldSkills == nil else { return }
+            await withCheckedContinuation { heldSkills = $0 }
+        }
+        let skills = Task { await store.loadOfficialSkills() }
+        while heldSkills == nil { await Task.yield() }
+        XCTAssertTrue(store.officialSkillsLoading)
+        heldSkills?.resume()
+        await skills.value
+        XCTAssertFalse(store.officialSkillsLoading)
+
+        // A read that fails says so, a retry that lands clears it, and a
+        // read cut off by leaving the tab says nothing either way.
+        requester.beforeAnswering = nil
+        requester.failures["/api/skills/hub/official"] = URLError(.timedOut)
+        requester.failures["/api/dashboard/plugins/catalog"] = URLError(.timedOut)
+        await store.loadOfficialSkills()
+        await store.loadPlugins()
+        XCTAssertTrue(store.officialSkillsFailed, "the tab says the catalog couldn't be read")
+        XCTAssertTrue(store.pluginCatalogFailed)
+        requester.failures = [:]
+        await store.loadOfficialSkills()
+        await store.loadPlugins()
+        XCTAssertFalse(store.officialSkillsFailed, "Try Again that lands clears it")
+        XCTAssertFalse(store.pluginCatalogFailed)
+        var heldCut: CheckedContinuation<Void, Never>?
+        requester.beforeAnswering = { path in
+            guard path.hasPrefix("/api/skills/hub/official"), heldCut == nil else { return }
+            await withCheckedContinuation { heldCut = $0 }
+        }
+        let cut = Task { await store.loadOfficialSkills() }
+        while heldCut == nil { await Task.yield() }
+        cut.cancel()
+        heldCut?.resume()
+        await cut.value
+        XCTAssertFalse(store.officialSkillsFailed, "a read cut off isn't the catalog failing")
     }
 
     /// A catalog connector's keys go to the profile's .env, only the
@@ -674,6 +727,100 @@ extension KanbanTests {
         XCTAssertEqual(writes.map { $0.body?["key"] as? String }, ["JIRA_EMAIL"])
         XCTAssertEqual(saved, ["JIRA_EMAIL"], "the page hears which key Hermes took")
         XCTAssertFalse(writes.contains { $0.body?["profile"] as? String == "home" })
+    }
+
+    // MARK: Plugin settings
+
+    /// A plugin settings save writes its keys to the profile's `.env` first,
+    /// one by one, then hands the values and the profile to the settings call.
+    func testAPluginSettingsSaveWritesKeysThenTheValues() async throws {
+        let requester = CapabilityMockRequester(responses: ["/api/env": ["ok": true]])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        var order: [String] = []
+        requester.beforeAnswering = { path in order.append(path) }
+        var sent: ([String: Any], String)?
+        let save = PluginSettings.Save(values: ["days": 7], secrets: ["B_KEY": "b", "A_KEY": "a"])
+        _ = try await store.savePluginSettings(save: save) { values, profile in
+            order.append("settings")
+            sent = (values, profile)
+            return nil
+        }
+        XCTAssertEqual(order, ["/api/env", "/api/env", "settings"])
+        let writes = requester.calls.filter { $0.method == "PUT" }
+        XCTAssertEqual(writes.map { $0.body?["key"] as? String }, ["A_KEY", "B_KEY"])
+        XCTAssertEqual(writes.map { $0.body?["profile"] as? String }, [nil, nil], "the default profile is the dashboard's own")
+        XCTAssertEqual(sent?.0["days"] as? Int, 7)
+        XCTAssertEqual(sent?.1, "default")
+    }
+
+    /// Hermes keeps plugin settings for the default profile only: another
+    /// profile's save writes nothing.
+    func testAPluginSettingsSaveOnAnotherProfileWritesNothing() async throws {
+        let requester = CapabilityMockRequester(responses: ["/api/env": ["ok": true]])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        var called = false
+        do {
+            _ = try await store.savePluginSettings(save: PluginSettings.Save(values: ["days": 7], secrets: ["A_KEY": "a"])) { _, _ in
+                called = true
+                return nil
+            }
+            XCTFail("another profile's save is turned down")
+        } catch {
+            guard case .declined = error as? CapabilitiesStoreError else { return XCTFail("\(error)") }
+        }
+        XCTAssertFalse(called)
+        XCTAssertTrue(requester.calls.isEmpty)
+    }
+
+    /// A switch after the first key stops the rest, and the error says some
+    /// keys were saved rather than that nothing was.
+    func testAPluginSettingsSaveStopsAtASwitchAndSaysWhatLanded() async throws {
+        let requester = CapabilityMockRequester(responses: ["/api/env": ["ok": true]])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        requester.beforeAnswering = { path in
+            if path == "/api/env" { store.configure(requester: requester, profile: "home") }
+        }
+        var called = false
+        do {
+            _ = try await store.savePluginSettings(save: PluginSettings.Save(values: ["days": 7], secrets: ["A_KEY": "a", "B_KEY": "b"])) { _, _ in
+                called = true
+                return nil
+            }
+            XCTFail("the save stops at the switch")
+        } catch {
+            let partial = try XCTUnwrap(error as? PluginSettings.PartialSave, "a partial save says so")
+            XCTAssertEqual(partial.saved, ["A_KEY"])
+            XCTAssertTrue(partial.switched)
+        }
+        XCTAssertFalse(called)
+        let writes = requester.calls.filter { $0.method == "PUT" }
+        XCTAssertEqual(writes.map { $0.body?["key"] as? String }, ["A_KEY"])
+        XCTAssertFalse(writes.contains { $0.body?["profile"] as? String == "home" })
+    }
+
+    /// A plugin settings save pressed before a dashboard switch writes
+    /// nothing through the store pointed at the new one.
+    func testAPluginSettingsSavePressedBeforeASwitchWritesNothing() async throws {
+        let requester = CapabilityMockRequester(responses: ["/api/env": ["ok": true]])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        let pressed = store.generation
+        store.configure(requester: requester, profile: "default")
+        var called = false
+        do {
+            _ = try await store.savePluginSettings(save: PluginSettings.Save(values: ["days": 7], secrets: ["A_KEY": "a"]), generation: pressed) { _, _ in
+                called = true
+                return nil
+            }
+            XCTFail("a save from before the switch is turned down")
+        } catch {
+            XCTAssertEqual(error as? CapabilitiesStoreError, .profileChanged)
+        }
+        XCTAssertFalse(called)
+        XCTAssertTrue(requester.calls.isEmpty)
     }
 
     /// A save pressed before a switch writes nothing on the profile switched to.

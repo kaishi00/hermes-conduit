@@ -281,4 +281,118 @@ final class WidgetSnapshotTests: XCTestCase {
         let choices = last.map { [WidgetConversationChoice(reference: $0, title: "Cached title", isPinned: false, recency: 1)] } ?? []
         return WidgetWorkspaceSnapshot(id: id, dashboardLabel: id.profile, profileLabel: id.profile, lastConversation: last, choices: choices, recency: 1)
     }
+
+    // MARK: The Pulse widget (issue 2190)
+
+    func testPulseWidgetLinkRoundTripsAndRefusesAnythingElse() throws {
+        let dashboard = UUID()
+        for link in [PulseWidgetLink(dashboardID: dashboard, card: 42), PulseWidgetLink(dashboardID: dashboard, card: nil)] {
+            XCTAssertEqual(PulseWidgetLink(url: link.url), link)
+        }
+        let id = dashboard.uuidString
+        for text in [
+            "conduit://widget/pulse", "conduit://widget/pulse?card=3",
+            "conduit://widget/pulse?dashboard=\(id)&card=0", "conduit://widget/pulse?dashboard=\(id)&card=x",
+            "conduit://widget/pulse?dashboard=\(id)&dashboard=\(id)", "conduit://widget/pulse?dashboard=\(id)&extra=1",
+            "conduit://widget/pulse/more?dashboard=\(id)", "conduit://session/pulse?dashboard=\(id)",
+            "https://widget/pulse?dashboard=\(id)",
+        ] {
+            XCTAssertNil(PulseWidgetLink(url: try XCTUnwrap(URL(string: text))), text)
+        }
+        // Not a launcher link either: the widget route takes it first.
+        XCTAssertNil(WidgetLaunchLink(url: PulseWidgetLink(dashboardID: dashboard, card: 1).url))
+    }
+
+    func testPulseWidgetReadKeepsSentRowsAndRecentNotes() throws {
+        let dashboard = UUID()
+        let now = Date()
+        func row(_ id: Int, sentAt: Date? = nil) -> PulseWidgetCard {
+            PulseWidgetCard(id: id, heading: "Promise", headline: "Card \(id)", sentence: "", offersDone: true,
+                            offersDoIt: true, offersLater: true, sentAt: sentAt)
+        }
+        let previous = PulseWidgetSnapshot(
+            dashboardID: dashboard, appLanguage: "en",
+            cards: [row(1, sentAt: now.addingTimeInterval(-60)), row(2, sentAt: now.addingTimeInterval(-90_000)), row(3)],
+            openCount: 3, nextLookAt: nil, quietUntil: nil, note: "Couldn't reach Hermes", noteAt: now.addingTimeInterval(-60))
+        let fresh = PulseWidgetSnapshot(dashboardID: dashboard, appLanguage: "en", cards: [row(1), row(2), row(4)],
+                                        openCount: 3, nextLookAt: nil, quietUntil: nil)
+        let merged = fresh.merging(previous, now: now)
+        // Sent in the last day and still open stays sent; older, it's offered again.
+        XCTAssertNotNil(merged.cards[0].sentAt)
+        XCTAssertNil(merged.cards[1].sentAt)
+        XCTAssertNil(merged.cards[2].sentAt)
+        XCTAssertEqual(merged.note, "Couldn't reach Hermes")
+        // A read that reached the host answers the widget's own couldn't-reach note, not Do it's.
+        let unreached = previous.with(note: .some("Couldn't reach Hermes"), noteAt: now.addingTimeInterval(-60),
+                                      answeredByRead: true)
+        XCTAssertNil(fresh.merging(unreached, now: now).note)
+        XCTAssertTrue(try JSONDecoder().decode(PulseWidgetSnapshot.self, from: JSONEncoder().encode(unreached))
+            .noteAnsweredByRead)
+        // A later edit that keeps the note keeps what kind it is.
+        XCTAssertTrue(unreached.with(cards: [row(1)]).noteAnsweredByRead)
+        // A quarter of an hour on, the note is gone.
+        XCTAssertNil(fresh.merging(previous, now: now.addingTimeInterval(16 * 60)).note)
+        // Another dashboard's read keeps nothing.
+        let other = PulseWidgetSnapshot(dashboardID: UUID(), appLanguage: "en", cards: [row(1)], openCount: 1,
+                                        nextLookAt: nil, quietUntil: nil)
+        XCTAssertNil(other.merging(previous, now: now).cards[0].sentAt)
+        // A row taken off counts one fewer open card.
+        XCTAssertEqual(previous.with(cards: [row(3)]).openCount, 1)
+        let decoded = try JSONDecoder().decode(PulseWidgetSnapshot.self, from: JSONEncoder().encode(merged))
+        XCTAssertEqual(decoded, merged)
+    }
+
+    func testPulseWidgetButtonWithoutAccessAsksToOpenConduit() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = PulseWidgetStore(directory: directory)
+        let dashboard = UUID()
+        let card = PulseWidgetCard(id: 7, heading: "Deadline", headline: "Insurance due", sentence: "",
+                                   offersDone: true, offersDoIt: false, offersLater: true)
+        try store.write(PulseWidgetSnapshot(dashboardID: dashboard, appLanguage: "en", cards: [card], openCount: 1,
+                                            nextLookAt: nil, quietUntil: nil))
+        await PulseWidgetHostActions.run(.done, card: 7, dashboard: dashboard.uuidString, access: nil, store: store)
+        let kept = try XCTUnwrap(store.read())
+        XCTAssertEqual(kept.cards.map(\.id), [7])
+        XCTAssertEqual(kept.note, "Open Conduit to refresh")
+        XCTAssertTrue(kept.noteAnsweredByRead, "a read that reaches the host answers the widget's own note")
+        // A failed Do it's note is written without the flag, so a read leaves it for its quarter hour.
+        XCTAssertFalse(kept.with(note: "Do it couldn't start").noteAnsweredByRead)
+        XCTAssertTrue(store.remove())
+        XCTAssertNil(store.read())
+    }
+
+    /// Issue 2213: a widget read that started before a Do it marked its row
+    /// merges with what's saved when it writes, so the mark stays and the
+    /// card can't be sent twice.
+    func testPulseWidgetStoreUpdateKeepsAMarkWrittenAfterAnEarlierRead() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = PulseWidgetStore(directory: directory)
+        let dashboard = UUID()
+        func card(_ sentAt: Date?) -> PulseWidgetCard {
+            var card = PulseWidgetCard(id: 1, heading: "Reply", headline: "Mara asked about lunch", sentence: "",
+                                       offersDone: true, offersDoIt: true, offersLater: true)
+            card.sentAt = sentAt
+            return card
+        }
+        func snapshot(_ sentAt: Date?) -> PulseWidgetSnapshot {
+            PulseWidgetSnapshot(dashboardID: dashboard, appLanguage: "en", cards: [card(sentAt)], openCount: 1,
+                                nextLookAt: nil, quietUntil: nil)
+        }
+        try store.write(snapshot(nil))
+        let earlier = store.read()   // the widget's read starts here
+        let sent = Date()
+        XCTAssertTrue(store.update { $0?.with(cards: [card(sent)]) })   // the app's Do it marks the row
+        let fromHost = snapshot(nil)
+        // The old way loses the mark: it merges with the earlier read.
+        XCTAssertNil(fromHost.merging(earlier).cards[0].sentAt)
+        // Merging inside the update sees the mark.
+        store.update { fromHost.merging($0) }
+        XCTAssertEqual(try XCTUnwrap(store.read()).cards[0].sentAt?.timeIntervalSince1970 ?? 0,
+                       sent.timeIntervalSince1970, accuracy: 0.001)
+        // Nil leaves the file as it is, and an unchanged snapshot isn't written again.
+        XCTAssertFalse(store.update { _ in nil })
+        XCTAssertFalse(store.update { $0 })
+    }
 }

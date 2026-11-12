@@ -211,15 +211,46 @@ extension SidebarLayoutTests {
 
     func testColumnsTakeTheWindowSideInsetsOnlyOnTheSidesTheyReach() {
         // An iPhone Duo's inner screen in landscape: its side status bar.
-        let window = WindowSideInsets(EdgeInsets(top: 24, leading: 0, bottom: 20, trailing: 84))
-        XCTAssertEqual(window, WindowSideInsets(leading: 0, trailing: 84))
-        // The list beside a chat never reaches the trailing edge (#1765).
-        XCTAssertEqual(window.reaching(.leading), WindowSideInsets(leading: 0, trailing: 0))
-        XCTAssertEqual(window.reaching(.trailing), WindowSideInsets(leading: 0, trailing: 84))
+        let window = WindowSideInsets(EdgeInsets(top: 24, leading: 0, bottom: 20, trailing: 84), width: 867)
+        XCTAssertEqual(window, WindowSideInsets(leading: 0, trailing: 84, width: 867))
+        // The list beside a chat never reaches the trailing edge (#1765),
+        // and its screens keep to the column's width.
+        XCTAssertEqual(window.reaching(.leading, width: 375), WindowSideInsets(leading: 0, trailing: 0, width: 375))
+        XCTAssertEqual(window.reaching(.trailing, width: 491), WindowSideInsets(leading: 0, trailing: 84, width: 491))
         // One column reaches both; a landscape iPhone keeps its sensor's side.
         let phone = WindowSideInsets(leading: 62, trailing: 62)
         XCTAssertEqual(phone.reaching([.leading, .trailing]), phone)
         XCTAssertEqual(phone.reaching(.leading), WindowSideInsets(leading: 62, trailing: 0))
+        // A column never gets a negative width to keep to.
+        XCTAssertEqual(window.reaching(.trailing, width: -4).width, 0)
+        // The Duo's outer screen: the shell's 382 pt beside the 84 pt strip
+        // caps every screen, so a stack can't grow past it (build 258).
+        let outer = WindowSideInsets(EdgeInsets(top: 0, leading: 0, bottom: 34, trailing: 84), width: 382)
+        XCTAssertEqual(outer.width, 382)
+    }
+
+    func testTheTabsStandInADuosStatusStripOnly() {
+        // An iPhone Duo's outer screen: the strip's 84 pt on the right.
+        let outer = V2StatusStrip(insets: EdgeInsets(top: 0, leading: 0, bottom: 34, trailing: 84), isPhone: true)
+        XCTAssertEqual(outer?.edge, .trailing)
+        XCTAssertEqual(outer?.width, 84)
+        // The tabs take the 50 pt column of iOS's own controls in the
+        // strip, 24 pt in from the screen's edge (issue 2118).
+        XCTAssertEqual(outer?.columnWidth, 50)
+        XCTAssertEqual(outer?.columnOuterMargin, 24)
+        // A narrower strip keeps the column inside it.
+        let narrow = V2StatusStrip(insets: EdgeInsets(top: 0, leading: 0, bottom: 34, trailing: 72), isPhone: true)
+        XCTAssertEqual(narrow?.columnWidth, 50)
+        XCTAssertEqual(narrow?.columnOuterMargin, 18)
+        // A strip on the left works the same.
+        XCTAssertEqual(V2StatusStrip(insets: EdgeInsets(top: 0, leading: 84, bottom: 20, trailing: 0), isPhone: true)?.edge, .leading)
+        // A landscape iPhone's sensor insets both sides: the floating bar.
+        XCTAssertNil(V2StatusStrip(insets: EdgeInsets(top: 0, leading: 62, bottom: 21, trailing: 62), isPhone: true))
+        // A portrait phone, and a side inset too narrow for the tabs.
+        XCTAssertNil(V2StatusStrip(insets: EdgeInsets(top: 62, leading: 0, bottom: 34, trailing: 0), isPhone: true))
+        XCTAssertNil(V2StatusStrip(insets: EdgeInsets(top: 0, leading: 0, bottom: 20, trailing: 44), isPhone: true))
+        // An iPad or Mac window never has one, whatever its insets.
+        XCTAssertNil(V2StatusStrip(insets: EdgeInsets(top: 24, leading: 0, bottom: 20, trailing: 84), isPhone: false))
     }
 
     func testReadableWidthMarginCentersAndNeverGoesNegative() {

@@ -5,7 +5,7 @@
 //  Settings > Capabilities > Plugins, the agent half of Hermes Desktop's
 //  Plugins tab: the plugins installed for the profile with their switches,
 //  each with a page to update or uninstall it, then Hermes' plugin catalog
-//  to install from. A change Hermes applies on the gateway's next start
+//  to install from (its featured shelf and Browse All, PluginCatalogViews). A change Hermes applies on the gateway's next start
 //  offers Restart Gateway.
 //
 
@@ -51,6 +51,23 @@ struct CapabilityPluginsTab: View {
         }
     }
 
+    /// The catalog is being read, or its read failed, with none shown.
+    private var catalogUnread: Bool { store.pluginCatalogLoading || store.pluginCatalogFailed }
+
+    private var catalogStatusSection: some View {
+        CapabilitySection(
+            title: AppLocalization.string("Plugin catalog"),
+            symbol: "shippingbox",
+            tint: .conduitAura
+        ) {
+            if store.pluginCatalogLoading {
+                CapabilityLoadingRow()
+            } else {
+                CapabilityLoadFailedRow { await store.loadPlugins() }
+            }
+        }
+    }
+
     var body: some View {
         let rows = currentRows
         let installed = rows.installed
@@ -91,6 +108,13 @@ struct CapabilityPluginsTab: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 16)
                 }
+                // The catalog leads, as Apps does on Connectors: it would
+                // otherwise wait below every installed plugin.
+                if query.isEmpty, !store.pluginCatalog.isEmpty {
+                    PluginCatalogShelf(store: store)
+                } else if query.isEmpty, catalogUnread {
+                    catalogStatusSection
+                }
                 CapabilitySection(
                     title: AppLocalization.string("Installed"),
                     symbol: "puzzlepiece.extension",
@@ -116,7 +140,11 @@ struct CapabilityPluginsTab: View {
                         }
                     }
                 }
-                if !catalog.isEmpty {
+                if !query.isEmpty, store.pluginCatalog.isEmpty, catalogUnread {
+                    // A search says the catalog isn't read yet, after Installed.
+                    catalogStatusSection
+                }
+                if !query.isEmpty, !catalog.isEmpty {
                     CapabilitySection(
                         title: AppLocalization.string("Plugin catalog"),
                         symbol: "shippingbox",
@@ -126,13 +154,19 @@ struct CapabilityPluginsTab: View {
                         ForEach(Array(catalog.enumerated()), id: \.element.id) { index, entry in
                             CapabilityCardRow(divided: index > 0) {
                                 HStack(spacing: 10) {
-                                    CapabilityRowLabel(
-                                        symbol: "shippingbox",
-                                        active: false,
-                                        title: entry.displayName,
-                                        pills: [PluginStyle.tierPill(entry.tier)],
-                                        detail: entry.description
-                                    )
+                                    NavigationLink {
+                                        PluginCatalogDetailPage(name: entry.name, store: store)
+                                            .v2TabBarClearance()
+                                    } label: {
+                                        CapabilityRowLabel(
+                                            symbol: "shippingbox",
+                                            active: false,
+                                            title: entry.displayName,
+                                            pills: [PluginStyle.tierPill(entry.tier)],
+                                            detail: entry.description
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
                                     if canManage {
                                         CapabilityRowButton(
                                             title: AppLocalization.string("Install"),
@@ -188,9 +222,11 @@ struct CapabilityPluginsTab: View {
 
 enum PluginStyle {
     static func tierPill(_ tier: String) -> CapabilityPillModel {
-        tier == "official"
-            ? CapabilityPillModel(text: AppLocalization.string("Official"), tint: .conduitAura)
-            : CapabilityPillModel(text: AppLocalization.string("Community"))
+        switch tier {
+        case "official", "bundled": return PluginCatalogStyle.tierPill(tier: "official")
+        case "verified": return PluginCatalogStyle.tierPill(tier: "verified")
+        default: return PluginCatalogStyle.tierPill(tier: "community")
+        }
     }
 
     /// Where an installed plugin came from: its catalog tier when it came
@@ -231,7 +267,7 @@ private struct AgentPluginListRow: View {
     var body: some View {
         HStack(spacing: 10) {
             NavigationLink {
-                AgentPluginDetailPage(name: plugin.name, canManage: canManage, store: store)
+                AgentPluginDetailPage(name: plugin.name, store: store)
                     .v2TabBarClearance()
             } label: {
                 CapabilityRowLabel(
@@ -316,10 +352,13 @@ struct AgentPluginDetailPage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @Environment(\.dismiss) private var dismiss
     let name: String
-    let canManage: Bool
     let store: CapabilitiesStore
     @State private var message: String?
     @State private var confirmingRemove = false
+
+    /// Read live: a page pushed on another profile opens up once the store
+    /// switches to the default one, as its settings section does.
+    private var canManage: Bool { store.canManagePlugins }
     @State private var consent: PluginConsent?
 
     private var plugin: AgentPluginRow? { store.plugins.first { $0.name == name } }
@@ -387,6 +426,7 @@ struct AgentPluginDetailPage: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 16)
                 }
+                PluginSettingsSection(pluginName: plugin.name, store: store)
                 if canManage, plugin.canUpdate {
                     Button {
                         update(plugin, accept: false)

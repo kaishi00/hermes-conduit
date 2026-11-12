@@ -524,7 +524,7 @@ struct BotEditorSheet: View {
         ConduitSettingsSection(title: AppLocalization.string("Personality"), symbol: "theatermasks", tint: .purple) {
             if isCreating || detailsState == .loaded || keptDetails != nil {
                 NavigationLink {
-                    BotSoulEditorPage(
+                    SoulEditorPage(
                         // The kept SOUL can't be edited: Hermes' own comes first.
                         soul: showsKeptDetails ? Binding.constant(keptDetails?.soul ?? "") : $draft.soul,
                         isReadOnly: showsKeptDetails,
@@ -542,10 +542,12 @@ struct BotEditorSheet: View {
                 if showsKeptDetails, detailsState == .failed {
                     Text(AppLocalization.string("Could not load this bot's personality."))
                         .foregroundStyle(.secondary)
+                    detailsRetry
                 }
             } else if detailsState == .failed {
                 Text(AppLocalization.string("Could not load this bot's personality."))
                     .foregroundStyle(.secondary)
+                detailsRetry
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity)
@@ -556,6 +558,16 @@ struct BotEditorSheet: View {
         }
     }
 
+    /// A details read that failed is asked again on a tap, as Edit
+    /// profile's Personality does, rather than closing the editor.
+    private var detailsRetry: some View {
+        Button(AppLocalization.string("Try Again")) {
+            detailsState = .idle
+            Task { await seed() }
+        }
+        .buttonStyle(.settings)
+    }
+
     private var personalityFooter: String {
         isCreating
             ? AppLocalization.string("Optional. Leave empty to start from a short identity built from the name and description.")
@@ -564,21 +576,12 @@ struct BotEditorSheet: View {
 
     /// The row's opening lines of the SOUL, or what an empty one means.
     private func personalityPreview(_ soul: String) -> some View {
-        let trimmed = soul.trimmingCharacters(in: .whitespacesAndNewlines)
-        return Group {
-            if trimmed.isEmpty {
-                Text(isCreating
-                    ? AppLocalization.string("Built from the name and description")
-                    : AppLocalization.string("Not set"))
-                    .foregroundStyle(.secondary)
-            } else {
-                Text(verbatim: trimmed)
-                    .scaledFont(.callout.monospaced())
-                    .foregroundStyle(.secondary)
-                    .lineLimit(3)
-            }
-        }
-        .padding(.vertical, 2)
+        SoulPreview(
+            soul: soul,
+            emptyText: isCreating
+                ? AppLocalization.string("Built from the name and description")
+                : AppLocalization.string("Not set")
+        )
     }
 
     /// Edit Bot > Work: how the bot's Bot Chat coordinates its work, kept
@@ -646,13 +649,23 @@ struct BotEditorSheet: View {
                     NavigationLink {
                         BotModelPicker(provider: $draft.provider, model: $draft.model, allowsInherit: isCreating)
                     } label: {
-                        SettingsLinkRow(
-                            title: AppLocalization.string("Model"),
-                            value: BotModelPicker.summary(
-                                model: showsKeptDetails ? keptDetails?.model ?? "" : draft.model,
-                                allowsInherit: isCreating
+                        let model = showsKeptDetails ? keptDetails?.model ?? "" : draft.model
+                        let provider = showsKeptDetails ? keptDetails?.provider ?? "" : draft.provider
+                        if model.isEmpty {
+                            ModelChooserLinkRow(
+                                title: AppLocalization.string("Model"),
+                                value: BotModelPicker.summary(model: model, allowsInherit: isCreating),
+                                detail: nil
                             )
-                        )
+                        } else {
+                            // The model and provider as the catalog names them.
+                            let lines = ModelChooserLinkRow.lines(
+                                pick: ModelChooserPick(provider: provider, model: model),
+                                providers: appState.keptModelProviders(),
+                                defaultTitle: ""
+                            )
+                            ModelChooserLinkRow(title: AppLocalization.string("Model"), value: lines.value, detail: lines.detail)
+                        }
                     }
                     .buttonStyle(.plain)
                     .disabled(showsKeptDetails)
@@ -682,21 +695,46 @@ struct BotEditorSheet: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         } else if draft.capabilities != nil || shownKeptCapabilities != nil {
-            // One link for the kept lists and Hermes' answer, so a page open
-            // on the kept ones stays open as they become Hermes' own.
+            // One link per list, for the kept lists and Hermes' answer, so a
+            // page open on the kept ones stays open as they become Hermes'
+            // own. Each says how many are on (Eric, 2026-11-11).
+            let shown = draft.capabilities ?? shownKeptCapabilities ?? BotCapabilities()
+            let skillsSkipped = isCreating && draft.noSkills
             NavigationLink {
-                BotCapabilitiesView(
-                    capabilities: Binding(
-                        get: { draft.capabilities ?? shownKeptCapabilities ?? BotCapabilities() },
-                        set: { if draft.capabilities != nil { draft.capabilities = $0 } }
-                    ),
-                    skillsSkipped: isCreating && draft.noSkills,
+                BotSkillsView(
+                    capabilities: capabilitiesBinding,
+                    skillsSkipped: skillsSkipped,
                     sourceLabel: isCreating ? startFromLabel : nil,
+                    detailsProfile: isCreating ? capabilitySource : editedBot?.name,
+                    editable: draft.capabilities != nil
+                )
+            } label: {
+                SettingsLinkRow(
+                    title: AppLocalization.string("Skills"),
+                    value: skillsSkipped ? AppLocalization.string("None") : BotCapabilities.onSummary(shown.skills) ?? AppLocalization.string("None")
+                )
+            }
+            .buttonStyle(.plain)
+            NavigationLink {
+                BotToolsView(capabilities: capabilitiesBinding, editable: draft.capabilities != nil)
+            } label: {
+                SettingsLinkRow(
+                    title: AppLocalization.string("Tools"),
+                    value: BotCapabilities.onSummary(shown.toolsets) ?? AppLocalization.string("None")
+                )
+            }
+            .buttonStyle(.plain)
+            NavigationLink {
+                BotMcpServersView(
+                    capabilities: capabilitiesBinding,
                     mcpProfile: editedBot?.name,
                     editable: draft.capabilities != nil
                 )
             } label: {
-                SettingsLinkRow(title: AppLocalization.string("Skills, Tools and MCP"))
+                SettingsLinkRow(
+                    title: SettingsNames.mcp,
+                    value: BotCapabilities.onSummary(shown.mcpServers) ?? AppLocalization.string("None")
+                )
             }
             .buttonStyle(.plain)
             if draft.capabilities == nil, capabilitiesLoadFailed {
@@ -709,6 +747,15 @@ struct BotEditorSheet: View {
                 ProgressView()
             }
         }
+    }
+
+    /// The lists the Skills, Tools and MCP pages switch: Hermes' answer,
+    /// or the kept lists, read-only, until it comes.
+    private var capabilitiesBinding: Binding<BotCapabilities> {
+        Binding(
+            get: { draft.capabilities ?? shownKeptCapabilities ?? BotCapabilities() },
+            set: { if draft.capabilities != nil { draft.capabilities = $0 } }
+        )
     }
 
     private var capabilitiesFailure: some View {
@@ -928,51 +975,6 @@ struct BotEditorSheet: View {
                 onFinished(nil, AppLocalization.string("The model was not saved."), false)
             }
         }
-    }
-}
-
-/// Edit Bot > Personality: the SOUL.md on a page of its own, the whole
-/// height to write in.
-private struct BotSoulEditorPage: View {
-    @Binding var soul: String
-    let isReadOnly: Bool
-    let footer: String
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            // A field the page's height, drawn as the editor's rows are,
-            // so it reads as something to type in.
-            Group {
-                if isReadOnly {
-                    // The kept SOUL, shown until Hermes answers: still
-                    // scrolls and selects, but can't be changed.
-                    ScrollView {
-                        Text(verbatim: soul)
-                            .scaledFont(.callout.monospaced())
-                            .textSelection(.enabled)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(5)
-                    }
-                    .foregroundStyle(.secondary)
-                } else {
-                    TextEditor(text: $soul)
-                        .scaledFont(.callout.monospaced())
-                        .scrollContentBackground(.hidden)
-                }
-            }
-                .padding(8)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .settingsCard()
-            Text(footer)
-                .scaledFont(.footnote)
-                .foregroundStyle(.secondary)
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 8)
-        .padding(.bottom, 12)
-        .background { SettingsBackdrop().ignoresSafeArea() }
-        .navigationTitle(AppLocalization.string("Personality"))
-        .navigationBarTitleDisplayMode(.inline)
     }
 }
 

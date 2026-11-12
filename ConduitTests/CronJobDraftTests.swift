@@ -117,6 +117,79 @@ extension CronScheduleTextTests {
         XCTAssertFalse(CronJobDraft(job: CronJob(enabled: true, id: "p", schedule: CronSchedule(kind: "interval", minutes: 30))).canSave)
     }
 
+    // MARK: Model and reasoning
+
+    func testAJobsModelAndReasoningAreReadAndOnlyChangesSent() throws {
+        let job = CronJob(
+            enabled: true,
+            id: "m",
+            prompt: "Brief",
+            schedule: CronSchedule(kind: "interval", minutes: 60),
+            model: "claude-sonnet",
+            provider: "anthropic",
+            baseURL: "https://old.example/v1",
+            reasoningEffort: " High "
+        )
+        let original = CronJobDraft(job: job)
+        XCTAssertEqual(original.modelTag, VoiceJobModelSettingsSection.tag(provider: "anthropic", model: "claude-sonnet"))
+        XCTAssertEqual(original.reasoning, "high")
+        XCTAssertTrue(original.updates(from: original).isEmpty)
+
+        var edited = original
+        edited.modelTag = VoiceJobModelSettingsSection.tag(provider: "openai", model: "gpt-5")
+        var updates = edited.updates(from: original)
+        XCTAssertEqual(Set(updates.keys), ["model", "provider", "base_url"])
+        XCTAssertEqual(updates["model"] as? String, "gpt-5")
+        XCTAssertEqual(updates["provider"] as? String, "openai")
+        XCTAssertEqual(updates["base_url"] as? String, "", "the old provider's endpoint is cleared")
+
+        edited.modelTag = ""
+        edited.reasoning = ""
+        updates = edited.updates(from: original)
+        XCTAssertEqual(updates["model"] as? String, "", "Profile default clears the pin")
+        XCTAssertEqual(updates["provider"] as? String, "")
+        XCTAssertEqual(updates["reasoning_effort"] as? String, "", "empty follows the profile's reasoning")
+
+        let script = CronJob(enabled: true, id: "s", noAgent: true, schedule: CronSchedule(kind: "interval", minutes: 30))
+        XCTAssertFalse(CronJobDraft(job: script).runsAgent)
+        XCTAssertNil(script.modelSummary(in: []), "a job without an agent has no model")
+    }
+
+    func testANewJobsModelGoesInTheBodyAndItsReasoningFollows() throws {
+        var form = CronJobDraft()
+        form.prompt = "Inbox"
+        var body = try XCTUnwrap(form.createBody)
+        XCTAssertNil(body["model"], "the profile's model sends nothing")
+        XCTAssertNil(form.createReasoningUpdate)
+
+        form.modelTag = VoiceJobModelSettingsSection.tag(provider: "openai", model: "gpt-5")
+        form.reasoning = "low"
+        body = try XCTUnwrap(form.createBody)
+        XCTAssertEqual(body["model"] as? String, "gpt-5")
+        XCTAssertEqual(body["provider"] as? String, "openai")
+        XCTAssertNil(body["reasoning_effort"], "Hermes' create takes no reasoning")
+        XCTAssertEqual(form.createReasoningUpdate?["reasoning_effort"] as? String, "low")
+    }
+
+    func testAJobSaysWhichModelItRunsOn() {
+        let providers = [ProviderInfo(name: "openai", models: [ModelInfo(id: "gpt-5", label: "GPT-5", reasoningCapable: true)], displayName: "OpenAI")]
+        let pinned = CronJob(enabled: true, id: "p", model: "gpt-5", provider: "openai", reasoningEffort: "high")
+        XCTAssertTrue(pinned.pinsModel)
+        XCTAssertEqual(pinned.modelSummary(in: providers), "GPT-5 · \(ReasoningEffortLevel.high.title)")
+        XCTAssertEqual(pinned.modelSummary(in: providers, withProvider: true), "GPT-5 · OpenAI · \(ReasoningEffortLevel.high.title)")
+
+        let unlisted = CronJob(enabled: true, id: "u", model: "old-model", provider: "openai")
+        XCTAssertEqual(unlisted.modelSummary(in: []), "old-model", "a pick the catalog doesn't list shows as saved")
+
+        let reasoningOnly = CronJob(enabled: true, id: "r", reasoningEffort: "none")
+        XCTAssertTrue(reasoningOnly.pinsModel)
+        XCTAssertEqual(reasoningOnly.modelSummary(in: providers), AppLocalization.string("Profile default") + " · " + ReasoningEffortLevel.off.title)
+
+        let plain = CronJob(enabled: true, id: "d", model: " ", provider: "")
+        XCTAssertFalse(plain.pinsModel)
+        XCTAssertEqual(plain.modelSummary(in: providers), AppLocalization.string("Profile default"))
+    }
+
     // MARK: Server catalogs
 
     func testBlueprintsDecodeAsTheServerSendsThem() throws {

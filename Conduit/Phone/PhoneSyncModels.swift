@@ -95,6 +95,18 @@ struct PhoneSyncPreferences: Codable, Equatable {
     /// (`LiveVoiceModeName.storageID`). Optional so preferences saved before
     /// it still decode; nil is none.
     var voiceReaders: [String]?
+    /// Shortcuts the user lets Hermes run, by name (designs/phone-v1-contract.md
+    /// `shortcuts`). Optional so preferences saved before them still decode;
+    /// read `shortcuts`, `shortcutsRunWithoutAsking` and `shortcutList`.
+    var shortcutsChoice: Bool?
+    var shortcutsAutoChoice: Bool?
+    var shortcutListChoice: [PhoneShortcut]?
+    /// Hermes may ask to add a contact, or change or delete a picked
+    /// person's; always on a card. Read `contactsEdit`.
+    var contactsEditChoice: Bool?
+    /// Hermes may search what the phone says about each photo (made on
+    /// the phone) and ask for one, always on a card. Read `photos`.
+    var photosChoice: Bool?
 
     /// Hermes may set alarms and timers on this phone (iOS 26's AlarmKit).
     /// They ring through Silent and Focus, so it's its own choice.
@@ -115,20 +127,63 @@ struct PhoneSyncPreferences: Codable, Equatable {
         set { remindersReadOnlyChoice = newValue ? true : nil }
     }
 
+    /// Part of sharing the picked people: off with them.
+    var contactsEdit: Bool {
+        get { contacts && (contactsEditChoice ?? false) }
+        set { contactsEditChoice = newValue ? true : nil }
+    }
+
+    /// Hermes may search the photo library's descriptions and ask for a
+    /// photo, which goes only once the user says yes on its card.
+    var photos: Bool {
+        get { photosChoice ?? false }
+        set { photosChoice = newValue ? true : nil }
+    }
+
+    /// Hermes may ask to run the Shortcuts in `shortcutList`.
+    var shortcuts: Bool {
+        get { shortcutsChoice ?? false }
+        set { shortcutsChoice = newValue ? true : nil }
+    }
+
+    /// A run Hermes asks for starts without a card, when Conduit is on
+    /// screen (a run opens the Shortcuts app, which iOS allows only then).
+    var shortcutsRunWithoutAsking: Bool {
+        get { shortcuts && (shortcutsAutoChoice ?? false) }
+        set { shortcutsAutoChoice = newValue ? true : nil }
+    }
+
+    var shortcutList: [PhoneShortcut] {
+        get { shortcutListChoice ?? [] }
+        set { shortcutListChoice = newValue.isEmpty ? nil : Array(newValue.prefix(PhoneShortcut.maximum)) }
+    }
+
+    /// The listed shortcut a run names, in any case.
+    func listedShortcut(named name: String) -> PhoneShortcut? {
+        shortcutList.first { $0.name.caseInsensitiveCompare(name) == .orderedSame }
+    }
+
     /// Whether the user lets Hermes make this change at all (before any
     /// card): nothing in a read-only calendar or reminders, and only
     /// additions to an add-only calendar.
     func allows(_ kind: PhoneChange.Kind) -> Bool {
         if kind.isAlarm { return alarms }
+        if kind == .runShortcut { return shortcuts }
+        if kind.isContact { return contactsEdit }
+        if kind == .sendPhoto { return photos }
         if kind.isEvent { return kind.isAddition ? calendar.adds : calendar == .full }
         return reminders && !remindersReadOnly
     }
 
     /// Something Hermes may ask to add or change.
-    var takesChanges: Bool { calendar.adds || (reminders && !remindersReadOnly) || alarms }
+    var takesChanges: Bool {
+        calendar.adds || (reminders && !remindersReadOnly) || alarms || shortcuts || contactsEdit || photos
+    }
 
     var isOn: Bool { destination != nil && sharesAnything }
-    var sharesAnything: Bool { calendar != .off || reminders || status || focus || alarms || contacts }
+    var sharesAnything: Bool {
+        calendar != .off || reminders || status || focus || alarms || contacts || shortcuts || photos
+    }
 
     /// Whether a live call on `mode` may use the calendar and phone.
     func letsVoiceUse(_ mode: LiveVoiceModeName) -> Bool {
@@ -173,6 +228,10 @@ struct PhoneSyncPreferences: Codable, Equatable {
             "auto_add": autoAdd,
             "alarms": alarms,
             "contacts": contacts,
+            "shortcuts": shortcuts,
+            "shortcuts_auto": shortcutsRunWithoutAsking,
+            "contacts_edit": contactsEdit,
+            "photos": photos,
             "past_days": PhoneCalendarWindow.pastDays,
             "future_days": window.rawValue,
         ]
@@ -182,6 +241,35 @@ struct PhoneSyncPreferences: Codable, Equatable {
     var fingerprint: String {
         [calendar.rawValue, String(reminders), String(details), String(attendeeEmails), String(window.rawValue),
          hiddenCalendars.sorted().joined(separator: ",")].joined(separator: "|")
+    }
+}
+
+/// A shortcut from the user's Shortcuts app that Hermes may run, with a
+/// note on what it does for Hermes to read.
+struct PhoneShortcut: Codable, Equatable, Identifiable, Hashable {
+    var name: String
+    var note: String?
+
+    var id: String { name.lowercased() }
+
+    /// The notifier's phone_store limits.
+    static let maximum = 50
+    static let nameChars = 100
+    static let noteChars = 200
+    static let inputChars = 4_000
+
+    init?(name: String, note: String? = nil) {
+        let name = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.nameChars))
+        guard !name.isEmpty else { return nil }
+        self.name = name
+        let note = note.map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(Self.noteChars)) }
+        self.note = note?.isEmpty == false ? note : nil
+    }
+
+    var json: [String: Any] {
+        var value: [String: Any] = ["name": name]
+        if let note { value["note"] = note }
+        return value
     }
 }
 
@@ -228,12 +316,18 @@ enum PhoneSyncPause: Codable, Equatable {
     case pluginOff(String)
     case refused(String)
 
-    var message: String {
+    var message: String { message(managedBy: PluginUpdateAsk.managedBy) }
+
+    /// The words for a destination whose host's plugin is kept up to date
+    /// by `managedBy` (nil when the host doesn't manage it), which may not
+    /// be the active dashboard's.
+    func message(managedBy: String?) -> String {
         switch self {
         case .signInRequired:
             return AppLocalization.string("Paused: sign in to this dashboard again. Sharing catches up when you open Conduit.")
         case .pluginMissing:
-            return AppLocalization.string("Paused: update the Conduit plugin on this host to share your calendar and phone status.")
+            return PluginUpdateAsk.text(AppLocalization.string("Paused: update the Conduit plugin on this host to share your calendar and phone status."),
+                                        lead: AppLocalization.string("Sharing is paused."), managedBy: managedBy)
         case .otherDashboard:
             return AppLocalization.string("Waiting: this goes only to the dashboard it was turned on for. Switch back to it to sync.")
         case .pluginOff(let remedy):
@@ -254,11 +348,49 @@ struct PhoneChangeResult: Codable, Equatable {
     var outcome: Outcome
     var itemID: String?
     var note: String?
+    /// The text a shortcut gave back.
+    var result: String?
+
+    static let resultChars = 4_000
+    /// What every shortcut in one exchange gave back, together, in the bytes
+    /// JSON writes, so the sealed body stays under the host's 64 KiB cap
+    /// (it trims to 16,000 UTF-8 bytes too).
+    static let resultsBytes = 16_000
+
+    /// Each result as the exchange sends it, later shortcuts' text cut once
+    /// the exchange's share is spent, never inside a character.
+    static func json(for results: [PhoneChangeResult]) -> [[String: Any]] {
+        var budget = resultsBytes
+        return results.map { item in
+            var item = item
+            if let whole = item.result {
+                var text = ""
+                for character in whole.prefix(resultChars) {
+                    // Counted as JSON writes it: other control characters
+                    // (six bytes each escaped) are left out, as the host
+                    // drops them anyway.
+                    let size: Int
+                    switch character {
+                    case "\n", "\t", "\"", "\\": size = 2
+                    case "\r\n": size = 4
+                    case _ where character.unicodeScalars.contains(where: { $0.value < 0x20 || $0.value == 0x7F }): continue
+                    default: size = String(character).utf8.count
+                    }
+                    guard size <= budget else { break }
+                    text.append(character)
+                    budget -= size
+                }
+                item.result = text.isEmpty ? nil : text
+            }
+            return item.json
+        }
+    }
 
     var json: [String: Any] {
         var value: [String: Any] = ["id": id, "outcome": outcome.rawValue]
         if let itemID { value["item_id"] = itemID }
         if let note { value["note"] = String(note.prefix(200)) }
+        if let result, !result.isEmpty { value["result"] = String(result.prefix(Self.resultChars)) }
         return value
     }
 }
@@ -276,11 +408,17 @@ struct PhoneChange: Identifiable, Equatable {
         case setAlarm = "set_alarm"
         case setTimer = "set_timer"
         case cancelAlarm = "cancel_alarm"
+        case runShortcut = "run_shortcut"
+        case addContact = "add_contact"
+        case updateContact = "update_contact"
+        case deleteContact = "delete_contact"
+        case sendPhoto = "send_photo"
 
         /// A new calendar event or reminder.
         var isAddition: Bool { self == .addEvent || self == .addReminder }
         var isEvent: Bool { self == .addEvent || self == .updateEvent || self == .deleteEvent }
         var isAlarm: Bool { self == .setAlarm || self == .setTimer || self == .cancelAlarm }
+        var isContact: Bool { self == .addContact || self == .updateContact || self == .deleteContact }
         /// What "Add without asking" lets in: new items, never changes or
         /// cancellations.
         var addsWithoutAsking: Bool { isAddition || self == .setAlarm || self == .setTimer }
@@ -294,6 +432,10 @@ struct PhoneChange: Identifiable, Equatable {
     var eventID: String?
     var reminderID: String?
     var alarmID: String?
+    /// The picked person a contact change is about (PhonePerson.id).
+    var contactID: String?
+    /// The photo Hermes asks for (PhonePhotoEntry.id).
+    var photoID: String?
     /// "this" or "future" for a recurring event.
     var span: String?
     var fields: PhoneChangeFields
@@ -311,6 +453,8 @@ struct PhoneChange: Identifiable, Equatable {
         eventID = target?["event_id"] as? String
         reminderID = target?["reminder_id"] as? String
         alarmID = target?["alarm_id"] as? String
+        contactID = target?["contact_id"] as? String
+        photoID = target?["photo_id"] as? String
         let fieldsJSON = json["fields"] as? [String: Any] ?? [:]
         span = (fieldsJSON["span"] as? String) ?? (target?["span"] as? String)
         fields = PhoneChangeFields(json: fieldsJSON)
@@ -330,6 +474,16 @@ struct PhoneChange: Identifiable, Equatable {
             guard let seconds = fields.seconds, (5...86_400).contains(seconds) else { return nil }
         case .cancelAlarm:
             guard alarmID != nil else { return nil }
+        case .runShortcut:
+            guard fields.shortcut != nil else { return nil }
+        case .addContact:
+            guard fields.contact?.hasName == true else { return nil }
+        case .updateContact:
+            guard contactID != nil, fields.contact != nil else { return nil }
+        case .deleteContact:
+            guard contactID != nil else { return nil }
+        case .sendPhoto:
+            guard photoID != nil else { return nil }
         }
     }
 }
@@ -363,6 +517,16 @@ struct PhoneChangeFields: Equatable {
     var repeats: [String]?
     /// A timer's length.
     var seconds: Int?
+    /// The shortcut a run names, and the text it's given.
+    var shortcut: String?
+    var input: String?
+    /// What a contact change sets, when it sets anything.
+    var contact: PhoneContactEdit?
+    /// The person's name as shared, for the card.
+    var personName: String?
+    /// When and where a photo Hermes asks for was taken, as the host has it.
+    var taken: Date?
+    var place: String?
 
     static let weekdays = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"]
 
@@ -390,6 +554,13 @@ struct PhoneChangeFields: Equatable {
         let days = (json["repeats"] as? [Any])?.compactMap { ($0 as? String)?.lowercased() }
         repeats = days.map { list in Self.weekdays.filter { list.contains($0) } }.flatMap { $0.isEmpty ? nil : $0 }
         seconds = (json["seconds"] as? NSNumber)?.intValue
+        shortcut = (json["shortcut"] as? String).map { String($0.trimmingCharacters(in: .whitespacesAndNewlines).prefix(PhoneShortcut.nameChars)) }
+            .flatMap { $0.isEmpty ? nil : $0 }
+        input = (json["input"] as? String).map { String($0.prefix(PhoneShortcut.inputChars)) }.flatMap { $0.isEmpty ? nil : $0 }
+        contact = PhoneContactEdit(json: json)
+        personName = (json["name"] as? String).map { String($0.prefix(120)) }.flatMap { $0.isEmpty ? nil : $0 }
+        taken = (json["taken"] as? String).flatMap(PhoneDates.parse)
+        place = (json["place"] as? String).map { String($0.prefix(100)) }.flatMap { $0.isEmpty ? nil : $0 }
     }
 
     /// `HH:MM` on a 24-hour clock.
@@ -499,4 +670,13 @@ enum PhoneSyncLimits {
     /// and the notifier refuses bodies over 4 MiB
     /// (dashboard/api/phone_data.py PHONE_MAX_INGEST_BODY_BYTES).
     static let batchBytes = 3_000_000
+    /// The newest photos described for Hermes (phone_store MAX_PHOTOS).
+    static let maxPhotos = 5_000
+    /// Photos described in one pass, so a pass stays short; the rest
+    /// follow in later passes.
+    static let photosPerPass = 60
+    /// A picture the user sent Hermes, as JPEG: its base64 inside the sealed
+    /// body's base64 stays under the 4 MiB ingest cap (phone_store
+    /// MAX_PHOTO_FILE_BYTES is 1,500,000).
+    static let photoFileBytes = 1_400_000
 }

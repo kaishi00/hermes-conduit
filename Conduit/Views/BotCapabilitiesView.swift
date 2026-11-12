@@ -1,17 +1,165 @@
 import SafariServices
 import SwiftUI
 
-/// The bot editor's Skills, Tools and MCP page: toggles over the profile's
-/// `profiles.describe` lists (upstream `profile-config.tsx`). A new bot's
-/// lists come from its Start From profile, since its own doesn't exist yet.
-/// Edit Bot also adds servers from Hermes' MCP catalog, with their keys or
-/// an OAuth sign-in (upstream `mcp-setup.tsx`).
-struct BotCapabilitiesView: View {
+/// The bot editor's Skills page: the profile's skills by Hermes' category,
+/// each folded under a row that says how many are on, with a search over
+/// them all (Eric, 2026-11-11). `profiles.describe` names the skills only;
+/// the dashboard's list for the profile adds their categories and
+/// descriptions. Without it they're one list, as before.
+struct BotSkillsView: View {
     @Binding var capabilities: BotCapabilities
     /// New Bot's Skip Bundled Skills: there are no skills to toggle.
     let skillsSkipped: Bool
     /// The profile the lists were read from, for New Bot's footer.
     let sourceLabel: String?
+    /// The profile whose dashboard list gives the categories: the bot's
+    /// own, or New Bot's Start From profile.
+    let detailsProfile: String?
+    /// False while the lists are the ones Hermes gave last time, until it
+    /// answers again (#1533): nothing can change then.
+    var editable = true
+
+    @EnvironmentObject private var appState: AppState
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
+    @State private var query = ""
+    /// The dashboard's skills for the profile: kept until it answers, nil
+    /// when it never has.
+    @State private var details: [CapabilitySkill]?
+    @State private var detailsRead = false
+    /// The categories unfolded. A search unfolds every one it matches.
+    @State private var open: Set<String> = []
+
+    var body: some View {
+        SettingsDetailContainer {
+            ConduitSettingsSection(title: AppLocalization.string("Skills"), symbol: "book", tint: .conduitAccent) {
+                if skillsSkipped {
+                    Text(AppLocalization.string("Skip Bundled Skills is on, so this bot starts with no skills."))
+                        .foregroundStyle(.secondary)
+                } else if capabilities.skills.isEmpty {
+                    Text(AppLocalization.string("No skills installed."))
+                        .foregroundStyle(.secondary)
+                } else {
+                    TextField(AppLocalization.string("Search skills"), text: $query)
+                        .textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    skillRows
+                }
+                if let sourceLabel, !skillsSkipped {
+                    Text(AppLocalization.string("Starts from what \(sourceLabel) has installed."))
+                        .settingsCaption()
+                }
+            }
+        }
+        .navigationTitle(AppLocalization.string("Skills"))
+        .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            guard let detailsProfile, details == nil, !detailsRead, !skillsSkipped else { return }
+            details = appState.keptBotSkillDetails(profile: detailsProfile)
+        }
+        .task {
+            guard let detailsProfile, !detailsRead, !skillsSkipped else { return }
+            let read = await appState.loadBotSkillDetails(profile: detailsProfile)
+            guard !Task.isCancelled else { return }
+            // A read that fails keeps the kept categories up.
+            if let read { details = read }
+            detailsRead = true
+        }
+    }
+
+    @ViewBuilder
+    private var skillRows: some View {
+        let searching = !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        if let details {
+            let groups = BotSkillGrouping.grouped(capabilities.skills, details: details, query: query)
+            if groups.isEmpty {
+                Text(AppLocalization.string("No skills match."))
+                    .foregroundStyle(.secondary)
+            }
+            ForEach(groups) { group in
+                if searching {
+                    // A search shows every group it matches, open: the
+                    // name is a plain label then, not a fold to tap.
+                    Text(verbatim: group.title)
+                        .scaledFont(.subheadline.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .accessibilityAddTraits(.isHeader)
+                    rows(group.rows)
+                } else {
+                    SettingsFoldRow(
+                        title: group.title,
+                        detail: BotCapabilities.onSummary(group.rows),
+                        isOn: Binding(
+                            get: { open.contains(group.title) },
+                            set: { isOpen in
+                                if isOpen { open.insert(group.title) } else { open.remove(group.title) }
+                            }
+                        )
+                    )
+                    if open.contains(group.title) {
+                        rows(group.rows)
+                    }
+                }
+            }
+        } else {
+            let shown = BotSkillGrouping.matching(capabilities.skills, query: query)
+            if shown.isEmpty {
+                Text(AppLocalization.string("No skills match."))
+                    .foregroundStyle(.secondary)
+            }
+            rows(shown)
+        }
+    }
+
+    private func rows(_ rows: [BotCapability]) -> some View {
+        BotCapabilityRows(rows: rows, editable: editable, keepsOneOn: false) { name, on in
+            guard editable else { return }
+            capabilities.setEnabled(\.skills, name: name, on: on)
+        }
+        .equatable()
+    }
+}
+
+/// The bot editor's Tools page: the profile's toolsets, as Hermes' `hermes
+/// tools` checklist gives them.
+struct BotToolsView: View {
+    @Binding var capabilities: BotCapabilities
+    /// False while the lists are the ones Hermes gave last time.
+    var editable = true
+
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
+
+    var body: some View {
+        SettingsDetailContainer {
+            ConduitSettingsSection(title: AppLocalization.string("Tools"), symbol: "wrench.and.screwdriver", tint: .blue) {
+                if capabilities.toolsets.isEmpty {
+                    Text(AppLocalization.string("No tools to choose from."))
+                        .foregroundStyle(.secondary)
+                } else {
+                    // Hermes reads no tools as its default tools, so the
+                    // last one on stays on.
+                    BotCapabilityRows(rows: capabilities.toolsets, editable: editable, keepsOneOn: true) { name, on in
+                        guard editable else { return }
+                        capabilities.setEnabled(\.toolsets, name: name, on: on)
+                    }
+                    .equatable()
+                    Text(AppLocalization.string("With every tool on, the bot follows Hermes' default tools. At least one tool stays on."))
+                        .settingsCaption()
+                }
+            }
+        }
+        .navigationTitle(AppLocalization.string("Tools"))
+        .navigationBarTitleDisplayMode(.inline)
+    }
+}
+
+/// The bot editor's MCP page: switches over the profile's
+/// `profiles.describe` servers (upstream `profile-config.tsx`). Edit Bot
+/// also adds servers from Hermes' MCP catalog, with their keys or an OAuth
+/// sign-in (upstream `mcp-setup.tsx`). Skills and Tools are pages of their
+/// own beside it (BotSkillsView, BotToolsView).
+struct BotMcpServersView: View {
+    @Binding var capabilities: BotCapabilities
     /// The bot whose profile catalog servers go into: Edit Bot's. Nil on
     /// New Bot, whose profile doesn't exist yet.
     var mcpProfile: String? = nil
@@ -21,7 +169,6 @@ struct BotCapabilitiesView: View {
 
     @EnvironmentObject private var appState: AppState
     @ObservedObject private var appLanguage = AppLanguageStore.shared
-    @State private var skillFilter = ""
     /// The catalog and sign-in state; nil until read, or when Hermes
     /// doesn't offer them.
     @State private var mcpSetup: BotMcpSetupSnapshot?
@@ -45,55 +192,6 @@ struct BotCapabilitiesView: View {
     var body: some View {
         // Settings' own page, as Edit Bot that pushes it (Eric 2026-11-05).
         SettingsDetailContainer {
-            ConduitSettingsSection(title: AppLocalization.string("Skills"), symbol: "book", tint: .conduitAccent) {
-                if skillsSkipped {
-                    Text(AppLocalization.string("Skip Bundled Skills is on, so this bot starts with no skills."))
-                        .foregroundStyle(.secondary)
-                } else if capabilities.skills.isEmpty {
-                    Text(AppLocalization.string("No skills installed."))
-                        .foregroundStyle(.secondary)
-                } else {
-                    TextField(AppLocalization.string("Filter skills"), text: $skillFilter)
-                        .textFieldStyle(.roundedBorder)
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                    // Keyed by name: a filter change must not hand one
-                    // skill's row to another.
-                    ForEach(visibleSkillNames, id: \.self) { name in
-                        if let index = capabilities.skills.firstIndex(where: { $0.name == name }) {
-                            toggle($capabilities.skills[index])
-                        }
-                    }
-                }
-                if let sourceLabel, !skillsSkipped {
-                    Text(AppLocalization.string("Starts from what \(sourceLabel) has installed."))
-                        .settingsCaption()
-                }
-            }
-            ConduitSettingsSection(title: AppLocalization.string("Tools"), symbol: "wrench.and.screwdriver", tint: .blue) {
-                if capabilities.toolsets.isEmpty {
-                    Text(AppLocalization.string("No tools to choose from."))
-                        .foregroundStyle(.secondary)
-                } else {
-                    // Keyed by name, as the skills are: Hermes' answer can
-                    // replace the kept lists under the rows.
-                    ForEach(capabilities.toolsets.map(\.name), id: \.self) { name in
-                        if let index = capabilities.toolsets.firstIndex(where: { $0.name == name }) {
-                            toggle($capabilities.toolsets[index])
-                                // Hermes reads no tools as its default tools, so
-                                // the last one on stays on.
-                                .disabled(!capabilities.canTurnOffToolset(at: index))
-                                .accessibilityHint(capabilities.canTurnOffToolset(at: index)
-                                    ? Text(verbatim: "")
-                                    : Text(AppLocalization.string("At least one tool stays on.")))
-                        }
-                    }
-                }
-                if !capabilities.toolsets.isEmpty {
-                    Text(AppLocalization.string("With every tool on, the bot follows Hermes' default tools. At least one tool stays on."))
-                        .settingsCaption()
-                }
-            }
             ConduitSettingsSection(title: SettingsNames.mcp, symbol: "server.rack", tint: .purple) {
                 if let mcpNotice {
                     Text(verbatim: mcpNotice.text)
@@ -143,7 +241,7 @@ struct BotCapabilitiesView: View {
                 }
             }
         }
-        .navigationTitle(AppLocalization.string("Skills, Tools and MCP"))
+        .navigationTitle(Text(verbatim: SettingsNames.mcp))
         .navigationBarTitleDisplayMode(.inline)
         .onDisappear {
             // Leaving the page gives up a sign-in. Safari covering it
@@ -306,14 +404,6 @@ struct BotCapabilitiesView: View {
         }
     }
 
-    private var visibleSkillNames: [String] {
-        let query = skillFilter.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !query.isEmpty else { return capabilities.skills.map(\.name) }
-        return capabilities.skills
-            .filter { $0.name.localizedCaseInsensitiveContains(query) || ($0.label ?? "").localizedCaseInsensitiveContains(query) }
-            .map(\.name)
-    }
-
     private func toggle(_ item: Binding<BotCapability>) -> some View {
         Toggle(isOn: item.enabled) {
             VStack(alignment: .leading, spacing: 2) {
@@ -328,6 +418,59 @@ struct BotCapabilitiesView: View {
         }
         .tint(.conduitAccent)
         .disabled(!editable)
+    }
+}
+
+/// A list of skill or toolset switches, keyed by name so a filter change
+/// or Hermes' answer never hands one row's switch to another. Equatable on
+/// what it shows: Edit Bot redraws on every AppState publish, and a long
+/// skills list redrawn with it made the page lag. Lazy, so only the rows
+/// on screen are built.
+struct BotCapabilityRows: View, Equatable {
+    let rows: [BotCapability]
+    let editable: Bool
+    /// The toolsets: the last one on can't be turned off, since no tools
+    /// on would save as Hermes' default tools.
+    let keepsOneOn: Bool
+    let onSet: (String, Bool) -> Void
+    /// Observed here: the equality skips a redraw from above, and the
+    /// locked row's hint must still follow an App Language switch.
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
+
+    init(rows: [BotCapability], editable: Bool, keepsOneOn: Bool, onSet: @escaping (String, Bool) -> Void) {
+        self.rows = rows
+        self.editable = editable
+        self.keepsOneOn = keepsOneOn
+        self.onSet = onSet
+    }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.rows == rhs.rows && lhs.editable == rhs.editable && lhs.keepsOneOn == rhs.keepsOneOn
+    }
+
+    var body: some View {
+        let onCount = keepsOneOn ? rows.lazy.filter(\.enabled).count : 0
+        LazyVStack(alignment: .leading, spacing: 14) {
+            ForEach(rows) { row in
+                let locked = keepsOneOn && row.enabled && onCount <= 1
+                Toggle(isOn: Binding(get: { row.enabled }, set: { onSet(row.name, $0) })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(verbatim: row.label ?? row.name)
+                        if !row.description.isEmpty {
+                            Text(verbatim: row.description)
+                                .scaledFont(.caption)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(2)
+                        }
+                    }
+                }
+                .tint(.conduitAccent)
+                .disabled(!editable || locked)
+                .accessibilityHint(locked
+                    ? Text(AppLocalization.string("At least one tool stays on."))
+                    : Text(verbatim: ""))
+            }
+        }
     }
 }
 

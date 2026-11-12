@@ -223,6 +223,10 @@ struct BotWorkPanel: View {
     @State private var replies: [String: String] = [:]
     @State private var showsAllRecent = false
     @State private var showsResolved = false
+    /// What the Bot Chat did to keep the work in step, in place of the
+    /// list, and the entry whose lines are shown.
+    @State private var showsCoordination = false
+    @State private var whyItem: BotWorkCoordination.Item?
     /// Runs just before a row opens a workstream's chat (the Bots Home
     /// overview arms the zoom with it).
     var onWillOpen: (() -> Void)? = nil
@@ -286,6 +290,8 @@ struct BotWorkPanel: View {
             case .pin: return (AppLocalization.string("Pin"), "pin", .orange)
             case .unpin: return (AppLocalization.string("Unpin"), "pin.slash", .gray)
             case .resolve: return (AppLocalization.string("Resolve"), "checkmark.circle", .green)
+            case .leaveAlone: return (AppLocalization.string("Leave Alone"), "hand.raised", .gray)
+            case .coordinate: return (AppLocalization.string("Let \(botName) Coordinate It"), "point.3.connected.trianglepath.dotted", .blue)
             default: return (AppLocalization.string("Reopen"), "arrow.uturn.backward.circle", .conduitAccent)
             }
         }()
@@ -313,7 +319,7 @@ struct BotWorkPanel: View {
 
     var body: some View {
         VStack(spacing: 0) {
-            if showsHeader || showsResolved {
+            if showsHeader || showsResolved || showsCoordination {
                 header
             }
             if let refusal = work.refusal(profile) {
@@ -326,9 +332,19 @@ struct BotWorkPanel: View {
             }
             if showsResolved {
                 resolvedList
+            } else if showsCoordination {
+                coordinationList
             } else {
                 openList
             }
+        }
+        .sheet(item: $whyItem) { item in
+            // The entry as the list has it now: a send that arrives, or an
+            // answer to what was asked, shows while the sheet is open.
+            BotWorkWhySheet(
+                item: work.snapshot(profile)?.coordination?.items.first { $0.id == item.id } ?? item,
+                botName: botName
+            )
         }
         // Settings' backdrop beside a Bot Chat (see Sheets in Settings'
         // look). In the Bot Overview the sheet's own shows through, so the
@@ -346,10 +362,13 @@ struct BotWorkPanel: View {
 
     private var header: some View {
         HStack(spacing: 12) {
-            if showsResolved {
+            if showsResolved || showsCoordination {
                 Button {
                     Haptics.light()
-                    withAnimation(ConduitMotion.response) { showsResolved = false }
+                    withAnimation(ConduitMotion.response) {
+                        showsResolved = false
+                        showsCoordination = false
+                    }
                 } label: {
                     Image(systemName: "chevron.left")
                         .font(.system(size: 15, weight: .semibold))
@@ -371,11 +390,13 @@ struct BotWorkPanel: View {
                 .accessibilityHidden(true)
             }
             VStack(alignment: .leading, spacing: 1) {
-                Text(showsResolved ? AppLocalization.string("Resolved") : AppLocalization.string("\(botName)’s work"))
+                Text(showsResolved ? AppLocalization.string("Resolved")
+                     : showsCoordination ? AppLocalization.string("Coordination")
+                     : AppLocalization.string("\(botName)’s work"))
                     .scaledFont(.headline)
                     .lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
-                if !showsResolved, let text = work.snapshot(profile)?.stripText {
+                if !showsResolved, !showsCoordination, let text = work.snapshot(profile)?.stripText {
                     Text(text)
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
@@ -470,6 +491,38 @@ struct BotWorkPanel: View {
                         .listRowInsets(EdgeInsets(top: 4, leading: 20, bottom: 4, trailing: 16))
                     }
                 }
+                if let done = snapshot.coordination?.items, !done.isEmpty {
+                    Button {
+                        Haptics.light()
+                        withAnimation(ConduitMotion.response) { showsCoordination = true }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "arrow.triangle.branch")
+                                .foregroundStyle(.secondary)
+                                .accessibilityHidden(true)
+                            Text(AppLocalization.string("Coordination"))
+                                .scaledFont(.body.weight(.semibold))
+                                .foregroundStyle(Color.primary)
+                            Spacer(minLength: 4)
+                            Text("\(done.count)")
+                                .scaledFont(.subheadline)
+                                .monospacedDigit()
+                                .foregroundStyle(.secondary)
+                            SettingsChevron()
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 6)
+                        .frame(minHeight: 50)
+                        .settingsCard()
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
+                    .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: snapshot.resolvedCount > 0 ? 0 : 12,
+                                              trailing: 16))
+                    .accessibilityIdentifier("botWork.coordination")
+                }
                 if snapshot.resolvedCount > 0 {
                     Button {
                         Haptics.light()
@@ -509,6 +562,66 @@ struct BotWorkPanel: View {
         }
         .listStyle(.plain)
         .scrollContentBackground(.hidden)
+    }
+
+    /// What the Bot Chat did to keep the work in step over the last day,
+    /// newest first; a row opens the lines behind it.
+    private var coordinationList: some View {
+        List {
+            ForEach(work.snapshot(profile)?.coordination?.items ?? []) { item in
+                Button {
+                    Haptics.light()
+                    whyItem = item
+                } label: {
+                    HStack(alignment: .top, spacing: 12) {
+                        Image(systemName: BotWorkWhySheet.symbol(item.kind))
+                            .font(.system(size: 15, weight: .semibold))
+                            .foregroundStyle(Color.conduitAccent)
+                            .frame(width: 24)
+                            .padding(.top, 2)
+                            .accessibilityHidden(true)
+                        VStack(alignment: .leading, spacing: 3) {
+                            HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                Text(item.headline)
+                                    .scaledFont(.subheadline.weight(.semibold))
+                                    .foregroundStyle(Color.primary)
+                                    .lineLimit(2)
+                                Spacer(minLength: 4)
+                                Text(item.at, format: .relative(presentation: .numeric, unitsStyle: .narrow))
+                                    .scaledFont(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            Text(item.text)
+                                .scaledFont(.footnote)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(3)
+                                .multilineTextAlignment(.leading)
+                            if let state = item.stateText {
+                                Text(state)
+                                    .scaledFont(.caption.weight(.semibold))
+                                    .foregroundStyle(item.state == "not_arrived" ? Color.orange : Color.secondary)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 14)
+                    .padding(.vertical, 12)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .settingsCard()
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
+                .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+                .accessibilityIdentifier("botWork.coordination.\(item.id)")
+            }
+        }
+        .listStyle(.plain)
+        .scrollContentBackground(.hidden)
+        // The list went (Coordination turned off, a day passed): back to the work.
+        .onChange(of: work.snapshot(profile)?.coordination?.items.isEmpty ?? true) { _, empty in
+            if empty { showsCoordination = false }
+        }
     }
 
     private var resolvedList: some View {
@@ -552,6 +665,99 @@ struct BotWorkPanel: View {
         .task(id: "\(profile)\u{1F}\(appState.isConnected)") {
             await appState.loadResolvedWork(profile: profile)
         }
+    }
+}
+
+/// Why the Bot Chat did one thing to keep its work in step: what it was,
+/// how far it got, and the ledger's lines behind it, each with who said it.
+struct BotWorkWhySheet: View {
+    let item: BotWorkCoordination.Item
+    let botName: String
+    @Environment(\.dismiss) private var dismiss
+
+    static func symbol(_ kind: BotWorkCoordination.Item.Kind) -> String {
+        switch kind {
+        case .flag: return "eye"
+        case .sent: return "paperplane"
+        case .proposal: return "questionmark.bubble"
+        }
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    VStack(alignment: .leading, spacing: 6) {
+                        if !item.title.isEmpty {
+                            Text(item.title)
+                                .scaledFont(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                        }
+                        Text(item.text)
+                            .scaledFont(.body)
+                            .textSelection(.enabled)
+                            .fixedSize(horizontal: false, vertical: true)
+                        HStack(spacing: 6) {
+                            if let state = item.stateText {
+                                Text(state)
+                                    .scaledFont(.caption.weight(.semibold))
+                            }
+                            Text(item.at, format: .relative(presentation: .numeric, unitsStyle: .narrow))
+                                .scaledFont(.caption)
+                        }
+                        .foregroundStyle(.secondary)
+                        if !item.answer.isEmpty {
+                            Text(item.answer)
+                                .scaledFont(.footnote)
+                                .foregroundStyle(.secondary)
+                                .textSelection(.enabled)
+                        }
+                    }
+                    .padding(14)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .settingsCard()
+                    if !item.why.isEmpty {
+                        SettingsSectionHeader(title: AppLocalization.string("What was behind it"),
+                                              symbol: "list.bullet.rectangle", tint: .conduitAccent)
+                        if let caption = item.whyCaption(botName: botName) {
+                            Text(caption)
+                                .scaledFont(.footnote)
+                                .foregroundStyle(.secondary)
+                        }
+                        ForEach(item.why) { line in
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                                    Text(line.saidBy)
+                                        .scaledFont(.caption.weight(.semibold))
+                                    Spacer(minLength: 4)
+                                    Text(line.at, format: .relative(presentation: .numeric, unitsStyle: .narrow))
+                                        .scaledFont(.caption)
+                                }
+                                .foregroundStyle(.secondary)
+                                Text(line.text)
+                                    .scaledFont(.footnote)
+                                    .textSelection(.enabled)
+                                    .fixedSize(horizontal: false, vertical: true)
+                            }
+                            .padding(12)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .settingsCard()
+                        }
+                    }
+                }
+                .padding(16)
+            }
+            .background(SettingsBackdrop().ignoresSafeArea())
+            .navigationTitle(item.headline)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    Button(AppLocalization.string("Done")) { dismiss() }
+                }
+            }
+        }
+        .presentationDetents([.medium, .large])
+        .accessibilityIdentifier("botWork.why")
     }
 }
 
@@ -614,6 +820,9 @@ private struct BotWorkRow: View {
                 // checklist (Eric 2026-11-04).
                 if item.kind == .workstream, !item.sessionID.isEmpty {
                     openChatButton
+                }
+                if listedRoom != nil {
+                    openRoomButton
                 }
                 if !item.branch.isEmpty {
                     branchLine
@@ -705,6 +914,12 @@ private struct BotWorkRow: View {
                         .foregroundStyle(Color.primary)
                         .lineLimit(expanded ? nil : 1)
                     Spacer(minLength: 4)
+                    if item.isLeftAlone {
+                        Image(systemName: "hand.raised.fill")
+                            .scaledFont(.caption2)
+                            .foregroundStyle(.secondary)
+                            .accessibilityLabel(AppLocalization.string("Left alone"))
+                    }
                     if item.isPinned {
                         Image(systemName: "pin.fill")
                             .scaledFont(.caption2)
@@ -722,6 +937,9 @@ private struct BotWorkRow: View {
                     .lineLimit(expanded ? nil : 1)
                 if !item.call.isEmpty {
                     fromCallLine
+                }
+                if !item.room.isEmpty {
+                    fromRoomLine
                 }
                 if !item.result.isEmpty {
                     Text(BotWorkLook.rendered(item.result))
@@ -752,6 +970,45 @@ private struct BotWorkRow: View {
             .scaledFont(.caption)
             .foregroundStyle(.secondary)
             .fixedSize(horizontal: false, vertical: true)
+    }
+
+    /// Work a bot started from a group room: what it reports is posted
+    /// back there, so the line names the room, by its name when Hermes
+    /// lists it.
+    private var fromRoomLine: some View {
+        Label(roomName.map { AppLocalization.string("From the group chat “\($0)”") }
+                  ?? AppLocalization.string("From a group chat"),
+              systemImage: "person.3")
+            .scaledFont(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var roomName: String? {
+        let name = listedRoom?.name.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return name.isEmpty ? nil : name
+    }
+
+    /// The room as the rooms list shows it (kept from last time until Hermes
+    /// lists them); a disbanded one never opens, so it's left out.
+    private var listedRoom: GroupRoom? {
+        guard !item.room.isEmpty else { return nil }
+        return appState.shownGroupRooms.first(where: { $0.roomID == item.room && $0.disbandedAt == nil })
+    }
+
+    /// Opens the room it reports to, which Hermes still lists.
+    private var openRoomButton: some View {
+        Button {
+            guard let room = listedRoom else { return }
+            Haptics.light()
+            willOpen?()
+            Task { await appState.openGroupRoom(room) }
+        } label: {
+            Label(AppLocalization.string("Open the group chat"), systemImage: "person.3")
+                .frame(maxWidth: .infinity, minHeight: 36)
+        }
+        .buttonStyle(.settings)
+        .accessibilityIdentifier("botWork.openRoom.\(item.ref)")
     }
 
     /// The branch its own worktree is on, to merge once it's done. The

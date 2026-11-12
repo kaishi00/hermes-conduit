@@ -109,6 +109,10 @@ struct V2ConversationScreen: View {
     @State private var chatTitlePendingRename: SessionSummary?
     @State private var chatTitlePendingDeletion: SessionSummary?
     @State private var confirmsRoomDisband = false
+    /// The ended room someone else hosts whose Delete, from the menu,
+    /// waits for its confirmation.
+    @State private var roomCopyPendingDelete: RoomCopy?
+    @State private var showsRoomInfo = false
     @State private var choosesRoomPicture: GroupRoomPictureRequest?
     @State private var showsRoomSettings = false
     /// The open chat's ids while its Artifacts sheet shows.
@@ -132,6 +136,9 @@ struct V2ConversationScreen: View {
     /// The chat's ids when the panel opened.
     @State private var sidePanelIDs: [String] = []
     @State private var screenWidth: CGFloat = 0
+    /// Whether `screenWidth` stays put while a bot's screen in full screen
+    /// has the iPhone turned: not for a screen that opened during it.
+    @State private var holdsWidth = true
     /// The Bot Chat's Work panel: beside the chat on a window with room,
     /// else a sheet.
     @State private var workPanelOpen = false
@@ -150,7 +157,9 @@ struct V2ConversationScreen: View {
     private var workProfile: String? {
         appState.activeRoomSurface == nil && appState.servesBotWorkstreams ? appState.activeBotChatProfile : nil
     }
-    private var showsWorkPanel: Bool { workPanelOpen && fitsSidePanel && workProfile != nil }
+    private var showsWorkPanel: Bool {
+        workPanelOpen && fitsSidePanel && workProfile != nil && appState.botChatComingOverAnother == nil
+    }
 
     private var fitsSidePanel: Bool { ChatSidePanel.fits(width: screenWidth) }
     /// As wide as the user dragged it, less on a window without the room.
@@ -160,6 +169,8 @@ struct V2ConversationScreen: View {
     }
     private var showsSidePanel: Bool {
         sidePanelOpen && fitsSidePanel && appState.activeRoomSurface == nil && !showsWorkPanel
+            // The chat open before keeps its panels until the coming one lands.
+            && appState.botChatComingOverAnother == nil
     }
 
     private var parent: SessionSummary? {
@@ -227,8 +238,35 @@ struct V2ConversationScreen: View {
         .background {
             GeometryReader { proxy in
                 Color.clear
-                    .onAppear { screenWidth = proxy.size.width }
-                    .onChange(of: proxy.size.width) { _, width in screenWidth = width }
+                    // Opened while a full screen holds the screens' widths
+                    // (a push tapped as the phone turns back): this one
+                    // never laid out in portrait, so it holds no width.
+                    .onAppear {
+                        screenWidth = proxy.size.width
+                        holdsWidth = InterfaceOrientationGate.holdLeft == nil
+                    }
+                    // An iPhone turned sideways for a bot's screen in full
+                    // screen keeps its Work panel where it was: moving it
+                    // closed the screen opened from it.
+                    .onChange(of: proxy.size.width) { _, width in
+                        screenWidth = holdsWidth
+                            ? InterfaceOrientationGate.layoutWidth(live: width, kept: screenWidth) : width
+                    }
+                    // Held: the window's width once the hold ends.
+                    .task(id: proxy.size.width) {
+                        let live = proxy.size.width
+                        guard (live != screenWidth && screenWidth > 0) || !holdsWidth else { return }
+                        await InterfaceOrientationGate.layoutReleased()
+                        guard !Task.isCancelled else { return }
+                        screenWidth = InterfaceOrientationGate.layoutWidth(live: live, kept: screenWidth)
+                        holdsWidth = true
+                    }
+                    // The chat open before's Work closes under a Bot Chat
+                    // on its way, and doesn't come back over the one that
+                    // lands. (Here, off the screen's long modifier chain.)
+                    .onChange(of: appState.botChatComingOverAnother) { _, coming in
+                        if coming != nil { workPanelOpen = false }
+                    }
             }
         }
         // A file path tapped in a reply: the Folder tab beside the chat, or
@@ -282,17 +320,22 @@ struct V2ConversationScreen: View {
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar(.hidden, for: .tabBar)
         .toolbar { toolbarItems }
-        // The bot's overview and Edit Bot cover the chat too.
+        // The bot's overview and Edit Bot cover the chat too, and a room's
+        // settings, info, picture picker and disband prompt cover the room
+        // (issue 2064).
         .onChange(of: screenTarget != nil || artifactSessionIDs != nil || chatTitlePendingRename != nil
                   || chatTitlePendingDeletion != nil || editedBot != nil
-                  || (workPanelOpen && !fitsSidePanel && workProfile != nil)) { _, covered in
+                  || (workPanelOpen && !fitsSidePanel && workProfile != nil)
+                  || showsRoomSettings || showsRoomInfo || confirmsRoomDisband || roomCopyPendingDelete != nil
+                  || choosesRoomPicture != nil) { _, covered in
             appState.chatCoveredBySheet = covered
             // What came in under the sheet is read once it closes (#1579).
             if !covered { appState.clearShownChatNotifications() }
         }
         .onDisappear { appState.chatCoveredBySheet = false }
         .sheet(isPresented: Binding(
-            get: { workPanelOpen && !fitsSidePanel && workProfile != nil },
+            // The chat open before's Work closes under a Bot Chat on its way.
+            get: { workPanelOpen && !fitsSidePanel && workProfile != nil && appState.botChatComingOverAnother == nil },
             set: { if !$0 { workPanelOpen = false } }
         ), onDismiss: {
             if let bot = editAfterOverview {
@@ -345,8 +388,10 @@ struct V2ConversationScreen: View {
             chatTitlePendingRename: $chatTitlePendingRename,
             chatTitlePendingDeletion: $chatTitlePendingDeletion,
             confirmsRoomDisband: $confirmsRoomDisband,
+            roomCopyPendingDelete: $roomCopyPendingDelete,
             choosesRoomPicture: $choosesRoomPicture,
-            showsRoomSettings: $showsRoomSettings
+            showsRoomSettings: $showsRoomSettings,
+            showsRoomInfo: $showsRoomInfo
         ))
         // Group Settings asked for from a room's tile on Bots Home: once
         // that room is open here and Hermes has read its settings.
@@ -430,7 +475,17 @@ struct V2ConversationScreen: View {
                 // widens with the window, its text a size or more larger as
                 // it does; the backdrop still fills it.
                 .readableChatColumn()
+                // Under the cover, VoiceOver doesn't reach it either.
+                .accessibilityHidden(appState.botChatComingOverAnother != nil)
+            // A Bot Chat tapped in Bots is pushed before its open lands:
+            // the chat open before, another bot's, stays under a cover
+            // until then, and is never shown as the tapped bot's.
+            if appState.botChatComingOverAnother != nil {
+                BotChatComingCover(bot: appState.botChatOnItsWay?.bot)
+                    .transition(.opacity)
+            }
         }
+        .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: appState.botChatComingOverAnother)
         // The chat's column only: a drag in a panel beside it (Artifacts,
         // its divider, the Work panel's swipes) is that panel's.
         .simultaneousGesture(backSwipe, including: swipesBack ? .all : .subviews)
@@ -440,7 +495,10 @@ struct V2ConversationScreen: View {
     /// other chat, a room shown over the workstream (its Back leaves the
     /// room), or beside the list on a wide window, which has no Back.
     private var workstreamGoesBack: String? {
-        guard !shell.isSplit, appState.activeRoomSurface == nil else { return nil }
+        // Under a Bot Chat on its way, Back is the list's: it stands that
+        // open down, rather than open the hidden workstream's Bot Chat.
+        guard !shell.isSplit, appState.activeRoomSurface == nil,
+              appState.botChatComingOverAnother == nil else { return nil }
         return appState.activeWorkstream?.profile
     }
 
@@ -465,7 +523,12 @@ struct V2ConversationScreen: View {
 
     private var backSwipe: some Gesture {
         DragGesture(minimumDistance: 20).onEnded { drag in
-            guard swipesBack, BotChatSwap.isBackSwipe(drag.translation) else { return }
+            // Nor while text in the chat is selected: a handle dragged
+            // toward the trailing edge read as this swipe, and the chat
+            // closed under the finger (issue 1948). Asked as the drag ends,
+            // since a selection doesn't redraw the screen.
+            guard swipesBack, BotChatSwap.isBackSwipe(drag.translation),
+                  !ChatTextSelection.isShowing else { return }
             if workstreamGoesBack != nil {
                 backToCoordinator()
             } else {
@@ -527,6 +590,8 @@ struct V2ConversationScreen: View {
         if shell.canSplit {
             ToolbarItem(placement: .topBarLeading) {
                 Button {
+                    // Its shortcut, too, does nothing behind a sheet.
+                    guard KeyboardCommands.nothingInFront else { return }
                     Haptics.light()
                     chatListBeside.toggle()
                 } label: {
@@ -539,14 +604,23 @@ struct V2ConversationScreen: View {
                 // iPadOS's own sidebar shortcut. A tab kept behind the
                 // selected one still holds its chat, and a shortcut
                 // ignores opacity and hit testing: only the shown tab's.
-                .keyboardShortcut("s", modifiers: [.command, .control])
-                .disabled(!shell.isTabActive)
+                .keyboardShortcut(ConduitKeyboardShortcut.chatList.shortcut)
+                .disabled(!shell.chatTakesKeys)
                 .accessibilityLabel(shell.isSplit ? AppLocalization.string("Hide chat list") : AppLocalization.string("Show chat list"))
                 .accessibilityIdentifier("conversation.chatListToggle")
             }
         }
+        // A Bot Chat on its way names its bot; the chat under the cover
+        // keeps its title and actions to itself.
+        if let coming = appState.botChatComingOverAnother {
+            ToolbarItem(placement: .principal) {
+                Text(coming)
+                    .scaledFont(.headline)
+                    .lineLimit(1)
+            }
+        }
         // Session-only controls: an open room owns the title and actions.
-        if appState.activeRoomSurface == nil {
+        if appState.activeRoomSurface == nil, appState.botChatComingOverAnother == nil {
             ToolbarItem(placement: .principal) {
                 VStack(spacing: 1) {
                     ChatTitleControl(
@@ -592,29 +666,34 @@ struct V2ConversationScreen: View {
         }
         // The big button does something else: a live call stays one
         // tap away up here.
-        if appState.activeRoomSurface == nil,
+        if appState.activeRoomSurface == nil, appState.botChatComingOverAnother == nil,
            ChatVoiceButtonAction.resolved(profile: appState.chatVoiceButtonOverride, app: appChatVoiceButton) != .liveCall {
             ToolbarItem(placement: .topBarTrailing) {
                 V2VoiceButton(context: .conversation, style: .toolbar)
             }
         }
-        ToolbarItem(placement: .topBarTrailing) {
-            V2ConversationMenu(
-                onRename: { chatTitlePendingRename = $0 },
-                onDelete: { chatTitlePendingDeletion = $0 },
-                onDisbandRoom: { confirmsRoomDisband = true },
-                onChooseRoomPicture: { choosesRoomPicture = $0 },
-                onRoomSettings: { showsRoomSettings = true },
-                onArtifacts: { openArtifacts(tab: .made) },
-                onEditBot: { editedBot = .edit($0) },
-                onScreen: { screenTarget = $0 },
-                screens: appState.botScreens
-            )
+        if appState.botChatComingOverAnother == nil {
+            ToolbarItem(placement: .topBarTrailing) {
+                V2ConversationMenu(
+                    onRename: { chatTitlePendingRename = $0 },
+                    onDelete: { chatTitlePendingDeletion = $0 },
+                    onShowRoomInfo: { showsRoomInfo = true },
+                    onDisbandRoom: { confirmsRoomDisband = true },
+                    onDeleteRoomCopy: { roomCopyPendingDelete = $0 },
+                    onChooseRoomPicture: { choosesRoomPicture = $0 },
+                    onRoomSettings: { showsRoomSettings = true },
+                    onArtifacts: { openArtifacts(tab: .made) },
+                    onEditBot: { editedBot = .edit($0) },
+                    onScreen: { screenTarget = $0 },
+                    screens: appState.botScreens
+                )
+            }
         }
         // Artifacts beside the chat, on a window with room for both.
         if fitsSidePanel, appState.activeRoomSurface == nil {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
+                    guard KeyboardCommands.nothingInFront else { return }
                     Haptics.light()
                     if showsSidePanel {
                         sidePanelOpen = false
@@ -628,8 +707,9 @@ struct V2ConversationScreen: View {
                         .frame(width: 40, height: 40)
                         .modifier(V2PreGlassToolbarControl())
                 }
-                .keyboardShortcut("a", modifiers: [.command, .option])
-                .disabled(!shell.isTabActive)
+                .keyboardShortcut(ConduitKeyboardShortcut.artifacts.shortcut)
+                // The cover hides the panel: it waits for the coming chat.
+                .disabled(!shell.chatTakesKeys || appState.botChatComingOverAnother != nil)
                 .accessibilityLabel(showsSidePanel ? AppLocalization.string("Hide artifacts") : AppLocalization.string("Show artifacts"))
                 .accessibilityIdentifier("conversation.sidePanelToggle")
             }
@@ -638,19 +718,26 @@ struct V2ConversationScreen: View {
 }
 
 /// The conversation's rename sheet, delete alert, room picture picker, room
-/// settings and disband confirmation.
+/// settings and info, and its disband or (hosted elsewhere) delete
+/// confirmation.
 private struct ConversationDialogs: ViewModifier {
     @EnvironmentObject private var appState: AppState
     @Binding var chatTitlePendingRename: SessionSummary?
     @Binding var chatTitlePendingDeletion: SessionSummary?
     @Binding var confirmsRoomDisband: Bool
+    @Binding var roomCopyPendingDelete: RoomCopy?
     @Binding var choosesRoomPicture: GroupRoomPictureRequest?
     @Binding var showsRoomSettings: Bool
+    @Binding var showsRoomInfo: Bool
 
     func body(content: Content) -> some View {
         content
             .sheet(isPresented: $showsRoomSettings) {
                 GroupRoomSettingsSheet()
+                    .environmentObject(appState)
+            }
+            .sheet(isPresented: $showsRoomInfo) {
+                GroupRoomInfoSheet()
                     .environmentObject(appState)
             }
             .sheet(item: $chatTitlePendingRename) { session in
@@ -684,10 +771,12 @@ private struct ConversationDialogs: ViewModifier {
                 }
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
             } message: {
-                Text(AppLocalization.string(
-                    "The room, its history, and every member's session end permanently. This cannot be undone."
-                ))
+                Text(GroupRoomDisband.warning(members: appState.activeRoomSurface?.room.members ?? []))
             }
+            .modifier(RoomCopyDelete(copy: roomCopyPendingDelete, confirming: Binding(
+                get: { roomCopyPendingDelete != nil },
+                set: { if !$0 { roomCopyPendingDelete = nil } }
+            )))
     }
 }
 
@@ -776,7 +865,9 @@ private struct V2ConversationMenu: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let onRename: (SessionSummary) -> Void
     let onDelete: (SessionSummary) -> Void
+    let onShowRoomInfo: () -> Void
     let onDisbandRoom: () -> Void
+    let onDeleteRoomCopy: (RoomCopy) -> Void
     let onChooseRoomPicture: (GroupRoomPictureRequest) -> Void
     let onRoomSettings: () -> Void
     let onArtifacts: () -> Void
@@ -784,12 +875,20 @@ private struct V2ConversationMenu: View {
     let onScreen: (BotScreenTarget) -> Void
     @ObservedObject var screens: BotScreenSupport
 
-    /// The bot whose screen this chat can open: a Bot Chat's or a
-    /// workstream's, once its host said it can have one.
+    /// The bot whose screen this chat can open, once its host said it can
+    /// have one: a Bot Chat's or a workstream's bot, else the profile an
+    /// ordinary chat runs under (issue 2132). Not a room's (its bots may be
+    /// another host's) or a saved copy's (no host to ask).
     private var screenProfile: String? {
-        guard appState.activeRoomSurface == nil,
-              let profile = appState.activeBotChatProfile ?? appState.activeWorkstream?.profile else { return nil }
-        return profile
+        BotScreenUse.menuProfile(
+            inRoom: appState.activeRoomSurface != nil,
+            botChatProfile: appState.activeBotChatProfile,
+            workstreamProfile: appState.activeWorkstream?.profile,
+            savedCopy: appState.offlineChatPresentation != nil,
+            sessionID: appState.activeSessionId,
+            rowProfile: appState.activeChatSessionSummary?.profile,
+            activeProfile: appState.activeProfile
+        )
     }
 
     /// The bot whose chat this is, once the roster has it.
@@ -817,7 +916,9 @@ private struct V2ConversationMenu: View {
         Menu {
             if appState.activeRoomSurface != nil {
                 GroupRoomActionItems(
-                    onDisband: onDisbandRoom, onChoosePicture: onChooseRoomPicture, onOpenSettings: onRoomSettings
+                    onShowInfo: onShowRoomInfo,
+                    onDisband: onDisbandRoom, onChoosePicture: onChooseRoomPicture, onOpenSettings: onRoomSettings,
+                    onDeleteCopy: onDeleteRoomCopy
                 )
             } else {
                 Button {
@@ -843,7 +944,8 @@ private struct V2ConversationMenu: View {
                     Button {
                         onScreen(BotScreenTarget(profile: profile,
                                                  botName: appState.botWork.snapshot(profile)?.botName
-                                                     ?? appState.profileDisplayName(profile)))
+                                                     ?? appState.profileDisplayName(profile),
+                                                 chatSessionIDs: appState.activeSessionId.map { appState.chatOwnSessionIDs(for: $0) } ?? []))
                     } label: {
                         Label(AppLocalization.string("Bot's Screen"), systemImage: "display")
                     }
@@ -925,4 +1027,24 @@ private struct ArtifactSheetIDs: Identifiable {
     let id = UUID()
     let ids: [String]
     var tab: ArtifactsTab = .made
+}
+
+/// A Bot Chat's screen while its open is out and the active chat is still
+/// the one open before (`AppState.botChatComingOverAnother`): the bot's
+/// backdrop and that it's opening. It takes the taps, so nothing reaches
+/// the chat under it.
+private struct BotChatComingCover: View {
+    let bot: String?
+
+    var body: some View {
+        ZStack(alignment: .top) {
+            V2Backdrop(glowProfile: bot)
+            ProgressView("Opening conversation…")
+                .scaledFont(.subheadline)
+                .foregroundStyle(.secondary)
+                .padding(.top, 60)
+        }
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
+    }
 }

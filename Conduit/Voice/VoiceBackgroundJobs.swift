@@ -315,8 +315,10 @@ struct VoiceBackgroundJobBackend {
                                     _ instructions: String, _ fromWatch: Bool, _ callChat: String?,
                                     _ endedWith: String?, _ call: String?) -> Void = { _, _, _, _, _, _, _, _ in }
     /// A call kept with one of a bot's workstreams' chats stays in that
-    /// session (Eric 2026-11-02): its requests go to the workstream, as an
-    /// interrupt while it works, and never make a job of their own. What to
+    /// session (Eric 2026-11-02): its requests go to the workstream, as the
+    /// answer to a question it waits on, behind an approval it waits on, as
+    /// an interrupt while it works, or as its next turn otherwise, and never
+    /// make a job of their own. What to
     /// tell the call, or nil when the chat isn't a workstream's.
     var sendToCallWorkstream: @MainActor (_ thread: VoiceThreadTarget, _ request: String) async -> String? = { _, _ in nil }
     /// A call that kept a job with its chat (`callChat`) left it: when the
@@ -1720,6 +1722,13 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         job.isThreadTurn || (job.id == callChatJobID && liveThread != nil)
     }
 
+    /// A workstream's call: a request the live model sends as the chat's
+    /// turn goes to the workstream too (see startJob).
+    func sendToWorkstream(_ request: String) async -> String? {
+        guard let thread = liveThread else { return nil }
+        return await backend.sendToCallWorkstream(thread, request)
+    }
+
     // MARK: Follow-ups (#451)
 
     /// The call's own request in its attached chat that a follow-up goes
@@ -2603,6 +2612,20 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             jobs[index].inputRequestDelivered = false
             jobs[index].waitingApproval = nil
             jobs[index].waitingQuestion = nil
+        case .connection(_, let card):
+            // A connect card waits on the user in the chat, like an input
+            // card; told once, not at each of its updates.
+            if card.isOpen, before.status != .needsInput {
+                jobs[index].status = .needsInput
+                jobs[index].inputRequestDelivered = false
+                jobs[index].waitingApproval = nil
+                jobs[index].waitingQuestion = nil
+            } else if !card.isOpen, before.status == .needsInput,
+                      before.waitingApproval == nil, before.waitingQuestion == nil {
+                // Settled: Hermes carries on, as after an answered input.
+                jobs[index].status = .running
+                jobs[index].inputRequestDelivered = false
+            }
         case .messageComplete(_, let messageID, let content, _, _):
             // An earlier voice turn's late or replayed completion, once the
             // next turn owns the chat, is not this turn's reply.
@@ -2732,6 +2755,28 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         queueScreenshotNote(Self.screenshotInAnotherChatPrompt, attachmentURI: attachmentURI)
     }
 
+    /// The user took a photo with the call screen's Camera, and it waits on
+    /// the call's chat for the chat's next turn. `seenByModel`: the call's
+    /// model was sent it too (Gemini, Qwen) and can answer about it itself;
+    /// the others hear that Hermes has it.
+    func notePhotoShared(attachmentURI: String, seenByModel: Bool) {
+        queueScreenshotNote(seenByModel ? Self.photoSeenPrompt : Self.photoSharedPrompt, attachmentURI: attachmentURI)
+    }
+
+    /// The photo sent to the model never reached its socket: a note that
+    /// says it can see it is corrected before or after the model hears it.
+    func notePhotoMissedModel(attachmentURI: String) {
+        guard liveThread != nil else { return }
+        if let waiting = chatNotes.firstIndex(where: { $0.screenshotURI == attachmentURI }) {
+            chatNotes[waiting] = ChatNote(text: Self.photoSharedPrompt, screenshotURI: attachmentURI)
+            return
+        }
+        // Not heard, and no longer waiting (removed, or dropped by the
+        // cap): there's nothing to correct.
+        guard screenshotNotesHeard[attachmentURI] == true else { return }
+        queueChatNote(ChatNote(text: Self.photoMissedPrompt, screenshotURI: attachmentURI))
+    }
+
     private func queueScreenshotNote(_ note: String, attachmentURI: String) {
         guard liveThread != nil else { return }
         // A call that already heard of it stays answerable if it goes.
@@ -2750,19 +2795,22 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     static let screenshotInAnotherChatPrompt = "[Background only. The user shared a screenshot, but it went to the chat on screen, not the chat this call is attached to, so your requests can't carry it. If they ask about their screen, tell them to type the question in the chat on screen, where the screenshot is waiting. Don't guess what the screen shows, and don't respond to this note now.]"
 
     static let screenshotSharedPrompt = "[Background only. The user just shared a screenshot to the chat this call is attached to. You can't see it, but Hermes can. When the user asks about their screen, send their question to the chat as they asked it, and the screenshot goes with it. Don't guess what the screen shows, and don't respond to this note now.]"
+    static let photoSharedPrompt = "[Background only. The user just took a photo and added it to the chat this call is attached to. You can't see it, but Hermes can. When the user asks about it, send their question to the chat as they asked it, and the photo goes with it. Don't guess what the photo shows, and don't respond to this note now.]"
+    static let photoSeenPrompt = "[Background only. The user just took a photo and showed it to you; it's also in the chat this call is attached to. Answer what they ask about it from what you see. When they want Hermes to work on it, send their request to the chat as they asked it, and the photo goes with it. Don't respond to this note now.]"
+    static let photoMissedPrompt = "[Background only. The photo the user just took didn't reach you after all: you can't see it, but Hermes can. When the user asks about it, send their question to the chat as they asked it, and the photo goes with it. Don't guess what the photo shows, and don't respond to this note now.]"
 
     /// The user removed a screenshot. A note about it still waiting is
     /// dropped; a call that heard of it, from a note or from its
     /// instructions, hears that it's gone. `inInstructions`: it waits on
     /// the call's chat, so the instructions named it if the call started
     /// with it.
-    func retractScreenshotNote(attachmentURI: String, inInstructions: Bool) {
+    func retractScreenshotNote(attachmentURI: String, inInstructions: Bool, kind: SharedPictureKind = .screenshot) {
         guard liveThread != nil else { return }
         chatNotes.removeAll { $0.screenshotURI == attachmentURI }
         // With a note, only one it heard (not one waiting, or dropped by
         // the cap) needs answering.
         guard screenshotNotesHeard.removeValue(forKey: attachmentURI) ?? inInstructions else { return }
-        queueChatNote(ChatNote(text: Self.screenshotRemovedPrompt))
+        queueChatNote(ChatNote(text: kind == .photo ? Self.photoRemovedPrompt : Self.screenshotRemovedPrompt))
     }
 
     /// A newer screenshot replaced `replacedURI` in its chat. A note about
@@ -2800,6 +2848,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     static let screenshotRemovedPrompt = "[Background only. The user removed the screenshot they shared: the chat's next turn won't carry one. Don't respond to this note now.]"
+    static let photoRemovedPrompt = "[Background only. The user removed the photo they took: the chat's next turn won't carry it, and it's no longer there to talk about. Don't respond to this note now.]"
 
     /// Removes and returns the oldest exchange waiting for the call.
     func takePendingChatContext() -> String? {
@@ -2838,7 +2887,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         case .messageStart(let id), .messageDelta(let id, _), .messageInterim(let id, _, _), .reasoningDelta(let id, _),
              .messageComplete(let id, _, _, _, _), .messageError(let id, _), .messageInterrupted(let id),
              .toolStart(let id, _, _, _), .toolComplete(let id, _, _, _),
-             .approval(let id, _), .clarify(let id, _), .inputPrompt(let id, _):
+             .approval(let id, _), .clarify(let id, _), .inputPrompt(let id, _), .connection(let id, _):
             return id
         default:
             return nil
@@ -3540,12 +3589,12 @@ enum VoiceThreadRouting {
     /// are `finished`: "send Hermes the file" is a request.
     static func saysSendToHermes(_ words: String, finished: Bool = true) -> Bool {
         let folded = fold(words)
-        let send = #"\bsend\s*(it|this|that|this one|that one)?\s*(straight|right|over|directly)?"#
-        var patterns = [send + #"\s*to\s*hermes\b"#]
-        if finished { patterns.append(send + #"[\s,]*hermes\s*(now|please)?[\s.!]*$"#) }
-        for pattern in patterns {
+        var patterns = [sendToHermesPattern]
+        if finished { patterns.append(sendHermesAtEndPattern) }
+        for case let pattern? in patterns {
             var searchStart = folded.startIndex
-            while let match = folded.range(of: pattern, options: .regularExpression, range: searchStart..<folded.endIndex) {
+            while let found = pattern.firstMatch(in: folded, range: NSRange(searchStart..<folded.endIndex, in: folded)),
+                  let match = Range(found.range, in: folded) {
                 let clause = folded[..<match.lowerBound]
                     .split(omittingEmptySubsequences: false, whereSeparator: { ",.;:!?".contains($0) })
                     .last ?? ""
@@ -3556,6 +3605,12 @@ enum VoiceThreadRouting {
         }
         return false
     }
+
+    /// The two "send it to Hermes" patterns, compiled once: a live call
+    /// checks the user's words on every transcript piece (issue 1970).
+    private static let sendPhrase = #"\bsend\s*(it|this|that|this one|that one)?\s*(straight|right|over|directly)?"#
+    private static let sendToHermesPattern = try? NSRegularExpression(pattern: sendPhrase + #"\s*to\s*hermes\b"#)
+    private static let sendHermesAtEndPattern = try? NSRegularExpression(pattern: sendPhrase + #"[\s,]*hermes\s*(now|please)?[\s.!]*$"#)
 
     /// Words before "send it to Hermes" in its clause that make it
     /// something other than an instruction: a negation, a question about
@@ -3609,12 +3664,12 @@ enum VoiceThreadRouting {
     /// start a new request ("envoie", "manda", "отправь") are only leads
     /// with their object, as "send it" is.
     static let answerNoLeads = [
-        "no", "nope", "nah", "don't", "dont", "do not", "never mind", "nevermind",
+        "no way", "no chance", "not a chance", "no", "nope", "nah", "don't", "dont", "do not", "never mind", "nevermind",
         "cancel", "forget", "drop", "scrap", "skip", "ditch", "abort", "stop", "leave it", "leave that",
         "nein", "nee", "nö", "auf keinen fall", "lieber nicht", "bloß nicht", "nicht nötig", "nicht senden",
         "nicht schicken", "nicht abschicken", "vergiss es", "vergiss das", "vergiss", "lass es", "lass das",
-        "lass mal", "abbrechen", "brich ab", "stopp",
-        "nop", "mejor no", "cancela", "cancélalo", "cancelalo", "cancelar", "olvídalo", "olvidalo", "olvida",
+        "lass mal", "abbrechen", "brich ab", "stopp", "stornieren", "storniere",
+        "nop", "mejor no", "cancela", "cancélalo", "cancelalo", "cancelar", "anúlalo", "anulalo", "anular", "anula", "olvídalo", "olvidalo", "olvida",
         "déjalo", "dejalo", "ni hablar",
         "non", "pas besoin", "pas la peine", "surtout pas", "laisse tomber", "laissez tomber", "oublie",
         "oubliez", "annule", "annulez", "annuler", "arrête", "arrete", "ne l'envoie pas", "ne l'envoyez pas",
@@ -3878,9 +3933,61 @@ enum VoiceThreadRouting {
         return cjkRefusals.contains { folded.contains($0) }
     }
 
+    /// Whether the words name a refusal with its verb ("decline it",
+    /// "I refuse", "거절"), in the shipped languages with word breaks.
+    /// Not under a negation ("I wouldn't decline it") or in a question
+    /// whose "?" the transcript dropped ("should we decline it").
+    static func containsRefusalVerb(_ answer: String) -> Bool {
+        let words = fold(answer)
+            .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
+            .map(String.init)
+        guard !negates(words), !words.contains(where: { refusalVerbAskers.contains($0) }),
+              !cjkVerbNegations.contains(where: { answer.contains($0) }) else { return false }
+        // A Chinese, Japanese or Korean question ends in its marker, not a
+        // "?" ("거절할까요").
+        let trimmed = answer.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        guard !["吗", "嗎", "么", "麼", "呢", "か", "かな", "까", "까요", "나요"].contains(where: { trimmed.hasSuffix($0) }) else { return false }
+        return words.contains { answerRefusalVerbs.contains($0) || $0.hasPrefix("거절") || $0.hasPrefix("거부") }
+            || cjkRefusalVerbs.contains { answer.contains($0) }
+    }
+
+    /// Chinese, Japanese and Korean nots around a refusal verb ("我不拒绝",
+    /// "断らない", "거절하지 마").
+    private static let cjkVerbNegations = ["不", "没", "沒", "别", "別", "ない", "ません", "지 마", "지마", "않", "못"]
+
+    /// Chinese and Japanese refusal verbs, matched inside the words.
+    private static let cjkRefusalVerbs = ["拒绝", "拒絕", "拒否", "却下", "断る", "断って", "お断り"]
+
+    /// Whether the words negate a refusal verb ("don't decline it", "do
+    /// not reject it", "我不拒绝"): asked not to refuse, never a no.
+    static func negatesRefusalVerb(_ answer: String) -> Bool {
+        let words = fold(answer)
+            .split(whereSeparator: { !($0.isLetter || $0.isNumber || $0 == "'") })
+            .map(String.init)
+        let latin = negates(words)
+            && words.contains { answerRefusalVerbs.contains($0) || $0.hasPrefix("거절") || $0.hasPrefix("거부") }
+        let cjk = cjkVerbNegations.contains { answer.contains($0) } && cjkRefusalVerbs.contains { answer.contains($0) }
+        return latin || cjk
+    }
+
+    /// Words that make a refusal verb a question or a maybe, not an answer.
+    private static let refusalVerbAskers: Set<String> = [
+        "should", "shall", "can", "could", "would", "will", "if", "whether", "why", "how", "what", "do", "does", "did", "is", "are", "am", "was", "were", "have", "has", "had", "who", "where", "when", "which", "maybe", "might",
+        // The same in the other shipped languages ("soll ich es ablehnen").
+        "soll", "sollen", "sollte", "kann", "könnte", "würde", "ob", "wenn", "warum", "wie", "vielleicht",
+        "debo", "debería", "puedo", "podría", "quizás",
+        "dois", "devrais", "peux", "pourquoi", "peut", "faut",
+        "devo", "dovrei", "posso", "perché", "forse",
+        "deveria", "talvez",
+        "ли", "может", "стоит", "почему", "если",
+        "czy", "może", "jeśli", "dlaczego",
+        "mı", "mu", "mü", "neden", "belki",
+        "apakah", "haruskah", "bolehkah", "mungkin", "jika", "kalau", "kenapa",
+    ]
+
     /// Verbs that refuse, in the shipped languages with word breaks
     /// (Korean is matched by its stem, Chinese and Japanese in
-    /// `cjkRefusals`).
+    /// `cjkRefusalVerbs`).
     private static let answerRefusalVerbs: Set<String> = [
         "reject", "rejected", "deny", "denied", "refuse", "refused", "decline", "declined", "veto",
         "ablehnen", "lehne", "abgelehnt", "verweigern", "verweigere", "zurückweisen",

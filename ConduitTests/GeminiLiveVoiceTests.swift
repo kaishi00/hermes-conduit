@@ -1278,6 +1278,39 @@ extension VoiceConversationControllerTests {
         }
     }
 
+    /// Issue 1983: a call started from the open chat is seeded with the
+    /// chat's turns, and then leaves out the latest-reply block they carry.
+    func testACallFromTheOpenChatIsSeededWithItsTurns() throws {
+        let suite = "ChatCallSeed.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false, clearSessionPresentationCache: {})
+        appState.activeSessionId = "rt-chat"
+        appState.messages = [
+            ChatMessage(id: "1", role: .user, content: "Plan the trip to Kyoto", timestamp: "2026-11-08T00:00:00Z"),
+            ChatMessage(id: "2", role: .assistant, content: "Three days, starting Friday.", timestamp: "2026-11-08T00:00:01Z"),
+        ]
+        let thread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: nil, title: "Kyoto")
+
+        // Unattached: no seed, as before.
+        appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+        XCTAssertNil(appState.liveVoiceResumeContext)
+
+        appState.voiceBackgroundJobSupervisor.liveThread = thread
+        appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+        let context = try XCTUnwrap(appState.liveVoiceResumeContext)
+        XCTAssertTrue(context.fromChat)
+        XCTAssertEqual(context.gptLiveHistory.count, 2)
+        for delegation in [false, true] {
+            XCTAssertFalse(appState.liveVoiceThreadInstructions(delegation: delegation).contains("Hermes' latest reply"), "the seed carries it")
+        }
+
+        // Another chat on screen: the call isn't seeded with it.
+        appState.activeSessionId = "rt-other"
+        appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+        XCTAssertNil(appState.liveVoiceResumeContext)
+    }
+
     func testLiveAnswerLengthPicksTheOneRuleEveryEngineGets() throws {
         for length in LiveVoiceAnswerLength.allCases {
             let gemini = GeminiLiveConversationController.instructions(search: .google, answerLength: length)
@@ -1345,6 +1378,28 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(controller.phase, .failed(GeminiLiveAvailability.pluginMissing.userFacingReason!))
         XCTAssertEqual(session.started, 0)
         XCTAssertFalse(input.running)
+    }
+
+    /// On a host that manages the plugin, a missing plugin feature says who
+    /// keeps it up to date, at the start and when a session's route is gone
+    /// (Grok and Local Live ride this controller too).
+    func testAManagedHostsMissingPluginSaysWhoKeepsItUpToDate() async {
+        PluginUpdateAsk.setActive(managedBy: "Family farm")
+        defer { PluginUpdateAsk.setActive(managedBy: nil) }
+        let managed = "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date."
+        let tokens = FakeGeminiLiveTokens()
+        tokens.availabilityResult = .success(.pluginMissing)
+        let (refused, _, _, _, _) = makeGeminiController(tokens: tokens, clock: Date.init)
+        await refused.start()
+        XCTAssertEqual(refused.phase, .failed(managed))
+
+        let (controller, session, _, _, _) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onStateChange?(.failed(LocalLiveProtocol.pluginMissingReason))
+        XCTAssertEqual(controller.phase, .failed(managed))
+        XCTAssertEqual(LocalLiveClientError.unavailable(LocalLiveProtocol.pluginMissingReason).errorDescription, managed)
+        XCTAssertEqual(LocalLiveClientError.unavailable("Set a speech server first.").errorDescription, "Set a speech server first.")
     }
 
     func testGeminiLivePublishesSpeakingOncePerTurnNotOnEveryAudioChunk() async {

@@ -117,10 +117,25 @@ struct ConduitVoiceShortcuts: AppShortcutsProvider {
             intent: SendToHermesIntent(),
             phrases: [
                 "Ask Hermes in \(.applicationName)",
-                "Send to Hermes in \(.applicationName)"
+                "Send to Hermes in \(.applicationName)",
+                // A chat by name ("Ask Trip planning in Conduit"), a Bot
+                // Chat by its bot's ("Ask Furina in Conduit"). Siri knows
+                // the widget's chats: ConduitChatSpotlight refreshes them.
+                "Ask \(\.$chat) in \(.applicationName)",
+                "Message \(\.$chat) in \(.applicationName)"
             ],
             shortTitle: "Ask Hermes",
             systemImageName: "paperplane.fill"
+        )
+        AppShortcut(
+            intent: OpenConduitChatIntent(),
+            phrases: [
+                "Open \(\.$target) in \(.applicationName)",
+                "Show \(\.$target) in \(.applicationName)",
+                "Open a chat in \(.applicationName)"
+            ],
+            shortTitle: "Open Chat",
+            systemImageName: "bubble.left.and.bubble.right"
         )
     }
 }

@@ -139,7 +139,7 @@ final class ConnectionRepairTests: XCTestCase {
                 [.connectionDetails, .tlsTroubleshooting]
             )
         }
-        for failure: ConnectionFailure in [.invalidAddress, .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline, .dashboardUnavailable, .unexpectedServerResponse] {
+        for failure: ConnectionFailure in [.invalidAddress, .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline, .accessDenied, .dashboardUnavailable, .unexpectedServerResponse] {
             XCTAssertEqual(
                 ConnectionSetupFlow.initialPath(for: .repairConnection, draft: draft, repairFailure: failure),
                 [.connectionDetails],

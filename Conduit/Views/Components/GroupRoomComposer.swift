@@ -31,8 +31,15 @@ struct GroupRoomComposer: View {
     /// A Mac, or an iPad with the room: the controls stay showing, as in a
     /// chat (#1483).
     @Environment(\.composerStaysExpanded) private var staysExpanded
+    /// A room split Settings covers, or a hidden tab's, keeps its field:
+    /// Return and ⌘Return don't send from it.
+    @Environment(\.v2Shell) private var shell
     @State private var attachments: [Attachment] = []
     @State private var isFocused = false
+    /// The mention row a hardware keyboard's arrows highlighted; typing
+    /// clears it. And the draft whose list Escape closed.
+    @State private var mentionHighlight: Int?
+    @State private var mentionsDismissedFor: String?
     @State private var isUploading = false
     /// The upload in flight, cancelled when the composer goes away.
     @State private var uploadTask: Task<Void, Never>?
@@ -68,9 +75,14 @@ struct GroupRoomComposer: View {
             // it explicitly (same event id) or it stays visible — a NEW
             // message typed meanwhile would be silently swallowed.
             && appState.pendingRoomMessage == nil
-            && appState.groupCapabilities?.supports("groups.send") == true
-            && surface?.room.isDisbanded == false
+            && (isCopy
+                ? appState.activeRoomCopyTakesPosts
+                : appState.groupCapabilities?.supports("groups.send") == true && surface?.room.isDisbanded == false)
     }
+
+    /// A room someone else hosts: posts go through your Hermes, and files
+    /// can't, since they'd stay on your Hermes.
+    private var isCopy: Bool { surface?.copy != nil }
 
     private var canSend: Bool {
         (hasText || !attachments.isEmpty) && roomAccepts && !isUploading
@@ -101,8 +113,32 @@ struct GroupRoomComposer: View {
     }
 
     private var mentionCandidates: [MentionAutocomplete.Candidate] {
-        guard isFocused, let query = MentionAutocomplete.activeQuery(in: draft) else { return [] }
+        guard isFocused, mentionsDismissedFor != draft,
+              let query = MentionAutocomplete.activeQuery(in: draft) else { return [] }
         return MentionAutocomplete.filter(MentionAutocomplete.roomCandidates(members), query: query)
+    }
+
+    /// The field's arrows, Tab, Escape and a highlighted Return, while the
+    /// mention list shows (ComposerSuggestionKeys).
+    private var mentionKeys: ComposerSuggestionKeys? {
+        let count = mentionCandidates.count
+        guard count > 0 else { return nil }
+        return ComposerSuggestionKeys(hasHighlight: (mentionHighlight ?? count) < count) { key in
+            let candidates = mentionCandidates
+            switch key {
+            case .up, .down:
+                mentionHighlight = ComposerSuggestionHighlight.moved(mentionHighlight, by: key, count: candidates.count)
+            case .dismiss:
+                mentionHighlight = nil
+                mentionsDismissedFor = draft
+            case .choose, .chooseFirst:
+                guard let index = ComposerSuggestionHighlight.picked(mentionHighlight, by: key, count: candidates.count)
+                else { return }
+                mentionHighlight = nil
+                Haptics.selection()
+                draft = MentionAutocomplete.completing(draft, with: candidates[index])
+            }
+        }
     }
 
     /// Solid, so the chat scrolling under the composer never shows
@@ -121,7 +157,7 @@ struct GroupRoomComposer: View {
         VStack(spacing: 0) {
             notices
             if !mentionCandidates.isEmpty {
-                MentionSuggestionList(candidates: mentionCandidates) { candidate in
+                MentionSuggestionList(candidates: mentionCandidates, highlighted: mentionHighlight) { candidate in
                     draft = MentionAutocomplete.completing(draft, with: candidate)
                 }
                 .padding(.horizontal, 10)
@@ -142,7 +178,7 @@ struct GroupRoomComposer: View {
                 attachmentStrip
             }
             HStack(alignment: .bottom, spacing: 2) {
-                if rests {
+                if rests, !isCopy {
                     // Capped as in the controls row, so the field keeps
                     // its width at accessibility sizes.
                     attachButton
@@ -181,9 +217,13 @@ struct GroupRoomComposer: View {
             attachments = appState.activeRoomAttachments()
             applyQuoteRequest(appState.roomQuoteRequest)
             applyRecipientRequest(appState.roomRecipientRequest)
+            applyDraftHandBack(appState.roomDraftHandBack)
         }
         .onChange(of: appState.roomQuoteRequest) { _, request in
             applyQuoteRequest(request)
+        }
+        .onChange(of: appState.roomDraftHandBack) { _, handBack in
+            applyDraftHandBack(handBack)
         }
         .onChange(of: appState.roomDropRequest) { _, request in
             guard let request, appState.consumeRoomDropRequest(request.id) else { return }
@@ -207,6 +247,8 @@ struct GroupRoomComposer: View {
         }
         .onChange(of: draft) { _, text in
             appState.saveActiveRoomDraft(text)
+            mentionHighlight = nil
+            if mentionsDismissedFor != text { mentionsDismissedFor = nil }
             composerError = nil
             // Typing ends a dictation; the words so far stay.
             if ComposerDictation.isTyping(text, dictationWrote: dictatedDraft), isDictationActive {
@@ -328,8 +370,7 @@ struct GroupRoomComposer: View {
                 if error == ComposerBar.cameraAccessMessage {
                     Button(AppLocalization.string("Open Settings")) {
                         composerError = nil
-                        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-                        UIApplication.shared.open(url)
+                        SystemSettings.open(.camera)
                     }
                     .scaledFont(.caption.weight(.semibold))
                 }
@@ -364,7 +405,8 @@ struct GroupRoomComposer: View {
             maxLines: 6,
             canSubmitFromReturn: canSubmitFromReturn,
             onSubmitFromReturn: { submitFromReturnKey() },
-            onLongTextPaste: { pasted in attachLongPaste(pasted) }
+            onLongTextPaste: { pasted in attachLongPaste(pasted) },
+            suggestionKeys: mentionKeys
         )
             .background(alignment: .topLeading) {
                 if draft.isEmpty {
@@ -401,7 +443,9 @@ struct GroupRoomComposer: View {
 
     private var controlsRow: some View {
         HStack(spacing: 8) {
-            attachButton
+            if !isCopy {
+                attachButton
+            }
             Spacer(minLength: 0)
             if !dictationHoldsSendSlot {
                 dictateButton
@@ -461,7 +505,7 @@ struct GroupRoomComposer: View {
                 }
             } else {
                 // Older plugins can't store a room's files; say what fixes it.
-                Text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats."))
+                Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.")))
             }
         } label: {
             Image(systemName: "plus")
@@ -575,10 +619,13 @@ struct GroupRoomComposer: View {
     /// Return key sends (Settings > Chat > Keyboard), as in a chat: Return
     /// stands for Send, which is dictation's Stop while it runs.
     private var canSubmitFromReturn: Bool {
-        canSend || dictationHoldsSendSlot
+        shell.chatTakesKeys && appState.botChatComingOverAnother == nil && (canSend || dictationHoldsSendSlot)
     }
 
     private func submitFromReturnKey() -> Bool {
+        // Checked live as well as in the field's gate, which a Bot Chat
+        // coming over the room reaches a render later.
+        guard appState.botChatComingOverAnother == nil else { return true }
         if dictationHoldsSendSlot {
             dictation.tapSlot()
             return true
@@ -638,9 +685,9 @@ struct GroupRoomComposer: View {
         let roomID = surface?.room.roomID
         uploadTask = Task {
             defer { isUploading = false }
-            let message: String
+            let message: AppState.RoomMessage
             do {
-                message = try await appState.roomMessageText(text, attachments: files)
+                message = try await appState.roomMessage(text, attachments: files)
             } catch {
                 // Left the room: the files stay in its draft.
                 if Task.isCancelled { return }
@@ -662,7 +709,11 @@ struct GroupRoomComposer: View {
                 draft = String(draft.dropFirst(typed.count)).trimmingCharacters(in: .whitespacesAndNewlines)
             }
             attachments.removeAll { file in files.contains { $0.id == file.id } }
-            let registered = await appState.sendGroupRoomMessage(message, threadID: sendsReply ? reply?.threadID : nil)
+            let registered = await appState.sendGroupRoomMessage(
+                message.text,
+                threadID: sendsReply ? reply?.threadID : nil,
+                attachments: message.attachments
+            )
             if registered {
                 files.forEach(ComposerBar.discardStagedFile)
             } else {
@@ -763,6 +814,15 @@ struct GroupRoomComposer: View {
     }
 
     // MARK: - Quotes
+
+    /// A refused post's text, back to edit: ahead of anything typed since.
+    private func applyDraftHandBack(_ handBack: RoomDraftHandBack?) {
+        guard let handBack else { return }
+        appState.consumeRoomDraftHandBack(handBack.id)
+        dictation.yieldToTyping()
+        draft = draft.isEmpty ? handBack.text : handBack.text + "\n" + draft
+        isFocused = true
+    }
 
     /// A quote from the room (#385 in a chat): selected text joins the draft
     /// as a `>` quote; a message's Quote button attaches the whole message
@@ -935,7 +995,7 @@ struct GroupRoomComposer: View {
     }
 
     private func importPhotos(_ items: [PhotosPickerItem]) {
-        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
         let roomID = surface?.room.roomID
         Task {
             var outcomes: [AttachmentStaging.StagedImport] = []
@@ -958,7 +1018,7 @@ struct GroupRoomComposer: View {
             Haptics.error()
             return
         }
-        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
         let roomID = surface?.room.roomID
         Task {
             var outcomes: [AttachmentStaging.StagedImport] = []
@@ -980,11 +1040,11 @@ struct GroupRoomComposer: View {
         // A disbanded room sends nothing, whichever target took the drop.
         guard !providers.isEmpty, surface?.room.isDisbanded == false else { return }
         guard appState.canAttachRoomFiles else {
-            composerError = AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.")
+            composerError = PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats."))
             Haptics.error()
             return
         }
-        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
         let roomID = surface?.room.roomID
         let files = providers.filter { !AttachmentDrop.isFolder($0) }
         let folders = files.count < providers.count ? AttachmentDrop.folderNames(in: providers) : nil
@@ -995,7 +1055,7 @@ struct GroupRoomComposer: View {
     }
 
     private func importCapturedPhoto(_ image: UIImage) {
-        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
         let roomID = surface?.room.roomID
         Task {
             let outcome = await Task.detached(priority: .userInitiated) {
@@ -1015,7 +1075,7 @@ struct GroupRoomComposer: View {
             canStoreFiles: appState.canAttachRoomFiles,
             disbanded: surface?.room.isDisbanded != false
         ) else { return false }
-        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+        let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
         let roomID = surface?.room.roomID
         // Past the attachment limit it can't go as a file: the words go in
         // the field, as every paste did before.
@@ -1048,9 +1108,9 @@ struct GroupRoomComposer: View {
                     ComposerBar.discardStagedFile(old)
                     return
                 }
-                let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes)
+                let limit = GroupRoomFilesClient.stagingLimit(preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
                 guard PastedText.fits(edited, limitMegabytes: limit) else {
-                    composerError = GroupRoomFilesClient.tooLargeMessage(names: [PastedText.displayName], preference: attachmentLimitMegabytes)
+                    composerError = GroupRoomFilesClient.tooLargeMessage(names: [PastedText.displayName], preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
                     Haptics.error()
                     return
                 }
@@ -1069,7 +1129,7 @@ struct GroupRoomComposer: View {
                         attachments[index] = updated
                         ComposerBar.discardStagedFile(old)
                     case .tooLarge(let name):
-                        composerError = GroupRoomFilesClient.tooLargeMessage(names: [name], preference: attachmentLimitMegabytes)
+                        composerError = GroupRoomFilesClient.tooLargeMessage(names: [name], preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes)
                         Haptics.error()
                     case .failed(let name):
                         composerError = AppLocalization.string("Could not prepare \(name) for upload.")
@@ -1108,7 +1168,7 @@ struct GroupRoomComposer: View {
         }
         var messages: [String] = []
         if !oversized.isEmpty {
-            messages.append(GroupRoomFilesClient.tooLargeMessage(names: oversized, preference: attachmentLimitMegabytes))
+            messages.append(GroupRoomFilesClient.tooLargeMessage(names: oversized, preference: attachmentLimitMegabytes, roomCap: appState.roomFileCapMegabytes))
         }
         if !failed.isEmpty {
             let list = failed.joined(separator: ", ")

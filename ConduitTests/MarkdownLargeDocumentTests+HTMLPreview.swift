@@ -145,6 +145,11 @@ extension MarkdownLargeDocumentTests {
         XCTAssertEqual(HTMLPreviewPage.clampedInlineHeight(10), HTMLPreviewPage.minimumInlineHeight)
         XCTAssertEqual(HTMLPreviewPage.clampedInlineHeight(320.2), 321)
         XCTAssertEqual(HTMLPreviewPage.clampedInlineHeight(5_000), HTMLPreviewPage.maximumInlineHeight)
+        // A page lays out at a phone's height, not the card's room, so one
+        // sized by the screen (100vh) can't measure its own room and shrink.
+        XCTAssertEqual(HTMLPreviewPage.inlineLayoutHeight(room: HTMLPreviewPage.placeholderHeight),
+                       HTMLPreviewPage.inlineViewportHeight)
+        XCTAssertEqual(HTMLPreviewPage.inlineLayoutHeight(room: 880), 880)
     }
 
     func testHTMLPreview_FullScreenOpensOnTheLoadedPage() {

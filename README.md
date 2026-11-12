@@ -41,7 +41,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 
 - Streaming replies with Markdown, highlighted code, math, Mermaid diagrams and task lists
 - Thinking, tool calls and each turn's steps, shown live or folded away; delegated-agent progress
-- Map, place, travel, media, contact and info cards that Hermes draws in the chat, and diff cards for the changes it shows you (a review, a commit, a config): files with their +added −removed counts in the chat, and a sheet with every file's colored lines, line numbers and changed words
+- Map, place, travel, media, contact and info cards that Hermes draws in the chat, and diff cards for the changes it shows you (a review, a commit, a config): files with their +added −removed counts in the chat, and a sheet with every file's colored lines, line numbers and changed words, and review cards for options easier to see than describe: tap one in the chat, or mark several Approve, Change or Skip with notes, at phone, tablet or desktop width, round after round
 - HTML pages Hermes draws with `::preview` (charts, small dashboards) show in the reply up to 900 points tall, their foot fading when there's more; tap one to open it full screen, where you can touch and scroll it. A page's `window.hermes.send` answers `undelivered`: Conduit doesn't send prompts from a page
 - Answer Hermes' questions with a tap, or in a short form when it needs several details: fill in what you know and leave the rest blank
 - Attach photos, camera shots and any file, or drag them onto a chat (Finder on a Mac, Files on an iPad); a long paste becomes a text attachment you can open, edit or put back as text; quote a message, react to it, copy it
@@ -55,16 +55,18 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 
 - Live voice calls with Gemini Live, Qwen Live, GPT-Live (ChatGPT subscription or API key), Grok Live, or Local Live on your own speech server, with echo cancellation and talking over Hermes
 - Start, check and cancel Hermes jobs by voice; results come back into the call
+- Show a call what you're looking at: take a photo mid-call and it joins the call's chat for Hermes; Gemini Live and Qwen Live see it themselves, and the other modes pass your questions about it to Hermes
 - Calls stay with their chat, keep going with the screen locked, shrink to a bar while you read, and are saved as chats you can resume
 - Hermes calls you: a CallKit call when a job is done, Hermes needs you, or a check you scheduled is due, on the phone or the Watch
-- Classic voice and dictation with on-device, Apple, Hermes or your own speech-to-text, spoken Stop and End, wake phrases, and Read Aloud for any reply
+- Classic voice and dictation with on-device, Apple, Hermes or your own speech-to-text, spoken Stop and End, wake phrases, and Read Aloud for any reply, or for every reply as it arrives
 - Apple Watch app that calls on its own, CarPlay, Siri and the Action Button; Watch and Siri calls can start on a profile you pick, whichever one the iPhone has open
+- Your chats in Spotlight and Siri: search a chat or Bot Chat by title from the Home Screen, say "Open Trip planning in Conduit" or "Ask Furina in Conduit", and pick a chat in the Send to Hermes action (only titles of the pinned and recent chats the widget offers are indexed, on the phone)
 
 **Tasks, bots and groups**
 
 - Tasks board for Hermes' Kanban tasks
-- Bots Home, the first tab: your bots as portraits, each opening its Bot Chat, dragged into your own order or dropped on each other to start a room, their faces flying into it, the group chats as small portraits under them, each with its own menu and dragged into your own order too, with an overview of its chat, work and artifacts, and its screen on a Linux host (watch the bot's desktop, take over for a sign-in, install it from the phone); Bots and their Bot Chats, with each bot's model, skills, tools and MCP servers, pictures Hermes or Apple's Image Playground can generate or a GIF, a short video or a still brought to life that moves on its portrait, and @mentions that bring another bot in; gateway-hosted group chats with @mentions, files and approvals, a purpose and shared notes, who answers a message that names nobody (everyone, a lead bot, or picked automatically) and Continue at the turn limit, and a pill per bot under the title saying whether it replied, passed or is responding, with a crown on the lead's
-- Scheduled jobs: review runs, run now, edit, mute their notifications, delete
+- Bots Home, the first tab: your bots as portraits, each opening its Bot Chat, dragged into your own order or dropped on each other to start a room, their faces flying into it, the group chats as small portraits under them, each with its own menu and dragged into your own order too (a room linked with other people's Conduits wears a two-people mark and draws their agents as they do; one someone else hosts sits after yours, with Delete once it's over), with an overview of its chat, work and artifacts, and its screen on a Linux host (watch the bot's desktop, pinch to zoom in or open it full screen and turn the phone sideways, take over for a sign-in, install it from the phone), also from the ⋯ menu of any chat on that profile; Bots and their Bot Chats, with each bot's model, skills, tools and MCP servers, pictures Hermes or Apple's Image Playground can generate or a GIF, a short video or a still brought to life that moves on its portrait, and @mentions that bring another bot in; gateway-hosted group chats with @mentions, files (sent as Hermes' own room attachments on Hermes 0.22.6 or later, so a bot without vision still sees a picture, or else through the plugin, as in a room linked with other people's Conduits; pictures shown and files opened as in a chat, with plugin pictures from 0.142 and other plugin files from 0.143, and in a room someone else hosts with 0.149, which carries them to your host) and approvals, a purpose and shared notes, who answers a message that names nobody (everyone, a lead bot, or picked automatically) and Continue at the turn limit, bots that start work from the room and bring the result back there, and a pill per bot under the title saying whether it replied, passed or is responding, with a crown on the lead's
+- Scheduled jobs: review runs, run now, edit, pin a model and reasoning, mute their notifications, delete
 - Pulse (beta): once you turn it on, Hermes brings things up on its own (a morning brief, follow-ups on what you said you'd do, deadlines and birthdays) as cards you can act on, rate or put off, and learns what's worth raising
 
 **Your phone, if you allow it**
@@ -74,20 +76,23 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 - Location and place rules, travel times, directions and navigation
 - Calendar and reminders, with each change asked first unless you allow adds
 - Apple Health data
-- Focus and phone status, alarms and timers, and contacts you pick
+- Focus and phone status, alarms and timers, and contacts you pick, which Hermes can ask to add to or change
+- Shortcuts you list, which Hermes can ask to run, with what each gives back
+- Photos Hermes can search by descriptions made on your iPhone; a photo itself goes only when you tap Send on its card, and pictures from a chat save to a Hermes album
 - Ask Hermes about what's on your screen, or send anything from Shortcuts or the share sheet
 
 **Notifications and control**
 
 - Approve tools and answer questions straight from a notification, end-to-end encrypted between your host and your phone
 - Live Activities on the Lock Screen and in the Dynamic Island while a reply runs
-- Home Screen widgets to start a chat or talk in one tap
+- Home Screen widgets to start a chat or talk in one tap, and a Pulse widget whose cards you can mark done, put off or send to Hermes without opening Conduit
 - Provider, model and reasoning effort switching mid-conversation
-- Connect model providers in Settings > Models & providers: sign in, paste an API key once for every profile (or give one profile its own), or add your own OpenAI-compatible server. Keys stay on your Hermes host and are never shown again
+- Connect model providers in Settings > Models & providers: sign in, paste an API key once for every profile (or give one profile its own), or add your own OpenAI-compatible server. Keys stay on your Hermes host and are never shown again. Each provider shows its logo, and one that reports a quota (a subscription sign-in, OpenRouter, OpenCode Go) shows how much is left and when it resets, there and in every model list
 - Pick the helper models Hermes runs smaller jobs on (chat titles, compaction, reading images, Conduit predictions and the rest) in Settings > Models & providers > Helper models, and the order a provider's keys take turns in on its page
-- Multiple dashboards and profiles, each with its own credentials and settings (Settings > Saved Dashboards can ask which dashboard to open each time Conduit launches); rename a profile or change its photo (a GIF, a short video or a still brought to life moves, or make one with Image Playground) and glow in Settings > Profiles; All in the profile row lists every profile's chats together, newest first with each row's profile picture, or grouped by profile with each profile's pinned chats and five newest until Show more
-- Capabilities: skills, tools, connectors (MCP servers you can test and edit, by form or as JSON) and plugins, plus Hermes settings and gateway logs
+- Multiple dashboards and profiles, each with its own credentials and settings (Settings > Saved Dashboards can ask which dashboard to open each time Conduit launches); rename a profile or change its photo (a GIF, a short video or a still brought to life moves, or make one with Image Playground) and glow in Settings > Profiles; edit a profile's personality, its SOUL.md, in Settings > Edit profile, on the same page Edit Bot opens; All in the profile row lists every profile's chats together, newest first with each row's profile picture, or grouped by profile with each profile's pinned chats and five newest until Show more
+- Capabilities: skills (and Hermes' skill hub to search and install from, with its security scan), tools, connectors (apps such as Gmail or Slack signed in through Nous Portal, and MCP servers you can test and edit, by form or as JSON) and plugins (Hermes' plugin catalog to browse by tier and category, with pictures, and each plugin's own settings), plus Hermes settings and gateway logs
 - Native OAuth sign-in through your dashboard, QR code and setup links, Cloudflare Access service tokens
+- Keyboard shortcuts on an iPad or a Mac: ⌘N for a new chat, ⌘1 to ⌘4 for the tabs, ⌘, for Settings, ⌘F to search, ⌘Return to send, ⌘. to stop a reply, ⌘+ and ⌘− for the chat's text size, and ⌘/ for the full list
 - Face ID or Touch ID lock, credentials in the Keychain
 - Available in English, French, German, Indonesian, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Russian, Simplified Chinese, Spanish, Traditional Chinese and Turkish
 

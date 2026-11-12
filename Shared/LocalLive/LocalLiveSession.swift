@@ -194,6 +194,11 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             // the speech server's model is only a pipe to Hermes.
             onSent?()
             return
+        case .image:
+            // A speech server takes no pictures: questions about the photo
+            // go to Hermes with the chat's next turn.
+            onSent?()
+            return
         case .audio, .audioStreamEnd, .textTurn:
             break
         }

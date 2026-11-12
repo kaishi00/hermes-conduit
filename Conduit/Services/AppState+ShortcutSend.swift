@@ -14,29 +14,91 @@ import Foundation
 @MainActor
 extension AppState {
     func sendFromShortcut(_ request: ShortcutSendRequest, deadline: Date) async throws -> ShortcutSendOutcome {
+        // Off screen, the run may reconnect on its own while it lasts (#2164).
+        shortcutSendsRunning += 1
+        defer { endShortcutSend() }
         releaseLaunchDashboardChoice(for: "a shortcut")
         return try await ShortcutSender(backend: makeShortcutSendBackend()).send(request, deadline: deadline)
     }
 
-    func makeShortcutSendBackend() -> ShortcutSendBackend {
+    /// Connects for a run that may start with Conduit in the background or
+    /// not running (a shortcut, a Pulse widget button), within the run's
+    /// `deadline`; whether Hermes can be reached. The run holds
+    /// `shortcutSendsRunning` meanwhile, so it may reconnect on its own.
+    func connectForBackgroundRun(deadline: Date) async -> Bool {
+        // With Conduit in the background, iOS may have let the socket die
+        // while it was suspended: a quiet one is checked first, as a call's
+        // request is, and a dead one reconnects at once rather than at the
+        // end of its backoff (#2164).
+        publishOpenSocketOffScreen()
+        await checkQuietTransportOffScreen()
+        reconnectNowForWaitingVoice("Shortcut send waiting")
+        // Leave time to send once connected, but always wait a moment for
+        // the reconnect just started, within the run.
+        let left = max(0, deadline.timeIntervalSinceNow)
+        let wait = max(min(2, left), min(12, left - 8))
+        guard await CarPlayVoiceCoordinator.awaitConnection(of: self, timeout: .seconds(wait)) else { return false }
+        return client != nil
+    }
+
+    /// With `dashboardID`, every chat it makes and every send stops with
+    /// `chatOnAnotherDashboard` once that dashboard is no longer the active
+    /// one, checked again after each wait before it picks the chat or sends.
+    func makeShortcutSendBackend(onlyOn dashboardID: UUID? = nil) -> ShortcutSendBackend {
         // The error a failed composer try left, for the run to clear once
         // its retry lands.
         let failedTry = ShortcutFailedTry()
+        let stayOnDashboard: @MainActor () throws -> Void = { [weak self] in
+            guard let dashboardID else { return }
+            guard self?.activeDashboardID == dashboardID else { throw ShortcutSendError.chatOnAnotherDashboard }
+        }
         return ShortcutSendBackend(
             connect: { [weak self] deadline in
-                guard let self else { return false }
-                // Leave time to send once connected.
-                let wait = max(0, min(12, deadline.timeIntervalSinceNow - 8))
-                guard await CarPlayVoiceCoordinator.awaitConnection(of: self, timeout: .seconds(wait)) else { return false }
-                return self.client != nil
+                await self?.connectForBackgroundRun(deadline: deadline) ?? false
             },
             activeProfile: { [weak self] in self?.activeProfile ?? "default" },
+            pickedChat: { [weak self] picked in
+                guard let self, let client = self.client else { throw HermesError.notConnected }
+                // Sending never switches dashboards: that's the app's to do on screen.
+                guard picked.dashboardID == self.activeDashboardID else { throw ShortcutSendError.chatOnAnotherDashboard }
+                let reference = picked.reference
+                switch reference.kind {
+                case .dashboard:
+                    return VoiceThreadTarget(runtimeSessionID: reference.sessionID, storedSessionID: reference.sessionID,
+                                             title: picked.title ?? "", profile: reference.scopeProfile)
+                case .bot:
+                    // The bot's chat now, as its Bots row opens it (a /new
+                    // since the pick moved it), never a new one.
+                    guard let botName = reference.botName else { throw ShortcutSendError.chatUnavailable }
+                    let isPicked = { (bot: BotProfile) in bot.name == botName && !bot.isHiddenByMeta }
+                    // Right after connecting the bot list may not have loaded
+                    // yet (or was cleared with saved chats): ask for the
+                    // current one before calling the bot gone.
+                    if !self.shownBotRoster.contains(where: isPicked) { await self.refreshBotRoster() }
+                    guard let bot = self.shownBotRoster.first(where: isPicked) else {
+                        throw ShortcutSendError.chatUnavailable
+                    }
+                    let rows = try await self.botChatLookupRows(client, profile: bot.name)
+                    let resumeID: String
+                    switch BotChatResolver.resolve(rows: rows, rosterCanonicalID: bot.canonicalSessionID) {
+                    case .success(.openExisting(_, let id)): resumeID = id
+                    // The lookup came back empty for a chat the roster names:
+                    // not proof it's gone.
+                    case .failure(.unconfirmedAbsence): throw ShortcutSendError.chatUnconfirmed
+                    default: throw ShortcutSendError.chatUnavailable
+                    }
+                    return VoiceThreadTarget(runtimeSessionID: resumeID, storedSessionID: resumeID,
+                                             title: bot.displayLabel, profile: bot.name)
+                }
+            },
             createChat: { [weak self] profile, title in
+                try stayOnDashboard()
                 guard let self, let client = self.client else { throw HermesError.notConnected }
                 let inUse = self.profilesMatch(profile, self.activeProfile)
                 // As a chat started from the composer: the profile's default
                 // model, not the open chat's (#916).
                 let created = try await client.createSession(inProfile: inUse ? nil : profile)
+                try stayOnDashboard()
                 if let returned = created.profile, !self.profilesMatch(returned, profile) {
                     throw HermesError.invalidResponse
                 }
@@ -53,6 +115,7 @@ extension AppState {
                 return try await self.reopenVoiceThreadRuntime(self.scopedShortcutChat(chat))
             },
             submit: { [weak self] chat, runtimeID, text in
+                try stayOnDashboard()
                 guard let self, self.client != nil else { throw HermesError.notConnected }
                 let scoped = self.scopedShortcutChat(chat)
                 // Shortcut text is literal: "/…" never runs a composer command.
@@ -66,29 +129,44 @@ extension AppState {
                     guard await self.voiceThreadRuntimeIsLive(runtimeID, profile: scoped.profile) else {
                         throw RpcError(code: 4001, message: "session not found")
                     }
-                    // A turn the composer finds running is never steered or
-                    // interrupted from here: it declines and the gateway queues.
-                    self.submissionTurnSurface = (text, .shortcut)
-                    defer { self.submissionTurnSurface = nil }
-                    // Whether the composer wrote the error, even one reading
-                    // the same as a banner already on screen.
-                    var wroteError = false
-                    let errorWrites = self.$errorMessage.dropFirst().sink { wroteError = $0 != nil }
-                    let sent = await self.submitComposer(text: text, onBusy: {})
-                    errorWrites.cancel()
-                    if sent { return .accepted }
-                    // A runtime that died after the check (or a check that
-                    // couldn't read): the composer showed "Failed to send".
-                    if wroteError, let error = self.errorMessage { failedTry.error = error }
+                    try stayOnDashboard()
+                    // The check waited: a chat opened meanwhile never takes this
+                    // text in its composer. Hermes takes it below instead.
+                    if self.isOpenChat(scoped), self.activeSessionId == runtimeID, !self.isBusy {
+                        // A turn the composer finds running is never steered or
+                        // interrupted from here: it declines and the gateway queues.
+                        self.submissionTurnSurface = (text, .shortcut)
+                        defer { self.submissionTurnSurface = nil }
+                        // Whether the composer wrote the error, even one reading
+                        // the same as a banner already on screen.
+                        var wroteError = false
+                        let errorWrites = self.$errorMessage.dropFirst().sink { wroteError = $0 != nil }
+                        let sent = await self.submitComposer(text: text, onBusy: {})
+                        errorWrites.cancel()
+                        if sent {
+                            // Admitted behind a turn a restart cut off: no reply
+                            // comes until the chat's card is answered.
+                            if self.client?.chatIsHeldByLostTurn(runtimeID) == true { return .queued }
+                            return .accepted
+                        }
+                        // A runtime that died after the check (or a check that
+                        // couldn't read): the composer showed "Failed to send".
+                        if wroteError, let error = self.errorMessage { failedTry.error = error }
+                    }
                 }
                 // Off screen, a turn running there, or a composer that couldn't
                 // take it (still synchronizing): Hermes takes it, queues it or
                 // joins the turn running.
+                // A run that has left the dashboard reports no turn surface.
+                try stayOnDashboard()
+                let reportedOn = self.activeDashboardID
                 await self.reportTurnSurface(.shortcut, runtimeSessionID: runtimeID, text: text)?.value
                 do {
+                    try stayOnDashboard()
                     return try await self.sendShortcutPrompt(runtimeID, text: text)
                 } catch {
-                    self.discardTurnSurface(runtimeSessionID: runtimeID, text: text, after: error)
+                    // A run that has left the dashboard discards nothing either.
+                    self.discardTurnSurface(runtimeSessionID: runtimeID, text: text, after: error, reportedOn: reportedOn)
                     throw error
                 }
             },

@@ -3,8 +3,9 @@
 //  Conduit
 //
 //  A short look back at a finished turn's run of steps: asked of Hermes
-//  with a hidden /btw once the turn ends (opt-in, Settings > Chat) or from
-//  a run's menu, and kept on this device per dashboard and profile
+//  as a side question once the turn ends (opt-in, Settings > Chat) or from
+//  a run's menu, through the plugin's /side-question (a hidden /btw on a
+//  host without it), and kept on this device per dashboard and profile
 //  (ChatStepSummaries).
 //
 
@@ -16,7 +17,7 @@ extension AppState {
     /// the run folds within the step limit and it hasn't been asked about.
     func requestStepSummaryIfWanted(sessionId: String) {
         reapStepSummaryQuestions()
-        guard ChatStepSummaries.isEnabled(), !sessionId.isEmpty, !isBusy, let client,
+        guard ChatStepSummaries.isEnabled(), !sessionId.isEmpty, !isBusy, canAskStepSummaries,
               let run = ChatStepSummaries.lastRun(in: messages),
               ChatStepSummaries.isAsked(
                   run,
@@ -30,14 +31,19 @@ extension AppState {
             language: ChatStepSummaries.languageName,
             words: ChatStepSummaries.words(toolCount: run.filter { $0.role == .tool }.count)
         )
-        askStepSummary(question, for: target, sessionId: sessionId, client: client)
+        askStepSummary(question, for: target, sessionId: sessionId)
+    }
+
+    /// The plugin's route, or Hermes' own connection for a hidden /btw.
+    private var canAskStepSummaries: Bool {
+        stepSummarySender != nil || dashboardTicketBridge != nil || client != nil
     }
 
     /// Asked from a finished run's menu, whether or not summaries are on:
     /// Hermes explains that run from the calls the question lists.
     func explainStepRun(firstMessageID: String) {
         reapStepSummaryQuestions()
-        guard let sessionId = activeSessionId, !sessionId.isEmpty, let client,
+        guard let sessionId = activeSessionId, !sessionId.isEmpty, canAskStepSummaries,
               let start = messages.firstIndex(where: { $0.id == firstMessageID }) else { return }
         let run = messages[start...].prefix(while: ChatStepGroup.isStep)
         let steps = run.compactMap { $0.role == .tool ? $0.tool : nil }
@@ -50,10 +56,10 @@ extension AppState {
             words: ChatStepSummaries.explainWords(toolCount: steps.count),
             steps: steps
         )
-        askStepSummary(question, for: target, sessionId: sessionId, client: client)
+        askStepSummary(question, for: target, sessionId: sessionId)
     }
 
-    private func askStepSummary(_ question: String, for target: ChatStepSummaries.Run, sessionId: String, client: HermesClient) {
+    private func askStepSummary(_ question: String, for target: ChatStepSummaries.Run, sessionId: String) {
         let asked = Date()
         stepSummaryRequested[target] = asked
         // Unanswered by then, the run stops "looking back" and its menu
@@ -63,6 +69,14 @@ extension AppState {
             guard let self, stepSummaryRequested[target] == asked else { return }
             stepSummaryRequested[target] = nil
             stepSummaryTasks = stepSummaryTasks.filter { $0.value != target }
+        }
+        if stepSummarySender != nil || notifierPlugin.reports(ChatStepSummaries.sideQuestionCapability) {
+            askStepSummaryOfPlugin(question, for: target, asked: asked, sessionId: sessionId)
+            return
+        }
+        guard let client else {
+            stepSummaryRequested[target] = nil
+            return
         }
         stepSummaryUnclaimed += 1
         Task { [weak self] in
@@ -84,6 +98,46 @@ extension AppState {
                 }
             }
             if stepSummaryUnclaimed == 0 { stepSummaryEarlyAnswers = [:] }
+        }
+    }
+
+    /// The plugin's route answers this device alone, so no other client on
+    /// the chat (Hermes Desktop) shows the question and its answer as a
+    /// note. No answer, an error or a late one leaves the run's count, as an
+    /// unanswered /btw does.
+    private func askStepSummaryOfPlugin(
+        _ question: String, for target: ChatStepSummaries.Run, asked: Date, sessionId: String
+    ) {
+        let body = ChatStepSummaries.sideQuestionBody(sessionID: sessionId, question: question)
+        // The dashboard the question was asked of, read now: a switch while
+        // it waits must not send this chat's question to another host.
+        let sender = stepSummarySender
+        let bridge = dashboardTicketBridge
+        let path = DashboardPath.withProfile(
+            ChatStepSummaries.sideQuestionPath, profile: activeProfile,
+            parameter: notifierPlugin.dashboardProfileParameter
+        )
+        Task { [weak self] in
+            let response: [String: Any]?
+            if let sender {
+                response = try? await sender(body)
+            } else if let bridge {
+                response = try? await bridge.requestJSON(
+                    path: path, method: "POST", body: body,
+                    timeoutMilliseconds: Int((ChatStepSummaries.sideQuestionWait + 5) * 1_000)
+                )
+            } else {
+                response = nil
+            }
+            // Only while this is still the run's question: forgotten
+            // meanwhile, or asked again since, its answer is dropped.
+            guard let self, stepSummaryRequested[target] == asked else { return }
+            if let text = response.flatMap(ChatStepSummaries.sideQuestionAnswer),
+               Date().timeIntervalSince(asked) < ChatStepSummaries.answerWait {
+                recordStepSummary(text, for: target)
+            } else {
+                stepSummaryRequested[target] = nil
+            }
         }
     }
 

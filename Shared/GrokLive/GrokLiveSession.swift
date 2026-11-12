@@ -163,6 +163,11 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
             return
         }
         let (frames, wantsResponse) = GrokLiveProtocol.frames(for: message, upsampler: &inputUpsampler)
+        // A message with nothing to send here (a picture) is done.
+        guard !frames.isEmpty else {
+            onSent?()
+            return
+        }
         let texts = frames.compactMap { try? GrokLiveProtocol.encode($0) }
         guard texts.count == frames.count else {
             onFailure?()

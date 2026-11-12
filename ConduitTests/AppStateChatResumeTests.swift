@@ -8376,6 +8376,23 @@ final class AppStateChatResumeTests: XCTestCase {
         )
     }
 
+    /// #2164: a shortcut run off screen publishes the socket an interrupted
+    /// connect left open, as coming on screen does, and sends over it; the
+    /// owed bootstrap still waits for the phone.
+    func testShortcutSendOffScreenPublishesASocketAnInterruptedConnectLeftOpen() async {
+        let fixture = await startConnectInterruptedBySceneDeactivation()
+        let appState = fixture.harness.appState
+        XCTAssertFalse(appState.isConnected, "the interrupted connect never published its socket")
+        appState.quietTransportLiveness = { _ in true }
+
+        let connected = await appState.makeShortcutSendBackend().connect(Date().addingTimeInterval(20))
+
+        XCTAssertTrue(connected)
+        XCTAssertTrue(appState.isConnected)
+        XCTAssertFalse(appState.isConnecting)
+        XCTAssertEqual(fixture.counters.catalogLoads, 0, "the owed bootstrap waits for the phone")
+    }
+
     func testConnectInterruptedBySceneDeactivationRunsOwedBootstrapOnActivation() async {
         let fixture = await startConnectInterruptedBySceneDeactivation()
         let harness = fixture.harness

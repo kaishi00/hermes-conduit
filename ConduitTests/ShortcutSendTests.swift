@@ -30,11 +30,19 @@ private final class FakeHermes {
     var replyReads = 0
     /// iOS ends the run while it waits.
     var cancelsSleep = false
+    /// Picked chats asked for, and what each resolves to (nil: gone).
+    var picks: [ShortcutPickedChat] = []
+    var pickedTarget: VoiceThreadTarget?
 
     func backend() -> ShortcutSendBackend {
         ShortcutSendBackend(
             connect: { _ in self.connects },
             activeProfile: { "default" },
+            pickedChat: { picked in
+                self.picks.append(picked)
+                guard let target = self.pickedTarget else { throw ShortcutSendError.chatUnavailable }
+                return target
+            },
             createChat: { profile, title in
                 self.created.append((profile, title))
                 let id = "run-\(self.created.count)"
@@ -98,6 +106,60 @@ extension ScreenQuestionTests {
     }
 
     // MARK: - Which chat
+
+    private func pickedChat(_ session: String = "chat-7") -> ShortcutPickedChat {
+        ShortcutPickedChat(
+            dashboardID: UUID(uuidString: "00000000-0000-0000-0000-000000000007")!,
+            reference: WidgetConversationReference(kind: .dashboard, scopeProfile: "work", botName: nil, botLabel: nil,
+                                                   sessionID: session, isUnverified: false),
+            title: "Trip planning")
+    }
+
+    @MainActor
+    func testAPickedChatIsResumedAndWinsOverAChatName() async throws {
+        let hermes = FakeHermes()
+        hermes.pickedTarget = VoiceThreadTarget(runtimeSessionID: "chat-7", storedSessionID: "chat-7",
+                                                title: "Trip planning", profile: "work")
+        let chats = shortcutChats()
+        var request = shortcutRequest("Book the train", chat: "Log")
+        request.chat = pickedChat()
+        let outcome = try await sender(hermes, chats).send(request, deadline: hermes.now.addingTimeInterval(25))
+
+        XCTAssertEqual(outcome, .sent)
+        XCTAssertEqual(hermes.picks, [pickedChat()])
+        XCTAssertEqual(hermes.resumed.map(\.storedSessionID), ["chat-7"])
+        XCTAssertEqual(hermes.resumed.map(\.profile), ["work"])
+        XCTAssertEqual(hermes.submitted.map(\.runtimeID), ["resumed-1"])
+        XCTAssertTrue(hermes.created.isEmpty)
+        // The name wasn't kept for a later run.
+        XCTAssertNil(chats.chat(named: "Log", profile: "default"))
+    }
+
+    @MainActor
+    func testAPickedChatHermesNoLongerHasSendsNothingAndMakesNoChat() async throws {
+        let hermes = FakeHermes()
+        hermes.pickedTarget = VoiceThreadTarget(runtimeSessionID: "chat-7", storedSessionID: "chat-7",
+                                                title: "Trip planning", profile: "work")
+        hermes.resumeFails = true
+        var request = shortcutRequest("Book the train")
+        request.chat = pickedChat()
+        do {
+            _ = try await sender(hermes, shortcutChats()).send(request, deadline: hermes.now.addingTimeInterval(25))
+            XCTFail("A gone chat must fail the run")
+        } catch let error as ShortcutSendError {
+            XCTAssertEqual(error, .chatUnavailable)
+        }
+        hermes.pickedTarget = nil
+        hermes.resumeFails = false
+        do {
+            _ = try await sender(hermes, shortcutChats()).send(request, deadline: hermes.now.addingTimeInterval(25))
+            XCTFail("A pick that can't be found must fail the run")
+        } catch let error as ShortcutSendError {
+            XCTAssertEqual(error, .chatUnavailable)
+        }
+        XCTAssertTrue(hermes.submitted.isEmpty)
+        XCTAssertTrue(hermes.created.isEmpty)
+    }
 
     @MainActor
     func testEachRunWithoutAChatNameStartsANewChatTitledFromTheText() async throws {
@@ -450,6 +512,107 @@ extension ScreenQuestionTests {
     func testALongFirstLineIsShortenedInTheTitle() {
         let title = ShortcutSender.title(for: String(repeating: "a", count: 100))
         XCTAssertEqual(title, "Shortcut: " + String(repeating: "a", count: 59) + "…")
+    }
+
+    // MARK: - A picked Bot Chat
+
+    /// A picked Bot Chat opens the bot's chat now, as its Bots row would; a
+    /// bot not in the list yet is looked up before it's called gone, and a
+    /// hidden or missing bot, an unconfirmed lookup or another dashboard
+    /// sends nothing.
+    @MainActor
+    func testAPickedBotChatOpensTheBotsChatNowAndNeverAnotherOne() async throws {
+        let defaults = makeScratchDefaults("ShortcutSendBotPickTests")
+        let dashboard = SavedDashboard(id: UUID(), label: "Home", normalizedURL: "https://one.example")
+        func bot(_ name: String, hidden: Bool = false, canonical: String? = nil) -> BotProfile {
+            BotProfile(name: name, botTitle: nil, displayName: name.capitalized, profileDescription: "", model: nil,
+                       provider: nil, hasAvatar: false, isPinned: false, isHiddenByMeta: hidden, appearanceColor: nil,
+                       canonicalSession: canonical.map { BotCanonicalSession(id: $0, resolvedID: nil, lastActive: nil, preview: nil) },
+                       lastActive: nil, lastPreview: nil)
+        }
+        var roster: [BotProfile] = []
+        var rosterReads = 0
+        let lookups: [String: [BotChatLookupRow]] = [
+            "atlas": [BotChatLookupRow(id: "atlas-durable", resolvedID: "atlas-tip", title: BotMode.canonicalChatTitle)],
+        ]
+        var operations = ChatResumeLifecycleOperations()
+        operations.botRoster = { _ in
+            rosterReads += 1
+            return BotRosterSnapshot(bots: roster, supportsBotProtocol: true)
+        }
+        operations.findBotChat = { _, profile in lookups[profile] ?? [] }
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: dashboard.id, dashboards: [dashboard]),
+            clearSessionPresentationCache: {},
+            chatResumeLifecycleOperations: operations,
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults)
+        )
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        appState.connection = connection
+        appState.client = HermesClient(connection: connection, profile: "default")
+        appState.isConnected = true
+        let backend = appState.makeShortcutSendBackend()
+        func pick(_ name: String, on dashboardID: UUID = dashboard.id) -> ShortcutPickedChat {
+            ShortcutPickedChat(dashboardID: dashboardID,
+                               reference: WidgetConversationReference(kind: .bot, scopeProfile: name, botName: name, botLabel: name,
+                                                                      sessionID: "picked-then", isUnverified: false),
+                               title: name)
+        }
+        func refusal(_ chat: ShortcutPickedChat) async -> ShortcutSendError? {
+            do {
+                _ = try await backend.pickedChat(chat)
+                return nil
+            } catch {
+                return error as? ShortcutSendError
+            }
+        }
+
+        // Another dashboard: nothing is looked up.
+        let away = await refusal(pick("atlas", on: UUID()))
+        XCTAssertEqual(away, .chatOnAnotherDashboard)
+        XCTAssertEqual(rosterReads, 0)
+
+        // Not in the list yet: the list is asked for before the run gives up.
+        roster = [bot("atlas")]
+        let opened = try await backend.pickedChat(pick("atlas"))
+        XCTAssertEqual(rosterReads, 1)
+        XCTAssertEqual(opened.runtimeSessionID, "atlas-tip", "the chat's tip now, not the one picked")
+        XCTAssertEqual(opened.profile, "atlas")
+
+        // Hidden, or gone from Hermes: nothing sent.
+        roster = [bot("atlas"), bot("kai", hidden: true)]
+        let hidden = await refusal(pick("kai"))
+        XCTAssertEqual(hidden, .chatUnavailable)
+        let missing = await refusal(pick("nobody"))
+        XCTAssertEqual(missing, .chatUnavailable)
+
+        // A bot with no chat is never given a new one from here, and an empty
+        // lookup for a chat the roster names is worth a retry, not "gone".
+        roster = [bot("atlas"), bot("rei"), bot("nia", canonical: "nia-durable")]
+        await appState.refreshBotRoster()
+        let noChat = await refusal(pick("rei"))
+        XCTAssertEqual(noChat, .chatUnavailable)
+        let unconfirmed = await refusal(pick("nia"))
+        XCTAssertEqual(unconfirmed, .chatUnconfirmed)
+
+        // A backend bound to another dashboard (a widget Do it whose dashboard
+        // was switched away) makes no chat and sends nothing.
+        let elsewhere = appState.makeShortcutSendBackend(onlyOn: UUID())
+        let chat = VoiceThreadTarget(runtimeSessionID: "r", storedSessionID: "r", title: "Card", profile: "default")
+        let attempts: [@MainActor () async throws -> Void] = [
+            { _ = try await elsewhere.createChat("default", "Card") },
+            { _ = try await elsewhere.submit(chat, "r", "Do it") },
+        ]
+        for attempt in attempts {
+            do {
+                try await attempt()
+                XCTFail("ran on another dashboard")
+            } catch {
+                XCTAssertEqual(error as? ShortcutSendError, .chatOnAnotherDashboard)
+            }
+        }
     }
 
     // MARK: - The named chat is the chat on screen

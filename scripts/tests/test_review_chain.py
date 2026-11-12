@@ -4,7 +4,7 @@ script (REVIEW_CHAIN_SH) walks it: a test request skips a key that is
 unset or refused (a usage limit's 429), a review that runs too long moves
 on to the next key when its key now refuses and to the next model
 otherwise, and a failed review moves on. These run that script with
-stand-ins for curl and opencode."""
+stand-ins for curl, opencode and git."""
 
 import json
 import os
@@ -49,6 +49,10 @@ FAKE_OPENCODE = r"""#!/usr/bin/env bash
 var=$(jq -r --arg p "${MODEL%%/*}" '.provider[$p].options.apiKey' "$CONFIG" | sed 's/^{env://; s/}$//')
 key=${!var}
 echo "review $MODEL $key ${PROMPT%%$'\n'*}" >> "$FAKE/log"
+printf '%s' "$PROMPT" > "$FAKE/prompt"
+# Each attempt must start with opencode's "fork" remote gone.
+[ -e "$FAKE/no-fork-remote" ] || echo "stale fork remote" >> "$FAKE/stale"
+rm -f "$FAKE/no-fork-remote"
 for k in OPENCODE_GO_API_KEY_2 COMMANDCODE_API_KEY_2; do
   [ "$k" = "$var" ] || [ -z "${!k:-}" ] || echo "leak $k" >> "$FAKE/log"
 done
@@ -61,8 +65,17 @@ case "$what" in
 esac
 """
 
+# The chain removes opencode's "fork" remote before each attempt; this stand-in
+# keeps the test from touching the checkout's real remotes.
+FAKE_GIT = """#!/bin/bash
+echo "$*" >> "$FAKE/git"
+[ "$*" = "remote remove fork" ] && touch "$FAKE/no-fork-remote"
+exit 0
+"""
+
 KEYS = {"OPENCODE_GO_API_KEY": "go1", "OPENCODE_GO_API_KEY_2": "go2",
-        "COMMANDCODE_API_KEY": "cc1", "COMMANDCODE_API_KEY_2": "cc2", "ZAI_API_KEY": "zai"}
+        "COMMANDCODE_API_KEY": "cc1", "COMMANDCODE_API_KEY_2": "cc2", "ZAI_API_KEY": "zai",
+        "STEPFUN_API_KEY": "step"}
 
 
 def chain(name):
@@ -76,12 +89,12 @@ def chain(name):
 
 @unittest.skipUnless(shutil.which("jq") and shutil.which("timeout"), "jq or timeout isn't installed")
 class ReviewChainTests(unittest.TestCase):
-    def run_chain(self, reviewer="DeepSeek, then Beam", codes=(), runs=(), unset=(), chain_minutes="70"):
+    def run_chain(self, reviewer="DeepSeek, then Beam", codes=(), runs=(), unset=(), chain_minutes="70", earlier=None):
         tmp = tempfile.mkdtemp()
         self.addCleanup(shutil.rmtree, tmp)
         bin_dir = os.path.join(tmp, "bin")
         os.mkdir(bin_dir)
-        for name, body in (("curl", FAKE_CURL), ("opencode", FAKE_OPENCODE)):
+        for name, body in (("curl", FAKE_CURL), ("opencode", FAKE_OPENCODE), ("git", FAKE_GIT)):
             path = os.path.join(bin_dir, name)
             with open(path, "w", encoding="utf-8") as fh:
                 fh.write(body)
@@ -97,6 +110,10 @@ class ReviewChainTests(unittest.TestCase):
                    CHAIN=json.dumps(chain(reviewer)), REVIEW_MINUTES="0.03", CHAIN_MINUTES=chain_minutes,
                    PROMPT="Start the review with the label: Review by {reviewer}.\nmore")
         env.pop("GITHUB_STEP_SUMMARY", None)
+        if earlier is not None:
+            env["EARLIER_PATH"] = os.path.join(tmp, "earlier-rounds.md")
+            with open(env["EARLIER_PATH"], "w", encoding="utf-8") as fh:
+                fh.write(earlier)
         for k, v in KEYS.items():
             if k not in unset:
                 env[k] = v
@@ -104,6 +121,12 @@ class ReviewChainTests(unittest.TestCase):
                              capture_output=True, text=True, timeout=60)
         with open(os.path.join(tmp, "log"), encoding="utf-8") as fh:
             log = fh.read().splitlines()
+        self.fake_dir = tmp
+        git_path = os.path.join(tmp, "git")
+        self.git_calls = []
+        if os.path.exists(git_path):
+            with open(git_path, encoding="utf-8") as fh:
+                self.git_calls = fh.read().splitlines()
         outputs = {}
         if os.path.exists(output):
             with open(output, encoding="utf-8") as fh:
@@ -120,6 +143,29 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(log[0], "probe go1 deepseek-v4.1-flash")
         self.assertIn("Review by DeepSeek V4.1 Flash.", log[1])
         self.assertEqual(out, {"model": "go-custom/deepseek-v4.1-flash", "name": "DeepSeek V4.1 Flash"})
+
+    def test_the_earlier_rounds_follow_the_prompt(self):
+        run, log, out = self.run_chain(earlier="## Earlier rounds\n\nlast review")
+        self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+        with open(os.path.join(self.fake_dir, "prompt"), encoding="utf-8") as fh:
+            prompt = fh.read()
+        self.assertTrue(prompt.startswith("Start the review with the label: Review by DeepSeek V4.1 Flash."), prompt)
+        self.assertTrue(prompt.endswith("more\n\n## Earlier rounds\n\nlast review"), prompt)
+
+        # A first review, or one whose lookup found nothing, gets the prompt alone.
+        for earlier in (None, ""):
+            run, log, out = self.run_chain(earlier=earlier)
+            with open(os.path.join(self.fake_dir, "prompt"), encoding="utf-8") as fh:
+                self.assertTrue(fh.read().endswith("\nmore"))
+
+    def test_each_attempt_drops_the_fork_remote_first(self):
+        # opencode adds a "fork" remote on a fork's PR and fails if it's there,
+        # so a fallback after a failed attempt must start without it (#1924).
+        run, log, out = self.run_chain(codes=[("go1", 429)], runs=[("go-custom/deepseek-v4.1-flash", "go2", "fail")])
+        self.assertEqual(len(self.reviews(log)), 2, log)
+        self.assertEqual(self.git_calls, ["remote remove fork"] * 2)
+        self.assertFalse(os.path.exists(os.path.join(self.fake_dir, "stale")),
+                         "an attempt ran opencode before removing the fork remote")
 
     def test_limited_keys_fall_through_to_command_code_then_beam(self):
         run, log, out = self.run_chain(codes=[("go1", 429), ("go2", 429)])
@@ -179,22 +225,41 @@ class ReviewChainTests(unittest.TestCase):
         self.assertEqual(labels, ["Review by DeepSeek V4.1 Flash."] * 4 + ["Review by Beam."])
 
     def test_the_last_model_isnt_cut_short(self):
-        # A chain of one has nothing to fall back to, so a slow GLM review
-        # gets the chain's whole budget, not REVIEW_MINUTES (1.8 s here).
-        tmp_runs = [("zai-custom/glm-5.3-flash", "zai", "slow")]
-        run, log, out = self.run_chain(reviewer="GLM-5.3-Flash", runs=tmp_runs, chain_minutes="0.2")
+        # Step 5 Preview is the gate chain's last model, so nothing would
+        # replace it: a slow review gets the rest of the chain's budget, not
+        # REVIEW_MINUTES (1.8 s here).
+        runs = [("zai-custom/glm-5.3-flash", "zai", "fail"), ("stepfun/step-5-preview", "step", "slow")]
+        run, log, out = self.run_chain(reviewer="GLM-5.3-Flash", runs=runs, chain_minutes="0.2")
         self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
-        self.assertEqual(out["model"], "zai-custom/glm-5.3-flash")
+        self.assertEqual(out["model"], "stepfun/step-5-preview")
 
     def test_only_the_attempts_key_reaches_opencode(self):
         run, log, out = self.run_chain(codes=[("go1", 429)])
         self.assertEqual(self.reviews(log), [["go-custom/deepseek-v4.1-flash", "go2"]])
         self.assertFalse([line for line in log if line.startswith("leak ")], log)
 
-    def test_glm_is_a_chain_of_one(self):
+    def test_glm_reviews_when_it_can(self):
         run, log, out = self.run_chain(reviewer="GLM-5.3-Flash")
         self.assertEqual(self.reviews(log), [["zai-custom/glm-5.3-flash", "zai"]])
         self.assertEqual(out["model"], "zai-custom/glm-5.3-flash")
+        self.assertEqual(out["name"], "GLM-5.3-Flash")
+
+    def test_glm_falls_back_to_step_5_preview(self):
+        # Whatever stops GLM (a refused test request such as a usage
+        # limit, a failed review, or one past REVIEW_MINUTES), Step 5
+        # Preview reviews, and the label and outputs name it.
+        for case in ({"codes": [("zai", 429)]},
+                     {"runs": [("zai-custom/glm-5.3-flash", "zai", "fail")]},
+                     {"runs": [("zai-custom/glm-5.3-flash", "zai", "hang")]},
+                     {"unset": ["ZAI_API_KEY"]}):
+            with self.subTest(case=case):
+                run, log, out = self.run_chain(reviewer="GLM-5.3-Flash", **case)
+                self.assertEqual(run.returncode, 0, run.stdout + run.stderr)
+                self.assertEqual(self.reviews(log)[-1], ["stepfun/step-5-preview", "step"])
+                self.assertEqual(out["model"], "stepfun/step-5-preview")
+                self.assertEqual(out["name"], "Step 5 Preview")
+                labels = [line.split("label: ", 1)[1] for line in log if line.startswith("review ")]
+                self.assertEqual(labels[-1], "Review by Step 5 Preview.")
 
     def test_every_chain_model_is_in_opencode_json(self):
         with open(os.path.join(REPO_ROOT, "opencode.json"), encoding="utf-8") as fh:

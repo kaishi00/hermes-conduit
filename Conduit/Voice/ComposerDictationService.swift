@@ -168,8 +168,8 @@ final class ComposerDictationService: ObservableObject {
     }
 
     /// Permission, language and the model, before the microphone opens.
-    /// Voice messages transcribe with the same engine; they send their own
-    /// recording, so only dictation passes `clips` to keep Hermes' one.
+    /// Voice messages transcribe through here too, with their own engine
+    /// choice (VoiceMessageEngine); they send their own recording, so only dictation passes `clips` to keep Hermes' one.
     static func makeRecognizer(
         _ choice: DictationEngine,
         words: [String],

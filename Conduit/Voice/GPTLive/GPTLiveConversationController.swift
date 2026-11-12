@@ -19,6 +19,7 @@
 //
 
 import AVFAudio
+import Combine
 import Foundation
 
 // MARK: - Seams
@@ -32,7 +33,8 @@ protocol GPTLiveSessionControlling: AnyObject {
     var isReady: Bool { get }
     /// Set when the host didn't use the voice the user chose.
     var voiceNote: String? { get }
-    /// True when the host already gave the model the briefing.
+    /// True when the host already gave the model the briefing (never on
+    /// Codex's GA endpoint, which drops it).
     var briefingApplied: Bool { get }
     /// True when the host already made the model greet first.
     var greetingApplied: Bool { get }
@@ -123,7 +125,10 @@ final class GPTLiveConversationController: ObservableObject {
 
     /// The most briefing the notifier plugin takes for a call, counted as it
     /// counts (Unicode code points), less a margin for the whitespace it
-    /// strips. A longer one is refused with "briefing is too long".
+    /// strips. A longer one is refused with "briefing is too long" by a
+    /// plugin before 0.52.1. This is the request's limit, not the model's:
+    /// the plugin fits what reaches gpt-live-1-codex to Codex's token budget
+    /// itself (notifier #719), the one place that budget is kept.
     static let maxBriefingCharacters = 32 * 1024 - 64
 
     /// Conduit's briefing for a call, with `followedBy` (the call's own
@@ -180,9 +185,11 @@ final class GPTLiveConversationController: ObservableObject {
     }
 
     /// Conduit's rules for the live model. They travel with the session
-    /// request and the host adds them to GPT-Live's instructions; a host
-    /// that doesn't take them gets them as session context when the call
-    /// starts. Written for the model, not shown as UI copy, so not localized.
+    /// request and the host puts them in the session (the API's
+    /// instructions, or the subscription's first seeded item, which the
+    /// plugin fits to Codex's token budget by cutting the memory, then the
+    /// persona: notifier #719); a host that doesn't take them gets them as
+    /// session context when the call starts. Written for the model, not shown as UI copy, so not localized.
     private static func briefingRules(answerLength: LiveVoiceAnswerLength, onWatch: Bool, watchChats: Bool) -> String {
         """
         [Conduit voice app rules. You are the voice of the user's Hermes agent, speaking with them through \(onWatch ? "Conduit on their Apple Watch" : "the Conduit iPhone app"). This is speech, not text: talk naturally, in full spoken sentences.
@@ -247,7 +254,17 @@ final class GPTLiveConversationController: ObservableObject {
     /// The mode still needing the user's OK before this call may reach its
     /// provider, or nil (`LiveVoiceProviderConsent.missing`).
     private let missingConsent: @MainActor () -> LiveVoiceModeName?
-    @Published private(set) var transcript: [VoiceConversationTranscriptEntry] = []
+    ///
+    /// Published through `transcriptPacer`: a new or removed line at once,
+    /// a line growing word by word at most ten times a second (issue 1960).
+    private(set) var transcript: [VoiceConversationTranscriptEntry] = [] {
+        didSet { transcriptPacer.changed(count: transcript.count) }
+    }
+    /// Fires after `transcript` changes, at the pace it publishes.
+    var transcriptChanges: AnyPublisher<Void, Never> { transcriptPacer.changes.eraseToAnyPublisher() }
+    private lazy var transcriptPacer = LiveTranscriptPublishPacer { [weak self] in
+        self?.objectWillChange.send()
+    }
     @Published private(set) var isMicrophoneMuted = false { didSet { syncHeadsetMute() } }
     /// Whether a call starting now starts with the microphone off: a call
     /// from Hermes the user muted in CallKit before this call was running.
@@ -679,11 +696,14 @@ final class GPTLiveConversationController: ObservableObject {
             startCallLimitIfNeeded()
             session?.setMicrophoneEnabled(!isMicrophoneMuted && endRequestedAt == nil)
             session?.setSpeakerEnabled(!isSpeakerMuted)
-            // Given with the call when the host takes it there: appended after
-            // the call starts, the model answers each piece out loud.
+            // Given with the call when the host takes it there. Otherwise
+            // it's appended after the call starts: as instructions on the GA
+            // events (Codex's GA endpoint drops the request's own, issue
+            // 2236), as commentary on the frameless ones, where the model
+            // may answer each piece out loud.
             if session?.briefingApplied != true {
                 let text = briefing()
-                let sent = session?.appendContext(text, channel: .commentary, delegationID: nil) == true
+                let sent = session?.appendContext(text, channel: .instructions, delegationID: nil) == true
                 trace(sent
                     ? "Briefing sent after the start: \(text.unicodeScalars.count) characters"
                     : "Briefing not sent after the start")

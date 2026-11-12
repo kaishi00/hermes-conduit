@@ -81,6 +81,11 @@ struct WatchPhoneContext: Codable, Equatable {
     /// on the iPhone shows. Nil when they aren't, or from an older iPhone
     /// app; a value the Watch doesn't know reads as nil.
     var notificationsEncryption: String? = nil
+    /// What the Watch says in place of asking for a plugin update when the
+    /// active host manages the Conduit plugin (PluginUpdateAsk on the
+    /// iPhone): that this host's plugin doesn't have it, and who keeps it
+    /// up to date. Nil when the host doesn't, or from an older iPhone app.
+    var pluginAsk: String? = nil
 
     /// What the Watch's Settings show for the notifications it mirrors.
     enum NotificationsEncryption: String {
@@ -90,6 +95,15 @@ struct WatchPhoneContext: Codable, Equatable {
 
     var encryption: NotificationsEncryption? {
         notificationsEncryption.flatMap(NotificationsEncryption.init(rawValue:))
+    }
+
+    /// `pluginAsk` for a call that began under `began`: the latest context's
+    /// while the iPhone is still on the dashboard the call began on, else
+    /// the one it gave then, since the call runs on that host still and the
+    /// active host's keeper isn't this one's (issue 2066).
+    static func pluginAsk(forCallBegunUnder began: WatchPhoneContext?, now: WatchPhoneContext?) -> String? {
+        guard let began else { return now?.pluginAsk }
+        return now?.activeDashboardID == began.activeDashboardID ? now?.pluginAsk : began.pluginAsk
     }
 
     static let key = "phoneContext"

@@ -160,6 +160,12 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(note.frames.first?["type"] as? String, "conversation.item.create")
         XCTAssertEqual(((note.frames.first?["item"] as? [String: Any])?["content"] as? [[String: Any]])?.first?["text"] as? String, "typed")
         XCTAssertFalse(note.wantsResponse, "context is kept, not answered")
+
+        // xAI documents no picture input: a photo sends nothing, and the
+        // call hears that Hermes has it instead.
+        let photo = GrokLiveProtocol.frames(for: .image(jpeg: Data([0xFF, 0xD8])), upsampler: &upsampler)
+        XCTAssertTrue(photo.frames.isEmpty)
+        XCTAssertFalse(photo.wantsResponse)
     }
 
     /// Capture arrives in odd-sized chunks (1 024 frames at 48 kHz are 341

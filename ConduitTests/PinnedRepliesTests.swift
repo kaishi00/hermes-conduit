@@ -535,14 +535,37 @@ final class PinnedRepliesTests: XCTestCase {
     }
 
     @MainActor
-    func testAnInteractiveSignInClearsOnlyTheOpenDashboardsPins() {
+    func testAnInteractiveSignInClearsOnlyTheOpenDashboardsPins() async {
         let one = SavedDashboard(id: UUID(), label: "One", normalizedURL: "https://one.example")
         let two = SavedDashboard(id: UUID(), label: "Two", normalizedURL: "https://two.example")
         let appState = pinnedAppState(dashboards: [one, two])
+        // So do its confirmations' answers still waiting for the host, a
+        // Say instead's words included (issue 2041).
+        let sync = appState.presentedScreens
+        for dashboard in [one, two] {
+            await sync.sync(scope: "\(dashboard.id.uuidString)|default", profile: "default", installationID: "i") { _, _ in
+                ["ok": true, "prompts": [["id": "p-\(dashboard.label)", "title": "Share?", "preview": "", "action_label": "Share"]]]
+            }
+            if let prompt = sync.prompts.first { sync.answer(prompt, outcome: .edit, via: .tap, editText: "Thursday") }
+        }
+        func waiting(_ dashboard: SavedDashboard) async -> Bool {
+            var sent: [Any] = []
+            await sync.sync(scope: "\(dashboard.id.uuidString)|default", profile: "default", installationID: "i") { _, body in
+                sent = body["results"] as? [Any] ?? []
+                return ["ok": false]
+            }
+            return !sent.isEmpty
+        }
         appState.prepareInteractiveSignIn(baseURL: "https://two.example")
         XCTAssertEqual(appState.activePinnedReplies.count, 1, "another dashboard's sign-in leaves them")
+        let oneKept = await waiting(one)
+        let twoKept = await waiting(two)
+        XCTAssertTrue(oneKept)
+        XCTAssertFalse(twoKept, "its own unsent answers go")
         appState.prepareInteractiveSignIn(baseURL: "https://one.example")
         XCTAssertTrue(appState.pinnedRepliesByProfile.isEmpty)
+        let oneGone = await waiting(one)
+        XCTAssertFalse(oneGone)
     }
 
     @MainActor

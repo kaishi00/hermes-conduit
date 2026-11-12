@@ -114,6 +114,9 @@ struct V2TasksView: View {
 /// opens its detail with Run now and its run history; touch and hold or a
 /// swipe gives the same actions as a chat row (Pin, Run now, Pause/Resume).
 struct V2ScheduledList: View {
+    // Bigger text gets the room to say what a job is and when it runs, as a
+    // chat's own row does: a name cut to one line is no use at that size.
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -163,6 +166,8 @@ struct V2ScheduledList: View {
         // Parsed once per pass; each row is told whether it is pinned.
         let pins = Set(pinKeys)
         let others = all.filter { !pins.contains(pinKey($0)) }
+        // Read once per pass, for the model lines of jobs that pin one.
+        let providers = all.contains(where: \.pinsModel) ? appState.keptModelProviders() : []
         Group {
             if all.isEmpty && !appState.cronJobsLoading {
                 let empty = CronJobFilter.emptyState(filter: .all, hasJobs: false, isSearching: false)
@@ -192,7 +197,7 @@ struct V2ScheduledList: View {
                     .listRowInsets(EdgeInsets(top: 0, leading: 4, bottom: 0, trailing: 4))
                     if !pinned.isEmpty {
                         Section {
-                            ForEach(pinned) { row($0, pinned: true) }
+                            ForEach(pinned) { row($0, pinned: true, providers: providers) }
                         } header: {
                             sectionHeader(AppLocalization.string("Pinned"))
                         }
@@ -203,14 +208,14 @@ struct V2ScheduledList: View {
                     // unpin still swaps the section between them.
                     if pinned.isEmpty || others.isEmpty {
                         Section {
-                            ForEach(others) { row($0, pinned: false) }
+                            ForEach(others) { row($0, pinned: false, providers: providers) }
                         } footer: {
                             listFooter
                         }
                         .id("jobs")
                     } else {
                         Section {
-                            ForEach(others) { row($0, pinned: false) }
+                            ForEach(others) { row($0, pinned: false, providers: providers) }
                         } header: {
                             sectionHeader(AppLocalization.string("Jobs"))
                         } footer: {
@@ -226,11 +231,23 @@ struct V2ScheduledList: View {
             }
         }
         // A hidden Tasks tab stays mounted; it loads when shown, like Chats.
-        .task(id: "\(appState.activeProfile)|\(appState.isConnected)|\(shell.isTabActive)") {
+        // The list is the dashboard's: another one reads its own, as the drawer's does.
+        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.activeProfile)|\(appState.isConnected)|\(shell.isTabActive)") {
             guard shell.isTabActive else { return }
-            await appState.refreshCronContent()
+            await appState.refreshScheduledContent()
         }
-        .refreshable { await appState.refreshCronContent() }
+        // The capability report can land after this tab's first read, and the
+        // notification read returns early until it does
+        // (AppState+CronNotifications.swift:33), which would draw a muted job
+        // as unmuted. The drawer's Cron tab re-reads on the same signal
+        // (SidebarView.swift:2284); this one does too, and only on the
+        // transition, so an open that already knew the capability is not read
+        // twice.
+        .onChange(of: appState.supportsCronNotifications) { _, supported in
+            guard supported, shell.isTabActive else { return }
+            Task { await appState.refreshCronNotifications() }
+        }
+        .refreshable { await appState.refreshCronContent(repairingCatalog: true) }
         .sheet(item: $selectedJob) {
             CronJobDetailSheet(job: $0)
                 .environmentObject(appState)
@@ -368,7 +385,7 @@ struct V2ScheduledList: View {
         .disabled(appState.cronJobActionID != nil)
     }
 
-    private func row(_ job: CronJob, pinned: Bool) -> some View {
+    private func row(_ job: CronJob, pinned: Bool, providers: [ProviderInfo]) -> some View {
         HStack(alignment: .center, spacing: 12) {
             Button {
                 Haptics.light()
@@ -385,22 +402,37 @@ struct V2ScheduledList: View {
                         Text(job.displayName)
                             .scaledFont(.body.weight(.semibold))
                             .foregroundStyle(.primary)
-                            .lineLimit(1)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     }
                     Text(CronScheduleText.describe(job, zoneLabel: scheduleZoneLabel) ?? AppLocalization.string("No schedule"))
                         .scaledFont(.subheadline)
                         .foregroundStyle(Color.primary.opacity(0.58))
-                        .lineLimit(1)
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     HStack(spacing: 5) {
                         Image(systemName: "clock")
                             .scaledFont(.caption.weight(.semibold))
                             .conduitFixedGlyph()
                             .accessibilityHidden(true)
                         Text(nextRunLine(job))
-                            .lineLimit(1)
+                            .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
                     }
                     .scaledFont(.footnote)
                     .foregroundStyle(job.isActive ? Color.conduitScheduled : Color.primary.opacity(0.45))
+                    // A job on a model or reasoning of its own says which;
+                    // the rest run on the profile's.
+                    if job.pinsModel, let model = job.modelSummary(in: providers) {
+                        HStack(spacing: 5) {
+                            Image(systemName: "cpu")
+                                .scaledFont(.caption.weight(.semibold))
+                                .conduitFixedGlyph()
+                                .accessibilityHidden(true)
+                            Text(model)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                        }
+                        .scaledFont(.footnote)
+                        .foregroundStyle(Color.primary.opacity(0.58))
+                        .accessibilityLabel(AppLocalization.string("Model") + ", " + model)
+                    }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())

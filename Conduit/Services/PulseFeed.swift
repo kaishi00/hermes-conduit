@@ -32,7 +32,10 @@
 //  Pulse learned. From 0.107.0 a card whose Do it stalled comes back once,
 //  and its Why? says when Do it was tapped. From 0.117.1 a card from a
 //  Kanban task's worker names the task: it links the task, and Do it
-//  starts a new chat.
+//  starts a new chat. From 0.150.0 (`pulse_looks`) a card carries the pick
+//  it was made from (PulseLook): the app draws its shape and its actions,
+//  Ask leaves its words in the chat's composer, and the morning brief comes
+//  in parts. An update to the thing a card follows rewrites that card.
 //
 
 import Foundation
@@ -108,6 +111,13 @@ struct PulseCard: Equatable, Identifiable {
     /// A suggestion's (kind "proposal", 0.98.0): what Add puts on the phone,
     /// and where it stands.
     var proposal: PulseProposal?
+    /// What it shows besides its words, and its actions (0.150.0); nil from
+    /// an older plugin, or for a card made before picks.
+    let look: PulseLook?
+    /// What it's about, as Pulse keys it ("item:41", "job:default:3"), and
+    /// when Pulse last rewrote it because that thing changed (0.150.0).
+    let subject: String
+    let updatedAt: Date?
 
     init?(json: Any) {
         guard let object = json as? [String: Any], let id = PulseJSON.int(object["id"]) else { return nil }
@@ -143,6 +153,15 @@ struct PulseCard: Equatable, Identifiable {
                                   chatTitle: chatTitle)
         looked = PulseJSON.strings(object["looked"])
         proposal = PulseProposal(json: object["proposal"])
+        look = PulseLook(json: object["look"])
+        subject = object["subject"] as? String ?? ""
+        updatedAt = PulseJSON.date(object["updated_at"])
+    }
+
+    /// Rewritten since it was made: a job failed again, a step moved on.
+    var wasUpdated: Bool {
+        guard let updatedAt, let createdAt else { return false }
+        return updatedAt.timeIntervalSince(createdAt) >= 1
     }
 
     /// Held for the morning brief and not in one yet.
@@ -228,10 +247,7 @@ struct PulseCard: Equatable, Identifiable {
     /// nil for one that never came back, or a reason this build doesn't know.
     func backText(now: Date = Date()) -> String? {
         guard let backActedAt else { return nil }
-        let formatter = RelativeDateTimeFormatter()
-        formatter.dateTimeStyle = .named
-        formatter.locale = AppLocalization.formattingLocale
-        let when = formatter.localizedString(for: backActedAt, relativeTo: now)
+        let when = PulseLook.relativeFormatter().localizedString(for: backActedAt, relativeTo: now)
         switch back {
         case "unsent": return AppLocalization.string("You tapped Do it \(when) but didn't send it.")
         case "not_done": return AppLocalization.string("You tapped Do it \(when), and it isn't done yet.")
@@ -255,7 +271,8 @@ struct PulseCard: Equatable, Identifiable {
     /// getting ready; a deadline, taking care of it before then; a next
     /// step (0.106.0), taking care of it like a plan; something
     /// watched, where it stands; an interest, more about it; anything else,
-    /// a look.
+    /// a look. A look showing something wrong (``showsProblem``) asks to find
+    /// out what's wrong and fix it, whatever the topic (issue 2082).
     /// One from a Kanban task's worker asks Hermes to get the task going
     /// again: the work happens on the board, not in a chat.
     var actionMessage: String {
@@ -264,6 +281,12 @@ struct PulseCard: Equatable, Identifiable {
             return kanbanTask.isEmpty
                 ? AppLocalization.string("Pulse reminded me: \(reminder)\n\nIt came up in the work on a Kanban task. Find the task on the board, and if it's stuck, get it going again.")
                 : AppLocalization.string("Pulse reminded me: \(reminder)\n\nIt came up in the work on Kanban task \(kanbanTask). Check the task on the board, and if it's stuck, get it going again.")
+        }
+        // Something that went wrong asks for a fix, not another status
+        // question (issue 2082): its look shows a status that isn't OK or a
+        // job whose latest run failed.
+        if showsProblem {
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nFind out what's wrong and fix it.")
         }
         switch kind == "followup" ? "promise" : topic {
         case "promise":
@@ -283,7 +306,17 @@ struct PulseCard: Equatable, Identifiable {
         }
     }
 
-    private static func formatted(_ news: String, markdown: Bool) -> AttributedString {
+    /// Whether the card's look shows something wrong: a warning or failing
+    /// status, or a job whose latest run failed.
+    var showsProblem: Bool {
+        switch look?.body {
+        case let .status(_, state): state != .ok
+        case let .runs(_, results): results.last == false
+        default: false
+        }
+    }
+
+    static func formatted(_ news: String, markdown: Bool) -> AttributedString {
         guard markdown else { return AttributedString(news) }
         // The feed is read every minute while Pulse shows, mostly the same
         // cards: each card's news is parsed once, not on every read
@@ -365,6 +398,13 @@ struct PulseProposal: Equatable {
     }
 
     var isEvent: Bool { kind == "add_event" }
+
+    /// The phone change Add (or Undo) asks for, as the card shows it: the
+    /// phone applies only a change of this kind without its own card.
+    func phoneChangeKind(undo: Bool) -> PhoneChange.Kind {
+        if undo { return isEvent ? .deleteEvent : .deleteReminder }
+        return isEvent ? .addEvent : .addReminder
+    }
 
     /// Still to settle: waiting for Add, or on its way to the phone.
     var isOpen: Bool { state == .waiting || state == .adding }
@@ -984,6 +1024,8 @@ struct PulseLeftOut: Equatable, Identifiable {
             case "raised": return AppLocalization.string("Brought up lately, and nothing changed since")
             case "rated": return AppLocalization.string("You said before that it wasn't useful")
             case "minor": return AppLocalization.string("Too minor to bring up")
+            // 0.157.7: what fits no card type stays out.
+            case "shapeless": return AppLocalization.string("Didn't fit a card type")
             default: return AppLocalization.string("Pulse chose to leave it out")
             }
         }
@@ -993,10 +1035,17 @@ struct PulseLeftOut: Equatable, Identifiable {
 extension PulseClient {
     /// `proposals`: the screen shows suggestion cards (0.98.0); without it
     /// the plugin leaves them out and doesn't count them unseen.
-    func feed(proposals: Bool = false) async throws -> PulseFeedPage {
-        let response = try await request("\(Self.path)/feed" + (proposals ? "?proposals=1" : ""), "GET", nil)
+    /// `looks`: each card brings its look (0.150.0).
+    func feed(proposals: Bool = false, looks: Bool = false) async throws -> PulseFeedPage {
+        let response = try await request("\(Self.path)/feed" + Self.feedQuery(proposals: proposals, looks: looks),
+                                         "GET", nil)
         guard let page = PulseFeedPage(json: response) else { throw HermesError.invalidResponse }
         return page
+    }
+
+    static func feedQuery(proposals: Bool, looks: Bool) -> String {
+        let items = [proposals ? "proposals=1" : nil, looks ? "looks=1" : nil].compactMap { $0 }
+        return items.isEmpty ? "" : "?" + items.joined(separator: "&")
     }
 
     /// Add on a suggestion (0.98.0): the plugin asks the phone for the
@@ -1052,8 +1101,10 @@ extension PulseClient {
     /// answered and marks the card done if it got done. Only the card is
     /// named: a new chat Do it started for an item from no chat is found by
     /// the reminder's words, which it shares with the card (notifier #362).
-    func acted(card: Int) async throws {
-        _ = try await request("\(Self.path)/acted", "POST", ["card": card])
+    func acted(card: Int, chat: PulseActedChat? = nil) async throws {
+        var body: [String: Any] = ["card": card]
+        if let chat { body["chat"] = ["profile": chat.profile, "id": chat.id] }
+        _ = try await request("\(Self.path)/acted", "POST", body)
     }
 
     /// Not now: swipes a card away (nothing learned) until later today,
@@ -1170,11 +1221,18 @@ extension AppState {
             pulseUnseen = 0
             pulseSources = [:]
             pulseHomeChatID = nil
-            if !pulsePluginUnanswered { rememberPulseHome(nil, profile: nil) }  // the plugin said: no Pulse here
+            if !pulsePluginUnanswered {
+                // The plugin said: no Pulse here, nor in the Pulse widget.
+                rememberPulseHome(nil, profile: nil)
+                removePulseWidget()
+            }
             return
         }
         let dashboard = activeDashboardID
-        guard let page = try? await pulseClient.feed(proposals: pulseSuggests), activeDashboardID == dashboard else {
+        // Looks off: this read keeps only the counts and sources; the Pulse
+        // screen's own load asks for them.
+        guard let page = try? await pulseClient.feed(proposals: pulseSuggests, looks: false),
+              activeDashboardID == dashboard else {
             return
         }
         applyPulseFeed(page)
@@ -1187,6 +1245,8 @@ extension AppState {
         if sources != pulseSources { pulseSources = sources }
         if page.homeChatID != pulseHomeChatID { pulseHomeChatID = page.homeChatID }
         rememberPulseHome(page.homeChatID, profile: page.profile)
+        // The Pulse widget reads again when the open cards changed (issue 2190).
+        pulseWidgetFeedChanged(page)
     }
 
     /// Pulse's own chat: Conduit shows it as the Pulse screen, not in Chats.
@@ -1257,6 +1317,12 @@ extension AppState {
             || card.isFound && card.hasReminder && notifierPlugin.reports(PulseClient.foundActionsCapability)
     }
 
+    /// Ask on this card (0.150.0): its chat, or a new one in Pulse's
+    /// profile for a card from no chat, gets the pick's words.
+    func canAskFromPulseCard(_ card: PulseCard) -> Bool {
+        card.look?.ask != nil && !card.isCleared && !card.isProposal
+    }
+
     /// Why? on this card: its reason, what Pulse learned played in it,
     /// which goes with the rest of what learning shows (0.84.0), or what its
     /// turn looked at first (0.96.0).
@@ -1283,6 +1349,10 @@ extension AppState {
     /// An event or reminder a Pulse turn would add comes as a suggestion
     /// card with Add (0.98.0): the feed brings them to an app that asks.
     var pulseSuggests: Bool { notifierPlugin.reports(PulseClient.proposalsCapability) }
+
+    /// Pulse cards carry the pick they were made from (0.150.0): the feed
+    /// brings their looks to an app that asks.
+    var pulseLooks: Bool { notifierPlugin.reports(PulseClient.looksCapability) }
 
     /// Pulse reads where the user is with Where you are on (0.100.0):
     /// Settings > Pulse's switch.
@@ -1348,22 +1418,42 @@ extension AppState {
     /// profile, where Pulse reads what came of it, and only the chat that
     /// New Chat made gets the reminder (startPulseNewChat). False when no
     /// chat opened.
-    func actOnPulseCard(_ card: PulseCard) async -> Bool {
-        guard canActOnPulseCard(card), pulseNewChatRefusal(for: card) == nil else { return false }
+    /// `words`: an Ask's (0.150.0), left in the composer in place of the
+    /// card's reminder, for the user to change before sending.
+    /// `picked`: where a card from no chat goes this once (a long press on
+    /// Do it), in place of Settings > Pulse's choice (`pulseDoItBot`). A
+    /// bot's Bot Chat opens as its Bots row opens it.
+    func actOnPulseCard(_ card: PulseCard, words: String? = nil, in picked: PulseDoItTarget? = nil) async -> Bool {
+        await doPulseCard(card, words: words, in: picked) != nil
+    }
+
+    /// As `actOnPulseCard`, with what it opened: the Bot Chat it opened for
+    /// acted to name, resolved here rather than before the tap's hop, so a
+    /// roster change meanwhile can't make acted name another chat. Nil when
+    /// no chat opened.
+    func doPulseCard(_ card: PulseCard, words: String? = nil, in picked: PulseDoItTarget? = nil) async -> PulseDoItOpened? {
+        guard words != nil ? canAskFromPulseCard(card) : canActOnPulseCard(card),
+              pulseNewChatRefusal(for: card, in: picked) == nil else { return nil }
         let dashboard = activeDashboardID
+        var chat: PulseActedChat?
         if pulseCardHasChat(card) {
             openPulseCardChat(card)
-            guard await waitForOpenChat(card.chatID, on: dashboard) else { return false }
+            guard await waitForOpenChat(card.chatID, on: dashboard) else { return nil }
+        } else if let bot = pulseDoItBot(for: card, in: picked) {
+            guard await openBotChat(for: bot), activeDashboardID == dashboard else { return nil }
+            // As a bot link's open: its chat comes forward over the Pulse screen.
+            dismissSidebarDrawer()
+            chat = pulseActedChat(in: bot)
         } else {
             if !profilesMatch(activeProfile, pulseHomeProfile) {
                 // The switch returns with Pulse's profile connected and its chat open.
                 guard await switchProfileForPulse(), activeDashboardID == dashboard,
-                      profilesMatch(activeProfile, pulseHomeProfile) else { return false }
+                      profilesMatch(activeProfile, pulseHomeProfile) else { return nil }
             }
-            guard await startPulseNewChat() != nil, activeDashboardID == dashboard else { return false }
+            guard await startPulseNewChat() != nil, activeDashboardID == dashboard else { return nil }
         }
-        prefillComposer(card.actionMessage)
-        return true
+        prefillComposer(words ?? card.actionMessage)
+        return PulseDoItOpened(chat: chat)
     }
 
     /// Why Do it can't start a new chat for a card from no chat right now,
@@ -1374,8 +1464,26 @@ extension AppState {
     /// one that waits, and a New Chat already starting or waiting comes
     /// first. From another profile, a call stops the switch, as it does New
     /// Chat's (startNewChat(inProfile:)).
-    func pulseNewChatRefusal(for card: PulseCard) -> String? {
+    /// A card going to a bot's Bot Chat (`pulseDoItBot`) needs only the
+    /// connection: its open says the rest.
+    func pulseNewChatRefusal(for card: PulseCard, in picked: PulseDoItTarget? = nil) -> String? {
         guard !pulseCardHasChat(card) else { return nil }
+        if pulseDoItBot(for: card, in: picked) != nil {
+            return isConnected ? nil : AppLocalization.string("Connect to Hermes to chat with bots.")
+        }
+        // The bot Settings picked, while the bot list couldn't say whether
+        // it's still there, or one picked from the long press that's gone
+        // since: never a new chat in its place.
+        if picked == nil, let name = pulseDoItBotUnconfirmed {
+            // A read still in flight will answer: worth a retry (issue 2215).
+            if botModePhase == .loading {
+                return AppLocalization.string("\(name)'s Bot Chat is still loading. Try again in a moment.")
+            }
+            return AppLocalization.string("Could not open \(name)'s Bot Chat.")
+        }
+        if case .bot(let name) = picked {
+            return AppLocalization.string("Could not open \(name)'s Bot Chat.")
+        }
         if !profilesMatch(activeProfile, pulseHomeProfile), isVoiceCallInProgress {
             return AppLocalization.string("End the call to open a chat in another profile.")
         }
@@ -1393,6 +1501,65 @@ extension AppState {
             return AppLocalization.string("Another new chat is starting. Try again in a moment.")
         }
         return nil
+    }
+
+    /// The bots Do it can go to for a card from no chat: every bot the Bots
+    /// list shows, once the plugin reads the chat Do it names (0.164.0).
+    /// Empty otherwise, and Do it starts a new chat as before.
+    var pulseDoItBotChoices: [BotProfile] {
+        guard notifierPlugin.reports(PulseClient.actedChatCapability) else { return [] }
+        return shownBotRoster.filter { !$0.isHiddenByMeta }
+    }
+
+    /// Settings > Pulse's choice on this dashboard, while that bot is still
+    /// one of the choices; nil for a new chat.
+    var pulseDoItBot: BotProfile? {
+        guard let name = activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }) else { return nil }
+        return pulseDoItBotChoices.first { $0.name == name }
+    }
+
+    /// The bot Settings > Pulse picked, by name, when the bot list hasn't
+    /// been read on this dashboard (a failed or unanswered read), so it
+    /// can't say whether that bot is still there; nil when it's a choice,
+    /// none is picked, or the list was read and the bot is gone or hidden
+    /// (then Do it starts a new chat). A gateway that can't host bots has
+    /// answered too: no bot is there.
+    var pulseDoItBotUnconfirmed: String? {
+        guard notifierPlugin.reports(PulseClient.actedChatCapability),
+              let name = activeDashboardID.flatMap({ pulseDoItBots[$0.uuidString] }),
+              pulseDoItBot == nil, botModePhase != .available, botModePhase != .gatewayUnsupported else { return nil }
+        return name
+    }
+
+    /// Whether Settings > Pulse has a bot saved on this dashboard, a choice
+    /// now or not: its row stays so New chat can clear it.
+    var pulseDoItBotSaved: Bool { pulseDoItBotSavedName != nil }
+
+    /// The bot Settings > Pulse has saved on this dashboard, a choice now or
+    /// not, for its row to show rather than New chat while it stays saved.
+    var pulseDoItBotSavedName: String? {
+        guard notifierPlugin.reports(PulseClient.actedChatCapability) else { return nil }
+        return activeDashboardID.flatMap { pulseDoItBots[$0.uuidString] }
+    }
+
+    /// The bot whose Bot Chat Do it opens for `card`: none for a card with
+    /// a chat of its own, else the one picked this once, else Settings >
+    /// Pulse's.
+    func pulseDoItBot(for card: PulseCard, in picked: PulseDoItTarget? = nil) -> BotProfile? {
+        guard !pulseCardHasChat(card) else { return nil }
+        switch picked {
+        case .newChat: return nil
+        case .bot(let name): return pulseDoItBotChoices.first { $0.name == name }
+        case nil: return pulseDoItBot
+        }
+    }
+
+    /// The chat Do it opened in `bot`'s profile, for acted to name, so
+    /// Pulse's check reads it there; nil for a new chat, which the check
+    /// finds by its subject.
+    func pulseActedChat(in bot: BotProfile?) -> PulseActedChat? {
+        guard let bot, let open = activeSessionId else { return nil }
+        return PulseActedChat(profile: bot.name, id: canonicalSessionID(for: open) ?? open)
     }
 
     /// Waits up to ten seconds for `chatID` to be the open chat. Gives up
@@ -1414,6 +1581,25 @@ extension AppState {
     }
 }
 
+/// Where Do it goes for a Pulse card from no chat, picked for one card.
+enum PulseDoItTarget: Equatable {
+    case newChat
+    /// A bot's Bot Chat, by its profile name.
+    case bot(String)
+}
+
+/// What Do it opened: the Bot Chat it opened for acted to name, nil for a
+/// new chat or the card's own.
+struct PulseDoItOpened {
+    let chat: PulseActedChat?
+}
+
+/// The chat Do it used for a card from no chat, as acted names it.
+struct PulseActedChat: Equatable {
+    let profile: String
+    let id: String
+}
+
 /// A request to show the Pulse screen, at a card or at the top.
 struct PulseOpenRequest: Equatable {
     let id = UUID()
@@ -1431,6 +1617,9 @@ extension PulseClient {
     static let doneCapability = "pulse_done"
     /// After Do it, Pulse marks the card done itself once the chat shows it (0.64.0).
     static let actedCapability = "pulse_acted"
+    /// Acted takes the chat Do it used for a card from no chat (a bot's Bot
+    /// Chat), which Pulse's check reads (0.164.0).
+    static let actedChatCapability = "pulse_acted_chat"
     /// Cards can be swiped away, and briefs name the cards they brought (0.68.0).
     static let dismissCapability = "pulse_dismiss"
     /// The morning brief comes every day with what's still open (0.76.0).
@@ -1483,6 +1672,9 @@ extension PulseClient {
     /// Hide private reminders on the Lock Screen: Settings > Pulse's switch,
     /// and a private push's body in the app's language (0.104.0).
     static let privateCapability = "pulse_private"
+    /// Cards drawn from their picks: a shape with its facts, Ask and the
+    /// pick's other actions, the morning brief in parts (0.150.0).
+    static let looksCapability = "pulse_looks"
 }
 
 /// What Not now puts a card off until, as the plugin names it. Wrong time

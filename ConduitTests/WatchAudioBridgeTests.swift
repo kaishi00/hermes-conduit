@@ -128,6 +128,14 @@ extension HermesVoiceGatewayTimeoutTests {
             WatchAudioBridgeWire.control(Data(#"{"type":"started","engine":"gpt_live","voice":"cove","input_rate":16000,"output_rate":24000,"briefing_applied":true,"greeting_applied":false}"#.utf8)),
             .started(.init(engine: "gpt_live", voice: "cove", inputRate: 16_000, outputRate: 24_000, briefingApplied: true, greetingApplied: false))
         )
+        // Codex's GA endpoint (issue 2236): GA events, so the Watch sends the
+        // briefing as instructions and makes the turns itself.
+        guard case .started(let ga)? = WatchAudioBridgeWire.control(Data(#"{"type":"started","engine":"gpt_live","input_rate":16000,"output_rate":24000,"briefing_applied":true,"greeting_applied":false,"events":"ga"}"#.utf8)) else {
+            return XCTFail("A GA start reads as started")
+        }
+        XCTAssertTrue(ga.gaEvents)
+        XCTAssertEqual(ga.gptLiveDialect, .ga)
+        XCTAssertEqual(olderHostOpened.gptLiveDialect, .frameless)
         XCTAssertEqual(WatchAudioBridgeWire.control(Data(#"{"type":"ended","reason":"ended"}"#.utf8)), .ended(reason: "ended"))
         XCTAssertEqual(WatchAudioBridgeWire.control(Data(#"{"type":"ended"}"#.utf8)), .ended(reason: nil))
         XCTAssertEqual(

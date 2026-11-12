@@ -57,6 +57,12 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
     /// call: a chat link says to end it, as it can be tapped again then, and
     /// a notification, gone once tapped, opens when the call ends.
     let isChatLink: Bool
+    /// The group room this Hermes hosts that a turn's reply, failure,
+    /// background task or approval came from (`room.id`, notifier 0.150.1+):
+    /// the tap opens the room, not the bot's hidden chat there that
+    /// `sessionId` names (issue 2064). Nil for every other notification,
+    /// and from an older notifier.
+    let roomID: String?
     var id: String { "\(dashboardID?.uuidString ?? "none"):\(relayGatewayID ?? "nogw"):\(profile ?? "default"):\(sessionId):\(type ?? "")" }
 
     init(
@@ -70,7 +76,8 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
         type: String?,
         decision: PendingDecisionPayload? = nil,
         call: HermesCallRequest? = nil,
-        isChatLink: Bool = false
+        isChatLink: Bool = false,
+        roomID: String? = nil
     ) {
         self.profile = profile
         self.profileName = profileName
@@ -83,6 +90,21 @@ struct ConduitNotificationTarget: Equatable, Identifiable {
         self.decision = decision
         self.call = call
         self.isChatLink = isChatLink
+        self.roomID = roomID
+    }
+
+    /// The pushes that carry the room they open (the plugin's
+    /// events.ROOM_KINDS). A room invite's room is another host's, and
+    /// opens its join card instead.
+    static let roomTypes: Set<String> = ["response.ready", "turn.failed", "background_task.finished", "approval.needed"]
+
+    /// The room a routing payload names for one of `roomTypes`: its
+    /// `room.id`, or the extension's flat `room_id` note (ReadChatHint).
+    static func roomID(in payload: [String: Any], type: String?) -> String? {
+        guard let type, roomTypes.contains(type) else { return nil }
+        let raw = ((payload["room"] as? [String: Any])?["id"] as? String) ?? (payload["room_id"] as? String)
+        let trimmed = raw?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return trimmed.isEmpty ? nil : trimmed
     }
 }
 
@@ -181,6 +203,8 @@ private struct WaitingTap: Codable {
     let relayGatewayID: String?
     let type: String?
     let decision: PendingDecisionPayload?
+    /// Absent from a tap kept by an older build.
+    let roomID: String?
     let waitingSince: Date
 }
 
@@ -450,6 +474,10 @@ struct ConduitNotificationPreferences: Codable, Equatable {
     /// feature's audience is exactly the approval-gate crowd; privacy-focused
     /// users can turn just this off.
     var decisionCards = true
+    /// Invites to rooms from people you've linked with (Linked Rooms). The
+    /// relay keeps them off until a Conduit that shows them turns them on:
+    /// an older one would show an invite as a reply.
+    var roomInvite = true
 
     enum CodingKeys: String, CodingKey {
         case enabled
@@ -463,6 +491,7 @@ struct ConduitNotificationPreferences: Codable, Equatable {
         case showPreviews = "show_previews"
         case showChatNames = "show_chat_names"
         case decisionCards = "decision_cards"
+        case roomInvite = "room_invite"
     }
 }
 
@@ -486,6 +515,7 @@ extension ConduitNotificationPreferences {
         showPreviews = try container.decodeIfPresent(Bool.self, forKey: .showPreviews) ?? false
         showChatNames = try container.decodeIfPresent(Bool.self, forKey: .showChatNames) ?? false
         decisionCards = try container.decodeIfPresent(Bool.self, forKey: .decisionCards) ?? true
+        roomInvite = try container.decodeIfPresent(Bool.self, forKey: .roomInvite) ?? true
     }
 }
 
@@ -550,6 +580,9 @@ final class PushNotificationService: ObservableObject {
     @Published private(set) var pairingCode: String?
     @Published private(set) var pairingExpiry: String?
     @Published private(set) var pendingTarget: ConduitNotificationTarget?
+    /// A tapped invite to a room (Linked Rooms), waiting for ConduitApp to
+    /// open its join card.
+    @Published private(set) var pendingRoomInvite: RoomInviteTarget?
     @Published private(set) var navigationAttempt = 0
     /// The pending tap's open stopped for a call it would have ended: it
     /// waits, however long the call lasts, and opens once it has ended,
@@ -2223,6 +2256,16 @@ final class PushNotificationService: ObservableObject {
             knownGatewayIDs: NotificationSharedSettings.knownGatewayIDs,
             keysProvisioned: NotificationSharedSettings.keysProvisioned
         )
+        if Self.isRoomInvitePush(userInfo) {
+            // An invite opens its join card, not a chat, under the same
+            // rules: a sealed one from its verified content, once.
+            guard let invite = Self.roomInviteTarget(for: evaluation, userInfo: userInfo) else { return }
+            if case .verified(let verified) = evaluation {
+                guard Self.e2eSeenStore.insert(verified.envelope.replayKey, namespace: "routed") else { return }
+            }
+            pendingRoomInvite = invite
+            return
+        }
         guard var target = Self.target(for: evaluation, userInfo: userInfo) else { return }
         if case .verified(let verified) = evaluation {
             // A sealed message routes once: a replay of it can't open
@@ -2242,7 +2285,8 @@ final class PushNotificationService: ObservableObject {
                 relayGatewayID: target.relayGatewayID,
                 type: target.type,
                 decision: nil,
-                call: target.call
+                call: target.call,
+                roomID: target.roomID
             )
         }
         retainRelayGatewayID(for: target)
@@ -2493,13 +2537,30 @@ final class PushNotificationService: ObservableObject {
             let resendsWatchToken = resendWatchToken && ringingWatchVoIPToken != nil
             guard tokenChanged || resendsWatchToken || registration.preferences != preferences
                     || registration.voipToken != voipToken || registration.watchVoipToken != ringingWatchVoIPToken
-                    || locationTokenChange(registered: registration.locationToken) != .keep else { return }
+                    || locationTokenChange(registered: registration.locationToken) != .keep
+                    || Self.resendsRoomInvite(relayCapabilities: relayMeta?.capabilities,
+                                              relayKeepsRoomInvite: registration.relayKeepsRoomInvite) else { return }
             try await updateRegistration(deviceToken: deviceToken, resendWatchToken: resendsWatchToken)
         }
         registrationUpdate = update
         return update
     }
     private var registrationUpdate: Task<Void, Error>?
+
+    /// The relay takes room invites (0.21+) but its last answer didn't keep
+    /// their switch, so it has them off: the preferences go again, once.
+    /// A relay meta refresh queues the update.
+    nonisolated static func resendsRoomInvite(relayCapabilities: [String]?, relayKeepsRoomInvite: Bool?) -> Bool {
+        relayCapabilities?.contains(RoomInvitesClient.capability) == true && relayKeepsRoomInvite != true
+    }
+
+    /// Whether a relay's answer to a registration or an update kept the
+    /// room invites switch, set either way.
+    nonisolated static func relayKeepsRoomInvite(_ data: Data) -> Bool {
+        let body = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
+        let preferences = (body?["installation"] as? [String: Any])?["preferences"] as? [String: Any]
+        return preferences?["room_invite"] is Bool
+    }
 
     /// A "Hermes wants to talk" notification Conduit posted itself (#449).
     func receiveLocalCallNotification(_ userInfo: [AnyHashable: Any]) {
@@ -2558,6 +2619,12 @@ final class PushNotificationService: ObservableObject {
             // A plain routing push carries no decision at all.
             break
         }
+    }
+
+    /// The tapped invite has opened, or can't: a newer tap stays.
+    func clearPendingRoomInvite(_ invite: RoomInviteTarget) {
+        guard pendingRoomInvite == invite else { return }
+        pendingRoomInvite = nil
     }
 
     func clearPendingTarget(_ target: ConduitNotificationTarget) {
@@ -2670,6 +2737,7 @@ final class PushNotificationService: ObservableObject {
             relayGatewayID: target.relayGatewayID,
             type: target.type,
             decision: target.decision,
+            roomID: target.roomID,
             waitingSince: date()
         )
         keptTaps.set(try? JSONEncoder().encode(tap), forKey: Self.waitingTapKey)
@@ -2698,7 +2766,8 @@ final class PushNotificationService: ObservableObject {
             dashboardID: tap.dashboardID,
             relayGatewayID: tap.relayGatewayID,
             type: tap.type,
-            decision: tap.decision
+            decision: tap.decision,
+            roomID: tap.roomID
         )
         retainRelayGatewayID(for: target)
         pendingTarget = target
@@ -2769,6 +2838,42 @@ final class PushNotificationService: ObservableObject {
         )
     }
 
+    /// The invite a `room.invite` push opens (Linked Rooms), under the same
+    /// end-to-end rules as a chat's tap.
+    static func parseRoomInviteTarget(
+        from userInfo: [AnyHashable: Any],
+        records: [E2EKeyRecord],
+        knownGatewayIDs: Set<String>,
+        keysProvisioned: Bool,
+        now: Date = Date()
+    ) -> RoomInviteTarget? {
+        roomInviteTarget(
+            for: NotificationE2E.evaluate(userInfo, records: records, knownGatewayIDs: knownGatewayIDs, keysProvisioned: keysProvisioned, now: now),
+            userInfo: userInfo
+        )
+    }
+
+    private static func roomInviteTarget(for evaluation: NotificationE2E.Evaluation, userInfo: [AnyHashable: Any]) -> RoomInviteTarget? {
+        switch evaluation {
+        case .legacy:
+            // The relay keeps the room in body.conduit, with the top-level
+            // copy a routing stub.
+            let direct = userInfo["conduit"] as? [String: Any]
+            let nested = (userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any]
+            return RoomInviteTarget.parse((nested?["room"] is [String: Any] ? nested : direct) ?? [:])
+        case .untrusted:
+            return nil
+        case .verified(let verified):
+            return RoomInviteTarget.parse(verified.routingPayload)
+        }
+    }
+
+    /// The relay's routing stub says it's an invite to a room. Whether it
+    /// opens anything is `parseRoomInviteTarget`'s call.
+    nonisolated static func isRoomInvitePush(_ userInfo: [AnyHashable: Any]) -> Bool {
+        NotificationE2E.routingStub(userInfo)?["type"] as? String == "room.invite"
+    }
+
     /// The chat a delivered notification belongs to, to clear it once that
     /// chat is read (#1579): the extension's note on a sealed push, which
     /// outlives the envelope's day, else what the push itself routes to.
@@ -2794,24 +2899,8 @@ final class PushNotificationService: ObservableObject {
     }
 
     private static func parsePlaintextNotificationTarget(from userInfo: [AnyHashable: Any]) -> ConduitNotificationTarget? {
-        let direct = userInfo["conduit"] as? [String: Any]
-        let nested = (userInfo["body"] as? [String: Any])?["conduit"] as? [String: Any]
-        // The relay's optimized APNs layout keeps the structured decision
-        // ONLY in body.conduit, with the top-level conduit copy reduced to a
-        // routing stub for raw-APNs readers — so whichever copy actually
-        // carries a decision must win, nested first (that is where the
-        // optimized layout puts it). Payloads without a decision anywhere
-        // fall back to plain routing, preferring the legacy top-level copy.
-        // A call's details travel the same way (#449).
-        let payload: [String: Any]
-        if nested?["decision"] is [String: Any] || nested?["call"] is [String: Any] {
-            payload = nested ?? [:]
-        } else if direct?["decision"] is [String: Any] || direct?["call"] is [String: Any] {
-            payload = direct ?? [:]
-        } else {
-            payload = direct ?? nested ?? [:]
-        }
-        return target(from: payload)
+        // A decision, a call or a group room rides only in body.conduit.
+        target(from: NotificationE2E.plaintextRouting(userInfo))
     }
 
     private static func target(from payload: [String: Any]) -> ConduitNotificationTarget? {
@@ -2855,7 +2944,8 @@ final class PushNotificationService: ObservableObject {
             relayGatewayID: rawRelayGatewayID?.isEmpty == false ? rawRelayGatewayID : nil,
             type: type?.isEmpty == false ? type : nil,
             decision: pendingDecision(from: payload),
-            call: HermesCallRequest.parse(payload["call"], type: type)
+            call: HermesCallRequest.parse(payload["call"], type: type),
+            roomID: ConduitNotificationTarget.roomID(in: payload, type: type?.isEmpty == false ? type : nil)
         )
     }
 
@@ -3030,6 +3120,7 @@ final class PushNotificationService: ObservableObject {
         // And the location push token, which goes only to a relay that
         // says it sends locates (`location-push`).
         registration?.locationToken = responseBody.installation.location != false ? locationToken : nil
+        registration?.relayKeepsRoomInvite = Self.relayKeepsRoomInvite(data)
         preferences = registration!.preferences
         persistRegistration()
         // A PushKit token that came while this was on its way goes next
@@ -3075,6 +3166,7 @@ final class PushNotificationService: ObservableObject {
         // way: its answer describes an installation that is gone.
         guard self.registration?.installationID == registration.installationID else { return }
         self.registration?.preferences = sentPreferences
+        self.registration?.relayKeepsRoomInvite = Self.relayKeepsRoomInvite(data)
         if let token = body.deviceToken {
             self.registration?.deviceToken = token
             if token == self.deviceToken { clearTokenUpdateError() }
@@ -3202,6 +3294,10 @@ private struct StoredRegistration: Codable {
     var watchVoipToken: String? = nil
     /// The location push token the relay sends locates to.
     var locationToken: String? = nil
+    /// The relay's last answer kept the room invites switch: a relay before
+    /// 0.21 drops the key, and one registered before Conduit showed invites
+    /// has never had it. Nil for registrations saved before it was recorded.
+    var relayKeepsRoomInvite: Bool? = nil
 }
 
 private struct RegistrationRequest: Encodable {

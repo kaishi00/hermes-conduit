@@ -17,6 +17,12 @@ struct BotWorkSettingsView: View {
     /// The Workstream Model page's pick: it sets the provider, then the
     /// model, and the model's write saves the two together.
     @State private var pickedProvider = ""
+    /// Hermes' helper model slot the plugin's work watch reads with, in
+    /// this bot's profile; nil until read, or on a plugin without it.
+    @State private var watchSlot: HelperModelSlot?
+    /// Names the newest slot read: an older one that answers later is
+    /// dropped.
+    @State private var watchReads = 0
 
     var body: some View {
         // Settings' own page: cards with their names over them, menus for
@@ -46,8 +52,12 @@ struct BotWorkSettingsView: View {
         // Again when the connection comes back: a page opened while the
         // app reconnects (just back in the foreground) read nothing.
         .task(id: appState.isConnected) {
-            guard settings == nil else { return }
-            await load()
+            if settings == nil { await load() }
+            await readWatchSlot()
+        }
+        // Back from its page, or set on Models & providers meanwhile.
+        .onReceive(NotificationCenter.default.publisher(for: HelperModelSlot.saved)) { _ in
+            Task { await readWatchSlot() }
         }
     }
 
@@ -81,17 +91,23 @@ struct BotWorkSettingsView: View {
             if settings.isOn {
                 ConduitMenuPicker(
                     value: settings.policy,
-                    choices: [
-                        (id: BotWorkSettings.Policy.strict, title: AppLocalization.string("Only Coordinates")),
-                        (id: BotWorkSettings.Policy.lookups, title: AppLocalization.string("Also Looks Things Up")),
-                    ],
+                    choices: Self.policyChoices(settings),
                     onSelect: { binding(\.policy).wrappedValue = $0 }
                 ) {
                     Text(AppLocalization.string("What It Does Itself")).foregroundStyle(.secondary)
                 }
-                caption(settings.policy == .lookups
-                    ? AppLocalization.string("It can also search the web, past chats and skills itself before starting work. Quicker for simple questions, but small models pick the wrong way more often.")
-                    : AppLocalization.string("Anything that needs a tool goes to a workstream, so its Bot Chat stays free to talk."))
+                caption(Self.policyCaption(settings.policy, botName: botName))
+                let stepChoices = Self.quickStepsChoices(settings)
+                if settings.policy == .lookups, let steps = settings.quickSteps, stepChoices.count > 1 {
+                    ConduitMenuPicker(
+                        value: steps,
+                        choices: stepChoices,
+                        onSelect: { binding(\.quickSteps).wrappedValue = $0 }
+                    ) {
+                        Text(AppLocalization.string("Steps in One Turn")).foregroundStyle(.secondary)
+                    }
+                    caption(AppLocalization.string("\(botName) does up to \(String(steps)) steps of a task in its Bot Chat. A task that needs more carries on in the background."))
+                }
                 Stepper(value: binding(\.maxRunning), in: 1...settings.maxRunningLimit) {
                     LabeledContent(AppLocalization.string("Running at Once")) {
                         Text(verbatim: "\(settings.maxRunning)")
@@ -100,29 +116,65 @@ struct BotWorkSettingsView: View {
                 caption(AppLocalization.string("When this many are running, \(botName) waits for one to finish or sends new work to one that’s already on it."))
             }
         }
+        if settings.isOn, let coordination = settings.coordination {
+            ConduitSettingsSection(title: AppLocalization.string("Coordination"), symbol: "point.3.connected.trianglepath.dotted", tint: .blue) {
+                ConduitMenuPicker(
+                    value: coordination,
+                    choices: [
+                        (id: BotWorkSettings.Coordination.ask, title: AppLocalization.string("Ask Me First")),
+                        (id: BotWorkSettings.Coordination.auto, title: AppLocalization.string("Automatic")),
+                        (id: BotWorkSettings.Coordination.off, title: AppLocalization.string("Off")),
+                    ],
+                    onSelect: { binding(\.coordination).wrappedValue = $0 }
+                ) {
+                    Text(AppLocalization.string("Between Workstreams")).foregroundStyle(.secondary)
+                }
+                caption(Self.coordinationCaption(coordination, botName: botName))
+                if coordination != .off {
+                    caption(AppLocalization.string("This doesn’t change what workstreams may do: their approvals stay as set under Safety."))
+                    if let watchSlot {
+                        // The same slot as Models & providers > Helper
+                        // models, in this bot's profile.
+                        NavigationLink {
+                            HelperModelPage(slot: watchSlot, settings: watchModelSettings)
+                        } label: {
+                            ModelChooserLinkRow(title: AppLocalization.string("Watch Model"), value: watchSlot.value)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityIdentifier("bot.work.watchModel")
+                        caption(AppLocalization.string("A helper model reads what workstreams report while they work and tells \(botName) when one may affect another. A small, fast model is enough."))
+                    }
+                }
+            }
+        }
         if settings.isOn {
             ConduitSettingsSection(title: AppLocalization.string("Workstream Model"), symbol: "cpu", tint: .purple) {
                 NavigationLink {
-                    BotModelPicker(provider: providerBinding, model: modelBinding, allowsInherit: true,
-                                   inheritTitle: AppLocalization.string("Same as Bot Chat"))
-                } label: {
-                    SettingsLinkRow(
-                        title: AppLocalization.string("Model"),
-                        value: settings.workstreamModel?.model ?? AppLocalization.string("Same as Bot Chat")
+                    // Hermes' per-session reasoning, as the Model sheet offers
+                    // it, beside the model it runs with.
+                    BotModelPicker(
+                        provider: providerBinding, model: modelBinding, allowsInherit: true,
+                        inheritTitle: AppLocalization.string("Same as Bot Chat"),
+                        // Shown from the start, so the first pick keeps the
+                        // page open for its reasoning; it waits for a model.
+                        reasoning: ModelChooserReasoning(
+                            effort: effortBinding.wrappedValue ?? "",
+                            inheritTitle: AppLocalization.string("Default"),
+                            disabled: settings.workstreamModel == nil,
+                            set: { effortBinding.wrappedValue = $0.isEmpty ? nil : $0 }
+                        )
                     )
+                } label: {
+                    // The model and provider as the catalog names them.
+                    let lines = ModelChooserLinkRow.lines(
+                        pick: settings.workstreamModel.map { ModelChooserPick(provider: $0.provider, model: $0.model) },
+                        providers: appState.keptModelProviders(),
+                        defaultTitle: AppLocalization.string("Same as Bot Chat"),
+                        reasoning: settings.workstreamModel == nil ? nil : effortBinding.wrappedValue.flatMap { $0.isEmpty ? nil : ReasoningEffortLevel.displayTitle(for: $0) }
+                    )
+                    ModelChooserLinkRow(title: AppLocalization.string("Model"), value: lines.value, detail: lines.detail)
                 }
                 .buttonStyle(.plain)
-                if settings.workstreamModel != nil {
-                    // Hermes' per-session reasoning, as the Model sheet offers it.
-                    ConduitMenuPicker(
-                        value: effortBinding.wrappedValue ?? "",
-                        choices: [(id: "", title: AppLocalization.string("Default"))]
-                            + ReasoningEffortLevel.allCases.map { (id: $0.rawValue, title: $0.title) },
-                        onSelect: { effortBinding.wrappedValue = $0.isEmpty ? nil : $0 }
-                    ) {
-                        Text(AppLocalization.string("Reasoning")).foregroundStyle(.secondary)
-                    }
-                }
                 caption(AppLocalization.string("New workstreams start on this model. Work that’s already running keeps its own."))
             }
             ConduitSettingsSection(title: AppLocalization.string("Safety"), symbol: "checkmark.shield", tint: .green) {
@@ -150,6 +202,52 @@ struct BotWorkSettingsView: View {
                 }
                 caption(Self.approvalsCaption(settings, botName: botName))
             }
+        }
+    }
+
+    /// What the Bot Chat may do itself, by what the user notices rather than
+    /// by tools (Eric 2026-11-08, notifier issue 619). Everything Here only
+    /// where the plugin takes it.
+    static func policyChoices(_ settings: BotWorkSettings) -> [(id: BotWorkSettings.Policy, title: String)] {
+        var choices: [(id: BotWorkSettings.Policy, title: String)] = [
+            (id: .lookups, title: AppLocalization.string("Quick Things Here"))
+        ]
+        if settings.policies.contains(.open) || settings.policy == .open {
+            choices.append((id: .open, title: AppLocalization.string("Everything Here")))
+        }
+        choices.append((id: .strict, title: AppLocalization.string("Only Coordinates")))
+        return choices
+    }
+
+    /// The step counts the plugin takes, with the bot's own when it isn't
+    /// one of them.
+    static func quickStepsChoices(_ settings: BotWorkSettings) -> [(id: Int, title: String)] {
+        var counts = settings.quickStepsChoices.filter { $0 > 0 }
+        if let steps = settings.quickSteps, !counts.contains(steps) { counts.append(steps) }
+        return counts.sorted().map { (id: $0, title: String($0)) }
+    }
+
+    /// What the chosen setting means, in what the user will notice.
+    static func policyCaption(_ policy: BotWorkSettings.Policy, botName: String) -> String {
+        switch policy {
+        case .open:
+            return AppLocalization.string("\(botName) does everything in its Bot Chat, and runs work in the background only when you ask or it’s clearly long. The chat is busy while it works.")
+        case .strict:
+            return AppLocalization.string("Everything but cards, maps, notifications, memories and its questions to you runs in the background, so its Bot Chat is always free to talk.")
+        case .lookups, .off:
+            return AppLocalization.string("\(botName) answers and does quick things in its Bot Chat. Anything that takes longer runs in the background, and you’re told there when it’s done.")
+        }
+    }
+
+    /// What the Coordination choice means, in what the user will notice.
+    static func coordinationCaption(_ coordination: BotWorkSettings.Coordination, botName: String) -> String {
+        switch coordination {
+        case .ask:
+            return AppLocalization.string("\(botName) follows what each workstream finds and changes. When one affects another, it tells you what it recommends and asks before it starts, stops or redirects work.")
+        case .auto:
+            return AppLocalization.string("\(botName) keeps its workstreams in step on its own. When one affects another, it can start, stop or redirect work, and tells you in a line when it did.")
+        case .off:
+            return AppLocalization.string("\(botName) only passes on what its workstreams report.")
         }
     }
 
@@ -229,6 +327,45 @@ struct BotWorkSettingsView: View {
                 Task { await save(new, from: old) }
             }
         )
+    }
+
+    /// The work watch's slot in this bot's profile, as the Helper models
+    /// pages set it.
+    private var watchModelSettings: VoiceReplyModelSettingsModel {
+        let profile = profile
+        let appState = appState
+        return VoiceReplyModelSettingsModel(
+            kept: { appState.keptHelperModel(task: HelperModelSlot.workWatch, inProfile: profile) },
+            keptProviders: { appState.keptModelProviders(inProfile: profile) },
+            load: { try await appState.loadHelperModel(task: HelperModelSlot.workWatch, inProfile: profile) },
+            loadProviders: { await appState.loadModelProviders(inProfile: profile) },
+            save: { await appState.setHelperModel($0, confirmed: $1, profile: profile) }
+        )
+    }
+
+    /// Kept first, then Hermes, tried as often as the settings' read. A
+    /// read that fails keeps what was shown; only the newest read's answer
+    /// is shown.
+    private func readWatchSlot() async {
+        watchReads += 1
+        let read = watchReads
+        // A save keeps its pick at once, so the row shows it even when the
+        // read after it fails.
+        if let kept = appState.keptHelperModels(inProfile: profile)?.first(where: { $0.id == HelperModelSlot.workWatch }) {
+            watchSlot = kept
+        }
+        for attempt in 0..<Self.loadAttempts {
+            if attempt > 0 {
+                try? await Task.sleep(for: .seconds(attempt))
+                if Task.isCancelled { return }
+            }
+            if let loaded = try? await appState.loadHelperModels(inProfile: profile) {
+                guard read == watchReads else { return }
+                watchSlot = loaded.first { $0.id == HelperModelSlot.workWatch }
+                return
+            }
+            if Task.isCancelled || read != watchReads { return }
+        }
     }
 
     /// A read can miss while the dashboard's bridge settles (a reconnect, a

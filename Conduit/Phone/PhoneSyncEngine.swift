@@ -36,6 +36,13 @@ struct PhoneSyncState: Codable, Equatable {
     var focusHash: String?
     var alarmsHash: String?
     var contactsHash: String?
+    /// Optional fields read as nil from a state file written before them.
+    var shortcutsHash: String?
+    /// What the host has of each photo's description, by photo id.
+    var photoHashes: [String: String]?
+    /// Photos the user said yes to, by change id, waiting to go up: each
+    /// one's JPEG is in `PhoneSyncEngine.photoUploadsFolder`.
+    var photoUploads: [String]?
     var lastFullSync: Date?
     /// The time zone and sharing the last upload the host took reported,
     /// hashed, and when it went: a pass with nothing new sends nothing
@@ -66,6 +73,8 @@ struct PhoneSyncState: Codable, Equatable {
         focusHash = nil
         alarmsHash = nil
         contactsHash = nil
+        shortcutsHash = nil
+        photoHashes = nil
         lastFullSync = nil
         fingerprint = nil
         frameHash = nil
@@ -149,6 +158,9 @@ struct PhoneChangePrompt: Identifiable, Equatable {
     var calendarTitle: String?
     /// The alarm a cancellation is about, by name and time.
     var alarmTitle: String?
+    /// The picked person a contact change or deletion is about, by the
+    /// name the phone knows them by, not the one Hermes sent.
+    var personName: String?
     var id: String { change.id }
 }
 
@@ -200,6 +212,11 @@ final class PhoneSyncEngine: ObservableObject {
     let statusSource: PhoneStatusSource
     let alarmSource: PhoneAlarmSource
     let contactsSource: PhoneContactsSource
+    let shortcutRunner: PhoneShortcutRunning
+    let photoSource: PhonePhotoSource
+    /// Reports a run that went without asking as soon as it ends, as an
+    /// answered card is: nothing else would send it while Conduit stays open.
+    var onRanWithoutAsking: (@MainActor () async -> Void)?
     private let store: PhoneSyncStateStore
     private let keys: PhoneSyncKeyStore
     private let defaults: UserDefaults
@@ -208,6 +225,9 @@ final class PhoneSyncEngine: ObservableObject {
     var calendar: Calendar
     private var running: Task<Outcome, Never>?
     private var turnOffs = 0
+    /// Changes each time sharing is turned off: what a Pulse tap carries, so
+    /// a tap from an earlier sharing applies nothing.
+    var sharingSession: Int { turnOffs }
     private var stateUnread = false
     /// What the state file holds (or is about to): a pass that changed
     /// nothing writes nothing.
@@ -218,11 +238,16 @@ final class PhoneSyncEngine: ObservableObject {
     /// one run of the app.
     private var applying: Set<String> = []
     /// Changes the user approved on a Pulse card (Add, or Undo of one), by
-    /// id, with when the approval lapses: the tap was the asking, so this
-    /// app applies them without the phone's own card. In memory too: the
-    /// host hands a change out right after the tap, and one that comes
-    /// later, or after a relaunch, gets the usual card.
-    private var approvedOnCard: [String: Date] = [:]
+    /// id, with the kind the card showed and when the approval lapses: the
+    /// tap was the asking, so this app applies them without the phone's own
+    /// card. In memory too: the host hands a change out right after the
+    /// tap, and one that comes later, or after a relaunch, gets the usual
+    /// card.
+    private var approvedOnCard: [String: CardApproval] = [:]
+    struct CardApproval {
+        let kind: PhoneChange.Kind
+        let until: Date
+    }
     static let cardApprovalWindow: TimeInterval = 15 * 60
 
     init(
@@ -230,6 +255,8 @@ final class PhoneSyncEngine: ObservableObject {
         statusSource: PhoneStatusSource,
         alarmSource: PhoneAlarmSource = PhoneAlarmSources.system(),
         contactsSource: PhoneContactsSource = SystemContactsSource(),
+        shortcutRunner: PhoneShortcutRunning? = nil,
+        photoSource: PhonePhotoSource? = nil,
         store: PhoneSyncStateStore = .standard,
         keys: PhoneSyncKeyStore = .keychain,
         defaults: UserDefaults = .standard,
@@ -241,6 +268,8 @@ final class PhoneSyncEngine: ObservableObject {
         self.statusSource = statusSource
         self.alarmSource = alarmSource
         self.contactsSource = contactsSource
+        self.shortcutRunner = shortcutRunner ?? PhoneShortcutRunner.shared
+        self.photoSource = photoSource ?? SystemPhotoLibrary.shared
         contactsAccess = contactsSource.access
         self.store = store
         self.keys = keys
@@ -262,6 +291,12 @@ final class PhoneSyncEngine: ObservableObject {
     func savePreferences(_ preferences: PhoneSyncPreferences) {
         preferences.save(to: defaults)
         self.preferences = preferences
+        // Photos off: pictures the user said yes to but not yet sent never go.
+        if !preferences.photos, let waiting = state.photoUploads {
+            for changeID in waiting {
+                settlePhoto(PhoneChangeResult(id: changeID, outcome: .failed, note: Self.refusalNote(.sendPhoto)))
+            }
+        }
     }
 
     func savePeople(_ people: [PhonePerson]) {
@@ -362,6 +397,8 @@ final class PhoneSyncEngine: ObservableObject {
             }
         }
         prompts = []
+        // A Pulse tap from before doesn't carry over to sharing turned on again.
+        approvedOnCard = [:]
         autoAdded = nil
         keys.clear()
         guard readStateIfNeeded() else { return false }
@@ -381,6 +418,8 @@ final class PhoneSyncEngine: ObservableObject {
         }
         state.startOver()
         persist()
+        try? FileManager.default.removeItem(at: Self.photoUploadsFolder)
+        photoSource.forget()
         return deleted
     }
 
@@ -403,11 +442,23 @@ final class PhoneSyncEngine: ObservableObject {
             let (key, hostPending) = try await ensureKey(request: request)
             try checkTime(deadline)
             let pending = try await upload(preferences: preferences, key: key, hostPending: hostPending,
-                                           keepalive: keepalive, request: request)
+                                           keepalive: keepalive, deadline: deadline, request: request)
+            try checkTime(deadline)
+            // A picture the host can't take now never holds up the other
+            // changes: the exchange still runs, then the pass reports it.
+            var photoError: Error?
+            do {
+                try await uploadPhotos(key: key, deadline: deadline, request: request)
+            } catch where error is CancellationError || error is DeadlineReached {
+                throw error
+            } catch {
+                photoError = error
+            }
             try checkTime(deadline)
             if pending > 0 || !state.unreported.isEmpty || !prompts.isEmpty {
                 try await exchange(key: key, request: request)
             }
+            if let photoError { throw photoError }
             state.lastSync = now()
             return .synced
         } catch is CancellationError {
@@ -497,7 +548,7 @@ final class PhoneSyncEngine: ObservableObject {
     /// Nothing changed: nothing goes (until the keepalive), and the count
     /// is the one the host's status gave.
     private func upload(preferences: PhoneSyncPreferences, key: PhoneSyncCrypto.SessionKey, hostPending: Int?,
-                        keepalive: TimeInterval, request: Request) async throws -> Int {
+                        keepalive: TimeInterval, deadline: Date = .distantFuture, request: Request) async throws -> Int {
         let currentNow = now()
         let full = state.fingerprint != preferences.fingerprint
             || state.lastFullSync.map { currentNow.timeIntervalSince($0) > PhoneSyncLimits.fullSyncInterval } ?? true
@@ -507,7 +558,8 @@ final class PhoneSyncEngine: ObservableObject {
             "time_zone": TimeZone.current.identifier,
             "sharing": Self.effectiveSharing(preferences, access: calendarSource.eventAccess,
                                              remindersAuthorized: calendarSource.remindersAuthorized,
-                                             alarmsAuthorized: alarmSource.authorized),
+                                             alarmsAuthorized: alarmSource.authorized,
+                                             photosAuthorized: photoSource.access.canRead),
         ]
         var newEventHashes = state.eventHashes
         var newReminderHashes = state.reminderHashes
@@ -516,6 +568,8 @@ final class PhoneSyncEngine: ObservableObject {
         var newFocusHash = state.focusHash
         var newAlarmsHash = state.alarmsHash
         var newContactsHash = state.contactsHash
+        var newShortcutsHash = state.shortcutsHash
+        var newPhotoHashes = state.photoHashes
         var statusSent = false
 
         let readsEvents = preferences.calendar.reads && calendarSource.eventAccess == .full
@@ -615,6 +669,51 @@ final class PhoneSyncEngine: ObservableObject {
         } else {
             newContactsHash = nil
         }
+        if preferences.shortcuts {
+            let shortcuts = preferences.shortcutList.map(\.json)
+            let hash = Self.hash(shortcuts)
+            if full || hash != state.shortcutsHash {
+                batch["shortcuts"] = shortcuts
+                newShortcutsHash = hash
+            }
+        } else {
+            newShortcutsHash = nil
+        }
+        // Photos read live, not from the pass's start: turned off while the
+        // pass ran, nothing more is described or sent, and the host hears
+        // it's off now.
+        if preferences.photos, self.preferences.photos, photoSource.access.canRead {
+            // A few dozen more described each pass, newest first.
+            await photoSource.describeMore(budget: PhoneSyncLimits.photosPerPass,
+                                           until: min(deadline, now().addingTimeInterval(20)))
+        }
+        if preferences.photos, !self.preferences.photos, var sharing = batch["sharing"] as? [String: Any] {
+            sharing["photos"] = false
+            batch["sharing"] = sharing
+        }
+        if preferences.photos, self.preferences.photos, photoSource.access.canRead {
+            // Access given back since the pass began: its upload says
+            // Photos is on, as the descriptions it carries do, or the host
+            // would drop them while this phone records them as sent.
+            if var sharing = batch["sharing"] as? [String: Any], sharing["photos"] as? Bool == false {
+                sharing["photos"] = true
+                batch["sharing"] = sharing
+            }
+            let photos = photoSource.descriptions()
+            // Nothing recorded as sent (first time, or after the host was
+            // told Photos is off): replace whatever the host has.
+            let photosFull = full || state.photoHashes == nil
+            let section = await Self.diffInBackground(photos, against: state.photoHashes ?? [:], full: photosFull,
+                                                      truncated: false)
+            if photosFull || !section.upsert.isEmpty || !section.delete.isEmpty {
+                let photos: [String: Any] = ["full": photosFull, "upsert": section.upsert, "delete": section.delete]
+                batch["photos"] = photos
+            }
+            newPhotoHashes = section.hashes
+        } else {
+            // The host forgets them when they're no longer shared.
+            newPhotoHashes = nil
+        }
 
         let frame = Self.hash(Self.frame(of: batch))
         let send = ContextUploadPolicy.phoneIngestNeeded(
@@ -628,6 +727,29 @@ final class PhoneSyncEngine: ObservableObject {
             let parts = await Self.partsInBackground(batch, maxItems: PhoneSyncLimits.batchItems,
                                                      maxBytes: PhoneSyncLimits.batchBytes)
             for var part in parts {
+                // Photos turned off (or its access taken away) while this
+                // pass got ready or sent an earlier part: what's left goes
+                // without descriptions, and says Photos is off.
+                if preferences.photos, !self.preferences.photos || !photoSource.access.canRead {
+                    part["photos"] = nil
+                    if var sharing = part["sharing"] as? [String: Any] {
+                        sharing["photos"] = false
+                        part["sharing"] = sharing
+                    }
+                    newPhotoHashes = nil
+                }
+                // A part that says Photos is off may make the host drop its
+                // descriptions, whatever happens to its answer or the rest:
+                // forget what was sent, so the next pass with Photos on
+                // replaces them whole. Nothing this pass read is recorded
+                // as sent either.
+                if (part["sharing"] as? [String: Any])?["photos"] as? Bool == false {
+                    newPhotoHashes = nil
+                    if state.photoHashes != nil {
+                        state.photoHashes = nil
+                        persist()
+                    }
+                }
                 let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
                 part["batch_id"] = batchID
                 let body = try await Self.sealBatch(part, key: key, deviceID: state.deviceID, batchID: batchID)
@@ -645,6 +767,8 @@ final class PhoneSyncEngine: ObservableObject {
         state.focusHash = newFocusHash
         state.alarmsHash = newAlarmsHash
         state.contactsHash = newContactsHash
+        state.shortcutsHash = newShortcutsHash
+        state.photoHashes = newPhotoHashes
         if statusSent { state.statusSentAt = currentNow }
         state.fingerprint = preferences.fingerprint
         if full { state.lastFullSync = currentNow }
@@ -684,7 +808,8 @@ final class PhoneSyncEngine: ObservableObject {
     /// emails go with full calendar access; "details" with full access or
     /// reminders (it also covers reminder notes).
     nonisolated static func effectiveSharing(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
-                                             remindersAuthorized: Bool, alarmsAuthorized: Bool = false) -> [String: Any] {
+                                             remindersAuthorized: Bool, alarmsAuthorized: Bool = false,
+                                             photosAuthorized: Bool = false) -> [String: Any] {
         var sharing = preferences.sharingJSON
         let calendar: PhoneCalendarAccess
         switch (preferences.calendar, access) {
@@ -702,6 +827,7 @@ final class PhoneSyncEngine: ObservableObject {
         sharing["reminders_read_only"] = reminders && preferences.remindersReadOnly
         if !calendar.reads, !reminders { sharing["details"] = false }
         sharing["alarms"] = preferences.alarms && alarmsAuthorized
+        sharing["photos"] = preferences.photos && photosAuthorized
         return sharing
     }
 
@@ -752,7 +878,7 @@ final class PhoneSyncEngine: ObservableObject {
         var deletes: [(section: String, list: String, item: Any)] = []
         var upserts: [(section: String, list: String, item: Any)] = []
         var later = batch.filter { frameKeys.contains($0.key) }
-        for section in ["events", "reminders"] {
+        for section in ["events", "reminders", "photos"] {
             guard var body = batch[section] as? [String: Any] else { continue }
             deletes += (body["delete"] as? [Any] ?? []).map { (section, "delete", $0) }
             upserts += (body["upsert"] as? [Any] ?? []).map { (section, "upsert", $0) }
@@ -830,7 +956,7 @@ final class PhoneSyncEngine: ObservableObject {
     private func exchange(key: PhoneSyncCrypto.SessionKey, request: Request) async throws {
         let callID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
         let reporting = state.unreported
-        let results: [[String: Any]] = reporting.map { $0.json }
+        let results = PhoneChangeResult.json(for: reporting)
         let payload: [String: Any] = ["call_id": callID, "results": results]
         let plaintext = try JSONSerialization.data(withJSONObject: payload, options: [.sortedKeys])
         let body = try PhoneSyncCrypto.exchangeEnvelope(plaintext: plaintext, op: "changes", key: key,
@@ -850,6 +976,8 @@ final class PhoneSyncEngine: ObservableObject {
         var fresh: [PhoneChangePrompt] = []
         for change in changes {
             if applying.contains(change.id) { continue }
+            // Said yes to, and going up: no card again.
+            if state.photoUploads?.contains(change.id) == true { continue }
             if let known = state.answered[change.id] {
                 // Answered, but the report was lost: say it again.
                 if !state.unreported.contains(known) { state.unreported.append(known) }
@@ -865,34 +993,64 @@ final class PhoneSyncEngine: ObservableObject {
                 if !state.unreported.contains(refusal) { state.unreported.append(refusal) }
                 continue
             }
-            if let approved = approvedOnCard.removeValue(forKey: change.id), approved > now() {
+            // A Pulse card's approval covers only the kind of change the card
+            // showed (an event or reminder added, or its Undo): anything else
+            // under that id, a contact change, a run or a photo, gets its own
+            // card.
+            if let approved = approvedOnCard.removeValue(forKey: change.id), approved.until > now(),
+               approved.kind == change.kind {
                 await applyNow(change, auto: false)
             } else if change.auto, change.kind.addsWithoutAsking, preferences.autoAdd {
                 await applyNow(change, auto: true)
+            } else if change.kind == .runShortcut, change.auto, preferences.shortcutsRunWithoutAsking,
+                      shortcutRunner.canRun {
+                // Only on screen: iOS opens Shortcuts for an app in front.
+                // Otherwise it waits on its card like any other.
+                // Not awaited: a run lasts as long as the shortcut does.
+                Task {
+                    await self.applyNow(change, auto: true)
+                    await self.onRanWithoutAsking?()
+                }
             } else {
                 fresh.append(PhoneChangePrompt(change: change, calendarTitle: calendarTitle(for: change),
-                                               alarmTitle: alarmTitle(for: change)))
+                                               alarmTitle: alarmTitle(for: change), personName: personName(for: change)))
             }
         }
-        // One approved on a card while this ran gets no card: the pass the
-        // approval runs applies it.
-        prompts = fresh.filter { approvedOnCard[$0.id] == nil }
+        // One approved on a card while this ran, as the kind it is and still
+        // in time, gets no card: the pass the approval runs applies it. Any
+        // other keeps its card.
+        let current = now()
+        prompts = fresh.filter { prompt in
+            guard let approved = approvedOnCard[prompt.id] else { return true }
+            return approved.kind != prompt.change.kind || approved.until <= current
+        }
         persist()
     }
 
-    /// A change the user approved on a Pulse card, by its id: applied now
-    /// if its card is already waiting here, else when the host hands it out
-    /// within 15 minutes (AppState.applyPulseApproval runs the pass). A
-    /// change for another device never comes here, and its approval lapses.
-    func approveFromCard(_ changeID: String) async {
+    /// A change the user approved on a Pulse card, by its id and the kind
+    /// the card showed: applied now if its card is already waiting here,
+    /// else when the host hands it out within 15 minutes
+    /// (AppState.applyPulseApproval runs the pass). A change for another
+    /// device never comes here, and its approval lapses. Only what a Pulse
+    /// card shows is approved this way; a change of another kind under the
+    /// id keeps its own card (see the exchange).
+    /// `sharing` is sharingSession when the user tapped: a tap from before
+    /// sharing was turned off (its host request still on its way then)
+    /// approves nothing.
+    func approveFromCard(_ changeID: String, kind: PhoneChange.Kind, sharing: Int) async {
+        guard Self.pulseCardKinds.contains(kind), sharing == turnOffs else { return }
         let now = self.now()
-        approvedOnCard = approvedOnCard.filter { $0.value > now }
+        approvedOnCard = approvedOnCard.filter { $0.value.until > now }
         if let prompt = prompts.first(where: { $0.id == changeID }) {
-            await answer(prompt, approve: true)
+            if prompt.change.kind == kind { await answer(prompt, approve: true) }
             return
         }
-        approvedOnCard[changeID] = now.addingTimeInterval(Self.cardApprovalWindow)
+        approvedOnCard[changeID] = CardApproval(kind: kind, until: now.addingTimeInterval(Self.cardApprovalWindow))
     }
+
+    /// What a Pulse suggestion's Add (an event or a reminder) and its Undo
+    /// (deleting it) ask the phone for.
+    static let pulseCardKinds: Set<PhoneChange.Kind> = [.addEvent, .addReminder, .deleteEvent, .deleteReminder]
 
     /// The user's answer to a card (or to the question in a voice call).
     func answer(_ prompt: PhoneChangePrompt, approve: Bool) async {
@@ -905,8 +1063,15 @@ final class PhoneSyncEngine: ObservableObject {
     }
 
     private func calendarTitle(for change: PhoneChange) -> String? {
-        guard !change.kind.isAlarm else { return nil }
+        guard !change.kind.isAlarm, change.kind != .runShortcut, !change.kind.isContact, change.kind != .sendPhoto
+        else { return nil }
         return calendarSource.calendarTitle(id: change.fields.calendarID ?? change.fields.listID, forEvents: change.kind.isEvent)
+    }
+
+    /// The picked person a change or deletion names, as the phone has them.
+    private func personName(for change: PhoneChange) -> String? {
+        guard change.kind.isContact, change.kind != .addContact, let id = change.contactID else { return nil }
+        return people.first { $0.id == id }?.name
     }
 
     private func alarmTitle(for change: PhoneChange) -> String? {
@@ -922,6 +1087,9 @@ final class PhoneSyncEngine: ObservableObject {
     /// copy, so not localized).
     nonisolated static func refusalNote(_ kind: PhoneChange.Kind) -> String {
         if kind.isAlarm { return "The user doesn't let Hermes set alarms on this iPhone" }
+        if kind == .runShortcut { return "The user doesn't let Hermes run Shortcuts on this iPhone" }
+        if kind.isContact { return "The user doesn't let Hermes change their contacts" }
+        if kind == .sendPhoto { return "The user doesn't share their photos with Hermes on this iPhone" }
         return kind.isEvent
             ? "The user doesn't let Hermes make this change to their calendar (read-only or not shared)"
             : "The user doesn't let Hermes change their reminders (read-only or not shared)"
@@ -937,6 +1105,18 @@ final class PhoneSyncEngine: ObservableObject {
         }
         if change.kind.isAlarm {
             await applyAlarm(change, auto: auto)
+            return
+        }
+        if change.kind == .runShortcut {
+            await applyShortcut(change)
+            return
+        }
+        if change.kind.isContact {
+            await applyContact(change)
+            return
+        }
+        if change.kind == .sendPhoto {
+            await stagePhoto(change)
             return
         }
         do {
@@ -977,6 +1157,222 @@ final class PhoneSyncEngine: ObservableObject {
             record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.describe(error)))
             if !auto { lastError = Self.describe(error) }
         }
+    }
+
+    /// Runs a shortcut the user listed (a name the host passed that isn't
+    /// listed here any more is refused), and reports the text it gave back.
+    private func applyShortcut(_ change: PhoneChange) async {
+        guard let name = change.fields.shortcut, let listed = preferences.listedShortcut(named: name) else {
+            record(PhoneChangeResult(id: change.id, outcome: .failed,
+                                     note: "The user doesn't let Hermes run a shortcut by that name any more"))
+            return
+        }
+        // A run can take minutes: what it gave back goes only to the host
+        // that asked, and only while the user still lets Hermes run it.
+        // Sharing turned off and on again, even to the same host, is
+        // another sharing: the device id survives that, the count doesn't.
+        let askedBy = ShortcutAsker(device: state.deviceID, turnOffs: turnOffs, destination: preferences.destination)
+        do {
+            let text = try await shortcutRunner.run(name: listed.name, input: change.fields.input)
+            guard stillAsked(by: askedBy) else { return }
+            record(PhoneChangeResult(id: change.id, outcome: .applied,
+                                     result: text.map { String($0.prefix(PhoneChangeResult.resultChars)) }))
+        } catch PhoneShortcutError.cancelled {
+            guard stillAsked(by: askedBy) else { return }
+            record(PhoneChangeResult(id: change.id, outcome: .dismissed, note: "The user cancelled the shortcut"))
+        } catch {
+            // Not on screen: no answer yet, so the card comes back on the
+            // next exchange.
+            if case .notOnScreen? = error as? PhoneShortcutError { return }
+            guard stillAsked(by: askedBy) else { return }
+            record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.shortcutNote(error)))
+            lastError = Self.describe(error)
+        }
+    }
+
+    /// The sharing a shortcut run was asked in.
+    private struct ShortcutAsker {
+        var device: String
+        var turnOffs: Int
+        var destination: PhoneSyncDestination?
+    }
+
+    /// Whether the sharing that asked for a run is still the one on, and
+    /// still lets Hermes run shortcuts.
+    private func stillAsked(by asker: ShortcutAsker) -> Bool {
+        state.deviceID == asker.device && turnOffs == asker.turnOffs
+            && preferences.destination == asker.destination && preferences.shortcuts
+    }
+
+    /// Adds a contact, or changes or deletes a picked person's card. A new
+    /// contact joins the picked people (with the relation Hermes gave), a
+    /// deleted one leaves them, and a changed one is read again, so the
+    /// next upload tells Hermes.
+    private func applyContact(_ change: PhoneChange) async {
+        var person: PhonePerson?
+        var contactID: String?
+        if change.kind != .addContact {
+            guard let id = change.contactID, let picked = people.first(where: { $0.id == id }) else {
+                record(PhoneChangeResult(id: change.id, outcome: .failed,
+                                         note: "That person isn't among the people the user picked any more"))
+                return
+            }
+            person = picked
+            contactID = picked.contactID
+            if contactID == nil, contactsSource.access.canRead {
+                contactID = await contactsSource.identifiers(for: [id])?[id]
+            }
+        }
+        do {
+            let identifier = try await contactsSource.applyChange(change, contactID: contactID)
+            switch change.kind {
+            case .addContact:
+                let read = await contactsSource.read([identifier])
+                var added: PhonePerson
+                if case .person(let person)? = read[identifier] {
+                    added = person
+                } else {
+                    // Not readable back (limited access can hide it): what the change said.
+                    let edit = change.fields.contact
+                    let typed = [edit?.givenName, edit?.familyName].compactMap { $0 }.joined(separator: " ")
+                    let name = change.fields.personName ?? (typed.isEmpty ? edit?.organization : typed)
+                    added = PhonePerson(id: PhonePerson.id(forContact: identifier), name: name ?? AppLocalization.string("Contact"))
+                    added.organization = edit?.organization
+                    added.nickname = edit?.nickname
+                    added.phones = edit?.phones ?? []
+                    added.emails = edit?.emails ?? []
+                    added.birthday = edit?.birthday
+                }
+                added.contactID = identifier
+                added.relation = change.fields.contact?.relation
+                savePeople(PhonePeopleStore.merging([added], into: people))
+                record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: added.id))
+            case .deleteContact:
+                savePeople(people.filter { $0.id != person?.id })
+                record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: person?.id))
+            default:
+                if let relation = change.fields.contact?.relation, let id = person?.id {
+                    savePeople(people.map { var kept = $0; if kept.id == id { kept.relation = relation }; return kept })
+                }
+                await refreshPeople()
+                record(PhoneChangeResult(id: change.id, outcome: .applied, itemID: person?.id))
+            }
+        } catch {
+            record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.describe(error)))
+            lastError = Self.describe(error)
+        }
+    }
+
+    /// Why a run failed, for Hermes (not UI copy, so not localized).
+    static func shortcutNote(_ error: Error) -> String {
+        switch error as? PhoneShortcutError {
+        case .couldNotOpen?: return "The Shortcuts app couldn't be opened"
+        case .failed(let message)?: return message.map { "The shortcut stopped with an error: \($0)" } ?? "The shortcut stopped with an error"
+        case .noAnswer?: return "The Shortcuts app didn't say how the shortcut went"
+        case .cancelled?: return "The user cancelled the shortcut"
+        case .notOnScreen?: return "Conduit wasn't open, so iOS wouldn't start the shortcut"
+        case nil: return describe(error)
+        }
+    }
+
+    // MARK: Photos
+
+    /// Where the pictures the user said yes to wait to go up. Not backed up;
+    /// gone when sharing is turned off.
+    nonisolated static var photoUploadsFolder: URL {
+        let base = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first
+            ?? FileManager.default.temporaryDirectory
+        return base.appendingPathComponent("PhoneSync", isDirectory: true)
+            .appendingPathComponent("PhotoUploads", isDirectory: true)
+    }
+
+    nonisolated static func photoUploadURL(_ changeID: String) -> URL {
+        // A change id is the host's ("ch_" and URL-safe characters).
+        let safe = changeID.filter { $0.isLetter || $0.isNumber || $0 == "_" || $0 == "-" }
+        return photoUploadsFolder.appendingPathComponent("\(safe).jpg")
+    }
+
+    /// The user said yes to a photo: its JPEG waits on disk for this
+    /// pass (or the next) to send it, so a lost connection doesn't lose
+    /// the yes. Sent only by the upload, never by the result alone.
+    private func stagePhoto(_ change: PhoneChange) async {
+        guard let photoID = change.photoID,
+              let data = await photoSource.jpeg(photoID: photoID, maxBytes: PhoneSyncLimits.photoFileBytes) else {
+            record(PhoneChangeResult(id: change.id, outcome: .failed,
+                                     note: "That photo isn't on this iPhone any more, or couldn't be read"))
+            return
+        }
+        // Turned off while it was read: nothing goes.
+        guard preferences.photos else {
+            record(PhoneChangeResult(id: change.id, outcome: .failed, note: Self.refusalNote(.sendPhoto)))
+            return
+        }
+        do {
+            try FileManager.default.createDirectory(at: Self.photoUploadsFolder, withIntermediateDirectories: true)
+            var folder = Self.photoUploadsFolder
+            var values = URLResourceValues()
+            values.isExcludedFromBackup = true
+            try? folder.setResourceValues(values)
+            try data.write(to: Self.photoUploadURL(change.id), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
+        } catch {
+            record(PhoneChangeResult(id: change.id, outcome: .failed, note: "The photo couldn't be saved for sending"))
+            return
+        }
+        var uploads = state.photoUploads ?? []
+        if !uploads.contains(change.id) { uploads.append(change.id) }
+        state.photoUploads = uploads
+        persist()
+    }
+
+    /// Sends each photo the user said yes to, one per upload, and records
+    /// how it went. A refusal (the host no longer waits for it, or won't
+    /// take it) answers that photo alone; a lost connection keeps it for
+    /// the next pass.
+    private func uploadPhotos(key: PhoneSyncCrypto.SessionKey, deadline: Date, request: Request) async throws {
+        guard let uploads = state.photoUploads, !uploads.isEmpty else { return }
+        for changeID in uploads {
+            // What's left waits for the next pass.
+            try checkTime(deadline)
+            // The choice as it is now, not when the pass began: Photos may
+            // have been turned off while an earlier upload was answered.
+            let preferences = self.preferences
+            let file = Self.photoUploadURL(changeID)
+            guard preferences.photos, photoSource.access.canRead, let data = try? Data(contentsOf: file) else {
+                settlePhoto(PhoneChangeResult(id: changeID, outcome: .failed,
+                                         note: preferences.photos ? "The photo couldn't be read for sending"
+                                             : Self.refusalNote(.sendPhoto)))
+                continue
+            }
+            let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
+            let batch: [String: Any] = [
+                "batch_id": batchID,
+                "sent_at": PhoneDates.format(now()),
+                "time_zone": TimeZone.current.identifier,
+                "sharing": Self.effectiveSharing(preferences, access: calendarSource.eventAccess,
+                                                 remindersAuthorized: calendarSource.remindersAuthorized,
+                                                 alarmsAuthorized: alarmSource.authorized, photosAuthorized: true),
+                "photo_files": [["change_id": changeID, "data": data.base64EncodedString()]],
+            ]
+            do {
+                let body = try await Self.sealBatch(batch, key: key, deviceID: state.deviceID, batchID: batchID)
+                let answer = try await request("\(Self.base)/ingest", "POST", body)
+                let sent = (answer["photos_sent"] as? [String] ?? []).contains(changeID)
+                settlePhoto(sent ? PhoneChangeResult(id: changeID, outcome: .applied)
+                       : PhoneChangeResult(id: changeID, outcome: .failed, note: "Hermes no longer waited for this photo"))
+            } catch DashboardTicketBridgeError.http(let status, let detail) where status == 400 || status == 413 {
+                settlePhoto(PhoneChangeResult(id: changeID, outcome: .failed, note: "The host refused the photo: \(detail)"))
+            }
+            // Anything else (no connection, the host away) throws: it stays
+            // for the next pass.
+        }
+    }
+
+    /// A photo answered (sent or refused): it waits no more.
+    private func settlePhoto(_ result: PhoneChangeResult) {
+        try? FileManager.default.removeItem(at: Self.photoUploadURL(result.id))
+        state.photoUploads?.removeAll { $0 == result.id }
+        if state.photoUploads?.isEmpty == true { state.photoUploads = nil }
+        record(result)
     }
 
     private func record(_ result: PhoneChangeResult) {
@@ -1057,6 +1453,13 @@ final class PhoneSyncEngine: ObservableObject {
             try await calendarSource.removeAdded(itemID: added.itemID, isEvent: added.isEvent, window: window)
         } catch {
             lastError = Self.describe(error)
+        }
+    }
+
+    /// Photos turned on without access to the library.
+    struct PhotosNotAllowed: LocalizedError {
+        var errorDescription: String? {
+            AppLocalization.string("Conduit can't see your photos. Allow Photos for Conduit in Settings to share them with Hermes.")
         }
     }
 

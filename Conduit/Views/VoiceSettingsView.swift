@@ -226,6 +226,7 @@ struct VoiceSettingsView: View {
     @AppStorage(VoiceScreenAwake.preferenceKey) private var keepScreenAwake = false
     @AppStorage(LiveVoiceOrbPower.preferenceKey) private var animateCallOrb = true
     @AppStorage(ReadAloudSpeed.preferenceKey) private var readAloudSpeedRaw = ReadAloudSpeed.normal.rawValue
+    @AppStorage(ReadRepliesAloud.preferenceKey) private var readsRepliesAloud = false
     @AppStorage("conduit.voice.settingsAdvancedExpanded") private var advancedExpanded = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let spokenStopPhrases: [String]
@@ -529,9 +530,13 @@ struct VoiceSettingsView: View {
         case .denied:
             return setupStep(
                 AppLocalization.string("Microphone"),
-                detail: AppLocalization.string("Not allowed. Allow the microphone for Conduit in iPhone Settings."),
+                detail: SystemSettings.worded(
+                    iPhone: AppLocalization.string("Not allowed. Allow the microphone for Conduit in iPhone Settings."),
+                    iPad: AppLocalization.string("Not allowed. Allow the microphone for Conduit in iPad Settings."),
+                    mac: AppLocalization.string("Not allowed. Allow the microphone for Conduit in System Settings → Privacy & Security → Microphone.")
+                ),
                 state: .attention,
-                fix: (label: AppLocalization.string("Open Settings"), action: openSystemSettings)
+                fix: (label: AppLocalization.string("Open Settings"), action: { SystemSettings.open(.microphone) })
             )
         default:
             return setupStep(AppLocalization.string("Microphone"), detail: AppLocalization.string("iOS asks the first time you talk."), state: .pending)
@@ -554,9 +559,13 @@ struct VoiceSettingsView: View {
             case .permissionDenied:
                 return setupStep(
                     title,
-                    detail: AppLocalization.string("Speech Recognition isn't allowed. Allow it for Conduit in iPhone Settings, or choose a Hermes provider under Speech to text below."),
+                    detail: SystemSettings.worded(
+                        iPhone: AppLocalization.string("Speech Recognition isn't allowed. Allow it for Conduit in iPhone Settings, or choose a Hermes provider under Speech to text below."),
+                        iPad: AppLocalization.string("Speech Recognition isn't allowed. Allow it for Conduit in iPad Settings, or choose a Hermes provider under Speech to text below."),
+                        mac: AppLocalization.string("Speech Recognition isn't allowed. Allow it for Conduit in System Settings → Privacy & Security → Speech Recognition, or choose a Hermes provider under Speech to text below.")
+                    ),
                     state: .attention,
-                    fix: (label: AppLocalization.string("Open Settings"), action: openSystemSettings)
+                    fix: (label: AppLocalization.string("Open Settings"), action: { SystemSettings.open(.speechRecognition) })
                 )
             case .unsupported:
                 return setupStep(
@@ -729,7 +738,9 @@ struct VoiceSettingsView: View {
                     Text("Microphone input")
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
-                    VoiceInputLevelMeter(level: conversationController.microphoneLevel, isActive: true)
+                    VoiceMicrophoneLevelReader(meter: conversationController.microphoneMeter) { level in
+                        VoiceInputLevelMeter(level: level, isActive: true)
+                    }
                         .frame(height: 20)
                 }
                 .accessibilityElement(children: .combine)
@@ -1225,27 +1236,33 @@ struct VoiceSettingsView: View {
     /// The big button beside this profile's chats, or the app's choice.
     private func chatVoiceButtonSection(_ model: ChatVoiceButtonSettingsModel) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Chat voice button"), symbol: "mic.circle", tint: .conduitAccent) {
-            Picker("Chat voice button", selection: Binding(
-                get: { chatVoiceButtonOverride },
-                set: { requested in
+            Text("What the round button beside this profile's chats does. App setting follows Settings > Appearance.")
+                .settingsCaption()
+            ConduitMenuPicker(
+                value: chatVoiceButtonOverride,
+                choices: Self.chatVoiceButtonChoices(appChoice: model.appChoice),
+                onSelect: { requested in
+                    Haptics.selection()
                     let previous = chatVoiceButtonOverride
                     chatVoiceButtonOverride = requested
                     if !model.setChoice(requested) {
                         chatVoiceButtonOverride = previous
                     }
                 }
-            )) {
-                Text(AppLocalization.string("App setting (\(model.appChoice.title))"))
-                    .tag(ChatVoiceButtonAction?.none)
-                ForEach(ChatVoiceButtonAction.offered, id: \.self) { action in
-                    Text(action.title).tag(Optional(action))
-                }
+            ) {
+                Text("Tap").foregroundStyle(.secondary)
             }
             .onChange(of: model.choice) { _, newValue in chatVoiceButtonOverride = newValue }
-            Text("What the round button beside this profile's chats does. App setting follows Settings > Appearance.")
-                .scaledFont(.caption)
-                .foregroundStyle(.secondary)
         }
+    }
+
+    /// The app's choice first, named, then each button action.
+    static func chatVoiceButtonChoices(appChoice: ChatVoiceButtonAction) -> [(id: ChatVoiceButtonAction?, title: String)] {
+        let appSetting: (id: ChatVoiceButtonAction?, title: String) = (
+            id: nil,
+            title: AppLocalization.string("App setting (\(appChoice.title))")
+        )
+        return [appSetting] + ChatVoiceButtonAction.offered.map { (id: Optional($0), title: $0.title) }
     }
 
     private var conversationSection: some View {
@@ -1341,6 +1358,14 @@ struct VoiceSettingsView: View {
 
     private var readAloudSection: some View {
         ConduitSettingsSection(title: AppLocalization.string("Read Aloud"), symbol: "speaker.wave.2", tint: .conduitAccent) {
+            Toggle("Read replies aloud", isOn: $readsRepliesAloud)
+                .accessibilityIdentifier("voice.readRepliesAloud")
+                .accessibilityHint("Reads each reply in the open chat as it arrives, whether you typed or dictated the message, and each new message from the bots of the group room you have open. Stop it from the player or the speaker button. A reading starts only while Conduit is on screen, then carries on with the phone locked.")
+            Text("Reads each reply in the open chat as it arrives, whether you typed or dictated the message, and each new message from the bots of the group room you have open. Stop it from the player or the speaker button. A reading starts only while Conduit is on screen, then carries on with the phone locked.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+                // The switch's hint already reads this.
+                .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 8) {
                 Text("Speed")
                     .scaledFont(.subheadline.weight(.semibold))
@@ -1355,7 +1380,7 @@ struct VoiceSettingsView: View {
                 .pickerStyle(.segmented)
                 .accessibilityIdentifier("voice.readAloudSpeed")
             }
-            Text("How fast the speaker button under a reply reads it aloud, without changing the voice's pitch. Applies from the next reply you play, on this device. Voice conversations always play at normal speed.")
+            Text("How fast a reply is read aloud, without changing the voice's pitch. Applies from the next reply read, on this device. Voice conversations always play at normal speed.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1433,7 +1458,11 @@ struct VoiceSettingsView: View {
             IPhoneVoiceSettingsView(onPickedAppLanguageVoice: {
                 if actions.runTTSTest != nil, !isRunningTest { runTest(kind: .tts) }
             })
-            Text(AppLocalization.string("Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search iPhone Settings for “Voices” to download them."))
+            Text(verbatim: SystemSettings.worded(
+                iPhone: AppLocalization.string("Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search iPhone Settings for “Voices” to download them."),
+                iPad: AppLocalization.string("Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search iPad Settings for “Voices” to download them."),
+                mac: AppLocalization.string("Conduit uses the best voice installed for the reply's language, or the one you pick. Siri's own voices aren't open to apps, and Premium voices come closest: search System Settings for “Voices” to download them.")
+            ))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1460,11 +1489,19 @@ struct VoiceSettingsView: View {
             case .ready:
                 EmptyView()
             case .permissionRequired:
-                Text("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\".")
+                Text(verbatim: SystemSettings.worded(
+                    iPhone: AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."),
+                    iPad: AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."),
+                    mac: AppLocalization.string("Enable Speech Recognition in System Settings → Privacy & Security → Speech Recognition, then retry selecting \"On this iPhone\".")
+                ))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             case .permissionDenied:
-                Text("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition.")
+                Text(verbatim: SystemSettings.worded(
+                    iPhone: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    iPad: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    mac: AppLocalization.string("Speech Recognition permission was denied. Please enable it in System Settings → Privacy & Security → Speech Recognition.")
+                ))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
             case .unsupported:
@@ -1719,9 +1756,17 @@ struct VoiceSettingsView: View {
                 transcriptionModeChosen = true
                 testStatus = nil
             } else if case .permissionRequired = appleSpeechAvailability {
-                testStatus = AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\".")
+                testStatus = SystemSettings.worded(
+                    iPhone: AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."),
+                    iPad: AppLocalization.string("Enable Speech Recognition in Settings > Conduit > Speech Recognition, then retry selecting \"On this iPhone\"."),
+                    mac: AppLocalization.string("Enable Speech Recognition in System Settings → Privacy & Security → Speech Recognition, then retry selecting \"On this iPhone\".")
+                )
             } else if case .permissionDenied = appleSpeechAvailability {
-                testStatus = AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition.")
+                testStatus = SystemSettings.worded(
+                    iPhone: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    iPad: AppLocalization.string("Speech Recognition permission was denied. Please enable it in Settings > Conduit > Speech Recognition."),
+                    mac: AppLocalization.string("Speech Recognition permission was denied. Please enable it in System Settings → Privacy & Security → Speech Recognition.")
+                )
             } else if case .unsupported = appleSpeechAvailability {
                 testStatus = AppLocalization.string("On-device speech recognition is not available for your current language locale.")
             }
@@ -1774,11 +1819,6 @@ struct VoiceSettingsView: View {
         if let descriptor = providers.first(where: { $0.descriptor.id == id })?.descriptor { return descriptor.displayName }
         if let descriptor = VoiceConfigurationParser.catalogDescriptor(id: id, kind: kind) { return descriptor.displayName }
         return id.isEmpty ? AppLocalization.string("Not chosen") : id.replacingOccurrences(of: "_", with: " ").capitalized
-    }
-
-    private func openSystemSettings() {
-        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-        UIApplication.shared.open(url)
     }
 
     private func load() async {
@@ -2286,7 +2326,10 @@ struct VoiceCallSaveStatusSection: View {
             Text(AppLocalization.string("Voice calls waiting to save: \(model.pendingCount)"))
                 .scaledFont(.subheadline.weight(.semibold))
             Text(model.blocked
-                 ? AppLocalization.string("Your Hermes server can't save voice calls yet. Install or update the Hermes notifier plugin on your Hermes server, then tap Save Now.")
+                 ? PluginUpdateAsk.text(
+                     AppLocalization.string("Your Hermes server can't save voice calls yet. Install or update the Hermes notifier plugin on your Hermes server, then tap Save Now."),
+                     lead: AppLocalization.string("Your Hermes server can't save voice calls yet.")
+                 )
                  : AppLocalization.string("These calls are kept on this device and Conduit retries them automatically. It keeps up to 20 calls, and a call that still hasn't saved after 7 days is dropped."))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)

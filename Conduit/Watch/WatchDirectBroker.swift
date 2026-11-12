@@ -391,9 +391,12 @@ final class WatchDirectBroker {
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
+        var planned: WatchDirectConnection?
+        let startedOn = appState.activeDashboardID
         do {
             let plan = try await appState.prepareWatchDirectCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) }, provider: provider)
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            planned = plan.connection
             guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
@@ -473,7 +476,7 @@ final class WatchDirectBroker {
             ])
             return .directSession(callID: id, session: session)
         } catch {
-            let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
+            let reason = refusal(for: error, connection: planned, startedOn: startedOn)
             link.log.note("watchDirectPrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -521,9 +524,12 @@ final class WatchDirectBroker {
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
+        var planned: WatchDirectConnection?
+        let startedOn = appState.activeDashboardID
         do {
             let plan = try await appState.prepareWatchBridgeCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            planned = plan.connection
             guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
@@ -551,7 +557,8 @@ final class WatchDirectBroker {
             ledger.setGrant(grantScope, for: id)
             guard let grant, let audio = grant.audio else {
                 throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open GPT-Live for the Watch: \($0)") }
-                    ?? AppLocalization.string("Hermes couldn't open GPT-Live for the Watch. Update the Conduit notifier plugin and the push relay."))
+                    ?? PluginUpdateAsk.text(AppLocalization.string("Hermes couldn't open GPT-Live for the Watch. Update the Conduit notifier plugin and the push relay."),
+                                         lead: AppLocalization.string("Hermes couldn't open GPT-Live for the Watch.")))
             }
             if !audio.engines.contains(engine) {
                 try await prepareRuntime(id, profile: plan.connection.profile)
@@ -596,7 +603,7 @@ final class WatchDirectBroker {
             endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return reply
         } catch {
-            let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
+            let reason = refusal(for: error, connection: planned, startedOn: startedOn)
             link.log.note("watchBridgePrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -638,9 +645,12 @@ final class WatchDirectBroker {
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
+        var planned: WatchDirectConnection?
+        let startedOn = appState.activeDashboardID
         do {
             let plan = try await appState.prepareWatchGrokCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            planned = plan.connection
             guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
@@ -664,7 +674,8 @@ final class WatchDirectBroker {
             ledger.setGrant(grantScope, for: id)
             guard let grant, let audio = grant.audio, audio.engines.contains(WatchAudioBridgeWire.grok) else {
                 throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Grok for the Watch: \($0)") }
-                    ?? AppLocalization.string("Hermes couldn't open Grok for the Watch. Update the Conduit notifier plugin and the push relay."))
+                    ?? PluginUpdateAsk.text(AppLocalization.string("Hermes couldn't open Grok for the Watch. Update the Conduit notifier plugin and the push relay."),
+                                         lead: AppLocalization.string("Hermes couldn't open Grok for the Watch.")))
             }
             guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
@@ -727,7 +738,7 @@ final class WatchDirectBroker {
             endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return reply
         } catch {
-            let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
+            let reason = refusal(for: error, connection: planned, startedOn: startedOn)
             link.log.note("watchGrokPrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -768,9 +779,12 @@ final class WatchDirectBroker {
             "phoneScreen": PhoneScenePresence.isInForeground,
             "connected": appState.isConnected,
         ])
+        var planned: WatchDirectConnection?
+        let startedOn = appState.activeDashboardID
         do {
             let plan = try await appState.prepareWatchLocalLiveCall(answering: ring.flatMap { HermesNativeCalls.shared.answeredOnWatch(ringID: $0) })
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
+            planned = plan.connection
             guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
@@ -794,7 +808,8 @@ final class WatchDirectBroker {
             ledger.setGrant(grantScope, for: id)
             guard let grant, let audio = grant.audio, audio.engines.contains(WatchAudioBridgeWire.localLive) else {
                 throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Local Live for the Watch: \($0)") }
-                    ?? AppLocalization.string("Hermes couldn't open Local Live for the Watch. Update the Conduit notifier plugin and the push relay."))
+                    ?? PluginUpdateAsk.text(AppLocalization.string("Hermes couldn't open Local Live for the Watch. Update the Conduit notifier plugin and the push relay."),
+                                         lead: AppLocalization.string("Hermes couldn't open Local Live for the Watch.")))
             }
             guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
@@ -814,7 +829,7 @@ final class WatchDirectBroker {
             endWhenGrantDoes(id, expiresAt: grant.expiresAt)
             return reply
         } catch {
-            let reason = (error as? WatchDirectPrepareError)?.reason ?? UserFacingError.message(for: error)
+            let reason = refusal(for: error, connection: planned, startedOn: startedOn)
             link.log.note("watchLocalLivePrepareFailed", [
                 "callID": Int(id),
                 "ms": Self.milliseconds(since: startedAt),
@@ -1186,6 +1201,23 @@ final class WatchDirectBroker {
     }
 
     // MARK: Tool grant
+
+    /// Why a call's prepare failed, as the Watch shows it and the log keeps
+    /// it. A missing plugin route is worded for the active host's plugin
+    /// (who keeps it up to date on a managed host), so only while the
+    /// call's connection is still the active one: after a dashboard switch
+    /// the call ended because the connection changed, as the guarded steps
+    /// say, never with another host's keeper named for this one (issue 2066).
+    /// Before the plan names its connection, the dashboard the prepare
+    /// started on stands in for it.
+    private func refusal(for error: Error, connection: WatchDirectConnection?, startedOn: UUID?) -> String {
+        if let connection {
+            if !appState.watchConnectionIsCurrent(connection) { return WatchVoiceStartFailure.connectionChanged }
+        } else if appState.activeDashboardID != startedOn {
+            return WatchVoiceStartFailure.connectionChanged
+        }
+        return (error as? WatchDirectPrepareError)?.reason ?? PluginUpdateAsk.reason(UserFacingError.message(for: error)) ?? ""
+    }
 
     /// A grant for the running call's lookups, jobs and Gemini tokens; nil
     /// when the host can't give one. A host that refuses jobs (a plugin

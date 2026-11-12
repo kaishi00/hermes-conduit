@@ -73,6 +73,7 @@ struct PulseSettingsPage: View {
                 if state.enabled {
                     let budgets = appState.notifierPlugin.reports(PulseClient.nudgeCapability)
                     speakUpSection(state, budgets: budgets)
+                    if !appState.pulseDoItBotChoices.isEmpty || appState.pulseDoItBotSaved { doItSection }
                     let quiet = appState.notifierPlugin.reports(PulseClient.quietCapability)
                     let hours = appState.notifierPlugin.reports(PulseClient.hoursCapability)
                     if quiet || hours { quietSection(state, quiet: quiet, hours: hours) }
@@ -304,6 +305,41 @@ struct PulseSettingsPage: View {
         }
     }
 
+    /// Where Do it (and a pick's Ask) goes for a card from no chat (0.164.0): a new chat,
+    /// or a bot's Bot Chat. Kept on this phone, per dashboard; the widget's
+    /// Do it follows it too.
+    private var doItSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Do it"), symbol: "arrow.right.circle", tint: .conduitAccent) {
+            ConduitMenuPicker(
+                value: appState.pulseDoItBot?.name ?? appState.pulseDoItBotSavedName ?? "",
+                choices: doItChoices,
+                onSelect: { picked in
+                    Haptics.selection()
+                    appState.setPulseDoItBot(picked.isEmpty ? nil : picked)
+                }
+            ) {
+                Text("Cards from no chat").foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("settings.pulse.do-it-bot")
+            Text("Where Do it opens for a card that came from no chat, such as one from your calendar: a new chat, or a bot's Bot Chat. The widget's Do it goes there too. Long-press Do it to pick another for one card.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// New chat and the bots Do it can open; a saved bot that isn't one now
+    /// (hidden, gone, or the list not read yet) stays listed by its name, so
+    /// the row never says New chat while Do it would go back to that bot.
+    private var doItChoices: [(id: String, title: String)] {
+        let bots = appState.pulseDoItBotChoices.map { (id: $0.name, title: $0.displayLabel) }
+        var choices = [(id: "", title: AppLocalization.string("New chat"))] + bots
+        if let saved = appState.pulseDoItBotSavedName, !bots.contains(where: { $0.id == saved }) {
+            let known = appState.botRoster.first { $0.name == saved }
+            choices.append((id: saved, title: known?.displayLabel ?? saved))
+        }
+        return choices
+    }
+
     /// Quiet times (0.80.2, `quiet`): the days of the week Pulse keeps to
     /// itself, and a vacation until a day. Quiet for today is on the Pulse
     /// screen and on a Pulse notification; it shows here as a vacation back
@@ -498,17 +534,12 @@ struct PulseSettingsPage: View {
                 PulseMemoryList()
                     .v2TabBarClearance()
             } label: {
-                HStack {
-                    Label(AppLocalization.string("What Pulse remembers"), systemImage: "list.bullet.rectangle")
-                    Spacer(minLength: 8)
-                    if state.memory {
-                        Text(verbatim: state.memoryCounts.values.reduce(0, +).formatted())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(minHeight: 44)
+                SettingsLinkRow(
+                    title: AppLocalization.string("What Pulse remembers"),
+                    value: state.memory ? state.memoryCounts.values.reduce(0, +).formatted() : nil
+                )
             }
+            .buttonStyle(.plain)
             .accessibilityIdentifier("settings.pulse.remembers")
             Text("Pulse keeps short notes on promises, plans and dates, so it can bring them up later. You can remove any of them.")
                 .scaledFont(.caption)
@@ -777,24 +808,20 @@ struct PulseSettingsPage: View {
     private func modelSection(_ state: PulseState) -> some View {
         let selection = state.model.map { VoiceJobModelSettingsSection.tag(provider: $0.provider, model: $0.model) } ?? ""
         return ConduitSettingsSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent) {
-            ConduitMenuPicker(
-                value: selection,
-                groups: VoiceJobModelSettingsSection.modelMenuGroups(
-                    defaultTitle: Self.defaultModelTitle(state, providers: providers),
-                    defaultTag: "",
-                    selection: selection,
-                    providers: providers
-                ),
+            TaggedModelChooserLink(
+                pageTitle: AppLocalization.string("Pulse model"),
+                defaultTitle: Self.defaultModelTitle(state, providers: providers),
+                choice: TaggedModelChoice(defaultTag: "", selection: selection),
+                catalog: ModelChooserCatalog(providers: providers, loaded: !providers.isEmpty || modelsAnswered, answered: modelsAnswered, failed: modelsFailed),
+                disabled: waiting || !modelsAnswered,
+                retry: { Task { await loadModels(profile: state.profile) } },
                 onSelect: { tag in
                     guard tag != selection else { return }
                     let pick = tag.isEmpty ? nil : VoiceJobModelSettingsSection.parse(tag)
                     setModel(pick.map { PulseModel(provider: $0.provider ?? "", model: $0.model) })
-                }
-            ) {
-                Text("Model").foregroundStyle(.secondary)
-            }
-            .disabled(waiting || !modelsAnswered)
-            .accessibilityIdentifier("settings.pulse.model")
+                },
+                identifier: "settings.pulse.model"
+            )
             if modelsFailed {
                 // The models listed stay up; Hermes didn't answer.
                 ModelCatalogPlaceholder(state: .failed) { Task { await loadModels(profile: state.profile) } }

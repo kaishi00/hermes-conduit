@@ -4,7 +4,8 @@
 //
 //  Settings > Capabilities > Skills, as Hermes Desktop's Skills tab: the
 //  profile's skills, most used first, each with its switch and its own
-//  page (SKILL.md), then the official catalog's skills to install.
+//  page (SKILL.md), under the Skill Hub, then the official catalog's
+//  skills to install by category.
 //
 
 import SwiftUI
@@ -17,6 +18,8 @@ struct CapabilitySkillsTab: View {
     let refresh: () async -> Void
     @AppStorage("capabilities.skills.mostUsedFirst") private var mostUsedFirst = true
     @State private var bulkRunning = false
+    /// The category the skills to install are filtered to, if one.
+    @State private var availableCategory: String?
     @State private var rowsMemo = CapabilityListMemo<RowsInput, Rows>()
 
     private struct RowsInput: Equatable {
@@ -60,12 +63,23 @@ struct CapabilitySkillsTab: View {
             await refresh()
             await store.loadOfficialSkills()
         }) {
-            if installed.isEmpty && available.isEmpty {
+            if installed.isEmpty && available.isEmpty && !store.officialSkillsLoading && !store.officialSkillsFailed {
                 CapabilityEmptyState(
                     title: query.isEmpty ? AppLocalization.string("No skills yet") : AppLocalization.string("No matching skills"),
                     symbol: "puzzlepiece.extension",
                     message: query.isEmpty ? nil : AppLocalization.string("Nothing matches “\(query)”.")
                 )
+            }
+            // The hub leads, as Apps does on Connectors: it would
+            // otherwise wait below every installed skill.
+            if query.isEmpty, !store.skillHubMissing {
+                CapabilitySection(
+                    title: AppLocalization.string("Skill Hub"),
+                    symbol: "bag",
+                    tint: .conduitAura
+                ) {
+                    SkillHubEntryRow(store: store, reload: refresh)
+                }
             }
             if !installed.isEmpty {
                 CapabilitySection(
@@ -84,16 +98,63 @@ struct CapabilitySkillsTab: View {
                     }
                 }
             }
+            if case .failed(let reason) = store.skillsUpdate {
+                Text(verbatim: AppLocalization.string("Updating hub skills failed: \(reason)"))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.red)
+                    .frame(maxWidth: .infinity)
+            }
+            if available.isEmpty, store.officialSkillsLoading || store.officialSkillsFailed {
+                CapabilitySection(
+                    title: AppLocalization.string("Available to install"),
+                    symbol: "arrow.down.circle",
+                    tint: .conduitAura
+                ) {
+                    if store.officialSkillsLoading {
+                        CapabilityLoadingRow()
+                    } else {
+                        CapabilityLoadFailedRow { await store.loadOfficialSkills() }
+                    }
+                }
+            }
             if !available.isEmpty {
+                // A picked category stays in the menu after a search or an
+                // install empties it, as the plugin catalog's does, so the
+                // menu and the list always agree.
+                let categories = CapabilitySkillOrdering.categories(available, keeping: availableCategory)
+                let chosen = availableCategory
+                let groups = CapabilitySkillOrdering.grouped(available, category: chosen)
                 CapabilitySection(
                     title: AppLocalization.string("Available to install"),
                     symbol: "arrow.down.circle",
                     tint: .conduitAura,
                     footer: AppLocalization.string("From Hermes' official skills catalog. Hermes scans each skill before it installs.")
                 ) {
-                    ForEach(Array(available.enumerated()), id: \.element.id) { index, skill in
-                        CapabilityCardRow(divided: index > 0) {
-                            OfficialSkillRow(skill: skill, store: store, reload: refresh)
+                    if categories.count > 1 || chosen != nil {
+                        categoryMenu(categories, chosen: chosen)
+                    }
+                } content: {
+                    if groups.isEmpty {
+                        Text("No matching skills")
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .padding(.vertical, 12)
+                    }
+                    ForEach(groups) { group in
+                        if groups.count > 1 {
+                            Text(verbatim: CapabilitySkillOrdering.prettyCategory(group.category))
+                                .scaledFont(.caption.weight(.semibold))
+                                .foregroundStyle(.secondary)
+                                .frame(maxWidth: .infinity, alignment: .leading)
+                                .padding(.top, 12)
+                                .padding(.bottom, 2)
+                                .accessibilityAddTraits(.isHeader)
+                        }
+                        ForEach(Array(group.skills.enumerated()), id: \.element.id) { index, skill in
+                            CapabilityCardRow(divided: index > 0) {
+                                OfficialSkillRow(skill: skill, store: store, reload: refresh)
+                            }
                         }
                     }
                 }
@@ -104,6 +165,35 @@ struct CapabilitySkillsTab: View {
         }
     }
 
+    /// The skills to install by category, as the plugin catalog's
+    /// Browse All filters by one.
+    private func categoryMenu(_ categories: [String], chosen: String?) -> some View {
+        let title = chosen.map(CapabilitySkillOrdering.prettyCategory) ?? AppLocalization.string("All Categories")
+        return Menu {
+            Picker(selection: $availableCategory) {
+                Text("All Categories").tag(String?.none)
+                ForEach(categories, id: \.self) { category in
+                    Text(verbatim: CapabilitySkillOrdering.prettyCategory(category)).tag(String?.some(category))
+                }
+            } label: {
+                Text("Category")
+            }
+        } label: {
+            HStack(spacing: 6) {
+                Image(systemName: "line.3.horizontal.decrease.circle")
+                    .accessibilityHidden(true)
+                Text(verbatim: title)
+                    .scaledFont(.subheadline.weight(.semibold))
+                Image(systemName: "chevron.down")
+                    .scaledFont(.caption2.weight(.semibold))
+                    .accessibilityHidden(true)
+            }
+            .foregroundStyle(Color.conduitAccent)
+        }
+        .accessibilityLabel(Text("Category"))
+        .accessibilityValue(Text(verbatim: title))
+    }
+
     private var optionsMenu: some View {
         Menu {
             Picker(selection: $mostUsedFirst) {
@@ -111,6 +201,14 @@ struct CapabilitySkillsTab: View {
                 Text("Least used first").tag(false)
             } label: {
                 Text("Sort")
+            }
+            if appState.skills.contains(where: { $0.provenance == "hub" }) {
+                Button {
+                    updateHubSkills()
+                } label: {
+                    Label(AppLocalization.string("Update Hub Skills"), systemImage: "arrow.triangle.2.circlepath")
+                }
+                .disabled(store.skillsUpdate == .running || !appState.canChangeCapabilities)
             }
             Divider()
             // They pick their skills from the list shown: a kept one waits
@@ -134,7 +232,7 @@ struct CapabilitySkillsTab: View {
             }
             .disabled(appState.capabilitiesAreKept || !appState.canChangeCapabilities)
         } label: {
-            if bulkRunning {
+            if bulkRunning || store.skillsUpdate == .running {
                 ProgressView().controlSize(.small)
             } else {
                 Image(systemName: "ellipsis.circle")
@@ -144,6 +242,16 @@ struct CapabilitySkillsTab: View {
         }
         .disabled(bulkRunning)
         .accessibilityLabel(Text("Skill options"))
+    }
+
+    private func updateHubSkills() {
+        Haptics.selection()
+        Task {
+            if await store.updateHubSkills() {
+                Haptics.success()
+                await refresh()
+            }
+        }
     }
 
     /// One switch at a time, as Hermes takes them; skills already in that
@@ -281,8 +389,10 @@ struct CapabilitySkillDetailPage: View {
     @EnvironmentObject private var appState: AppState
     let name: String
     let store: CapabilitiesStore
+    @Environment(\.dismiss) private var dismiss
     @State private var document: SkillFrontmatter?
     @State private var loadError: String?
+    @State private var confirmsRemove = false
 
     /// Reads again for another dashboard or profile, and once the store
     /// has been pointed at it.
@@ -317,6 +427,9 @@ struct CapabilitySkillDetailPage: View {
                     }
                     .disabled(!appState.canChangeCapabilities)
                     .tint(.conduitAccent)
+                    if skill.provenance == "hub" {
+                        removeControl
+                    }
                 }
             }
             if appState.capabilitiesAreCurrent {
@@ -344,6 +457,49 @@ struct CapabilitySkillDetailPage: View {
                 // A read that fails keeps the SKILL.md shown.
                 if document == nil { loadError = UserFacingError.message(for: error) }
             }
+        }
+    }
+
+    /// A skill from the hub comes off the profile as it went on
+    /// (`hermes skills uninstall`).
+    @ViewBuilder
+    private var removeControl: some View {
+        let state = store.skillRemovals[name]
+        Button(role: .destructive) {
+            confirmsRemove = true
+        } label: {
+            if state == .running {
+                HStack(spacing: 6) {
+                    ProgressView().controlSize(.small)
+                    Text("Removing…")
+                }
+            } else {
+                Label(AppLocalization.string("Remove Skill"), systemImage: "trash")
+            }
+        }
+        .scaledFont(.subheadline)
+        .disabled(state == .running || !appState.canChangeCapabilities)
+        .confirmationDialog(Text("Remove \(name)?"), isPresented: $confirmsRemove, titleVisibility: .visible) {
+            Button(AppLocalization.string("Remove Skill"), role: .destructive) { remove() }
+        } message: {
+            Text("This deletes the skill from your host. You can install it again from the Skill Hub.")
+        }
+        if case .failed(let reason) = state {
+            Text(verbatim: reason)
+                .scaledFont(.caption)
+                .foregroundStyle(.red)
+        }
+    }
+
+    private func remove() {
+        let owner = appState.currentCapabilitiesOwner
+        guard store.serves(owner) else { return }
+        Haptics.selection()
+        Task {
+            guard await store.removeHubSkill(name: name) else { return }
+            Haptics.success()
+            _ = await appState.loadCapabilities()
+            if appState.currentCapabilitiesOwner == owner { dismiss() }
         }
     }
 
@@ -466,7 +622,7 @@ struct OfficialSkillDetailPage: View {
 
 /// A skill page's top card: its name, what it does, its pills, and the
 /// control (its switch, or Install).
-private struct CapabilitySkillHeader<Control: View>: View {
+struct CapabilitySkillHeader<Control: View>: View {
     let title: String
     let description: String?
     let pills: [CapabilityPillModel]
@@ -505,7 +661,7 @@ private struct CapabilitySkillHeader<Control: View>: View {
 }
 
 /// A SKILL.md: its frontmatter as rows, then its body as written.
-private struct CapabilitySkillDocument: View {
+struct CapabilitySkillDocument: View {
     let document: SkillFrontmatter?
     let error: String?
 

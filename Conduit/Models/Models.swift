@@ -24,6 +24,10 @@ enum MessageRole: String, Codable, Equatable {
     /// password, skill/setup secret, password-manager unlock, a website's
     /// login or its one-time code.
     case inputPrompt
+    /// Hermes connecting something for the model and waiting on the user:
+    /// an app sign-in, an MCP server's setup, a catalog install or the
+    /// apps directory (`connection.request`, ConnectionActivity).
+    case connection
 }
 
 enum SessionSource: String, Codable, CaseIterable {
@@ -818,6 +822,8 @@ struct ChatMessage: Identifiable, Equatable {
     var clarify: ClarifyActivity?
     var approval: ApprovalActivity?
     var inputPrompt: InputPromptActivity?
+    /// The connect card on a `.connection` row. Live-only, like inputPrompt.
+    var connection: ConnectionActivity?
     var attachments: [Attachment]?
     var code: String?
     /// Canonical Hermes `display_kind` when the persisted row arrived with
@@ -900,6 +906,7 @@ struct ChatMessage: Identifiable, Equatable {
             reactions: reactions
         )
         copy.stepDuration = stepDuration
+        copy.connection = connection
         return copy
     }
 
@@ -1050,6 +1057,37 @@ struct DelegateAgentActivity: Identifiable, Equatable {
         return merged
     }
 
+    /// The cards with a roster's agents among them: one the chat has no
+    /// card for gets one (it was started before this chat was opened, or
+    /// while the socket was down), and a card it has is left as its own
+    /// events made it, except that it moves to the session the roster was
+    /// read for: a card kept from before a resume would otherwise ask
+    /// about, steer or stop its agent under a runtime Hermes has moved on
+    /// from (issue 2206).
+    /// A roster of a runtime that's no longer the chat's own (`moving`
+    /// false) adds cards but moves none.
+    static func adopting(
+        _ agents: [DelegateAgentActivity],
+        roster: [DelegateAgentActivity],
+        moving: Bool = true
+    ) -> [DelegateAgentActivity] {
+        let listedIn = moving
+            ? Dictionary(roster.map { ($0.id, $0.sessionId) }, uniquingKeysWith: { first, _ in first }) : [:]
+        let moved = agents.map { agent -> DelegateAgentActivity in
+            guard let session = listedIn[agent.id], !session.isEmpty, session != agent.sessionId else { return agent }
+            var moved = agent
+            moved.sessionId = session
+            return moved
+        }
+        let have = Set(agents.map(\.id))
+        return moved + roster.filter { !have.contains($0.id) }
+    }
+
+    /// How many of a chat's delegate agents are still queued or running.
+    static func activeCount(_ agents: [DelegateAgentActivity]) -> Int {
+        agents.reduce(0) { $1.status.isActive ? $0 + 1 : $0 }
+    }
+
     /// Agents a gateway roster no longer lists have ended; their
     /// `subagent.complete` was missed (app suspended, socket reconnect).
     /// Only running cards from `sessionId` with a gateway id and no event
@@ -1072,6 +1110,33 @@ struct DelegateAgentActivity: Identifiable, Equatable {
             ended.currentTool = nil
             return ended
         }
+    }
+}
+
+extension DelegateAgentActivity {
+    /// One `subagent.list` row as a card; nil for a row without an id. The
+    /// roster lists the agents Hermes still has, so a status it doesn't
+    /// name reads as running.
+    init?(rosterRow row: [String: AnyCodable]?, sessionId: String) {
+        guard let row, let id = row["subagent_id"]?.stringValue, !id.isEmpty else { return nil }
+        let named = row["status"]?.stringValue?.lowercased() ?? ""
+        let status: Status = named == "pending" ? .queued
+            : ["error", "timeout"].contains(named) ? .failed
+            : ["cancelled", "canceled", "stopped"].contains(named) ? .interrupted
+            : Status(rawValue: named) ?? .running
+        self.init(
+            id: id,
+            goal: row["goal"]?.stringValue ?? "",
+            model: row["model"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 },
+            status: status,
+            taskCount: 1,
+            taskIndex: 0,
+            currentTool: row["last_tool"]?.stringValue.flatMap { $0.isEmpty ? nil : $0 },
+            summary: nil,
+            stream: [],
+            hasGatewayID: true,
+            sessionId: sessionId
+        )
     }
 }
 
@@ -1168,9 +1233,19 @@ struct CronJob: Codable, Identifiable {
     var scheduleDisplay: String?
     var script: String?
     var state: String?
+    /// The job's own model and provider; empty, it runs on the profile's.
+    var model: String?
+    var provider: String?
+    /// An endpoint of the job's own, which Hermes keeps beside its provider.
+    var baseURL: String?
+    /// The job's own reasoning level (`none` … `ultra`); empty, it follows
+    /// the profile's.
+    var reasoningEffort: String?
 
     enum CodingKeys: String, CodingKey {
-        case deliver, enabled, id, name, prompt, script, state
+        case deliver, enabled, id, name, prompt, script, state, model, provider
+        case baseURL = "base_url"
+        case reasoningEffort = "reasoning_effort"
         case lastError = "last_error"
         case lastRunAt = "last_run_at"
         case nextRunAt = "next_run_at"
@@ -1336,6 +1411,12 @@ enum TurnState: Equatable {
 
     var isRunning: Bool {
         self == .running
+    }
+
+    /// Running, or still being read back (a sync, a reconnect), so a reply
+    /// may be running: a chat call's seed leaves the running turn off.
+    var mayBeRunning: Bool {
+        self == .running || self == .synchronizing || self == .reconnecting
     }
 
     static func fromGatewayRunning(_ running: Bool?) -> TurnState {
@@ -1644,6 +1725,25 @@ struct ProfileConfigSchema: Equatable {
     }
 
     subscript(key: String) -> Field? { fields[key] }
+}
+
+/// A fallback list that may follow another one: the subagents'
+/// (`delegation.fallback_providers`) follow the chat's while unset (null);
+/// an empty list of their own turns fallback off.
+struct ProfileFallbackChain: Equatable {
+    var inherits = false
+    var entries: [ProfileFallbackModel] = []
+
+    init(inherits: Bool = false, entries: [ProfileFallbackModel] = []) {
+        self.inherits = inherits
+        self.entries = entries
+    }
+
+    /// The subagents' chain in a profile's config.
+    init(delegationIn config: [String: Any]) {
+        let value = (config["delegation"] as? [String: Any])?["fallback_providers"]
+        self.init(inherits: value == nil || value is NSNull, entries: ProfileFallbackModel.list(from: value))
+    }
 }
 
 /// One `fallback_providers` entry: the model Hermes tries when the default
