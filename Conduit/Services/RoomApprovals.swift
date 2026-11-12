@@ -199,6 +199,25 @@ extension AppState {
         return !approvals.approvals.contains { $0.id == id }
     }
 
+    /// How long Group Chats waits on screen before reading your agents'
+    /// approvals again: sooner while one is listed (answered on another
+    /// device, its row goes), and still now and then when none is (one asked
+    /// meanwhile shows without a pull to refresh).
+    nonisolated static func rosterApprovalsInterval(listed: Bool) -> Duration {
+        listed ? .seconds(15) : .seconds(45)
+    }
+
+    /// Reads the approvals again for as long as Group Chats is on screen
+    /// (its task's lifetime), as a copy's room screen does each tick.
+    func followLinkedRoomApprovalsOnScreen() async {
+        while !Task.isCancelled {
+            let listed = linkedRoomApprovals.map { !$0.approvals.isEmpty } ?? false
+            try? await Task.sleep(for: Self.rosterApprovalsInterval(listed: listed))
+            guard !Task.isCancelled else { return }
+            if groupChatPhase == .available, canAnswerRoomApprovals { await refreshLinkedRoomApprovals() }
+        }
+    }
+
     /// Reads the approvals. A read that fails keeps what was read last, and
     /// one that a sign-out or another dashboard overtook is dropped, as the
     /// invites' is.
