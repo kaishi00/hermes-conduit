@@ -710,6 +710,20 @@ struct GroupRoomComposer: View {
             }
             return
         }
+        // Staged before someone else's agents joined, a file can be over
+        // the 16 MB such a room shares: it stays in the draft, as when it's
+        // staged now.
+        let roomCap = appState.roomFileCapMegabytes
+        let oversized = files.filter { file in
+            !AttachmentSizeLimit.allows(byteCount: Int64(GroupRoomFilesClient.roomFilesBytes([file])), megabytes: roomCap)
+        }
+        if !oversized.isEmpty {
+            composerError = GroupRoomFilesClient.tooLargeMessage(names: oversized.map(\.name), preference: attachmentLimitMegabytes,
+                                                                 roomCap: roomCap)
+            Haptics.error()
+            restoreAfterDecline(reply: sendsReply ? reply : nil, recipients: sendsRecipients ? picked : [])
+            return
+        }
         isUploading = true
         let roomID = surface?.room.roomID
         uploadTask = Task {

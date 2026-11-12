@@ -303,6 +303,20 @@ extension GroupChatModelsTests {
     }
 
     @MainActor
+    func testOnlyACompleteRoomListSaysNoRoomHoldsTheAgent() {
+        let suite = "GroupChatModelsTests.People.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        XCTAssertNil(appState.roomsHoldingTools(of: "research"), "not read yet")
+        appState.groupRoomsListed = true
+        appState.groupRoomsComplete = false
+        XCTAssertNil(appState.roomsHoldingTools(of: "research"), "more pages: a room on one of them may hold it")
+        appState.groupRoomsComplete = true
+        XCTAssertEqual(appState.roomsHoldingTools(of: "research"), [])
+    }
+
+    @MainActor
     func testRoomSetupPostsTheCeilingAndInterruptToTheProfile() async throws {
         var asked: [(path: String, method: String, body: [String: Any]?)] = []
         let client = RoomSetupClient { path, method, body in

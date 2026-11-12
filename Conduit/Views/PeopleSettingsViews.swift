@@ -936,9 +936,17 @@ struct RoomSetupSection: View {
                 }
                 Button(editing ? AppLocalization.string("Save") : AppLocalization.string("Set up")) {
                     if state.changesSavedCeiling(picking: picked, servers: pickedServers) {
-                        roomsHeld = appState.roomsHoldingTools(of: profile)
-                        // No room going on holds it: nothing stops, so nothing to ask.
-                        if roomsHeld == [] { setUp() } else { confirmsChange = true }
+                        // The rooms as they are now: one started on another
+                        // device since Group Chats was last read counts too.
+                        working = true
+                        Task {
+                            await appState.refreshGroupRooms()
+                            if appState.canInviteLinkedPeople { await appState.refreshLinkedRoomCopies() }
+                            working = false
+                            roomsHeld = appState.roomsHoldingTools(of: profile)
+                            // No room going on holds it: nothing stops, so nothing to ask.
+                            if roomsHeld == [] { setUp() } else { confirmsChange = true }
+                        }
                     } else {
                         setUp()
                     }

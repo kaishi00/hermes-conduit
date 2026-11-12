@@ -111,6 +111,9 @@ struct GroupRoomInfoSheet: View {
         let members = GroupRoomTurns.members(appState.activeRoomMembers, namedBy: appState.botRoster)
         // Choices matter only beside other people's agents.
         let offersChoices = appState.canSetRoomChoices && members.contains(where: \.isPeer)
+        let choiceProfiles = offersChoices
+            ? Array(Set(members.filter { !$0.isPeer && $0.out == nil }.compactMap(\.profile).filter { !$0.isEmpty })).sorted()
+            : []
         ConduitSettingsSection(title: AppLocalization.string("Members", table: .rooms), symbol: "person.3", tint: .conduitAccent) {
             ForEach(members, id: \.identityKey) { member in
                 let canTakeOut = appState.canTakeOut(member) && !working
@@ -172,11 +175,12 @@ struct GroupRoomInfoSheet: View {
                     .settingsCaption()
             }
         }
-        // Read again on coming back from an agent's choices, too.
-        .onAppear {
-            guard offersChoices else { return }
-            let profiles = members.filter { !$0.isPeer && $0.out == nil }.compactMap(\.profile).filter { !$0.isEmpty }
-            Task { await loadAgentTools(roomID: room.roomID, profiles: profiles) }
+        // Read on each appearance (so again on coming back from an agent's
+        // choices) and when the agents that offer choices change. Leaving
+        // cancels a read, so an older one never lands over a newer one.
+        .task(id: choiceProfiles) {
+            guard !choiceProfiles.isEmpty else { return }
+            await loadAgentTools(roomID: room.roomID, profiles: choiceProfiles)
         }
     }
 
@@ -186,11 +190,11 @@ struct GroupRoomInfoSheet: View {
         let client = appState.roomChoicesClient
         var read: [String: RoomChoices] = [:]
         // A room holds at most six agents, so one read after another.
-        for profile in Array(Set(profiles)).sorted() {
+        for profile in profiles {
             if let choices = try? await client.choices(roomID: roomID, profile: profile) { read[profile] = choices }
         }
-        // Another room opened meanwhile.
-        guard appState.activeRoomSurface?.room.roomID == roomID else { return }
+        // Left (or a newer read started), or another room opened meanwhile.
+        guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID else { return }
         if read != agentTools { agentTools = read }
     }
 }

@@ -193,7 +193,8 @@ extension AppState {
     var roomFileCapMegabytes: Int {
         guard notifierPlugin.reports(GroupRoomFilesClient.capability) else { return GroupRoomFilesClient.hermesMaximumMegabytes }
         // With other people's agents in it, a file has to reach their hosts.
-        if let surface = activeRoomSurface, surface.copy != nil || surface.room.members.contains(where: \.isPeer) {
+        // (A copy of a room hosted elsewhere takes no files: canAttachRoomFiles.)
+        if let surface = activeRoomSurface, surface.room.members.contains(where: \.isPeer) {
             return GroupRoomFilesClient.linkedMaximumMegabytes
         }
         return GroupRoomFilesClient.maximumMegabytes

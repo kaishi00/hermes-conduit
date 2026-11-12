@@ -306,11 +306,12 @@ enum RoomSetupRooms {
 }
 
 extension AppState {
-    /// RoomSetupRooms.holding for this dashboard's rooms as last read.
+    /// RoomSetupRooms.holding for this dashboard's rooms as last read. Only
+    /// a complete list (no more pages) can say no room holds it.
     func roomsHoldingTools(of profile: String) -> [String]? {
         RoomSetupRooms.holding(
             profile: profile,
-            rooms: groupRoomsListed ? groupRooms : nil,
+            rooms: groupRoomsListed && groupRoomsComplete ? groupRooms : nil,
             copies: canInviteLinkedPeople ? linkedRoomCopies?.copies : []
         )
     }
