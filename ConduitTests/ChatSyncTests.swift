@@ -876,6 +876,44 @@ final class ChatSyncTests: XCTestCase {
         XCTAssertEqual(wait, 4, "The moved list and the running turn bring the poll back to 4 s")
     }
 
+    /// Low Power Mode stretches even the first step to 12 s: a list change
+    /// wakes that wait too.
+    func testAListChangeWakesTheFirstStepStretchedByLowPower() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        appState.pollJitter = { 0 }
+        appState.deviceConditions = { DeviceConditions(lowPowerMode: true) }
+        followChanges(appState)
+        let profile = appState.activeProfile
+        appState.sessions = [row("listed", profile: profile)]
+        box.catalog = [row("listed", profile: profile)]
+        box.live = []
+        let first = await pollWait(appState)
+        XCTAssertEqual(first, 12)
+        XCTAssertTrue(appState.chatListPollPacer.backoff.isAtShortest)
+
+        let sleep = Task { await appState.chatListPollSleep.sleep(seconds: 600) }
+        var moved = row("listed", profile: profile, minutesAgo: 0)
+        moved.messageCount = 3
+        box.catalog = [moved]
+        box.now += 6
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        XCTAssertEqual(appState.sessions.first?.messageCount, 3)
+        let woke = Task {
+            await sleep.value
+            return true
+        }
+        let timeout = Task {
+            try? await Task.sleep(for: .seconds(5))
+            woke.cancel()
+            sleep.cancel()
+        }
+        let result = await woke.value
+        timeout.cancel()
+        XCTAssertTrue(result && !woke.isCancelled, "The list's change cut the stretched 12 s wait short")
+    }
+
     func testLowPowerModeStretchesTheListPoll() async {
         let box = Box()
         let appState = makeAppState(box)

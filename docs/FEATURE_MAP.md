@@ -7703,7 +7703,7 @@ none (no Settings caption or doc gives the cadence)
 **Code**
 - Signal: `Conduit/Services/HermesClient.swift` (sendsChangeEvents from `gateway.ready`'s `change_events`, carried over a socket handoff; the `sessions.changed` event), `Conduit/Services/StreamEventParser.swift` (sessionsChanged)
 - Reads: `Conduit/Services/ChatSync.swift` (CatalogChangeSignal, ChatListCatalogFreshness: fallbackInterval and fallbackIntervalFollowingChanges), `Conduit/Services/AppState.swift` (noteCatalogChanged, readPendingCatalogChange, chatListPollTick, refreshCatalogAfterLeavingChat, chatListBecameActive, noteActiveListForChatList)
-- Tests: `ConduitTests/ChatSyncTests.swift` (testSessionsChangedReadsTheCatalog, testAListLeftOnScreenReadsAgainEveryThirtySeconds, testAListFollowingChangeEventsReadsTheCatalogEveryFiveMinutes, testAChangeHeldByATurnHereKeepsTheThirtySecondRead), `ConduitTests/HermesClientTests.swift` (testGatewayReadyAdvertisesServerRequestsCapability, testAModelConfirmTokenSurvivesASocketHandOff)
+- Tests: `ConduitTests/ChatSyncTests.swift` (testSessionsChangedReadsTheCatalog, testAListLeftOnScreenReadsAgainEveryThirtySeconds, testAListFollowingChangeEventsReadsTheCatalogEveryFiveMinutes, testAChangeHeldByATurnHereKeepsTheThirtySecondRead, testAListChangeWakesTheFirstStepStretchedByLowPower), `ConduitTests/HermesClientTests.swift` (testGatewayReadyAdvertisesServerRequestsCapability, testAModelConfirmTokenSurvivesASocketHandOff)
 
 **Rulings**
 - Each `sessions.changed` reads the catalog, at most every 5 s and never while a turn runs here (its own rows move it the whole time); one held back is read once the wait or the turn ends (#1026).
