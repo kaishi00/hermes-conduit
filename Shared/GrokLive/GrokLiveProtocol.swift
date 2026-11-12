@@ -134,8 +134,9 @@ enum GrokLiveProtocol {
     static func frames(for message: LiveVoiceClientMessage, upsampler: inout GrokInputUpsampler) -> (frames: [[String: Any]], wantsResponse: Bool) {
         switch message {
         case .audio(let pcm16):
-            let audio = upsampler.upsample(pcm16).base64EncodedString()
-            return ([["type": "input_audio_buffer.append", "audio": audio]], false)
+            // The sessions send audio through `audioAppend`, off the main
+            // actor; this stays for anything that builds frames whole.
+            return ([audioAppendFrame(upsampler.plan(pcm16))], false)
         case .audioStreamEnd:
             // Server turn detection ends a turn on silence, and a muted
             // microphone sends none: a short silence closes the turn now.
@@ -175,6 +176,20 @@ enum GrokLiveProtocol {
             // A silent answer is absorbed without the model speaking.
             return ([item], scheduling != .silent)
         }
+    }
+
+    /// One microphone chunk's append frame, interpolated to 24 kHz.
+    static func audioAppendFrame(_ chunk: GrokUpsampleChunk) -> [String: Any] {
+        ["type": "input_audio_buffer.append", "audio": chunk.render().base64EncodedString()]
+    }
+
+    /// The append frame's text, built where the socket sends it: off the
+    /// main actor on a network socket (issue 1959). Local Live sends the
+    /// same frame.
+    static func audioAppend(_ chunk: GrokUpsampleChunk) -> LiveVoiceSocketWriter.Payload {
+        // The chunk, not the bytes handed back, carries the stream's place
+        // to interpolate from; they are the same audio.
+        .audio(chunk.pcm16, encode: { _ in try encode(audioAppendFrame(chunk)) })
     }
 
     static let responseCreate: [String: Any] = ["type": "response.create"]
@@ -217,7 +232,7 @@ enum GrokLiveProtocol {
 
     /// What one server frame means to the session, beyond the shared
     /// conversation events.
-    enum ServerFrame: Equatable {
+    enum ServerFrame: Equatable, Sendable {
         /// The session.update was applied: the session is ready.
         case sessionUpdated
         case responseStarted
@@ -247,7 +262,7 @@ enum GrokLiveProtocol {
     }
 
     /// How far an input transcript has got, from its event's `status`.
-    enum InputTranscriptStage: Equatable {
+    enum InputTranscriptStage: Equatable, Sendable {
         /// `in_progress`: a draft a later snapshot of the item replaces. A
         /// draft cut mid-phrase ends in "...", and later drafts rewrite
         /// earlier words, so one isn't an extension of the last.
@@ -379,6 +394,36 @@ struct GrokInputUpsampler {
     }
 
     mutating func upsample(_ pcm16: Data) -> Data {
+        plan(pcm16).render()
+    }
+
+    /// Takes `pcm16` into the stream and returns its interpolation to do,
+    /// so the main actor keeps the stream's order while the arithmetic runs
+    /// off it with the frame's encoding (issue 1959). The stream moves on
+    /// here, by the chunk's length and last sample alone.
+    mutating func plan(_ pcm16: Data) -> GrokUpsampleChunk {
+        let chunk = GrokUpsampleChunk(pcm16: pcm16, last: last, position: position)
+        let count = pcm16.count / 2
+        guard count > 0 else { return chunk }
+        // `render` steps two thirds of a sample at a time while the step's
+        // upper sample is in the chunk (with the held one in front).
+        let samples = count + (last == nil ? 0 : 1)
+        let limit = 3 * (samples - 1)
+        let steps = position <= limit ? (limit - position) / 2 + 1 : 0
+        position = position + 2 * steps - limit
+        last = Int16(bitPattern: UInt16(pcm16[pcm16.startIndex + 2 * count - 2]) | UInt16(pcm16[pcm16.startIndex + 2 * count - 1]) << 8)
+        return chunk
+    }
+}
+
+/// One captured chunk's 3:2 interpolation, with the stream state it starts
+/// from. Rendering it touches nothing else, so it can run anywhere.
+struct GrokUpsampleChunk: Sendable {
+    let pcm16: Data
+    fileprivate let last: Int16?
+    fileprivate let position: Int
+
+    func render() -> Data {
         // The step below is the fixed 3:2 from the capture rate.
         assert(GrokLiveProtocol.inputSampleRate == GeminiLiveProtocol.inputSampleRate * 3 / 2, "Grok Live upsampling assumes 16 kHz capture and 24 kHz input")
         let bytes = [UInt8](pcm16)
@@ -386,7 +431,8 @@ struct GrokInputUpsampler {
         guard count > 0 else { return Data() }
         var samples = (0..<count).map { Int16(bitPattern: UInt16(bytes[2 * $0]) | UInt16(bytes[2 * $0 + 1]) << 8) }
         if let last { samples.insert(last, at: 0) }
-        var output = Data(capacity: (count * 3 / 2 + 1) * 2)
+        var output = [UInt8]()
+        output.reserveCapacity((count * 3 / 2 + 1) * 2)
         var numerator = position
         while true {
             // Position in the captured stream: numerator / 3 samples in.
@@ -401,8 +447,6 @@ struct GrokInputUpsampler {
             output.append(UInt8(value >> 8))
             numerator += 2
         }
-        last = samples.last
-        position = numerator - 3 * (samples.count - 1)
-        return output
+        return Data(output)
     }
 }

@@ -129,7 +129,8 @@ struct GroupChatView: View {
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: {
-            Text(GroupRoomDisband.warning(members: surface?.room.members ?? []))
+            Text(GroupRoomDisband.warning(members: surface?.room.members ?? [],
+                                          chatsKept: appState.notifierPlugin.runtime?.roomChatsKept == true))
         }
         .modifier(RoomCopyDelete(copy: copyPendingDelete, confirming: Binding(
             get: { copyPendingDelete != nil },
@@ -225,7 +226,8 @@ struct GroupChatView: View {
                 disclosure: rowDisclosure,
                 insets: proxy.safeAreaInsets,
                 conversation: "room:\(replay.roomID)",
-                composerFloats: isV2
+                composerFloats: isV2,
+                pasteTarget: .room
             )
             .ignoresSafeArea()
         }

@@ -352,7 +352,7 @@ struct V2PulsePage: View {
                         .padding(.bottom, 12)
                         .transition(.move(edge: .bottom).combined(with: .opacity))
                 }
-                MinimisedLiveVoiceBar()
+                V2ListCallBar()
             }
         }
     }

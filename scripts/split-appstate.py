@@ -9,9 +9,9 @@ their own. It changes no code, except:
 
 - Stored instance properties, `init` and `deinit` stay in AppState.swift
   (an extension can't hold them), under their region's MARK.
-- A `private` declaration that another file now uses becomes internal
-  (`private(set)` likewise, when another file now writes it), since Swift has
-  no access level that spans an extension's files.
+- A `private` or `fileprivate` declaration that another file now uses
+  becomes internal (`private(set)` likewise, when another file now writes
+  it), since Swift has no access level that spans an extension's files.
 
 It is deterministic, so a branch that still edits the old file can take
 main's split by running it on its own copy (see `--help`):
@@ -30,13 +30,14 @@ import argparse
 import re
 import sys
 from collections import OrderedDict
+from types import SimpleNamespace
 from pathlib import Path
 
 APP_STATE = "Conduit/Services/AppState.swift"
 SERVICES = "Conduit/Services"
 
 # Each step is one PR. A step maps a new file's name to what moves there:
-# region names in the class body (with "#2" for a name's second region), or
+# region names in the class body (with "@2" for a name's second region), or
 # for the types around the class, "file:<TypeName>".
 STEPS = [
     # 1: the types around the class, and its trailing extensions
@@ -83,48 +84,157 @@ STEPS = [
     },
     # 4: rooms, bots and profile pictures
     {
-        "AppState+GroupChats.swift": ["Group Chats (hosted rooms)"],
+        # Group Chats and Profile photos both run on past their own code into
+        # code with no MARK of its own: profile settings, and opening chats.
+        "AppState+GroupChats.swift": ["Group Chats (hosted rooms)|until retireSpeechOperationsForServerReplacement"],
+        "AppState+ProfileSettings.swift": ["Group Chats (hosted rooms)|from retireSpeechOperationsForServerReplacement"],
         "AppState+BotMode.swift": [
             "Bot Mode", "Bot Mode (roster + canonical chat)",
             "Bot management (create / edit / delete / avatars)",
         ],
-        "AppState+ProfilePhotos.swift": ["Profile photos from Hermes"],
+        "AppState+ProfilePhotos.swift": ["Profile photos from Hermes|until openWidgetConversation"],
+        "AppState+OpenChat.swift": ["Profile photos from Hermes|from openWidgetConversation"],
     },
     # 5: voice
     {
-        "AppState+Voice.swift": ["Voice history"],
+        "AppState+Voice.swift": [
+            "Voice history|until openAppLink",
+            "Voice history|from dismissChatCallTranscript until isSessionPinned",
+        ],
+        "AppState+AppLinks.swift": ["Voice history|from openAppLink until dismissChatCallTranscript"],
+        "AppState+PinnedChatOrder.swift": ["Voice history|from isSessionPinned"],
         "AppState+WakePhrase.swift": ["Wake phrase (#174)"],
     },
     # 6: chats, their list and what's kept on the phone
     {
-        "AppState+Session.swift": ["Session", "Session management", "New Chat"],
-        "AppState+ChatList.swift": ["Saved chat list", "Stars (#757)", "Read state (#454)"],
-        "AppState+Persistence.swift": ["Persistence", "Offline chat cache (#99)"],
+        "AppState+Session.swift": [
+            "Session", "Session management", "New Chat",
+            "Read state (#454)|from setActiveSessionState",
+        ],
+        "AppState+ChatList.swift": [
+            "Saved chat list", "Stars (#757)", "Read state (#454)|until removePinnedState",
+        ],
+        "AppState+Persistence.swift": [
+            "Persistence|until restorePinnedSessions", "Offline chat cache (#99)",
+        ],
+        "AppState+PinSync.swift": [
+            "Persistence|from restorePinnedSessions until showNotice",
+            "Persistence|from dismissPinSyncNotice until isVoiceJobSession",
+            "Read state (#454)|from removePinnedState until pendingDecisionRestorationMessages",
+        ],
+        "AppState+Notices.swift": ["Persistence|from showNotice until dismissPinSyncNotice"],
+        "AppState+Voice.swift": ["Persistence|from isVoiceJobSession"],
+        "AppState+Reconciliation.swift": [
+            "Read state (#454)|from pendingDecisionRestorationMessages until setActiveSessionState",
+        ],
         "AppState+SessionReferences.swift": [
-            "Session references (durable conversation identity)",
+            "Session references (durable conversation identity)|until cancelScheduledReconnect",
             "Secondary profile title recovery",
+        ],
+        "AppState+ChatResume.swift": [
+            "Session references (durable conversation identity)|from cancelScheduledReconnect",
         ],
         "AppState+PendingSend.swift": ["Sending while connecting: what reads private state"],
     },
-    # 7: the composer and a turn's stream
+    # 7: the composer, sending, a turn's stream and voice
     {
         "AppState+Composer.swift": [
-            "Quoting into the composer (#385)", "Reactions", "Composer actions",
+            "Quoting into the composer (#385)|until automaticChatResumeWorkMayStillSelectSession",
+            "Composer actions|until TranscriptFreshnessGateOutcome",
         ],
-        "AppState+ChatTakeover.swift": ["Chat takeover"],
+        "AppState+TranscriptFreshness.swift": [
+            "Composer actions|from TranscriptFreshnessGateOutcome",
+        ],
+        "AppState+ChatResume.swift": [
+            "Quoting into the composer (#385)|from automaticChatResumeWorkMayStillSelectSession until invalidateBotModeState",
+        ],
+        "AppState+BotMode.swift": ["Quoting into the composer (#385)|from invalidateBotModeState"],
+        "AppState+Reactions.swift": ["Reactions"],
+        "AppState+NotifierPlugin.swift": ["Chat takeover|until chatTakeover"],
+        "AppState+ChatTakeover.swift": [
+            "Chat takeover|from chatTakeover until resendInPlaceOfLostEmptyChat",
+        ],
+        "AppState+SendMessage.swift": [
+            "Chat takeover|from resendInPlaceOfLostEmptyChat until toggleYolo",
+        ],
+        "AppState+YoloAndReasoning.swift": ["Chat takeover|from toggleYolo"],
         "AppState+SlashCommands.swift": ["Slash Commands"],
-        "AppState+Compression.swift": ["Session compression (`session.compress`)"],
-        "AppState+StreamEvents.swift": ["Stream event handling"],
-        "AppState+Clarify.swift": ["Clarify lifecycle"],
-        "AppState+ChatSupport.swift": ["Chat support surfaces"],
+        "AppState+Compression.swift": ["Session compression (`session.compress`)|until steer"],
+        "AppState+Steering.swift": [
+            "Session compression (`session.compress`)|from steer until respondToClarify",
+        ],
+        "AppState+Clarify.swift": [
+            "Session compression (`session.compress`)|from respondToClarify",
+            "Clarify lifecycle|until appendReasoning",
+        ],
+        "AppState+StreamEvents.swift": ["Stream event handling|until refreshDelegateAgents"],
+        "AppState+DelegateAgents.swift": ["Stream event handling|from refreshDelegateAgents"],
+        "AppState+StreamingText.swift": [
+            "Clarify lifecycle|from appendReasoning until requestChatScrollToLatest",
+            "Chat support surfaces|from scheduleStreamingPublish",
+        ],
+        "AppState+ChatSupport.swift": [
+            "Clarify lifecycle|from requestChatScrollToLatest",
+            "Chat support surfaces|until applyResponseHapticSignal",
+            "Chat support surfaces|from installVoiceCapabilityStateForTesting until loadVoiceProfilePreferences",
+        ],
+        "AppState+ResponseHaptics.swift": [
+            "Chat support surfaces|from applyResponseHapticSignal until spokenPromptSurface",
+        ],
+        "AppState+VoiceConversation.swift": [
+            "Chat support surfaces|from spokenPromptSurface until isWatchVoiceCallActive",
+            "Chat support surfaces|from handleCarPlayVoiceSurfaceRemoved until installVoiceCapabilityStateForTesting",
+            "Chat support surfaces|from loadVoiceProfilePreferences until scheduleStreamingPublish",
+        ],
+        "AppState+WatchCalls.swift": [
+            "Chat support surfaces|from isWatchVoiceCallActive until handleCarPlayVoiceSurfaceRemoved",
+        ],
     },
-    # 8: profiles, capabilities, dashboards and jobs
+    # 8: profiles, capabilities, live voice modes, dashboards, jobs and UI state
     {
-        "AppState+Profiles.swift": ["Profiles and preferences"],
-        "AppState+Capabilities.swift": ["Capabilities", "Capabilities#2", "Tools catalog for step rows"],
-        "AppState+ScheduledJobs.swift": ["Scheduled jobs"],
-        "AppState+Dashboards.swift": ["Saved dashboards (#148)", "Dashboard-scoped presentation (#148)"],
-        "AppState+UIState.swift": ["UI state", "Runtime"],
+        "AppState+SessionCatalog.swift": [
+            "Profiles and preferences|until ForegroundPersistedTailOutcome",
+            "Profiles and preferences|from dashboardSessions until switchProfile#1",
+        ],
+        "AppState+TranscriptHistory.swift": [
+            "Profiles and preferences|from ForegroundPersistedTailOutcome until dashboardSessions",
+        ],
+        "AppState+Profiles.swift": [
+            "Profiles and preferences|from switchProfile#1 until isExpiredPromptError",
+            "Profiles and preferences|from orderedProfiles",
+        ],
+        "AppState+Clarify.swift": [
+            "Profiles and preferences|from isExpiredPromptError until refreshProjects",
+        ],
+        "AppState+Projects.swift": [
+            "Profiles and preferences|from refreshProjects until orderedProfiles",
+        ],
+        "AppState+HelperModels.swift": ["Capabilities|until setGeminiLiveSearchMode"],
+        "AppState+GeminiQwenLive.swift": [
+            "Capabilities|from setGeminiLiveSearchMode until setGPTLiveEnabled",
+        ],
+        "AppState+GPTLive.swift": ["Capabilities|from setGPTLiveEnabled until setGrokLiveEnabled"],
+        "AppState+GrokLive.swift": ["Capabilities|from setGrokLiveEnabled until usesLocalLiveAgent"],
+        "AppState+LocalLive.swift": ["Capabilities|from usesLocalLiveAgent until saveVoiceJobLedger"],
+        "AppState+Voice.swift": [
+            "Capabilities|from saveVoiceJobLedger until consumeVoiceSheetAutoListen",
+        ],
+        "AppState+VoiceConversation.swift": ["Capabilities|from consumeVoiceSheetAutoListen"],
+        "AppState+Capabilities.swift": ["Capabilities@2", "Tools catalog for step rows"],
+        "AppState+ScheduledJobs.swift": ["Scheduled jobs|until sendStartupReads"],
+        "AppState+ProfileConfig.swift": [
+            "Scheduled jobs|from sendStartupReads until KeptRoute",
+            "Scheduled jobs|from loadBusyInputMode",
+        ],
+        "AppState+KeptAnswers.swift": ["Scheduled jobs|from KeptRoute until loadBusyInputMode"],
+        "AppState+Dashboards.swift": [
+            "Dashboard-scoped presentation (#148)", "Saved dashboards (#148)|until makeClient",
+        ],
+        "AppState+SignIn.swift": ["Saved dashboards (#148)|from makeClient"],
+        "AppState+Pulse.swift": ["UI state|from setPulseDoItBot until composerPrefillText"],
+        "AppState+UIState.swift": [
+            "Runtime", "UI state|until setPulseDoItBot", "UI state|from composerPrefillText",
+        ],
     },
 ]
 
@@ -344,7 +454,7 @@ def segment(lines, masked, depths, lo, hi, base_depth, indent, region_names):
         if mark and len(line) - len(line.lstrip()) == indent:
             name = mark.group(1)
             seen[name] = seen.get(name, 0) + 1
-            region = name if seen[name] == 1 else f"{name}#{seen[name]}"
+            region = name if seen[name] == 1 else f"{name}@{seen[name]}"
             region_names.append((region, i))
             items.append(Item(pending if pending is not None else i, i + 1, "mark", [region], False, region, i))
             pending = None
@@ -492,9 +602,36 @@ def assign(src, steps):
                         it.dest = fname
                         moves.setdefault(fname, []).append(it)
                     continue
+                # "Region|from name", "Region|until name" or "Region|from a until b"
+                # (a name with overloads is named as name#1, name#2, ...):
+                # the part of a long region from (or before) a declaration.
+                part, _, cut = part.partition("|")
                 if part not in known:
                     raise SystemExit(f"no region {part!r}; regions: {', '.join(known)}")
-                for it in region_items[part]:
+                items = region_items[part]
+                if cut:
+                    m = re.fullmatch(r"(?:from (\S+))?\s*(?:until (\S+))?", cut)
+                    if not m or not (m.group(1) or m.group(2)):
+                        raise SystemExit(f"can't cut {part!r} at {cut!r}")
+
+                    def at(name):
+                        # `name#2`: the second of a name's overloads
+                        name, _, nth = name.partition("#")
+                        found = [i for i, it in enumerate(items) if name in it.names]
+                        if nth:
+                            found = found[int(nth) - 1:int(nth)]
+                        elif len(found) != 1:
+                            raise SystemExit(f"can't cut {part!r} at {cut!r}: "
+                                             f"{len(found)} {name!r}, name one as {name}#N")
+                        if not found:
+                            raise SystemExit(f"can't cut {part!r} at {cut!r}")
+                        return found[0]
+                    lo = at(m.group(1)) if m.group(1) else 0
+                    hi = at(m.group(2)) if m.group(2) else len(items)
+                    if lo >= hi:
+                        raise SystemExit(f"can't cut {part!r} at {cut!r}: nothing between")
+                    items = items[lo:hi]
+                for it in items:
                     if it.movable:
                         it.dest = fname
                         moves.setdefault(fname, []).append(it)
@@ -513,22 +650,52 @@ def code_names(masked_lines):
     return names
 
 
-MUTATION = (r"(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\s*(=(?!=)|\+=|-=|\*=|/=|\|=|&=|\?\?=)"
+MUTATION = (r"(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\s*(=(?!=)|&?\+=|&?-=|&?\*=|/=|%=|\|=|&=|\^=|&?<<=|&?>>=|\?\?=)"
             r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(append|remove\w*|insert|merge|formUnion|"
             r"formIntersection|subtract|sort|reverse|popLast|popFirst|update\w*|toggle|"
-            r"swapAt|replaceSubrange|reserveCapacity|shuffle)\b")
+            r"swapAt|replaceSubrange|reserveCapacity|shuffle|move|partition|formSymmetricDifference)\b")
+
+
+# `mutating func` names the app declares (set by run): calling one through a
+# `private(set)` property writes it, like `sessionCatalogLoadState.reset()`.
+APP_MUTATING = set()
+
+
+def mutating_names(repo):
+    names = set()
+    for p in sorted((repo / "Conduit").rglob("*.swift")) + sorted((repo / "Shared").rglob("*.swift")):
+        names.update(re.findall(r"\bmutating\s+func\s+(\w+)", p.read_text(errors="replace")))
+    return names
+
+
+def mutation_pattern():
+    """What follows a name that writes it: an assignment or compound op, or a
+    call of a mutating method, through any chain of members or subscripts."""
+    mutation = MUTATION
+    if APP_MUTATING:
+        mutation += r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(" + "|".join(sorted(APP_MUTATING)) + r")\b(?!\s*:)"
+    return mutation
 
 
 def writes(masked_lines, name):
-    pat = re.compile(r"(?<![\w.])(self\.)?" + re.escape(name) + r"\b(?=" + MUTATION + r")"
-                     r"|&(self\.)?" + re.escape(name) + r"\b")
-    return any(pat.search(l) for l in masked_lines)
+    pat = re.compile(r"(?<![\w.])(self\??\.)?" + re.escape(name) + r"\b(?=" + mutation_pattern() + r")"
+                     r"|&(self\??\.)?" + re.escape(name) + r"\b")
+    return pat.search("\n".join(masked_lines)) is not None
+
+
+def writes_member(masked_lines, name):
+    """Whether code writes `value.name` (another type's member)."""
+    pat = re.compile(r"\??\." + re.escape(name) + r"\b(?=" + mutation_pattern() + r")"
+                     r"|&[\w.?]*(?:\[[^\]\n]*\][\w.?]*)*\." + re.escape(name) + r"\b")
+    return pat.search("\n".join(masked_lines)) is not None
 
 
 def widen(line, which):
     """Drop `private ` (which='private') or `private(set) ` from a decl line."""
-    if which == "private(set)":
-        return re.sub(r"\bprivate\(set\)\s+", "", line, count=1)
+    if which in ("private(set)", "fileprivate(set)"):
+        return re.sub(r"\b" + re.escape(which) + r"\s+", "", line, count=1)
+    if which == "fileprivate":
+        return re.sub(r"\bfileprivate\s+(?!\(set\))", "", line, count=1)
     return re.sub(r"(?<![\w(])private\s+(?!\(set\))", "", line, count=1)
 
 
@@ -548,8 +715,8 @@ def references(masked_lines, name):
     an argument label."""
     n = re.escape(name)
     pat = re.compile(r"(?<![\w.])\$?" + n + r"\b(?!:)"
-                     r"|(?:\bself|\bSelf|\bAppState|\\)\." + n + r"\b")
-    return any(pat.search(l) for l in masked_lines)
+                     r"|(?:\bself\??|\bSelf|\bAppState|\\)\." + n + r"\b")
+    return pat.search("\n".join(masked_lines)) is not None
 
 
 def in_app_state(src, it):
@@ -576,26 +743,97 @@ def plan_access(src, file_items):
                 mods = getattr(d, "mods", None)
                 if mods is None:
                     _, mods, _ = parse_decl(src.masked[d.decl_line])
-                if "private" not in mods and "private(set)" not in mods:
+                hidden = [m for m in ("private", "fileprivate") if m in mods]
+                setter = [m for m in ("private(set)", "fileprivate(set)") if m in mods]
+                if not hidden and not setter:
                     continue
                 for other in file_items:
                     if other == f:
                         continue
-                    text = (scoped if member else every)[other]
+                    # fileprivate reaches the whole file, top-level code too
+                    file_wide = any(m.startswith("fileprivate") for m in mods)
+                    text = (scoped if member and not file_wide else every)[other]
                     used = [n for n in d.names if references(text, n)]
                     if not used:
                         continue
-                    if "private" in mods:
-                        line = widen(line, "private")
-                        widened.append((d, "private", other))
+                    if hidden:
+                        line = widen(line, hidden[0])
+                        widened.append((d, hidden[0], other))
                         break
                     if any(writes(text, n) for n in used):
-                        line = widen(line, "private(set)")
-                        widened.append((d, "private(set)", other))
+                        line = widen(line, setter[0])
+                        widened.append((d, setter[0], other))
                         break
                 if line != src.lines[d.decl_line]:
                     changes[d.decl_line] = line
+    # An internal declaration can't show a private type in its signature, or
+    # use a private name in a default argument: widen those names too.
+    hidden_decls = {}
+    for items in file_items.values():
+        for it in items:
+            for d in decl_lines_of(it):
+                mods = getattr(d, "mods", None)
+                if mods is None:
+                    _, mods, _ = parse_decl(src.masked[d.decl_line])
+                hidden = [m for m in ("private", "fileprivate") if m in mods]
+                if hidden and d.decl_line not in changes:
+                    for n in d.names:
+                        hidden_decls.setdefault(n, []).append((d, hidden[0]))
+    queue = [d for d, which, _ in widened if which in ("private", "fileprivate")]
+    while queue:
+        d = queue.pop()
+        for n in set(IDENT.findall(signature(src, d))) - set(d.names):
+            for e, which in hidden_decls.pop(n, []):
+                if e.decl_line in changes:
+                    continue
+                changes[e.decl_line] = widen(src.lines[e.decl_line], which)
+                widened.append((e, which, f"the signature of {d.names[0]}"))
+                queue.append(e)
+    # A fileprivate member of another type in AppState.swift is reached as
+    # `value.name`: widen it when moved code uses (or, for a setter, writes) it.
+    # (A private one never reached AppState's code, even in the same file.)
+    for it in src.outer_before + src.outer_after:
+        if it.dest or it.kind not in ("class", "struct", "enum", "actor"):
+            continue
+        for k in range(it.start, it.end):
+            m = OUTER_MEMBER.match(src.masked[k])
+            if not m:
+                continue
+            which, name = m.group(1), m.group(2)
+            for f, text in every.items():
+                if f == APP_STATE:
+                    continue
+                hit = (writes_member(text, name) if which.endswith("(set)") else
+                       re.search(r"\." + re.escape(name) + r"\b", "\n".join(text)))
+                if hit:
+                    changes[k] = widen(changes.get(k, src.lines[k]), which)
+                    widened.append((SimpleNamespace(names=[name], decl_line=k, outer_member=True),
+                                    which, f))
+                    break
     return changes, widened
+
+
+OUTER_MEMBER = re.compile(r"^\s+(?:@\w+(?:\([^)]*\))?\s+)*(?:\w+\s+)*?"
+                          r"(fileprivate\(set\)|fileprivate)\s+(?:\w+\s+)*?(?:var|let|func)\s+(\w+)")
+
+
+def signature(src, d):
+    """A declaration's text up to its body or initial value: what an internal
+    declaration shows of the types and names it uses."""
+    text = "\n".join(src.masked[d.decl_line:d.end])
+    if d.kind in ("enum", "struct", "class", "actor", "typealias"):
+        return text  # a type shows its members' types too
+    depth = 0
+    for k, ch in enumerate(text):
+        if ch in "([<" and not (ch == "<" and text[k - 1:k] == " "):
+            depth += 1
+        elif ch in ")]>" and not (ch == ">" and text[k - 1:k] in ("-", " ")):
+            depth -= 1
+        elif depth <= 0 and ch == "{":
+            return text[:k]
+        elif depth <= 0 and ch == "=" and d.kind in ("var", "let") and text[k + 1:k + 2] != "=":
+            return text[:k]
+    return text
 
 
 # ---------------------------------------------------------------- writing
@@ -637,12 +875,13 @@ def render_new_file(src, fname, items, changes, header_note):
         last_region = None
         first = True
         for it in in_class:
-            if it.region != last_region:
+            title = MARK_TITLES.get(fname, it.region.split('@')[0])
+            if title != last_region:
                 if not first:
                     out.append("")
-                out.append(f"    // MARK: - {it.region.split('#')[0]}")
+                out.append(f"    // MARK: - {title}")
                 out.append("")
-                last_region = it.region
+                last_region = title
             elif not first:
                 out.append("")
             out.extend(text(it))
@@ -650,6 +889,21 @@ def render_new_file(src, fname, items, changes, header_note):
         out.append("}")
         out.append("")
     return "\n".join(out)
+
+
+def with_imports(text, imports):
+    """`text` with any of AppState.swift's imports it lacks, after its own:
+    code appended to an existing file needs what it used where it was."""
+    lines = text.split("\n")
+    have = {l.strip() for l in lines if l.startswith("import ")}
+    missing = [i for i in imports if i.strip() not in have]
+    if not missing:
+        return text
+    at = max((k for k, l in enumerate(lines) if l.startswith("import ")), default=None)
+    if at is None:
+        at = next(k for k, l in enumerate(lines) if l.strip() and not l.startswith("//")) - 1
+        missing = missing + [""]
+    return "\n".join(lines[:at + 1] + missing + lines[at + 1:])
 
 
 def render_app_state(src, moved, changes):
@@ -662,9 +916,26 @@ def render_app_state(src, moved, changes):
     for it in src.body:
         if it.kind != "mark" and it.start not in skip:
             region_left[it.region] = True
+    # a MARK left over stored properties names the files its code went to
+    region_dests = OrderedDict()
+    for it in moved:
+        if it in src.body and it.dest:
+            region_dests.setdefault(it.region, OrderedDict())[it.dest] = True
+    changes = dict(changes)
     for it in src.body:
         if it.kind == "mark" and not region_left.get(it.region):
             skip.update(range(it.start, it.end))
+        elif it.kind == "mark" and it.region in region_dests:
+            for k in range(it.start, it.end):
+                line = changes.get(k, src.lines[k])
+                if "// MARK:" in line:
+                    # a MARK cut before keeps the files it named
+                    m = re.search(r" \(((?:AppState\+\w+\.swift(?:, )?)+)\)$", line.rstrip())
+                    files = m.group(1).split(", ") if m else []
+                    head = line.rstrip()[:m.start()] if m else line.rstrip()
+                    files += [f for f in region_dests[it.region] if f not in files]
+                    changes[k] = head + f" ({', '.join(files)})"
+                    break
     outer = src.outer_before + src.outer_after
     outer_left = {it.region for it in outer if it.kind != "mark" and it.start not in skip}
     for it in outer:
@@ -690,12 +961,243 @@ def render_app_state(src, moved, changes):
         if keep and keep[-1].rstrip().endswith("{"):
             while k < n and k not in skip and not src.lines[k].strip():
                 k += 1
+        # a MARK whose code moved keeps its blank line before what stays
+        if keep and keep[-1].strip().startswith("// MARK:") and k < n and src.lines[k].strip():
+            keep.append("")
     while keep and not keep[-1].strip():
         keep.pop()
     return "\n".join(keep) + "\n"
 
 
+# A file made from the cut-off end of a region gets a MARK of its own.
+MARK_TITLES = {"AppState+OpenChat.swift": "Opening chats",
+               "AppState+ProfileSettings.swift": "Profile and connection settings",
+               "AppState+AppLinks.swift": "Opening app links",
+               "AppState+PinSync.swift": "Pins kept on the phone and on the host, and pinned replies",
+               "AppState+Notices.swift": "Notices over the app",
+               "AppState+Voice.swift": "Voice background jobs",
+               "AppState+Reconciliation.swift": "Keeping row ids and local notes across a reconcile",
+               "AppState+ChatResume.swift": "Resuming a chat: return surface, viewport and transport",
+               "AppState+PinnedChatOrder.swift": "Pinning chats, and the saved order of chats, bots and rooms",
+               "AppState+TranscriptFreshness.swift": "Checking the transcript is fresh before a send",
+               "AppState+BotMode.swift": "Resetting Bot Mode's state",
+               "AppState+Reactions.swift": "Reactions, and branching from a reply",
+               "AppState+NotifierPlugin.swift": "The Conduit plugin's status on this dashboard",
+               "AppState+SendMessage.swift": "Sending a message",
+               "AppState+YoloAndReasoning.swift": "YOLO mode and reasoning effort",
+               "AppState+Steering.swift": "Steering, interrupting and queued sends",
+               "AppState+Clarify.swift": "Clarify, approvals, input prompts and connections",
+               "AppState+DelegateAgents.swift": "Delegate agents",
+               "AppState+StreamingText.swift": "Publishing streamed text and reasoning",
+               "AppState+ChatSupport.swift": "Chat support surfaces",
+               "AppState+ResponseHaptics.swift": "Response haptics",
+               "AppState+VoiceConversation.swift": "Voice conversations and Read Aloud",
+               "AppState+WatchCalls.swift": "Watch calls",
+               "AppState+SessionCatalog.swift": "Reading the session catalog",
+               "AppState+TranscriptHistory.swift": "Persisted transcripts and earlier messages",
+               "AppState+Profiles.swift": "Switching and reading profiles",
+               "AppState+Projects.swift": "Projects and workspace folders",
+               "AppState+HelperModels.swift": "Model providers, helper models and the voice reply model",
+               "AppState+GeminiQwenLive.swift": "Gemini Live and Qwen Live",
+               "AppState+GPTLive.swift": "GPT-Live",
+               "AppState+GrokLive.swift": "Grok Live",
+               "AppState+LocalLive.swift": "Local Live",
+               "AppState+ProfileConfig.swift": "A profile's settings, config and display preferences",
+               "AppState+KeptAnswers.swift": "Answers kept for screens to open on",
+               "AppState+SignIn.swift": "Signing in and restoring a saved connection",
+               "AppState+Pulse.swift": "Pulse's remembered homes, Do it bots and folded briefs"}
+
 HEADER_NOTES = {
+    "AppState+SessionCatalog.swift": [
+        "Reading the session catalog: deferred catalog pages, a profile's",
+        "sessions, archived and cron sessions, and which profile a session",
+        "belongs to. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+TranscriptHistory.swift": [
+        "A chat's persisted transcript: its tail on foregrounding, history",
+        "pages, row ids, and loading earlier messages. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Profiles.swift": [
+        "Switching profiles, reading the profile list, the Siri profile names",
+        "and the fallback profile, and the profiles' order. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Projects.swift": [
+        "Projects: listing, creating, renaming, deleting and moving sessions",
+        "between them, project folders and ideas, and the workspace folders",
+        "opened. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+HelperModels.swift": [
+        "The model routes a profile keeps: model providers, helper models, the",
+        "voice reply and voice job models, and the live voice status. Moved out",
+        "of AppState.swift (issue 828).",
+    ],
+    "AppState+GeminiQwenLive.swift": [
+        "Gemini Live and Qwen Live: their settings, opening and closing a call,",
+        "CarPlay, and the direct live controller they share. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+GPTLive.swift": [
+        "GPT-Live: its settings and billing, its briefing, and opening and",
+        "closing a call, CarPlay included. Moved out of AppState.swift (issue",
+        "828).",
+    ],
+    "AppState+GrokLive.swift": [
+        "Grok Live: its settings, its client, and opening and closing a call,",
+        "CarPlay included. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+LocalLive.swift": [
+        "Local Live: its agent and persona, its settings, its client, and",
+        "opening and closing a call, CarPlay included. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Capabilities.swift": [
+        "A profile's skills and toolsets (loading and toggling them) and the",
+        "tools catalog step rows read. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ScheduledJobs.swift": [
+        "Scheduled (cron) jobs: reading them and their runs, their actions,",
+        "creating, updating and deleting one, and blueprints. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+ProfileConfig.swift": [
+        "A profile's settings and config: the startup reads, display",
+        "preferences, the main and fallback models, config writes, and the busy",
+        "input mode. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+KeptAnswers.swift": [
+        "The answers kept so a screen opens on its last read (KeptRoute), and",
+        "the writes that update them. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+Dashboards.swift": [
+        "Saved dashboards: registering, adopting, switching, signing out of and",
+        "removing one, and what each dashboard keeps apart (display",
+        "preferences, relay gateway ids, model visibility). Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+SignIn.swift": [
+        "Signing in: the client, restoring a saved connection and its",
+        "credentials, Face ID, the offline chat instead of sign-in, and a",
+        "sign-in that's required. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+UIState.swift": [
+        "UI state that isn't a chat's: pausing live publishes, the sidebar,",
+        "a Bot Chat opening, Settings dismissal and room handoffs. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Composer.swift": [
+        "The composer: quoting and replying into it, prefills and drops, and",
+        "submitting what it holds (the submission's ownership and identity,",
+        "starting a chat for it, a send while busy). Moved out of AppState.swift",
+        "(issue 828).",
+    ],
+    "AppState+Reactions.swift": [
+        "Reacting to a message, the agent's reactions, and branching a new chat",
+        "from a reply. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+NotifierPlugin.swift": [
+        "The Conduit plugin's status on this dashboard: its version and the",
+        "newest one, its changelog and notice channel, and provisioning",
+        "notification encryption. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ChatTakeover.swift": [
+        "Taking over a chat another device or the CLI is running, for a typed",
+        "send and for a call, and the message held while it waits. Moved out",
+        "of AppState.swift (issue 828).",
+    ],
+    "AppState+SendMessage.swift": [
+        "Sending a message: sendMessage, resending in place of a lost empty",
+        "chat, send failures, and settling a prompt whose delivery is unknown",
+        "against the transcript. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+YoloAndReasoning.swift": [
+        "A session's YOLO mode and reasoning effort, written to Hermes. Moved",
+        "out of AppState.swift (issue 828).",
+    ],
+    "AppState+SlashCommands.swift": [
+        "Slash commands: the catalog, running a command on the phone or the",
+        "gateway, edit and resend, rewinding turns, and reloading MCP servers",
+        "and skills. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+Compression.swift": [
+        "Compressing a session (`session.compress`), its recovery and legacy",
+        "fallback, and adopting the compressed transcript. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Steering.swift": [
+        "Steering a running turn, redirecting or interrupting it to send, the",
+        "queued sends' rows, and cancelling the current turn. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Clarify.swift": [
+        "What the agent asks the user mid-turn: clarify questions and forms,",
+        "approvals, input prompts and connection asks, with their expiry and",
+        "the push cards they replace. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+StreamEvents.swift": [
+        "Applying a turn's stream events: status updates, server compaction",
+        "claims, buffering while reconciling, and each event's effect on the",
+        "open chat. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+DelegateAgents.swift": [
+        "The turn's delegate agents (subagents): their roster, steering,",
+        "interrupting, ending and tailing one, and pausing delegation. Moved out",
+        "of AppState.swift (issue 828).",
+    ],
+    "AppState+StreamingText.swift": [
+        "Publishing a turn's streamed text and reasoning to the transcript:",
+        "coalesced publishes, completion, partials and interim commentary.",
+        "Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ChatSupport.swift": [
+        "What the open chat leans on: the workspace, inline images and gateway",
+        "media, gateway diagnostics, the running state, scroll requests, the",
+        "session title, and test hooks. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ResponseHaptics.swift": [
+        "The haptics that mark a reply's activity and its end. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+VoiceConversation.swift": [
+        "Voice conversations and Read Aloud: what can start one, voice",
+        "preferences, switching voice modes, opening and closing a call, CarPlay,",
+        "waiting for the transport, and the voice tests in Settings. Moved out",
+        "of AppState.swift (issue 828).",
+    ],
+    "AppState+WatchCalls.swift": [
+        "Calls from the Watch: planning a direct, bridged, Grok or local live",
+        "call, its connection and host tools, and saving the call. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+PinSync.swift": [
+        "Pinned chats kept on the phone and on the host (SessionPinSync), and",
+        "the replies pinned in a chat. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+Notices.swift": [
+        "The notices shown over the app: a refused call, CarPlay failing, and",
+        "the general notice. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ChatResume.swift": [
+        "Resuming a chat: the surface it returns to, the viewport it restores,",
+        "and the transport continuation after a reconnect. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+AppLinks.swift": [
+        "Opening a conduit:// link: a chat, a bot's Bot Chat or a call's",
+        "transcript, on whichever profile it belongs to. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+ProfileSettings.swift": [
+        "A dashboard's settings and its profiles' names, pictures, colors and",
+        "order, with the server identity a chat resume keys on. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+OpenChat.swift": [
+        "Opening a chat: a widget's or a bot's Bot Chat, a room's chat, a saved",
+        "session, a notification's target, and the profile a conversation",
+        "belongs to. Moved out of AppState.swift (issue 828).",
+    ],
     "ChatResumeRecovery.swift": [
         "The seams and steps of resuming a chat: the lifecycle operations",
         "tests replace, reconnect scheduling, and the recovery sequence that",
@@ -730,7 +1232,7 @@ HEADER_NOTES = {
 def default_note(src, items):
     regions = []
     for it in items:
-        r = it.region.split("#")[0] if it.region else None
+        r = it.region.split("@")[0] if it.region else None
         if r and r not in regions:
             regions.append(r)
     if not regions:
@@ -758,8 +1260,10 @@ def collisions(repo, src, widened, written):
               if p.relative_to(repo).as_posix() != APP_STATE and p.name not in written]
     texts = {p: p.read_text(errors="replace") for p in others}
     for d, which, _ in widened:
-        if which != "private":
+        if which not in ("private", "fileprivate"):
             continue
+        if getattr(d, "outer_member", False):
+            continue  # another type's member: nothing else in its scope
         member = any(d is x or d in getattr(x, "inner", []) for x in src.body)
         for n in d.names:
             if member:
@@ -788,6 +1292,8 @@ def run(repo, step, write, pr=None, today=None):
         file_items[f] = items
     # files that already exist and aren't written by this run can't see
     # AppState.swift's private names, so they need nothing.
+    APP_MUTATING.clear()
+    APP_MUTATING.update(mutating_names(repo))
     changes, widened = plan_access(src, file_items)
     report = []
     for f, items in moves.items():
@@ -807,18 +1313,9 @@ def run(repo, step, write, pr=None, today=None):
         if target.exists() and (not f.startswith("AppState+") or any(it not in src.body for it in items)
                                 or "extension AppState" not in target.read_text()):
             raise SystemExit(f"{target} already exists; nothing written")
-        if target.exists() and any(f"// MARK: - {it.region.split('#')[0]}\n" in target.read_text()
+        if target.exists() and any(f"// MARK: - {it.region.split('@')[0]}\n" in target.read_text()
                                    for it in items):
             raise SystemExit(f"{target} already has this step's moves; nothing written")
-    for f, items in moves.items():
-        target = repo / SERVICES / f
-        if target.exists():
-            body = render_new_file(src, f, items, changes, ["-"])
-            block = body[body.index("extension AppState {"):]
-            target.write_text(target.read_text().rstrip("\n") + "\n\n" + block)
-        else:
-            target.write_text(render_new_file(src, f, items, changes, HEADER_NOTES.get(f, [])))
-    path.write_text(render_app_state(src, moved, changes))
     where = {}
     for it in src.outer_before + src.body + src.outer_after:
         if it.kind in ("mark", "tail"):
@@ -832,10 +1329,28 @@ def run(repo, step, write, pr=None, today=None):
                 else:
                     where[n] = dest
     import datetime
-    manual = update_map(repo, {n: d for n, d in where.items() if d},
-                        pr, today or datetime.date.today().isoformat())
+    map_text, manual = update_map(repo, {n: d for n, d in where.items() if d},
+                                  pr, today or datetime.date.today().isoformat())
     for m in manual:
         report.append(f"  MAP rewrite by hand: {m[:160]}")
+    app_text = render_app_state(src, moved, changes)
+    for f, items in moves.items():
+        target = repo / SERVICES / f
+        if target.exists():
+            body = render_new_file(src, f, items, changes, ["-"])
+            block = body[body.index("extension AppState {"):]
+            existing = target.read_text()
+            head = block.split("\n", 3)
+            # a title the file already has: its MARK isn't repeated
+            if head[1].startswith("    // MARK: - ") and head[1] + "\n" in existing and not head[2]:
+                block = head[0] + "\n" + head[3]
+            target.write_text(with_imports(target.read_text(), src.imports).rstrip("\n")
+                              + "\n\n" + block)
+        else:
+            target.write_text(render_new_file(src, f, items, changes, HEADER_NOTES.get(f, [])))
+    # AppState.swift last: until it's written, its regions are all still there
+    (repo / MAP).write_text(map_text)
+    path.write_text(app_text)
     print("\n".join(report))
 
 
@@ -911,8 +1426,7 @@ def update_map(repo, where, pr, today):
     result = "".join(out)
     if result != text and pr:
         result = stamp_checked(text, result, pr, today)
-    path.write_text(result)
-    return manual
+    return result, manual
 
 
 def stamp_checked(before, after, pr, today):

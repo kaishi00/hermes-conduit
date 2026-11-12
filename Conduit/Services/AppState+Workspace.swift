@@ -40,7 +40,7 @@ extension AppState {
     }
 
     /// The folders the Folder tab can open: the chat's own (with `chat`),
-    /// then each project's, once each.
+    /// then each project's, then the ones opened with Open Folder…, once each.
     func workspaceRoots(includingChat chat: Bool) -> [WorkspaceRoot] {
         var roots: [WorkspaceRoot] = []
         var seen = Set<String>()
@@ -53,13 +53,44 @@ extension AppState {
                   seen.insert(Self.normalizedWorkspacePath(path)).inserted else { continue }
             roots.append(WorkspaceRoot(path: path, title: project.title, kind: .project))
         }
+        for path in openedWorkspaceFolders(profile: workspaceProfile)
+        where seen.insert(Self.normalizedWorkspacePath(path)).inserted {
+            // A Windows host's paths use backslashes.
+            let name = Self.normalizedWorkspacePath(path).split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? ""
+            roots.append(WorkspaceRoot(path: path, title: name.isEmpty ? path : name, kind: .opened))
+        }
         return roots
     }
 
     static func normalizedWorkspacePath(_ path: String) -> String {
+        // A POSIX name may end in a backslash: only slashes are trimmed there.
+        let posix = path.hasPrefix("/") || path.hasPrefix("~")
         var trimmed = path
-        while trimmed.count > 1, trimmed.hasSuffix("/") || trimmed.hasSuffix("\\") { trimmed.removeLast() }
+        while trimmed.count > 1, trimmed.hasSuffix("/") || (!posix && trimmed.hasSuffix("\\")) { trimmed.removeLast() }
         return trimmed
+    }
+
+    /// Whether `path` is `folder` or inside it. A Windows host's paths
+    /// may use backslashes; a POSIX path only slashes.
+    static func workspacePath(_ path: String, isIn folder: String) -> Bool {
+        let base = normalizedWorkspacePath(folder)
+        if path == base { return true }
+        let posix = base.hasPrefix("/") || base.hasPrefix("~")
+        return (posix ? ["/"] : ["/", "\\"]).contains { separator in
+            path.hasPrefix(base.hasSuffix(separator) ? base : base + separator)
+        }
+    }
+
+    /// `path`'s last part, split as `workspacePath(_:isIn:)` splits.
+    static func workspaceName(_ path: String) -> String {
+        // A POSIX name may end in a backslash: only slashes are trimmed there.
+        let posix = path.hasPrefix("/") || path.hasPrefix("~")
+        var normalized = path
+        while normalized.count > 1, normalized.hasSuffix("/") || (!posix && normalized.hasSuffix("\\")) {
+            normalized.removeLast()
+        }
+        guard let cut = normalized.lastIndex(where: { $0 == "/" || (!posix && $0 == "\\") }) else { return normalized }
+        return String(normalized[normalized.index(after: cut)...])
     }
 
     /// The folder holding `path`, or nil at the top of the disk: what the

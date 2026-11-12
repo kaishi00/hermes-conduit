@@ -4107,6 +4107,12 @@ private struct AppearanceSettingsDetail: View {
                     Text("Choose what the round button beside a chat's message box does. A live call stays in the chat's top bar and in the button's touch-and-hold menu. Each profile can choose its own in Voice settings.")
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
+                    // A Mac calls from the chat's header (issue 1534).
+                    if ChatVoiceButtonAction.liveCallInHeader() {
+                        Text("On a Mac a live call is always in the chat's top bar, so the round button shows only for a voice message or dictation.")
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
+                    }
                     // Three choices whose names run long in some languages:
                     // Settings' dropdown field, not a segmented control.
                     ConduitMenuPicker(

@@ -11,7 +11,7 @@ import re
 import unittest
 
 ROOT = Path(__file__).resolve().parents[2]
-APP_STATE = ROOT / "Conduit/Services/AppState.swift"
+ONE_CHAT_TWO_DEVICES = ROOT / "Conduit/Services/AppState+OneChatTwoDevices.swift"
 CRON_NOTIFICATIONS = ROOT / "Conduit/Services/AppState+CronNotifications.swift"
 SHELL = ROOT / "Conduit/Views/V2/V2Shell.swift"
 
@@ -36,7 +36,7 @@ def function(source, signature):
 class ScheduledTabReadsSourceContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
-        cls.app_state = APP_STATE.read_text()
+        cls.app_state = ONE_CHAT_TWO_DEVICES.read_text()
         cls.notifications = CRON_NOTIFICATIONS.read_text()
         cls.shell = SHELL.read_text()
 

@@ -12,17 +12,17 @@ final class ComposerFullEditorTests: XCTestCase {
     /// #695: a running turn or notice expands the composer, but only typing
     /// hides the minimised call bar, so a call minimised in a chat can come back.
     func testOnlyTypingHidesTheMinimisedCallBar() {
-        XCTAssertTrue(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: true))
-        XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: false), "a busy, unfocused composer keeps the bar")
-        XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: false, isFocused: true), "the classic layout always shows it")
+        XCTAssertTrue(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isTyping: true))
+        XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isTyping: false), "a busy, unfocused composer keeps the bar")
+        XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: false, isTyping: true), "the classic layout always shows it")
     }
 
     /// #1527: on a Mac or an iPad with a hardware keyboard the field keeps focus
     /// after a send; the bar comes back until words are typed again.
     func testFocusKeptAfterASendShowsTheMinimisedCallBarUntilTyping() {
-        XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: true, hasText: false, keepsFocusAfterSend: true))
-        XCTAssertTrue(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: true, hasText: true, keepsFocusAfterSend: true))
-        XCTAssertTrue(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isFocused: true, hasText: false, keepsFocusAfterSend: false), "the on-screen keyboard still hides it")
+        XCTAssertFalse(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isTyping: true, hasText: false, keepsFocusAfterSend: true))
+        XCTAssertTrue(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isTyping: true, hasText: true, keepsFocusAfterSend: true))
+        XCTAssertTrue(ComposerBar.hidesMinimisedCallBar(restsWhenIdle: true, isTyping: true, hasText: false, keepsFocusAfterSend: false), "the on-screen keyboard still hides it")
     }
 
     /// #762: V2 keeps Stop in the resting bar, so the big voice button

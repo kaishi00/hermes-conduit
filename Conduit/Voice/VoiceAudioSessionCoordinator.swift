@@ -27,6 +27,9 @@ enum VoiceAudioIntent: Equatable {
     case conversationPlayback
     /// Output-only speech outside a Voice Conversation (Read Aloud, TTS test).
     case standalonePlayback
+    /// A card's audio or video (issue 826): output-only, and it pauses
+    /// other apps' media the way a player does, handing it back at the end.
+    case mediaPlayback
     /// Foreground wake phrase listening (#174). The lowest-priority owner:
     /// any other intent takes the session over, and AppState disarms the
     /// wake listener as soon as another owner appears.
@@ -268,6 +271,9 @@ final class VoiceAudioSessionCoordinator {
         case conversation
         /// Output-only `.playback` with media coexistence: standalone speech.
         case standalonePlayback
+        /// Output-only `.playback` that pauses other media: a card's audio
+        /// or video.
+        case mediaPlayback
         /// `.playAndRecord` + `.default`, mixing with other apps' audio:
         /// foreground wake phrase listening.
         case wakeListening
@@ -496,21 +502,6 @@ final class VoiceAudioSessionCoordinator {
         }
     }
 
-    /// A video or audio card plays outside any lease, only while nothing
-    /// else holds the session (the card checks). Its changes still go
-    /// through the session seam, so they supersede a deactivation queued
-    /// when the last owner released, instead of having it land on the
-    /// card's playback.
-    func activateForCardPlayback() {
-        try? session.setCategory(.playback, mode: .default, options: [])
-        try? session.setActive(true, options: [])
-    }
-
-    /// Hands the audio back to whatever the card's media paused.
-    func deactivateAfterCardPlayback() {
-        try? session.setActive(false, options: .notifyOthersOnDeactivation)
-    }
-
     /// Reapplies the dominant policy after the system may have deactivated
     /// the session underneath a live lease (route change restarting capture).
     func reassert() throws {
@@ -524,7 +515,8 @@ final class VoiceAudioSessionCoordinator {
     /// reconfiguring it, and conversation playback that outlives its capture
     /// owner (paused microphone while the assistant is still speaking) must
     /// not churn the audio route mid-playback.
-    /// Wake listening ranks below standalone playback: it is the only owner
+    /// A card's media plays within standalone speech when both hold it.
+    /// Wake listening ranks below everything: it is the only owner
     /// that steps aside on its own, so it never decides the policy while
     /// anything else holds the session.
     private var dominantPolicy: Policy? {
@@ -533,6 +525,9 @@ final class VoiceAudioSessionCoordinator {
         }
         if leases.values.contains(.standalonePlayback) {
             return .standalonePlayback
+        }
+        if leases.values.contains(.mediaPlayback) {
+            return .mediaPlayback
         }
         if leases.values.contains(.wakeListening) {
             return .wakeListening
@@ -614,6 +609,16 @@ final class VoiceAudioSessionCoordinator {
                     try session.setActive(true, options: [])
                 }
                 appliedPolicy = .standalonePlayback
+            case .mediaPlayback:
+                // A card plays with the ringer switch off and pauses other
+                // apps' media, as a player does. In a call from Hermes it
+                // plays within CallKit's session, as standalone speech does.
+                if !isInNativeCall {
+                    let configuration = VoiceAudioSessionConfiguration.mediaPlayback
+                    try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
+                    try session.setActive(true, options: [])
+                }
+                appliedPolicy = .mediaPlayback
             case .wakeListening:
                 let configuration = VoiceAudioSessionConfiguration.wakeListening
                 try session.setCategory(configuration.category, mode: configuration.mode, options: configuration.options)
@@ -651,6 +656,7 @@ final class VoiceAudioSessionCoordinator {
         case .conversationCapture: return "conversationCapture"
         case .conversationPlayback: return "conversationPlayback"
         case .standalonePlayback: return "standalonePlayback"
+        case .mediaPlayback: return "mediaPlayback"
         case .wakeListening: return "wakeListening"
         }
     }
@@ -659,6 +665,7 @@ final class VoiceAudioSessionCoordinator {
         switch policy {
         case .conversation: return "conversation"
         case .standalonePlayback: return "standalone"
+        case .mediaPlayback: return "media"
         case .wakeListening: return "wakeListening"
         case nil: return "inactive"
         }

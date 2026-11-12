@@ -299,13 +299,22 @@ struct ChatView: View {
         }
     }
 
+    /// Whether the chat shows the minimised call bar (and a reading's
+    /// player) above its composer: not while words are typed, except
+    /// beside the list, which leaves its own bar to this one (#2270).
+    static func showsMinimisedCallBar(composerTyping: Bool, besideList: Bool) -> Bool {
+        !composerTyping || besideList
+    }
+
     /// The minimised call bar and the composer, below the transcript.
     @ViewBuilder
     private var bottomBar: some View {
         VStack(spacing: 0) {
             // A live call swiped down keeps running; its bar sits here
-            // (in V2, not while someone types in the composer).
-            if !composerTyping {
+            // (in V2, not while someone types in the composer). Beside the
+            // list it stays while typing too: the list leaves its own bar
+            // to this one (V2ListCallBar), so it's the only one there.
+            if Self.showsMinimisedCallBar(composerTyping: composerTyping, besideList: shell.hasChatBeside) {
                 MinimisedLiveVoiceBar()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -440,8 +449,9 @@ struct ChatView: View {
         .task { await TranscriptPictureMemory.loadKeptSizes() }
         .background(Color.clear)
         // Files dragged onto the chat (Finder on a Mac, Files on an iPad)
-        // are staged in the composer for the user to send (#1408).
-        .attachmentDropTarget(isEnabled: appState.composerIsEnabled) { providers in
+        // are staged in the composer for the user to send (#1408); a file
+        // or folder from the Folder puts its path in the draft (issue 1438).
+        .attachmentDropTarget(isEnabled: appState.composerIsEnabled, takesWorkspaceEntries: true) { providers in
             appState.dropIntoComposer(providers)
         }
         .overlay(alignment: .top) {
@@ -519,7 +529,8 @@ struct ChatView: View {
                         renderRevision: scope.cacheRevision,
                         receivedScopedPreference: true
                     )
-                }
+                },
+                pasteTarget: .chat
             )
             .ignoresSafeArea()
         }

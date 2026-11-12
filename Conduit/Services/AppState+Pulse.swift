@@ -9,6 +9,12 @@
 //
 
 import Foundation
+import SwiftUI
+import Combine
+import CryptoKit
+import OSLog
+import UIKit
+import WebKit
 
 extension AppState {
     /// The profile an older plugin's Pulse reads its chat from, which names
@@ -212,5 +218,133 @@ extension AppState {
         } catch {
             return false
         }
+    }
+}
+
+extension AppState {
+    // MARK: - Pulse's remembered homes, Do it bots and folded briefs
+
+    /// Sets where Do it goes for a card from no chat on this dashboard:
+    /// `bot`'s Bot Chat, or a new chat for nil.
+    func setPulseDoItBot(_ bot: String?) {
+        guard let key = activeDashboardID?.uuidString, pulseDoItBots[key] != bot else { return }
+        var bots = pulseDoItBots
+        bots[key] = bot
+        storePulseDoItBots(bots)
+    }
+
+    private func storePulseDoItBots(_ bots: [String: String]) {
+        objectWillChange.send()
+        pulseDoItBots = bots
+        defaults.set(bots, forKey: Self.pulseDoItBotsKey)
+    }
+
+    func rememberPulseHome(_ chat: String?, profile: String?) {
+        guard let key = activeDashboardID?.uuidString else { return }
+        if pulseRememberedProfiles[key] != profile {
+            var profiles = pulseRememberedProfiles
+            profiles[key] = profile
+            storePulseProfiles(profiles)
+        }
+        guard pulseRememberedHomes[key] != chat else { return }
+        var homes = pulseRememberedHomes
+        homes[key] = chat
+        storePulseHomes(homes)
+    }
+
+    /// A removed dashboard's Pulse chat goes with it.
+    func forgetPulseHome(of dashboardID: UUID) {
+        var bots = pulseDoItBots
+        if bots.removeValue(forKey: dashboardID.uuidString) != nil { storePulseDoItBots(bots) }
+        var profiles = pulseRememberedProfiles
+        if profiles.removeValue(forKey: dashboardID.uuidString) != nil { storePulseProfiles(profiles) }
+        var homes = pulseRememberedHomes
+        guard homes.removeValue(forKey: dashboardID.uuidString) != nil else { return }
+        storePulseHomes(homes)
+    }
+
+    /// Do it's New Chat, for a Pulse item from no chat (PulseFeed.swift):
+    /// only when New Chat can start one at once, never one that waits. The
+    /// chat is the one this call's own create opened, as createNewSession
+    /// returns it, while it's still the one open: another create landing
+    /// meanwhile (a call's chat, Ask Hermes About, a widget) opens a chat
+    /// that isn't this one's. The Pulse screen stays up until it opened, so
+    /// a chat that didn't start leaves it there to say why. Nil when none
+    /// started.
+    func startPulseNewChat() async -> String? {
+        guard canStartNewChatNow, !isStartingNewChat, !showsPendingNewChat else { return nil }
+        guard let created = await createNewSessionMarkingStart(), activeSessionId == created else { return nil }
+        dismissSidebarDrawer()
+        return created
+    }
+
+    /// Do it's switch to Pulse's profile, for a new chat there: whether it
+    /// finished with that profile on screen. False when a newer navigation
+    /// took the screen meanwhile, which a new chat mustn't replace.
+    func switchProfileForPulse() async -> Bool {
+        await switchProfile(to: pulseHomeProfile, reusing: nil)
+    }
+
+    private func storePulseHomes(_ homes: [String: String]) {
+        objectWillChange.send()
+        pulseRememberedHomes = homes
+        defaults.set(homes, forKey: Self.pulseHomesKey)
+    }
+
+    private func storePulseProfiles(_ profiles: [String: String]) {
+        objectWillChange.send()
+        pulseRememberedProfiles = profiles
+        defaults.set(profiles, forKey: Self.pulseProfilesKey)
+    }
+
+    static let pulseFoldedBriefsKey = "conduit.pulse.foldedBriefs"
+
+    static let pulseFoldedBriefsKept = 30
+
+    /// The cards `brief` had open when it was folded, by id, each with when
+    /// it came; nil while it isn't folded.
+    func pulseBriefFold(_ brief: Int) -> [Int: Double]? {
+        guard let key = activeDashboardID?.uuidString,
+              let open = pulseFoldedBriefs[key]?[String(brief)] else { return nil }
+        let cards = open.compactMap { card, at in Int(card).map { ($0, at) } }
+        return Dictionary(cards, uniquingKeysWith: { first, _ in first })
+    }
+
+    /// Folds `brief` with `open`, the cards in it still open then
+    /// (PulseLayout.Brief.openCards), or opens it again (nil).
+    func foldPulseBrief(_ brief: Int, open: [Int: Double]?) {
+        guard let key = activeDashboardID?.uuidString else { return }
+        var briefs = pulseFoldedBriefs[key] ?? [:]
+        let noted = open.map { cards in Dictionary(uniqueKeysWithValues: cards.map { (String($0.key), $0.value) }) }
+        guard briefs[String(brief)] != noted else { return }
+        briefs[String(brief)] = noted
+        // An older brief folded now stays folded: the oldest other fold goes.
+        let others = briefs.keys.compactMap { Int($0) }.filter { $0 != brief }.sorted()
+        let kept = Set(others.suffix(Self.pulseFoldedBriefsKept - 1)).union([brief])
+        briefs = briefs.filter { id, _ in Int(id).map { kept.contains($0) } ?? false }
+        var all = pulseFoldedBriefs
+        all[key] = briefs.isEmpty ? nil : briefs
+        storePulseFoldedBriefs(all)
+    }
+
+    /// `card`, in `brief`, put back open with Undo or Put back: the fold no
+    /// longer counts it as open when it was folded, so a folded brief opens
+    /// to show it, and folds again once it's handled.
+    func unfoldPulseCard(_ card: Int, in brief: Int) {
+        guard var open = pulseBriefFold(brief), open.removeValue(forKey: card) != nil else { return }
+        foldPulseBrief(brief, open: open)
+    }
+
+    /// A removed dashboard's folded briefs go with it.
+    func forgetPulseFoldedBriefs(of dashboardID: UUID) {
+        var all = pulseFoldedBriefs
+        guard all.removeValue(forKey: dashboardID.uuidString) != nil else { return }
+        storePulseFoldedBriefs(all)
+    }
+
+    private func storePulseFoldedBriefs(_ all: [String: [String: [String: Double]]]) {
+        objectWillChange.send()
+        pulseFoldedBriefs = all
+        defaults.set(all, forKey: Self.pulseFoldedBriefsKey)
     }
 }

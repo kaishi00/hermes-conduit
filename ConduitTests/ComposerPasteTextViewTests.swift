@@ -51,6 +51,26 @@ final class ComposerPasteTextViewTests: XCTestCase {
         XCTAssertEqual(textView.selectedRange, NSRange(location: 11, length: 0))
     }
 
+    /// ⌘V in a transcript on a Mac goes to the composer's field once it has
+    /// focus, and only to one that takes text (issue 1692).
+    func testTranscriptPasteReachesOnlyAComposerFieldThatTakesText() {
+        let field = ReturnKeyTextView(frame: .zero, textContainer: nil)
+        let paste = #selector(ReturnKeyTextView.pasteFromTranscript(_:))
+        field.isEditable = true
+        XCTAssertTrue(field.canPerformAction(paste, withSender: nil))
+        field.isEditable = false
+        XCTAssertFalse(field.canPerformAction(paste, withSender: nil))
+    }
+
+    /// A chat or room switch drops a transcript paste still waiting for
+    /// its field's focus, so it can't land in the next conversation.
+    func testAChatSwitchDropsATranscriptPasteStillWaiting() {
+        ReturnKeyTextView.pasteOnceFocused()
+        XCTAssertTrue(ReturnKeyTextView.hasPendingPaste)
+        ReturnKeyTextView.cancelPendingPaste()
+        XCTAssertFalse(ReturnKeyTextView.hasPendingPaste)
+    }
+
     func testAPastedImageLinkThatAnsweredWithAPageIsRefused() {
         XCTAssertNil(PastedRemoteImage.image(from: Data("<html><body>Not found</body></html>".utf8)))
     }
@@ -535,6 +555,12 @@ final class ComposerPasteTextViewTests: XCTestCase {
             ReturnKeyTextView.fieldDrop(registeredTypeIdentifiers: [jpeg], suggestedNames: ["a.jpg"], isEditable: false, takesFiles: true),
             .declined,
             "A locked field takes no files"
+        )
+        XCTAssertEqual(
+            ReturnKeyTextView.fieldDrop(registeredTypeIdentifiers: [[WorkspaceDrag.typeIdentifier] + words], suggestedNames: [nil],
+                                        isEditable: true, takesFiles: true),
+            .declined,
+            "A Folder row is left to the chat or room around the field, never pasted as its path"
         )
     }
 

@@ -7,6 +7,7 @@
 //  expanded on an iPad with the room for it and always on a Mac.
 //
 
+import Combine
 import GameController
 import SwiftUI
 import UIKit
@@ -38,6 +39,51 @@ enum ComposerLayout {
     ) -> Bool {
         if onMac { return true }
         return idiom != .phone && hardwareKeyboard
+    }
+
+    /// Whether a chat or room opens with its composer focused, ready to
+    /// type, as in a desktop client: on a Mac (issue 1692), as New Chat
+    /// already did there. An iPhone or iPad keeps the keyboard down until
+    /// the field is tapped, so it doesn't cover what just opened.
+    static func focusesOnOpen(onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac) -> Bool {
+        onMac
+    }
+
+    /// Whether ⌘V in an open conversation's transcript pastes into its
+    /// composer (issue 1692): on a Mac, where the transcript keeps the
+    /// keys once a click there put the composer's focus away.
+    static func transcriptTakesPaste(onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac) -> Bool {
+        onMac
+    }
+
+    /// An opened conversation's composer may take focus now: nothing is
+    /// presented in front, and no other text field (the list's search, a
+    /// rename) holds focus, whose typing it would take over.
+    @MainActor static var openMayTakeFocus: Bool {
+        KeyboardCommands.nothingInFront && !ReturnKeyTextView.anotherFieldHasFocus
+    }
+}
+
+/// Which composer ⌘V in a transcript pastes into.
+enum ComposerPasteTarget: Equatable {
+    /// The open chat's (ComposerBar).
+    case chat
+    /// The open group room's (GroupRoomComposer).
+    case room
+}
+
+/// ⌘V in the open conversation's transcript on a Mac (issue 1692): the
+/// composer on screen for the target takes focus and the paste, as if ⌘V
+/// had come to its field (`ReturnKeyTextView.pasteOnceFocused`).
+@MainActor
+enum ComposerPaste {
+    static let requests = PassthroughSubject<ComposerPasteTarget, Never>()
+
+    /// The clipboard holds something a composer takes: words, a link, a
+    /// picture or a file, all of which list a type. Read from its types
+    /// only, so asking never raises the paste prompt.
+    static var clipboardHasSomething: Bool {
+        !UIPasteboard.general.types.isEmpty
     }
 }
 

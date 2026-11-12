@@ -5002,6 +5002,62 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertNil(appState.sessionLiveStatus(other), "A snapshot is not shown while disconnected")
     }
 
+    func testOpenChatsRowFollowsItsWorkingLineWhileTheSceneIsInactive() {
+        // Issue 1615: a Mac window behind another app goes inactive, which
+        // marks the turn state stale while the reply's events keep coming.
+        // The row kept to a registry snapshot from before the turn and
+        // showed nothing beside a chat still saying it worked.
+        let harness = makeHarness()
+        let appState = harness.appState
+        let open = self.session("open")
+        appState.sessions = [open]
+        appState.activeSessionId = "open"
+        appState.isConnected = true
+        let profile = appState.activeProfile
+        appState.recordActiveListEvidence([], profile: profile)
+
+        appState.handleStreamEvent(.sessionBusy(sessionId: "open", busy: true))
+        appState.handleScenePhase(.inactive)
+        XCTAssertTrue(appState.turnStateIsStale)
+        XCTAssertTrue(appState.isBusy, "The chat still shows its working line")
+        XCTAssertEqual(appState.sessionLiveStatus(open), .working, "Its row says Running too")
+
+        // A stale idle still asks the registry: a turn may have started
+        // on another device meanwhile.
+        appState.handleStreamEvent(.sessionBusy(sessionId: "open", busy: false))
+        XCTAssertFalse(appState.isBusy)
+        appState.recordActiveListEvidence(
+            [LiveSessionStatus(runtimeSessionId: "rt-open", storedSessionId: "open", status: "working")],
+            profile: profile
+        )
+        XCTAssertEqual(appState.sessionLiveStatus(open), .working)
+        appState.recordActiveListEvidence([], profile: profile)
+        XCTAssertNil(appState.sessionLiveStatus(open))
+    }
+
+    func testAMacWindowBehindAnotherAppKeepsTheChatListsReadsGoing() {
+        // Issue 1615: inactive on a Mac is another app in front, Conduit's
+        // window still in view, so the list keeps reading the registry.
+        let harness = makeHarness()
+        let appState = harness.appState
+        appState.inactiveSceneStaysInView = true
+        appState.handleScenePhase(.active)
+        appState.handleScenePhase(.inactive)
+        XCTAssertTrue(appState.sceneIsInView)
+
+        // An iPhone or iPad inactive (the switcher, Control Center) stops.
+        appState.inactiveSceneStaysInView = false
+        appState.handleScenePhase(.active)
+        appState.handleScenePhase(.inactive)
+        XCTAssertFalse(appState.sceneIsInView)
+
+        // In the background nothing reads, on a Mac either.
+        appState.inactiveSceneStaysInView = true
+        appState.handleScenePhase(.active)
+        appState.handleScenePhase(.background)
+        XCTAssertFalse(appState.sceneIsInView)
+    }
+
     func testAnotherProfilesActiveListLeavesTheChatListAlone() {
         let harness = makeHarness()
         let appState = harness.appState
@@ -5539,6 +5595,25 @@ final class AppStateChatResumeTests: XCTestCase {
         await scheduler.runNew()
         XCTAssertTrue(harness.appState.errorMessage?.contains("Failed to refresh the dashboard session") == true)
         XCTAssertTrue(harness.appState.showsConnectionRepair)
+    }
+
+    /// A failed send's line is about that send, not the connection: while
+    /// the connection is down it alone offers no Repair, and any other
+    /// message in its place does (issue 2095, #2110).
+    func testAFailedSendsLineAloneOffersNoRepair() {
+        let harness = makeHarness()
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        harness.appState.isConnected = false
+        harness.appState.errorMessage = "Failed to send"
+        harness.appState.sendFailureShown = "Failed to send"
+
+        XCTAssertFalse(harness.appState.showsConnectionRepair, "a failed send's reason isn't the connection's")
+
+        harness.appState.errorMessage = "Hermes stopped answering"
+        XCTAssertTrue(harness.appState.showsConnectionRepair, "another message while it's down still offers Repair")
     }
 
     /// An older, unrelated message left on screen doesn't offer Repair while

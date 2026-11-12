@@ -170,6 +170,13 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// Whether a background job's first prompt went to Hermes. Until then a
     /// follow-up joins its instructions instead of interrupting it.
     var requestSent = false
+    /// Whether a continued job holds its chat while it checks the chat is
+    /// free and finds its runtime: the call's other requests wait meanwhile.
+    /// Once its request counts as sent, `requestSent` holds the chat instead.
+    var claimsChat = false
+    /// Whether a continued job's submit began (after its turn surface
+    /// report). Until then a cancel interrupts nothing in its chat.
+    var submitted = false
     /// A follow-up being put into the running turn (#451). While it is on
     /// its way, or waits to run as the next turn, a completion isn't taken
     /// as the request's end.
@@ -292,13 +299,13 @@ enum VoiceBackgroundJobNotice: Equatable {
     case submit(prompt: String, fallback: String)
 }
 
-/// Hermes operations the supervisor needs. Closures (not a protocol) so
-/// AppState can bind them to whichever client is current at call time and
-/// tests can script them.
 /// A job whose request was never sent (a cancel or reset overtook it): its
 /// turn surface report is dropped, as after a refused send.
 struct VoiceJobNotSentError: Error {}
 
+/// Hermes operations the supervisor needs. Closures (not a protocol) so
+/// AppState can bind them to whichever client is current at call time and
+/// tests can script them.
 struct VoiceBackgroundJobBackend {
     /// `profile` nil creates the job in the active profile. `callsModel`:
     /// the job is the call's own on that profile (a Watch call's, or a Bot
@@ -336,7 +343,8 @@ struct VoiceBackgroundJobBackend {
     var submit: @MainActor (_ sessionID: String, _ text: String) async throws -> Void
     /// Tells the plugin where a job's request came from, just before its
     /// submit (TurnSurface, #888): spoken, from the Watch for a Watch call's
-    /// job. Returns what forgets that report when the submit fails.
+    /// job. Returns what forgets that report when the submit fails or a
+    /// cancel or reset overtakes the start before it.
     var reportTurnSurface: @MainActor (_ sessionID: String, _ text: String, _ fromWatch: Bool) async
         -> @MainActor (Error) -> Void = { _, _, _ in { _ in } }
     var cancel: @MainActor (_ sessionID: String) async throws -> Void
@@ -1664,12 +1672,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     ) async {
         while generation == self.generation, job(jobID)?.status == .starting {
             // One request at a time in the chat: an earlier job of the call
-            // still running there, or a turn typed in it, goes first.
+            // still running there, or a turn typed in it, goes first. A job
+            // claims the chat before it asks whether a turn runs there, so
+            // two of the call's requests never both pass during that wait
+            // (issue 2283).
             let earlier = jobs.contains { other in
-                other.id != jobID && other.status.isActive && other.requestSent
+                other.id != jobID && other.status.isActive && (other.requestSent || other.claimsChat)
                     && [other.runtimeSessionID, other.storedSessionID].compactMap { $0 }.contains { chat.owns(sessionID: $0) }
             }
-            if !earlier, !(await backend.threadIsBusy(chat)) { break }
+            if !earlier {
+                update(jobID) { $0.claimsChat = true }
+                if !(await backend.threadIsBusy(chat)) { break }
+                update(jobID) { $0.claimsChat = false }
+            }
             try? await Task.sleep(for: threadWaitInterval)
         }
         guard generation == self.generation, job(jobID)?.status == .starting else { return }
@@ -1678,9 +1693,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard generation == self.generation, job(jobID)?.status == .starting else { return }
             let request = job(jobID)?.instructions ?? ""
             if !runtimeID.isEmpty { onRuntime?(runtimeID) }
+            // Sent from here on: a follow-up interrupts rather than joins
+            // text already reported, and the call's next request waits.
             update(jobID) {
                 if !runtimeID.isEmpty { $0.runtimeSessionID = runtimeID }
                 $0.requestSent = true
+                $0.claimsChat = false
                 $0.sentAt = Date()
             }
             // Only a Watch call continues a chat this way: its later
@@ -1688,10 +1706,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             let sessionID = runtimeID.isEmpty ? chat.runtimeSessionID : runtimeID
             let prompt = Self.jobPrompt(for: request)
             let dropTurnSurface = await backend.reportTurnSurface(sessionID, prompt, true)
+            // A cancel while the report went sends nothing. Until the submit
+            // begins, a cancel never interrupts the chat, whose running turn
+            // would be another's.
             guard generation == self.generation, job(jobID)?.status == .starting else {
                 dropTurnSurface(VoiceJobNotSentError())
                 return
             }
+            update(jobID) { $0.submitted = true }
             do {
                 try await backend.submit(sessionID, prompt)
             } catch {
@@ -2477,7 +2499,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         callbackJobMayHaveSettled(job.id)
         // Still waiting its turn in the call's chat: what runs there is
         // another request's, so nothing is interrupted.
-        if job.continuesChat, !job.requestSent { return true }
+        if job.continuesChat, !job.submitted { return true }
         guard let sessionID = job.runtimeSessionID else { return true }
         do {
             try await backend.cancel(sessionID)

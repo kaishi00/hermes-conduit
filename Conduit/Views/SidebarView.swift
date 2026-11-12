@@ -2039,11 +2039,14 @@ struct ProjectCreateSheet: View {
 /// Hermes' folders, from where the chat works (or Home's): into a folder,
 /// out to the one holding it, and a new folder with the plugin (issue 1661).
 /// The folders are the Hermes host's, so it browses them rather than the
-/// device's own.
-private struct ProjectFolderPickerSheet: View {
+/// device's own. The Folder's Open Folder… uses it too, for the open
+/// chat's profile (issue 1438).
+struct ProjectFolderPickerSheet: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     let rootPath: String
+    /// Whose folders: the profile in use when nil.
+    var profile: String? = nil
     let onChoose: (String) -> Void
     @State private var currentPath = ""
     @State private var entries: [WorkspaceEntry] = []
@@ -2149,7 +2152,11 @@ private struct ProjectFolderPickerSheet: View {
         isLoading = true
         errorMessage = nil
         do {
-            let listed = try await appState.workspaceDirectoryEntries(at: path)
+            let listed = if let profile {
+                try await appState.workspaceDirectoryEntries(at: path, profile: profile)
+            } else {
+                try await appState.workspaceDirectoryEntries(at: path)
+            }
             currentPath = path
             entries = listed
         } catch {
@@ -2163,7 +2170,7 @@ private struct ProjectFolderPickerSheet: View {
     private func makeFolder(_ name: String) async {
         let folder = currentPath
         do {
-            if let made = try await appState.makeProjectFolder(named: name, in: folder) {
+            if let made = try await appState.makeProjectFolder(named: name, in: folder, profile: profile) {
                 await open(made)
             }
         } catch {
