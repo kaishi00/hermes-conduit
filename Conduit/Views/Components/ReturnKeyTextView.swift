@@ -470,15 +470,28 @@ class ReturnKeyTextView: UITextView {
     /// After the composer on screen asked its field for focus: pastes into
     /// it once it has it. Focus moves just after the update that asked
     /// (`setFocusIntent`), so this tries for a moment; a field that never
-    /// takes focus (typing off, a sheet in front) gets nothing.
+    /// takes focus (typing off, a sheet in front) gets nothing. A chat or
+    /// room switch in those moments cancels it (`cancelPendingPaste`), so
+    /// the words never land in the next conversation's field.
     @MainActor
     static func pasteOnceFocused() {
-        Task { @MainActor in
+        pendingPaste?.cancel()
+        pendingPaste = Task { @MainActor in
             for _ in 0..<12 {
+                if Task.isCancelled { return }
                 if UIApplication.shared.sendAction(#selector(ReturnKeyTextView.pasteFromTranscript(_:)), to: nil, from: nil, for: nil) { return }
                 try? await Task.sleep(for: .milliseconds(25))
             }
         }
+    }
+
+    @MainActor private static var pendingPaste: Task<Void, Never>?
+
+    /// Drops a transcript paste still waiting for its field's focus.
+    @MainActor
+    static func cancelPendingPaste() {
+        pendingPaste?.cancel()
+        pendingPaste = nil
     }
 
     /// Another text field has focus: one that isn't a composer's (the

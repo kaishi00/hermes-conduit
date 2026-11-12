@@ -3681,7 +3681,7 @@ keyboard line (done, #2270) · no Settings caption describes it
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send; focusesAfterFullEditor, read in the full editor sheet's onDismiss)
 - Opening on a Mac: `Conduit/Views/Components/ComposerLayout.swift` (focusesOnOpen, openMayTakeFocus), `Conduit/Views/Components/ComposerBar.swift` (focusOnOpen, from onAppear and handoffComposer), `Conduit/Views/Components/GroupRoomComposer.swift` (focusOnOpen, takesKeys), `Conduit/Views/Components/ReturnKeyTextView.swift` (anotherFieldHasFocus, FirstResponderProbe)
-- ⌘V from the transcript: `Conduit/Views/TranscriptView.swift` (pasteTarget; TranscriptViewController's takeKeysAfterClick, canBecomeFirstResponder, paste), `Conduit/Views/Components/ComposerLayout.swift` (transcriptTakesPaste, ComposerPaste, ComposerPasteTarget), `Conduit/Views/Components/ReturnKeyTextView.swift` (pasteFromTranscript, pasteOnceFocused), ComposerBar's and GroupRoomComposer's `onReceive(ComposerPaste.requests)`
+- ⌘V from the transcript: `Conduit/Views/TranscriptView.swift` (pasteTarget; TranscriptViewController's takeKeysAfterClick, canBecomeFirstResponder, paste), `Conduit/Views/Components/ComposerLayout.swift` (transcriptTakesPaste, ComposerPaste, ComposerPasteTarget), `Conduit/Views/Components/ReturnKeyTextView.swift` (pasteFromTranscript, pasteOnceFocused, cancelPendingPaste), ComposerBar's and GroupRoomComposer's `onReceive(ComposerPaste.requests)`
 - Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard, testMacOpensConversationsReadyToTypeAndPastesFromTheTranscript), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow, testFocusChangesWaitUntilAfterTheUpdateThatAskedAndTheLastAskWins, testAFieldTurnedOffUnderFocusTakesItBackOnceOnUnlessAnotherFieldTookIt, testTranscriptPasteReachesOnlyAComposerFieldThatTakesText)
 
 **Rulings**
@@ -3743,7 +3743,9 @@ keyboard line (done, #2270) · no Settings caption describes it
   text or that a field took keeps its own. A chat that can't take text
   gets nothing. An iPhone or iPad keeps ⌘V in the transcript doing
   nothing, so it never brings the on-screen keyboard up (2026-11-12, #2270,
-  issue 1692).
+  issue 1692). A chat or room switch while the paste waits for the field's
+  focus drops it, so it never lands in the next conversation (2026-11-12,
+  #2284).
 
 **Open gaps**
 - Not yet seen on a device: a Mac and an iPad with a keyboard sending from
@@ -3758,7 +3760,7 @@ keyboard line (done, #2270) · no Settings caption describes it
   row's own gestures). Typing letters with the transcript holding the keys
   doesn't go to the composer (#2270).
 
-**Checked:** 2026-11-12, #2270 (on a Mac a chat or room opens with its composer focused, and ⌘V in its transcript pastes there, issue 1692); 2026-11-11, #2217 (a wish whose restore is queued drops when the keyboard is put away; the plan strip puts a waiting wish away only where an on-screen keyboard is up, as the Plan card ruling has it); 2026-11-11, #2210 (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
+**Checked:** 2026-11-12, #2284 (a chat or room switch drops a transcript paste still waiting for focus); 2026-11-12, #2270 (on a Mac a chat or room opens with its composer focused, and ⌘V in its transcript pastes there, issue 1692); 2026-11-11, #2217 (a wish whose restore is queued drops when the keyboard is put away; the plan strip puts a waiting wish away only where an on-screen keyboard is up, as the Plan card ruling has it); 2026-11-11, #2210 (issue 2208: typing turned off under focus keeps the wish and takes focus back once on; the chat composer, rooms' field and the full editor share it); 2026-11-05, #1785 (focus changes after the update that asked, in every composer field, issue 1781); 2026-10-31, #1556 (an iPhone always lets go; rooms follow chats); 2026-10-30, #1527 (new entry).
 
 ## A chat's last reply
 
@@ -7740,7 +7742,7 @@ and the widget's pickers (no status), and no Settings caption or doc names it
 - Status: `Conduit/Services/AppState.swift` (sessionLiveStatus, refreshLiveSessionStatuses, recordActiveListEvidence, chatListPollTick, chatListCatalogGeneration's wake; sceneIsInView and inactiveSceneStaysInView for a Mac window behind another app), `Conduit/Services/SessionLiveStatusIndex.swift`, `Conduit/Services/PowerPolicy.swift` (ChatListPollPacer, PollCadence.chatListSteps and chatListStepsFollowingChanges)
 - Rows: `Conduit/Views/V2/V2SessionRow.swift` (V2SessionStatus, v2RowStatus), `Conduit/Views/V2/V2ChatsView.swift` (the poll's task, showsLiveRows, nestSummary, V2ProjectRow), `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/SidebarView.swift`
 - What the list column shows: `Conduit/Views/V2/V2Shell.swift` (V2SplitLayout.showsChatRows)
-- Tests: `ConduitTests/AppStateChatResumeTests.swift` (testOpenChatLiveStatusPrecedence, testOpenChatsRowFollowsItsWorkingLineWhileTheSceneIsInactive, testAMacWindowBehindAnotherAppKeepsTheChatListsReadsGoing, testAnotherProfilesRowInAllFollowsTheRegistry), `ConduitTests/V2SplitLayoutTests.swift` (testV2ListColumnKeepsLiveRowsBesideTheChat), `ConduitTests/PowerPolicyTests.swift` (the Chats list pacer), `ConduitTests/ChatSyncTests.swift` (testAQuietListFollowingChangeEventsWaitsUpToTwoMinutes, testAListChangeWakesTheListPollFromALongWait, testAListChangeWakesTheFirstStepStretchedByLowPower)
+- Tests: `ConduitTests/AppStateChatResumeTests.swift` (testOpenChatLiveStatusPrecedence, testOpenChatsRowFollowsItsWorkingLineWhileTheSceneIsInactive, testAMacWindowBehindAnotherAppKeepsTheChatListsReadsGoing, testAnotherProfilesRowInAllFollowsTheRegistry), `ConduitTests/V2SplitLayoutTests.swift` (testV2ListColumnKeepsLiveRowsBesideTheChat), `ConduitTests/PowerPolicyTests.swift` (the Chats list pacer), `ConduitTests/ChatSyncTests.swift` (testAMacWindowBehindAnotherAppKeepsPollingTheRegistry, testAQuietListFollowingChangeEventsWaitsUpToTwoMinutes, testAListChangeWakesTheListPollFromALongWait, testAListChangeWakesTheFirstStepStretchedByLowPower)
 
 **Rulings**
 - The open chat's own turn decides its Running once known; Needs approval from the registry outranks it (#454).
@@ -7755,7 +7757,7 @@ and the widget's pickers (no status), and no Settings caption or doc names it
 - Rows carry no profile, so a running chat in one profile lights a row of another with the same stored id (a profile copied with its chats) while that turn runs.
 - After a send, the registry can read the turn as not started yet, and the next read comes 4 s later: a chat left within those seconds goes without Running until then.
 
-**Checked:** 2026-11-12, #2270 (the open chat's row follows its working line while its turn state is stale; a Mac window behind another app keeps the registry reads going, issue 1615); 2026-11-12, #2279 (the wake also cuts a first step Low Power or Low Data Mode stretched past 4 s, since #2275); 2026-11-12, #2267 (the poll goes on to 120 s on a gateway that pushes `sessions.changed`, and a catalog read that changed the list wakes it; issue 851); 2026-10-27, #1369.
+**Checked:** 2026-11-12, #2284 (a test that the poll reads the registry in a Mac window behind another app); 2026-11-12, #2270 (the open chat's row follows its working line while its turn state is stale; a Mac window behind another app keeps the registry reads going, issue 1615); 2026-11-12, #2279 (the wake also cuts a first step Low Power or Low Data Mode stretched past 4 s, since #2275); 2026-11-12, #2267 (the poll goes on to 120 s on a gateway that pushes `sessions.changed`, and a catalog read that changed the list wakes it; issue 851); 2026-10-27, #1369.
 
 ## Chats list changes made elsewhere
 

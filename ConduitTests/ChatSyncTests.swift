@@ -755,6 +755,27 @@ final class ChatSyncTests: XCTestCase {
         XCTAssertEqual(box.loads, 1, "No catalog read after the poll was stopped")
     }
 
+    /// Issue 1615: a Mac window behind another app is inactive but in view,
+    /// so the list's poll still reads the registry; in the background it
+    /// doesn't, on a Mac either.
+    func testAMacWindowBehindAnotherAppKeepsPollingTheRegistry() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        var probes = 0
+        box.onProbe = { probes += 1 }
+        appState.inactiveSceneStaysInView = true
+        appState.handleScenePhase(.active)
+        appState.handleScenePhase(.inactive)
+        let beforeInactivePoll = probes
+        await poll(appState)
+        XCTAssertGreaterThan(probes, beforeInactivePoll, "Inactive with the window in view reads")
+
+        appState.handleScenePhase(.background)
+        let beforeBackgroundPoll = probes
+        await poll(appState)
+        XCTAssertEqual(probes, beforeBackgroundPoll, "The background reads nothing")
+    }
+
     // MARK: - A gateway that pushes sessions.changed (issue 851)
 
     private func followChanges(_ appState: AppState) {

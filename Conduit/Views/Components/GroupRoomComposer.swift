@@ -276,6 +276,8 @@ struct GroupRoomComposer: View {
             // in the room's draft for the next visit.
             dictation.cancel()
             uploadTask?.cancel()
+            // A transcript paste still waiting for focus belongs to this room.
+            ReturnKeyTextView.cancelPendingPaste()
         }
         .photosPicker(
             isPresented: $showPhotoPicker,
