@@ -592,10 +592,18 @@ final class HermesClientTests: XCTestCase {
             try await client.openSession("runtime-1", profile: "atlas")
         }
         try await sent.wait("the bot chat's session.resume to be sent")
-        try answer(try lastRequest(), ["session_id": "runtime-1", "stored_session_id": "stored-1", "messages": [Any]()])
+        try answer(try lastRequest(), [
+            "session_id": "runtime-1", "stored_session_id": "stored-1", "session_key": "key-1", "messages": [Any]()
+        ])
         _ = try await awaitResult(of: openTask, "the bot chat's resume response")
         XCTAssertEqual(client.sessionProfile(for: "runtime-1"), "atlas")
         XCTAssertEqual(client.sessionProfile(for: "stored-1"), "atlas")
+        XCTAssertEqual(client.sessionProfile(for: "key-1"), "atlas", "every stored-id spelling is noted")
+
+        // A fresh client on the same dashboard (a reconnect) keeps it.
+        let successor = makeClient(transport: FakeTransport(), profile: "analyst")
+        successor.inheritSessionProfiles(from: client)
+        XCTAssertEqual(successor.sessionProfile(for: "runtime-1"), "atlas")
 
         sent = expectSend()
         let reasoningTask = Task { try await client.setReasoning("runtime-1", effort: "high") }
@@ -639,6 +647,18 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual((after["params"] as? [String: Any])?["profile"] as? String, "atlas")
         try answer(after, ["key": "reasoning", "value": "low"])
         try await afterTask.value
+
+        // A blank profile is no profile: the resume still goes to the bot's.
+        sent = expectSend()
+        let blankTask = Task<SessionResumeResult, Error> {
+            try await client.openSession("runtime-1", profile: "  ")
+        }
+        try await sent.wait("the blank-profile session.resume to be sent")
+        let blank = try lastRequest()
+        XCTAssertEqual((blank["params"] as? [String: Any])?["profile"] as? String, "atlas")
+        try answer(blank, ["session_id": "runtime-1", "messages": [Any]()])
+        _ = try await awaitResult(of: blankTask, "the blank-profile resume response")
+        XCTAssertEqual(client.sessionProfile(for: "runtime-1"), "atlas")
 
         // Opened again under the client's own profile, it takes that scope.
         sent = expectSend()
