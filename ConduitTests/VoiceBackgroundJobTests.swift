@@ -374,15 +374,17 @@ extension VoiceConversationControllerTests {
         await waitFor { !pairedFake.submissions.isEmpty }
         try? await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(pairedFake.submissions.count, 1)
-        XCTAssertTrue(pairedFake.submissions.first?.1.contains("check the disks") ?? false)
-        // Once the first is over, the second goes in, then ends too.
-        let pairedIDs = paired.jobs.map(\.id)
-        XCTAssertEqual(pairedIDs.count, 2)
-        _ = await paired.cancel(jobID: pairedIDs[0])
+        // Whichever went first (the tasks may start in either order), the
+        // other goes in once it is over, then ends too.
+        let firstSent = try XCTUnwrap(pairedFake.submissions.first?.1)
+        let first = try XCTUnwrap(paired.jobs.first { firstSent.contains($0.instructions) })
+        let second = try XCTUnwrap(paired.jobs.first { $0.id != first.id })
+        XCTAssertTrue(first.requestSent)
+        XCTAssertFalse(first.claimsChat)
+        _ = await paired.cancel(jobID: first.id)
         await waitFor { pairedFake.submissions.count == 2 }
-        XCTAssertEqual(pairedFake.submissions.count, 2)
-        XCTAssertTrue(pairedFake.submissions.last?.1.contains("check the logs") ?? false)
-        _ = await paired.cancel(jobID: pairedIDs[1])
+        XCTAssertTrue(pairedFake.submissions.last?.1.contains(second.instructions) ?? false)
+        _ = await paired.cancel(jobID: second.id)
         XCTAssertEqual(pairedFake.cancelled, ["rt-call", "rt-call"])
         XCTAssertFalse(paired.jobs.contains { $0.status.isActive })
         // The surface: the Watch for its call's job, else where a spoken message is.

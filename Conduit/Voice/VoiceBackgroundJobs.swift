@@ -171,7 +171,8 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// follow-up joins its instructions instead of interrupting it.
     var requestSent = false
     /// Whether a continued job holds its chat while it checks the chat is
-    /// free and sends: the call's other requests wait meanwhile.
+    /// free and finds its runtime: the call's other requests wait meanwhile.
+    /// Once its request counts as sent, `requestSent` holds the chat instead.
     var claimsChat = false
     /// Whether a continued job's submit began (after its turn surface
     /// report). Until then a cancel interrupts nothing in its chat.
@@ -1697,6 +1698,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             update(jobID) {
                 if !runtimeID.isEmpty { $0.runtimeSessionID = runtimeID }
                 $0.requestSent = true
+                $0.claimsChat = false
                 $0.sentAt = Date()
             }
             // Only a Watch call continues a chat this way: its later
