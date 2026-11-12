@@ -491,6 +491,8 @@ extension GroupChatModelsTests {
 
         appState.applyNotifierPluginReport(["ok": true, "version": "0.143.0", "capabilities": [GroupRoomFilesClient.capability]])
         XCTAssertTrue(appState.canAttachRoomFiles)
+        XCTAssertEqual(appState.roomFileCapMegabytes, GroupRoomFilesClient.linkedMaximumMegabytes,
+                       "other people's agents in it: only what their hosts take")
         let png = try attachmentsStaged("cat.png", data: Self.pngBytes, mimeType: "image/png", kind: .image)
         let message = try await appState.roomMessage("look", attachments: [png])
         XCTAssertTrue(hermes.uploads.isEmpty)

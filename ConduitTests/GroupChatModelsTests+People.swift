@@ -314,8 +314,15 @@ extension GroupChatModelsTests {
         XCTAssertEqual(RoomSetupRooms.holding(profile: "research", rooms: rooms, copies: copies), ["Book club", "Zoo trip"])
         XCTAssertEqual(RoomSetupRooms.holding(profile: "writer", rooms: rooms, copies: copies), [])
         XCTAssertNil(RoomSetupRooms.holding(profile: "research", rooms: nil, copies: copies), "not read yet")
+        var takenOut = copies[0]
+        takenOut.out = ["m-kuro": .removed]
+        XCTAssertEqual(RoomSetupRooms.holding(profile: "research", rooms: rooms, copies: [takenOut]), ["Zoo trip"],
+                       "taken out of a copy that goes on, it doesn't answer there already")
         XCTAssertEqual(RoomSetupRooms.message(profileName: "Kuro", rooms: ["Book club"]),
-                       AppLocalization.string("\("Kuro") then stops answering in \("Book club"), which hold it to the tools it had when they started. New rooms use these.", table: .rooms))
+                       AppLocalization.string("\("Kuro") then stops answering in \("Book club"), which holds it to the tools it had when it started. New rooms use these.", table: .rooms))
+        let both = ["Book club", "Zoo trip"].formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
+        XCTAssertEqual(RoomSetupRooms.message(profileName: "Kuro", rooms: ["Book club", "Zoo trip"]),
+                       AppLocalization.string("\("Kuro") then stops answering in \(both), which hold it to the tools it had when they started. New rooms use these.", table: .rooms))
         XCTAssertEqual(RoomSetupRooms.message(profileName: "Kuro", rooms: nil),
                        AppLocalization.string("\("Kuro") then stops answering in rooms already started with other people's agents, which hold it to the tools it had when they started. New rooms use these.", table: .rooms))
     }

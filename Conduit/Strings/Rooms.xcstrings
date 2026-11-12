@@ -33180,6 +33180,88 @@
           }
         }
       }
+    },
+    "%@ then stops answering in %@, which holds it to the tools it had when it started. New rooms use these." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ antwortet dann nicht mehr in %2$@, denn dieser Raum hält ihn an die Werkzeuge, die er beim Start hatte. Neue Räume nutzen diese."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ deja entonces de responder en %2$@, que lo limita a las herramientas que tenía cuando empezó. Las salas nuevas usan estas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ cesse alors de répondre dans %2$@, qui le limite aux outils qu'il avait à son début. Les nouveaux salons utilisent ceux-ci."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ lalu berhenti menjawab di %2$@, yang membatasinya pada alat yang dimilikinya saat ruang itu dimulai. Ruang baru memakai alat ini."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ smette allora di rispondere in %2$@, che lo vincola agli strumenti che aveva al suo avvio. Le nuove stanze usano questi."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "そのあと%1$@は%2$@で応答しなくなります。このグループは開始時のツールに固定されるためです。新しいグループではこれらが使われます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "그러면 %1$@은(는) %2$@에서 더 이상 답하지 않아요. 이 방은 시작할 때의 도구로 고정되기 때문이에요. 새 방은 이 도구를 써요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ przestanie wtedy odpowiadać w pokoju %2$@, bo trzyma go on przy narzędziach, które miał na jego początku. Nowe pokoje używają tych."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ então deixa de responder em %2$@, que o limita às ferramentas que ele tinha quando começou. As salas novas usam estas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Тогда %1$@ перестанет отвечать в комнате %2$@. Она ограничивает его инструментами, которые были у него на момент её начала. Новые комнаты используют эти."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bundan sonra %1$@, %2$@ odasında yanıt vermeyi bırakır. Bu oda onu başladığında sahip olduğu araçlara bağlı tutar. Yeni odalar bunları kullanır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "之后，%1$@ 将不再在 %2$@ 中回答，因为这个群聊会将它限定为开始时拥有的工具。新群聊会使用这些工具。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "之後，%1$@ 將不再在 %2$@ 中回答，因為這個群組會將它限定在開始時擁有的工具。新群組會使用這些工具。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

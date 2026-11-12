@@ -958,10 +958,13 @@ struct RoomSetupSection: View {
                         // The rooms as they are now: one started on another
                         // device since Group Chats was last read counts too.
                         working = true
+                        let key = key
                         Task {
                             await appState.refreshGroupRooms()
                             if appState.canInviteLinkedPeople { await appState.refreshLinkedRoomCopies() }
                             working = false
+                            // Another agent or Hermes picked meanwhile: its own Save asks for it.
+                            guard key == currentKey else { return }
                             roomsHeld = appState.roomsHoldingTools(of: profile)
                             // No room going on holds it: nothing stops, so nothing to ask.
                             if roomsHeld == [] { setUp() } else { confirmsChange = true }
@@ -1073,6 +1076,7 @@ struct RoomSetupSection: View {
             refreshError = nil
             busyRestart = nil
             confirmsChange = false
+            roomsHeld = nil
             restartWait = nil
             showsCustomTools = false
             showsSetupSteps = false
