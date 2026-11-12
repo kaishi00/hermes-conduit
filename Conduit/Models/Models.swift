@@ -1059,7 +1059,7 @@ struct DelegateAgentActivity: Identifiable, Equatable {
     }
 
     /// The card ended `as` a status at `now`, its running time kept.
-    func ended(as status: Status, at now: Date = Date()) -> DelegateAgentActivity {
+    func ended(as status: Status, at now: Date) -> DelegateAgentActivity {
         var ended = self
         ended.status = status
         ended.currentTool = nil
@@ -1152,7 +1152,7 @@ struct DelegateAgentActivity: Identifiable, Equatable {
                   !liveIDs.contains(agent.id) else { return agent }
             // It ended some time after its last news, unseen: how long it
             // ran isn't known, so the card shows no time.
-            var ended = agent.ended(as: .completed)
+            var ended = agent.ended(as: .completed, at: cutoff)
             ended.duration = nil
             return ended
         }

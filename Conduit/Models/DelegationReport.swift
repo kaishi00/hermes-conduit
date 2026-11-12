@@ -48,15 +48,20 @@ struct DelegationReport: Equatable, Codable {
 
     // `--- ✓ TASK 2/6: goal  (status=completed, api_calls=4, 12.5s) ---`.
     // A goal can run over lines, so it ends at the two spaces before
-    // `(status=` on the header's last line (Desktop's split does the same).
+    // `(status=` on the header's last line (Desktop's split does the same),
+    // never past the next task's header.
     private static let taskHeader = try! NSRegularExpression(
-        pattern: #"^--- [✓✗⚠] TASK (\d+)/\d+(?:: ([\s\S]*?))? {2}\(status=([^\n]*)\) ---\n?"#,
+        pattern: #"^--- [✓✗⚠] TASK (\d+)/\d+(?:: ((?:(?!\n--- [✓✗⚠] TASK )[\s\S])*?))? {2}\(status=([^\n]*)\) ---\n?"#,
         options: [.anchorsMatchLines]
     )
 
     private static func batchEntries(_ text: String) -> [Entry] {
         let ns = text as NSString
         let matches = taskHeader.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        // A header Conduit can't read would hide its task: the plain notice
+        // then, never a list short of one.
+        let headers = text.components(separatedBy: "\n").filter { $0.range(of: #"^--- [✓✗⚠] TASK \d+/\d+"#, options: .regularExpression) != nil }
+        guard matches.count == headers.count else { return [] }
         return matches.enumerated().map { index, match in
             let bodyStart = match.range.location + match.range.length
             let bodyEnd = index + 1 < matches.count ? matches[index + 1].range.location : ns.length
