@@ -7653,21 +7653,59 @@ signals) · not needed: Bots (a bot's chats live in the bot's own list), CarPlay
 and the widget's pickers (no status), and no Settings caption or doc names it
 
 **Code**
-- Status: `Conduit/Services/AppState.swift` (sessionLiveStatus, refreshLiveSessionStatuses, recordActiveListEvidence, chatListPollTick), `Conduit/Services/SessionLiveStatusIndex.swift`, `Conduit/Services/PowerPolicy.swift` (ChatListPollPacer)
+- Status: `Conduit/Services/AppState.swift` (sessionLiveStatus, refreshLiveSessionStatuses, recordActiveListEvidence, chatListPollTick, chatListCatalogGeneration's wake), `Conduit/Services/SessionLiveStatusIndex.swift`, `Conduit/Services/PowerPolicy.swift` (ChatListPollPacer, PollCadence.chatListSteps and chatListStepsFollowingChanges)
 - Rows: `Conduit/Views/V2/V2SessionRow.swift` (V2SessionStatus, v2RowStatus), `Conduit/Views/V2/V2ChatsView.swift` (the poll's task, showsLiveRows, nestSummary, V2ProjectRow), `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/SidebarView.swift`
 - What the list column shows: `Conduit/Views/V2/V2Shell.swift` (V2SplitLayout.showsChatRows)
-- Tests: `ConduitTests/AppStateChatResumeTests.swift` (testOpenChatLiveStatusPrecedence, testAnotherProfilesRowInAllFollowsTheRegistry), `ConduitTests/V2SplitLayoutTests.swift` (testV2ListColumnKeepsLiveRowsBesideTheChat)
+- Tests: `ConduitTests/AppStateChatResumeTests.swift` (testOpenChatLiveStatusPrecedence, testAnotherProfilesRowInAllFollowsTheRegistry), `ConduitTests/V2SplitLayoutTests.swift` (testV2ListColumnKeepsLiveRowsBesideTheChat), `ConduitTests/PowerPolicyTests.swift` (the Chats list pacer), `ConduitTests/ChatSyncTests.swift` (testAQuietListFollowingChangeEventsWaitsUpToTwoMinutes, testAListChangeWakesTheListPollFromALongWait)
 
 **Rulings**
 - The open chat's own turn decides its Running once known; Needs approval from the registry outranks it (#454).
 - The dashboard's registry lists every profile's live chats (checked on Hermes 0.22.5, with or without a `profile` param), so another profile's row in All reads it too. A chat left running for one in another profile keeps Running, as one in the same profile does (2026-10-27, #1369, issue #1353).
 - The registry is read while the list or a project's page is on screen. Beside the open chat on a wide window both stay on screen, so the poll keeps running there; one column, a chat pushed over them stops it (2026-10-27, #1369, issue #1353).
+- The poll reads every 4 s while a listed chat's turn runs or the list moved, then 8, 15, 30 and 60 s while nothing does, stretched in Low Power and Low Data Mode up to 180 s. On a gateway that pushes `sessions.changed` (`change_events` in its `gateway.ready`) it goes on to 120 s, since a catalog read that changes the list (as one for that signal does when a turn starts or ends elsewhere) wakes it from a wait past 4 s. Hermes pushes no liveness of its own (its signal leaves out `last_activity_at`, "liveness comes from session.active_list"), so the registry poll stays (2026-11-12, #PRNUM, issue 851).
 
 **Open gaps**
+- An approval asked in a chat elsewhere moves no stored row, so on a gateway with change events a quiet list can show it up to 120 s late (its push still comes at once).
 - Rows carry no profile, so a running chat in one profile lights a row of another with the same stored id (a profile copied with its chats) while that turn runs.
 - After a send, the registry can read the turn as not started yet, and the next read comes 4 s later: a chat left within those seconds goes without Running until then.
 
-**Checked:** 2026-10-27, #1369.
+**Checked:** 2026-11-12, #PRNUM (the poll goes on to 120 s on a gateway that pushes `sessions.changed`, and a catalog read that changed the list wakes it; issue 851); 2026-10-27, #1369.
+
+## Chats list changes made elsewhere
+
+How the Chats list learns of a chat started, renamed, archived, deleted or
+answered somewhere else (another device, Hermes Desktop, the TUI, a cron
+run) without a pull to refresh: Hermes' `sessions.changed`, the live
+registry, and the list's own timed catalog read.
+
+**Siblings:** the Chats list (V2) and the drawer shell's sidebar (V1),
+both from the same catalog · a project's page beside the open chat (follows
+the catalog's generation, issue 1454) · the open chat's stored-count check
+(a turn the registry never saw, run in the TUI; One chat on two devices in
+`Conduit/Services/ChatSync.swift`) · Running and Needs approval in the chats
+list (the registry poll this wakes) · Back and a pull to refresh, the
+coalesced read every signal goes through · Low Power and Low Data Mode
+(stretch the polls) · not needed: All profiles (its own 20 s read of every
+profile through the plugin, since Hermes watches only the profiles this
+socket has named), Watch, CarPlay and the widget (they show the list the
+app already holds), the notifier (it serves no part of the catalog) · text:
+none (no Settings caption or doc gives the cadence)
+
+**Code**
+- Signal: `Conduit/Services/HermesClient.swift` (sendsChangeEvents from `gateway.ready`'s `change_events`, carried over a socket handoff; the `sessions.changed` event), `Conduit/Services/StreamEventParser.swift` (sessionsChanged)
+- Reads: `Conduit/Services/ChatSync.swift` (CatalogChangeSignal, ChatListCatalogFreshness: fallbackInterval and fallbackIntervalFollowingChanges), `Conduit/Services/AppState.swift` (noteCatalogChanged, readPendingCatalogChange, chatListPollTick, refreshCatalogAfterLeavingChat, chatListBecameActive, noteActiveListForChatList)
+- Tests: `ConduitTests/ChatSyncTests.swift` (testSessionsChangedReadsTheCatalog, testAListLeftOnScreenReadsAgainEveryThirtySeconds, testAListFollowingChangeEventsReadsTheCatalogEveryFiveMinutes), `ConduitTests/HermesClientTests.swift` (testGatewayReadyAdvertisesServerRequestsCapability)
+
+**Rulings**
+- Each `sessions.changed` reads the catalog, at most every 5 s and never while a turn runs here (its own rows move it the whole time); one held back is read once the wait or the turn ends (#1026).
+- The list's own timed catalog read is a backstop: every 30 s on a gateway without change events, every 5 minutes on one with them. A Hermes from before 0.21.1 watches only its launch profile's chats, so another profile there leans on that backstop for renames and deletions; a chat started elsewhere still shows at once through the registry (2026-11-12, #PRNUM, issue 851).
+- A chat the registry lists and the catalog doesn't reads the catalog at most every 10 s, twice for one state of that chat.
+- Coming back to the app reads a list older than 10 s.
+
+**Open gaps**
+- Hermes broadcasts every served profile's changes to every socket, so a busy bot in another profile reads this profile's catalog every 5 s while it works; the signal carries no profile to tell them apart.
+
+**Checked:** 2026-11-12, #PRNUM (issue 851).
 
 ## Reads while a screen shows
 
