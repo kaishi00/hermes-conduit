@@ -715,10 +715,10 @@ struct GroupRoomComposer: View {
         // staged now.
         let roomCap = appState.roomFileCapMegabytes
         let oversized = files.filter { file in
-            !AttachmentSizeLimit.allows(byteCount: Int64(GroupRoomFilesClient.roomFilesBytes([file])), megabytes: roomCap)
+            !AttachmentSizeLimit.allows(byteCount: Int64(AppState.roomFilesBytes([file])), megabytes: roomCap)
         }
         if !oversized.isEmpty {
-            composerError = GroupRoomFilesClient.tooLargeMessage(names: oversized.map(\.name), preference: attachmentLimitMegabytes,
+            composerError = GroupRoomFilesClient.tooLargeMessage(names: oversized.map { $0.name }, preference: attachmentLimitMegabytes,
                                                                  roomCap: roomCap)
             Haptics.error()
             restoreAfterDecline(reply: sendsReply ? reply : nil, recipients: sendsRecipients ? picked : [])
