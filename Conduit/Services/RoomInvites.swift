@@ -488,6 +488,12 @@ extension AppState {
         await refreshLinkedRoomDrafts(readingPeople: false)
         await refreshGroupRoomsForStartedDrafts()
         await refreshLinkedRoomInvites()
+        followLinkedRoomsOnTheirWay()
+    }
+
+    /// Follows a room on its way that a read just found: one a launch, a
+    /// reconnect or the foreground read with nothing following it yet.
+    func followLinkedRoomsOnTheirWay() {
         if linkedRoomOnItsWay { followLinkedRoomInvites() }
     }
 

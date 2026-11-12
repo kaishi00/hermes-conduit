@@ -442,6 +442,7 @@ extension AppState {
                 await refreshLinkedRoomInvites()
                 // The rooms you joined, as copies, which Group Chats lists.
                 await refreshLinkedRoomCopies()
+                followLinkedRoomsOnTheirWay()
             }
             if approvals {
                 await refreshLinkedRoomApprovals()

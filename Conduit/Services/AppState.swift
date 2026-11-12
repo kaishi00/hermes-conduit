@@ -14054,6 +14054,11 @@ final class AppState: ObservableObject {
             async let approvals = refreshLinkedRoomApprovals()
             async let joined: Void = refreshLinkedRoomCopiesThenInvites()
             _ = await (rooms, drafts, approvals, joined)
+            // A room on its way when Conduit connects (a launch, a reconnect,
+            // a foreground read that ran before the connection) is followed
+            // from here, or it would show only on the next reload.
+            guard groupRoomEpoch == epoch, activeDashboardID == dashboard else { return }
+            followLinkedRoomsOnTheirWay()
         } catch is CancellationError {
             return
         } catch {

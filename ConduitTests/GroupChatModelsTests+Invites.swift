@@ -443,6 +443,27 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.linkedRoomInviteRows, [], "the read from before the sign-out is dropped")
     }
 
+    /// A room on its way when Conduit connects (an invite you joined, read
+    /// by the connection's own reads) is followed, though no foreground
+    /// read or answer started a follow.
+    @MainActor
+    func testARoomOnItsWayAtConnectIsFollowed() async {
+        let routes = InvitesRoutes(invites: [invitesInvite("conduit-1", status: "joined")])
+        let appState = invitesAppState(routes)
+        invitesConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(invitesPluginReport)
+        await invitesWait("the invites read", until: { appState.linkedRoomInviteRows.map(\.roomID) == ["conduit-1"] })
+        await invitesWait("the follow", until: { appState.linkedRoomInviteFollow != nil })
+        appState.linkedRoomInviteFollow?.cancel()
+        appState.linkedRoomInviteFollow = nil
+
+        await appState.refreshGroupChatSupport()
+
+        XCTAssertNotNil(appState.linkedRoomInviteFollow, "the connection's reads follow a joined invite")
+        appState.linkedRoomInviteFollow?.cancel()
+    }
+
     /// An answer that lands after a disconnect cleared the invites leaves
     /// them cleared, with no follow started (issue 2040).
     @MainActor
