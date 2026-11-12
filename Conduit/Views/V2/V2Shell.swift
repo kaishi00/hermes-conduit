@@ -135,6 +135,9 @@ struct V2ShellContext: Equatable {
         /// A switch picked from the profile strip is under way, from the
         /// first tap's fade-out until the switch is over.
         var isPickingProfile = false
+        /// Split, Settings shows in this tab's chat column over its chat,
+        /// which stays mounted and active underneath.
+        var isChatCovered = false
     }
 
     var pickProfile: (String) -> Void = { _ in }
@@ -164,6 +167,15 @@ struct V2ShellContext: Equatable {
         get { values.isRootCovered }
         set { values.isRootCovered = newValue }
     }
+
+    var isChatCovered: Bool {
+        get { values.isChatCovered }
+        set { values.isChatCovered = newValue }
+    }
+
+    /// A chat's own keyboard shortcuts (⌘., ⌃⌘S, ⌥⌘A) reach it: its tab
+    /// shows and Settings doesn't cover it (KeyboardShortcuts.swift).
+    var chatTakesKeys: Bool { isTabActive && !isChatCovered }
 
     var isSplit: Bool {
         get { values.isSplit }
@@ -462,6 +474,10 @@ struct V2Shell: View {
     @AppStorage(V2SplitLayout.listWidths.key) private var storedListWidth = Double(V2SplitLayout.listWidths.standard)
     /// The list's width while its line is dragged (`ColumnDivider`).
     @State private var draggedListWidth: CGFloat?
+    /// The window's width the tabs last laid out by: an iPhone turned
+    /// sideways for a bot's screen in full screen keeps it
+    /// (`InterfaceOrientationGate.layoutWidth`).
+    @State private var layoutWidth: CGFloat?
 
     /// - Parameters:
     ///   - conversationOnLeave: the window's record of the chat showing,
@@ -641,15 +657,30 @@ struct V2Shell: View {
     /// (`V2SplitLayout.listWidths`), less on a window without the room.
     private var sizedTabs: some View {
         GeometryReader { proxy in
-            let canSplit = V2SplitLayout.isSplit(width: proxy.size.width)
-            let split = V2SplitLayout.isSplit(width: proxy.size.width, showsList: chatListBeside)
-            let list = V2SplitLayout.ListColumn(window: proxy.size.width, stored: storedListWidth, dragged: draggedListWidth)
+            // Turned sideways for a bot's screen in full screen, an iPhone
+            // stays one column: splitting rebuilds the stacks, and the
+            // screen's sheet closed with them.
+            let width = InterfaceOrientationGate.layoutWidth(live: proxy.size.width, kept: layoutWidth)
+            let canSplit = V2SplitLayout.isSplit(width: width)
+            let split = V2SplitLayout.isSplit(width: width, showsList: chatListBeside)
+            let list = V2SplitLayout.ListColumn(window: width, stored: storedListWidth, dragged: draggedListWidth)
             let strip = V2StatusStrip(insets: proxy.safeAreaInsets, isPhone: UIDevice.current.userInterfaceIdiom == .phone)
             tabs(split: split, canSplit: canSplit, list: list)
                 // The bars and the screens' clearance under them read it
                 // from here together, so they change in the same pass.
                 .onChange(of: strip, initial: true) { _, strip in
                     if statusStrip != strip { statusStrip = strip }
+                }
+                .onChange(of: proxy.size.width, initial: true) { _, live in
+                    layoutWidth = InterfaceOrientationGate.layoutWidth(live: live, kept: layoutWidth)
+                }
+                // Held: the window's width once the hold ends.
+                .task(id: proxy.size.width) {
+                    let live = proxy.size.width
+                    guard let held = layoutWidth, held != live else { return }
+                    await InterfaceOrientationGate.layoutReleased()
+                    guard !Task.isCancelled else { return }
+                    layoutWidth = InterfaceOrientationGate.layoutWidth(live: live, kept: layoutWidth)
                 }
                 // The window's side safe area as the shell has it, outside
                 // every stack: each tab's screens take it, or their
@@ -826,6 +857,12 @@ struct V2Shell: View {
                 visitedTabs.insert(.settings)
                 selectTab(.settings)
             }
+            // ⌘1 to ⌘4 and ⌘, (KeyboardShortcuts.swift); nothing is in
+            // front, which the command checked.
+            .onReceive(KeyboardCommands.tabRequests) { tab in
+                visitedTabs.insert(tab)
+                selectTab(tab)
+            }
             .onChange(of: appState.kanbanTaskOpenRequest) { _, request in
                 // Tasks › Board opens the task and clears the request.
                 guard request != nil else { return }
@@ -897,6 +934,7 @@ struct V2Shell: View {
                             $0.hasChatBeside = chatBeside
                             $0.showsChatRows = V2SplitLayout.showsChatRows(split: split, path: path(of: tab))
                             $0.hasChatVoiceBeside = chatVoiceBeside
+                            $0.isChatCovered = !chatShown
                         }
                         // The opened tab shows at once and the one left
                         // hides at once. A fade read as slow, and a slide

@@ -2046,8 +2046,22 @@ private struct ComposerReturnKeySettings: View {
             Toggle("Return key sends", isOn: $returnKeySends)
                 .tint(.conduitAccent)
                 .accessibilityHint(onMac ? Text(verbatim: "") : Text("Applies to hardware keyboards only. The on-screen keyboard's Return key is unchanged."))
+            // Issue 2219: ⌘Return and the rest of the shortcuts.
+            Text("⌘Return always sends, whatever this setting says.")
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+            Button {
+                showsShortcuts = true
+            } label: {
+                Label(AppLocalization.string("Keyboard Shortcuts"), systemImage: "command")
+            }
+            .sheet(isPresented: $showsShortcuts) {
+                KeyboardShortcutsSheet()
+            }
         }
     }
+
+    @State private var showsShortcuts = false
 }
 
 /// A reply longer than the screen stops at its start (#365), and an

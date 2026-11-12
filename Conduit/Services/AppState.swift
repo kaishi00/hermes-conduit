@@ -28021,9 +28021,13 @@ final class AppState: ObservableObject {
         // surface is presentation-only (never session state), so closing it
         // here cannot disturb the conversation being opened; the room stays
         // in the roster, resumable with one tap. The chat shows where the
-        // room was.
-        if activeRoomSurface != nil {
-            closeRoomSurface(handingTo: .openedChat)
+        // room was, once this open has named it below: a refused or
+        // superseded open hands the room's screen to nothing, rather than
+        // to the chat that was open before the room. Nothing awaits in
+        // between, so the shell reads the handoff only after it's settled.
+        let closedRoom = activeRoomSurface != nil
+        if closedRoom {
+            closeRoomSurface()
         }
         let previousTurnState = turnState
         // The catalog-ownership guard protects ORDINARY opens from another
@@ -28037,9 +28041,6 @@ final class AppState: ObservableObject {
         }) ?? (sessions + cronSessions).first(where: { $0.storedSessionId == sessionId })
         if conversationProfile == nil,
            let session = listedSession, !sessionBelongsToProfile(session, profile: activeProfile) {
-            // Nothing opens in the room's place: the shell drops its screen
-            // rather than show the chat that was open before it.
-            roomHandedTo = .none
             errorMessage = AppLocalization.string("That conversation belongs to another workspace. Switch profiles to open it.")
             return (.failed, true, false)
         }
@@ -28083,6 +28084,7 @@ final class AppState: ObservableObject {
         // back to it (issue 1825); the reconcile below takes them.
         keepLeftBackfilledTranscript()
         setActiveSessionState(id: sessionId)
+        if closedRoom { roomHandedTo = .openedChat }
         keepDelegateAgents(of: acceptedSessionIDs)
         messages = []
         // A chat with a saved copy shows it while Hermes sends the transcript

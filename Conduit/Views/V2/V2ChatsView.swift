@@ -908,18 +908,20 @@ struct V2ChatsView: View, Equatable {
 
     /// ⌘F, on an iPad keyboard or a Mac: open the list's search and put the
     /// cursor in it, whichever way the bar is laid out. A hidden tab's list
-    /// stays mounted, so the action checks that the list is the screen before
-    /// it does anything; a chat pushed over it keeps the key to itself.
+    /// stays mounted, so the action checks that the list is the screen and
+    /// nothing is presented over it before it does anything; a chat pushed
+    /// over it keeps the key to itself.
     private var searchCommand: some View {
         Button(AppLocalization.string("Search")) { focusSearchFromKeyboard() }
-            .keyboardShortcut("f", modifiers: .command)
+            .keyboardShortcut(ConduitKeyboardShortcut.search.shortcut)
             .frame(width: 1, height: 1)
             .opacity(0.001)
             .accessibilityHidden(true)
     }
 
     private func focusSearchFromKeyboard() {
-        guard isShown else { return }
+        // Not behind a sheet or alert this view (or anything else) presents.
+        guard isShown, KeyboardCommands.nothingInFront else { return }
         // Only the stacked bar has a field of its own to open and focus. In
         // the one-row layout the visible field belongs to the list, so a
         // pending focus set here would miss it and then be consumed by some

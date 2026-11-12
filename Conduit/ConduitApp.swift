@@ -360,6 +360,9 @@ struct ConduitApp: App {
             rootContent
 #endif
         }
+        // The menu bar and ⌘-held shortcuts on an iPad and a Mac: ⌘N is
+        // New Chat here, not a second window (issue 2219).
+        .commands { ConduitKeyboardCommands() }
     }
 
     private var rootContent: some View {
