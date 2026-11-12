@@ -233,7 +233,7 @@ struct V2ScheduledList: View {
         // A hidden Tasks tab stays mounted; it loads when shown, like Chats.
         // The list is the dashboard's: another one reads its own, as the drawer's does.
         .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.activeProfile)|\(appState.isConnected)|\(shell.isTabActive)") {
-            guard shell.isTabActive else { return }
+            guard shell.isTabActive, appState.isConnected else { return }
             await appState.refreshScheduledContent()
         }
         // The capability report can land after this tab's first read, and the

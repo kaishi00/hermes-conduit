@@ -2288,7 +2288,15 @@ struct CronList: View {
         .searchable(text: $searchText, prompt: AppLocalization.string("Search scheduled jobs", table: .chat))
         .scrollContentBackground(.hidden)
         .listStyle(.plain)
-        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.activeProfile)") { await appState.refreshCronContent() }
+        // A reconnect reads the jobs again: the id carries the connection, so
+        // a socket that dropped and came back refills a list it left unread.
+        // Only while connected, so a drop doesn't read against a dead socket
+        // and put its failure in the banner. The Sessions list's first read
+        // keys on the connection for the same reason.
+        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.activeProfile)|\(appState.isConnected)") {
+            guard appState.isConnected else { return }
+            await appState.refreshCronContent()
+        }
         // The plugin's capability report can land after the tab opened.
         .task(id: appState.supportsCronNotifications) {
             if appState.supportsCronNotifications { await appState.refreshCronNotifications() }
