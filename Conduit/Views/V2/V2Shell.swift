@@ -1586,8 +1586,8 @@ enum V2SplitLayout {
     }
 
     /// Split, with a chat open beside the list that shows its own voice
-    /// button by the composer (a group room has none): the list column's
-    /// voice buttons step aside for it.
+    /// button, by the composer or, on a Mac, in its header (a group room
+    /// has none): the list column's voice buttons step aside for it.
     static func hasChatVoiceBeside(split: Bool, path: [V2Route], inRoom: Bool) -> Bool {
         split && path.contains(.conversation) && !inRoom
     }

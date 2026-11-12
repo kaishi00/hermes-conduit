@@ -530,7 +530,12 @@ struct ComposerBar: View, Equatable {
         // the trailing side.
         .padding(.leading, rests || keepsVoiceButtonBeside ? 16 : (restsWhenIdle ? 12 : 14))
         // A voice message recorded while the button is held keeps it too.
-        .padding(.trailing, rests || keepsVoiceButtonBeside || voiceMessages.isHeld ? 84 : (restsWhenIdle ? 12 : 14))
+        .padding(.trailing, Self.trailingInset(
+            keepsButtonSpot: rests || keepsVoiceButtonBeside,
+            roundButtonBeside: roundButtonBeside,
+            voiceMessageHeld: voiceMessages.isHeld,
+            restsWhenIdle: restsWhenIdle
+        ))
         .padding(.top, 8)
         .padding(.bottom, 10)
         .animation(restsWhenIdle ? ConduitMotion.ease(reduceMotion: reduceMotion) : nil, value: inUseOrHeld)
@@ -640,6 +645,10 @@ struct ComposerBar: View, Equatable {
             applyPendingPrefill()
             // A screenshot chat can open before this composer is on screen.
             applyFocusRequest(appState.composerFocusRequest)
+            focusOnOpen()
+        }
+        .onReceive(ComposerPaste.requests) { target in
+            pasteFromTranscript(target)
         }
         .onChange(of: updates.inputs.draftKeyOnScreen) { _, newKey in
             handoffComposer(to: newKey)
@@ -1075,8 +1084,30 @@ struct ComposerBar: View, Equatable {
 
     /// V2's composer that stays expanded: the big voice button stays
     /// beside it, so its own voice and dictate buttons give way to it.
+    /// On a Mac whose button would only start a call, the call is in the
+    /// chat's header instead (`roundButtonBeside`), and these still give
+    /// way to it.
     private var keepsVoiceButtonBeside: Bool {
         restsWhenIdle && staysExpanded
+    }
+
+    /// The round button stands beside the composer: not on a Mac where all
+    /// it would do is the call the header has (issue 1534).
+    private var roundButtonBeside: Bool {
+        ChatVoiceButtonAction.roundButtonBeside(ChatVoiceButtonAction.resolved(
+            profile: updates.inputs.chatVoiceButtonOverride,
+            app: appChatVoiceButton
+        ))
+    }
+
+    /// The composer's trailing inset: the round button's spot (84 pt)
+    /// where it stands beside a resting composer or one that stays
+    /// expanded, or under a voice message held on it; else the 16 pt the
+    /// leading side has there.
+    static func trailingInset(keepsButtonSpot: Bool, roundButtonBeside: Bool, voiceMessageHeld: Bool, restsWhenIdle: Bool) -> CGFloat {
+        if voiceMessageHeld || (keepsButtonSpot && roundButtonBeside) { return 84 }
+        if keepsButtonSpot { return 16 }
+        return restsWhenIdle ? 12 : 14
     }
 
     private func composerUseChanged(_ inUse: Bool) {
@@ -2630,6 +2661,31 @@ struct ComposerBar: View, Equatable {
         } else {
             applyPendingPrefill()
         }
+        focusOnOpen()
+    }
+
+    /// On a Mac a chat opens ready to type, as in a desktop client (issue
+    /// 1692): its field takes focus, at once or, while the chat can't take
+    /// text yet (a sync, a chat still being made), once it can, unless
+    /// another field took focus meanwhile (ReturnKeyTextView's wish). Only
+    /// the composer on screen, and not over a sheet or a text field that
+    /// has focus, such as the list's search.
+    private func focusOnOpen() {
+        guard ComposerLayout.focusesOnOpen(), returnKeysReachChat else { return }
+        // After this update: the draft load unfocuses the field.
+        Task { @MainActor in
+            guard returnKeysReachChat, ComposerLayout.openMayTakeFocus else { return }
+            isFocused = true
+        }
+    }
+
+    /// ⌘V in this chat's transcript (issue 1692): the field takes focus and
+    /// the paste. Only the chat on screen's, and only while it takes text.
+    private func pasteFromTranscript(_ target: ComposerPasteTarget) {
+        guard target == .chat, returnKeysReachChat, !updates.inputs.hasRoomSurface,
+              appState.composerIsEnabled, updates.inputs.takesText else { return }
+        isFocused = true
+        ReturnKeyTextView.pasteOnceFocused()
     }
 
     /// Puts a waiting prefill in once its chat's draft is the one loaded.

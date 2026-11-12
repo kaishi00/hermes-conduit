@@ -229,7 +229,7 @@ enum GeminiLiveProtocol {
 
     // MARK: Server → client
 
-    struct FunctionCall: Equatable {
+    struct FunctionCall: Equatable, Sendable {
         let id: String
         let name: String
         /// String-valued arguments: numbers as their text, lists and
@@ -258,7 +258,7 @@ enum GeminiLiveProtocol {
         }
     }
 
-    enum ServerEvent: Equatable {
+    enum ServerEvent: Equatable, Sendable {
         case setupComplete
         /// Model speech: 16-bit PCM at `sampleRate`.
         case audio(Data, sampleRate: Double)

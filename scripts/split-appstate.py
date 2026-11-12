@@ -537,7 +537,7 @@ def writes(masked_lines, name):
         mutation += r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(" + "|".join(sorted(APP_MUTATING)) + r")\b(?!\s*:)"
     pat = re.compile(r"(?<![\w.])(self\.)?" + re.escape(name) + r"\b(?=" + mutation + r")"
                      r"|&(self\.)?" + re.escape(name) + r"\b")
-    return any(pat.search(l) for l in masked_lines)
+    return pat.search("\n".join(masked_lines)) is not None
 
 
 def widen(line, which):
@@ -566,7 +566,7 @@ def references(masked_lines, name):
     n = re.escape(name)
     pat = re.compile(r"(?<![\w.])\$?" + n + r"\b(?!:)"
                      r"|(?:\bself|\bSelf|\bAppState|\\)\." + n + r"\b")
-    return any(pat.search(l) for l in masked_lines)
+    return pat.search("\n".join(masked_lines)) is not None
 
 
 def in_app_state(src, it):

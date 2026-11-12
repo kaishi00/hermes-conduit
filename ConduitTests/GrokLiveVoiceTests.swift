@@ -188,6 +188,29 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(once.count, 1_022 * 2)
     }
 
+    /// Issue 1959: the stream's place moves on with `plan`, on the main
+    /// actor, and each chunk's interpolation renders on its own, in any
+    /// order, to the same audio as one sequential pass.
+    func testGrokUpsampleChunksRenderOnTheirOwn() {
+        let samples = (0..<1_000).map { Int16(truncatingIfNeeded: ($0 * 4_271) % 30_000 - 15_000) }
+        let pcm = samples.reduce(into: Data()) { data, sample in
+            let bits = UInt16(bitPattern: sample)
+            data.append(UInt8(bits & 0xFF))
+            data.append(UInt8(bits >> 8))
+        }
+        // Byte offsets into the 2,000-byte stream: chunks of 341, 342, 17,
+        // 1 and 299 samples.
+        let cuts = [0, 341 * 2, 683 * 2, 1_400, 1_402, 2_000]
+        let pieces = zip(cuts, cuts.dropFirst()).map { pcm[pcm.startIndex + $0..<pcm.startIndex + $1] }
+        var sequential = GrokInputUpsampler()
+        let expected = pieces.map { sequential.upsample(Data($0)) }
+        var planner = GrokInputUpsampler()
+        let chunks = pieces.map { planner.plan($0) }
+        var rendered = [Data](repeating: Data(), count: chunks.count)
+        for index in chunks.indices.reversed() { rendered[index] = chunks[index].render() }
+        XCTAssertEqual(rendered, expected)
+    }
+
     func testGrokLiveServerEventsDecodeToTheSharedConversationEvents() {
         func decode(_ object: [String: Any]) -> [GrokLiveProtocol.ServerFrame] {
             GrokLiveProtocol.decode(try! JSONSerialization.data(withJSONObject: object))

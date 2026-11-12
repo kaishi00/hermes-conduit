@@ -87,10 +87,26 @@ protocol GeminiLiveSocket: AnyObject {
     /// close frame to be reported (it can land after `receive()` throws).
     /// Nil when the connection simply dropped.
     func serverClose(within timeout: Duration) async -> GeminiLiveServerClose?
+    /// Sends one microphone chunk, `encode` turning it into the frame's
+    /// text. A network socket encodes off the main actor (issue 1959);
+    /// by default it is encoded here and sent as any text.
+    func sendAudio(_ pcm16: Data, encode: @escaping @Sendable (Data) throws -> String) async throws
+    /// The next frame, as `decode` reads it. A network socket decodes off
+    /// the main actor (issue 1959); by default `receive()`'s payload is
+    /// decoded here.
+    func receive<T: Sendable>(decoding decode: @escaping @Sendable (Data) -> T) async throws -> T
 }
 
 extension GeminiLiveSocket {
     func serverClose(within timeout: Duration) async -> GeminiLiveServerClose? { nil }
+
+    func sendAudio(_ pcm16: Data, encode: @escaping @Sendable (Data) throws -> String) async throws {
+        try await send(try encode(pcm16))
+    }
+
+    func receive<T: Sendable>(decoding decode: @escaping @Sendable (Data) -> T) async throws -> T {
+        decode(try await receive())
+    }
 }
 
 /// URLSession reports a server's close frame through its delegate, and
@@ -178,7 +194,22 @@ final class URLSessionGeminiLiveSocket: GeminiLiveSocket {
     }
 
     func receive() async throws -> Data {
-        switch try await task.receive() {
+        Self.payload(try await task.receive())
+    }
+
+    func sendAudio(_ pcm16: Data, encode: @escaping @Sendable (Data) throws -> String) async throws {
+        let text = try await LiveVoiceWireCoding.throwingOffMainActor { try encode(pcm16) }
+        try await task.send(.string(text))
+    }
+
+    func receive<T: Sendable>(decoding decode: @escaping @Sendable (Data) -> T) async throws -> T {
+        let message = try await task.receive()
+        return await LiveVoiceWireCoding.offMainActor { decode(Self.payload(message)) }
+    }
+
+    /// Text frames as UTF-8.
+    private nonisolated static func payload(_ message: URLSessionWebSocketTask.Message) -> Data {
+        switch message {
         case .string(let text): return Data(text.utf8)
         case .data(let data): return data
         @unknown default: return Data()
@@ -394,12 +425,23 @@ final class GeminiLiveSession {
     }
 
     func send(_ message: LiveVoiceClientMessage, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) {
-        guard state == .ready, let socket, let text = try? GeminiLiveProtocol.encode(GeminiLiveProtocol.message(for: message)) else {
+        guard state == .ready, let socket else {
+            onFailure?()
+            return
+        }
+        // Microphone audio is encoded on its way out, off the main actor
+        // on a network socket (issue 1959).
+        let payload: LiveVoiceSocketWriter.Payload
+        if case .audio(let pcm16) = message {
+            payload = .audio(pcm16, encode: { try GeminiLiveProtocol.encode(GeminiLiveProtocol.audioMessage(pcm16: $0)) })
+        } else if let text = try? GeminiLiveProtocol.encode(GeminiLiveProtocol.message(for: message)) {
+            payload = .texts([text])
+        } else {
             onFailure?()
             return
         }
         let id = connectionID
-        let queued = socketWriter(for: socket).enqueue([text], isAudio: message.isAudio) { [weak self] error in
+        let queued = socketWriter(for: socket).enqueue(payload, isAudio: message.isAudio) { [weak self] error in
             guard let error else {
                 onSent?()
                 return
@@ -513,9 +555,10 @@ final class GeminiLiveSession {
 
     private func receiveLoop(_ socket: GeminiLiveSocket, id: UUID) async {
         while !Task.isCancelled {
-            let data: Data
+            let events: [GeminiLiveProtocol.ServerEvent]
             do {
-                data = try await socket.receive()
+                // Decoded off the main actor on a network socket (issue 1959).
+                events = try await socket.receive(decoding: { GeminiLiveProtocol.decode($0) })
             } catch {
                 // A close before setup decides between failing and retrying,
                 // so give its close frame a moment to be reported. For a
@@ -526,7 +569,7 @@ final class GeminiLiveSession {
                 return
             }
             guard id == connectionID || id == handoffID else { return }
-            for event in GeminiLiveProtocol.decode(data) {
+            for event in events {
                 // An event can retire this connection mid-frame.
                 guard id == connectionID || id == handoffID else { return }
                 handle(event, connection: id)

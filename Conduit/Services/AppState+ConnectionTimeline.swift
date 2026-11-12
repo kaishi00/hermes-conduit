@@ -306,6 +306,18 @@ extension AppState {
                     lifecycleLog.notice(
                         "Foreground refresh start: transport=retained localTurn=\(self.turnStateLogValue, privacy: .public)"
                     )
+                    // The registry probe goes out alongside the health ping
+                    // (issue 1727): both are reads on the same socket, and
+                    // its rows count only once the ping passed. Not when a
+                    // bootstrap is owed, which never reads them.
+                    let probeRead: Task<ForegroundRuntimeRowsRead, Never>?
+                    if self.activeSessionId != nil,
+                       !(self.owedPostConnectBootstrap.map { $0.client === client } ?? false) {
+                        probeRead = self.startForegroundRuntimeRowsRead(using: client)
+                    } else {
+                        probeRead = nil
+                    }
+                    defer { probeRead?.cancel() }
                     do {
                         try await self.verifyChatResumeTransportHealth(client)
                         guard self.scenePhaseAttemptIsCurrent(sceneAttemptID),
@@ -326,6 +338,7 @@ extension AppState {
                         } else {
                             await self.refreshForegroundOnHealthyTransport(
                                 using: client,
+                                probeRead: probeRead,
                                 freshnessCheckArmed: freshnessCheckArmed,
                                 reconciliationToken: token,
                                 automaticWorkToken: automaticWorkToken
@@ -494,7 +507,7 @@ extension AppState {
                 noteChatLeft(activeSessionId)
             }
             isSceneActive = false
-            if !ProcessInfo.processInfo.isiOSAppOnMac {
+            if !inactiveSceneStaysInView {
                 sceneHidesLiveRows = true
                 pauseLivePublishes()
             }

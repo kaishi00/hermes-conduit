@@ -494,6 +494,7 @@ extension AppState {
     /// gone (or cannot answer).
     func refreshForegroundOnHealthyTransport(
         using client: HermesClient,
+        probeRead: Task<ForegroundRuntimeRowsRead, Never>? = nil,
         freshnessCheckArmed: Bool,
         reconciliationToken token: UUID,
         automaticWorkToken: ChatResumeAutomaticWorkToken?
@@ -513,7 +514,8 @@ extension AppState {
         if let requestedSessionID {
             probe = await probeForegroundRuntime(
                 requestedSessionID: requestedSessionID,
-                using: client
+                using: client,
+                alreadyReading: probeRead
             )
         } else {
             probe = .absent
@@ -749,34 +751,66 @@ extension AppState {
         }
     }
 
+    /// One `session.active_list` read, with the connection it was asked
+    /// on: rows from before a server change must not count.
+    struct ForegroundRuntimeRowsRead: Sendable {
+        let rows: Result<[LiveSessionStatus], Error>
+        let profile: String
+        let serverIdentity: String?
+    }
+
+    /// Starts the registry read now, so the foreground's health ping and
+    /// this read share one round trip (issue 1727). Reading has no side
+    /// effects; the rows are judged in `probeForegroundRuntime`.
+    func startForegroundRuntimeRowsRead(using client: HermesClient) -> Task<ForegroundRuntimeRowsRead, Never> {
+        let profile = activeProfile
+        let serverIdentity = defaults.string(forKey: Self.chatResumeServerIdentityKey)
+        let probeActiveSessions = chatResumeLifecycleOperations.probeActiveSessions
+        return Task { @MainActor in
+            let rows: Result<[LiveSessionStatus], Error>
+            do {
+                if let probeActiveSessions {
+                    rows = .success(try await probeActiveSessions(client))
+                } else {
+                    rows = .success(try await client.activeSessions())
+                }
+            } catch {
+                rows = .failure(error)
+            }
+            return ForegroundRuntimeRowsRead(rows: rows, profile: profile, serverIdentity: serverIdentity)
+        }
+    }
+
     /// Read-only registry probe for the active conversation. Matches a row by
     /// ANY identity the conversation is known under (requested, stored, and
     /// runtime aliases), so a runtime-id rotation cannot be mistaken for a
     /// dead runtime while the catalog already knows the alias.
+    /// `alreadyReading` is a read the foreground started beside its health
+    /// ping; without one the probe reads now.
     private func probeForegroundRuntime(
         requestedSessionID: String,
-        using client: HermesClient
+        using client: HermesClient,
+        alreadyReading: Task<ForegroundRuntimeRowsRead, Never>? = nil
     ) async -> ForegroundRuntimeProbe {
-        let evidenceProfile = activeProfile
-        let evidenceServerIdentity = defaults.string(forKey: Self.chatResumeServerIdentityKey)
+        let reading = alreadyReading ?? startForegroundRuntimeRowsRead(using: client)
+        let read = await withTaskCancellationHandler {
+            await reading.value
+        } onCancel: {
+            reading.cancel()
+        }
         do {
-            let rows: [LiveSessionStatus]
-            if let probeActiveSessions = chatResumeLifecycleOperations.probeActiveSessions {
-                rows = try await probeActiveSessions(client)
-            } else {
-                rows = try await client.activeSessions()
-            }
+            let rows = try read.rows.get()
             // Currency fence: rows observed before a SERVER change must not
             // repopulate the index scope that change cleared. The fence is
             // the committed server identity — the exact boundary
             // prepareChatResumeForConnection uses — so a same-server client
             // replacement (reconnect, possibly re-addressed) stays valid
             // while a real server switch discards its in-flight rows.
-            guard evidenceProfile == activeProfile,
-                  defaults.string(forKey: Self.chatResumeServerIdentityKey) == evidenceServerIdentity else {
+            guard read.profile == activeProfile,
+                  defaults.string(forKey: Self.chatResumeServerIdentityKey) == read.serverIdentity else {
                 return .unavailable("Probe superseded by connection change")
             }
-            recordActiveListEvidence(rows, profile: evidenceProfile)
+            recordActiveListEvidence(rows, profile: read.profile)
             let acceptedIDs = acceptedIdentitySessionIDs(forRequested: requestedSessionID)
             if let row = rows.first(where: {
                 acceptedIDs.contains($0.runtimeSessionId) || acceptedIDs.contains($0.storedSessionId)

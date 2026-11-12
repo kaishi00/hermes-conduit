@@ -51,6 +51,17 @@ final class ComposerPasteTextViewTests: XCTestCase {
         XCTAssertEqual(textView.selectedRange, NSRange(location: 11, length: 0))
     }
 
+    /// ⌘V in a transcript on a Mac goes to the composer's field once it has
+    /// focus, and only to one that takes text (issue 1692).
+    func testTranscriptPasteReachesOnlyAComposerFieldThatTakesText() {
+        let field = ReturnKeyTextView(frame: .zero, textContainer: nil)
+        let paste = #selector(ReturnKeyTextView.pasteFromTranscript(_:))
+        field.isEditable = true
+        XCTAssertTrue(field.canPerformAction(paste, withSender: nil))
+        field.isEditable = false
+        XCTAssertFalse(field.canPerformAction(paste, withSender: nil))
+    }
+
     func testAPastedImageLinkThatAnsweredWithAPageIsRefused() {
         XCTAssertNil(PastedRemoteImage.image(from: Data("<html><body>Not found</body></html>".utf8)))
     }

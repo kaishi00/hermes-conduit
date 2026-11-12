@@ -170,6 +170,9 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// Whether a background job's first prompt went to Hermes. Until then a
     /// follow-up joins its instructions instead of interrupting it.
     var requestSent = false
+    /// Whether a continued job's submit began (after its turn surface
+    /// report). Until then a cancel interrupts nothing in its chat.
+    var submitted = false
     /// A follow-up being put into the running turn (#451). While it is on
     /// its way, or waits to run as the next turn, a completion isn't taken
     /// as the request's end.
@@ -292,13 +295,13 @@ enum VoiceBackgroundJobNotice: Equatable {
     case submit(prompt: String, fallback: String)
 }
 
-/// Hermes operations the supervisor needs. Closures (not a protocol) so
-/// AppState can bind them to whichever client is current at call time and
-/// tests can script them.
 /// A job whose request was never sent (a cancel or reset overtook it): its
 /// turn surface report is dropped, as after a refused send.
 struct VoiceJobNotSentError: Error {}
 
+/// Hermes operations the supervisor needs. Closures (not a protocol) so
+/// AppState can bind them to whichever client is current at call time and
+/// tests can script them.
 struct VoiceBackgroundJobBackend {
     /// `profile` nil creates the job in the active profile. `callsModel`:
     /// the job is the call's own on that profile (a Watch call's, or a Bot
@@ -336,7 +339,8 @@ struct VoiceBackgroundJobBackend {
     var submit: @MainActor (_ sessionID: String, _ text: String) async throws -> Void
     /// Tells the plugin where a job's request came from, just before its
     /// submit (TurnSurface, #888): spoken, from the Watch for a Watch call's
-    /// job. Returns what forgets that report when the submit fails.
+    /// job. Returns what forgets that report when the submit fails or a
+    /// cancel or reset overtakes the start before it.
     var reportTurnSurface: @MainActor (_ sessionID: String, _ text: String, _ fromWatch: Bool) async
         -> @MainActor (Error) -> Void = { _, _, _ in { _ in } }
     var cancel: @MainActor (_ sessionID: String) async throws -> Void
@@ -1678,6 +1682,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             guard generation == self.generation, job(jobID)?.status == .starting else { return }
             let request = job(jobID)?.instructions ?? ""
             if !runtimeID.isEmpty { onRuntime?(runtimeID) }
+            // Sent from here on: a follow-up interrupts rather than joins
+            // text already reported, and the call's next request waits.
             update(jobID) {
                 if !runtimeID.isEmpty { $0.runtimeSessionID = runtimeID }
                 $0.requestSent = true
@@ -1688,10 +1694,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             let sessionID = runtimeID.isEmpty ? chat.runtimeSessionID : runtimeID
             let prompt = Self.jobPrompt(for: request)
             let dropTurnSurface = await backend.reportTurnSurface(sessionID, prompt, true)
+            // A cancel while the report went sends nothing. Until the submit
+            // begins, a cancel never interrupts the chat, whose running turn
+            // would be another's.
             guard generation == self.generation, job(jobID)?.status == .starting else {
                 dropTurnSurface(VoiceJobNotSentError())
                 return
             }
+            update(jobID) { $0.submitted = true }
             do {
                 try await backend.submit(sessionID, prompt)
             } catch {
@@ -2477,7 +2487,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         callbackJobMayHaveSettled(job.id)
         // Still waiting its turn in the call's chat: what runs there is
         // another request's, so nothing is interrupted.
-        if job.continuesChat, !job.requestSent { return true }
+        if job.continuesChat, !job.submitted { return true }
         guard let sessionID = job.runtimeSessionID else { return true }
         do {
             try await backend.cancel(sessionID)
