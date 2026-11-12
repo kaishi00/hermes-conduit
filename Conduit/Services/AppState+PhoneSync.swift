@@ -251,8 +251,9 @@ extension AppState {
     /// `kind` is what the card showed: a change of another kind under the
     /// same id gets the phone's own card.
     @discardableResult
-    func applyPulseApproval(_ changeID: String, kind: PhoneChange.Kind) async -> PhoneSyncEngine.Outcome {
-        await phoneSync.approveFromCard(changeID, kind: kind)
+    /// `sharing` is phoneSync.sharingSession when the user tapped.
+    func applyPulseApproval(_ changeID: String, kind: PhoneChange.Kind, sharing: Int) async -> PhoneSyncEngine.Outcome {
+        await phoneSync.approveFromCard(changeID, kind: kind, sharing: sharing)
         let outcome = await runPhoneSync(reason: .answered)
         // Applied when that pass took it from the host: the next one says so.
         if phoneSync.state.unreported.contains(where: { $0.id == changeID }) {

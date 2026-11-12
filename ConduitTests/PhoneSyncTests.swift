@@ -596,7 +596,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
         // Approved before the host handed it out: applied when it comes, with
         // no card, and reported on the next exchange. Another change still asks.
-        await engine.approveFromCard("ch_pulse", kind: .addEvent)
+        await engine.approveFromCard("ch_pulse", kind: .addEvent, sharing: engine.sharingSession)
         host.changes = [
             ["id": "ch_pulse", "kind": "add_event", "auto": false,
              "fields": ["title": "Dinner", "start": "2026-10-25T19:00:00Z", "end": "2026-10-25T21:00:00Z"]],
@@ -615,13 +615,13 @@ extension HermesVoiceGatewayTimeoutTests {
                              "target": ["event_id": "item_ch_pulse"], "fields": [String: Any]()])
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_other", "ch_undo"])
-        await engine.approveFromCard("ch_undo", kind: .deleteEvent)
+        await engine.approveFromCard("ch_undo", kind: .deleteEvent, sharing: engine.sharingSession)
         XCTAssertEqual(source.applied, ["ch_pulse", "ch_undo"])
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_other"])
 
         // One the host doesn't hand out within 15 minutes (another device's,
         // or a relaunch's) gets its card, as any change does.
-        await engine.approveFromCard("ch_late", kind: .addReminder)
+        await engine.approveFromCard("ch_late", kind: .addReminder, sharing: engine.sharingSession)
         clock = clock.addingTimeInterval(PhoneSyncEngine.cardApprovalWindow + 1)
         host.changes.append(["id": "ch_late", "kind": "add_reminder", "auto": false, "fields": ["title": "Late"]])
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
@@ -639,7 +639,7 @@ extension HermesVoiceGatewayTimeoutTests {
         engine.savePreferences(phonePreferences())
 
         // Shown as a reminder to add; the host hands out a delete under the id.
-        await engine.approveFromCard("ch_swap", kind: .addReminder)
+        await engine.approveFromCard("ch_swap", kind: .addReminder, sharing: engine.sharingSession)
         host.changes = [["id": "ch_swap", "kind": "delete_event", "auto": false,
                          "target": ["event_id": "ev_1"], "fields": [String: Any]()]]
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
@@ -647,12 +647,12 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_swap"], "It waits on its card")
 
         // Its card already waiting: a tap for another kind doesn't answer it.
-        await engine.approveFromCard("ch_swap", kind: .addEvent)
+        await engine.approveFromCard("ch_swap", kind: .addEvent, sharing: engine.sharingSession)
         XCTAssertEqual(source.applied, [])
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_swap"])
 
         // A kind no Pulse card shows is never approved by one.
-        await engine.approveFromCard("ch_run", kind: .runShortcut)
+        await engine.approveFromCard("ch_run", kind: .runShortcut, sharing: engine.sharingSession)
         host.changes.append(["id": "ch_run", "kind": "add_reminder", "auto": false, "fields": ["title": "Buy milk"]])
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(source.applied, [])
@@ -671,20 +671,24 @@ extension HermesVoiceGatewayTimeoutTests {
         let exchange = Task { await engine.sync(deadline: .distantFuture, request: host.handle) }
         for _ in 0..<500 where !source.isHolding { try await Task.sleep(for: .milliseconds(2)) }
         XCTAssertTrue(source.isHolding)
-        await engine.approveFromCard("ch_wait", kind: .addEvent)
+        await engine.approveFromCard("ch_wait", kind: .addEvent, sharing: engine.sharingSession)
         source.releaseApply()
         _ = await exchange.value
         XCTAssertEqual(source.applied, ["ch_auto"])
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_wait"])
 
-        // Sharing turned off and on again: a tap from before applies nothing.
-        await engine.approveFromCard("ch_after", kind: .addReminder)
+        // Sharing turned off and on again: a tap from before applies nothing,
+        // whether it was recorded before the turn-off or its answer came after.
+        await engine.approveFromCard("ch_after", kind: .addReminder, sharing: engine.sharingSession)
+        let tappedIn = engine.sharingSession
         _ = await engine.turnOff(deleteFromHost: nil)
+        await engine.approveFromCard("ch_late_answer", kind: .addReminder, sharing: tappedIn)
         engine.savePreferences(preferences)
-        host.changes = [["id": "ch_after", "kind": "add_reminder", "auto": false, "fields": ["title": "Call Sam"]]]
+        host.changes = [["id": "ch_after", "kind": "add_reminder", "auto": false, "fields": ["title": "Call Sam"]],
+                        ["id": "ch_late_answer", "kind": "add_reminder", "auto": false, "fields": ["title": "Book table"]]]
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(source.applied, ["ch_auto"])
-        XCTAssertEqual(engine.prompts.map(\.id), ["ch_after"])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_after", "ch_late_answer"])
     }
 
     func testPhoneVoiceCallsReadAnswerAndAdd() async throws {
@@ -1753,8 +1757,8 @@ extension HermesVoiceGatewayTimeoutTests {
         let spoken = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_photo"], engine: engine,
                                                confirmed: { _, _ in true }, lastUserTurn: { (UUID(), "yes") }, answer: voiceAnswer)
         XCTAssertNotNil(spoken["error"])
-        await engine.approveFromCard("ch_photo", kind: .sendPhoto)
-        await engine.approveFromCard("ch_early", kind: .addEvent)
+        await engine.approveFromCard("ch_photo", kind: .sendPhoto, sharing: engine.sharingSession)
+        await engine.approveFromCard("ch_early", kind: .addEvent, sharing: engine.sharingSession)
         host.changes.append(["id": "ch_early", "kind": "send_photo", "auto": false, "target": ["photo_id": "ph_0000000000000001"]])
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(Set(engine.prompts.map(\.id)), ["ch_photo", "ch_early"])

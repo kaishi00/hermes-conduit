@@ -225,6 +225,9 @@ final class PhoneSyncEngine: ObservableObject {
     var calendar: Calendar
     private var running: Task<Outcome, Never>?
     private var turnOffs = 0
+    /// Changes each time sharing is turned off: what a Pulse tap carries, so
+    /// a tap from an earlier sharing applies nothing.
+    var sharingSession: Int { turnOffs }
     private var stateUnread = false
     /// What the state file holds (or is about to): a pass that changed
     /// nothing writes nothing.
@@ -1031,8 +1034,11 @@ final class PhoneSyncEngine: ObservableObject {
     /// device never comes here, and its approval lapses. Only what a Pulse
     /// card shows is approved this way; a change of another kind under the
     /// id keeps its own card (see the exchange).
-    func approveFromCard(_ changeID: String, kind: PhoneChange.Kind) async {
-        guard Self.pulseCardKinds.contains(kind) else { return }
+    /// `sharing` is sharingSession when the user tapped: a tap from before
+    /// sharing was turned off (its host request still on its way then)
+    /// approves nothing.
+    func approveFromCard(_ changeID: String, kind: PhoneChange.Kind, sharing: Int) async {
+        guard Self.pulseCardKinds.contains(kind), sharing == turnOffs else { return }
         let now = self.now()
         approvedOnCard = approvedOnCard.filter { $0.value.until > now }
         if let prompt = prompts.first(where: { $0.id == changeID }) {

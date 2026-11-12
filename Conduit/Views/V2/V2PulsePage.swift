@@ -1873,6 +1873,9 @@ struct V2PulsePage: View {
         finishingCards.insert(card.id)
         keptCards.insert(card.id)
         let dashboard = appState.activeDashboardID
+        // The sharing the tap was made in: turned off before the answer
+        // comes, the tap applies nothing here.
+        let sharing = appState.phoneSync.sharingSession
         Task {
             defer { finishingCards.remove(card.id) }
             do {
@@ -1884,7 +1887,7 @@ struct V2PulsePage: View {
                     AccessibilityNotification.Announcement(answer.stateText).post()
                     return
                 }
-                let outcome = await appState.applyPulseApproval(change, kind: proposal.phoneChangeKind(undo: undo))
+                let outcome = await appState.applyPulseApproval(change, kind: proposal.phoneChangeKind(undo: undo), sharing: sharing)
                 guard appState.activeDashboardID == dashboard else { return }
                 await load()
                 guard appState.activeDashboardID == dashboard,
