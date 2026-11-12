@@ -1127,8 +1127,10 @@ extension AppState {
     /// the card shows. So read the queue first: a gateway that names its
     /// requests is answered on the one whose command and explanation the
     /// card shows (a push card carries no command, so only the
-    /// explanation is compared, as the notifier sends it: collapsed, cut,
-    /// or redacted), and nothing is sent when none does. Only
+    /// explanation is compared, as the notifier sends it: collapsed or
+    /// cut), and nothing is sent when none does. A redacted push names
+    /// nothing to compare, so its card always gives way to the queue's
+    /// own cards, each with its command, and nothing is sent. Only
     /// a gateway that names no requests, or has no `approval.pending`,
     /// keeps the session-wide answer.
     private func legacyApprovalTarget(
@@ -1174,10 +1176,11 @@ extension AppState {
         if identified.isEmpty { return .sessionQueue }
         let description = collapsedWhitespace(card.description)
         if card.command.isEmpty, description == redactedApprovalPushDescription {
-            // A redacted push names nothing to match: answerable only when
-            // one request is queued; with more, the queue's own cards show.
-            guard identified.count == 1, let requestId = identified[0].requestId else { return .ambiguous }
-            return .request(requestId)
+            // A redacted push names nothing to match, not even when one
+            // request is queued: its own may have gone, and the one queued
+            // now asks something else. The queue's own cards show instead,
+            // each with its command, to be answered there.
+            return .ambiguous
         }
         let command = card.command.trimmingCharacters(in: .whitespacesAndNewlines)
         // The parser trims the push text, so a cut that ended on a space
@@ -1247,8 +1250,11 @@ extension AppState {
         var answeredRequestId = current.requestId
         if current.requestId == nil {
             let target = await legacyApprovalTarget(for: current, using: client, profile: conversationProfile)
-            guard profile == activeProfile, self.client === client,
-                  let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
+            guard profile == activeProfile, self.client === client else {
+                rearmStaleSubmission(messageId: messageId, decisionKey: decisionKey, sessionId: current.sessionId)
+                return
+            }
+            guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
                   SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
             // The next command replaced the card while the queue was read:
             // a session-queue answer would go to it. Nothing is sent.
@@ -1306,7 +1312,10 @@ extension AppState {
                     profile: conversationProfile
                 )
             }
-            guard profile == activeProfile, self.client === client else { return }
+            guard profile == activeProfile, self.client === client else {
+                rearmStaleSubmission(messageId: messageId, decisionKey: decisionKey, sessionId: current.sessionId)
+                return
+            }
             guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
                   SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
             // A legacy card the next command replaced in flight asks
@@ -1335,7 +1344,10 @@ extension AppState {
             cacheMessagePresentation()
             schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
         } catch {
-            guard profile == activeProfile, self.client === client else { return }
+            guard profile == activeProfile, self.client === client else {
+                rearmStaleSubmission(messageId: messageId, decisionKey: decisionKey, sessionId: current.sessionId)
+                return
+            }
             guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
                   SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
             if rearmIfReplaced(at: updatedIndex, asking: current) { return }
@@ -1378,6 +1390,25 @@ extension AppState {
                     break
                 }
             }
+        }
+    }
+
+    /// A submission whose client was replaced while it waited lands
+    /// nowhere, but its card may still read Sending: the new client's
+    /// replay kept that while this submission was live, and nothing else
+    /// will settle it. It goes back to pending, so it can be answered
+    /// again, and the new client reads the queue, which retires it if
+    /// Hermes took the answer after all.
+    private func rearmStaleSubmission(messageId: String, decisionKey: String?, sessionId: String) {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }),
+              SessionPresentationCache.decisionKey(for: messages[index]) == decisionKey,
+              messages[index].approval?.status == .submitting else { return }
+        messages[index].approval?.status = .pending
+        messages[index].approval?.choice = nil
+        messages[index].approval?.error = nil
+        cacheMessagePresentation()
+        if let client {
+            schedulePendingApprovalsRefresh(sessionId: sessionId, using: client)
         }
     }
 
