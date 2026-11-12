@@ -187,6 +187,8 @@ enum GrokLiveProtocol {
     /// main actor on a network socket (issue 1959). Local Live sends the
     /// same frame.
     static func audioAppend(_ chunk: GrokUpsampleChunk) -> LiveVoiceSocketWriter.Payload {
+        // The chunk, not the bytes handed back, carries the stream's place
+        // to interpolate from; they are the same audio.
         .audio(chunk.pcm16, encode: { _ in try encode(audioAppendFrame(chunk)) })
     }
 

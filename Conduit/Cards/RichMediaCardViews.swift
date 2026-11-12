@@ -248,6 +248,18 @@ private struct RichMediaViewer: View {
             player.pause()
             RichAudioPlayer.endPlayback()
         }
+        // A call or Siri taking the audio pauses the video and lets its
+        // lease go, as it ends the audio row's item, so wake listening
+        // isn't held off while the sheet stays up.
+        .onReceive(
+            NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)
+                .filter { ($0.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue }
+                .receive(on: DispatchQueue.main)
+        ) { _ in
+            guard let player else { return }
+            player.pause()
+            RichAudioPlayer.endPlayback()
+        }
     }
 }
 

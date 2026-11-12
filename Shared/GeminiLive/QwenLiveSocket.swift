@@ -63,6 +63,8 @@ final class QwenLiveSocket: GeminiLiveSocket {
         if let setup = frame["setup"] as? [String: Any] {
             try await emit(Self.sessionUpdate(setup: setup, voice: voice))
         } else if let input = frame["realtimeInput"] as? [String: Any] {
+            // The sessions send microphone audio through `sendAudio`; this
+            // stays for a frame built whole.
             if let audio = input["audio"] as? [String: Any], let bytes = audio["data"] as? String {
                 hasSentAudio = true
                 try await emit(["type": "input_audio_buffer.append", "audio": bytes])
