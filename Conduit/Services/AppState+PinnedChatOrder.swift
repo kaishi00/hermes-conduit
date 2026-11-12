@@ -98,3 +98,128 @@ extension AppState {
         )
     }
 }
+
+extension AppState {
+    // MARK: - Pinning chats, and the saved order of chats, bots and rooms
+
+    func isSessionPinned(_ session: SessionSummary) -> Bool {
+        let ids = SessionPinSync.pinIDs(for: session)
+        let owner = rowProfile(session)
+        if owner != activeProfile {
+            // Another profile's row in All: Hermes' flag when its listing
+            // has one, else the pins this phone keeps for that profile.
+            // A pin Hermes refused stays on this phone, over the listing.
+            let kept = (pinnedSessionIDsByProfile[owner] ?? []).contains { ids.contains($0) }
+            if kept, sessionPinSync.isPhoneOnly(pinID: pinID(for: session), profile: owner) { return true }
+            return session.isPinned ?? kept
+        }
+        if pinnedSessionIDs.contains(where: { ids.contains($0) }) { return true }
+        guard let saved = savedChatListForActiveScope else { return false }
+        // A kept row is listed only because it is pinned.
+        if saved.isKeptRow(session) { return true }
+        // A dashboard switch starts the phone's pins over until Hermes'
+        // arrive with its list; the saved list keeps its own meanwhile.
+        guard pinnedSessionIDs.isEmpty, saved.isShowingSavedRows else { return false }
+        return saved.showedAsPinned(session)
+    }
+
+    func toggleSessionPinned(_ session: SessionSummary) {
+        let profile = rowProfile(session)
+        guard sessionBelongsToProfile(session, profile: profile) else { return }
+        let pinned = !isSessionPinned(session)
+        setLocalPin(session, pinned: pinned, profile: profile)
+        if profile != activeProfile {
+            updateAllProfilesCatalogRow(session) { $0.isPinned = pinned }
+        }
+        let pinID = pinID(for: session)
+        guard let bridge = dashboardTicketBridge,
+              sessionPinSync.supportsPins(profile: profile, host: bridge.baseURL) else { return }
+        if sessionPinSync.isPhoneOnly(pinID: pinID, profile: profile) {
+            // Hermes didn't take this chat's pin before: an unpin stays on
+            // the phone, with the mark keeping listings off it. A pin asks
+            // Hermes again; another failure marks it again.
+            guard pinned else { return }
+            sessionPinSync.clearPhoneOnly(pinID: pinID, profile: profile)
+            persistHostPinSyncState()
+        }
+        let generation = sessionPinSync.recordWrite(pinID: pinID, profile: profile, pinned: pinned)
+        enqueueHostPinWrite { [weak self] in
+            guard let self, self.sessionPinSync.host == bridge.baseURL else { return }
+            do {
+                try await self.sendHostPin(session.id, pinned: pinned, profile: profile, using: bridge)
+            } catch {
+                // Hermes refused the chat (old local history only the
+                // computer running it may change) or the write failed. The
+                // pin stays as the person set it, on the phone only, rather
+                // than flip back; the notice says why. Pinning it again asks
+                // Hermes again.
+                sessionCatalogLog.notice("Pin kept on phone: \(LogRedaction.describing(error), privacy: .public)")
+                guard self.sessionPinSync.host == bridge.baseURL,
+                      self.keepPinOnPhone(pinID, profile: profile, generation: generation, pinned: pinned),
+                      profile == self.activeProfile else { return }
+                self.showPinSyncNotice(for: error, pinned: pinned)
+            }
+        }
+    }
+
+    func setLocalPin(_ session: SessionSummary, pinned: Bool, profile: String) {
+        let pinID = pinID(for: session)
+        var pins = pinnedSessionIDsByProfile[profile] ?? []
+        if pinned {
+            pins.removeAll { $0 == pinID }
+            pins.append(pinID)
+        } else {
+            let ids = SessionPinSync.pinIDs(for: session)
+            pins.removeAll { ids.contains($0) }
+        }
+        storePins(pins, profile: profile)
+        publishWidgetSnapshot()
+    }
+
+    /// Saves a profile's Pinned order (issue 1354): the chats' pin ids,
+    /// top first.
+    func setPinnedChatOrder(_ ids: [String], profile: String) {
+        var order = pinnedChatOrder
+        order.set(ids, profile: profile)
+        guard order != pinnedChatOrder else { return }
+        pinnedChatOrder = order
+        order.save(to: defaults)
+    }
+
+    /// Saves the bots' order (BotOrder), set here or from Sync across
+    /// devices.
+    func setBotOrder(_ order: BotOrder) {
+        guard order != botOrder else { return }
+        botOrder = order
+        order.save(to: defaults)
+        publishWidgetSnapshot()
+    }
+
+    /// Saves the group chats' order, set on Bots Home or from Sync across
+    /// devices.
+    func setGroupRoomOrder(_ order: BotOrder) {
+        let order = order.kind == .rooms ? order : BotOrder(names: order.names, kind: .rooms)
+        guard order != groupRoomOrder else { return }
+        groupRoomOrder = order
+        order.save(to: defaults, key: BotOrder.roomStorageKey)
+    }
+
+    /// Saves where All's mixed Pinned section holds each profile's chats
+    /// (issue 1486), on this device only.
+    func setPinnedChatMixedOrder(_ keys: [String]) {
+        var order = pinnedChatOrder
+        order.setMixed(keys)
+        guard order != pinnedChatOrder else { return }
+        pinnedChatOrder = order
+        order.save(to: defaults)
+    }
+
+    /// An unpinned chat leaves the order, so pinning it again puts it on top.
+    func dropFromPinnedChatOrder(_ ids: Set<String>, profile: String) {
+        var order = pinnedChatOrder
+        order.drop(ids, profile: profile)
+        guard order != pinnedChatOrder else { return }
+        pinnedChatOrder = order
+        order.save(to: defaults)
+    }
+}
