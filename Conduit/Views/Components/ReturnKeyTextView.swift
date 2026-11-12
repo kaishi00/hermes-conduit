@@ -487,6 +487,9 @@ class ReturnKeyTextView: UITextView {
 
     @MainActor private static var pendingPaste: Task<Void, Never>?
 
+    /// A transcript paste is still waiting for its field's focus.
+    @MainActor static var hasPendingPaste: Bool { pendingPaste != nil }
+
     /// Drops a transcript paste still waiting for its field's focus.
     @MainActor
     static func cancelPendingPaste() {

@@ -683,6 +683,8 @@ struct ComposerBar: View, Equatable {
         }
         .onDisappear {
             dictation.cancel()
+            // A transcript paste still waiting for focus belongs to this chat.
+            ReturnKeyTextView.cancelPendingPaste()
             if voiceMessages.isActive, !voiceMessages.isSending { voiceMessages.cancel() }
             collapseTask?.cancel()
             collapseTask = nil

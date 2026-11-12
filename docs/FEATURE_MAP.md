@@ -3681,7 +3681,7 @@ keyboard line (done, #2270) · no Settings caption describes it
 - Full editor: `Conduit/Views/Components/ComposerFullEditor.swift`, opened by ComposerBar's expand button (which takes focus from the field) and its sheet
 - Group rooms: `Conduit/Views/Components/GroupRoomComposer.swift` (send; focusesAfterFullEditor, read in the full editor sheet's onDismiss)
 - Opening on a Mac: `Conduit/Views/Components/ComposerLayout.swift` (focusesOnOpen, openMayTakeFocus), `Conduit/Views/Components/ComposerBar.swift` (focusOnOpen, from onAppear and handoffComposer), `Conduit/Views/Components/GroupRoomComposer.swift` (focusOnOpen, takesKeys), `Conduit/Views/Components/ReturnKeyTextView.swift` (anotherFieldHasFocus, FirstResponderProbe)
-- ⌘V from the transcript: `Conduit/Views/TranscriptView.swift` (pasteTarget; TranscriptViewController's takeKeysAfterClick, canBecomeFirstResponder, paste), `Conduit/Views/Components/ComposerLayout.swift` (transcriptTakesPaste, ComposerPaste, ComposerPasteTarget), `Conduit/Views/Components/ReturnKeyTextView.swift` (pasteFromTranscript, pasteOnceFocused, cancelPendingPaste), ComposerBar's and GroupRoomComposer's `onReceive(ComposerPaste.requests)`
+- ⌘V from the transcript: `Conduit/Views/TranscriptView.swift` (pasteTarget; TranscriptViewController's takeKeysAfterClick, canBecomeFirstResponder, paste), `Conduit/Views/Components/ComposerLayout.swift` (transcriptTakesPaste, ComposerPaste, ComposerPasteTarget), `Conduit/Views/Components/ReturnKeyTextView.swift` (pasteFromTranscript, pasteOnceFocused, cancelPendingPaste, hasPendingPaste), ComposerBar's and GroupRoomComposer's `onReceive(ComposerPaste.requests)`; the cancel from ComposerBar's handoffComposer and onDisappear and GroupRoomComposer's onAppear and onDisappear; test `ConduitTests/ComposerPasteTextViewTests.swift` (testAChatSwitchDropsATranscriptPasteStillWaiting)
 - Tests: `ConduitTests/ChatVoiceButtonTests.swift` (testComposerKeepsFocusAfterSendOnMacAndOnAnIPadWithAHardwareKeyboard, testMacOpensConversationsReadyToTypeAndPastesFromTheTranscript), `ConduitTests/ComposerPasteTextViewTests.swift` (testARebuiltFieldTakesFocusOnlyWhenItWantsItAsItReachesTheWindow, testFocusChangesWaitUntilAfterTheUpdateThatAskedAndTheLastAskWins, testAFieldTurnedOffUnderFocusTakesItBackOnceOnUnlessAnotherFieldTookIt, testTranscriptPasteReachesOnlyAComposerFieldThatTakesText)
 
 **Rulings**
@@ -3744,8 +3744,8 @@ keyboard line (done, #2270) · no Settings caption describes it
   gets nothing. An iPhone or iPad keeps ⌘V in the transcript doing
   nothing, so it never brings the on-screen keyboard up (2026-11-12, #2270,
   issue 1692). A chat or room switch while the paste waits for the field's
-  focus drops it, so it never lands in the next conversation (2026-11-12,
-  #2284).
+  focus drops it, a room opened over the chat included, so it never lands
+  in the next conversation (2026-11-12, #2284).
 
 **Open gaps**
 - Not yet seen on a device: a Mac and an iPad with a keyboard sending from

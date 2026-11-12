@@ -764,13 +764,13 @@ final class ChatSyncTests: XCTestCase {
         var probes = 0
         box.onProbe = { probes += 1 }
         appState.inactiveSceneStaysInView = true
-        appState.handleScenePhase(.active)
-        appState.handleScenePhase(.inactive)
+        _ = appState.handleScenePhase(.active)
+        _ = appState.handleScenePhase(.inactive)
         let beforeInactivePoll = probes
         await poll(appState)
         XCTAssertGreaterThan(probes, beforeInactivePoll, "Inactive with the window in view reads")
 
-        appState.handleScenePhase(.background)
+        _ = appState.handleScenePhase(.background)
         let beforeBackgroundPoll = probes
         await poll(appState)
         XCTAssertEqual(probes, beforeBackgroundPoll, "The background reads nothing")

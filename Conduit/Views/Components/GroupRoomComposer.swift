@@ -218,6 +218,9 @@ struct GroupRoomComposer: View {
             applyQuoteRequest(appState.roomQuoteRequest)
             applyRecipientRequest(appState.roomRecipientRequest)
             applyDraftHandBack(appState.roomDraftHandBack)
+            // A chat's transcript paste still waiting for focus isn't this
+            // room's: a room can open over the chat without it leaving.
+            ReturnKeyTextView.cancelPendingPaste()
             focusOnOpen()
         }
         // ⌘V in the room's transcript on a Mac: the field takes focus and
