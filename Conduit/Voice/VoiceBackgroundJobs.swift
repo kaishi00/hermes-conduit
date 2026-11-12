@@ -2295,6 +2295,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     continue
                 }
                 guard generation == self.generation, job(next.id)?.status == .starting else { continue }
+                // Checked again with nothing awaited before the send: a
+                // continued job that began submitting while this resolved
+                // holds the chat, and pumps this again when it lets go.
+                if continuedSubmitInFlight(in: thread) || continuedSubmitInFlight(in: resolved) { return }
                 // Only now does the turn own the chat's events. A follow-up
                 // said while it waited joined the request (#451).
                 let request = job(next.id)?.instructions ?? next.instructions
