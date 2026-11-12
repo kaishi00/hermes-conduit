@@ -395,4 +395,58 @@ final class WidgetSnapshotTests: XCTestCase {
         XCTAssertFalse(store.update { _ in nil })
         XCTAssertFalse(store.update { $0 })
     }
+
+    // MARK: Small and large sizes (issue 1532)
+
+    private func launcherSnapshot(chats count: Int, pinned: Set<Int> = []) -> (WidgetSnapshot, WidgetWorkspaceID, [WidgetConversationReference]) {
+        let workspaceID = WidgetWorkspaceID(dashboardID: UUID(), profile: "p")
+        let references = (0..<count).map {
+            WidgetConversationReference(kind: .dashboard, scopeProfile: "p", botName: nil, botLabel: nil, sessionID: "s\($0)", isUnverified: false)
+        }
+        let choices = references.enumerated().map { index, reference in
+            WidgetConversationChoice(reference: reference, title: "Chat \(index)", isPinned: pinned.contains(index), recency: Double(100 - index))
+        }
+        let workspace = WidgetWorkspaceSnapshot(id: workspaceID, dashboardLabel: "D", profileLabel: "P", lastConversation: references.first, choices: choices, recency: 1)
+        return (WidgetSnapshot(appLanguage: "en", currentWorkspaceID: workspaceID, workspaces: [workspace]), workspaceID, references)
+    }
+
+    func testLargeSizeListsOtherSavedChatsPinnedFirstWithoutTheShownOne() throws {
+        let (snapshot, workspaceID, references) = launcherSnapshot(chats: 8, pinned: [6])
+        let entry = WidgetSelection.resolve(snapshot: snapshot, workspace: nil, conversation: nil)
+        XCTAssertEqual(entry.title, "Chat 0")
+        XCTAssertEqual(entry.moreChats.map(\.title), ["Chat 6", "Chat 1", "Chat 2", "Chat 3"])
+        XCTAssertEqual(entry.moreChats.count, WidgetSelection.moreChatsLimit)
+        XCTAssertTrue(entry.moreChats[0].isPinned)
+        let expected = try XCTUnwrap(WidgetLaunchLink(action: .resume, workspace: workspaceID, reference: references[6]))
+        XCTAssertEqual(entry.moreChats[0].link, expected)
+
+        let configured = WidgetSelection.resolve(snapshot: snapshot, workspace: workspaceID, conversation: references[1], conversationWorkspace: workspaceID)
+        XCTAssertEqual(configured.title, "Chat 1")
+        XCTAssertEqual(configured.moreChats.map(\.title), ["Chat 0", "Chat 6", "Chat 2", "Chat 3"])
+    }
+
+    func testLargeSizeListsNoChatsWhileTitlesAreHiddenOrStale() {
+        let (snapshot, workspaceID, _) = launcherSnapshot(chats: 3)
+        XCTAssertTrue(WidgetSelection.resolve(snapshot: snapshot, workspace: nil, conversation: nil, hideTitle: true).moreChats.isEmpty)
+        let missing = WidgetConversationReference(kind: .dashboard, scopeProfile: "p", botName: nil, botLabel: nil, sessionID: "gone", isUnverified: false)
+        let stale = WidgetSelection.resolve(snapshot: snapshot, workspace: workspaceID, conversation: missing, conversationWorkspace: workspaceID)
+        XCTAssertEqual(stale.title, "Open Conduit to refresh")
+        XCTAssertTrue(stale.moreChats.isEmpty)
+        XCTAssertTrue(WidgetSelection.resolve(snapshot: nil, workspace: nil, conversation: nil).moreChats.isEmpty)
+    }
+
+    func testSmallSizeOpensItsPickedActionOrFallsBackToTheConversation() {
+        let (snapshot, _, _) = launcherSnapshot(chats: 1)
+        let entry = WidgetSelection.resolve(snapshot: snapshot, workspace: nil, conversation: nil)
+        XCTAssertEqual(entry.smallLink(.conversation), entry.resumeLink)
+        XCTAssertEqual(entry.smallLink(.newChat), entry.newChatLink)
+        XCTAssertEqual(entry.smallLink(.talk), entry.talkLink)
+        XCTAssertEqual(entry.smallAction(.talk), .talk)
+
+        let unconfigured = WidgetSelection.resolve(snapshot: nil, workspace: nil, conversation: nil)
+        XCTAssertEqual(unconfigured.smallAction(.newChat), .conversation)
+        XCTAssertEqual(unconfigured.smallLink(.newChat), unconfigured.resumeLink)
+        XCTAssertEqual(unconfigured.smallLink(.talk), unconfigured.resumeLink)
+        XCTAssertEqual(LauncherWidgetConfigurationIntent().smallTapAction, .conversation)
+    }
 }
