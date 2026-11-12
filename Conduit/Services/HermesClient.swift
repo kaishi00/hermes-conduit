@@ -3321,17 +3321,23 @@ final class HermesClient: ObservableObject {
             "title": title,
             "messages": messages.map { ["role": $0.role.rawValue, "content": $0.content] }
         ]
-        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            params["profile"] = profile
+        // The branch is made in its parent's profile: a Bot Chat's is the
+        // bot's, which a gateway serving several profiles finds it under
+        // (issue 2281).
+        let owner = sessionProfiles[parentSessionId]
+        if let named = owner ?? profile, !named.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            params["profile"] = named
         }
         if let cwd, !cwd.isEmpty { params["cwd"] = cwd }
         let result = try await rpc("session.create", params: params)
         let object = result.objectValue ?? [:]
         let sessionId = object["session_id"]?.stringValue ?? ""
         guard !sessionId.isEmpty else { throw HermesError.invalidResponse }
+        let stored = object["stored_session_id"]?.stringValue
+        if let owner { noteSessionProfile(owner, for: [sessionId, stored]) }
         return (
             sessionId,
-            object["stored_session_id"]?.stringValue,
+            stored,
             object["profile"]?.stringValue ?? object["profile_id"]?.stringValue
         )
     }

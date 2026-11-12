@@ -643,9 +643,16 @@ extension AppState {
     /// read at a time; a return during a read asks for one more after it.
     /// The list's own reads (ChatSync) pass `reportingFailure: false`: one
     /// nobody asked for puts up no banner.
-    func refreshCatalogAfterLeavingChat(reportingFailure: Bool = true) {
-        guard isConnected, client != nil || sessionCatalogLoaderOverride != nil else { return }
+    /// `readingChange`: the read is for a `sessions.changed`, which stays
+    /// pending if the read fails, so the list keeps its 30 s backstop
+    /// rather than the 300 s one for a change never signaled (issue 2294).
+    func refreshCatalogAfterLeavingChat(reportingFailure: Bool = true, readingChange: Bool = false) {
+        guard isConnected, client != nil || sessionCatalogLoaderOverride != nil else {
+            if readingChange { catalogChangeSignal.noteChanged() }
+            return
+        }
         if reportingFailure { leaveCatalogRefreshReportsFailure = true }
+        if readingChange { leaveCatalogRefreshReadsChange = true }
         guard leaveCatalogRefreshTask == nil else {
             leaveCatalogRefreshPending = true
             return
@@ -657,11 +664,14 @@ extension AppState {
                 self.leaveCatalogRefreshPending = false
                 let reportsFailure = self.leaveCatalogRefreshReportsFailure
                 self.leaveCatalogRefreshReportsFailure = false
-                await self.loadSessions(
+                let readsChange = self.leaveCatalogRefreshReadsChange
+                self.leaveCatalogRefreshReadsChange = false
+                let listed = await self.loadSessions(
                     forceRefresh: false,
                     requiredViewportTransitionGeneration: nil,
                     reportsFailure: reportsFailure
                 )
+                if readsChange, !listed { self.catalogChangeSignal.noteChanged() }
             } while self.leaveCatalogRefreshPending && !Task.isCancelled
             self.leaveCatalogRefreshTask = nil
         }

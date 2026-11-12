@@ -962,8 +962,9 @@ struct WorkspaceFolderView: View {
         let holder = roots.first(where: { Self.path(reveal.path, isIn: $0.path) })
         // A file to read starts reading now, while its folders are listed,
         // in the profile `explorer.view` will read it in (issue 1964).
-        let kind = WorkspaceFileKind(name: (reveal.path as NSString).lastPathComponent)
-        if kind == .text || kind == .markdown, !(reveal.path as NSString).pathExtension.isEmpty {
+        let name = AppState.workspaceName(reveal.path)
+        let kind = WorkspaceFileKind(name: name)
+        if kind == .text || kind == .markdown, !(name as NSString).pathExtension.isEmpty {
             let profile = holder == nil ? (explorer.scope?.profile ?? appState.workspaceProfile) : appState.workspaceProfile
             explorer.prefetchText(reveal.path, profile: profile)
         }
@@ -1539,7 +1540,8 @@ struct WorkspaceMoveSheet: View {
                         .truncationMode(.head)
                     if let root = explorer.root, AppState.normalizedWorkspacePath(current) != AppState.normalizedWorkspacePath(root) {
                         Button {
-                            folder = (current as NSString).deletingLastPathComponent
+                            // Split as the Folder splits: a POSIX name may hold a backslash.
+                            folder = AppState.parentWorkspacePath(current) ?? current
                         } label: {
                             Label(AppLocalization.string("Up One Folder", table: .chat), systemImage: "arrow.turn.left.up")
                         }

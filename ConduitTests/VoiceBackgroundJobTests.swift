@@ -70,6 +70,9 @@ final class FakeVoiceJobBackend {
     let createParked = AwaitableCounter()
     /// Runs inside submit, so a test can deliver events mid-submission.
     var onSubmit: (@MainActor (_ sessionID: String) -> Void)?
+    /// Awaited inside submit, after `onSubmit`, so a test can cancel while
+    /// the submit is on its way.
+    var duringSubmit: (@MainActor () async -> Void)?
     private var parkedCreate: CheckedContinuation<Void, Never>?
     var liveRows: [LiveSessionStatus] = []
     private(set) var created = 0
@@ -183,6 +186,7 @@ final class FakeVoiceJobBackend {
             submit: { [self] id, text in
                 self.submissions.append((id, text))
                 self.onSubmit?(id)
+                await self.duringSubmit?()
                 if let error = self.submitError { throw error }
             },
             reportTurnSurface: { [self] id, text, fromWatch in
@@ -361,6 +365,19 @@ extension VoiceConversationControllerTests {
         _ = await sentContinued.cancel(jobID: sentID)
         XCTAssertEqual(sentContinuedFake.cancelled, ["rt-call"])
         XCTAssertTrue(sentContinuedFake.droppedSurfaces.isEmpty)
+        // Cancelled while its submit is on its way: that cancel reached
+        // Hermes before the turn, so it is repeated once the turn exists, as
+        // a first job's start does (issue 2295).
+        let (midSubmit, midSubmitFake) = makeSupervisor()
+        midSubmitFake.duringSubmit = { [weak midSubmit] in
+            guard let midSubmit, let id = midSubmit.jobs.first?.id else { return }
+            _ = await midSubmit.cancel(jobID: id)
+        }
+        _ = await midSubmit.continueJob(instructions: "and the mail",
+                                        in: VoiceThreadTarget(runtimeSessionID: "rt-call", storedSessionID: nil, title: "Call"))
+        for _ in 0..<200 where midSubmitFake.cancelled.count < 2 { try? await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(midSubmitFake.cancelled, ["rt-call", "rt-call"])
+        XCTAssertFalse(midSubmit.jobs.contains { $0.status.isActive }, "nothing runs unmonitored")
         // Two of the call's requests at once: while one checks the chat is
         // free, the other waits, so only one is sent (issue 2283).
         let pairedFake = FakeVoiceJobBackend()

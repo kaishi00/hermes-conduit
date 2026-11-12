@@ -332,6 +332,9 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(appState.workspaceReveal, "nothing to open")
         // Said above the composer, which shows while the chat is connected.
         XCTAssertEqual(appState.composerNotice?.hasPrefix("gone.xlsx isn"), true, appState.composerNotice ?? "")
+        // A POSIX host's relative name keeps its backslash (issue 2303).
+        appState.showWorkspaceLookup(.success(nil), for: #"out/odd\name.md"#, line: nil)
+        XCTAssertEqual(appState.composerNotice?.hasPrefix(#"odd\name.md isn"#), true, appState.composerNotice ?? "")
 
         appState.showWorkspaceLookup(.failure(URLError(.timedOut)), for: "docs/a.md", line: nil)
         XCTAssertEqual(appState.workspaceReveal?.path, "/home/me/app/docs/a.md", "a failed lookup keeps the chat's folder")

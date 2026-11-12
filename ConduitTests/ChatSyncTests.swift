@@ -423,6 +423,8 @@ final class ChatSyncTests: XCTestCase {
         var live: [LiveSessionStatus] = []
         var catalog: [SessionSummary] = []
         var loads = 0
+        /// The catalog read fails while set.
+        var fails = false
         var now = Date(timeIntervalSince1970: 2_000_000)
         /// Runs while the registry read is on its way.
         var onProbe: (@MainActor () -> Void)?
@@ -434,6 +436,7 @@ final class ChatSyncTests: XCTestCase {
             loadSavedConnection: false,
             sessionCatalogLoader: { _ in
                 box.loads += 1
+                if box.fails { throw URLError(.timedOut) }
                 return box.catalog
             },
             chatResumeLifecycleOperations: ChatResumeLifecycleOperations(
@@ -831,6 +834,33 @@ final class ChatSyncTests: XCTestCase {
         await poll(appState) // 32 s
         XCTAssertEqual(box.loads, 2, "The backstop reads it at 30 s, as before change events")
         XCTAssertEqual(appState.sessions.map(\.id), ["open"])
+    }
+
+    /// A change whose read failed stays pending, so it's read again at the
+    /// list's next poll rather than at the 5-minute backstop (issue 2294).
+    func testAChangeWhoseReadFailedIsReadAgain() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        followChanges(appState)
+        let profile = appState.activeProfile
+        box.catalog = [row("kept", profile: profile), row("deleted", profile: profile)]
+        await appState.loadSessions()
+        XCTAssertEqual(box.loads, 1)
+
+        box.catalog = [row("kept", profile: profile)]
+        box.fails = true
+        box.now += 10
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        XCTAssertEqual(box.loads, 2, "The change is read")
+        XCTAssertTrue(appState.catalogChangeSignal.isPending, "and stays pending when the read fails")
+
+        box.fails = false
+        box.now += 6
+        await poll(appState)
+        XCTAssertEqual(box.loads, 3)
+        XCTAssertEqual(appState.sessions.map(\.id), ["kept"])
+        XCTAssertFalse(appState.catalogChangeSignal.isPending)
     }
 
     func testAQuietListFollowingChangeEventsWaitsUpToTwoMinutes() async {

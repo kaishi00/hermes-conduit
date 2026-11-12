@@ -28,6 +28,10 @@ struct SessionCatalogCache {
     /// Bumped by every committed listing, so an early chat-list answer
     /// isn't taken over a newer one another load committed meanwhile.
     private(set) var commits: UInt64 = 0
+    /// The newest read (in the order reads started) whose listing each
+    /// key holds, so an older read that ends later never writes over it
+    /// (issue 2293).
+    private(set) var committedReads: [String: UInt64] = [:]
 
     func sessions(forKey key: String) -> [SessionSummary] {
         sessionsByKey[key] ?? []
@@ -75,8 +79,15 @@ struct SessionCatalogCache {
         fullHistoryDue && !deferringOlderPages ? maximumHistoryPages : 1
     }
 
+    /// Whether a read that started after `read` already committed `key`'s
+    /// listing: its rows are newer than any this read could write.
+    func hasNewerCommit(than read: UInt64, forKey key: String) -> Bool {
+        (committedReads[key] ?? 0) > read
+    }
+
     /// Commits a live and cron snapshot only when no cache mutation occurred
-    /// during the load that produced it.
+    /// during the load that produced it. `read` numbers the load in the
+    /// order loads started; check `hasNewerCommit(than:forKey:)` first.
     @discardableResult
     mutating func commit(
         liveSessions: [SessionSummary],
@@ -84,10 +95,12 @@ struct SessionCatalogCache {
         cronSessions: [SessionSummary]?,
         cronKey: String,
         historyMarkers: [String: Date],
-        at generation: UInt64
+        at generation: UInt64,
+        read: UInt64? = nil
     ) -> Bool {
         guard generation == mutationGeneration else { return false }
         commits &+= 1
+        if let read { committedReads[liveKey] = max(committedReads[liveKey] ?? 0, read) }
         sessionsByKey[liveKey] = liveSessions
         if let cronSessions {
             sessionsByKey[cronKey] = cronSessions
@@ -102,6 +115,8 @@ struct SessionCatalogCache {
     mutating func removeAll() {
         mutationGeneration &+= 1
         sessionsByKey.removeAll()
+        // Nothing newer is held, so a read in flight reads again.
+        committedReads.removeAll()
         loadedFullHistoryKeys.removeAll()
         fullHistoryLoadedAt.removeAll()
     }
@@ -109,6 +124,7 @@ struct SessionCatalogCache {
     mutating func removeValue(forKey key: String) {
         mutationGeneration &+= 1
         sessionsByKey.removeValue(forKey: key)
+        committedReads.removeValue(forKey: key)
         loadedFullHistoryKeys.remove(key)
         fullHistoryLoadedAt.removeValue(forKey: key)
     }

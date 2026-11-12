@@ -327,7 +327,7 @@ extension AppState {
         guard isSceneActive, isConnected else { return }
         let now = chatSyncNow()
         if catalogChangeSignal.takeRead(now: now, turnRunningHere: turnState.isRunning) {
-            refreshCatalogAfterLeavingChat(reportingFailure: false)
+            refreshCatalogAfterLeavingChat(reportingFailure: false, readingChange: true)
             return
         }
         guard !turnState.isRunning, catalogChangeReadTask == nil,
