@@ -376,4 +376,28 @@ extension GroupChatModelsTests {
         XCTAssertNil(appState.activeRoomSurface)
         XCTAssertEqual(appState.roomHandedTo, .newChat)
     }
+
+    /// An open over a room that the ownership guard refuses (a row from
+    /// another profile) still closes the room, but hands its screen to
+    /// nothing: no chat was named, so the shell drops the room's screen
+    /// rather than showing the chat that was open before it (#2239).
+    @MainActor
+    func testARefusedOpenOverARoomHandsOffNothing() async throws {
+        let routes = CopiesRoutes(copies: [copiesCopy()])
+        let steps = RoomChatSessions()
+        let appState = try await postsOpenCopy(routes, report: roomChatsPluginReport, chatResume: steps.operations)
+        XCTAssertNotNil(appState.activeRoomSurface)
+        appState.sessions = [SessionSummary(
+            id: "elsewhere-1", storedSessionId: nil, alternateIds: [], title: "Research notes",
+            model: "Hermes", updatedLabel: "now", lastActivityAt: nil, profile: "research",
+            source: .chat, isActive: false, isArchived: false, lineageRootId: nil
+        )]
+
+        let opened = await appState.requestOpenSession("elsewhere-1").value
+
+        XCTAssertFalse(opened, "another profile's row is refused")
+        XCTAssertTrue(steps.opens.isEmpty, "nothing was asked of Hermes")
+        XCTAssertNil(appState.activeRoomSurface, "the room closed all the same")
+        XCTAssertEqual(appState.roomHandedTo, AppState.RoomHandoff.none)
+    }
 }

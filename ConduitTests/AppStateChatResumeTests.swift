@@ -5541,6 +5541,25 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertTrue(harness.appState.showsConnectionRepair)
     }
 
+    /// A failed send's line is about that send, not the connection: while
+    /// the connection is down it alone offers no Repair, and any other
+    /// message in its place does (issue 2095, #2110).
+    func testAFailedSendsLineAloneOffersNoRepair() {
+        let harness = makeHarness()
+        harness.appState.connection = HermesConnection(
+            baseUrl: "https://one.example",
+            ticket: "saved-ticket"
+        )
+        harness.appState.isConnected = false
+        harness.appState.errorMessage = "Failed to send"
+        harness.appState.sendFailureShown = "Failed to send"
+
+        XCTAssertFalse(harness.appState.showsConnectionRepair, "a failed send's reason isn't the connection's")
+
+        harness.appState.errorMessage = "Hermes stopped answering"
+        XCTAssertTrue(harness.appState.showsConnectionRepair, "another message while it's down still offers Repair")
+    }
+
     /// An older, unrelated message left on screen doesn't offer Repair while
     /// a failed ticket is kept quiet (#1624).
     func testAStaleMessageOffersNoRepairDuringTheQuietRetries() async {
