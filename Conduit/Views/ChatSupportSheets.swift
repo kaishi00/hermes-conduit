@@ -82,7 +82,7 @@ struct GatewayDiagnosticsSheet: View {
                             Image(systemName: "arrow.clockwise")
                         }
                     }
-                    .accessibilityLabel(AppLocalization.string("Refresh gateway diagnostics"))
+                    .accessibilityLabel(AppLocalization.string("Refresh gateway diagnostics", table: .chat))
                 }
             }
         }
@@ -122,16 +122,16 @@ struct GatewayDiagnosticsSheet: View {
         let diagnostics = appState.gatewayDiagnostics
         let running = diagnostics?.gatewayRunning ?? appState.isConnected
         return ConduitSettingsSection(title: running ? AppLocalization.string("Connected") : AppLocalization.string("Disconnected"), symbol: "radio", tint: running ? .green : .red) {
-            SettingsMetricRow(label: AppLocalization.string("Gateway"), value: diagnostics?.gatewayState ?? (running ? AppLocalization.string("Online") : AppLocalization.string("Unavailable")))
+            SettingsMetricRow(label: AppLocalization.string("Gateway"), value: diagnostics?.gatewayState ?? (running ? AppLocalization.string("Online", table: .chat) : AppLocalization.string("Unavailable")))
             if let version = diagnostics?.version { SettingsMetricRow(label: AppLocalization.string("Version"), value: version) }
-            if let pid = diagnostics?.pid { SettingsMetricRow(label: AppLocalization.string("Process"), value: AppLocalization.string("PID \(String(pid))")) }
+            if let pid = diagnostics?.pid { SettingsMetricRow(label: AppLocalization.string("Process", table: .chat), value: AppLocalization.string("PID \(String(pid))", table: .chat)) }
             if let error = diagnostics?.error {
                 Text(error).scaledFont(.footnote).foregroundStyle(.red)
             }
             GatewayRestartStatusView()
             if !running && !appState.activeGatewayRestart.isInProgress {
                 Button { Task { await appState.reconnect() } } label: {
-                    Label(AppLocalization.string("Retry connection"), systemImage: "arrow.clockwise")
+                    Label(AppLocalization.string("Retry connection", table: .chat), systemImage: "arrow.clockwise")
                         .scaledFont(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 44)
@@ -145,7 +145,7 @@ struct GatewayDiagnosticsSheet: View {
     /// numbers someone on a slow network can paste into an issue. The report
     /// itself is an English diagnostic log, like the gateway logs below.
     private var lastConnection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Last connection"), symbol: "stopwatch", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Last connection", table: .chat), symbol: "stopwatch", tint: .conduitAccent) {
             // The timeline isn't @Published, so recording a step re-renders
             // nothing. Re-read it every second while this sheet is open, so
             // steps still landing during a slow start show up, and Copy takes
@@ -221,7 +221,7 @@ struct GatewayDiagnosticsSheet: View {
     }
 
     private var logs: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Recent gateway logs"), symbol: "text.alignleft", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Recent gateway logs", table: .chat), symbol: "text.alignleft", tint: .conduitAccent) {
             let lines = appState.gatewayDiagnostics?.logs ?? []
             if lines.isEmpty {
                 Text("No gateway log lines were returned.").scaledFont(.footnote).foregroundStyle(.secondary)
@@ -304,7 +304,7 @@ struct DelegateAgentsSheet: View {
 
     private var activeSummary: String {
         let activeCount = appState.delegateAgents.filter(\.status.isActive).count
-        return activeCount == 0 ? AppLocalization.string("Latest delegation activity") : AppLocalization.string("\(activeCount) working now")
+        return activeCount == 0 ? AppLocalization.string("Latest delegation activity", table: .chat) : AppLocalization.string("\(activeCount) working now", table: .chat)
     }
 }
 
@@ -338,7 +338,7 @@ private struct DelegateAgentCard: View {
                     HStack(spacing: 10) {
                         Circle().fill(statusColor).frame(width: 9, height: 9)
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(agent.goal.isEmpty ? AppLocalization.string("Delegate agent") : agent.goal).scaledFont(.subheadline.weight(.semibold)).lineLimit(2)
+                            Text(agent.goal.isEmpty ? AppLocalization.string("Delegate agent", table: .chat) : agent.goal).scaledFont(.subheadline.weight(.semibold)).lineLimit(2)
                             // A running agent's time counts up each second.
                             TimelineView(.periodic(from: .now, by: agent.status == .running ? 1 : 3600)) { context in
                                 Text(subtitle(at: context.date))
@@ -361,7 +361,7 @@ private struct DelegateAgentCard: View {
             }
             if expanded {
                 if agent.stream.isEmpty {
-                    Text(agent.summary ?? (agent.status.isActive ? AppLocalization.string("Waiting for activity…") : AppLocalization.string("No stream output returned.")))
+                    Text(agent.summary ?? (agent.status.isActive ? AppLocalization.string("Waiting for activity…", table: .chat) : AppLocalization.string("No stream output returned.", table: .chat)))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                 } else {
                     ForEach(agent.stream.suffix(10)) { line in
@@ -390,7 +390,7 @@ private struct DelegateAgentCard: View {
         }
         .sheet(isPresented: $showingTail) {
             DelegateAgentTailSheet(
-                title: agent.goal.isEmpty ? AppLocalization.string("Delegate agent") : agent.goal,
+                title: agent.goal.isEmpty ? AppLocalization.string("Delegate agent", table: .chat) : agent.goal,
                 isRunning: { appState.delegateAgents.first(where: { $0.id == agent.id && $0.sessionId == agent.sessionId })?.status.isActive ?? false },
                 load: { await appState.tailDelegateAgent(agent) }
             )
@@ -414,7 +414,7 @@ private struct DelegateAgentCard: View {
             .contentShape(Rectangle())
         }
         .disabled(working)
-        .accessibilityLabel(AppLocalization.string("Agent actions"))
+        .accessibilityLabel(AppLocalization.string("Agent actions", table: .chat))
         .accessibilityIdentifier("delegateAgent.actions")
     }
 
@@ -427,12 +427,12 @@ private struct DelegateAgentCard: View {
             let result = await appState.steerDelegateAgent(agent, text: text)
             working = false
             switch result {
-            case .done: note = (AppLocalization.string("Sent. The agent reads it at its next step."), false)
-            case .notRunning: note = (AppLocalization.string("This agent has already finished."), true)
+            case .done: note = (AppLocalization.string("Sent. The agent reads it at its next step.", table: .chat), false)
+            case .notRunning: note = (AppLocalization.string("This agent has already finished.", table: .chat), true)
             case .failed:
                 // Kept for Steer… again, so a dropped send isn't retyped.
                 steerText = text
-                note = (AppLocalization.string("Couldn't reach this agent."), true)
+                note = (AppLocalization.string("Couldn't reach this agent.", table: .chat), true)
             }
         }
     }
@@ -445,8 +445,8 @@ private struct DelegateAgentCard: View {
             working = false
             switch result {
             case .done: note = nil
-            case .notRunning: note = (AppLocalization.string("This agent has already finished."), true)
-            case .failed: note = (AppLocalization.string("Couldn't reach this agent."), true)
+            case .notRunning: note = (AppLocalization.string("This agent has already finished.", table: .chat), true)
+            case .failed: note = (AppLocalization.string("Couldn't reach this agent.", table: .chat), true)
             }
         }
     }
@@ -496,9 +496,9 @@ private struct DelegateAgentTailSheet: View {
                                 ProgressView().frame(maxWidth: .infinity).padding(.top, 44)
                             } else {
                                 ContentUnavailableView(
-                                    failed ? AppLocalization.string("Couldn't load output") : AppLocalization.string("No output yet"),
+                                    failed ? AppLocalization.string("Couldn't load output", table: .chat) : AppLocalization.string("No output yet", table: .chat),
                                     systemImage: "text.alignleft",
-                                    description: Text(failed ? AppLocalization.string("Hermes didn't send this agent's output.") : AppLocalization.string("Output appears here once the agent writes some."))
+                                    description: Text(failed ? AppLocalization.string("Hermes didn't send this agent's output.", table: .chat) : AppLocalization.string("Output appears here once the agent writes some.", table: .chat))
                                 )
                                 .padding(.top, 44)
                             }
@@ -519,7 +519,7 @@ private struct DelegateAgentTailSheet: View {
                                 } label: {
                                     Label("Latest", systemImage: "arrow.down.to.line")
                                 }
-                                .accessibilityLabel(AppLocalization.string("Jump to latest activity"))
+                                .accessibilityLabel(AppLocalization.string("Jump to latest activity", table: .chat))
                             }
                         }
                     }
@@ -555,7 +555,7 @@ private struct DeviceReportsSection: View {
     @State private var loading = false
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Device reports"), symbol: "chart.bar.doc.horizontal", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Device reports", table: .chat), symbol: "chart.bar.doc.horizontal", tint: .conduitAccent) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Usage, network and hang reports iOS makes about once a day. They stay on this device until you share them.")
                     .scaledFont(.footnote)
@@ -617,7 +617,7 @@ private struct ChatTracesSection: View {
     @State private var result: ChatTraceUpload.Result?
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Chat traces"), symbol: "waveform.path.ecg", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Chat traces", table: .chat), symbol: "waveform.path.ecg", tint: .conduitAccent) {
             VStack(alignment: .leading, spacing: 10) {
                 Text("Conduit notes how the open chat scrolls and lays out: row counts, sizes and timings, never what the messages say. When a chat jumps, freezes, stops scrolling or shows none of its messages, it saves the last few minutes on this device.")
                     .scaledFont(.footnote)

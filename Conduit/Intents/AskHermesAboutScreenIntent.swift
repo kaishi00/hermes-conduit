@@ -177,7 +177,7 @@ struct AskHermesAboutScreenIntent: AppIntent {
             )
         case .failed:
             throw ScreenQuestionStagingError(
-                message: AppLocalization.string("Conduit couldn't read that image. Ask Hermes About Screen needs a screenshot or another image.")
+                message: AppLocalization.string("Conduit couldn't read that image. Ask Hermes About Screen needs a screenshot or another image.", table: .phone)
             )
         }
         ScreenQuestionUsage.recordUse()

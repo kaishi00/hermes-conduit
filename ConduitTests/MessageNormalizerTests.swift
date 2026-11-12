@@ -3397,6 +3397,7 @@ final class MessageNormalizerTests: XCTestCase {
         A background subagent you dispatched earlier has finished.
 
         Original goal: Summarize the inbox
+        and flag anything urgent
         Role: leaf
         Status: interrupted   API calls: 3   Duration: 12.5s
         --- RESULT ---
@@ -3410,10 +3411,34 @@ final class MessageNormalizerTests: XCTestCase {
             ])
         ])
         let entry = try XCTUnwrap(messages.first?.delegationReport?.entries.first)
-        XCTAssertEqual(entry.goal, "Summarize the inbox")
+        XCTAssertEqual(entry.goal, "Summarize the inbox and flag anything urgent", "a goal over lines stays whole")
         XCTAssertEqual(entry.outcome, .stopped)
         XCTAssertEqual(entry.duration, 12.5)
         XCTAssertEqual(entry.result, "The subagent was interrupted before completing.")
+    }
+
+    /// Hermes' early word that one agent of a batch still running failed.
+    func testAsyncDelegationCompleteReadsAnEarlyFailureNotice() throws {
+        let report = """
+        [ASYNC DELEGATION TASK FAILED — deleg_3, task 2/6]
+        One subagent in a background fan-out you dispatched has failed while its siblings are still running.
+        Task: Build A2
+        Status: error   Duration: 7s
+        Error: provider timed out
+        """
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(325), "role": .string("user"), "content": .string(report),
+                "display_kind": .string("async_delegation_complete"),
+                "display_metadata": .object(["task_count": .number(1)])
+            ])
+        ])
+        let entry = try XCTUnwrap(messages.first?.delegationReport?.entries.first)
+        XCTAssertEqual(entry.number, 2)
+        XCTAssertEqual(entry.goal, "Build A2")
+        XCTAssertEqual(entry.outcome, .failed)
+        XCTAssertEqual(entry.duration, 7)
+        XCTAssertEqual(entry.result, "provider timed out")
     }
 
     /// A projection Hermes chose, a report Conduit can't read, or any other
@@ -3425,6 +3450,9 @@ final class MessageNormalizerTests: XCTestCase {
             .object(["id": .number(323), "role": .string("user"),
                      "content": .string("[ASYNC DELEGATION BATCH COMPLETE — y]\n\n--- ✓ TASK 1/1: g  (status=completed) ---\nok"),
                      "display_content": .string("Agents done"),
+                     "display_kind": .string("async_delegation_complete")]),
+            .object(["id": .number(326), "role": .string("user"),
+                     "content": .string("[ASYNC DELEGATION BATCH COMPLETE — w]\n\n--- ✓ TASK 1/2: a ---\none\n\n--- ✓ TASK 2/2: b  (status=completed, 5s) ---\ntwo"),
                      "display_kind": .string("async_delegation_complete")]),
             .object(["id": .number(324), "role": .string("user"),
                      "content": .string("[ASYNC DELEGATION BATCH COMPLETE — z]\n\n--- ✓ TASK 1/1: g  (status=completed) ---\nok")]),

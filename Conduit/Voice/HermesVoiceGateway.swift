@@ -83,7 +83,7 @@ final class HermesVoiceGateway: VoiceGatewayService {
             throw DashboardTicketBridgeError.requestFailed(HermesSpeechFailure.message(error))
         }
         guard let rawTranscript = response["transcript"] as? String ?? response["text"] as? String else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("Hermes didn't send back what you said. Try again."))
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("Hermes didn't send back what you said. Try again.", table: .voice))
         }
         // Hermes deliberately returns an empty transcript for quiet audio or
         // filtered hallucinations. The controller treats that as re-listen,
@@ -166,7 +166,7 @@ final class HermesVoiceGateway: VoiceGatewayService {
                 cloudflareAccess: bridge.cloudflareAccess
             )
         } catch {
-            throw VoiceAudioError.unavailable(AppLocalization.string("Could not open the speech stream."))
+            throw VoiceAudioError.unavailable(AppLocalization.string("Could not open the speech stream.", table: .voice))
         }
         // The dashboard's own session cookies (cookie mode), on the
         // cookie-less, redirect-refusing dashboard socket session.
@@ -217,7 +217,7 @@ final class HermesVoiceGateway: VoiceGatewayService {
         }
         guard let dataURL = response["data_url"] as? String ?? response["dataUrl"] as? String,
               let data = DataURLLimits.decodeBase64DataURL(dataURL) else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("Hermes returned invalid fallback audio."))
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("Hermes returned invalid fallback audio.", table: .voice))
         }
         return data
     }
@@ -429,7 +429,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
             // waiting forever.
             if self.fallbackAttempted { return }
             if self.receivedPCM {
-                self.complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Hermes speech streaming timed out."))))
+                self.complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Hermes speech streaming timed out.", table: .voice))))
             } else {
                 self.fallbackMode = true
                 // A send of {done:true} can remain suspended even after
@@ -490,12 +490,12 @@ final class HermesSpeechStream: VoiceSpeechStream {
 
     /// Not a timeout: the stream heard nothing back from a dead path.
     private static var pathLostError: Error {
-        VoiceAudioError.unavailable(AppLocalization.string("Lost the connection to Hermes speech."))
+        VoiceAudioError.unavailable(AppLocalization.string("Lost the connection to Hermes speech.", table: .voice))
     }
 
     private func sendJSON(_ object: [String: Any]) async throws {
         let data = try JSONSerialization.data(withJSONObject: object)
-        guard let string = String(data: data, encoding: .utf8) else { throw VoiceAudioError.unavailable(AppLocalization.string("Could not encode speech request.")) }
+        guard let string = String(data: data, encoding: .utf8) else { throw VoiceAudioError.unavailable(AppLocalization.string("Could not encode speech request.", table: .voice)) }
         // Hermes uses receive_json(), so these must be WebSocket text frames.
         try await task.send(.string(string))
     }
@@ -558,7 +558,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
             startFallbackIfNeeded()
         case "error":
             let message = (object["message"] as? String).map(HermesSpeechFailure.message)
-            complete(.failure(DashboardTicketBridgeError.requestFailed(message ?? AppLocalization.string("Hermes speech stream failed."))))
+            complete(.failure(DashboardTicketBridgeError.requestFailed(message ?? AppLocalization.string("Hermes speech stream failed.", table: .voice))))
         default:
             break
         }
@@ -635,7 +635,7 @@ enum HermesSpeechFailure {
             // Microsoft changes Edge's read-aloud handshake from time to
             // time and refuses older edge-tts releases (7.2.x stopped working
             // in October 2026; 7.3.0 follows the new one).
-            return AppLocalization.string("Microsoft turned away Edge TTS because the edge-tts package on your Hermes host is out of date. Update it there (pip install -U edge-tts) and restart Hermes, or choose another speech provider in Settings > Voice.")
+            return AppLocalization.string("Microsoft turned away Edge TTS because the edge-tts package on your Hermes host is out of date. Update it there (pip install -U edge-tts) and restart Hermes, or choose another speech provider in Settings > Voice.", table: .voice)
         }
         return cleaned(raw)
     }
@@ -648,7 +648,7 @@ enum HermesSpeechFailure {
             text = text.replacingOccurrences(of: pattern, with: "", options: .regularExpression)
         }
         text = text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
-        guard text.count > 240 else { return text.isEmpty ? AppLocalization.string("Hermes speech stream failed.") : text }
+        guard text.count > 240 else { return text.isEmpty ? AppLocalization.string("Hermes speech stream failed.", table: .voice) : text }
         return String(text.prefix(240)) + "…"
     }
 }

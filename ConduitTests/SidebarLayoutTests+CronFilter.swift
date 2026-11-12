@@ -106,31 +106,31 @@ extension SidebarLayoutTests {
     func testCronEmptyStateNamesWhatIsMissing() {
         XCTAssertEqual(
             CronJobFilter.emptyState(filter: .active, hasJobs: false, isSearching: false).title,
-            AppLocalization.string("No Scheduled Jobs")
+            AppLocalization.string("No Scheduled Jobs", table: .chat)
         )
         XCTAssertEqual(
             CronJobFilter.emptyState(filter: .inactive, hasJobs: false, isSearching: true).title,
-            AppLocalization.string("No Scheduled Jobs")
+            AppLocalization.string("No Scheduled Jobs", table: .chat)
         )
         XCTAssertEqual(
             CronJobFilter.emptyState(filter: .active, hasJobs: true, isSearching: true).title,
-            AppLocalization.string("No Matching Jobs")
+            AppLocalization.string("No Matching Jobs", table: .chat)
         )
         XCTAssertEqual(
             CronJobFilter.emptyState(filter: .active, hasJobs: true, isSearching: true).description,
-            AppLocalization.string("Try a different search or filter.")
+            AppLocalization.string("Try a different search or filter.", table: .chat)
         )
         XCTAssertEqual(
             CronJobFilter.emptyState(filter: .all, hasJobs: true, isSearching: true).description,
-            AppLocalization.string("Try a different search.")
+            AppLocalization.string("Try a different search.", table: .chat)
         )
         XCTAssertEqual(
             CronJobFilter.emptyState(filter: .active, hasJobs: true, isSearching: false).title,
-            AppLocalization.string("No Active Jobs")
+            AppLocalization.string("No Active Jobs", table: .chat)
         )
         XCTAssertEqual(
             CronJobFilter.emptyState(filter: .inactive, hasJobs: true, isSearching: false).title,
-            AppLocalization.string("No Inactive Jobs")
+            AppLocalization.string("No Inactive Jobs", table: .chat)
         )
     }
 

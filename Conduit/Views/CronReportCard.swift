@@ -159,7 +159,7 @@ struct CronReportCard: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 HStack(spacing: 6) {
-                    Text(AppLocalization.string("Scheduled job report"))
+                    Text(AppLocalization.string("Scheduled job report", table: .tasks))
                     if let time = MessageTimestampFormatter.displayString(for: timestamp) {
                         Text(verbatim: "·")
                         Text(time)

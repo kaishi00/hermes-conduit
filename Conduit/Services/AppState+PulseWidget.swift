@@ -227,7 +227,8 @@ extension AppState {
                                           waitsForAnswer: false)
         // The card is this dashboard's: a switch while it waits stops it
         // before it makes a chat or sends on the other one.
-        let backend = makeShortcutSendBackend(onlyOn: dashboardID)
+        // Hermes hears it came from a widget's button, not Siri (#888).
+        let backend = makeShortcutSendBackend(onlyOn: dashboardID, surface: .widget)
         var acted: PulseActedChat?
         if let bot = pulseDoItBot(for: card) {
             // The bot's chat now, as its Bots row finds it, then sent to by

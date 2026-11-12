@@ -2034,6 +2034,41 @@ pulse where`, `pulse spots` and `pulse status` commands (`pulse status` shows Wh
 
 **Checked:** 2026-11-10, #2136 with notifier #684 (a held pick's card stays on what it's about; the app draws it as given and needed no change); 2026-11-05, #1793 (the place editor built from Settings' cards, see Sheets in Settings' look); 2026-11-03, #1683 (the saved places' monitor reopens when its events end, as walking past's did; the saved-place monitor added to Code); 2026-10-31, #1555 (Settings > Pulse opens on its kept state, which never stops this iPhone's watches: only Pulse's answer does; the stores needed no change); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, at #1427, carrying #1426 from the `pulse` branch (the Walking past switch and its caption in Settings > Pulse, closing that gap, with the plugin version that shows it and the Location settings its lines follow; the shops' deletion cites the walking-past decision); at #1423, carrying the `pulse` branch's entry: #1414 (walking past, from notifier #435 and the app's spot watcher; the rest as at #1379).
 
+## Launcher widgets
+
+The Native and Conduit-chan Home Screen widgets, in small, medium and large
+(issue 1532). Each instance picks a workspace (or follows the one in use) and
+a conversation. Medium opens or resumes that conversation, starts a new chat
+or starts Talk; large adds the workspace's other saved chats under it; small
+takes one tap, so it opens what its Small size opens picks.
+
+**Siblings:** the widget tap's route (`conduit://widget/`, the same three
+actions for every size) · the app's widget snapshot (the chats the picker and
+the large list offer) · the Pulse widget (same bundle, App Group and app
+language; not needed) · Which dashboard a launch signs in to (a widget tap
+switches as before; not needed) · the Share extension's chat picker and the
+chats in Spotlight and Siri (read the same snapshot; not needed) · a Lock
+Screen size (gap) · the Mac (gap) · the Watch's widgets (their own app; not
+needed) · docs/WIDGETS.md · README.md
+
+**Code**
+- Widget: `ConduitWidgets/LauncherWidgets.swift` (the three sizes), `ConduitWidgets/LauncherTimelineProvider.swift`
+- Shared: `Shared/Widgets/WidgetConfiguration.swift` (the configuration intent, its pickers and Small size opens, asked only in the small size), `Shared/Widgets/WidgetSelection.swift` (what an entry shows, its links, the large list and the small tap), `Shared/Widgets/WidgetSnapshot.swift`, `Shared/Widgets/WidgetLaunchLink.swift`, `Shared/Widgets/WidgetLocalization.swift`
+- App: `Conduit/Services/WidgetSnapshotPublisher.swift` and `Conduit/Services/AppState+Widgets.swift` (the snapshot), `Conduit/Services/AppState+WidgetLaunch.swift` (the tap's route)
+- Tests: `ConduitTests/WidgetSnapshotTests.swift` (selection, the large list, the small tap), `ConduitTests/WidgetConfigurationTests.swift`, `ConduitTests/WidgetLaunchLinkTests.swift`, `ConduitTests/WidgetLaunchCoordinatorTests.swift`
+
+**Rulings**
+- The small size is one tap target (WidgetKit takes no links there). It opens the conversation by default; New Chat or Talk when picked, falling back to the conversation (or its Open Conduit recovery) while that action has no link (#2264).
+- The large size lists up to four of the workspace's other saved chats, in the snapshot's order (the last used, pinned, then recent), never the one shown above them; two at accessibility text sizes, so the last row still fits. With Hide conversation title on, or while the widget says Open Conduit to refresh, it lists none: titles stay off a widget that hides them (#2264).
+- Titles and workspace labels are privacy-sensitive, so a locked StandBy redacts them (#550).
+
+**Open gaps**
+- No Lock Screen (accessory) size, which issue 1532 called optional.
+- Whether the launcher widgets load on macOS 14 is untried (see Live Activity for a running turn).
+- Not tried on a device: the small and large layouts on the smallest and largest phones and iPad.
+
+**Checked:** 2026-11-12, #2264.
+
 ## Pulse widget
 
 A Home Screen widget with Pulse's newest open cards (small, medium and
@@ -2046,7 +2081,8 @@ running.
 takes: the widget's rows are checked against PulseCard and AppState's
 predicates in the tests) · a Pulse push (reloads the widget) · Send to Hermes
 (Do it's send runs it, off screen like a shortcut; see Reconnecting to Hermes)
-· the launcher widgets (same App Group, the tap's `conduit://widget/` route
+· the turn surface line (Do it tells Hermes it came from a widget's button;
+see Where a message was sent) · the launcher widgets (same App Group, the tap's `conduit://widget/` route
 and the app language) · Location sharing's host pass (the widget reads with
 one of its own, made the same way) · Settings > Pulse (Next look, quiet, and the bot Do it goes to for a card from no chat) ·
 Hide private reminders on the Lock Screen (not needed: no Lock Screen size;
@@ -2075,7 +2111,7 @@ README.md
 - A card rewritten in place (Updated) shows in the widget at the next push or periodic reload, not at once from the app.
 - A dashboard switch while a widget Do it makes its new chat leaves that chat, empty and untitled, on the old host: nothing is sent to it (issue 2205).
 
-**Checked:** 2026-11-11, #2220 (writes to the saved read are coordinated read-change-writes, issue 2213); 2026-11-11, #2218 (issue 2205: a run that has left the dashboard reports no turn surface; issue 2215: a chat opened while the run checks the open chat's runtime never takes the text in its composer, Hermes takes it instead, for every Shortcut and widget send; the untitled chat a switch leaves is in Open gaps); 2026-11-11, #2211 with notifier #714 (a widget Do it on a card from no chat goes to the bot Settings > Pulse picked); 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed, checked again after each wait in the send); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
+**Checked:** 2026-11-12, #2266 (Do it reports a widget's button as its turn surface, not Siri; issue 888); 2026-11-11, #2220 (writes to the saved read are coordinated read-change-writes, issue 2213); 2026-11-11, #2218 (issue 2205: a run that has left the dashboard reports no turn surface; issue 2215: a chat opened while the run checks the open chat's runtime never takes the text in its composer, Hermes takes it instead, for every Shortcut and widget send; the untitled chat a switch leaves is in Open gaps); 2026-11-11, #2211 with notifier #714 (a widget Do it on a card from no chat goes to the bot Settings > Pulse picked); 2026-11-11, #2203 (a widget Do it stops before making a chat or sending once the dashboard changed, checked again after each wait in the send); 2026-11-11, #2200 (a failed Do it's note stays through a read that reaches the host, while the widget's own couldn't-reach note goes; Do it is held once per dashboard and card); 2026-11-11, #2194 (issue 2190).
 
 ## Artifacts
 
@@ -5036,7 +5072,7 @@ state, and the notifier's README says how a workstream waits (done)
 - The count and the sheet: `Conduit/Views/Components/ComposerBar.swift`, `Conduit/Views/ChatSupportSheets.swift` (DelegateAgentsSheet, DelegateAgentCard's running time), `Conduit/Models/Models.swift` (DelegateAgentActivity's `startedAt`, `duration`, `elapsed`, `ended`)
 - The finished notice: `Conduit/Models/DelegationReport.swift` (reads Hermes' report), `Conduit/Services/HermesClient.swift` (MessageNormalizer's `delegationReport` on an `async_delegation_complete` row), `Conduit/Views/DelegationReportCard.swift`, `Conduit/Views/ChatView.swift` (the system row's card), `Conduit/Services/OfflineChatCache.swift` (kept in the saved copy)
 - A workstream's wait: `notifier/work_tool.py` (`agent_started`, `agent_stopped`, `_settle_held`, `awaited_agents`, `agents` in `_app_row`, `waiting_for` in `_row`), `notifier/__init__.py` (`_subagent_start`, `_subagent_stop`), `Conduit/Services/BotWorkstreams.swift` (`awaitedAgentCount`, `doing`)
-- Tests: `ConduitTests/ChatScrollStateTests+TranscriptModel.swift` (testAnEndedTurnWaitsForItsBackgroundAgents), `ConduitTests/StreamEventParserTests.swift` (testARosterRowIsTheCardItsEventsWouldHaveMade, testARosterAddsOnlyTheAgentsTheChatHasNoCardFor, testADelegateCardKnowsHowLongItsAgentRan, testTheRosterDatesItsAgentsCards), `ConduitTests/MessageNormalizerTests.swift` (testAsyncDelegationCompleteReadsEachAgentsResult, testAsyncDelegationCompleteReadsOneAgentsResult, testAsyncDelegationCompleteKeepsThePlainNoticeWithoutAReadableReport), `ConduitTests/BotWorkstreamsTests.swift` (testAWorkstreamWaitingForItsAgentsSaysSo), `notifier/tests/test_work.py`
+- Tests: `ConduitTests/ChatScrollStateTests+TranscriptModel.swift` (testAnEndedTurnWaitsForItsBackgroundAgents), `ConduitTests/StreamEventParserTests.swift` (testARosterRowIsTheCardItsEventsWouldHaveMade, testARosterAddsOnlyTheAgentsTheChatHasNoCardFor, testADelegateCardKnowsHowLongItsAgentRan, testTheRosterDatesItsAgentsCards), `ConduitTests/MessageNormalizerTests.swift` (testAsyncDelegationCompleteReadsEachAgentsResult, testAsyncDelegationCompleteReadsOneAgentsResult, testAsyncDelegationCompleteReadsAnEarlyFailureNotice, testAsyncDelegationCompleteKeepsThePlainNoticeWithoutAReadableReport), `ConduitTests/BotWorkstreamsTests.swift` (testAWorkstreamWaitingForItsAgentsSaysSo), `notifier/tests/test_work.py`
 
 **Rulings**
 - A chat whose turn has ended while its agents work isn't running: the line says it waits, Send stays Send, nothing counts up and the Chats list shows no Running for it. The next turn's working line takes the line's place (issue 2142, #2201).
@@ -5045,7 +5081,7 @@ state, and the notifier's README says how a workstream waits (done)
 - A workstream that delegates isn't finished until its agents' results are in: its row stays running and its Bot Chat hears nothing at the first turn's end. A turn that failed or was stopped isn't held, and if no turn starts within two minutes of the last agent ending it settles with what it had said (notifier #711); a results turn that begins while that settles brings the only line the Bot Chat hears, never a stale "finished" ahead of it (notifier #717).
 - A workstream stopped while it waits stays stopped: the turn its agents' results start is stopped too, until words are sent to it (notifier #711).
 
-- A card's time runs from Hermes' own start (`started_at` in the roster), else from the first running event the chat saw, and stops at the end: Hermes' `duration_seconds` when the end carries it, else the end the chat saw (the last news, for an end the roster found). A queued agent has no time. Never a percentage: Hermes reports only coarse statuses (issue 1553, #2263).
+- A card's time runs from Hermes' own start (`started_at` in the roster), else from the first running event the chat saw, and stops at the end: Hermes' `duration_seconds` when the end carries it, else the end the chat saw; an end only the roster found shows no time, since when it ended isn't known. A queued agent has no time. Never a percentage: Hermes reports only coarse statuses (issue 1553, #2263).
 - What a finished agent did lives on Hermes' finished notice, part of the transcript, not in the sheet, which forgets an agent once the chat closes: the notice reads only what Hermes lays out per task (its header and its result), never the task's preamble (context, toolsets), transcript paths, process bookkeeping or advice to the model, and a notice whose report it can't read, or one Hermes gave a `display_content`, stays the plain line. Folded it lists up to six agents; a tap shows every result (issue 1553, #2263).
 
 **Open gaps**
@@ -5055,7 +5091,7 @@ state, and the notifier's README says how a workstream waits (done)
 - The plugin's count of a workstream's agents is in memory: after a Hermes restart the workstream is recovered as any running one, without the wait on its card. What its last turn said before the wait is kept on disk (`held:<ref>`), so the Bot Chat's restart line carries it (notifier #717).
 - Stopping a waiting workstream doesn't stop its agents (Hermes stops them only with a running turn): they run to their end and their results are dropped.
 
-**Checked:** 2026-11-12, #2263 (issue 1553: each card's running time, and the finished notice opens to every agent's result, from Hermes' report, kept with the chat; the waiting line, the Watch, CarPlay, the voice modes and the notifier needed no change); 2026-11-11, #2220 with notifier #720 (a refused Steer or Stop trusts the roster it read only while the chat is still on that runtime, from #2218's last commit; the plugin clears a held reply a reload left on disk when the next turn starts, 0.164.3); 2026-11-11, #2218 (a refused Steer or Stop on a card kept across a resume knows it by the chat's resume-wide aliases or the card itself, so it reads the new runtime's roster before ending it); 2026-11-11, #2218 with notifier #717 (the plugin keeps a held reply on disk for a restart and queues no stale finished line; stopping a waiting workstream still leaves its agents running, in Open gaps); 2026-11-11, #2218 (issue 2206: cards move to the runtime the roster was read for, a refused control on a card from an earlier runtime asks that roster before ending it, a failed roster read at resume is tried once more; the waiting line, the Watch, CarPlay and the voice modes needed no change; the plugin's items are notifier's own PR); 2026-11-11, #2201 with notifier #711 (added: the waiting line, the cards from Hermes' roster after a reopen, and a workstream held as working while its agents run; issue 2142)
+**Checked:** 2026-11-12, #2274 (#2263's review leftovers: a multiline single goal stays whole, the report is read from the filtered text, an unreadable header keeps the plain notice, a late end's Hermes time is kept, a roster-found end shows no time); 2026-11-12, #2263 (issue 1553: each card's running time, and the finished notice opens to every agent's result, from Hermes' report, kept with the chat; the waiting line, the Watch, CarPlay, the voice modes and the notifier needed no change); 2026-11-11, #2220 with notifier #720 (a refused Steer or Stop trusts the roster it read only while the chat is still on that runtime, from #2218's last commit; the plugin clears a held reply a reload left on disk when the next turn starts, 0.164.3); 2026-11-11, #2218 (a refused Steer or Stop on a card kept across a resume knows it by the chat's resume-wide aliases or the card itself, so it reads the new runtime's roster before ending it); 2026-11-11, #2218 with notifier #717 (the plugin keeps a held reply on disk for a restart and queues no stale finished line; stopping a waiting workstream still leaves its agents running, in Open gaps); 2026-11-11, #2218 (issue 2206: cards move to the runtime the roster was read for, a refused control on a card from an earlier runtime asks that roster before ending it, a failed roster read at resume is tried once more; the waiting line, the Watch, CarPlay and the voice modes needed no change; the plugin's items are notifier's own PR); 2026-11-11, #2201 with notifier #711 (added: the waiting line, the cards from Hermes' roster after a reopen, and a workstream held as working while its agents run; issue 2142)
 
 ## Subagent settings
 
@@ -7665,7 +7701,7 @@ and the widget's pickers (no status), and no Settings caption or doc names it
 - Status: `Conduit/Services/AppState.swift` (sessionLiveStatus, refreshLiveSessionStatuses, chatListPollTick, chatListCatalogGeneration's wake), `Conduit/Services/AppState+Lifecycle.swift` (recordActiveListEvidence), `Conduit/Services/SessionLiveStatusIndex.swift`, `Conduit/Services/PowerPolicy.swift` (ChatListPollPacer, PollCadence.chatListSteps and chatListStepsFollowingChanges)
 - Rows: `Conduit/Views/V2/V2SessionRow.swift` (V2SessionStatus, v2RowStatus), `Conduit/Views/V2/V2ChatsView.swift` (the poll's task, showsLiveRows, nestSummary, V2ProjectRow), `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/SidebarView.swift`
 - What the list column shows: `Conduit/Views/V2/V2Shell.swift` (V2SplitLayout.showsChatRows)
-- Tests: `ConduitTests/AppStateChatResumeTests.swift` (testOpenChatLiveStatusPrecedence, testAnotherProfilesRowInAllFollowsTheRegistry), `ConduitTests/V2SplitLayoutTests.swift` (testV2ListColumnKeepsLiveRowsBesideTheChat), `ConduitTests/PowerPolicyTests.swift` (the Chats list pacer), `ConduitTests/ChatSyncTests.swift` (testAQuietListFollowingChangeEventsWaitsUpToTwoMinutes, testAListChangeWakesTheListPollFromALongWait)
+- Tests: `ConduitTests/AppStateChatResumeTests.swift` (testOpenChatLiveStatusPrecedence, testAnotherProfilesRowInAllFollowsTheRegistry), `ConduitTests/V2SplitLayoutTests.swift` (testV2ListColumnKeepsLiveRowsBesideTheChat), `ConduitTests/PowerPolicyTests.swift` (the Chats list pacer), `ConduitTests/ChatSyncTests.swift` (testAQuietListFollowingChangeEventsWaitsUpToTwoMinutes, testAListChangeWakesTheListPollFromALongWait, testAListChangeWakesTheFirstStepStretchedByLowPower)
 
 **Rulings**
 - The open chat's own turn decides its Running once known; Needs approval from the registry outranks it (#454).
@@ -7678,7 +7714,7 @@ and the widget's pickers (no status), and no Settings caption or doc names it
 - Rows carry no profile, so a running chat in one profile lights a row of another with the same stored id (a profile copied with its chats) while that turn runs.
 - After a send, the registry can read the turn as not started yet, and the next read comes 4 s later: a chat left within those seconds goes without Running until then.
 
-**Checked:** 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2267 (the poll goes on to 120 s on a gateway that pushes `sessions.changed`, and a catalog read that changed the list wakes it; issue 851); 2026-10-27, #1369.
+**Checked:** 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2279 (the wake also cuts a first step Low Power or Low Data Mode stretched past 4 s, since #2275); 2026-11-12, #2267 (the poll goes on to 120 s on a gateway that pushes `sessions.changed`, and a catalog read that changed the list wakes it; issue 851); 2026-10-27, #1369.
 
 ## Chats list changes made elsewhere
 
@@ -7703,18 +7739,18 @@ none (no Settings caption or doc gives the cadence)
 **Code**
 - Signal: `Conduit/Services/HermesClient.swift` (sendsChangeEvents from `gateway.ready`'s `change_events`, carried over a socket handoff; the `sessions.changed` event), `Conduit/Services/StreamEventParser.swift` (sessionsChanged)
 - Reads: `Conduit/Services/ChatSync.swift` (CatalogChangeSignal, ChatListCatalogFreshness: fallbackInterval and fallbackIntervalFollowingChanges), `Conduit/Services/AppState.swift` (noteCatalogChanged, readPendingCatalogChange, chatListPollTick, refreshCatalogAfterLeavingChat, chatListBecameActive, noteActiveListForChatList)
-- Tests: `ConduitTests/ChatSyncTests.swift` (testSessionsChangedReadsTheCatalog, testAListLeftOnScreenReadsAgainEveryThirtySeconds, testAListFollowingChangeEventsReadsTheCatalogEveryFiveMinutes), `ConduitTests/HermesClientTests.swift` (testGatewayReadyAdvertisesServerRequestsCapability)
+- Tests: `ConduitTests/ChatSyncTests.swift` (testSessionsChangedReadsTheCatalog, testAListLeftOnScreenReadsAgainEveryThirtySeconds, testAListFollowingChangeEventsReadsTheCatalogEveryFiveMinutes, testAChangeHeldByATurnHereKeepsTheThirtySecondRead, testAListChangeWakesTheFirstStepStretchedByLowPower), `ConduitTests/HermesClientTests.swift` (testGatewayReadyAdvertisesServerRequestsCapability, testAModelConfirmTokenSurvivesASocketHandOff)
 
 **Rulings**
 - Each `sessions.changed` reads the catalog, at most every 5 s and never while a turn runs here (its own rows move it the whole time); one held back is read once the wait or the turn ends (#1026).
-- The list's own timed catalog read is a backstop: every 30 s on a gateway without change events, every 5 minutes on one with them. A Hermes from before 0.21.1 watches only its launch profile's chats, so another profile there leans on that backstop for renames and deletions; a chat started elsewhere still shows at once through the registry (2026-11-12, #2267, issue 851).
+- The list's own timed catalog read is a backstop: every 30 s on a gateway without change events, every 5 minutes on one with them, and 30 s again while a change waits on a turn running here. A Hermes from before 0.21.1 watches only its launch profile's chats, so another profile there leans on that backstop for renames and deletions; a chat started elsewhere still shows at once through the registry (2026-11-12, #2267, issue 851).
 - A chat the registry lists and the catalog doesn't reads the catalog at most every 10 s, twice for one state of that chat.
 - Coming back to the app reads a list older than 10 s.
 
 **Open gaps**
 - Hermes broadcasts every served profile's changes to every socket, so a busy bot in another profile reads this profile's catalog every 5 s while it works; the signal carries no profile to tell them apart.
 
-**Checked:** 2026-11-12, #2267 (issue 851).
+**Checked:** 2026-11-12, #2275 (a change held by a turn here keeps the 30 s read; the wake follows Low Power's stretched first step); 2026-11-12, #2267 (issue 851).
 
 ## Reads while a screen shows
 
@@ -8021,7 +8057,7 @@ setting every turn) · the notifier's CHANGELOG ·
 README (Connecting, Architecture) · the website's FAQ
 
 **Code**
-- A Bot Chat's profile on its requests: `Conduit/Services/HermesClient.swift` (sessionProfiles, noteSessionProfile, sessionProfile(for:), scopeParams, adoptSocket; noted by resumeSessionObject, createSession, createBotChatSession, authorityBranch)
+- A Bot Chat's profile on its requests: `Conduit/Services/HermesClient.swift` (sessionProfiles, noteSessionProfile, sessionProfile(for:), scopeParams, adoptSocket, inheritSessionProfiles; noted by resumeSessionObject, createSession, createBotChatSession, authorityBranch), `Conduit/Services/AppState+Connection.swift` and `Conduit/Services/AppState.swift` (the reconnect and the profile switch hand it to the fresh client)
 - Telling them apart and each shape: `Conduit/Services/HermesClient.swift` (speaksSessionAuthority from `gateway.ready`, the "session authority's shapes" section: shapedRPC, authorityMutation, authorityControl, noteAuthorityFences; createSession and createParams, sendPrompt, turnControl, respondToApproval and respondToApprovalOutcome, respondToClarification, setSessionTitle, sessionTitle, generateSessionTitle, authorityBranch, setModel, authorityModelPick, compressSession, moveSessionWorkspace, busyInputMode, resumeSessionObject, rewindSession, rewindSnapshot; the switches that stay on config.set: setReasoning, setSpeed, setSessionYolo; the verbs that keep the dashboard's shape: steerSubagent, interruptSubagent, startSideAgent, stopProcesses, contextBreakdown)
 - Kept across a reconnect or handoff: `Conduit/Services/HermesClient.swift` (connect, adoptSocket, the `request.cancel` bookkeeping)
 - The records an answer and a send read: `Conduit/Services/HermesClient.swift` (authorityRunningSessions, unconfirmedAuthorityAnswers and UnconfirmedAnswers, modelConfirmTokens, AuthorityAnswerSend and SendWatch, set by rpc's send-failure path; RpcError.refusesShape, which decides a reshape)
@@ -8055,7 +8091,7 @@ README (Connecting, Architecture) · the website's FAQ
 - The authority answers its refusals with code 4001 and a `data.reason`; only `not_found` (or no reason, the dashboard's "session not found") reads as a gone session, so an `invalid_params` or `permission_denied` on an answer or a resume shows as the refusal it is; an `invalid_params` naming an optional prompt key in `data.fields` takes the same drop-and-resend fallback as the dashboard's 4000 (2026-11-01, #1631).
 - Rewind already speaks `session.mutate` with the resume's fences on both servers; its result's fences are kept for the next request. A conflict on it is shown, not resent with the new fences: it is the user's edit of a chat that moved meanwhile, and they choose again. The session's reasoning, Fast and YOLO switches stay `config.set` with the session id, which the authority takes (scope `session`); only `model` moved to a mutation (2026-11-01, #1618, probed on the canary).
 - The listener serves its own profile's chats; another profile's (a Bot Chat's) answers `profile_mismatch` unless the gateway serves several profiles (`multiplex_profiles`). That is Hermes' setup, not Conduit's: Conduit names the chat's profile wherever it reads a chat again (a stale steer, redirect or interrupt, an unseen approval or question), as on the dashboard (2026-11-01, #1631, probed on the canary; multiplexed profiles not tried).
-- A gateway that serves several profiles on one socket (the dashboard's, Hermes Desktop's shared one) finds a Bot Chat only under the profile a request names, the resume included. So the client keeps the profile each chat in another profile was opened or made under (its resume or create, by every id the answer names; a branch takes its parent's), and every later request about that chat that names no profile names it: the send, the reasoning, Fast and YOLO switches, a model pick, stop, the side agents and Context. A resume that names no profile (a branch's reconcile) goes there and keeps it, one under the client's own profile forgets it, and a request that names a profile keeps its own. Unnamed, they went to the client's own profile and came back `not_found`: a Bot Chat's sends and its reasoning chip failed with "Hermes refused config.set (not_found)" (2026-11-12, #2262).
+- A gateway that serves several profiles on one socket (the dashboard's, Hermes Desktop's shared one) finds a Bot Chat only under the profile a request names, the resume included. So the client keeps the profile each chat in another profile was opened or made under (its resume or create, by every id the answer names; a branch takes its parent's), and every later request about that chat that names no profile names it: every session verb, among them the send and Queue, the reasoning, Fast and YOLO switches, a model pick, stop, rewind (Edit and resend, /undo, /retry), compress (a Bot Chat's `/new`), Move to project, Predictions' hidden turn, the automatic title's read and `llm.oneshot`, the side agents and Context. A socket handoff and a fresh client on the same dashboard (a reconnect, a profile switch) keep what the last one knew. The dashboard's TUI gateway, which finds a resumed chat by its id alone, gets the same profile its resume already named. A resume that names no profile (a branch's reconcile) goes there and keeps it, one under the client's own profile forgets it, and a request that names a profile keeps its own. Unnamed, they went to the client's own profile and came back `not_found`: a Bot Chat's sends and its reasoning chip failed with "Hermes refused config.set (not_found)" (2026-11-12, #2262).
 - Busy mode stays on the phone on the authority, which has no profile-wide busy setting: Conduit already sends steer, interrupt or Queue itself (2026-11-01, #1618).
 - A bare refusal token from Hermes ("invalid_params") is shown with the request and the keys Hermes named; Hermes' own sentences are shown as they are (2026-11-01, #1618).
 - Setup docs keep recommending `hermes dashboard`; the Webapp's address is mentioned as also working (2026-11-01, #1618).
@@ -8068,7 +8104,7 @@ README (Connecting, Architecture) · the website's FAQ
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-12, #2262 (a Bot Chat's requests after its resume name the bot's profile, on a gateway serving several profiles; Rulings); 2026-11-11, #2173 (opens from an ordinary chat's ⋯ menu, issue 2132; "this chat" in the sheet's who-uses line; Rulings); 2026-11-08, #1987 with notifier #613 (a discard that comes before its report holds the text's hash for a minute, notifier issue 610; 2026-11-07, #1978 with notifier #612 (the chat's queue and a turn a restart cut off, see A chat's queue on the Webapp); Rulings); 2026-11-07, #1954 (step summaries ask through the plugin's /side-question, the /btw side agent only as a fallback); 2026-11-03, #1696 (an interrupt names the turn it stopped, for Voice's cancelled-turn note; a turn that starts during it keeps running); 2026-11-02, #1631 with notifier #504 (pictures ride in the message's attachments; host verbs checked on a real listener; Predictions' limit ruled); 2026-11-01, #1631 with notifier #504 (the plugin's chat features ported to the authority: turn surface, Predictions, Watch jobs, a Watch call's Local Live chat, Pulse's turns; Desktop views ruled; each checked on the canary); 2026-11-01, #1631 (seeded; issue #1618; probed against the 2026-11-01 canary; unseen prompts and the model confirm closed; the other socket verbs, the hidden turn, sends into a running turn and other profiles probed).
+**Checked:** 2026-11-12, #2278 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2273 (a reconnect or profile switch keeps a Bot Chat's profile; every verb and the dashboard named in Rulings); 2026-11-12, #2262 (a Bot Chat's requests after its resume name the bot's profile, on a gateway serving several profiles; Rulings); 2026-11-11, #2173 (opens from an ordinary chat's ⋯ menu, issue 2132; "this chat" in the sheet's who-uses line; Rulings); 2026-11-08, #1987 with notifier #613 (a discard that comes before its report holds the text's hash for a minute, notifier issue 610; 2026-11-07, #1978 with notifier #612 (the chat's queue and a turn a restart cut off, see A chat's queue on the Webapp); Rulings); 2026-11-07, #1954 (step summaries ask through the plugin's /side-question, the /btw side agent only as a fallback); 2026-11-03, #1696 (an interrupt names the turn it stopped, for Voice's cancelled-turn note; a turn that starts during it keeps running); 2026-11-02, #1631 with notifier #504 (pictures ride in the message's attachments; host verbs checked on a real listener; Predictions' limit ruled); 2026-11-01, #1631 with notifier #504 (the plugin's chat features ported to the authority: turn surface, Predictions, Watch jobs, a Watch call's Local Live chat, Pulse's turns; Desktop views ruled; each checked on the canary); 2026-11-01, #1631 (seeded; issue #1618; probed against the 2026-11-01 canary; unseen prompts and the model confirm closed; the other socket verbs, the hidden turn, sends into a running turn and other profiles probed).
 
 ## A chat's queue on the Webapp
 
@@ -8119,14 +8155,16 @@ queue) · the notifier's CHANGELOG
 ## Where a message was sent (turn surface)
 
 Just before a send, Conduit tells the notifier plugin where in Conduit the
-message came from (iPhone, iPad, Mac, Vision Pro, CarPlay, a Shortcut) and
-whether it was typed or spoken, with the hash of the exact text; that turn
-gets one line of context saying so (#888). A send that failed drops its
-report.
+message came from (iPhone, iPad, Mac, Vision Pro, CarPlay, the Watch, a
+Shortcut, a widget's button) and whether it was typed or spoken, with the
+hash of the exact text; that turn gets one line of context saying so (#888).
+A send that failed drops its report.
 
 **Siblings:** the composer's sends (typed, dictated, a caller's surface such
 as a live call's request) · a live voice call's turn into the open chat ·
-a call's request into an existing chat · a Shortcut's send · the plugin's
+a call's request into an existing chat · a voice call's background job
+(the phone's, CarPlay's, or a Watch call's that this phone starts) · a
+Shortcut's send · the Pulse widget's Do it (a widget's button) · the plugin's
 own Watch jobs and call chats (they name the Watch themselves) · the line
 and its hints the model reads (`notifier/turn_surface.py`: FORM_HINT,
 SPOKEN_HINT) · the gateway's own listener (Two Hermes servers) · conduit_show,
@@ -8135,11 +8173,12 @@ notifier README's "Where in Conduit a message was sent"
 
 **Code**
 - The report and discard: `Conduit/Services/TurnSurface.swift` (discardRetryDelays, discardMayGoLater), `Conduit/Services/AppState+TurnSurface.swift` (reportTurnSurface, discardTurnSurface)
-- Send sites: `Conduit/Services/AppState.swift` (performComposerSubmission's report and its catch, the live call's chat turn, the call request into an existing chat), `Conduit/Services/AppState+ShortcutSend.swift` (the Shortcut's send)
+- Send sites: `Conduit/Services/AppState.swift` (performComposerSubmission's report and its catch, the live call's chat turn, the call request into an existing chat, the voice job backend's reportTurnSurface), `Conduit/Voice/VoiceBackgroundJobs.swift` (startJob and sendContinuedJob report before their submit and drop the report when it fails or is overtaken), `Conduit/Services/AppState+ShortcutSend.swift` (the Shortcut's send; makeShortcutSendBackend's surface), `Conduit/Services/AppState+PulseWidget.swift` (Do it sends as `.widget`)
 - Plugin: `notifier/turn_surface.py` (record, take, discard and its DISCARD_HOLD_S hold, record_for_authority, discard_digest_for_authority, note, start_turn, turn_entry), `notifier/dashboard/api/chats.py` (record_turn_surface, discard_turn_surface)
-- Tests: `ConduitTests/AppStateTurnSurfaceTests.swift`, `notifier/tests/test_turn_surface.py`
+- Tests: `ConduitTests/AppStateTurnSurfaceTests.swift`, `ConduitTests/VoiceBackgroundJobTests.swift` (testAJobReportsItsTurnSurfaceBeforeItsSubmitAndDropsItWhenRefused), `notifier/tests/test_turn_surface.py`
 
 **Rulings**
+- A voice call's background job reports its own prompt, the exact text it submits, as spoken: from the Watch for a Watch call's job, from CarPlay while CarPlay shows the call, else from this device. A Watch call's later requests in the chat its first job made (continueJob) report the Watch too, and a cancel while the report goes sends nothing and drops it. The Pulse widget's Do it reports `widget` with no input (a tap, in words Conduit wrote); a plugin before 0.164.12 refuses it and that turn has no line, never a Siri label (Eric approved issue 888's surfaces, 2026-11-12, #2266 with notifier #734).
 - A send waits for the report at most `TurnSurface.wait`, then goes anyway; a report that misses its send is cancelled, so it can't label the next turn (#888).
 - Every send site that reports drops its report when the send fails (refused, or never sent: a busy chat, a failed read), so the same words sent from another client in that chat don't take its line; a send whose reply was only lost keeps it, since its turn may have started. A plugin without `turn-surface-discard` keeps the report until it goes stale (2026-11-02, #1631, notifier #504).
 - A discard that fails to go (no answer, a 408 or 429, a 5xx, sign-in) is tried again after 1, 3 and 9 seconds; one the plugin refused (any other 4xx), an oversized answer, or one the old dashboard answered after a switch isn't. A discard that reaches the plugin before its report (the report was slow, the send failed fast) holds the text's hash for a minute, and the report is dropped as it lands; the same words sent again within that minute have no line (notifier issue 610, Eric 2026-11-08, #1987 with notifier #613).
@@ -8148,7 +8187,7 @@ notifier README's "Where in Conduit a message was sent"
 **Open gaps**
 - None known.
 
-**Checked:** 2026-11-11, #2237 (each retry of a discard checks the dashboard again, so a switch while it waits ends it; issue 2222 follow-up); 2026-11-11, #2230 (issue 2222: a send whose dashboard was switched away discards nothing, at every send site; Rulings; the plugin needed no change); 2026-11-11, #2218 (issue 2205: a Shortcut or widget send that has left its dashboard reports no turn surface; see Send to Hermes); 2026-11-11, #2173 (opens from an ordinary chat's ⋯ menu, issue 2132; "this chat" in the sheet's who-uses line; Rulings); 2026-11-08, #1987 with notifier #613 (a failed discard is tried again, a discard before its report holds the hash; notifier issue 610; Rulings, Code); 2026-11-05, #1815 with notifier #556 (the turn's tools read how its message was entered, turn_entry; Siblings, Code); 2026-11-02, #1631 (entry seeded with the discard; notifier #504).
+**Checked:** 2026-11-12, #2266 with notifier #734 (a voice call's background job and the Pulse widget's Do it report their surface; Siblings, Code, Rulings); 2026-11-11, #2237 (each retry of a discard checks the dashboard again, so a switch while it waits ends it; issue 2222 follow-up); 2026-11-11, #2230 (issue 2222: a send whose dashboard was switched away discards nothing, at every send site; Rulings; the plugin needed no change); 2026-11-11, #2218 (issue 2205: a Shortcut or widget send that has left its dashboard reports no turn surface; see Send to Hermes); 2026-11-11, #2173 (opens from an ordinary chat's ⋯ menu, issue 2132; "this chat" in the sheet's who-uses line; Rulings); 2026-11-08, #1987 with notifier #613 (a failed discard is tried again, a discard before its report holds the hash; notifier issue 610; Rulings, Code); 2026-11-05, #1815 with notifier #556 (the turn's tools read how its message was entered, turn_entry; Siblings, Code); 2026-11-02, #1631 (entry seeded with the discard; notifier #504).
 
 ## Back-deployed Foundation API in shipped targets
 

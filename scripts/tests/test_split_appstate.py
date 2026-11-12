@@ -164,6 +164,37 @@ class SplitAppStateTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             split.run(self.repo, 1, True, pr=42, today="2026-11-12")
 
+    def test_repeated_and_numbered_region_names(self):
+        (self.repo / split.APP_STATE).write_text('''import SwiftUI
+
+@MainActor
+final class AppState: ObservableObject {
+    // MARK: - Stars (#757)
+
+    var starred: Set<String> = []
+
+    func star() {}
+
+    // MARK: - Tools
+
+    func tools() {}
+
+    // MARK: - Tools
+
+    func moreTools() {}
+}
+''')
+        split.STEPS = [{"AppState+Stars.swift": ["Stars (#757)", "Tools@2"]}]
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        moved = self.read("AppState+Stars.swift")
+        app = self.read("AppState.swift")
+        self.assertIn("    // MARK: - Stars (#757)\n\n    func star() {}", moved)
+        self.assertIn("    // MARK: - Tools\n\n    func moreTools() {}", moved)
+        self.assertNotIn("@2", moved)
+        self.assertIn("func tools()", app, "the first Tools region stays")
+        self.assertIn("    // MARK: - Stars (#757)\n\n    var starred", app,
+                      "a MARK whose code moved keeps its blank line")
+
     def test_points_the_map_at_the_new_file(self):
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")
         text = (self.repo / split.MAP).read_text()

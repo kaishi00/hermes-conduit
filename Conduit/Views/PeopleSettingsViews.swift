@@ -21,11 +21,11 @@ enum PeopleSettingsText {
     static func status(of link: RoomLink) -> String? {
         switch link.status {
         case "linked":
-            return AppLocalization.string("Linked")
+            return AppLocalization.string("Linked", table: .rooms)
         case "waiting":
-            return AppLocalization.string("Waiting for \(link.name)'s Hermes to confirm")
+            return AppLocalization.string("Waiting for \(link.name)'s Hermes to confirm", table: .rooms)
         case "unanswered":
-            return AppLocalization.string("\(link.name)'s Hermes never confirmed. Ask them for a new invite.")
+            return AppLocalization.string("\(link.name)'s Hermes never confirmed. Ask them for a new invite.", table: .rooms)
         default:
             return nil
         }
@@ -37,24 +37,24 @@ enum PeopleSettingsText {
         let address = state.apiServer.address
         var lines: [String] = []
         if changes.contains("api_server_key") {
-            lines.append(AppLocalization.string("Turn on Hermes' API server at \(address), with a new key that stays on your Hermes"))
+            lines.append(AppLocalization.string("Turn on Hermes' API server at \(address), with a new key that stays on your Hermes", table: .rooms))
         } else if changes.contains("api_server_enabled") || changes.contains("api_server_port") {
-            lines.append(AppLocalization.string("Turn on Hermes' API server at \(address), with the key it has"))
+            lines.append(AppLocalization.string("Turn on Hermes' API server at \(address), with the key it has", table: .rooms))
         }
         if changes.contains("profile_key") {
-            lines.append(AppLocalization.string("Give \(profileName) its own key for the API server, which serves a profile's agent only with that profile's key"))
+            lines.append(AppLocalization.string("Give \(profileName) its own key for the API server, which serves a profile's agent only with that profile's key", table: .rooms))
         }
         if changes.contains("ceiling") {
-            lines.append(AppLocalization.string("Save the tools rooms may let \(profileName) use"))
+            lines.append(AppLocalization.string("Save the tools rooms may let \(profileName) use", table: .rooms))
         }
         if changes.contains("plugin_tools") {
-            lines.append(AppLocalization.string("Keep tools that plugins and Hermes updates add out of rooms until you add them here"))
+            lines.append(AppLocalization.string("Keep tools that plugins and Hermes updates add out of rooms until you add them here", table: .rooms))
         }
         if changes.contains("approvals") {
-            lines.append(AppLocalization.string("Turn \(profileName)'s approvals back on, since rooms refuse an agent that runs tools without asking"))
+            lines.append(AppLocalization.string("Turn \(profileName)'s approvals back on, since rooms refuse an agent that runs tools without asking", table: .rooms))
         }
         if state.needs.contains("restart") {
-            lines.append(AppLocalization.string("Restart the gateway, which starts the API server"))
+            lines.append(AppLocalization.string("Restart the gateway, which starts the API server", table: .rooms))
         }
         return lines
     }
@@ -63,10 +63,10 @@ enum PeopleSettingsText {
     static func tools(_ state: RoomSetupState, profileName: String) -> String {
         let labels = state.ceiling.map(state.label(of:))
         guard !labels.isEmpty else {
-            return AppLocalization.string("Rooms can't let \(profileName) use tools: it only talks there.")
+            return AppLocalization.string("Rooms can't let \(profileName) use tools: it only talks there.", table: .rooms)
         }
         let list = labels.formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
-        return AppLocalization.string("Rooms may let \(profileName) use \(list).")
+        return AppLocalization.string("Rooms may let \(profileName) use \(list).", table: .rooms)
     }
 
     /// The MCP servers rooms may let the profile's agent use, or nil with none.
@@ -74,7 +74,7 @@ enum PeopleSettingsText {
         // A chosen one Hermes turned off runs no tools, so Ready doesn't name it.
         guard !state.mcpServersInUse.isEmpty else { return nil }
         let list = state.mcpServersInUse.formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
-        return AppLocalization.string("MCP servers too: \(list), in rooms whose Custom choice names their tools.")
+        return AppLocalization.string("MCP servers too: \(list), in rooms whose Custom choice names their tools.", table: .rooms)
     }
 
     /// The Custom-only toolsets picked, or nil with none: shown on the
@@ -83,14 +83,14 @@ enum PeopleSettingsText {
         let labels = state.customChoices.filter { picked.contains($0.id) }.map(\.label)
         guard !labels.isEmpty else { return nil }
         let list = labels.formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
-        return AppLocalization.string("On: \(list)")
+        return AppLocalization.string("On: \(list)", table: .rooms)
     }
 
     /// The tools of a toolset rooms never run, or nil with none.
     static func never(_ choice: RoomSetupState.Choice) -> String? {
         guard !choice.never.isEmpty else { return nil }
         let list = choice.never.formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
-        return AppLocalization.string("Never in rooms: \(list)")
+        return AppLocalization.string("Never in rooms: \(list)", table: .rooms)
     }
 
     /// Four fingerprint words, as both sides read them out.
@@ -150,8 +150,8 @@ struct PeopleSettingsPage: View {
             if appState.canSetUpRooms {
                 RoomSetupSection(profile: profile, profileName: appState.profileDisplayName(profile))
             } else {
-                ConduitSettingsSection(title: AppLocalization.string("This Hermes"), symbol: "server.rack", tint: .conduitAura) {
-                    Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to set it up for rooms from here.")))
+                ConduitSettingsSection(title: AppLocalization.string("This Hermes", table: .rooms), symbol: "server.rack", tint: .conduitAura) {
+                    Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to set it up for rooms from here.", table: .rooms)))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                 }
@@ -173,10 +173,10 @@ struct PeopleSettingsPage: View {
         .task(id: key) { await load(key) }
         .task(id: waitingIDs) { await followWaitingLinks() }
         .confirmationDialog(unlinkTitle, isPresented: unlinkPresented, titleVisibility: .visible, presenting: unlinking) { link in
-            Button(AppLocalization.string("Unlink"), role: .destructive) { unlink(link) }
+            Button(AppLocalization.string("Unlink", table: .rooms), role: .destructive) { unlink(link) }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: { link in
-            Text(AppLocalization.string("This unlinks \(link.name)'s Hermes from yours, on both sides. Linking again takes a new invite."))
+            Text(AppLocalization.string("This unlinks \(link.name)'s Hermes from yours, on both sides. Linking again takes a new invite.", table: .rooms))
         }
         .sheet(isPresented: $linking, onDismiss: { Task { await load(key) } }) {
             RoomLinkInviteSheet()
@@ -204,7 +204,7 @@ struct PeopleSettingsPage: View {
 
     private var unlinkTitle: String {
         guard let unlinking else { return "" }
-        return AppLocalization.string("Unlink \(unlinking.name)?")
+        return AppLocalization.string("Unlink \(unlinking.name)?", table: .rooms)
     }
 
     private var unlinkPresented: Binding<Bool> {
@@ -212,8 +212,8 @@ struct PeopleSettingsPage: View {
     }
 
     private var linksSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Linked with"), symbol: "link", tint: .conduitAccent) {
-            Text(AppLocalization.string("A Link lets you and someone else bring your agents into rooms together. It grants nothing by itself: in each room, you choose what your agents may do."))
+        ConduitSettingsSection(title: AppLocalization.string("Linked with", table: .rooms), symbol: "link", tint: .conduitAccent) {
+            Text(AppLocalization.string("A Link lets you and someone else bring your agents into rooms together. It grants nothing by itself: in each room, you choose what your agents may do.", table: .rooms))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             if let shown {
@@ -221,7 +221,7 @@ struct PeopleSettingsPage: View {
                 yourWords(shown.identity)
                 // Nothing waits in the mailbox without a Link or an invite.
                 if !shown.list.mailboxReading, !shown.list.links.isEmpty || !shown.list.invites.isEmpty {
-                    Label(AppLocalization.string("Nothing on your Hermes reads its rooms mailbox right now, so what the other side sends waits there, for up to 7 days."), systemImage: "tray.and.arrow.down")
+                    Label(AppLocalization.string("Nothing on your Hermes reads its rooms mailbox right now, so what the other side sends waits there, for up to 7 days.", table: .rooms), systemImage: "tray.and.arrow.down")
                         .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                     Button(AppLocalization.string("Check again")) { Task { await load(key) } }
@@ -229,7 +229,7 @@ struct PeopleSettingsPage: View {
                         .disabled(changingID != nil)
                 }
                 if shown.list.links.isEmpty {
-                    Text(AppLocalization.string("No Links yet."))
+                    Text(AppLocalization.string("No Links yet.", table: .rooms))
                         .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
                 } else {
@@ -272,12 +272,12 @@ struct PeopleSettingsPage: View {
             pasteError = nil
             linking = true
         } label: {
-            Label(AppLocalization.string("Link with someone"), systemImage: "link.badge.plus")
+            Label(AppLocalization.string("Link with someone", table: .rooms), systemImage: "link.badge.plus")
         }
         .buttonStyle(.settingsPrimary)
         .disabled(!identity.crypto)
         HStack(spacing: 10) {
-            Text(AppLocalization.string("Have an invite?"))
+            Text(AppLocalization.string("Have an invite?", table: .rooms))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
@@ -286,7 +286,7 @@ struct PeopleSettingsPage: View {
                 pasteError = nil
                 scanning = true
             } label: {
-                Label(AppLocalization.string("Scan"), systemImage: "qrcode.viewfinder")
+                Label(AppLocalization.string("Scan", table: .rooms), systemImage: "qrcode.viewfinder")
             }
             .buttonStyle(.bordered)
             .buttonBorderShape(.capsule)
@@ -300,7 +300,7 @@ struct PeopleSettingsPage: View {
                         pasteError = nil
                         opened = found
                     } else {
-                        pasteError = AppLocalization.string("The clipboard has no Link invite.")
+                        pasteError = AppLocalization.string("The clipboard has no Link invite.", table: .rooms)
                     }
                 }
             }
@@ -319,24 +319,24 @@ struct PeopleSettingsPage: View {
     @ViewBuilder
     private func yourWords(_ identity: RoomIdentity) -> some View {
         if !identity.crypto {
-            Label(AppLocalization.string("This Hermes can't make Links: Linked Rooms needs Python's cryptography package, which it doesn't have. Install it where Hermes runs, then restart Hermes' dashboard."), systemImage: "exclamationmark.triangle.fill")
+            Label(AppLocalization.string("This Hermes can't make Links: Linked Rooms needs Python's cryptography package, which it doesn't have. Install it where Hermes runs, then restart Hermes' dashboard.", table: .rooms), systemImage: "exclamationmark.triangle.fill")
                 .scaledFont(.footnote)
                 .foregroundStyle(.orange)
         } else if let words = identity.words {
             VStack(alignment: .leading, spacing: 4) {
-                Text(AppLocalization.string("Your Hermes' words"))
+                Text(AppLocalization.string("Your Hermes' words", table: .rooms))
                     .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                 Text(verbatim: PeopleSettingsText.words(words))
                     .scaledFont(.body.weight(.semibold))
                     .textSelection(.enabled)
-                Text(AppLocalization.string("Someone opening your invite sees these four words. Read them to each other: if theirs match, the invite is yours."))
+                Text(AppLocalization.string("Someone opening your invite sees these four words. Read them to each other: if theirs match, the invite is yours.", table: .rooms))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
             .accessibilityElement(children: .combine)
         } else {
-            Text(AppLocalization.string("Your Hermes gets its four words when it first makes or accepts an invite."))
+            Text(AppLocalization.string("Your Hermes gets its four words when it first makes or accepts an invite.", table: .rooms))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -353,7 +353,7 @@ struct PeopleSettingsPage: View {
                         .scaledFont(.footnote)
                         .foregroundStyle(link.status == "unanswered" ? Color.orange : Color.secondary)
                 }
-                Text(verbatim: AppLocalization.string("Words: \(words)"))
+                Text(verbatim: AppLocalization.string("Words: \(words)", table: .rooms))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -363,7 +363,7 @@ struct PeopleSettingsPage: View {
                 ProgressView()
                     .controlSize(.small)
             } else {
-                Button(AppLocalization.string("Unlink"), role: .destructive) { unlinking = link }
+                Button(AppLocalization.string("Unlink", table: .rooms), role: .destructive) { unlinking = link }
                     .buttonStyle(.borderless)
                     .scaledFont(.subheadline)
                     .disabled(changingID != nil)
@@ -373,8 +373,8 @@ struct PeopleSettingsPage: View {
     }
 
     private func invitesSection(_ invites: [RoomLinkInvite]) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Invites waiting"), symbol: "envelope", tint: .conduitAccent) {
-            Text(AppLocalization.string("Each invite works once, for whoever opens it first, until it runs out."))
+        ConduitSettingsSection(title: AppLocalization.string("Invites waiting", table: .rooms), symbol: "envelope", tint: .conduitAccent) {
+            Text(AppLocalization.string("Each invite works once, for whoever opens it first, until it runs out.", table: .rooms))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             ForEach(invites) { invite in
@@ -389,9 +389,9 @@ struct PeopleSettingsPage: View {
         )
         return HStack(alignment: .firstTextBaseline, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                Text(verbatim: AppLocalization.string("Shows you as \(invite.name)"))
+                Text(verbatim: AppLocalization.string("Shows you as \(invite.name)", table: .rooms))
                     .scaledFont(.subheadline.weight(.semibold))
-                Text(verbatim: AppLocalization.string("Works until \(until)"))
+                Text(verbatim: AppLocalization.string("Works until \(until)", table: .rooms))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -401,7 +401,7 @@ struct PeopleSettingsPage: View {
                 ProgressView()
                     .controlSize(.small)
             } else {
-                Button(AppLocalization.string("Cancel invite"), role: .destructive) { cancel(invite) }
+                Button(AppLocalization.string("Cancel invite", table: .rooms), role: .destructive) { cancel(invite) }
                     .buttonStyle(.borderless)
                     .scaledFont(.subheadline)
                     .disabled(changingID != nil)
@@ -439,7 +439,7 @@ struct PeopleSettingsPage: View {
         } catch {
             guard !(error is CancellationError), !Task.isCancelled, key == self.key else { return }
             peopleLogger.notice("Links not read: \(LogRedaction.message(error), privacy: .public)")
-            let text = AppLocalization.string("Could not read your Links: \(RoomLinksClient.message(for: error))")
+            let text = AppLocalization.string("Could not read your Links: \(RoomLinksClient.message(for: error))", table: .rooms)
             if loaded?.key == key { refreshError = text } else { loadError = text }
         }
     }
@@ -476,7 +476,7 @@ struct PeopleSettingsPage: View {
                 guard !(error is CancellationError), key == self.key else { return }
                 Haptics.error()
                 peopleLogger.notice("Link not removed: \(LogRedaction.message(error), privacy: .public)")
-                actionError = AppLocalization.string("Could not unlink \(link.name): \(RoomLinksClient.message(for: error))")
+                actionError = AppLocalization.string("Could not unlink \(link.name): \(RoomLinksClient.message(for: error))", table: .rooms)
             }
             await load(key)
             // One whose answer didn't come may have gone through: the list says.
@@ -500,7 +500,7 @@ struct PeopleSettingsPage: View {
                 guard !(error is CancellationError), key == self.key else { return }
                 Haptics.error()
                 peopleLogger.notice("Invite not cancelled: \(LogRedaction.message(error), privacy: .public)")
-                actionError = AppLocalization.string("Could not cancel the invite: \(RoomLinksClient.message(for: error))")
+                actionError = AppLocalization.string("Could not cancel the invite: \(RoomLinksClient.message(for: error))", table: .rooms)
             }
             await load(key)
             if loaded?.key == key, loaded?.list.invites.contains(where: { $0.id == invite.id }) == false { actionError = nil }
@@ -526,13 +526,13 @@ struct RoomPersonPictureSection: View {
     private var image: UIImage? { appState.roomPersonPicture.flatMap(RoomLookImages.image(for:)) }
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("You in rooms"), symbol: "person.crop.circle", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("You in rooms", table: .rooms), symbol: "person.crop.circle", tint: .conduitAccent) {
             HStack(spacing: 14) {
                 BotAvatarView(name: "you", label: AppLocalization.string("You"), colorString: nil, image: image, size: 52)
                 VStack(alignment: .leading, spacing: 4) {
-                    Text(AppLocalization.string("Your picture"))
+                    Text(AppLocalization.string("Your picture", table: .rooms))
                         .scaledFont(.subheadline.weight(.semibold))
-                    Text(AppLocalization.string("The people in your rooms see it beside your messages, and beside your agents' names. Their pictures and glow colors for their bots show for you the same way."))
+                    Text(AppLocalization.string("The people in your rooms see it beside your messages, and beside your agents' names. Their pictures and glow colors for their bots show for you the same way.", table: .rooms))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -543,7 +543,7 @@ struct RoomPersonPictureSection: View {
                     Haptics.selection()
                     choosing = true
                 } label: {
-                    Label(image == nil ? AppLocalization.string("Choose Picture") : AppLocalization.string("Change Picture"),
+                    Label(image == nil ? AppLocalization.string("Choose Picture", table: .rooms) : AppLocalization.string("Change Picture", table: .rooms),
                           systemImage: "photo")
                 }
                 .buttonStyle(.settings)
@@ -610,8 +610,8 @@ struct LinkAsksSection: View {
     }
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("What they can ask"), symbol: "questionmark.bubble", tint: .conduitAccent) {
-            Text(AppLocalization.string("A linked person's Hermes can ask yours whether you're free on a date, or ask you a question. You choose how each is answered. Nothing else they send is answered."))
+        ConduitSettingsSection(title: AppLocalization.string("What they can ask", table: .rooms), symbol: "questionmark.bubble", tint: .conduitAccent) {
+            Text(AppLocalization.string("A linked person's Hermes can ask yours whether you're free on a date, or ask you a question. You choose how each is answered. Nothing else they send is answered.", table: .rooms))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             if loaded?.key == key {
@@ -650,7 +650,7 @@ struct LinkAsksSection: View {
         let profiles = appState.profiles
         return VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(verbatim: AppLocalization.string("What \(link.name)'s Hermes can ask"))
+                Text(verbatim: AppLocalization.string("What \(link.name)'s Hermes can ask", table: .rooms))
                     .scaledFont(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity, alignment: .leading)
                 if changingID == link.id {
@@ -663,14 +663,14 @@ struct LinkAsksSection: View {
                 choices: LinkAskRules.freeOnChoices.map { (id: $0, title: LinkAskText.freeOnTitle($0)) },
                 onSelect: { change(link, "free_on", to: $0) }
             ) {
-                Text(AppLocalization.string("Free on a date")).foregroundStyle(.secondary)
+                Text(AppLocalization.string("Free on a date", table: .rooms)).foregroundStyle(.secondary)
             }
             ConduitMenuPicker(
                 value: link.rules.questions,
                 choices: LinkAskRules.questionChoices.map { (id: $0, title: LinkAskText.questionsTitle($0)) },
                 onSelect: { change(link, "questions", to: $0) }
             ) {
-                Text(AppLocalization.string("Questions")).foregroundStyle(.secondary)
+                Text(AppLocalization.string("Questions", table: .rooms)).foregroundStyle(.secondary)
             }
             // Only one profile: it's the one that answers.
             if profiles.count > 1 {
@@ -680,7 +680,7 @@ struct LinkAsksSection: View {
                         .map { (id: $0, title: appState.profileDisplayName($0)) },
                     onSelect: { change(link, "profile", to: $0) }
                 ) {
-                    Text(AppLocalization.string("Answered by")).foregroundStyle(.secondary)
+                    Text(AppLocalization.string("Answered by", table: .rooms)).foregroundStyle(.secondary)
                 }
             }
             Text(verbatim: LinkAskText.caption(link.rules, name: link.name,
@@ -700,7 +700,7 @@ struct LinkAsksSection: View {
         } catch {
             guard !(error is CancellationError), !Task.isCancelled, key == self.key else { return }
             peopleLogger.notice("Link rules not read: \(LogRedaction.message(error), privacy: .public)")
-            loadError = AppLocalization.string("Could not read what they can ask: \(RoomLinksClient.message(for: error))")
+            loadError = AppLocalization.string("Could not read what they can ask: \(RoomLinksClient.message(for: error))", table: .rooms)
         }
     }
 
@@ -720,7 +720,7 @@ struct LinkAsksSection: View {
                 guard !(error is CancellationError), key == self.key else { return }
                 Haptics.error()
                 peopleLogger.notice("Link rules not changed: \(LogRedaction.message(error), privacy: .public)")
-                actionError = AppLocalization.string("Could not change what \(link.name)'s Hermes can ask: \(RoomLinksClient.message(for: error))")
+                actionError = AppLocalization.string("Could not change what \(link.name)'s Hermes can ask: \(RoomLinksClient.message(for: error))", table: .rooms)
             }
         }
     }
@@ -782,7 +782,7 @@ struct RoomSetupSection: View {
     private var shown: RoomSetupState? { loadedKey == key ? state : nil }
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("This Hermes"), symbol: "server.rack", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("This Hermes", table: .rooms), symbol: "server.rack", tint: .conduitAura) {
             if let state = shown {
                 content(state)
             } else if let loadError {
@@ -822,19 +822,19 @@ struct RoomSetupSection: View {
             await load(key)
         }
         .task(id: restartWait) { await followRestart() }
-        .confirmationDialog(AppLocalization.string("Restart the gateway now?"), isPresented: busyPresented, titleVisibility: .visible) {
-            Button(AppLocalization.string("Restart now"), role: .destructive) { setUp(interrupt: true) }
-            Button(AppLocalization.string("Later"), role: .cancel) {}
+        .confirmationDialog(AppLocalization.string("Restart the gateway now?", table: .rooms), isPresented: busyPresented, titleVisibility: .visible) {
+            Button(AppLocalization.string("Restart now", table: .rooms), role: .destructive) { setUp(interrupt: true) }
+            Button(AppLocalization.string("Later", table: .rooms), role: .cancel) {}
         } message: {
             Text(verbatim: busyMessage)
         }
-        .confirmationDialog(AppLocalization.string("Change what rooms may use?"), isPresented: $confirmsChange, titleVisibility: .visible) {
+        .confirmationDialog(AppLocalization.string("Change what rooms may use?", table: .rooms), isPresented: $confirmsChange, titleVisibility: .visible) {
             Button(AppLocalization.string("Change")) { setUp() }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: {
             // Each room pins its members' tools, approvals and turn limit
             // when it starts (designs/cross-owner-agents, decision 13).
-            Text(AppLocalization.string("\(profileName) then stops answering in rooms already started with other people's agents, which hold it to the tools it had when they started. New rooms use these."))
+            Text(AppLocalization.string("\(profileName) then stops answering in rooms already started with other people's agents, which hold it to the tools it had when they started. New rooms use these.", table: .rooms))
         }
     }
 
@@ -843,7 +843,7 @@ struct RoomSetupSection: View {
     }
 
     private var busyMessage: String {
-        let stops = AppLocalization.string("Chats running on it stop if it restarts now.")
+        let stops = AppLocalization.string("Chats running on it stop if it restarts now.", table: .rooms)
         guard let words = busyRestart, !words.isEmpty else { return stops }
         return "\(words)\n\n\(stops)"
     }
@@ -851,7 +851,7 @@ struct RoomSetupSection: View {
     @ViewBuilder
     private func content(_ state: RoomSetupState) -> some View {
         if !state.blockers.isEmpty {
-            Text(AppLocalization.string("This Hermes can't be set up for rooms yet:"))
+            Text(AppLocalization.string("This Hermes can't be set up for rooms yet:", table: .rooms))
                 .scaledFont(.subheadline.weight(.semibold))
             ForEach(Array(state.blockers.enumerated()), id: \.offset) { _, blocker in
                 Label(blocker.message, systemImage: "exclamationmark.triangle")
@@ -866,10 +866,10 @@ struct RoomSetupSection: View {
             .buttonStyle(.settings)
             .disabled(working)
         } else if state.ready && !editing {
-            Label(AppLocalization.string("Ready for rooms"), systemImage: "checkmark.circle.fill")
+            Label(AppLocalization.string("Ready for rooms", table: .rooms), systemImage: "checkmark.circle.fill")
                 .scaledFont(.subheadline.weight(.semibold))
                 .foregroundStyle(.green)
-            SettingsMetricRow(label: AppLocalization.string("API server"), value: state.apiServer.address, statusDot: .green, lineLimit: 1)
+            SettingsMetricRow(label: AppLocalization.string("API server", table: .rooms), value: state.apiServer.address, statusDot: .green, lineLimit: 1)
             Text(verbatim: PeopleSettingsText.tools(state, profileName: profileName))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
@@ -891,12 +891,12 @@ struct RoomSetupSection: View {
             if !state.ready {
                 // One status line; what Set up does is folded under it, so
                 // the tools below aren't buried under setup steps.
-                Label(AppLocalization.string("Not ready for rooms yet"), systemImage: "exclamationmark.circle")
+                Label(AppLocalization.string("Not ready for rooms yet", table: .rooms), systemImage: "exclamationmark.circle")
                     .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.orange)
-                foldButton(AppLocalization.string("What Set up does"), isOn: $showsSetupSteps)
+                foldButton(AppLocalization.string("What Set up does", table: .rooms), isOn: $showsSetupSteps)
                 if showsSetupSteps {
-                    Text(AppLocalization.string("Rooms reach your agents through Hermes' API server. For \(profileName), Set up will:"))
+                    Text(AppLocalization.string("Rooms reach your agents through Hermes' API server. For \(profileName), Set up will:", table: .rooms))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     ForEach(PeopleSettingsText.setupLines(state, profileName: profileName), id: \.self) { line in
@@ -905,7 +905,7 @@ struct RoomSetupSection: View {
                     }
                 }
                 if let error = state.apiServer.error {
-                    Text(verbatim: AppLocalization.string("The API server didn't start the last time: \(error)"))
+                    Text(verbatim: AppLocalization.string("The API server didn't start the last time: \(error)", table: .rooms))
                         .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                         .textSelection(.enabled)
@@ -913,7 +913,7 @@ struct RoomSetupSection: View {
             }
             toolChoices(state)
             if state.apiServer.enabled {
-                Text(AppLocalization.string("Hermes' API server is already on, so other apps that use it with \(profileName), such as Open WebUI, get only these tools too."))
+                Text(AppLocalization.string("Hermes' API server is already on, so other apps that use it with \(profileName), such as Open WebUI, get only these tools too.", table: .rooms))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -943,10 +943,10 @@ struct RoomSetupSection: View {
 
     private func toolChoices(_ state: RoomSetupState) -> some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(AppLocalization.string("Tools rooms may let \(profileName) use"))
+            Text(AppLocalization.string("Tools rooms may let \(profileName) use", table: .rooms))
                 .scaledFont(.subheadline.weight(.semibold))
             if !state.lookupChoices.isEmpty {
-                Text(AppLocalization.string("Rooms that look things up or search past chats use these."))
+                Text(AppLocalization.string("Rooms that look things up or search past chats use these.", table: .rooms))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 ForEach(state.lookupChoices) { choice in
@@ -955,10 +955,10 @@ struct RoomSetupSection: View {
             }
             if !state.customChoices.isEmpty {
                 // Only a room set to Custom uses these, so they're folded away.
-                foldButton(AppLocalization.string("Only for rooms set to Custom"),
+                foldButton(AppLocalization.string("Only for rooms set to Custom", table: .rooms),
                            detail: PeopleSettingsText.customOn(state, picked: picked), isOn: $showsCustomTools)
                 if showsCustomTools {
-                    Text(AppLocalization.string("A room uses these only when its Custom choice names their tools."))
+                    Text(AppLocalization.string("A room uses these only when its Custom choice names their tools.", table: .rooms))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                     ForEach(state.customChoices) { choice in
@@ -966,11 +966,11 @@ struct RoomSetupSection: View {
                     }
                 }
             }
-            Text(AppLocalization.string("Each room's choices work within these. Tools added later, by a plugin, an MCP server or a Hermes update, stay out of rooms until you add them here."))
+            Text(AppLocalization.string("Each room's choices work within these. Tools added later, by a plugin, an MCP server or a Hermes update, stay out of rooms until you add them here.", table: .rooms))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if let servers = state.mcpChoices, !servers.isEmpty {
-                Text(AppLocalization.string("MCP servers rooms may let \(profileName) use"))
+                Text(AppLocalization.string("MCP servers rooms may let \(profileName) use", table: .rooms))
                     .scaledFont(.subheadline.weight(.semibold))
                     .padding(.top, 6)
                 ForEach(servers, id: \.self) { server in
@@ -987,7 +987,7 @@ struct RoomSetupSection: View {
                     .tint(.conduitAccent)
                     .disabled(working)
                 }
-                Text(AppLocalization.string("Off unless you turn one on. A server's tools then work only in rooms whose Custom choice names them, and its own approvals still apply."))
+                Text(AppLocalization.string("Off unless you turn one on. A server's tools then work only in rooms whose Custom choice names them, and its own approvals still apply.", table: .rooms))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1088,7 +1088,7 @@ struct RoomSetupSection: View {
                 guard !(error is CancellationError), key == currentKey else { return }
                 Haptics.error()
                 peopleLogger.notice("Room setup not saved: \(LogRedaction.message(error), privacy: .public)")
-                outcome = Outcome(text: AppLocalization.string("Could not set this Hermes up: \(RoomLinksClient.message(for: error))"), trouble: true)
+                outcome = Outcome(text: AppLocalization.string("Could not set this Hermes up: \(RoomLinksClient.message(for: error))", table: .rooms), trouble: true)
                 // A blocker that came up since shows in place of Set up.
                 await load(key)
             }
@@ -1103,15 +1103,15 @@ struct RoomSetupSection: View {
             return
         }
         if restart.busy {
-            outcome = Outcome(text: AppLocalization.string("Saved. The API server starts the next time the gateway restarts."))
+            outcome = Outcome(text: AppLocalization.string("Saved. The API server starts the next time the gateway restarts.", table: .rooms))
             busyRestart = restart.error ?? ""
         } else if restart.started {
-            outcome = Outcome(text: AppLocalization.string("Saved. The gateway is restarting to start the API server…"))
+            outcome = Outcome(text: AppLocalization.string("Saved. The gateway is restarting to start the API server…", table: .rooms))
             errorBeforeRestart = result.state.apiServer.error
             restartWait = UUID()
         } else {
-            let why = restart.error ?? AppLocalization.string("Hermes didn't say why.")
-            outcome = Outcome(text: AppLocalization.string("Saved, but the gateway didn't restart: \(why)"), trouble: true)
+            let why = restart.error ?? AppLocalization.string("Hermes didn't say why.", table: .rooms)
+            outcome = Outcome(text: AppLocalization.string("Saved, but the gateway didn't restart: \(why)", table: .rooms), trouble: true)
         }
     }
 
@@ -1126,19 +1126,19 @@ struct RoomSetupSection: View {
             show(read, key: key)
             let server = read.apiServer
             if server.running {
-                outcome = Outcome(text: AppLocalization.string("The gateway restarted, and its API server runs at \(server.address)."))
+                outcome = Outcome(text: AppLocalization.string("The gateway restarted, and its API server runs at \(server.address).", table: .rooms))
                 restartWait = nil
                 return
             }
             // The error from before the restart counts once the new gateway
             // had time to write its own.
             if let error = server.error, error != errorBeforeRestart || check >= 5 {
-                outcome = Outcome(text: AppLocalization.string("The gateway restarted, but its API server isn't running: \(error)"), trouble: true)
+                outcome = Outcome(text: AppLocalization.string("The gateway restarted, but its API server isn't running: \(error)", table: .rooms), trouble: true)
                 restartWait = nil
                 return
             }
         }
-        outcome = Outcome(text: AppLocalization.string("The gateway is taking a while to start its API server."), checksAgain: true)
+        outcome = Outcome(text: AppLocalization.string("The gateway is taking a while to start its API server.", table: .rooms), checksAgain: true)
         restartWait = nil
     }
 }

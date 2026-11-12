@@ -4709,6 +4709,15 @@ final class AppState: ObservableObject {
                 let client = try await self.clientForVoiceRequest()
                 _ = try await client.sendPrompt(sessionID, text: text)
             },
+            reportTurnSurface: { [weak self] sessionID, text, fromWatch in
+                guard let self else { return { _ in } }
+                let reportedOn = self.activeDashboardID
+                let surface = TurnSurface.voiceJob(fromWatch: fromWatch, carPlay: self.isCarPlayVoiceSurfaceActive)
+                await self.reportTurnSurface(surface, runtimeSessionID: sessionID, text: text)?.value
+                return { [weak self] error in
+                    self?.discardTurnSurface(runtimeSessionID: sessionID, text: text, after: error, reportedOn: reportedOn)
+                }
+            },
             cancel: { [weak self] sessionID in
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
@@ -5270,6 +5279,7 @@ final class AppState: ObservableObject {
     })
 
     // MARK: - Lifecycle coordination
+
     var reconciliationToken = UUID()
     /// Set by the resume admission gate when it rejects a contradictory or
     /// foreign-owned identity. Automatic-return recovery treats ordinary
@@ -5507,7 +5517,10 @@ final class AppState: ObservableObject {
     /// waiting out the backoff (issue 851).
     @Published private(set) var chatListCatalogGeneration = 0 {
         didSet {
-            if !chatListPollPacer.backoff.isAtShortest { chatListPollSleep.wake() }
+            // Any wait past 4 s: a later step, or the first one stretched
+            // by Low Power or Low Data Mode.
+            let wait = PollCadence.stretched(chatListPollPacer.backoff.interval, by: deviceConditions())
+            if wait > PollCadence.chatListSteps[0] { chatListPollSleep.wake() }
         }
     }
     /// The chat New Chat (or a project's new chat) just made here. Hermes
@@ -20983,7 +20996,8 @@ final class AppState: ObservableObject {
     /// the list doesn't, one started on another device, reads the catalog
     /// again; so does a list left on screen for 30 s, for renames and
     /// deletions made elsewhere (5 minutes on a gateway that pushes
-    /// `sessions.changed`, which reads them as they come). Reads go through
+    /// `sessions.changed`, which reads them as they come, and 30 s again
+    /// while a change waits on a turn running here). Reads go through
     /// the coalesced read Back uses. Returns the wait before the next tick:
     /// 4 s while a turn runs or something on the list changed, then 8, 15,
     /// 30 and 60 s while nothing moves, and 120 s with change events
@@ -21030,8 +21044,10 @@ final class AppState: ObservableObject {
             registry = []
         }
         // A gateway that pushes `sessions.changed` has each change read as
-        // it comes: the timed read is only its backstop (issue 851).
-        let fallback = followsChanges
+        // it comes: the timed read is only its backstop (issue 851). One
+        // held back by a turn here keeps the 30 s read, so a chat deleted
+        // elsewhere during a long reply leaves as it did before.
+        let fallback = followsChanges && !catalogChangeSignal.isPending
             ? ChatListCatalogFreshness.fallbackIntervalFollowingChanges
             : ChatListCatalogFreshness.fallbackInterval
         if chatListCatalogFreshness.shouldRead(olderThan: fallback, now: chatSyncNow()) {
@@ -32697,6 +32713,7 @@ final class AppState: ObservableObject {
             let freshConnection = HermesConnection(baseUrl: savedConnection.baseUrl, ticket: ticket)
             previousClient = client
             let nextClient = makeClient(connection: freshConnection, profile: target)
+            if let previousClient { nextClient.inheritSessionProfiles(from: previousClient) }
             previousMessages = messages
             previousOfflineChatPresentation = offlineChatPresentation
             previousTranscriptDashboardID = activeDashboardID

@@ -589,7 +589,7 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertFalse(quieted)
         XCTAssertEqual(appState.activeDashboardID, dashboardA)
         XCTAssertEqual(appState.pinSyncNotice?.message,
-                       AppLocalization.string("Pulse goes quiet in the other workspace when the call ends."))
+                       AppLocalization.string("Pulse goes quiet in the other workspace when the call ends.", table: .pulse))
         XCTAssertNil(appState.errorMessage, "nothing stale for the composer to show later")
         XCTAssertTrue(appState.isVoiceCallInProgress)
         XCTAssertEqual(notifications.pendingPulseQuiet, target)

@@ -188,7 +188,7 @@ struct HermesCallWaiting: Equatable {
     /// the app's language: the question, its numbered choices, and how to
     /// answer. `asker`: who asks, for a job ("Check the server asks: …").
     static func spokenQuestion(_ question: Question, asker: String? = nil) -> String {
-        var line = asker.map { AppLocalization.string("\($0) asks: \(question.text)") }
+        var line = asker.map { AppLocalization.string("\($0) asks: \(question.text)", table: .voice) }
             ?? AppLocalization.string("Hermes asks: \(question.text)")
         for (number, choice) in question.choices.enumerated() {
             line += "\n\(number + 1). \(choice.label)"
@@ -196,10 +196,10 @@ struct HermesCallWaiting: Equatable {
         line += "\n" + (question.choices.isEmpty
             ? AppLocalization.string("Answer in your own words.")
             : question.multiSelect
-                ? AppLocalization.string("Say the numbers of your choices, you may pick several, or answer in your own words.")
-                : AppLocalization.string("Say the number of your choice, or answer in your own words."))
+                ? AppLocalization.string("Say the numbers of your choices, you may pick several, or answer in your own words.", table: .voice)
+                : AppLocalization.string("Say the number of your choice, or answer in your own words.", table: .voice))
         if question.mayLeaveBlank {
-            line += " " + AppLocalization.string("Or say skip to leave it blank.")
+            line += " " + AppLocalization.string("Or say skip to leave it blank.", table: .voice)
         }
         return line
     }

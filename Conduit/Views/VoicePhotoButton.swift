@@ -46,7 +46,7 @@ struct VoicePhotoButton<Face: View>: View {
                 .ignoresSafeArea()
             }
             .alert(
-                AppLocalization.string("The photo wasn't added"),
+                AppLocalization.string("The photo wasn't added", table: .voice),
                 isPresented: Binding(get: { failure != nil }, set: { if !$0 { failure = nil } })
             ) {
                 Button(AppLocalization.string("OK"), role: .cancel) {}
@@ -65,8 +65,8 @@ struct LiveVoiceCallPhotoButton: View {
             LiveVoiceCallButton(
                 symbol: "camera.fill",
                 title: AppLocalization.string("Camera"),
-                voiceOverLabel: AppLocalization.string("Take a photo"),
-                voiceOverHint: AppLocalization.string("Adds a photo to the chat for your next question"),
+                voiceOverLabel: AppLocalization.string("Take a photo", table: .voice),
+                voiceOverHint: AppLocalization.string("Adds a photo to the chat for your next question", table: .voice),
                 action: open
             )
         }

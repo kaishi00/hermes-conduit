@@ -532,17 +532,17 @@ enum NotificationDetail: CaseIterable {
 
     var title: String {
         switch self {
-        case .generic: return AppLocalization.string("Generic")
-        case .chatNames: return AppLocalization.string("Chat names")
-        case .previews: return AppLocalization.string("Full previews")
+        case .generic: return AppLocalization.string("Generic", table: .notifications)
+        case .chatNames: return AppLocalization.string("Chat names", table: .notifications)
+        case .previews: return AppLocalization.string("Full previews", table: .notifications)
         }
     }
 
     var caption: String {
         switch self {
-        case .generic: return AppLocalization.string("Notifications say only what happened, like “Response ready”.")
-        case .chatNames: return AppLocalization.string("Notifications name the chat and profile, without what Hermes said.")
-        case .previews: return AppLocalization.string("Notifications name the chat and profile and show what Hermes said.")
+        case .generic: return AppLocalization.string("Notifications say only what happened, like “Response ready”.", table: .notifications)
+        case .chatNames: return AppLocalization.string("Notifications name the chat and profile, without what Hermes said.", table: .notifications)
+        case .previews: return AppLocalization.string("Notifications name the chat and profile and show what Hermes said.", table: .notifications)
         }
     }
 }
@@ -877,9 +877,9 @@ final class PushNotificationService: ObservableObject {
 
     var isEnabled: Bool { registration != nil && preferences.enabled }
     var statusText: String {
-        if isWorking { return AppLocalization.string("Updating") }
-        if isEnabled { return AppLocalization.string("Enabled") }
-        if authorizationStatus == .denied { return AppLocalization.string("Notifications denied") }
+        if isWorking { return AppLocalization.string("Updating", table: .notifications) }
+        if isEnabled { return AppLocalization.string("Enabled", table: .notifications) }
+        if authorizationStatus == .denied { return AppLocalization.string("Notifications denied", table: .notifications) }
         return AppLocalization.string("Off")
     }
 
@@ -1569,15 +1569,15 @@ final class PushNotificationService: ObservableObject {
         var errorDescription: String? {
             switch self {
             case .unregistered:
-                return AppLocalization.string("This iPhone isn't set up to answer from notifications. Set it up again in Settings > Notifications.")
+                return AppLocalization.string("This iPhone isn't set up to answer from notifications. Set it up again in Settings > Notifications.", table: .notifications)
             case .transport(let message):
-                return AppLocalization.string("Couldn't send your answer: \(message)")
+                return AppLocalization.string("Couldn't send your answer: \(message)", table: .notifications)
             case .server:
-                return AppLocalization.string("Your answer wasn't accepted. Open the chat in Conduit and answer there.")
+                return AppLocalization.string("Your answer wasn't accepted. Open the chat in Conduit and answer there.", table: .notifications)
             case .insecureTransport:
-                return AppLocalization.string("The notification relay address must start with https://. Fix it in Settings > Notifications.")
+                return AppLocalization.string("The notification relay address must start with https://. Fix it in Settings > Notifications.", table: .notifications)
             case .answerTooLarge:
-                return AppLocalization.string("That answer is too long to send from a notification card. Open the chat in Conduit and answer there.")
+                return AppLocalization.string("That answer is too long to send from a notification card. Open the chat in Conduit and answer there.", table: .notifications)
             }
         }
     }
@@ -1801,7 +1801,7 @@ final class PushNotificationService: ObservableObject {
         do {
             let (data, response) = try await URLSession.shared.data(for: request)
             guard let http = response as? HTTPURLResponse else {
-                throw RelayDecisionError.transport(AppLocalization.string("invalid response"))
+                throw RelayDecisionError.transport(AppLocalization.string("invalid response", table: .notifications))
             }
             let json = (try? JSONSerialization.jsonObject(with: data)) as? [String: Any]
             let remaining = json?["remaining"] as? [String]
@@ -1923,7 +1923,7 @@ final class PushNotificationService: ObservableObject {
         // Gateway discriminators belong to the old relay; echoing one to
         // the new relay could only fail or mis-route.
         relayGatewayIDsByRequestID.removeAll()
-        relayNotice = AppLocalization.string("Moved to the new relay. Pair each Hermes profile again to keep receiving notifications.")
+        relayNotice = AppLocalization.string("Moved to the new relay. Pair each Hermes profile again to keep receiving notifications.", table: .notifications)
         await refreshMeta()
     }
 
@@ -1985,7 +1985,7 @@ final class PushNotificationService: ObservableObject {
         pairingExpiry = nil
         lastError = nil
         guard let registration else {
-            lastError = AppLocalization.string("Turn on notifications on this device before creating a pairing code.")
+            lastError = AppLocalization.string("Turn on notifications on this device before creating a pairing code.", table: .notifications)
             return
         }
         isWorking = true
@@ -2074,7 +2074,7 @@ final class PushNotificationService: ObservableObject {
             throw DashboardTicketBridgeError.notReady
         }
         guard response["ok"] as? Bool == true, response["installation_id"] as? String == registration.installationID else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The plugin didn't confirm the pairing."))
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The plugin didn't confirm the pairing.", table: .notifications))
         }
         await refreshMeta()
         return response["gateway_id"] as? String
@@ -3233,22 +3233,22 @@ final class PushNotificationService: ObservableObject {
         let body = try? JSONDecoder().decode(RelayErrorBody.self, from: data)
         switch body?.error {
         case "unauthorized":
-            return AppLocalization.string("The push relay no longer knows this iPhone. Turn notifications off and on again in Settings > Notifications.")
+            return AppLocalization.string("The push relay no longer knows this iPhone. Turn notifications off and on again in Settings > Notifications.", table: .notifications)
         case "invalid_topic", "production_only":
-            return AppLocalization.string("The push relay can't send to this build of Conduit. Check the relay's APNs settings.")
+            return AppLocalization.string("The push relay can't send to this build of Conduit. Check the relay's APNs settings.", table: .notifications)
         case "invalid_device_token", "token_proof_required", "token_proof_invalid":
-            return AppLocalization.string("The push relay couldn't confirm this iPhone's push token. Try again.")
+            return AppLocalization.string("The push relay couldn't confirm this iPhone's push token. Try again.", table: .notifications)
         case "installation_limit_reached", "gateway_limit_reached":
-            return AppLocalization.string("The push relay has no room for this iPhone. Ask whoever runs it to make room.")
+            return AppLocalization.string("The push relay has no room for this iPhone. Ask whoever runs it to make room.", table: .notifications)
         case "rate_limited":
-            return AppLocalization.string("The push relay is busy. Try again in a minute.")
+            return AppLocalization.string("The push relay is busy. Try again in a minute.", table: .notifications)
         case "answer_too_large":
             return RelayDecisionError.answerTooLarge.errorDescription ?? ""
         case let code? where !code.isEmpty:
-            return AppLocalization.string("Push relay request failed (\(code)).")
+            return AppLocalization.string("Push relay request failed (\(code)).", table: .notifications)
         default:
             if let message = body?.message, !message.isEmpty { return message }
-            return AppLocalization.string("Push relay request failed.")
+            return AppLocalization.string("Push relay request failed.", table: .notifications)
         }
     }
 
@@ -3411,10 +3411,10 @@ private enum PushNotificationError: LocalizedError {
     case relay(String)
     var errorDescription: String? {
         switch self {
-        case .permissionDenied: return AppLocalization.string("Allow notifications in Settings to continue.")
-        case .tokenTimeout: return AppLocalization.string("Apple didn't return a push token in time. Check your connection and try again.")
-        case .tokenRequestPending: return AppLocalization.string("Still waiting for a push token from Apple. Try again in a moment.")
-        case .tokenProofTimeout: return AppLocalization.string("The push relay's check didn't reach this iPhone in time. Check your connection and try again.")
+        case .permissionDenied: return AppLocalization.string("Allow notifications in Settings to continue.", table: .notifications)
+        case .tokenTimeout: return AppLocalization.string("Apple didn't return a push token in time. Check your connection and try again.", table: .notifications)
+        case .tokenRequestPending: return AppLocalization.string("Still waiting for a push token from Apple. Try again in a moment.", table: .notifications)
+        case .tokenProofTimeout: return AppLocalization.string("The push relay's check didn't reach this iPhone in time. Check your connection and try again.", table: .notifications)
         case .relay(let message): return message
         }
     }

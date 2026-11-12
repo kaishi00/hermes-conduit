@@ -161,24 +161,24 @@ struct V2VoiceButton: View {
     private var conversationCallLabel: String {
         if appState.openChatCallToResume != nil { return AppLocalization.string("Resume call") }
         if appState.activeBotChatProfile != nil {
-            return AppLocalization.string("Call \(appState.conversationAgentIdentity.name)")
+            return AppLocalization.string("Call \(appState.conversationAgentIdentity.name)", table: .voice)
         }
-        return AppLocalization.string("Talk in this conversation")
+        return AppLocalization.string("Talk in this conversation", table: .voice)
     }
 
     private var label: String {
-        if returnsToCall { return AppLocalization.string("Return to call") }
+        if returnsToCall { return AppLocalization.string("Return to call", table: .voice) }
         if dictates { return AppLocalization.string("Dictate") }
-        if recordsMessage { return AppLocalization.string("Record voice message") }
-        if needsSetup { return AppLocalization.string("Set up voice") }
+        if recordsMessage { return AppLocalization.string("Record voice message", table: .voice) }
+        if needsSetup { return AppLocalization.string("Set up voice", table: .voice) }
         switch context {
         case .home: return AppLocalization.string("New voice call")
         case .bots:
-            return callableBots.isEmpty ? AppLocalization.string("New voice call") : AppLocalization.string("Call a bot")
+            return callableBots.isEmpty ? AppLocalization.string("New voice call") : AppLocalization.string("Call a bot", table: .voice)
         case .project(let project):
             return Self.folder(of: project) == nil
                 ? AppLocalization.string("New voice call")
-                : AppLocalization.string("Talk in this project")
+                : AppLocalization.string("Talk in this project", table: .voice)
         case .conversation:
             return conversationCallLabel
         }
@@ -187,18 +187,18 @@ struct V2VoiceButton: View {
     private var hint: String? {
         if dictates {
             return canAct
-                ? AppLocalization.string("Types what you say into the message. Touch and hold for a live call.")
+                ? AppLocalization.string("Types what you say into the message. Touch and hold for a live call.", table: .voice)
                 : nil
         }
         if recordsMessage {
             return canAct
-                ? AppLocalization.string("Records a voice message. Or touch and hold to record, and let go to send.")
+                ? AppLocalization.string("Records a voice message. Or touch and hold to record, and let go to send.", table: .voice)
                 : nil
         }
         if !canAct { return appState.phoneVoiceUnavailableReason }
-        if showsChatMenu { return AppLocalization.string("Touch and hold to dictate instead") }
-        if showsBotMenu { return AppLocalization.string("Lists your bots to call one") }
-        return showsRecentMenu ? AppLocalization.string("Touch and hold for recent conversations") : nil
+        if showsChatMenu { return AppLocalization.string("Touch and hold to dictate instead", table: .voice) }
+        if showsBotMenu { return AppLocalization.string("Lists your bots to call one", table: .voice) }
+        return showsRecentMenu ? AppLocalization.string("Touch and hold for recent conversations", table: .voice) : nil
     }
 
     var body: some View {

@@ -24,8 +24,8 @@ extension PulseNotifications {
     /// notification saying so, whose tap tries again with Conduit open.
     static func retryRequest(target: PulseQuietTarget?) -> UNNotificationRequest {
         let content = UNMutableNotificationContent()
-        content.title = AppLocalization.string("Pulse isn't quiet yet")
-        content.body = AppLocalization.string("Tap to try again in Conduit.")
+        content.title = AppLocalization.string("Pulse isn't quiet yet", table: .notifications)
+        content.body = AppLocalization.string("Tap to try again in Conduit.", table: .notifications)
         content.threadIdentifier = "pulse"
         var userInfo: [String: String] = [:]
         if let dashboard = target?.dashboardID { userInfo[retryDashboardKey] = dashboard }

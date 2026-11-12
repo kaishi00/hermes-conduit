@@ -51,7 +51,7 @@ struct V2PulseButton: View {
         .buttonStyle(PressableButtonStyle())
         .simultaneousGesture(TapGesture().onEnded { Haptics.selection() })
         .accessibilityLabel(appState.pulseUnseen > 0
-            ? AppLocalization.string("Pulse, new cards")
+            ? AppLocalization.string("Pulse, new cards", table: .pulse)
             : AppLocalization.string("Pulse"))
         .accessibilityIdentifier(named ? "bots.pulse" : "chats.pulse")
     }
@@ -118,8 +118,8 @@ struct PulseMessageMark: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(PressableButtonStyle())
-        .accessibilityLabel(AppLocalization.string("Pulse follows this up"))
-        .accessibilityHint(AppLocalization.string("Opens its card in Pulse"))
+        .accessibilityLabel(AppLocalization.string("Pulse follows this up", table: .pulse))
+        .accessibilityHint(AppLocalization.string("Opens its card in Pulse", table: .pulse))
     }
 }
 
@@ -276,7 +276,7 @@ struct V2PulsePage: View {
     private var pageWithDialogs: some View {
         pageSheets
         .confirmationDialog(
-            AppLocalization.string("What was wrong with it?"),
+            AppLocalization.string("What was wrong with it?", table: .pulse),
             isPresented: Binding(get: { reasonCard != nil }, set: { if !$0 { reasonCard = nil } }),
             titleVisibility: .visible,
             presenting: reasonCard
@@ -284,12 +284,12 @@ struct V2PulsePage: View {
             ForEach(appState.pulseDownReasons) { reason in
                 Button(reason.title) { rate(card, up: false, reason: reason) }
             }
-            Button(AppLocalization.string("Just thumbs down")) { rate(card, up: false, reason: nil) }
+            Button(AppLocalization.string("Just thumbs down", table: .pulse)) { rate(card, up: false, reason: nil) }
         } message: { _ in
             Text("A reason changes what Pulse does right away, and you can undo it under What Pulse learned. Just thumbs down only teaches Pulse.")
         }
         .confirmationDialog(
-            AppLocalization.string("Not now, until when?"),
+            AppLocalization.string("Not now, until when?", table: .pulse),
             isPresented: Binding(get: { restCard != nil }, set: { if !$0 { restCard = nil } }),
             titleVisibility: .visible,
             presenting: restCard
@@ -301,8 +301,8 @@ struct V2PulsePage: View {
             Text("It comes back as new then, unless it got done meanwhile.")
         }
         .confirmationDialog(
-            undoCard?.proposal?.isEvent == false ? AppLocalization.string("Remove it from your reminders?")
-                : AppLocalization.string("Remove it from your calendar?"),
+            undoCard?.proposal?.isEvent == false ? AppLocalization.string("Remove it from your reminders?", table: .pulse)
+                : AppLocalization.string("Remove it from your calendar?", table: .pulse),
             isPresented: Binding(get: { undoCard != nil }, set: { if !$0 { undoCard = nil } }),
             titleVisibility: .visible,
             presenting: undoCard
@@ -373,7 +373,7 @@ struct V2PulsePage: View {
                             .padding(.horizontal, 20)
                     }
                     ContentUnavailableView {
-                        Label(AppLocalization.string("Nothing yet"), systemImage: "waveform.path.ecg")
+                        Label(AppLocalization.string("Nothing yet", table: .pulse), systemImage: "waveform.path.ecg")
                     } description: {
                         Text("Your reports, your morning brief and the news on what Hermes promised to check land here.")
                     } actions: {
@@ -387,7 +387,7 @@ struct V2PulsePage: View {
             }
         } else if let loadError {
             ContentUnavailableView {
-                Label(AppLocalization.string("Couldn't read Pulse"), systemImage: "exclamationmark.triangle")
+                Label(AppLocalization.string("Couldn't read Pulse", table: .pulse), systemImage: "exclamationmark.triangle")
             } description: {
                 Text(verbatim: loadError)
             } actions: {
@@ -438,7 +438,7 @@ struct V2PulsePage: View {
                     }
                     if !earlier.isEmpty {
                         if !fresh.isEmpty || !layout.briefs.isEmpty {
-                            sectionHeading(AppLocalization.string("Earlier"))
+                            sectionHeading(AppLocalization.string("Earlier", table: .pulse))
                         }
                         ForEach(earlier) { card in listedCard(card) }
                     }
@@ -480,8 +480,8 @@ struct V2PulsePage: View {
     /// The line under the title: how many are new, or that nothing is open.
     @ViewBuilder private func summary(_ layout: PulseLayout, new count: Int) -> some View {
         if count > 0 || layout.isCaughtUp {
-            Text(verbatim: count > 0 ? AppLocalization.string("\(count) new since you last looked")
-                                     : AppLocalization.string("You're all caught up"))
+            Text(verbatim: count > 0 ? AppLocalization.string("\(count) new since you last looked", table: .pulse)
+                                     : AppLocalization.string("You're all caught up", table: .pulse))
                 .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 4)
@@ -572,7 +572,7 @@ struct V2PulsePage: View {
                 Button {
                     quiet(false)
                 } label: {
-                    Text(verbatim: AppLocalization.string("End quiet time"))
+                    Text(verbatim: AppLocalization.string("End quiet time", table: .pulse))
                         .scaledFont(.footnote.weight(.semibold))
                         .frame(minHeight: 44)  // a full 44 pt to tap
                 }
@@ -659,7 +659,7 @@ struct V2PulsePage: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.borderless)
-                .accessibilityLabel(AppLocalization.string("Fold the morning brief"))
+                .accessibilityLabel(AppLocalization.string("Fold the morning brief", table: .pulse))
                 .accessibilityIdentifier("pulse.brief.fold")
             }
             // In its parts when the plugin sends them (0.150.0), else as Hermes wrote it.
@@ -683,8 +683,8 @@ struct V2PulsePage: View {
     private func briefStamp(_ brief: PulseLayout.Brief) -> String? {
         let time = brief.card.createdAt.map { $0.formatted(date: .omitted, time: .shortened) }
         if brief.isSummary { return time }
-        let left = brief.isHandled ? AppLocalization.string("All handled")
-            : AppLocalization.string("\(Int(brief.left)) left")
+        let left = brief.isHandled ? AppLocalization.string("All handled", table: .pulse)
+            : AppLocalization.string("\(Int(brief.left)) left", table: .pulse)
         return [time, left].compactMap { $0 }.joined(separator: " · ")
     }
 
@@ -824,7 +824,7 @@ struct V2PulsePage: View {
         }
         .buttonStyle(.plain)
         .accessibilityAddTraits(.isHeader)
-        .accessibilityHint(Text(AppLocalization.string("Shows what the brief brought")))
+        .accessibilityHint(Text(AppLocalization.string("Shows what the brief brought", table: .pulse)))
         .accessibilityFocused($voiceOverCard, equals: brief.card.id)
         .accessibilityIdentifier("pulse.brief.open")
     }
@@ -838,7 +838,7 @@ struct V2PulsePage: View {
         } label: {
             HStack(spacing: 10) {
                 Image(systemName: "checkmark.circle")
-                Text(AppLocalization.string("Done and cleared"))
+                Text(AppLocalization.string("Done and cleared", table: .pulse))
                 Text(verbatim: "\(count)")
                     .foregroundStyle(.conduitTertiary)
                 Spacer(minLength: 0)
@@ -854,7 +854,7 @@ struct V2PulsePage: View {
         }
         .buttonStyle(.plain)
         .padding(.top, 6)
-        .accessibilityHint(Text(AppLocalization.string("Shows the cards that are done or swiped away")))
+        .accessibilityHint(Text(AppLocalization.string("Shows the cards that are done or swiped away", table: .pulse)))
         .accessibilityAddTraits(showsCleared ? .isSelected : [])
         .accessibilityIdentifier("pulse.done-cards")
         .pulseRow()
@@ -891,9 +891,9 @@ struct V2PulsePage: View {
     private func showUndo(_ action: PulseUndo.Action, card: Int, back: Date? = nil) {
         // The page was left before the plugin answered: no bar comes back later.
         guard isShown else { return }
-        var message = AppLocalization.string("Marked done")
+        var message = AppLocalization.string("Marked done", table: .pulse)
         if action == .dismissed {
-            message = AppLocalization.string("Moved to Done and cleared. Pulse learned nothing from it.")
+            message = AppLocalization.string("Moved to Done and cleared. Pulse learned nothing from it.", table: .pulse)
             // Put off until a time: the one the plugin set, as the cleared row says it.
             if let back { message = PulseRest.returning(back).undoMessage }
         }
@@ -910,7 +910,7 @@ struct V2PulsePage: View {
     }
 
     private static var untoldNote: String {
-        AppLocalization.string("Pulse couldn't be told about this one. Tap Done once it's taken care of.")
+        AppLocalization.string("Pulse couldn't be told about this one. Tap Done once it's taken care of.", table: .pulse)
     }
 
     /// One request at a time per card, whichever of its buttons sent it.
@@ -1166,7 +1166,7 @@ struct V2PulsePage: View {
             .foregroundStyle(.secondary) : nil
         // Rewritten since because the thing it follows changed (0.150.0): when, last.
         let stamp: String? = if card.wasUpdated, let updated = card.updatedAt {
-            AppLocalization.string("Updated \(PulseTopicTint.stamp(updated))")
+            AppLocalization.string("Updated \(PulseTopicTint.stamp(updated))", table: .pulse)
         } else {
             card.createdAt.map { PulseTopicTint.stamp($0) }
         }
@@ -1199,7 +1199,7 @@ struct V2PulsePage: View {
                     .buttonStyle(.borderless)
                     .accessibilityValue(expandedWhy.contains(card.id)
                         ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
-                    .accessibilityHint(AppLocalization.string("Shows why Pulse brought this up"))
+                    .accessibilityHint(AppLocalization.string("Shows why Pulse brought this up", table: .pulse))
                 }
             }
         }
@@ -1268,7 +1268,7 @@ struct V2PulsePage: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "checklist")
-                Text(verbatim: AppLocalization.string("Kanban task \(task)"))
+                Text(verbatim: AppLocalization.string("Kanban task \(task)", table: .pulse))
                     .lineLimit(1)
                 Image(systemName: "chevron.right")
                     .scaledFont(.caption2.weight(.semibold))
@@ -1277,7 +1277,7 @@ struct V2PulsePage: View {
             .foregroundStyle(.secondary)
         }
         .buttonStyle(.borderless)
-        .accessibilityHint(Text(AppLocalization.string("Opens the task on the board")))
+        .accessibilityHint(Text(AppLocalization.string("Opens the task on the board", table: .pulse)))
         .accessibilityIdentifier("pulse.card.task")
     }
 
@@ -1288,7 +1288,7 @@ struct V2PulsePage: View {
         } label: {
             HStack(spacing: 6) {
                 Image(systemName: "bubble.left")
-                Text(verbatim: card.chatTitle.isEmpty ? AppLocalization.string("Open the chat") : card.chatTitle)
+                Text(verbatim: card.chatTitle.isEmpty ? AppLocalization.string("Open the chat", table: .pulse) : card.chatTitle)
                     .lineLimit(1)
                 Image(systemName: "chevron.right")
                     .scaledFont(.caption2.weight(.semibold))
@@ -1380,12 +1380,12 @@ struct V2PulsePage: View {
                 Haptics.selection()
                 dismiss(card, false)
             } label: {
-                Text(AppLocalization.string("Put back"))
+                Text(AppLocalization.string("Put back", table: .pulse))
                     .scaledFont(.footnote.weight(.medium))
             }
             .buttonStyle(.borderless)
             .disabled(isBusy(card))
-            .accessibilityHint(Text(AppLocalization.string("Puts the card back on the list")))
+            .accessibilityHint(Text(AppLocalization.string("Puts the card back on the list", table: .pulse)))
         } else if card.doneAt != nil, appState.notifierPlugin.reports(PulseClient.doneCapability) {
             Button {
                 Haptics.selection()
@@ -1396,7 +1396,7 @@ struct V2PulsePage: View {
             }
             .buttonStyle(.borderless)
             .disabled(isBusy(card))
-            .accessibilityLabel(Text(AppLocalization.string("Undo Done")))
+            .accessibilityLabel(Text(AppLocalization.string("Undo Done", table: .pulse)))
             .accessibilityHint(Text(card.undoDoneHint))
             .accessibilityIdentifier("pulse.card.undo-done")
         }
@@ -1422,7 +1422,7 @@ struct V2PulsePage: View {
                     .controlSize(.small)
                     .tint(.gray)
                     .disabled(isBusy(card))
-                    .accessibilityHint(Text(AppLocalization.string("Pulse won't add it")))
+                    .accessibilityHint(Text(AppLocalization.string("Pulse won't add it", table: .pulse)))
                     .accessibilityIdentifier("pulse.card.proposal-not-now")
                     Spacer(minLength: 0)
                 }
@@ -1442,8 +1442,8 @@ struct V2PulsePage: View {
                             .buttonStyle(.borderless)
                             .disabled(isBusy(card))
                             .accessibilityHint(Text(proposal.isEvent
-                                ? AppLocalization.string("Removes it from your calendar")
-                                : AppLocalization.string("Removes it from your reminders")))
+                                ? AppLocalization.string("Removes it from your calendar", table: .pulse)
+                                : AppLocalization.string("Removes it from your reminders", table: .pulse)))
                             .accessibilityIdentifier("pulse.card.proposal-undo")
                         }
                     }
@@ -1476,8 +1476,8 @@ struct V2PulsePage: View {
         .buttonStyle(.borderedProminent)
         .controlSize(.small)
         .tint(.conduitAccent)
-        .accessibilityHint(Text(proposal.isEvent ? AppLocalization.string("Adds it to your calendar")
-                                                 : AppLocalization.string("Adds it to your reminders")))
+        .accessibilityHint(Text(proposal.isEvent ? AppLocalization.string("Adds it to your calendar", table: .pulse)
+                                                 : AppLocalization.string("Adds it to your reminders", table: .pulse)))
         .disabled(isBusy(card))
         .accessibilityIdentifier("pulse.card.proposal-add")
     }
@@ -1545,7 +1545,7 @@ struct V2PulsePage: View {
         .modifier(PulseActionStyle(bar: bar, prominent: true, tint: .conduitAccent))
         .contextMenu {
             if !bots.isEmpty {
-                Section(AppLocalization.string("Do it in")) {
+                Section(AppLocalization.string("Do it in", table: .pulse)) {
                     Button {
                         doIt(card, ask: ask, in: .newChat)
                     } label: {
@@ -1563,13 +1563,13 @@ struct V2PulsePage: View {
         }
         .accessibilityHint(Text(ask != nil
             ? (appState.pulseCardHasChat(card)
-                ? AppLocalization.string("Opens the chat with these words to edit before sending")
-                : bot.map { AppLocalization.string("Opens \($0.displayLabel)'s Bot Chat with these words to edit before sending") }
-                    ?? AppLocalization.string("Opens a new chat with these words to edit before sending"))
+                ? AppLocalization.string("Opens the chat with these words to edit before sending", table: .pulse)
+                : bot.map { AppLocalization.string("Opens \($0.displayLabel)'s Bot Chat with these words to edit before sending", table: .pulse) }
+                    ?? AppLocalization.string("Opens a new chat with these words to edit before sending", table: .pulse))
             : (appState.pulseCardHasChat(card)
-                ? AppLocalization.string("Opens the chat with this reminder ready to send")
-                : bot.map { AppLocalization.string("Opens \($0.displayLabel)'s Bot Chat with this reminder ready to send") }
-                    ?? AppLocalization.string("Opens a new chat with this reminder ready to send"))))
+                ? AppLocalization.string("Opens the chat with this reminder ready to send", table: .pulse)
+                : bot.map { AppLocalization.string("Opens \($0.displayLabel)'s Bot Chat with this reminder ready to send", table: .pulse) }
+                    ?? AppLocalization.string("Opens a new chat with this reminder ready to send", table: .pulse))))
         .disabled(actingCard != nil || isBusy(card))
         .accessibilityIdentifier("pulse.card.do-it")
     }
@@ -1668,8 +1668,8 @@ struct V2PulsePage: View {
         }
         .modifier(PulseActionStyle(bar: bar, prominent: false, tint: .conduitAccent))
         .accessibilityHint(Text(card.isFound
-            ? AppLocalization.string("Tells Pulse this is taken care of, so the next report knows it's done")
-            : AppLocalization.string("Tells Pulse this is taken care of, so it stops checking on it")))
+            ? AppLocalization.string("Tells Pulse this is taken care of, so the next report knows it's done", table: .pulse)
+            : AppLocalization.string("Tells Pulse this is taken care of, so it stops checking on it", table: .pulse)))
         .disabled(isBusy(card))
         .accessibilityIdentifier("pulse.card.done")
     }
@@ -1689,7 +1689,7 @@ struct V2PulsePage: View {
         }
         .buttonStyle(PressableButtonStyle())
         .disabled(isBusy(card))
-        .accessibilityLabel(up ? AppLocalization.string("Useful") : AppLocalization.string("Not useful"))
+        .accessibilityLabel(up ? AppLocalization.string("Useful", table: .pulse) : AppLocalization.string("Not useful", table: .pulse))
         .accessibilityAddTraits(chosen ? .isSelected : [])
     }
 
@@ -1755,7 +1755,7 @@ struct V2PulsePage: View {
                 }
                 errorMessage = nil
                 learnedNote = rated.lessons.isEmpty ? nil
-                    : AppLocalization.string("Pulse learned: \(rated.lessons.map(\.text).joined(separator: "; "))")
+                    : AppLocalization.string("Pulse learned: \(rated.lessons.map(\.text).joined(separator: "; "))", table: .pulse)
             } catch {
                 guard appState.activeDashboardID == dashboard else { return }
                 showError(PulseRefusal.message(for: error))
@@ -1897,11 +1897,11 @@ struct V2PulsePage: View {
                 } else if outcome == .off {
                     // This phone never gets it: the device sharing the calendar does.
                     showError(AppLocalization.string(
-                        "This iPhone doesn't share its calendar with Hermes, so the change waits for a device that does."))
+                        "This iPhone doesn't share its calendar with Hermes, so the change waits for a device that does.", table: .pulse))
                 } else if outcome != .synced {
                     // Still Adding… because this phone's pass didn't get the change, not just slow.
                     showError(AppLocalization.string(
-                        "This iPhone couldn't get the change from Hermes yet. Conduit tries again the next time it syncs with Hermes."))
+                        "This iPhone couldn't get the change from Hermes yet. Conduit tries again the next time it syncs with Hermes.", table: .pulse))
                 }
                 // Synced and still Adding…: the label says so, and the next load settles it.
             } catch {
@@ -2048,7 +2048,7 @@ struct PulseLearnedSheet: View {
         NavigationStack {
             SettingsDetailContainer {
                 if let learned {
-                    ConduitSettingsSection(title: AppLocalization.string("How Pulse tells you"), symbol: "bell.badge", tint: .conduitAccent) {
+                    ConduitSettingsSection(title: AppLocalization.string("How Pulse tells you", table: .pulse), symbol: "bell.badge", tint: .conduitAccent) {
                         ForEach(learned.levels.keys.sorted(), id: \.self) { kind in
                             ConduitMenuPicker(
                                 value: learned.levels[kind] ?? .push,
@@ -2065,7 +2065,7 @@ struct PulseLearnedSheet: View {
                     if appState.pulseExplainsLearning {
                         preferencesSection(learned)
                     }
-                    ConduitSettingsSection(title: AppLocalization.string("Learned from your ratings"), symbol: "hand.thumbsup", tint: .blue) {
+                    ConduitSettingsSection(title: AppLocalization.string("Learned from your ratings", table: .pulse), symbol: "hand.thumbsup", tint: .blue) {
                         if learned.lessons.isEmpty {
                             Text(verbatim: PulseLearned.noLessons(learns: learns))
                                 .foregroundStyle(.secondary)
@@ -2084,7 +2084,7 @@ struct PulseLearnedSheet: View {
                                 Button(AppLocalization.string("Undo")) { undo(lesson) }
                                     .buttonStyle(.settings)
                                     .disabled(working)
-                                    .accessibilityLabel(Text(AppLocalization.string("Undo: \(lesson.text)")))
+                                    .accessibilityLabel(Text(AppLocalization.string("Undo: \(lesson.text)", table: .pulse)))
                             }
                         }
                     }
@@ -2108,11 +2108,11 @@ struct PulseLearnedSheet: View {
                 }
             }
             .confirmationDialog(
-                AppLocalization.string("Forget everything Pulse learned?"),
+                AppLocalization.string("Forget everything Pulse learned?", table: .pulse),
                 isPresented: $confirmsStartOver,
                 titleVisibility: .visible
             ) {
-                Button(AppLocalization.string("Forget everything"), role: .destructive) { reset(nil) }
+                Button(AppLocalization.string("Forget everything", table: .pulse), role: .destructive) { reset(nil) }
             } message: {
                 Text("Pulse forgets what your thumbs, Do it and Done taught it so far and learns again from what you do next. The levels you set and the lessons from your reasons stay, and Undo takes it back.")
             }
@@ -2131,7 +2131,7 @@ struct PulseLearnedSheet: View {
     /// What learning holds, strongest first, each with Reset (but the lean
     /// over Pulse's cards in general, which only Start over forgets).
     private func preferencesSection(_ learned: PulseLearned) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("From your thumbs, Do it and Done"), symbol: "sparkles", tint: .purple) {
+        ConduitSettingsSection(title: AppLocalization.string("From your thumbs, Do it and Done", table: .pulse), symbol: "sparkles", tint: .purple) {
             if learned.preferences.isEmpty {
                 Text(verbatim: PulseLearned.noPreferences)
                     .foregroundStyle(.secondary)
@@ -2141,11 +2141,11 @@ struct PulseLearnedSheet: View {
                     PulseLearnedLine(preference: preference, headed: false)
                     Spacer(minLength: 8)
                     if preference.canReset {
-                        Button(AppLocalization.string("Reset")) { reset(preference) }
+                        Button(AppLocalization.string("Reset", table: .pulse)) { reset(preference) }
                             .buttonStyle(.settings)
                             .disabled(working)
-                            .accessibilityLabel(Text(AppLocalization.string("Reset what Pulse learned: \(preference.subject)")))
-                            .accessibilityHint(Text(AppLocalization.string("Pulse forgets what it learned about this")))
+                            .accessibilityLabel(Text(AppLocalization.string("Reset what Pulse learned: \(preference.subject)", table: .pulse)))
+                            .accessibilityHint(Text(AppLocalization.string("Pulse forgets what it learned about this", table: .pulse)))
                     }
                 }
             }
@@ -2240,17 +2240,17 @@ struct PulseLeftOutSheet: View {
                         }
                     }
                     if !kept.isEmpty {
-                        ConduitSettingsSection(title: AppLocalization.string("Kept out by what you taught Pulse"), symbol: "hand.raised", tint: .purple) {
+                        ConduitSettingsSection(title: AppLocalization.string("Kept out by what you taught Pulse", table: .pulse), symbol: "hand.raised", tint: .purple) {
                             ForEach(kept) { entry in row(entry) }
                         }
                     }
                     if !reported.isEmpty {
-                        ConduitSettingsSection(title: AppLocalization.string("Left out of the report"), symbol: "doc.text", tint: .conduitAccent) {
+                        ConduitSettingsSection(title: AppLocalization.string("Left out of the report", table: .pulse), symbol: "doc.text", tint: .conduitAccent) {
                             ForEach(reported) { entry in row(entry) }
                         }
                     }
                     if !lookedAhead.isEmpty {
-                        ConduitSettingsSection(title: AppLocalization.string("Left out of the look ahead"), symbol: "binoculars", tint: .blue) {
+                        ConduitSettingsSection(title: AppLocalization.string("Left out of the look ahead", table: .pulse), symbol: "binoculars", tint: .blue) {
                             ForEach(lookedAhead) { entry in row(entry) }
                         }
                     }
@@ -2337,7 +2337,7 @@ struct PulseLeftOutSheet: View {
             HStack {
                 Spacer(minLength: 0)
                 if entry.cardID != nil {
-                    Label(AppLocalization.string("On the Pulse screen"), systemImage: "checkmark.circle.fill")
+                    Label(AppLocalization.string("On the Pulse screen", table: .pulse), systemImage: "checkmark.circle.fill")
                         .scaledFont(.footnote.weight(.semibold))
                         .foregroundStyle(.green)
                 } else {
@@ -2345,15 +2345,15 @@ struct PulseLeftOutSheet: View {
                         Haptics.selection()
                         bringUp(entry)
                     } label: {
-                        Label(AppLocalization.string("Bring it up"), systemImage: "arrow.up.circle")
+                        Label(AppLocalization.string("Bring it up", table: .pulse), systemImage: "arrow.up.circle")
                             .scaledFont(.footnote.weight(.semibold))
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
                     .tint(.conduitAccent)
                     .disabled(bringing != nil)
-                    .accessibilityLabel(Text(AppLocalization.string("Bring it up: \(entry.text)")))
-                    .accessibilityHint(Text(AppLocalization.string("Makes it a card on the Pulse screen")))
+                    .accessibilityLabel(Text(AppLocalization.string("Bring it up: \(entry.text)", table: .pulse)))
+                    .accessibilityHint(Text(AppLocalization.string("Makes it a card on the Pulse screen", table: .pulse)))
                 }
             }
         }
@@ -2394,7 +2394,7 @@ struct PulseLeftOutSheet: View {
                 if PulseRefusal(error: error)?.code == "invalid" {
                     // It came up meanwhile, or the journal let it go: the list as it is now.
                     await load()
-                    errorMessage = AppLocalization.string("Pulse no longer has that one.")
+                    errorMessage = AppLocalization.string("Pulse no longer has that one.", table: .pulse)
                 } else {
                     errorMessage = PulseRefusal.message(for: error)
                 }

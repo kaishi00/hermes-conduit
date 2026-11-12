@@ -233,7 +233,7 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
             guard responseHadAudio else {
                 // The cancel goes out before the socket closes.
                 send(["type": "response.cancel"], afterEnd: true)
-                complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Your speech server couldn't speak the reply."))))
+                complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Your speech server couldn't speak the reply.", table: .voice))))
                 closeAfterSending()
                 return
             }
@@ -250,7 +250,7 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
 
     private func failNotReadingBack() {
         send(["type": "response.cancel"], afterEnd: true)
-        complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Your speech server answered instead of reading the reply. Set its model address to the one in Conduit's voice settings."))))
+        complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Your speech server answered instead of reading the reply. Set its model address to the one in Conduit's voice settings.", table: .voice))))
         closeAfterSending()
     }
 
@@ -325,7 +325,7 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
             let error = event["error"] as? [String: Any]
             let message = (error?["message"] as? String ?? event["message"] as? String)
                 .map(HermesSpeechFailure.message)
-            fail(VoiceAudioError.unavailable(message ?? AppLocalization.string("Your speech server couldn't speak the reply.")))
+            fail(VoiceAudioError.unavailable(message ?? AppLocalization.string("Your speech server couldn't speak the reply.", table: .voice)))
         default:
             break
         }
@@ -350,7 +350,7 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
                 guard let self, !self.terminal else { return }
                 if ContinuousClock.now - self.lastActivity >= timeout { break }
             }
-            self?.fail(VoiceAudioError.unavailable(AppLocalization.string("Your speech server stopped speaking.")))
+            self?.fail(VoiceAudioError.unavailable(AppLocalization.string("Your speech server stopped speaking.", table: .voice)))
         }
     }
 
@@ -389,7 +389,7 @@ extension HermesVoiceGateway {
             )
         } catch {
             speechServerSpeechLog.notice("Speech server speak request failed: \(String(describing: error), privacy: .private)")
-            throw VoiceAudioError.unavailable(AppLocalization.string("Could not open the speech stream."))
+            throw VoiceAudioError.unavailable(AppLocalization.string("Could not open the speech stream.", table: .voice))
         }
         // The dashboard's own session cookies (cookie mode), on the
         // cookie-less, redirect-refusing dashboard socket session, like the
@@ -465,7 +465,7 @@ struct SpeechServerVoiceStatus: Equatable {
     var readFailed = false
 
     static var pluginMissingReason: String {
-        PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to have your speech server speak the replies."))
+        PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to have your speech server speak the replies.", table: .voice))
     }
 
     static var pluginMissing: SpeechServerVoiceStatus {

@@ -79,7 +79,7 @@ extension AppState {
                 let response = try await bridge.requestJSON(path: path)
                 guard isCurrent() else { return }
                 guard let values = SyncedPreferencesEngine.hostValues(response) else {
-                    controller.status = .failed(AppLocalization.string("The host's answer wasn't readable."))
+                    controller.status = .failed(AppLocalization.string("The host's answer wasn't readable.", table: .settings))
                     return
                 }
                 host = values
@@ -99,7 +99,7 @@ extension AppState {
             ])
             guard isCurrent() else { return }
             guard let values = SyncedPreferencesEngine.hostValues(response) else {
-                controller.status = .failed(AppLocalization.string("The host's answer wasn't readable."))
+                controller.status = .failed(AppLocalization.string("The host's answer wasn't readable.", table: .settings))
                 return
             }
             let entry = SyncedPreferencesEngine.apply(

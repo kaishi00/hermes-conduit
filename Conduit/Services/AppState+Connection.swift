@@ -1516,6 +1516,9 @@ extension AppState {
         guard refreshTransportContinuation() else { return }
         let profile = activeProfile
         let client = makeClient(connection: connection, profile: profile)
+        // The same dashboard: a Bot Chat this client hasn't opened again
+        // still names the bot's profile.
+        if let previousClient { client.inheritSessionProfiles(from: previousClient) }
         self.client = client
         previousClient?.disconnect()
 

@@ -193,9 +193,9 @@ enum KanbanWorkspaceKind: String, CaseIterable, Identifiable {
 
     var displayName: String {
         switch self {
-        case .scratch: return AppLocalization.string("Scratch")
-        case .worktree: return AppLocalization.string("Worktree")
-        case .dir: return AppLocalization.string("Directory")
+        case .scratch: return AppLocalization.string("Scratch", table: .tasks)
+        case .worktree: return AppLocalization.string("Worktree", table: .tasks)
+        case .dir: return AppLocalization.string("Directory", table: .tasks)
         }
     }
 
@@ -281,20 +281,20 @@ enum KanbanDraftValidationError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .emptyTitle:
-            return AppLocalization.string("A title is required.")
+            return AppLocalization.string("A title is required.", table: .tasks)
         case .invalidWorkspacePath:
             // Only scratch tasks refuse a path (allowsPathOverride), so the
             // sentence names the kinds that take one instead of inserting a
             // translated kind name. The payload stays for Equatable.
-            return AppLocalization.string("A workspace path can only be set for Worktree and Directory tasks. Hermes scratch tasks resolve their own directory.")
+            return AppLocalization.string("A workspace path can only be set for Worktree and Directory tasks. Hermes scratch tasks resolve their own directory.", table: .tasks)
         case .invalidReasoningEffort(let value):
-            return AppLocalization.string("\"\(value)\" is not a valid reasoning effort for a Hermes worker.")
+            return AppLocalization.string("\"\(value)\" is not a valid reasoning effort for a Hermes worker.", table: .tasks)
         case .invalidSkill(let skill):
-            return AppLocalization.string("\"\(skill)\" is not a usable skill name.")
+            return AppLocalization.string("\"\(skill)\" is not a usable skill name.", table: .tasks)
         case .duplicateParent(let id):
-            return AppLocalization.string("Task \(id) is already listed as a parent.")
+            return AppLocalization.string("Task \(id) is already listed as a parent.", table: .tasks)
         case .invalidGoalMaxTurns(let turns):
-            return AppLocalization.string("Goal Mode max turns must be at least 1 (got \(String(turns))).")
+            return AppLocalization.string("Goal Mode max turns must be at least 1 (got \(String(turns))).", table: .tasks)
         }
     }
 }
@@ -433,62 +433,62 @@ enum KanbanActivityFormatter {
         case "created":
             let detail: String?
             switch (status("status"), string("assignee")) {
-            case let (s?, a?): detail = AppLocalization.string("as \(s) for \(a)")
-            case let (s?, nil): detail = AppLocalization.string("as \(s)")
-            case let (nil, a?): detail = AppLocalization.string("for \(a)")
+            case let (s?, a?): detail = AppLocalization.string("as \(s) for \(a)", table: .tasks)
+            case let (s?, nil): detail = AppLocalization.string("as \(s)", table: .tasks)
+            case let (nil, a?): detail = AppLocalization.string("for \(a)", table: .tasks)
             case (nil, nil): detail = nil
             }
-            return Row(label: AppLocalization.string("Task created"), detail: detail)
+            return Row(label: AppLocalization.string("Task created", table: .tasks), detail: detail)
         case "status":
             let reason = string("reason")
             let detail: String?
             if reason == "parent_reopened" {
-                detail = AppLocalization.string("parent \(string("parent") ?? "") reopened")
+                detail = AppLocalization.string("parent \(string("parent") ?? "") reopened", table: .tasks)
             } else {
                 detail = reason
             }
-            return Row(label: AppLocalization.string("Moved to \(status("status") ?? "?")"), detail: detail)
+            return Row(label: AppLocalization.string("Moved to \(status("status") ?? "?")", table: .tasks), detail: detail)
         case "assigned":
             if let assignee = string("assignee") {
-                return Row(label: AppLocalization.string("Assigned to \(assignee)"), detail: nil)
+                return Row(label: AppLocalization.string("Assigned to \(assignee)", table: .tasks), detail: nil)
             }
-            return Row(label: AppLocalization.string("Unassigned"), detail: nil)
+            return Row(label: AppLocalization.string("Unassigned", table: .tasks), detail: nil)
         case "commented":
-            return Row(label: AppLocalization.string("Comment from \(string("author") ?? AppLocalization.string("someone"))"), detail: nil)
+            return Row(label: AppLocalization.string("Comment from \(string("author") ?? AppLocalization.string("someone", table: .tasks))", table: .tasks), detail: nil)
         case "claimed":
             return Row(
-                label: string("source_status") == "review" ? AppLocalization.string("Claimed from review") : AppLocalization.string("Claimed by worker"),
+                label: string("source_status") == "review" ? AppLocalization.string("Claimed from review", table: .tasks) : AppLocalization.string("Claimed by worker", table: .tasks),
                 detail: nil
             )
         case "spawned":
             let pid = payload["pid"]?.intValue
-            return Row(label: AppLocalization.string("Worker started"), detail: pid.map { AppLocalization.string("pid \(String($0))") })
+            return Row(label: AppLocalization.string("Worker started", table: .tasks), detail: pid.map { AppLocalization.string("pid \(String($0))") })
         case "completed":
             return Row(label: AppLocalization.string("Completed"), detail: nil)
         case "blocked":
             // Hermes' own `initial_status` code reads as what it means.
             let reason = string("reason")
             return Row(
-                label: AppLocalization.string("Blocked"),
-                detail: reason == KanbanBlockedQuestion.createdBlockedReason ? AppLocalization.string("Created as Blocked") : reason
+                label: AppLocalization.string("Blocked", table: .tasks),
+                detail: reason == KanbanBlockedQuestion.createdBlockedReason ? AppLocalization.string("Created as Blocked", table: .tasks) : reason
             )
         case "unblocked":
-            return Row(label: AppLocalization.string("Unblocked → \(status("status") ?? "")"), detail: nil)
+            return Row(label: AppLocalization.string("Unblocked → \(status("status") ?? "")", table: .tasks), detail: nil)
         case "reclaimed":
-            return Row(label: AppLocalization.string("Reclaimed"), detail: string("reason"))
+            return Row(label: AppLocalization.string("Reclaimed", table: .tasks), detail: string("reason"))
         case "specified":
-            return Row(label: AppLocalization.string("Fleshed out by triage specifier"), detail: nil)
+            return Row(label: AppLocalization.string("Fleshed out by triage specifier", table: .tasks), detail: nil)
         case "promoted":
-            return Row(label: AppLocalization.string("Promoted"), detail: nil)
+            return Row(label: AppLocalization.string("Promoted", table: .tasks), detail: nil)
         case "scheduled":
             return Row(label: AppLocalization.string("Scheduled"), detail: string("reason"))
         case "archived":
             return Row(label: AppLocalization.string("Archived"), detail: nil)
         case "reprioritized":
             let priority = payload["priority"]?.intValue
-            return Row(label: AppLocalization.string("Priority set to \(priority.map(String.init) ?? "?")"), detail: nil)
+            return Row(label: AppLocalization.string("Priority set to \(priority.map(String.init) ?? "?")", table: .tasks), detail: nil)
         case "edited":
-            return Row(label: AppLocalization.string("Details edited"), detail: nil)
+            return Row(label: AppLocalization.string("Details edited", table: .tasks), detail: nil)
         default:
             // Compact key=value detail over SCALAR payload entries only;
             // nested objects/arrays stay out of the row.

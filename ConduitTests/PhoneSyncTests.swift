@@ -168,7 +168,7 @@ extension HermesVoiceGatewayTimeoutTests {
         let newer = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(newer, .paused(.pluginMissing))
         XCTAssertEqual(engine.state.pause?.message,
-                       AppLocalization.string("Paused: update the Conduit plugin on this host to share your calendar and phone status."))
+                       AppLocalization.string("Paused: update the Conduit plugin on this host to share your calendar and phone status.", table: .phone))
         XCTAssertNotNil(keys.key, "A newer plugin's store is no reason to give up the key")
         XCTAssertEqual(host.keyRequests, 1)
 

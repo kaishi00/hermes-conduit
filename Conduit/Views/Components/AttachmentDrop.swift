@@ -89,13 +89,13 @@ enum AttachmentDrop {
     /// Why a dropped folder wasn't attached, and what to do instead.
     static func folderMessage(names: [String]) -> String {
         if names.count == 1, let name = names.first {
-            return AppLocalization.string("\(name) is a folder, so it wasn't attached. Drop the files inside it instead.")
+            return AppLocalization.string("\(name) is a folder, so it wasn't attached. Drop the files inside it instead.", table: .chat)
         }
         if names.isEmpty {
-            return AppLocalization.string("Folders can't be attached. Drop the files inside them instead.")
+            return AppLocalization.string("Folders can't be attached. Drop the files inside them instead.", table: .chat)
         }
         let list = names.joined(separator: ", ")
-        return AppLocalization.string("These folders weren't attached: \(list). Drop the files inside them instead.")
+        return AppLocalization.string("These folders weren't attached: \(list). Drop the files inside them instead.", table: .chat)
     }
 
     /// Whether a drop or paste on the composer's text field is staged as
@@ -234,7 +234,7 @@ struct AttachmentDropTarget: ViewModifier {
                                 .fill(Color.conduitAccent.opacity(0.06))
                         )
                         .overlay {
-                            Label(AppLocalization.string("Drop to attach"), systemImage: "paperclip")
+                            Label(AppLocalization.string("Drop to attach", table: .chat), systemImage: "paperclip")
                                 .scaledFont(.headline)
                                 .padding(.horizontal, 16)
                                 .padding(.vertical, 10)

@@ -251,7 +251,7 @@ final class MessageReadAloudController: ObservableObject {
         snapshot: VoiceCapabilitySnapshot,
         speechOutput: VoiceSpeechOutput = .hermes
     ) -> String? {
-        if !isConnected { return AppLocalization.string("Connect to Hermes before reading responses aloud.") }
+        if !isConnected { return AppLocalization.string("Connect to Hermes before reading responses aloud.", table: .voice) }
         if !isVoiceEnabled { return VoiceSetupIssue.voiceOff.message }
         // This iPhone's voice needs nothing from Hermes' speech setup.
         if speechOutput == .hermes, !snapshot.supportsSpeech {

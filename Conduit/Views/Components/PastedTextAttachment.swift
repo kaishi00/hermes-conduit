@@ -64,7 +64,7 @@ enum PastedText {
         attachment.kind == .document && isPastedText(attachment.name)
     }
 
-    static var displayName: String { AppLocalization.string("Pasted text") }
+    static var displayName: String { AppLocalization.string("Pasted text", table: .chat) }
 
     /// Stages a paste as a text attachment, checked against the attachment
     /// limit like a picked file.
@@ -185,7 +185,7 @@ struct PastedTextSheet: View {
             Group {
                 if unreadable {
                     ContentUnavailableView {
-                        Label(AppLocalization.string("Conduit couldn't read the pasted text."), systemImage: "doc.text")
+                        Label(AppLocalization.string("Conduit couldn't read the pasted text.", table: .chat), systemImage: "doc.text")
                     }
                 } else if original == nil {
                     ProgressView()
@@ -212,7 +212,7 @@ struct PastedTextSheet: View {
             .toolbar {
                 if actions != nil, original != nil {
                     ToolbarItem(placement: .topBarLeading) {
-                        Button(AppLocalization.string("Paste as text")) {
+                        Button(AppLocalization.string("Paste as text", table: .chat)) {
                             Haptics.selection()
                             closing = .insert
                             dismiss()

@@ -585,7 +585,9 @@ def plan_access(src, file_items):
                 for other in file_items:
                     if other == f:
                         continue
-                    text = (scoped if member else every)[other]
+                    # fileprivate reaches the whole file, top-level code too
+                    file_wide = any(m.startswith("fileprivate") for m in mods)
+                    text = (scoped if member and not file_wide else every)[other]
                     used = [n for n in d.names if references(text, n)]
                     if not used:
                         continue
@@ -736,6 +738,9 @@ def render_app_state(src, moved, changes):
         if keep and keep[-1].rstrip().endswith("{"):
             while k < n and k not in skip and not src.lines[k].strip():
                 k += 1
+        # a MARK whose code moved keeps its blank line before what stays
+        if keep and keep[-1].strip().startswith("// MARK:") and k < n and src.lines[k].strip():
+            keep.append("")
     while keep and not keep[-1].strip():
         keep.pop()
     return "\n".join(keep) + "\n"
@@ -882,8 +887,9 @@ def run(repo, step, write, pr=None, today=None):
             target.write_text(target.read_text().rstrip("\n") + "\n\n" + block)
         else:
             target.write_text(render_new_file(src, f, items, changes, HEADER_NOTES.get(f, [])))
-    path.write_text(app_text)
+    # AppState.swift last: until it's written, its regions are all still there
     (repo / MAP).write_text(map_text)
+    path.write_text(app_text)
     print("\n".join(report))
 
 

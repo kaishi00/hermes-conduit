@@ -88,7 +88,7 @@ struct GeminiLiveSettingsSection: View {
     }
 
     private var voiceChoices: [(id: String, title: String)] {
-        var choices = [(id: "", title: AppLocalization.string("Gemini default"))]
+        var choices = [(id: "", title: AppLocalization.string("Gemini default", table: .voice))]
         choices += GeminiLiveVoice.all.map { (id: $0.name, title: "\($0.name) · \($0.style)") }
         // A voice saved by a newer build that this one doesn't list.
         if !voice.isEmpty, !GeminiLiveVoice.all.contains(where: { $0.name == voice }) {
@@ -109,7 +109,7 @@ struct GeminiLiveSettingsSection: View {
                     }
                 ))
             }
-            Text(model.provider == .qwenLive ? AppLocalization.string("Qwen Live talks with you while Hermes runs jobs. The permanent API key stays on your server. Your iPhone or Watch connects directly to the provider using a short-lived credential.") : AppLocalization.string("Talk with Gemini Live instead of the Hermes speech pipeline. Hermes still does the work: Gemini starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Gemini answers what Hermes asks you only with what you say, and approves a command only on your yes."))
+            Text(model.provider == .qwenLive ? AppLocalization.string("Qwen Live talks with you while Hermes runs jobs. The permanent API key stays on your server. Your iPhone or Watch connects directly to the provider using a short-lived credential.", table: .voice) : AppLocalization.string("Talk with Gemini Live instead of the Hermes speech pipeline. Hermes still does the work: Gemini starts background jobs on this profile and tells you their results. The API key stays on your Hermes server. Gemini answers what Hermes asks you only with what you say, and approves a command only on your yes.", table: .voice))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             LiveVoiceSetupLink(mode: model.provider == .qwenLive ? .qwen : .gemini)
@@ -128,7 +128,7 @@ struct GeminiLiveSettingsSection: View {
                 Button {
                     Task { await check() }
                 } label: {
-                    Label(isChecking ? AppLocalization.string("Checking…") : (model.provider == .qwenLive ? AppLocalization.string("Check Qwen Live") : AppLocalization.string("Check Gemini Live")), systemImage: "arrow.clockwise")
+                    Label(isChecking ? AppLocalization.string("Checking…") : (model.provider == .qwenLive ? AppLocalization.string("Check Qwen Live", table: .voice) : AppLocalization.string("Check Gemini Live", table: .voice)), systemImage: "arrow.clockwise")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 44)
                 }
@@ -149,7 +149,7 @@ struct GeminiLiveSettingsSection: View {
                 ) {
                     Text("Web lookups").foregroundStyle(.secondary)
                 }
-                Text(model.provider == .qwenLive ? AppLocalization.string("Qwen uses Hermes web search. Native search is disabled while function tools are enabled.") : AppLocalization.string("How Gemini answers quick questions like weather or news. Hermes web search uses the search your Hermes server is set up with (SearXNG, Firecrawl…). Google Search has its own quota on your Gemini key. Automatic uses Hermes when it has a search set up, otherwise Google. Applies to the next conversation."))
+                Text(model.provider == .qwenLive ? AppLocalization.string("Qwen uses Hermes web search. Native search is disabled while function tools are enabled.", table: .voice) : AppLocalization.string("How Gemini answers quick questions like weather or news. Hermes web search uses the search your Hermes server is set up with (SearXNG, Firecrawl…). Google Search has its own quota on your Gemini key. Automatic uses Hermes when it has a search set up, otherwise Google. Applies to the next conversation.", table: .voice))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 if model.provider == .qwenLive {
@@ -169,7 +169,7 @@ struct GeminiLiveSettingsSection: View {
                         Text("Voice").foregroundStyle(.secondary)
                     }
                 }
-                Text(model.provider == .qwenLive ? AppLocalization.string("The voice Qwen speaks with. Applies to the next conversation.") : AppLocalization.string("The voice Gemini speaks with. Applies to the next conversation."))
+                Text(model.provider == .qwenLive ? AppLocalization.string("The voice Qwen speaks with. Applies to the next conversation.", table: .voice) : AppLocalization.string("The voice Gemini speaks with. Applies to the next conversation.", table: .voice))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Use Hermes memory", isOn: Binding(
@@ -179,7 +179,7 @@ struct GeminiLiveSettingsSection: View {
                         model.setMemory(requested)
                     }
                 ))
-                Text(model.provider == .qwenLive ? AppLocalization.string("Qwen gets what your Hermes agent remembers about you, from whichever memory Hermes is set up with, and can search it for more. That memory is sent to Alibaba Cloud with the conversation. Applies to the next conversation.") : AppLocalization.string("Gemini gets what your Hermes agent remembers about you, from whichever memory Hermes is set up with, and can search it for more. That memory is sent to Google with the conversation. Applies to the next conversation."))
+                Text(model.provider == .qwenLive ? AppLocalization.string("Qwen gets what your Hermes agent remembers about you, from whichever memory Hermes is set up with, and can search it for more. That memory is sent to Alibaba Cloud with the conversation. Applies to the next conversation.", table: .voice) : AppLocalization.string("Gemini gets what your Hermes agent remembers about you, from whichever memory Hermes is set up with, and can search it for more. That memory is sent to Google with the conversation. Applies to the next conversation.", table: .voice))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Use Hermes personality", isOn: Binding(
@@ -189,7 +189,7 @@ struct GeminiLiveSettingsSection: View {
                         model.setPersonality(requested)
                     }
                 ))
-                Text(model.provider == .qwenLive ? AppLocalization.string("Qwen talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to Alibaba Cloud with the conversation. Applies to the next conversation.") : AppLocalization.string("Gemini talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to Google with the conversation. Applies to the next conversation."))
+                Text(model.provider == .qwenLive ? AppLocalization.string("Qwen talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to Alibaba Cloud with the conversation. Applies to the next conversation.", table: .voice) : AppLocalization.string("Gemini talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to Google with the conversation. Applies to the next conversation.", table: .voice))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Talk over it on the speaker", isOn: Binding(
@@ -199,7 +199,7 @@ struct GeminiLiveSettingsSection: View {
                         model.setSpeakerBargeIn(requested)
                     }
                 ))
-                Text((model.provider == .qwenLive ? AppLocalization.string("Experimental. Keeps the microphone open while Qwen talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Qwen keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation.") : AppLocalization.string("Experimental. Keeps the microphone open while Gemini talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Gemini keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation.")) + " " + AppLocalization.string("Calls from Hermes don't use it, so their voice starts right away."))
+                Text((model.provider == .qwenLive ? AppLocalization.string("Experimental. Keeps the microphone open while Qwen talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Qwen keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation.", table: .voice) : AppLocalization.string("Experimental. Keeps the microphone open while Gemini talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Gemini keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation.", table: .voice)) + " " + AppLocalization.string("Calls from Hermes don't use it, so their voice starts right away.", table: .voice))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Save calls to Sessions", isOn: Binding(
@@ -233,7 +233,7 @@ struct GeminiLiveSettingsSection: View {
         case .success(let availability):
             let line: String?
             if case .available(let modelName) = availability {
-                line = AppLocalization.string("Available (\(modelName))")
+                line = AppLocalization.string("Available (\(modelName))", table: .voice)
             } else {
                 line = PluginUpdateAsk.reason(availability.userFacingReason(for: model.provider == .qwenLive ? .qwen : .gemini))
             }
@@ -323,7 +323,7 @@ struct GeminiLiveVoiceSheet: View {
         // The status and new turns change without focus moving.
         .onChange(of: controller.phase) { _, _ in
             // A consent stop shows the question, not the Watch's wording.
-            let consentQuestion = controller.awaitingConsent.map { AppLocalization.string("Send your voice to \($0.company)?") }
+            let consentQuestion = controller.awaitingConsent.map { AppLocalization.string("Send your voice to \($0.company)?", table: .voice) }
             AccessibilityNotification.Announcement(consentQuestion ?? statusText).post()
         }
         // Said outright: the status only mentions the mute while listening.
@@ -331,20 +331,20 @@ struct GeminiLiveVoiceSheet: View {
             // A new call clearing the last one's mute isn't the user's doing.
             guard controller.isActive, controller.phase != .connecting else { return }
             AccessibilityNotification.Announcement(muted
-                ? AppLocalization.string("Microphone muted")
-                : AppLocalization.string("Microphone unmuted")).post()
+                ? AppLocalization.string("Microphone muted", table: .voice)
+                : AppLocalization.string("Microphone unmuted", table: .voice)).post()
         }
         .onChange(of: controller.isSpeakerMuted) { _, muted in
             guard controller.isActive, controller.phase != .connecting else { return }
             AccessibilityNotification.Announcement(muted
-                ? AppLocalization.string("Assistant silenced")
-                : AppLocalization.string("Assistant's sound back on")).post()
+                ? AppLocalization.string("Assistant silenced", table: .voice)
+                : AppLocalization.string("Assistant's sound back on", table: .voice)).post()
         }
         // Each line once, with its final text (not the first fragment).
         .onChange(of: controller.finishedTurn) { _, turn in
             guard let turn else { return }
             AccessibilityNotification.Announcement(turn.speaker == .user
-                ? AppLocalization.string("You: \(turn.text)")
+                ? AppLocalization.string("You: \(turn.text)", table: .voice)
                 : speakerLabel(turn.text)).post()
         }
     }
@@ -363,9 +363,9 @@ struct GeminiLiveVoiceSheet: View {
 
     private func speakerLabel(_ text: String) -> String {
         switch engine {
-        case .gemini: return AppLocalization.string("Gemini: \(text)")
-        case .qwen: return AppLocalization.string("Qwen: \(text)")
-        case .grok: return AppLocalization.string("Grok: \(text)")
+        case .gemini: return AppLocalization.string("Gemini: \(text)", table: .voice)
+        case .qwen: return AppLocalization.string("Qwen: \(text)", table: .voice)
+        case .grok: return AppLocalization.string("Grok: \(text)", table: .voice)
         // Hermes writes a Local Live call's replies; the server only speaks them.
         case .local: return AppLocalization.string("Hermes: \(text)")
         }
@@ -376,16 +376,16 @@ struct GeminiLiveVoiceSheet: View {
         case .idle: return AppLocalization.string("Not connected")
         case .connecting:
             switch engine {
-            case .gemini: return AppLocalization.string("Connecting to Gemini Live…")
-            case .qwen: return AppLocalization.string("Connecting to Qwen Live…")
-            case .grok: return AppLocalization.string("Connecting to Grok Live…")
-            case .local: return AppLocalization.string("Connecting to your speech server…")
+            case .gemini: return AppLocalization.string("Connecting to Gemini Live…", table: .voice)
+            case .qwen: return AppLocalization.string("Connecting to Qwen Live…", table: .voice)
+            case .grok: return AppLocalization.string("Connecting to Grok Live…", table: .voice)
+            case .local: return AppLocalization.string("Connecting to your speech server…", table: .voice)
             }
         case .reconnecting: return AppLocalization.string("Reconnecting…")
-        case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
-        case .speaking: return controller.isSpeakerMuted ? AppLocalization.string("Speaking, silenced") : AppLocalization.string("Speaking")
-        case .paused: return AppLocalization.string("Paused while another sound plays")
-        case .ending: return AppLocalization.string("Ending conversation…")
+        case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted", table: .voice) : AppLocalization.string("Listening")
+        case .speaking: return controller.isSpeakerMuted ? AppLocalization.string("Speaking, silenced", table: .voice) : AppLocalization.string("Speaking")
+        case .paused: return AppLocalization.string("Paused while another sound plays", table: .voice)
+        case .ending: return AppLocalization.string("Ending conversation…", table: .voice)
         case .failed(let message): return message
         }
     }
@@ -414,7 +414,7 @@ struct LiveVoiceQuickHint: View {
         // Held, so the checks below run while it's hidden: they show it.
         ModifierHost {
             if isShown, let thread {
-                Text(AppLocalization.string("Working in \(thread). Say “quick…” for a fast side job."))
+                Text(AppLocalization.string("Working in \(thread). Say “quick…” for a fast side job.", table: .voice))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -480,9 +480,9 @@ struct VoiceJobModelSettingsSection: View {
     }
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Voice jobs"), symbol: "bolt.horizontal.circle", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Voice jobs", table: .voice), symbol: "bolt.horizontal.circle", tint: .conduitAccent) {
             TaggedModelChooserLink(
-                pageTitle: AppLocalization.string("Voice jobs"),
+                pageTitle: AppLocalization.string("Voice jobs", table: .voice),
                 defaultTitle: AppLocalization.string("Profile default"),
                 choice: TaggedModelChoice(defaultTag: Self.profileDefault, selection: selection),
                 catalog: ModelChooserCatalog(providers: providers, loaded: !providers.isEmpty || modelsAnswered, answered: modelsAnswered, failed: providersFailed),
@@ -881,7 +881,7 @@ struct VoiceReplyModelPicks {
 
     /// The model Hermes runs the slot on, its endpoint's host beside it.
     var endpointCaption: String? {
-        saved?.endpointHost.map { AppLocalization.string("Runs on your endpoint at \($0). A model from another provider moves it off.") }
+        saved?.endpointHost.map { AppLocalization.string("Runs on your endpoint at \($0). A model from another provider moves it off.", table: .voice) }
     }
 
     /// How a write ended: Hermes took it, refused it, or asks first.
@@ -970,7 +970,7 @@ struct VoiceReplyModelSettingsSection: View {
                     case .failed:
                         ModelCatalogPlaceholder(state: .failed) { Task { await tryAgain() } }
                     case .noSlot:
-                        Text(AppLocalization.string("This Hermes no longer has this helper model."))
+                        Text(AppLocalization.string("This Hermes no longer has this helper model.", table: .voice))
                             .scaledFont(.subheadline).foregroundStyle(.secondary)
                     }
                     if let helper {
@@ -1048,7 +1048,7 @@ struct VoiceReplyModelSettingsSection: View {
         if picks.confirmable != nil {
             // Hermes' price check asked first: the user can
             // choose the model anyway.
-            Button(AppLocalization.string("Use It Anyway")) { confirm() }
+            Button(AppLocalization.string("Use It Anyway", table: .voice)) { confirm() }
                 .scaledFont(.subheadline.weight(.semibold))
                 .tint(.conduitAccent)
                 .disabled(picks.writing)

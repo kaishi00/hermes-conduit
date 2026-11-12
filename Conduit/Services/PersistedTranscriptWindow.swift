@@ -165,7 +165,7 @@ struct LegacyTranscriptOversizedError: LocalizedError {
     let limit: Int
 
     var errorDescription: String? {
-        AppLocalization.string("This conversation is too large to load safely with this Hermes version. Update Hermes to enable paginated conversation history.")
+        AppLocalization.string("This conversation is too large to load safely with this Hermes version. Update Hermes to enable paginated conversation history.", table: .chat)
     }
 }
 

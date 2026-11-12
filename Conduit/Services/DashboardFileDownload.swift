@@ -63,7 +63,7 @@ extension DashboardTicketBridge {
             return try await nativeOAuthSession.authorizedRequest(path: path)
         }
         guard let url = Self.pageRequestURL(path: path, baseURL: baseURL) else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("Could not encode dashboard request."))
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("Could not encode dashboard request.", table: .connection))
         }
         // The page's own fetch would buffer the whole body inside WebKit and
         // hand it over as one string, so the file comes through URLSession
@@ -131,7 +131,7 @@ extension DashboardTicketBridge {
             throw DashboardTicketBridgeError.http(
                 status: http.statusCode,
                 detail: await errorDetail(bytes)
-                    ?? AppLocalization.string("Dashboard request failed (\(String(http.statusCode))).")
+                    ?? AppLocalization.string("Dashboard request failed (\(String(http.statusCode))).", table: .connection)
             )
         }
         if http.expectedContentLength > Int64(maxBytes) {

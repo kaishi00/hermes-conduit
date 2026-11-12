@@ -120,7 +120,7 @@ extension HermesVoiceGatewayTimeoutTests {
         } catch {
             XCTAssertFalse(error is CancellationError)
             // A lost path, not a timeout (#980).
-            XCTAssertEqual(error.localizedDescription, AppLocalization.string("Lost the connection to Hermes speech."))
+            XCTAssertEqual(error.localizedDescription, AppLocalization.string("Lost the connection to Hermes speech.", table: .voice))
         }
         XCTAssertLessThan(ContinuousClock.now - started, .seconds(5))
         XCTAssertTrue(socket.isCancelled)

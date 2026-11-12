@@ -462,7 +462,7 @@ final class LoginFlowModel {
         appState.lastConnectionFailure = nil
         let candidates = LoginAddress.candidates(address)
         guard !candidates.isEmpty else {
-            show(.notice(title: AppLocalization.string("Enter a valid dashboard URL.")), at: .address)
+            show(.notice(title: AppLocalization.string("Enter a valid dashboard URL.", table: .connection)), at: .address)
             return
         }
         // A half-typed service token never falls back to no token, or to an
@@ -470,7 +470,7 @@ final class LoginFlowModel {
         // reaches here even when Continue is off.
         guard !cloudflareIncomplete else {
             show(.notice(title: AppLocalization.string(
-                "Enter both the Cloudflare Client ID and Client Secret, or turn off the service token."
+                "Enter both the Cloudflare Client ID and Client Secret, or turn off the service token.", table: .connection
             )), at: .address)
             return
         }
@@ -593,7 +593,7 @@ final class LoginFlowModel {
         appState.lastConnectionFailure = nil
         guard !username.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
               !password.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else {
-            show(.notice(title: AppLocalization.string("Enter your dashboard username and password.")), at: .credentials)
+            show(.notice(title: AppLocalization.string("Enter your dashboard username and password.", table: .connection)), at: .credentials)
             return
         }
         clearFailure()
@@ -709,8 +709,8 @@ final class LoginFlowModel {
     /// A sign-in code naming localhost: the computer running Hermes.
     static var onlyOnHermesComputerNotice: ConnectionFailurePresentation {
         .notice(
-            title: AppLocalization.string("This address only works on the computer running Hermes."),
-            message: AppLocalization.string("Ask Hermes for its Tailscale or network address instead.")
+            title: AppLocalization.string("This address only works on the computer running Hermes.", table: .connection),
+            message: AppLocalization.string("Ask Hermes for its Tailscale or network address instead.", table: .connection)
         )
     }
 
@@ -740,7 +740,7 @@ final class LoginFlowModel {
         guard let appState else { return }
         noteUnsavedSignIn(at: baseURL)
         guard let dashboardID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: true) else {
-            show(.notice(title: AppLocalization.string("Could not save this dashboard.")), at: place)
+            show(.notice(title: AppLocalization.string("Could not save this dashboard.", table: .connection)), at: place)
             return
         }
         if let cloudflare {
@@ -759,7 +759,7 @@ final class LoginFlowModel {
         // attempt's cleanup all clear that same store.
         noteUnsavedSignIn(at: baseURL)
         guard let dashboardID = appState.resolveDashboardID(forURL: baseURL, registerIfMissing: true) else {
-            show(.notice(title: AppLocalization.string("Could not save this dashboard.")), at: place)
+            show(.notice(title: AppLocalization.string("Could not save this dashboard.", table: .connection)), at: place)
             return
         }
         // The service token belongs to the dashboard it opens.
@@ -810,8 +810,8 @@ final class LoginFlowModel {
         clearFailure()
         guard await appState.connectWithNativeOAuth(result, baseURL: request.baseURL) else {
             show(.notice(
-                title: AppLocalization.string("Sign-in failed."),
-                message: AppLocalization.string("Please try again.")
+                title: AppLocalization.string("Sign-in failed.", table: .connection),
+                message: AppLocalization.string("Please try again.", table: .connection)
             ), at: browserPlace)
             return
         }
@@ -824,8 +824,8 @@ final class LoginFlowModel {
     func nativeOAuthFailed(_ error: Error) {
         Self.logger.error("Native OAuth sign-in failed: \(String(describing: type(of: error)), privacy: .public)")
         show(.notice(
-            title: AppLocalization.string("Sign-in failed."),
-            message: (error as? LocalizedError)?.errorDescription ?? AppLocalization.string("Please try again.")
+            title: AppLocalization.string("Sign-in failed.", table: .connection),
+            message: (error as? LocalizedError)?.errorDescription ?? AppLocalization.string("Please try again.", table: .connection)
         ), at: browserPlace)
     }
 

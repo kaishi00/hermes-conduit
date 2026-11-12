@@ -577,7 +577,7 @@ struct BotCapabilities: Equatable, Codable {
         // follows.
         let onText = String(rows.filter(\.enabled).count)
         let allText = String(rows.count)
-        return AppLocalization.string("\(onText) of \(allText) on")
+        return AppLocalization.string("\(onText) of \(allText) on", table: .bots)
     }
 
     /// The lists as Hermes holds them once it took `sections` (as

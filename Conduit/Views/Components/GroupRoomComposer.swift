@@ -301,7 +301,7 @@ struct GroupRoomComposer: View {
         }) {
             ComposerFullEditor(
                 text: $draft,
-                placeholder: AppLocalization.string("Message the room"),
+                placeholder: AppLocalization.string("Message the room", table: .rooms),
                 fieldIdentifier: "room.composer.fullEditor.field",
                 enabled: true,
                 onUserEdit: { _ in },
@@ -344,7 +344,7 @@ struct GroupRoomComposer: View {
             notice(AppLocalization.string("Sending…"), color: .secondary)
         }
         if isUploading {
-            notice(AppLocalization.string("Uploading files…"), color: .secondary)
+            notice(AppLocalization.string("Uploading files…", table: .rooms), color: .secondary)
         }
         if appState.pendingRoomMessage != nil, !appState.activeRoomSendInFlight {
             // The pending row owns the composer; say why Send is off
@@ -400,7 +400,7 @@ struct GroupRoomComposer: View {
         ReturnKeyTextEditor(
             text: $draft,
             isFocused: $isFocused,
-            accessibilityLabel: AppLocalization.string("Message the room"),
+            accessibilityLabel: AppLocalization.string("Message the room", table: .rooms),
             accessibilityIdentifier: "room.composer.field",
             maxLines: 6,
             canSubmitFromReturn: canSubmitFromReturn,
@@ -410,7 +410,7 @@ struct GroupRoomComposer: View {
         )
             .background(alignment: .topLeading) {
                 if draft.isEmpty {
-                    ComposerPlaceholderText(text: AppLocalization.string("Message the room"))
+                    ComposerPlaceholderText(text: AppLocalization.string("Message the room", table: .rooms))
                         .foregroundStyle(.tertiary)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
@@ -505,7 +505,7 @@ struct GroupRoomComposer: View {
                 }
             } else {
                 // Older plugins can't store a room's files; say what fixes it.
-                Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.")))
+                Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.", table: .rooms)))
             }
         } label: {
             Image(systemName: "plus")
@@ -736,7 +736,7 @@ struct GroupRoomComposer: View {
     private var recipientRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                Text(AppLocalization.string("To"))
+                Text(AppLocalization.string("To", table: .rooms))
                     .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
@@ -747,8 +747,8 @@ struct GroupRoomComposer: View {
             .padding(.horizontal, 12)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(AppLocalization.string("To"))
-        .accessibilityHint(AppLocalization.string("Only the bots you pick answer. With none picked, every bot can answer."))
+        .accessibilityLabel(AppLocalization.string("To", table: .rooms))
+        .accessibilityHint(AppLocalization.string("Only the bots you pick answer. With none picked, every bot can answer.", table: .rooms))
     }
 
     private func recipientChip(_ member: GroupMember) -> some View {
@@ -1040,7 +1040,7 @@ struct GroupRoomComposer: View {
         // A disbanded room sends nothing, whichever target took the drop.
         guard !providers.isEmpty, surface?.room.isDisbanded == false else { return }
         guard appState.canAttachRoomFiles else {
-            composerError = PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats."))
+            composerError = PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.", table: .rooms))
             Haptics.error()
             return
         }

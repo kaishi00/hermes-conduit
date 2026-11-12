@@ -179,7 +179,7 @@ struct CapabilitiesView: View {
         if !others.isEmpty {
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: 8) {
-                    Text(verbatim: AppLocalization.string("Also in"))
+                    Text(verbatim: AppLocalization.string("Also in", table: .bots))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     ForEach(others) { other in
@@ -194,7 +194,7 @@ struct CapabilitiesView: View {
                                 .foregroundStyle(Color.conduitAccent)
                         }
                         .buttonStyle(PressableButtonStyle())
-                        .accessibilityLabel(Text(verbatim: AppLocalization.string("Show matches in \(other.title)")))
+                        .accessibilityLabel(Text(verbatim: AppLocalization.string("Show matches in \(other.title)", table: .bots)))
                         .accessibilityValue(Text(verbatim: (counts[other] ?? 0).formatted()))
                     }
                 }
@@ -263,8 +263,8 @@ struct CapabilitiesView: View {
     private var searchPrompt: String {
         switch tab {
         case .skills: return AppLocalization.string("Search skills")
-        case .tools: return AppLocalization.string("Search tools")
-        case .connectors: return AppLocalization.string("Search connectors")
+        case .tools: return AppLocalization.string("Search tools", table: .bots)
+        case .connectors: return AppLocalization.string("Search connectors", table: .bots)
         case .plugins: return AppLocalization.string("Search plugins")
         }
     }
@@ -294,7 +294,7 @@ struct CapabilitiesView: View {
             case .failure(let message):
                 CapabilityTabScroll(refresh: loadCapabilities) {
                     CapabilityEmptyState(
-                        title: AppLocalization.string("Couldn't Load"),
+                        title: AppLocalization.string("Couldn't Load", table: .bots),
                         symbol: "exclamationmark.triangle",
                         message: message
                     ) {
@@ -372,11 +372,11 @@ struct CapabilitiesView: View {
     static func localError(for outcome: AppState.CapabilityLoadOutcome, hasData: Bool) -> String? {
         switch outcome {
         case .success:
-            return hasData ? nil : AppLocalization.string("No capabilities found.")
+            return hasData ? nil : AppLocalization.string("No capabilities found.", table: .bots)
         case .failed(_, let message):
             return message
         case .unavailable:
-            return AppLocalization.string("Connect to a Hermes dashboard to load capabilities.")
+            return AppLocalization.string("Connect to a Hermes dashboard to load capabilities.", table: .bots)
         case .superseded:
             return nil
         }

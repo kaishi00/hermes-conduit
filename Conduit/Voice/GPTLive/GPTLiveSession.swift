@@ -247,7 +247,7 @@ final class GPTLiveSession {
             guard let self, self.isCurrent(peer), self.state == .connecting else { return }
             gptLiveLogger.error("GPT-Live never reported session.started")
             self.onTrace?("No session.started in time")
-            self.fail(AppLocalization.string("GPT-Live didn't start the conversation. Try again."))
+            self.fail(AppLocalization.string("GPT-Live didn't start the conversation. Try again.", table: .voice))
         }
     }
 
@@ -262,11 +262,11 @@ final class GPTLiveSession {
     nonisolated static func voiceNote(requested: String?, applied: String?) -> String? {
         guard let requested, !requested.isEmpty else { return nil }
         guard let applied else {
-            return PluginUpdateAsk.text(AppLocalization.string("The Conduit plugin on your Hermes server didn't confirm the voice you chose. Update the plugin to pick a voice."),
-                                        lead: AppLocalization.string("The Conduit plugin on your Hermes server didn't confirm the voice you chose."))
+            return PluginUpdateAsk.text(AppLocalization.string("The Conduit plugin on your Hermes server didn't confirm the voice you chose. Update the plugin to pick a voice.", table: .voice),
+                                        lead: AppLocalization.string("The Conduit plugin on your Hermes server didn't confirm the voice you chose.", table: .voice))
         }
         guard applied.lowercased() != requested.lowercased() else { return nil }
-        return AppLocalization.string("Your Hermes server used the voice \(applied) instead of \(requested).")
+        return AppLocalization.string("Your Hermes server used the voice \(applied) instead of \(requested).", table: .voice)
     }
 
     // MARK: Call trace
@@ -358,8 +358,8 @@ final class GPTLiveSession {
             onTrace?("GPT-Live error\(Self.traceCode(code).map { ": \($0)" } ?? "")")
             if state == .connecting {
                 fail(message.isEmpty
-                    ? AppLocalization.string("GPT-Live didn't start the conversation. Try again.")
-                    : AppLocalization.string("GPT-Live refused the conversation: \(message)"))
+                    ? AppLocalization.string("GPT-Live didn't start the conversation. Try again.", table: .voice)
+                    : AppLocalization.string("GPT-Live refused the conversation: \(message)", table: .voice))
                 return
             }
         case .sessionClosed:
@@ -399,7 +399,7 @@ final class GPTLiveSession {
         guard state == .ready || state == .connecting else { return }
         gptLiveLogger.notice("GPT-Live connection lost")
         onTrace?("Connection lost")
-        fail(AppLocalization.string("The GPT-Live connection was lost."))
+        fail(AppLocalization.string("The GPT-Live connection was lost.", table: .voice))
     }
 
     private func fail(_ message: String) {
