@@ -275,6 +275,7 @@ final class AppState: ObservableObject {
         projection.load.reset()
         swap(&projection.n, &projection.m)
         bump(&rows[0].k)
+        bump(&rows[order[0]].j)
     }
 }
 
@@ -286,6 +287,7 @@ final class Projection {
     fileprivate(set) var n = 0
     fileprivate(set) var m = 0
     fileprivate(set) var k = 0
+    fileprivate(set) var j = 0
 }
 ''')
         (self.repo / "Shared/Load.swift").write_text(
@@ -299,6 +301,7 @@ final class Projection {
         self.assertIn("\n    var load = Load()", app, "a mutating call writes it")
         self.assertIn("\n    var n = 0", app, "passed inout")
         self.assertIn("\n    var k = 0", app, "passed inout through a subscript")
+        self.assertIn("\n    var j = 0", app, "passed inout through a nested subscript")
 
     def test_one_mark_for_two_regions_under_one_title(self):
         split.STEPS = [{"AppState+Both.swift": ["Connection|from connect", "Chats|from openChat"]}]
@@ -344,6 +347,10 @@ final class AppState: ObservableObject {
         with self.assertRaises(SystemExit, msg="pick is two declarations"):
             split.STEPS = [{"AppState+Pick.swift": ["Picking|from pick"]}]
             split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        for bad in ("pick#x", "pick#0", "pick#3", "pick#\u00b2"):
+            with self.assertRaisesRegex(SystemExit, r"name one as pick#N, N from 1 to 2", msg=bad):
+                split.STEPS = [{"AppState+Pick.swift": [f"Picking|from {bad}"]}]
+                split.run(self.repo, 1, True, pr=42, today="2026-11-12")
         split.STEPS = [{"AppState+Pick.swift": ["Picking|from pick#2"]}]
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")
         self.assertIn("func pick(_ n: Int)", self.read("AppState.swift"))

@@ -619,7 +619,11 @@ def assign(src, steps):
                         name, _, nth = name.partition("#")
                         found = [i for i, it in enumerate(items) if name in it.names]
                         if nth:
-                            found = found[int(nth) - 1:int(nth)]
+                            n = int(nth) if nth.isascii() and nth.isdigit() else 0
+                            if not 1 <= n <= len(found):
+                                raise SystemExit(f"can't cut {part!r} at {cut!r}: "
+                                                 f"name one as {name}#N, N from 1 to {len(found)}")
+                            found = found[n - 1:n]
                         elif len(found) != 1:
                             raise SystemExit(f"can't cut {part!r} at {cut!r}: "
                                              f"{len(found)} {name!r}, name one as {name}#N")
@@ -650,8 +654,8 @@ def code_names(masked_lines):
     return names
 
 
-MUTATION = (r"(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\s*(=(?!=)|&?\+=|&?-=|&?\*=|/=|%=|\|=|&=|\^=|&?<<=|&?>>=|\?\?=)"
-            r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(append|remove\w*|insert|merge|formUnion|"
+MUTATION = (r"(\s*(\?|!)?(\.\w+|\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\]))*\s*(=(?!=)|&?\+=|&?-=|&?\*=|/=|%=|\|=|&=|\^=|&?<<=|&?>>=|\?\?=)"
+            r"|(\s*(\?|!)?(\.\w+|\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\]))*\.(append|remove\w*|insert|merge|formUnion|"
             r"formIntersection|subtract|sort|reverse|popLast|popFirst|update\w*|toggle|"
             r"swapAt|replaceSubrange|reserveCapacity|shuffle|move|partition|formSymmetricDifference)\b")
 
@@ -673,7 +677,7 @@ def mutation_pattern():
     call of a mutating method, through any chain of members or subscripts."""
     mutation = MUTATION
     if APP_MUTATING:
-        mutation += r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(" + "|".join(sorted(APP_MUTATING)) + r")\b(?!\s*:)"
+        mutation += r"|(\s*(\?|!)?(\.\w+|\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\]))*\.(" + "|".join(sorted(APP_MUTATING)) + r")\b(?!\s*:)"
     return mutation
 
 
@@ -686,7 +690,7 @@ def writes(masked_lines, name):
 def writes_member(masked_lines, name):
     """Whether code writes `value.name` (another type's member)."""
     pat = re.compile(r"\??\." + re.escape(name) + r"\b(?=" + mutation_pattern() + r")"
-                     r"|&[\w.?]*(?:\[[^\]\n]*\][\w.?]*)*\." + re.escape(name) + r"\b")
+                     r"|&[\w.?]*(?:\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\][\w.?]*)*\." + re.escape(name) + r"\b")
     return pat.search("\n".join(masked_lines)) is not None
 
 
