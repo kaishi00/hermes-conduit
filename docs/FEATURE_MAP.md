@@ -5611,7 +5611,7 @@ row beside the list · VoiceOver · README.md
 - The classic drawer's sheet lists the profile in use's chats and names it; it doesn't gather profiles, as the classic drawer has no All.
 - A project with several folders matches by its main folder only: the project tree gives Conduit no others.
 
-**Checked:** 2026-11-12, #CARRYPR (carries #1930: the classic drawer's sheet says a failed read couldn't load the project's conversations and offers Try Again, issue 1000 F1-40; Rulings); 2026-11-12, #2300 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2269 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1977 (the parallel reads' fold tested, review follow-up to #1972; Tests); 2026-11-07, #1972 (the other profiles read at once, issue 1966); 2026-11-05, #1784 (the other profiles' chats show when the page's own read fails); added at #1773.
+**Checked:** 2026-11-12, #2307 (carries #1930: the classic drawer's sheet says a failed read couldn't load the project's conversations and offers Try Again, issue 1000 F1-40; Rulings); 2026-11-12, #2300 (the code it lists moved out of AppState.swift, issue 828); 2026-11-12, #2269 (the code it lists moved out of AppState.swift, issue 828); 2026-11-07, #1977 (the parallel reads' fold tested, review follow-up to #1972; Tests); 2026-11-07, #1972 (the other profiles read at once, issue 1966); 2026-11-05, #1784 (the other profiles' chats show when the page's own read fails); added at #1773.
 
 ## New project
 
