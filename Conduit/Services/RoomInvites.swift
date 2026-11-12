@@ -428,14 +428,18 @@ extension AppState {
         _ = await readLinkedRoomInvites()
     }
 
-    /// Every 10 s for 3 minutes after a Link is made or an invite joined:
-    /// the room the other person makes next reaches this Hermes through the
-    /// mailbox within a minute or so, and its push may not reach the phone
-    /// (or not while the screen showing the Link is up); a room you joined
-    /// starts on the host once everyone has answered, and its copy appears
-    /// here then. Group Chats would show either only once it's read again.
-    /// Each call starts the count again, and another dashboard or a
-    /// sign-out ends it.
+    /// Every 10 s for 3 minutes after a Link is made, an invite joined or
+    /// a draft made, then every 30 s while a room is still on its way: a
+    /// draft waits for answers or starts, or an invite you joined waits for
+    /// its room, or one of them started and its room or copy isn't listed
+    /// yet. The room the other person makes next reaches this Hermes
+    /// through the mailbox within a minute or so, and its push may not
+    /// reach the phone (or not while the screen showing the Link is up); a
+    /// draft starts on its host once everyone has answered, which can be
+    /// long after it was made, and its room, or its copy on the guest's
+    /// Hermes, appears then. Group Chats would show either only once it's
+    /// read again. Each call starts the count again, and another dashboard
+    /// or a sign-out ends it.
     func followLinkedRoomInvites() {
         linkedRoomInviteFollow?.cancel()
         let dashboard = activeDashboardID
@@ -444,15 +448,55 @@ extension AppState {
         // the background are skipped; the return to the foreground reads.
         let end = Date().addingTimeInterval(Self.linkedRoomInviteFollowSeconds)
         linkedRoomInviteFollow = Task { [weak self] in
-            while Date() < end {
-                try? await Task.sleep(for: Self.linkedRoomInviteFollowInterval)
+            while true {
+                let early = Date() < end
+                try? await Task.sleep(for: early ? Self.linkedRoomInviteFollowInterval
+                                                 : Self.linkedRoomPendingFollowInterval)
                 guard !Task.isCancelled, let self, self.activeDashboardID == dashboard else { return }
+                guard early || self.linkedRoomOnItsWay else { return }
                 guard self.isSceneActive else { continue }
-                await self.refreshLinkedRoomDrafts()
+                // The people New Group Chat offers only in the first minutes,
+                // when a Link was just made; after, the drafts alone.
+                await self.refreshLinkedRoomDrafts(readingPeople: early)
                 await self.refreshGroupRoomsForStartedDrafts()
                 await self.refreshLinkedRoomInvites()
             }
         }
+    }
+
+    /// A room is on its way to Group Chats: a draft of yours waits or starts,
+    /// or started with its room not listed yet, or an invite you joined
+    /// waits for its room, or started with its copy not listed yet.
+    var linkedRoomOnItsWay: Bool {
+        if let drafts = linkedRoomDrafts, drafts.dashboardID == activeDashboardID {
+            let listed = Set(groupRooms.map(\.roomID))
+            if drafts.list.drafts.contains(where: {
+                ["waiting", "starting"].contains($0.status) || ($0.status == "started" && !listed.contains($0.id))
+            }) { return true }
+        }
+        if let invites = linkedRoomInvites, invites.dashboardID == activeDashboardID {
+            let copied = linkedRoomCopyInviteIDs
+            if invites.invites.contains(where: {
+                $0.status == "joined" || ($0.status == "started" && canReadRoomCopies && !copied.contains($0.id))
+            }) { return true }
+        }
+        return false
+    }
+
+    /// Back in the foreground: an invite that came while Conduit was away,
+    /// its push missed, and the drafts, so a room that started meanwhile
+    /// shows; a room still on its way is followed again.
+    func refreshLinkedRoomsOnForeground() async {
+        await refreshLinkedRoomDrafts(readingPeople: false)
+        await refreshGroupRoomsForStartedDrafts()
+        await refreshLinkedRoomInvites()
+        followLinkedRoomsOnTheirWay()
+    }
+
+    /// Follows a room on its way that a read just found: one a launch, a
+    /// reconnect or the foreground read with nothing following it yet.
+    func followLinkedRoomsOnTheirWay() {
+        if linkedRoomOnItsWay { followLinkedRoomInvites() }
     }
 
     /// A started draft leaves Group Chats' draft rows for its room's row,
@@ -467,6 +511,7 @@ extension AppState {
 
     nonisolated static let linkedRoomInviteFollowSeconds: TimeInterval = 180
     nonisolated static let linkedRoomInviteFollowInterval: Duration = .seconds(10)
+    nonisolated static let linkedRoomPendingFollowInterval: Duration = .seconds(30)
 
     /// Whether the invites were read now and kept.
     func readLinkedRoomInvites() async -> Bool {

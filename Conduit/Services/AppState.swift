@@ -14064,6 +14064,11 @@ final class AppState: ObservableObject {
             async let approvals = refreshLinkedRoomApprovals()
             async let joined: Void = refreshLinkedRoomCopiesThenInvites()
             _ = await (rooms, drafts, approvals, joined)
+            // A room on its way when Conduit connects (a launch, a reconnect,
+            // a foreground read that ran before the connection) is followed
+            // from here, or it would show only on the next reload.
+            guard groupRoomEpoch == epoch, activeDashboardID == dashboard else { return }
+            followLinkedRoomsOnTheirWay()
         } catch is CancellationError {
             return
         } catch {
@@ -22693,8 +22698,9 @@ final class AppState: ObservableObject {
             LocationSharingController.shared.appBecameActive()
             Task { await runPhoneSync(reason: .foreground) }
             Task { await syncPresentedScreens() }
-            // An invite that came while Conduit was away, its push missed.
-            Task { await refreshLinkedRoomInvites() }
+            // An invite that came while Conduit was away, its push missed,
+            // and a room that started meanwhile.
+            Task { await refreshLinkedRoomsOnForeground() }
             scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
             // surface (the phone sheet, or CarPlay), so it can be false here
