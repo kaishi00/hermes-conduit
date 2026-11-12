@@ -148,8 +148,8 @@ class WorkflowContractTests(unittest.TestCase):
         bottleneck: a PR or push run gets exactly one macOS job."""
         jobs = _job_keys(WORKFLOW)
         self.assertEqual(jobs, ["plan", "self-test", "smoke", "ci-gate"], jobs)
-        self.assertEqual(self._workflow_text().count("runs-on: macos-"), 1)
-        self.assertIn("runs-on: macos-26", self._job_text("smoke"))
+        self.assertEqual(self._workflow_text().count("runs-on: xcode-"), 1)
+        self.assertIn("runs-on: xcode-27", self._job_text("smoke"))
         self.assertIn("check-weak-imports.py binaries", self._job_text("smoke"))
         self.assertNotIn("matrix", self._job_text("smoke"),
                          "the smoke job must not fan out into several macOS jobs")

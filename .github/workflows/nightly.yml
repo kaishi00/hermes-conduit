@@ -38,7 +38,7 @@ permissions:
   contents: read
 
 env:
-  SIMULATOR_NAME: "iPhone 17 Pro"
+  SIMULATOR_NAME: "iPhone 18 Pro"
   DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
   # Build budget for scripts/ci-hosted-build.sh. Up to five macOS jobs run
   # side by side here, so builds run slower than in PR CI: builds of 850-890 s
@@ -83,7 +83,7 @@ jobs:
     # families, in balanced shards.
     name: Unit suite (shard ${{ matrix.shard }})
     needs: plan
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 45
     strategy:
       fail-fast: false
@@ -325,7 +325,7 @@ jobs:
     # a sane ceiling, and a cancelled job loses which pass failed.
     name: Timing families (repeat ${{ matrix.repeat }})
     needs: plan
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 55
     strategy:
       fail-fast: false
@@ -409,7 +409,7 @@ jobs:
   ui:
     name: UI suite (shard ${{ matrix.shard }})
     needs: plan
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 60
     strategy:
       fail-fast: false
