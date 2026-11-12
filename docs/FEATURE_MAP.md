@@ -3440,12 +3440,14 @@ keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
 - ⌘. is Stop wherever the composer's Stop would stop (a turn, or the open workstream), a draft in the field or not, in the shown tab's chat only (2026-11-11, #2224).
 - ⌘. doesn't stop a running dictation: that stays with the composer's Stop and Return, which own the dictation (2026-11-11, #2224 review).
 - The sheet lists only the keys the current shell answers: the drawer shell shows Settings with ⌘, and leaves out ⌘1 to ⌘4, ⌃⌘S and ⌥⌘A (2026-11-11, #2224 review).
+- ⌃⌘S and ⌥⌘A exist only where their column fits beside the chat (the list in a window that splits, the side panel in a chat column wide enough). The sheet, a reference opened from anywhere, keeps their rows under the tab shell and says so in the Chats footer rather than following the window it's opened over (2026-11-11, follow-up to #2224).
+- Return and ⌘Return's callbacks check a Bot Chat on its way themselves too, since the field's gate reaches it a render later (2026-11-11, follow-up to #2224).
 
 **Open gaps**
 - Not yet tried on a device: the menus on a Mac and an iPad, and whether ⌘+ fires from ⌘= on a US layout (it's registered as "+").
 - No Back (⌘[) or next/previous chat: Back in a split window means different things per column. Left for the maintainer to decide.
 
-**Checked:** 2026-11-11, added at #2224.
+**Checked:** 2026-11-11, #2241 (the sheet's Chats footer on where ⌃⌘S and ⌥⌘A work; the Return callbacks' live Bot Chat check); added at #2224.
 
 ## Slash commands
 
