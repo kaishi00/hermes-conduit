@@ -65,11 +65,11 @@ enum ChatTextSize: Int, CaseIterable, Equatable {
     /// Human-readable name, used by the Settings slider's accessibility value.
     var displayName: String {
         switch self {
-        case .smallest: AppLocalization.string("Smallest")
-        case .smaller: AppLocalization.string("Smaller")
+        case .smallest: AppLocalization.string("Smallest", table: .chat)
+        case .smaller: AppLocalization.string("Smaller", table: .chat)
         case .default: AppLocalization.string("Default")
-        case .larger: AppLocalization.string("Larger")
-        case .largest: AppLocalization.string("Largest")
+        case .larger: AppLocalization.string("Larger", table: .chat)
+        case .largest: AppLocalization.string("Largest", table: .chat)
         }
     }
 
@@ -93,9 +93,9 @@ enum ChatFontStyle: String, CaseIterable, Equatable {
     var displayName: String {
         switch self {
         case .standard: AppLocalization.string("Default")
-        case .rounded: AppLocalization.string("Rounded")
-        case .serif: AppLocalization.string("Serif")
-        case .mono: AppLocalization.string("Mono")
+        case .rounded: AppLocalization.string("Rounded", table: .chat)
+        case .serif: AppLocalization.string("Serif", table: .chat)
+        case .mono: AppLocalization.string("Mono", table: .chat)
         }
     }
 

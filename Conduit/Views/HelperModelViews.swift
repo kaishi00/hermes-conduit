@@ -94,7 +94,7 @@ struct HelperModelSlot: Identifiable, Equatable {
     /// its own names its host.
     var value: String {
         if setting.followsChats {
-            return followsTitle.map { AppLocalization.string("Same as \($0)") } ?? AppLocalization.string("Same as chats")
+            return followsTitle.map { AppLocalization.string("Same as \($0)", table: .bots) } ?? AppLocalization.string("Same as chats")
         }
         let model = setting.providerOnly
             ? VoiceJobModelSettingsSection.providerDefaultTitle(setting.provider)
@@ -104,7 +104,7 @@ struct HelperModelSlot: Identifiable, Equatable {
 
     /// "Same as chats" in the model picker, or the slot it follows.
     var followTitle: String {
-        followsTitle.map { AppLocalization.string("Same as \($0)") } ?? AppLocalization.string("Same as chats")
+        followsTitle.map { AppLocalization.string("Same as \($0)", table: .bots) } ?? AppLocalization.string("Same as chats")
     }
 
     // MARK: Names
@@ -118,49 +118,49 @@ struct HelperModelSlot: Identifiable, Equatable {
     /// Hermes labels its own slots in its web page, not in the answer, so
     /// Conduit names them; Conduit's plugin slot too, in the app's language.
     private static let builtIn: [String: Words] = [
-        "vision": Words(title: { AppLocalization.string("Image reading") },
-                        caption: { AppLocalization.string("Reads pictures and screenshots for a chat model that can't see them.") },
+        "vision": Words(title: { AppLocalization.string("Image reading", table: .bots) },
+                        caption: { AppLocalization.string("Reads pictures and screenshots for a chat model that can't see them.", table: .bots) },
                         symbol: "eye"),
-        "compression": Words(title: { AppLocalization.string("Compaction") },
-                             caption: { AppLocalization.string("Summarizes a long chat so it still fits the model's context.") },
+        "compression": Words(title: { AppLocalization.string("Compaction", table: .bots) },
+                             caption: { AppLocalization.string("Summarizes a long chat so it still fits the model's context.", table: .bots) },
                              symbol: "arrow.down.right.and.arrow.up.left"),
-        "skills_hub": Words(title: { AppLocalization.string("Skill search") },
-                            caption: { AppLocalization.string("Finds skills in the Skills Hub.") },
+        "skills_hub": Words(title: { AppLocalization.string("Skill search", table: .bots) },
+                            caption: { AppLocalization.string("Finds skills in the Skills Hub.", table: .bots) },
                             symbol: "magnifyingglass"),
-        "approval": Words(title: { AppLocalization.string("Smart approvals") },
-                          caption: { AppLocalization.string("Decides which commands are safe to run without asking you, when smart approvals are on.") },
+        "approval": Words(title: { AppLocalization.string("Smart approvals", table: .bots) },
+                          caption: { AppLocalization.string("Decides which commands are safe to run without asking you, when smart approvals are on.", table: .bots) },
                           symbol: "checkmark.shield"),
-        "mcp": Words(title: { AppLocalization.string("MCP tool routing") },
-                     caption: { AppLocalization.string("Picks which MCP tools a turn needs.") },
+        "mcp": Words(title: { AppLocalization.string("MCP tool routing", table: .bots) },
+                     caption: { AppLocalization.string("Picks which MCP tools a turn needs.", table: .bots) },
                      symbol: "point.3.connected.trianglepath.dotted"),
-        "title_generation": Words(title: { AppLocalization.string("Chat titles") },
-                                  caption: { AppLocalization.string("Names new chats.") },
+        "title_generation": Words(title: { AppLocalization.string("Chat titles", table: .bots) },
+                                  caption: { AppLocalization.string("Names new chats.", table: .bots) },
                                   symbol: "textformat"),
-        "review": Words(title: { AppLocalization.string("Code review") },
-                        caption: { AppLocalization.string("Runs the /review command's reviewer.") },
+        "review": Words(title: { AppLocalization.string("Code review", table: .bots) },
+                        caption: { AppLocalization.string("Runs the /review command's reviewer.", table: .bots) },
                         symbol: "doc.text.magnifyingglass"),
         VoiceReplyModelSetting.task: Words(
             title: { AppLocalization.string("Voice replies") },
             caption: { AppLocalization.string("The model Hermes answers you with in a voice conversation. Reasoning is off by default so replies start sooner; typed messages keep the chat's model. Hermes Desktop uses this setting too.") },
             symbol: "waveform.circle"
         ),
-        "triage_specifier": Words(title: { AppLocalization.string("Kanban task details") },
-                                  caption: { AppLocalization.string("Fills in a new Kanban task's details.") },
+        "triage_specifier": Words(title: { AppLocalization.string("Kanban task details", table: .bots) },
+                                  caption: { AppLocalization.string("Fills in a new Kanban task's details.", table: .bots) },
                                   symbol: "list.bullet.rectangle"),
-        "kanban_decomposer": Words(title: { AppLocalization.string("Kanban task splitting") },
-                                   caption: { AppLocalization.string("Splits a Kanban task into smaller ones.") },
+        "kanban_decomposer": Words(title: { AppLocalization.string("Kanban task splitting", table: .bots) },
+                                   caption: { AppLocalization.string("Splits a Kanban task into smaller ones.", table: .bots) },
                                    symbol: "square.split.2x2"),
-        "profile_describer": Words(title: { AppLocalization.string("Profile descriptions") },
-                                   caption: { AppLocalization.string("Writes a profile's description.") },
+        "profile_describer": Words(title: { AppLocalization.string("Profile descriptions", table: .bots) },
+                                   caption: { AppLocalization.string("Writes a profile's description.", table: .bots) },
                                    symbol: "person.text.rectangle"),
-        "curator": Words(title: { AppLocalization.string("Skill curator") },
-                         caption: { AppLocalization.string("Reviews how skills are used and suggests improvements.") },
+        "curator": Words(title: { AppLocalization.string("Skill curator", table: .bots) },
+                         caption: { AppLocalization.string("Reviews how skills are used and suggests improvements.", table: .bots) },
                          symbol: "sparkles"),
-        predictions: Words(title: { AppLocalization.string("Conduit predictions") },
-                                 caption: { AppLocalization.string("Suggested replies and draft guesses in Conduit, when Predictive uses the fast model.") },
+        predictions: Words(title: { AppLocalization.string("Conduit predictions", table: .bots) },
+                                 caption: { AppLocalization.string("Suggested replies and draft guesses in Conduit, when Predictive uses the fast model.", table: .bots) },
                                  symbol: "wand.and.stars"),
-        workWatch: Words(title: { AppLocalization.string("Conduit work watch") },
-                         caption: { AppLocalization.string("Reads what a bot’s workstreams report while they work and tells its Bot Chat when one may affect another.") },
+        workWatch: Words(title: { AppLocalization.string("Conduit work watch", table: .bots) },
+                         caption: { AppLocalization.string("Reads what a bot’s workstreams report while they work and tells its Bot Chat when one may affect another.", table: .bots) },
                          symbol: "binoculars"),
     ]
 
@@ -216,8 +216,8 @@ struct HelperModelsSettingsSection: View {
     }
 
     private var section: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Helper models"), symbol: "square.stack.3d.up", tint: .conduitAura) {
-            Text(AppLocalization.string("Smaller jobs Hermes runs beside your chats, like titles, compaction and reading images. Each uses the chat model unless you pick one."))
+        ConduitSettingsSection(title: AppLocalization.string("Helper models", table: .bots), symbol: "square.stack.3d.up", tint: .conduitAura) {
+            Text(AppLocalization.string("Smaller jobs Hermes runs beside your chats, like titles, compaction and reading images. Each uses the chat model unless you pick one.", table: .bots))
                 .scaledFont(.footnote).foregroundStyle(.secondary)
             NavigationLink {
                 HelperModelsPage(settings: settings)
@@ -225,7 +225,7 @@ struct HelperModelsSettingsSection: View {
             } label: {
                 HStack(spacing: 12) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text(AppLocalization.string("Helper models"))
+                        Text(AppLocalization.string("Helper models", table: .bots))
                             .scaledFont(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
                         if let summary {
@@ -267,8 +267,8 @@ struct HelperModelsSettingsSection: View {
         guard let slots, !slots.isEmpty else { return nil }
         let own = slots.filter { !$0.followsChats }.count
         return own == 0
-            ? AppLocalization.string("All use the chat model")
-            : AppLocalization.string("\(String(own)) of \(String(slots.count)) have a model of their own")
+            ? AppLocalization.string("All use the chat model", table: .bots)
+            : AppLocalization.string("\(String(own)) of \(String(slots.count)) have a model of their own", table: .bots)
     }
 }
 
@@ -283,12 +283,12 @@ struct HelperModelsPage: View {
 
     var body: some View {
         SettingsDetailContainer {
-            ConduitSettingsSection(title: AppLocalization.string("Helper models"), symbol: "square.stack.3d.up", tint: .conduitAura) {
-                Text(AppLocalization.string("Hermes runs these jobs on the chat model unless you pick one. A small, fast model saves time and money on most of them."))
+            ConduitSettingsSection(title: AppLocalization.string("Helper models", table: .bots), symbol: "square.stack.3d.up", tint: .conduitAura) {
+                Text(AppLocalization.string("Hermes runs these jobs on the chat model unless you pick one. A small, fast model saves time and money on most of them.", table: .bots))
                     .scaledFont(.footnote).foregroundStyle(.secondary)
                 if let slots {
                     if slots.isEmpty {
-                        Text(AppLocalization.string("This Hermes has no helper models to set."))
+                        Text(AppLocalization.string("This Hermes has no helper models to set.", table: .bots))
                             .scaledFont(.subheadline).foregroundStyle(.secondary)
                     }
                     ForEach(slots) { slot in
@@ -310,7 +310,7 @@ struct HelperModelsPage: View {
                 }
             }
         }
-        .navigationTitle(AppLocalization.string("Helper models"))
+        .navigationTitle(AppLocalization.string("Helper models", table: .bots))
         // Again on coming back from a helper's page.
         .onAppear {
             if slots == nil { slots = settings.kept() }

@@ -222,7 +222,7 @@ final class HostedAppsModel {
                 return
             }
             guard let url = current.target(slug)?.connectURL else {
-                notes[slug] = current.target(slug)?.detail ?? AppLocalization.string("Hermes couldn't open the sign-in page. Try again.")
+                notes[slug] = current.target(slug)?.detail ?? AppLocalization.string("Hermes couldn't open the sign-in page. Try again.", table: .bots)
                 try? await appState.stopHostedAppSignIn(current)
                 return
             }
@@ -248,7 +248,7 @@ final class HostedAppsModel {
                     guard Date().timeIntervalSince(since) >= Self.outageGrace else { continue }
                     // Only on its own Hermes, as the other exits.
                     guard isLatest else { return }
-                    notes[slug] = AppLocalization.string("The connection to Hermes dropped, so the sign-in stopped. Try again.")
+                    notes[slug] = AppLocalization.string("The connection to Hermes dropped, so the sign-in stopped. Try again.", table: .bots)
                     retireOnceConnected(current, slug: slug, hermes: hermes, appState: appState)
                     return
                 }
@@ -261,13 +261,13 @@ final class HostedAppsModel {
                     return
                 }
                 if target?.retryable == true || current.settled {
-                    notes[slug] = target?.detail ?? AppLocalization.string("The sign-in didn't finish. Try again.")
+                    notes[slug] = target?.detail ?? AppLocalization.string("The sign-in didn't finish. Try again.", table: .bots)
                     try? await appState.stopHostedAppSignIn(current)
                     await reload(appState)
                     return
                 }
                 if let closedAt = browserClosedAt, Date().timeIntervalSince(closedAt) >= Self.closedGrace {
-                    notes[slug] = AppLocalization.string("The sign-in wasn't finished.")
+                    notes[slug] = AppLocalization.string("The sign-in wasn't finished.", table: .bots)
                     try? await appState.stopHostedAppSignIn(current)
                     await reload(appState)
                     return
@@ -348,7 +348,7 @@ final class HostedAppsModel {
     private func finished(_ slug: String, appState: AppState) async {
         closeBrowser()
         Haptics.success()
-        notes[slug] = AppLocalization.string("Connected. Hermes can use it in new chats.")
+        notes[slug] = AppLocalization.string("Connected. Hermes can use it in new chats.", table: .bots)
         await reload(appState)
     }
 }

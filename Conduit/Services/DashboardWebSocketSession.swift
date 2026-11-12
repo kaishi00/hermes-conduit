@@ -72,7 +72,7 @@ enum DashboardSocketHandshakeError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .browserSessionRequired:
-            return AppLocalization.string("This server asked for a browser sign-in before connecting to Hermes. Conduit doesn't follow that redirect with your sign-in.")
+            return AppLocalization.string("This server asked for a browser sign-in before connecting to Hermes. Conduit doesn't follow that redirect with your sign-in.", table: .connection)
         }
     }
 }

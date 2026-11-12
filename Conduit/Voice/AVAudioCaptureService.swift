@@ -249,7 +249,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
             if let lastCaptureFailure {
                 // The conversion detail is for the log; the person gets what to try.
                 voiceAudioLogger.error("capture conversion failed: \(lastCaptureFailure, privacy: .public)")
-                throw VoiceAudioError.unavailable(AppLocalization.string("Conduit couldn't read audio from this microphone. Try again, or switch to another microphone or headset."))
+                throw VoiceAudioError.unavailable(AppLocalization.string("Conduit couldn't read audio from this microphone. Try again, or switch to another microphone or headset.", table: .voice))
             }
             throw VoiceAudioError.noAudioCaptured
         }

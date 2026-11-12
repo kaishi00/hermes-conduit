@@ -78,8 +78,8 @@ struct ConnectionCard: View {
                         .buttonStyle(.bordered)
                         .disabled(!card.needsUser)
                         Text(card.isDisplay
-                             ? AppLocalization.string("Continue when you're done; Hermes carries on with the apps you connected.")
-                             : AppLocalization.string("Continue lets Hermes carry on without what isn't connected yet."))
+                             ? AppLocalization.string("Continue when you're done; Hermes carries on with the apps you connected.", table: .connection)
+                             : AppLocalization.string("Continue lets Hermes carry on without what isn't connected yet.", table: .connection))
                             .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                             .fixedSize(horizontal: false, vertical: true)
@@ -182,7 +182,7 @@ struct ConnectionCard: View {
     @ViewBuilder
     private func rowAction(_ target: ConnectionActivity.Target, in card: ConnectionActivity) -> some View {
         if target.opensPage, let url = target.connectURL {
-            Button(AppLocalization.string("Connect")) {
+            Button(AppLocalization.string("Connect", table: .connection)) {
                 opened.insert(target.name)
                 browserUp = true
                 browser = BotMcpBrowserPage(url: url)
@@ -190,7 +190,7 @@ struct ConnectionCard: View {
             .buttonStyle(.borderedProminent)
             .controlSize(.small)
             .disabled(!card.needsUser || browserUp)
-            .accessibilityLabel(Text(verbatim: "\(AppLocalization.string("Connect")) \(target.title)"))
+            .accessibilityLabel(Text(verbatim: "\(AppLocalization.string("Connect", table: .connection)) \(target.title)"))
         } else if target.reissues {
             Button(AppLocalization.string("Try Again")) {
                 opened.remove(target.name)
@@ -259,7 +259,7 @@ struct ConnectionCard: View {
             get: { drafts[target.name]?[field.name] ?? field.defaultValue },
             set: { drafts[target.name, default: [:]][field.name] = $0 }
         )
-        let label = field.required ? AppLocalization.string("\(field.label) (required)") : field.label
+        let label = field.required ? AppLocalization.string("\(field.label) (required)", table: .connection) : field.label
         Group {
             // No .password content type: iOS would offer to save the key
             // to the keychain under Conduit's own domain.
@@ -322,18 +322,18 @@ struct ConnectionCard: View {
         if card.status == .error { return AppLocalization.string("TRY AGAIN") }
         guard card.isOpen else {
             return card.targets.contains { $0.state == .connected } && !card.isDisplay
-                ? AppLocalization.string("CONNECTED")
-                : AppLocalization.string("DONE")
+                ? AppLocalization.string("CONNECTED", table: .connection)
+                : AppLocalization.string("DONE", table: .connection)
         }
-        return AppLocalization.string("HERMES IS WAITING")
+        return AppLocalization.string("HERMES IS WAITING", table: .connection)
     }
 
     private func title(_ card: ConnectionActivity) -> String {
-        if card.isDisplay { return AppLocalization.string("Apps Hermes can use for you") }
+        if card.isDisplay { return AppLocalization.string("Apps Hermes can use for you", table: .connection) }
         let installs = card.targets.allSatisfy { $0.kind == .plugin || $0.kind == .skill }
         return installs && !card.targets.isEmpty
-            ? AppLocalization.string("Install for Hermes")
-            : AppLocalization.string("Connect for Hermes")
+            ? AppLocalization.string("Install for Hermes", table: .connection)
+            : AppLocalization.string("Connect for Hermes", table: .connection)
     }
 
     private func tint(_ card: ConnectionActivity) -> Color {
@@ -344,7 +344,7 @@ struct ConnectionCard: View {
     private func stateWord(_ target: ConnectionActivity.Target, live: Bool) -> String {
         switch target.state {
         case .connected:
-            if target.discoveryError != nil { return AppLocalization.string("Connected, but its tools didn't load") }
+            if target.discoveryError != nil { return AppLocalization.string("Connected, but its tools didn't load", table: .connection) }
             return target.kind == .plugin || target.kind == .skill
                 ? AppLocalization.string("Installed")
                 : AppLocalization.string("Connected")
@@ -353,9 +353,9 @@ struct ConnectionCard: View {
         case .initiated where live && opened.contains(target.name):
             return AppLocalization.string("Waiting for the sign-in…")
         case .failed, .expired:
-            return live ? AppLocalization.string("Didn't connect") : AppLocalization.string("Not connected")
+            return live ? AppLocalization.string("Didn't connect", table: .connection) : AppLocalization.string("Not connected")
         case .pending where target.kind == .plugin || target.kind == .skill:
-            return target.alreadyInstalled ? AppLocalization.string("Already installed") : AppLocalization.string("Not installed")
+            return target.alreadyInstalled ? AppLocalization.string("Already installed", table: .connection) : AppLocalization.string("Not installed")
         case .pending, .initiated, .notConnected:
             return AppLocalization.string("Not connected")
         }
@@ -364,8 +364,8 @@ struct ConnectionCard: View {
     private func approveTitle(_ target: ConnectionActivity.Target) -> String {
         switch target.action {
         case "install": return AppLocalization.string("Install")
-        case "enable": return AppLocalization.string("Turn On")
-        default: return AppLocalization.string("Connect")
+        case "enable": return AppLocalization.string("Turn On", table: .connection)
+        default: return AppLocalization.string("Connect", table: .connection)
         }
     }
 
@@ -379,9 +379,9 @@ struct ConnectionCard: View {
         default: nil
         }
         let scan: String? = switch target.scanStatus ?? "" {
-        case "passed": AppLocalization.string("Security scan passed")
-        case "warnings": AppLocalization.string("Security scan found warnings")
-        case "failed": AppLocalization.string("Security scan failed")
+        case "passed": AppLocalization.string("Security scan passed", table: .connection)
+        case "warnings": AppLocalization.string("Security scan found warnings", table: .connection)
+        case "failed": AppLocalization.string("Security scan failed", table: .connection)
         default: nil
         }
         var parts = [tier, scan].compactMap { $0 }

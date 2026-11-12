@@ -28,11 +28,11 @@ enum LocationSharingError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .noDashboard:
-            return AppLocalization.string("Connect to your Hermes dashboard first.")
+            return AppLocalization.string("Connect to your Hermes dashboard first.", table: .phone)
         case .permissionDenied:
-            return AppLocalization.string("Conduit doesn't have permission to use your location. Allow it in the Settings app under Privacy & Security > Location Services > Conduit.")
+            return AppLocalization.string("Conduit doesn't have permission to use your location. Allow it in the Settings app under Privacy & Security > Location Services > Conduit.", table: .phone)
         case .unreadable:
-            return AppLocalization.string("Unlock your iPhone and try again.")
+            return AppLocalization.string("Unlock your iPhone and try again.", table: .phone)
         }
     }
 }

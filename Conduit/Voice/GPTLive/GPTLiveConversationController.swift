@@ -633,7 +633,7 @@ final class GPTLiveConversationController: ObservableObject {
             // Only the call it was set for: a newer call has its own limit.
             guard !Task.isCancelled, let self, let call, self.session === call, self.isActive, !self.isEnding else { return }
             self.callLimitTask = nil
-            self.limitNote = AppLocalization.string("This call reached its time limit on the API key.")
+            self.limitNote = AppLocalization.string("This call reached its time limit on the API key.", table: .voice)
             self.session?.appendContext(Self.timeLimitGoodbye, channel: .speakable, delegationID: nil)
             self.requestEnd()
         }
@@ -735,7 +735,7 @@ final class GPTLiveConversationController: ObservableObject {
                 idleFlushTask = nil
                 returnPendingSends()
                 bridge.connectionReplaced()
-                phase = .failed(AppLocalization.string("GPT-Live ended the conversation."))
+                phase = .failed(AppLocalization.string("GPT-Live ended the conversation.", table: .voice))
             }
         case .connecting:
             if endRequestedAt == nil { phase = .connecting }

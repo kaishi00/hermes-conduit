@@ -428,10 +428,10 @@ enum HostedApps {
     /// Why `name` can't name an account among the app's, or nil.
     static func accountNameProblem(_ name: String, among accounts: [HostedAppAccount], renaming id: String? = nil) -> String? {
         guard isValidAccountName(name) else {
-            return AppLocalization.string("Use lowercase letters, digits and dashes, up to 32, starting with a letter or digit.")
+            return AppLocalization.string("Use lowercase letters, digits and dashes, up to 32, starting with a letter or digit.", table: .bots)
         }
         if accounts.contains(where: { $0.alias == name && $0.connectionID != id }) {
-            return AppLocalization.string("Another account of this app already has that name.")
+            return AppLocalization.string("Another account of this app already has that name.", table: .bots)
         }
         return nil
     }

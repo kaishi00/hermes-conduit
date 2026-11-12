@@ -59,7 +59,7 @@ struct PluginSettingField: Equatable, Identifiable {
             return trimmed == "true"
         case .enum:
             guard choices.contains(trimmed) else {
-                throw PluginSettings.FieldError(message: AppLocalization.string("\(label): pick one of the choices."))
+                throw PluginSettings.FieldError(message: AppLocalization.string("\(label): pick one of the choices.", table: .bots))
             }
             return trimmed
         case .number:
@@ -73,7 +73,7 @@ struct PluginSettingField: Equatable, Identifiable {
             }
             if let integer = Int(text) { return integer }
             guard let number = Double(text), number.isFinite else {
-                throw PluginSettings.FieldError(message: AppLocalization.string("\(label): enter a number."))
+                throw PluginSettings.FieldError(message: AppLocalization.string("\(label): enter a number.", table: .bots))
             }
             return number
         case .json:
@@ -82,7 +82,7 @@ struct PluginSettingField: Equatable, Identifiable {
             guard let data = trimmed.data(using: .utf8),
                   let parsed = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]),
                   parsed is [Any] || parsed is [String: Any] else {
-                throw PluginSettings.FieldError(message: AppLocalization.string("\(label): enter a JSON list or object."))
+                throw PluginSettings.FieldError(message: AppLocalization.string("\(label): enter a JSON list or object.", table: .bots))
             }
             return parsed
         case .string:
@@ -108,8 +108,8 @@ enum PluginSettings {
 
         var errorDescription: String? {
             switched
-                ? AppLocalization.string("Conduit switched profiles after saving some keys, so the other settings weren't saved.")
-                : AppLocalization.string("The keys were saved, but the other settings weren't: \(reason)")
+                ? AppLocalization.string("Conduit switched profiles after saving some keys, so the other settings weren't saved.", table: .bots)
+                : AppLocalization.string("The keys were saved, but the other settings weren't: \(reason)", table: .bots)
         }
     }
 
@@ -148,7 +148,7 @@ enum PluginSettings {
             }
             guard raw != field.initialText else { continue }
             if field.required, raw.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, field.kind != .boolean {
-                throw FieldError(message: AppLocalization.string("\(field.label) is required."))
+                throw FieldError(message: AppLocalization.string("\(field.label) is required.", table: .bots))
             }
             values[field.key] = hashable(try field.wireValue(raw))
         }

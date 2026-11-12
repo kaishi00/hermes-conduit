@@ -58,7 +58,7 @@ class PageSearchSourceContractTests(unittest.TestCase):
         for path in sorted((ROOT / "Conduit").rglob("*.swift")):
             for line in path.read_text().splitlines():
                 if ".searchable(" in line:
-                    prompt = re.search(r'string\("([^"]+)"\)', line)
+                    prompt = re.search(r'string\("([^"]+)"(?:, table: \.\w+)?\)', line)
                     found.setdefault(str(path.relative_to(ROOT)), []).append(
                         prompt.group(1) if prompt else line.strip()
                     )

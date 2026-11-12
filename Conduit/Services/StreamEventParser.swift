@@ -99,7 +99,7 @@ enum StreamEventParser {
             return .sessionsChanged
 
         case "error":
-            return .messageError(sessionId: sessionId, message: payload?["message"]?.stringValue ?? AppLocalization.string("Hermes reported an error."))
+            return .messageError(sessionId: sessionId, message: payload?["message"]?.stringValue ?? AppLocalization.string("Hermes reported an error.", table: .chat))
 
         case "message.interrupted", "session.interrupted":
             return .messageInterrupted(sessionId: sessionId)

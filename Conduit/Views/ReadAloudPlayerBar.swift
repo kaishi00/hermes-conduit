@@ -24,8 +24,8 @@ struct ReadAloudPlayerBar: View {
     }
 
     private var status: String {
-        if case .preparing = controller.state { return AppLocalization.string("Preparing…") }
-        return controller.isPaused ? AppLocalization.string("Paused") : AppLocalization.string("Reading aloud")
+        if case .preparing = controller.state { return AppLocalization.string("Preparing…", table: .voice) }
+        return controller.isPaused ? AppLocalization.string("Paused") : AppLocalization.string("Reading aloud", table: .voice)
     }
 
     private func row(_ reading: MessageReadAloudController.NowReading) -> some View {
@@ -117,7 +117,7 @@ struct ReadAloudControls: View {
             .disabled(!isPlaying)
             .accessibilityLabel(controller.isPaused
                 ? Text(AppLocalization.string("Resume reading response"))
-                : Text(AppLocalization.string("Pause reading response")))
+                : Text(AppLocalization.string("Pause reading response", table: .voice)))
 
             Button {
                 Haptics.medium()

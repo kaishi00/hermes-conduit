@@ -96,8 +96,8 @@ enum ArtifactFilter: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .all: return AppLocalization.string("All")
-        case .images: return AppLocalization.string("Images")
-        case .pages: return AppLocalization.string("Pages")
+        case .images: return AppLocalization.string("Images", table: .chat)
+        case .pages: return AppLocalization.string("Pages", table: .chat)
         case .files: return AppLocalization.string("Files")
         case .links: return AppLocalization.string("Links")
         }

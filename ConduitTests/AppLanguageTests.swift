@@ -41,12 +41,12 @@ final class AppLanguageTests: XCTestCase {
 
     /// The value a localization's own compiled catalog holds for `key`, read
     /// straight from its lproj; nil when that catalog lacks the key.
-    private func catalogValue(_ key: String, in language: AppLanguage) -> String? {
+    private func catalogValue(_ key: String, in language: AppLanguage, table: String = "Localizable") -> String? {
         guard let identifier = language.localizationIdentifier,
               let path = Bundle.main.path(forResource: identifier, ofType: "lproj"),
               let bundle = Bundle(path: path) else { return nil }
         let missing = "\u{1}missing"
-        let value = bundle.localizedString(forKey: key, value: missing, table: "Localizable")
+        let value = bundle.localizedString(forKey: key, value: missing, table: table)
         return value == missing ? nil : value
     }
 
@@ -216,7 +216,7 @@ final class AppLanguageTests: XCTestCase {
             names.insert(name)
         }
         XCTAssertEqual(names.count, pinnedLanguages.count, "two languages share a picker label")
-        XCTAssertEqual(AppLanguage.system.displayName, AppLocalization.string("System Default"))
+        XCTAssertEqual(AppLanguage.system.displayName, AppLocalization.string("System Default", table: .settings))
     }
 
     // MARK: - Explicit String localization through the selected language
@@ -232,10 +232,39 @@ final class AppLanguageTests: XCTestCase {
     func testPinnedTranslationsAreNotTheSourceStrings() {
         // Proves the pin really switches catalogs rather than falling back to
         // the source strings (any one key may legitimately read the same).
-        let keys = ["Settings", "Cancel", "App language", "System Default"]
+        let keys = ["Settings", "Cancel", "App language"]
         for language in translatedLanguages {
             let resolved = keys.map { AppLocalization.string(String.LocalizationValue($0), language: language) }
             XCTAssertNotEqual(resolved, keys, "\(language.rawValue) resolved only source strings")
+        }
+    }
+
+    func testFeatureTablesShipInEveryLanguage() {
+        // Each feature String Catalog (issue 823) compiles into every
+        // shipped lproj, so a key moved out of Localizable still translates.
+        for language in pinnedLanguages {
+            guard let identifier = language.localizationIdentifier,
+                  let path = Bundle.main.path(forResource: identifier, ofType: "lproj"),
+                  let bundle = Bundle(path: path) else {
+                XCTFail("\(language.rawValue).lproj missing from the app")
+                continue
+            }
+            for table in LocalizationTable.allCases {
+                XCTAssertTrue(
+                    bundle.path(forResource: table.rawValue, ofType: "strings") != nil
+                        || bundle.path(forResource: table.rawValue, ofType: "stringsdict") != nil,
+                    "\(table.rawValue) table missing from \(identifier).lproj")
+            }
+        }
+    }
+
+    func testPinnedLanguagesResolveFeatureTableTranslations() throws {
+        for language in translatedLanguages {
+            let expected = try XCTUnwrap(catalogValue("System Default", in: language, table: "Settings"),
+                                         "\(language.rawValue) Settings table lacks \"System Default\"")
+            XCTAssertEqual(AppLocalization.string("System Default", table: .settings, language: language), expected)
+            XCTAssertNil(catalogValue("System Default", in: language),
+                         "\"System Default\" belongs to the Settings table only")
         }
     }
 

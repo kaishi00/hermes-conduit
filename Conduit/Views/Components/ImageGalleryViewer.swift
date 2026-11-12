@@ -698,7 +698,7 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
         spinner.translatesAutoresizingMaskIntoConstraints = false
         view.addSubview(spinner)
 
-        failureLabel.text = AppLocalization.string("Image unavailable")
+        failureLabel.text = AppLocalization.string("Image unavailable", table: .chat)
         failureLabel.textColor = UIColor.white.withAlphaComponent(0.75)
         failureLabel.font = .preferredFont(forTextStyle: .body)
         failureLabel.adjustsFontForContentSizeCategory = true
@@ -807,7 +807,7 @@ final class ImageGalleryPageController: UIViewController, UIScrollViewDelegate {
         spinner.stopAnimating()
         failureLabel.text = tooLarge
             ? AppLocalization.string("Too large to open on this phone")
-            : AppLocalization.string("Image unavailable")
+            : AppLocalization.string("Image unavailable", table: .chat)
         // The row's own copy stays if the original can't be had.
         failureLabel.isHidden = imageView.image != nil
     }
@@ -923,7 +923,7 @@ final class SaveToHermesAlbumActivity: UIActivity {
 
     override class var activityCategory: UIActivity.Category { .action }
     override var activityType: UIActivity.ActivityType? { UIActivity.ActivityType("com.milim.relay.save-to-hermes-album") }
-    override var activityTitle: String? { AppLocalization.string("Save to Hermes Album") }
+    override var activityTitle: String? { AppLocalization.string("Save to Hermes Album", table: .chat) }
     override var activityImage: UIImage? { UIImage(systemName: "rectangle.stack.badge.plus") }
 
     override func canPerform(withActivityItems activityItems: [Any]) -> Bool {

@@ -41,10 +41,10 @@ enum CustomHeaderIssue: Equatable {
 
     var message: String {
         switch self {
-        case .emptyName: return AppLocalization.string("Enter a header name.")
-        case .invalidName: return AppLocalization.string("This isn’t a valid header name. Use letters, digits, and dashes.")
-        case .reservedName: return AppLocalization.string("Conduit manages this header itself, so it can't be set here.")
-        case .invalidValue: return AppLocalization.string("Header values can't contain line breaks.")
+        case .emptyName: return AppLocalization.string("Enter a header name.", table: .connection)
+        case .invalidName: return AppLocalization.string("This isn’t a valid header name. Use letters, digits, and dashes.", table: .connection)
+        case .reservedName: return AppLocalization.string("Conduit manages this header itself, so it can't be set here.", table: .connection)
+        case .invalidValue: return AppLocalization.string("Header values can't contain line breaks.", table: .connection)
         }
     }
 }

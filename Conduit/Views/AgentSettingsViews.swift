@@ -62,8 +62,8 @@ struct AgentSettingsBanner: View {
             }
             if let first = visible.first {
                 let text = visible.count == 1
-                    ? AppLocalization.string("Hermes wants to change \(first.title)")
-                    : AppLocalization.string("Hermes wants to change \(visible.count) settings")
+                    ? AppLocalization.string("Hermes wants to change \(first.title)", table: .bots)
+                    : AppLocalization.string("Hermes wants to change \(visible.count) settings", table: .bots)
                 bannerRow(
                     symbol: "checkmark.shield",
                     text: text,
@@ -137,13 +137,13 @@ struct AgentSettingsReviewSheet: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(AppLocalization.string("Dismiss All")) {
+                    Button(AppLocalization.string("Dismiss All", table: .bots)) {
                         appState.resolveAgentSettings(items, apply: false)
                         dismiss()
                     }
                 }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(AppLocalization.string("Apply All")) {
+                    Button(AppLocalization.string("Apply All", table: .bots)) {
                         appState.resolveAgentSettings(items, apply: true)
                         dismiss()
                     }
@@ -172,7 +172,7 @@ struct AgentSettingsReviewSheet: View {
             }
             .scaledFont(.subheadline)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(verbatim: AppLocalization.string("From \(item.oldValue) to \(item.newValue)")))
+            .accessibilityLabel(Text(verbatim: AppLocalization.string("From \(item.oldValue) to \(item.newValue)", table: .bots)))
             if !item.request.reason.isEmpty {
                 // The reason is Hermes' own words: shown as a quote, never
                 // as Conduit's.
@@ -181,7 +181,7 @@ struct AgentSettingsReviewSheet: View {
                     .foregroundStyle(.secondary)
             }
             HStack(spacing: 12) {
-                Button(AppLocalization.string("Apply")) {
+                Button(AppLocalization.string("Apply", table: .bots)) {
                     appState.resolveAgentSettings([item], apply: true)
                 }
                 .buttonStyle(.settingsPrimary)
@@ -209,7 +209,7 @@ struct AgentSettingsModeSection: View {
     private var mode: AgentSettingsMode { AgentSettingsMode(rawValue: storedMode) ?? AgentSettingsMode.defaultMode }
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Hermes and your settings"), symbol: "slider.horizontal.3", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Hermes and your settings", table: .bots), symbol: "slider.horizontal.3", tint: .conduitAura) {
             ConduitMenuPicker(
                 value: mode,
                 choices: AgentSettingsMode.allCases.map { (id: $0, title: $0.title) },
@@ -223,7 +223,7 @@ struct AgentSettingsModeSection: View {
             .accessibilityIdentifier("voice.agentSettingsMode")
             if !appState.agentSettingsReview.isEmpty {
                 // Requests whose banner was closed are still here.
-                Button(AppLocalization.string("Review changes from Hermes")) { reviewing = true }
+                Button(AppLocalization.string("Review changes from Hermes", table: .bots)) { reviewing = true }
                     .scaledFont(.subheadline.weight(.semibold))
                     .accessibilityIdentifier("voice.agentSettingsReview")
             }

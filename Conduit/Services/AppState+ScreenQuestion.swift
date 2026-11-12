@@ -267,7 +267,7 @@ extension AppState {
     }
 
     private static var screenshotChatNotStartedMessage: String {
-        AppLocalization.string("Hermes could not start a new chat, so the screenshot is still in this one.")
+        AppLocalization.string("Hermes could not start a new chat, so the screenshot is still in this one.", table: .phone)
     }
 
     /// "New Chat" beside the screenshot in the composer. A screenshot the
@@ -542,7 +542,7 @@ extension AppState {
                 switchedProfile = true
             } else {
                 // Kept, not dropped: it waits in the profile on screen.
-                errorMessage = AppLocalization.string("Conduit could not open the profile the shortcut asked for, so the screenshot is in this one.")
+                errorMessage = AppLocalization.string("Conduit could not open the profile the shortcut asked for, so the screenshot is in this one.", table: .phone)
             }
         }
 
@@ -592,7 +592,7 @@ extension AppState {
                 // Kept, not dropped: tried again once the connection settles.
                 // A profile that couldn't open is tried again too.
                 holdScreenQuestion(request, profile: requestedProfile, dashboardID: dashboardID)
-                errorMessage = AppLocalization.string("Hermes could not start a chat for the screenshot. It's kept and will be attached once Hermes is ready.")
+                errorMessage = AppLocalization.string("Hermes could not start a chat for the screenshot. It's kept and will be attached once Hermes is ready.", table: .phone)
                 return true
             }
             sessionID = created

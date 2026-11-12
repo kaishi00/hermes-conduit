@@ -439,7 +439,7 @@ struct KanbanTaskDetailView: View {
         Menu {
             Button {
                 if let task = displayedTask {
-                    KanbanClipboard.copy(task.id, announcement: AppLocalization.string("Task ID copied"))
+                    KanbanClipboard.copy(task.id, announcement: AppLocalization.string("Task ID copied", table: .tasks))
                 }
             } label: {
                 Label("Copy Task ID", systemImage: "doc.on.doc")
@@ -447,7 +447,7 @@ struct KanbanTaskDetailView: View {
             .disabled(!isDisplayedTaskLoaded)
             Button {
                 if let task = displayedTask {
-                    KanbanClipboard.copy(task.title.isEmpty ? task.id : task.title, announcement: AppLocalization.string("Title copied"))
+                    KanbanClipboard.copy(task.title.isEmpty ? task.id : task.title, announcement: AppLocalization.string("Title copied", table: .tasks))
                 }
             } label: {
                 Label("Copy Task Title", systemImage: "doc.on.doc.fill")
@@ -523,7 +523,7 @@ struct KanbanTaskDetailView: View {
     // MARK: - Assignment & execution
 
     private var assignmentExecutionSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Assignment & Execution"), symbol: "person.crop.rectangle.stack", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Assignment & Execution", table: .tasks), symbol: "person.crop.rectangle.stack", tint: .conduitAura) {
             HStack(spacing: 8) {
                 // Label and value as SettingsMetricRow draws them, so the
                 // card's rows read alike.
@@ -535,7 +535,7 @@ struct KanbanTaskDetailView: View {
                         .scaledFont(.subheadline.weight(.medium))
                         .lineLimit(1)
                 } else {
-                    Text(AppLocalization.string("Unassigned") + (displayedTask?.status == "ready" && hasDispatcherFallback ? " " + AppLocalization.string("→ default") : ""))
+                    Text(AppLocalization.string("Unassigned", table: .tasks) + (displayedTask?.status == "ready" && hasDispatcherFallback ? " " + AppLocalization.string("→ default", table: .tasks) : ""))
                         .foregroundStyle(.secondary)
                 }
                 Button {
@@ -579,7 +579,7 @@ struct KanbanTaskDetailView: View {
                     Spacer(minLength: 8)
                     // Display-only: derived from the loaded server task,
                     // never from the editor draft.
-                    Text(KanbanModelOverrideDisplayPolicy.label(for: displayedTask, inheritCopy: AppLocalization.string("Inherit from profile")))
+                    Text(KanbanModelOverrideDisplayPolicy.label(for: displayedTask, inheritCopy: AppLocalization.string("Inherit from profile", table: .tasks)))
                         .scaledFont(.subheadline.weight(.medium))
                         .foregroundStyle(hasAnyServerOverride ? Color.primary : Color.secondary)
                         .lineLimit(2)
@@ -592,13 +592,13 @@ struct KanbanTaskDetailView: View {
             .buttonStyle(.plain)
             .accessibilityHint("Edits the per-task model, provider, and reasoning override")
             if isRunning, let pid = displayedTask?.workerPid {
-                SettingsMetricRow(label: AppLocalization.string("Worker PID"), value: String(pid))
+                SettingsMetricRow(label: AppLocalization.string("Worker PID", table: .tasks), value: String(pid))
             }
             if let createdBy = displayedTask?.createdBy, !createdBy.isEmpty {
-                SettingsMetricRow(label: AppLocalization.string("Created by"), value: createdBy, lineLimit: 1)
+                SettingsMetricRow(label: AppLocalization.string("Created by", table: .tasks), value: createdBy, lineLimit: 1)
             }
             if let failures = displayedTask?.consecutiveFailures, failures > 0 {
-                SettingsMetricRow(label: AppLocalization.string("Consecutive failures"), value: String(failures))
+                SettingsMetricRow(label: AppLocalization.string("Consecutive failures", table: .tasks), value: String(failures))
             }
             if let failure = displayedTask?.lastFailureError, !failure.isEmpty {
                 VStack(alignment: .leading, spacing: 5) {
@@ -626,7 +626,7 @@ struct KanbanTaskDetailView: View {
         // Decompose already committed must not be offered the actions again
         // merely because the authoritative refresh failed (merge pass).
         if KanbanTriagePolicy.isEligible(task: displayedTask), !triageActionsSuppressed {
-            ConduitSettingsSection(title: AppLocalization.string("Triage Actions"), symbol: "tray.and.arrow.down", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("Triage Actions", table: .tasks), symbol: "tray.and.arrow.down", tint: .conduitAccent) {
                 Button {
                     // V3A final pass: capture the task identity + board/server
                     // stamp SYNCHRONOUSLY at the tap, then schedule. The store
@@ -734,8 +734,8 @@ struct KanbanTaskDetailView: View {
                     .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(tint)
                 Text(wait == .createdBlocked
-                     ? AppLocalization.string("This task was created as Blocked, so no worker starts it until you move it on. The agent didn't ask a question: the description says what the task is for.")
-                     : AppLocalization.string("No reason was given for this block, and the agent didn't ask a question."))
+                     ? AppLocalization.string("This task was created as Blocked, so no worker starts it until you move it on. The agent didn't ask a question: the description says what the task is for.", table: .tasks)
+                     : AppLocalization.string("No reason was given for this block, and the agent didn't ask a question.", table: .tasks))
                     .scaledFont(.footnote)
                 Text("When it can go ahead, set its status to Ready and save. Add a comment first if the worker needs to know something.")
                     .scaledFont(.caption2)
@@ -756,7 +756,7 @@ struct KanbanTaskDetailView: View {
     @ViewBuilder
     private var diagnosticsSection: some View {
         if let diagnostics = displayedTask?.diagnostics, !diagnostics.isEmpty {
-            ConduitSettingsSection(title: AppLocalization.string("Diagnostics (\(diagnostics.count))"), symbol: "stethoscope", tint: .red) {
+            ConduitSettingsSection(title: AppLocalization.string("Diagnostics (\(diagnostics.count))", table: .tasks), symbol: "stethoscope", tint: .red) {
                 ForEach(Array(diagnostics.enumerated()), id: \.offset) { _, diagnostic in
                     diagnosticCard(diagnostic)
                 }
@@ -809,16 +809,16 @@ struct KanbanTaskDetailView: View {
             Button {
                 Task { await reclaimTask(reason: nil) }
             } label: {
-                Label(action.label.isEmpty ? AppLocalization.string("Reclaim") : action.label, systemImage: "arrow.clockwise.circle")
+                Label(action.label.isEmpty ? AppLocalization.string("Reclaim", table: .tasks) : action.label, systemImage: "arrow.clockwise.circle")
             }
             .buttonStyle(.bordered)
             .tint(action.suggested == true ? .conduitAccent : .secondary)
         case "cli_hint":
             Button {
                 let command = action.payload?["command"]?.stringValue ?? action.label
-                KanbanClipboard.copy(command, announcement: AppLocalization.string("Recovery command copied"))
+                KanbanClipboard.copy(command, announcement: AppLocalization.string("Recovery command copied", table: .tasks))
             } label: {
-                Label(action.label.isEmpty ? AppLocalization.string("Copy command") : action.label, systemImage: "doc.on.doc")
+                Label(action.label.isEmpty ? AppLocalization.string("Copy command", table: .tasks) : action.label, systemImage: "doc.on.doc")
             }
             .buttonStyle(.bordered)
         default:
@@ -848,12 +848,12 @@ struct KanbanTaskDetailView: View {
     @ViewBuilder
     private var dependenciesSection: some View {
         if let links = detail?.links, !links.parents.isEmpty || !links.children.isEmpty {
-            ConduitSettingsSection(title: AppLocalization.string("Dependencies"), symbol: "arrow.triangle.branch", tint: .conduitAura) {
+            ConduitSettingsSection(title: AppLocalization.string("Dependencies", table: .tasks), symbol: "arrow.triangle.branch", tint: .conduitAura) {
                 if !links.parents.isEmpty {
-                    dependencyGroup(title: AppLocalization.string("Blocked by"), ids: links.parents)
+                    dependencyGroup(title: AppLocalization.string("Blocked by", table: .tasks), ids: links.parents)
                 }
                 if !links.children.isEmpty {
-                    dependencyGroup(title: AppLocalization.string("Blocks"), ids: links.children)
+                    dependencyGroup(title: AppLocalization.string("Blocks", table: .tasks), ids: links.children)
                 }
             }
         }
@@ -912,7 +912,7 @@ struct KanbanTaskDetailView: View {
     // MARK: - Comments
 
     private var commentsSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Comments"), symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Comments", table: .tasks), symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
             if let comments = detail?.comments, !comments.isEmpty {
                 ForEach(comments) { value in
                     VStack(alignment: .leading, spacing: 4) {
@@ -961,13 +961,13 @@ struct KanbanTaskDetailView: View {
         } label: {
             HStack {
                 Spacer(minLength: 0)
-                if isAddingComment { ProgressView() } else { Label(isRunning ? AppLocalization.string("Send") : AppLocalization.string("Add comment"), systemImage: "paperplane").lineLimit(oneLine ? 1 : nil) }
+                if isAddingComment { ProgressView() } else { Label(isRunning ? AppLocalization.string("Send") : AppLocalization.string("Add comment", table: .tasks), systemImage: "paperplane").lineLimit(oneLine ? 1 : nil) }
                 Spacer(minLength: 0)
             }
         }
         .buttonStyle(.bordered)
         .disabled(comment.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || isAddingComment || isUnblocking || isRequeuing)
-        .accessibilityLabel(isRunning ? AppLocalization.string("Send") : AppLocalization.string("Add comment"))
+        .accessibilityLabel(isRunning ? AppLocalization.string("Send") : AppLocalization.string("Add comment", table: .tasks))
         if isRunning {
             // Upstream "Note & requeue": post the note, then reclaim so
             // the dispatcher re-runs the task with the note in context.
@@ -1009,7 +1009,7 @@ struct KanbanTaskDetailView: View {
     @ViewBuilder
     private var activitySection: some View {
         if let events = detail?.events, !events.isEmpty {
-            ConduitSettingsSection(title: AppLocalization.string("Activity (\(events.count))"), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("Activity (\(events.count))", table: .tasks), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
                 ForEach(events.prefix(60)) { event in
                     let row = KanbanActivityFormatter.row(for: event)
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -1046,7 +1046,7 @@ struct KanbanTaskDetailView: View {
     @ViewBuilder
     private var runsSection: some View {
         if let runs = detail?.runs, !runs.isEmpty {
-            ConduitSettingsSection(title: AppLocalization.string("Runs (\(runs.count))"), symbol: "terminal", tint: .orange) {
+            ConduitSettingsSection(title: AppLocalization.string("Runs (\(runs.count))", table: .tasks), symbol: "terminal", tint: .orange) {
                 ForEach(runs) { run in
                     runRow(run)
                 }
@@ -1153,7 +1153,7 @@ struct KanbanTaskDetailView: View {
                 // than letting the screen spin forever. The empty/empty
                 // same-identity case flows through the equality branch above.
                 if loaded.task.id.isEmpty, !expectedID.isEmpty {
-                    errorMessage = KanbanServiceError.invalidResponse(AppLocalization.string("Task detail returned an invalid id.")).localizedDescription
+                    errorMessage = KanbanServiceError.invalidResponse(AppLocalization.string("Task detail returned an invalid id.", table: .tasks)).localizedDescription
                 }
                 return
             }
@@ -1170,7 +1170,7 @@ struct KanbanTaskDetailView: View {
                     baselineStatus: baseline.status
                 )
                 if serverMoved && remoteChangeNotice == nil {
-                    remoteChangeNotice = AppLocalization.string("This task changed on the server. Your unsaved edits are preserved.")
+                    remoteChangeNotice = AppLocalization.string("This task changed on the server. Your unsaved edits are preserved.", table: .tasks)
                 }
             } else {
                 title = server.title
@@ -1434,7 +1434,7 @@ struct KanbanTaskDetailView: View {
             // triage, the actions must stay suppressed (merge pass).
             completedTriageMutation = CompletedTriageMutation(taskID: expectedID, context: expectedContext)
             actionNotice = KanbanTriageActionsPolicy.successNoticeWithRefreshFailure(
-                base: AppLocalization.string("Task specified"),
+                base: AppLocalization.string("Task specified", table: .tasks),
                 storeRefreshError: store.errorMessage
             )
             await loadDetail(force: true)
@@ -1468,7 +1468,7 @@ struct KanbanTaskDetailView: View {
             // Record the committed mutation BEFORE the refresh attempt (see
             // specifyTask - suppression must survive a failed refresh).
             completedTriageMutation = CompletedTriageMutation(taskID: expectedID, context: expectedContext)
-            let base = KanbanTriageActionsPolicy.successNotice(fanout: response.fanout, childCount: response.childIDs.count) ?? AppLocalization.string("Decompose succeeded")
+            let base = KanbanTriageActionsPolicy.successNotice(fanout: response.fanout, childCount: response.childIDs.count) ?? AppLocalization.string("Decompose succeeded", table: .tasks)
             // PARTIAL SUCCESS distinction: the mutation landed, so any
             // failure the store recorded now is a REFRESH failure. Never
             // blame the decompose itself.
@@ -1762,9 +1762,9 @@ enum KanbanNoteAndRequeueFlow {
         case (true, false, let detail?):
             switch transition {
             case .requeue:
-                return AppLocalization.string("The note was posted, but the task could not be requeued. (\(detail))")
+                return AppLocalization.string("The note was posted, but the task could not be requeued. (\(detail))", table: .tasks)
             case .unblock:
-                return AppLocalization.string("The reply was posted, but the task could not be unblocked. (\(detail))")
+                return AppLocalization.string("The reply was posted, but the task could not be unblocked. (\(detail))", table: .tasks)
             }
         default:
             return nil

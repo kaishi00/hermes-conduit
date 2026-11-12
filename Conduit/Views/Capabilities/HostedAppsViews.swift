@@ -46,10 +46,10 @@ struct HostedAppsSection: View {
             if let snapshot = model.snapshot {
                 if snapshot.available, !(query.isEmpty == false && yours.isEmpty && found.isEmpty) {
                     CapabilitySection(
-                        title: AppLocalization.string("Apps"),
+                        title: AppLocalization.string("Apps", table: .bots),
                         symbol: "square.grid.3x3.fill",
                         tint: .conduitAura,
-                        footer: AppLocalization.string("Signed in through Nous Portal. Hermes keeps the sign-ins; changes apply to new chats.")
+                        footer: AppLocalization.string("Signed in through Nous Portal. Hermes keeps the sign-ins; changes apply to new chats.", table: .bots)
                     ) {
                         ForEach(Array(yours.enumerated()), id: \.element.id) { index, app in
                             CapabilityCardRow(divided: index > 0) {
@@ -69,10 +69,10 @@ struct HostedAppsSection: View {
                                 } label: {
                                     CapabilityRowLabel(
                                         symbol: "plus",
-                                        title: yours.isEmpty ? AppLocalization.string("Connect an App") : AppLocalization.string("Browse Apps"),
+                                        title: yours.isEmpty ? AppLocalization.string("Connect an App", table: .bots) : AppLocalization.string("Browse Apps"),
                                         detail: yours.isEmpty
-                                            ? AppLocalization.string("Gmail, Slack, Notion and more: sign in once and Hermes can use them.")
-                                            : AppLocalization.string("\(snapshot.catalog.count) apps"),
+                                            ? AppLocalization.string("Gmail, Slack, Notion and more: sign in once and Hermes can use them.", table: .bots)
+                                            : AppLocalization.string("\(snapshot.catalog.count) apps", table: .bots),
                                         chevron: true
                                     )
                                 }
@@ -142,13 +142,13 @@ enum HostedAppStyle {
     static func word(_ state: HostedApp.State) -> String? {
         switch state {
         case .connected: AppLocalization.string("Connected")
-        case .expired: AppLocalization.string("Sign in again")
-        case .broken: AppLocalization.string("Couldn't connect")
-        case .connecting: AppLocalization.string("Finishing sign-in")
+        case .expired: AppLocalization.string("Sign in again", table: .bots)
+        case .broken: AppLocalization.string("Couldn't connect", table: .bots)
+        case .connecting: AppLocalization.string("Finishing sign-in", table: .bots)
         case .available: nil
         case .off: AppLocalization.string("Off")
-        case .offByOrganization: AppLocalization.string("Off by your organization")
-        case .unknown: AppLocalization.string("Checking")
+        case .offByOrganization: AppLocalization.string("Off by your organization", table: .bots)
+        case .unknown: AppLocalization.string("Checking", table: .bots)
         }
     }
 
@@ -167,8 +167,8 @@ enum HostedAppStyle {
         guard app.connected else { return app.description.isEmpty ? nil : app.description }
         var parts: [String] = []
         if let account = app.accounts.first { parts.append(account.name) }
-        if app.accounts.count > 1 { parts.append(AppLocalization.string("\(app.accounts.count) accounts")) }
-        if !app.disabledTools.isEmpty { parts.append(AppLocalization.string("\(app.disabledTools.count) tools off")) }
+        if app.accounts.count > 1 { parts.append(AppLocalization.string("\(app.accounts.count) accounts", table: .bots)) }
+        if !app.disabledTools.isEmpty { parts.append(AppLocalization.string("\(app.disabledTools.count) tools off", table: .bots)) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 
@@ -203,7 +203,7 @@ struct HostedAppsDirectoryPage: View {
 
     var body: some View {
         CapabilityTabScroll(refresh: { await model.reload(appState) }) {
-            Text(AppLocalization.string("Connect an app once and Hermes can read and act in it for you, in any chat. You sign in on the app's own page; Hermes and Nous Portal keep the sign-in, never Conduit."))
+            Text(AppLocalization.string("Connect an app once and Hermes can read and act in it for you, in any chat. You sign in on the app's own page; Hermes and Nous Portal keep the sign-in, never Conduit.", table: .bots))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 16)
@@ -214,7 +214,7 @@ struct HostedAppsDirectoryPage: View {
             let groups = self.groups
             if groups.isEmpty {
                 CapabilityEmptyState(
-                    title: query.isEmpty ? AppLocalization.string("No apps listed") : AppLocalization.string("No matching apps"),
+                    title: query.isEmpty ? AppLocalization.string("No apps listed", table: .bots) : AppLocalization.string("No matching apps", table: .bots),
                     symbol: "square.grid.3x3",
                     message: query.isEmpty ? nil : AppLocalization.string("Nothing matches “\(query)”.")
                 )
@@ -223,7 +223,7 @@ struct HostedAppsDirectoryPage: View {
                 (model.snapshot?.apps ?? []).first { $0.slug == slug && HostedAppsSection.matches($0, query) }
             }
             if !picks.isEmpty {
-                CapabilitySection(title: AppLocalization.string("Suggested"), symbol: "sparkles", tint: .conduitAura) {
+                CapabilitySection(title: AppLocalization.string("Suggested", table: .bots), symbol: "sparkles", tint: .conduitAura) {
                     ForEach(Array(picks.enumerated()), id: \.element.id) { index, app in
                         CapabilityCardRow(divided: index > 0) {
                             HostedAppRow(app: app, model: model)
@@ -241,8 +241,8 @@ struct HostedAppsDirectoryPage: View {
                 }
             }
         }
-        .pageSearchable(text: $query, prompt: Text(AppLocalization.string("Search apps")))
-        .navigationTitle(AppLocalization.string("Apps"))
+        .pageSearchable(text: $query, prompt: Text(AppLocalization.string("Search apps", table: .bots)))
+        .navigationTitle(AppLocalization.string("Apps", table: .bots))
     }
 }
 
@@ -278,7 +278,7 @@ struct HostedAppPage: View {
     private var rulesFailed: Bool { model.snapshot?.rulesFailed == true }
 
     private var rulesUnreadLine: some View {
-        rulesUnread(AppLocalization.string("Hermes couldn't read the rules just now, so these switches can't change."))
+        rulesUnread(AppLocalization.string("Hermes couldn't read the rules just now, so these switches can't change.", table: .bots))
     }
 
     private func rulesUnread(_ text: String) -> some View {
@@ -360,14 +360,14 @@ struct HostedAppPage: View {
             }
         }
         .confirmationDialog(
-            AppLocalization.string("Disconnect this account?"),
+            AppLocalization.string("Disconnect this account?", table: .bots),
             isPresented: Binding(get: { disconnecting != nil }, set: { if !$0 { disconnecting = nil } }),
             titleVisibility: .visible,
             presenting: disconnecting
         ) { account in
-            Button(AppLocalization.string("Disconnect"), role: .destructive) { disconnect(account) }
+            Button(AppLocalization.string("Disconnect", table: .bots), role: .destructive) { disconnect(account) }
         } message: { account in
-            Text(AppLocalization.string("Hermes signs out of “\(account.name)” and can't use it until you connect it again."))
+            Text(AppLocalization.string("Hermes signs out of “\(account.name)” and can't use it until you connect it again.", table: .bots))
         }
     }
 
@@ -395,7 +395,7 @@ struct HostedAppPage: View {
     private func connectionSection(_ app: HostedApp) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Connection"), symbol: "link", tint: .conduitAura) {
             if app.state == .offByOrganization {
-                Text(AppLocalization.string("Your organization turned \(app.title) off for Hermes."))
+                Text(AppLocalization.string("Your organization turned \(app.title) off for Hermes.", table: .bots))
                     .scaledFont(.footnote).foregroundStyle(.secondary)
                 // From the last rules read: they can be read again here.
                 if rulesFailed { rulesUnreadLine }
@@ -403,9 +403,9 @@ struct HostedAppPage: View {
                 if app.connected {
                     Toggle(isOn: Binding(get: { app.state != .off }, set: { setEnabled($0) })) {
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(AppLocalization.string("Let Hermes use \(app.title)"))
+                            Text(AppLocalization.string("Let Hermes use \(app.title)", table: .bots))
                                 .scaledFont(.subheadline)
-                            Text(AppLocalization.string("Off keeps the sign-in but hides the app's tools."))
+                            Text(AppLocalization.string("Off keeps the sign-in but hides the app's tools.", table: .bots))
                                 .scaledFont(.caption).foregroundStyle(.secondary)
                         }
                     }
@@ -420,7 +420,7 @@ struct HostedAppPage: View {
                         .fixedSize(horizontal: false, vertical: true)
                 }
                 if !app.connected, rulesFailed, !signingIn {
-                    rulesUnread(AppLocalization.string("Hermes couldn't read your organization's rules just now, so it can't tell yet whether \(app.title) is allowed."))
+                    rulesUnread(AppLocalization.string("Hermes couldn't read your organization's rules just now, so it can't tell yet whether \(app.title) is allowed.", table: .bots))
                 }
                 if !app.connected || app.needsReconnect || app.state == .connecting {
                     Button {
@@ -441,7 +441,7 @@ struct HostedAppPage: View {
                     .disabled(app.connected ? !canAct : !canAddAccount)
                     .accessibilityIdentifier("capabilities.apps.connect")
                     if signingIn {
-                        Button(AppLocalization.string("Stop Waiting")) { model.cancelSignIn() }
+                        Button(AppLocalization.string("Stop Waiting", table: .bots)) { model.cancelSignIn() }
                             .buttonStyle(.settings)
                     }
                 }
@@ -457,7 +457,7 @@ struct HostedAppPage: View {
             if model.showsKept, appState.isConnected, model.loading {
                 HStack(spacing: 8) {
                     ProgressView().controlSize(.small)
-                    Text(AppLocalization.string("Checking with Hermes…"))
+                    Text(AppLocalization.string("Checking with Hermes…", table: .bots))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                 }
             } else if model.showsKept, appState.isConnected, let message = model.errorMessage {
@@ -469,14 +469,14 @@ struct HostedAppPage: View {
                 }
                 .buttonStyle(.settings)
             } else if !appState.isConnected {
-                Text(AppLocalization.string("Connect to Hermes to change this app."))
+                Text(AppLocalization.string("Connect to Hermes to change this app.", table: .bots))
                     .scaledFont(.footnote).foregroundStyle(.secondary)
             }
         }
     }
 
     private func accountsSection(_ app: HostedApp) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Accounts"), symbol: "person.crop.circle", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Accounts", table: .bots), symbol: "person.crop.circle", tint: .conduitAccent) {
             ForEach(app.accounts) { account in
                 HStack(spacing: 10) {
                     VStack(alignment: .leading, spacing: 2) {
@@ -496,7 +496,7 @@ struct HostedAppPage: View {
                         Button {
                             naming = AccountNaming(account: account)
                         } label: {
-                            Label(account.alias == nil ? AppLocalization.string("Name Account") : AppLocalization.string("Rename Account"), systemImage: "pencil")
+                            Label(account.alias == nil ? AppLocalization.string("Name Account", table: .bots) : AppLocalization.string("Rename Account", table: .bots), systemImage: "pencil")
                         }
                         Button {
                             model.signIn(slug, repairing: account.connectionID, appState: appState)
@@ -506,7 +506,7 @@ struct HostedAppPage: View {
                         Button(role: .destructive) {
                             disconnecting = account
                         } label: {
-                            Label(AppLocalization.string("Disconnect"), systemImage: "minus.circle")
+                            Label(AppLocalization.string("Disconnect", table: .bots), systemImage: "minus.circle")
                         }
                     } label: {
                         Image(systemName: "ellipsis.circle")
@@ -514,13 +514,13 @@ struct HostedAppPage: View {
                             .contentShape(Rectangle())
                     }
                     .disabled(!canAct || busyAccount != nil)
-                    .accessibilityLabel(AppLocalization.string("Actions for \(account.name)"))
+                    .accessibilityLabel(AppLocalization.string("Actions for \(account.name)", table: .bots))
                 }
             }
             Button {
                 naming = AccountNaming(account: nil)
             } label: {
-                Label(AppLocalization.string("Add Another Account"), systemImage: "plus")
+                Label(AppLocalization.string("Add Another Account", table: .bots), systemImage: "plus")
             }
             .buttonStyle(.settings)
             .disabled(!canAddAccount)
@@ -540,20 +540,20 @@ struct HostedAppPage: View {
         ConduitSettingsSection(title: AppLocalization.string("Tools"), symbol: "wrench.and.screwdriver", tint: .conduitAccent) {
             if let tools {
                 if tools.isEmpty {
-                    Text(AppLocalization.string("This app brings no tools."))
+                    Text(AppLocalization.string("This app brings no tools.", table: .bots))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                 } else {
                     let off = Set(switchedOff ?? app.disabledTools)
                     let locked = policy?.organizationLockedTools(slug, tools: tools) ?? []
                     let onCount = tools.filter { !off.contains($0.slug) && !locked.contains($0.slug) }.count
-                    Text(verbatim: AppLocalization.string("\(onCount) tools on") + " · " + AppLocalization.string("Hermes can't use a tool that's off."))
+                    Text(verbatim: AppLocalization.string("\(onCount) tools on", table: .bots) + " · " + AppLocalization.string("Hermes can't use a tool that's off.", table: .bots))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                     if rulesFailed {
                         // An app the organization turned off says it once,
                         // in Connection.
                         if app.state != .offByOrganization { rulesUnreadLine }
                     } else if policy?.revision == nil {
-                        Text(AppLocalization.string("Your organization manages these switches."))
+                        Text(AppLocalization.string("Your organization manages these switches.", table: .bots))
                             .scaledFont(.footnote).foregroundStyle(.secondary)
                     }
                     ForEach(tools.filter { !$0.deprecated }) { tool in
@@ -674,8 +674,8 @@ extension HostedAppStyle {
     /// tools get a pill.
     static func facet(_ facet: HostedAppTool.Facet) -> CapabilityPillModel? {
         switch facet {
-        case .write: CapabilityPillModel(text: AppLocalization.string("Writes"), tint: .orange)
-        case .destructive: CapabilityPillModel(text: AppLocalization.string("Deletes"), tint: .red)
+        case .write: CapabilityPillModel(text: AppLocalization.string("Writes", table: .bots), tint: .orange)
+        case .destructive: CapabilityPillModel(text: AppLocalization.string("Deletes", table: .bots), tint: .red)
         case .read, .unclassified: nil
         }
     }
@@ -686,7 +686,7 @@ extension HostedAppStyle {
 private struct HostedAppRulesUnread: LocalizedError {
     let appTitle: String
     var errorDescription: String? {
-        AppLocalization.string("Hermes couldn't read your organization's rules just now, so it can't tell yet whether \(appTitle) is allowed.")
+        AppLocalization.string("Hermes couldn't read your organization's rules just now, so it can't tell yet whether \(appTitle) is allowed.", table: .bots)
     }
 }
 
@@ -710,8 +710,8 @@ private struct HostedAccountNameSheet: View {
             SettingsDetailContainer(compact: true) {
                 ConduitSettingsSection(title: AppLocalization.string("Name"), symbol: "person.crop.circle", tint: .conduitAccent) {
                     Text(account == nil
-                         ? AppLocalization.string("A short name tells this \(appTitle) account apart from your others, like work or home. You sign in next.")
-                         : AppLocalization.string("Hermes and you call this account by its name, like work or home."))
+                         ? AppLocalization.string("A short name tells this \(appTitle) account apart from your others, like work or home. You sign in next.", table: .bots)
+                         : AppLocalization.string("Hermes and you call this account by its name, like work or home.", table: .bots))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     TextField(AppLocalization.string("work"), text: $name)
@@ -725,7 +725,7 @@ private struct HostedAccountNameSheet: View {
                     if let error { Text(verbatim: error).scaledFont(.caption).foregroundStyle(.red) }
                 }
             }
-            .navigationTitle(account == nil ? AppLocalization.string("Add Account") : AppLocalization.string("Rename Account"))
+            .navigationTitle(account == nil ? AppLocalization.string("Add Account", table: .bots) : AppLocalization.string("Rename Account", table: .bots))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Cancel")) { dismiss() }

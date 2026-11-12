@@ -191,7 +191,7 @@ struct RpcError: Decodable, Error, LocalizedError, Sendable {
     var errorDescription: String? {
         guard let method, !message.contains(" ") else { return message }
         let named = ([message] + (fields ?? [])).joined(separator: ", ")
-        return AppLocalization.string("Hermes refused \(method) (\(named))")
+        return AppLocalization.string("Hermes refused \(method) (\(named))", table: .connection)
     }
 
     /// Hermes refused the send because another live surface (Hermes
@@ -1701,7 +1701,7 @@ final class HermesClient: ObservableObject {
             openTimeoutTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(15))
                 guard !Task.isCancelled else { return }
-                self?.failSocketOpen(socket, error: HermesError.timeout(AppLocalization.string("WebSocket connection")))
+                self?.failSocketOpen(socket, error: HermesError.timeout(AppLocalization.string("WebSocket connection", table: .connection)))
             }
         }
     }
@@ -3630,19 +3630,19 @@ final class HermesClient: ObservableObject {
     /// background) gets it when the chat is read again.
     struct BranchPointUnknownError: LocalizedError {
         var errorDescription: String? {
-            AppLocalization.string("Open the chat again to branch from this reply.")
+            AppLocalization.string("Open the chat again to branch from this reply.", table: .connection)
         }
     }
 
     /// Queue on a Hermes without `prompt.submit`'s `queued` key.
     struct QueueUnsupportedError: LocalizedError {
         var errorDescription: String? {
-            AppLocalization.string("This Hermes can't queue messages. Update Hermes, or touch and hold send to steer or interrupt instead.")
+            AppLocalization.string("This Hermes can't queue messages. Update Hermes, or touch and hold send to steer or interrupt instead.", table: .connection)
         }
 
         /// Attachments have no steer or interrupt to fall back on.
         static var attachmentsMessage: String {
-            AppLocalization.string("This Hermes can't queue attachments. Update Hermes, or send them once the reply has finished.")
+            AppLocalization.string("This Hermes can't queue attachments. Update Hermes, or send them once the reply has finished.", table: .connection)
         }
     }
 
@@ -5382,16 +5382,16 @@ enum HermesError: Error, LocalizedError {
         // Read by people who may not run servers: say what happened and
         // what to do, never an RPC method name.
         case .invalidUrl:
-            return AppLocalization.string("The dashboard address isn't valid. Check it in Settings > Connection.")
+            return AppLocalization.string("The dashboard address isn't valid. Check it in Settings > Connection.", table: .connection)
         case .invalidResponse:
-            return AppLocalization.string("Hermes sent a reply Conduit didn't understand. Updating Hermes and Conduit usually fixes this.")
+            return AppLocalization.string("Hermes sent a reply Conduit didn't understand. Updating Hermes and Conduit usually fixes this.", table: .connection)
         case .notConnected:
             return AppLocalization.string("Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment.")
         case .connectionClosed:
-            return AppLocalization.string("The connection to Hermes dropped. Conduit reconnects on its own, so try again in a moment.")
+            return AppLocalization.string("The connection to Hermes dropped. Conduit reconnects on its own, so try again in a moment.", table: .connection)
         case .timeout:
             return Self.timeoutMessage
-        case .steerRejected: return AppLocalization.string("Hermes could not steer the active response.")
+        case .steerRejected: return AppLocalization.string("Hermes could not steer the active response.", table: .connection)
         }
     }
 
@@ -5451,7 +5451,7 @@ enum MessageNormalizer {
         guard !id.isEmpty else { return nil }
         let title = firstNonEmptyString([
             object["label"], object["name"], object["title"]
-        ]) ?? AppLocalization.string("Untitled project")
+        ]) ?? AppLocalization.string("Untitled project", table: .connection)
         let previews = object["preview_sessions"]?.arrayValue
             ?? object["previewSessions"]?.arrayValue
             ?? []
@@ -6187,9 +6187,9 @@ enum MessageNormalizer {
 
     private static func delegationCompleteNotice(metadata: AnyCodable?) -> String {
         guard let taskCount = delegationTaskCount(metadata: metadata) else {
-            return AppLocalization.string("Background agent work finished")
+            return AppLocalization.string("Background agent work finished", table: .connection)
         }
-        return AppLocalization.string("\(taskCount) background agents finished")
+        return AppLocalization.string("\(taskCount) background agents finished", table: .connection)
     }
 
     /// Final visible text for a row Hermes tags with a known synthetic
@@ -6213,7 +6213,7 @@ enum MessageNormalizer {
         case .hidden:
             // Defense in depth: hidden rows are dropped before content work.
             // Never echo the physical carrier if that invariant ever breaks.
-            return AppLocalization.string("Hidden system event")
+            return AppLocalization.string("Hidden system event", table: .connection)
         case .modelSwitch:
             // An explicit projection outranks the marker-derived card text;
             // without one, the persisted marker matches Conduit's existing
@@ -6226,13 +6226,13 @@ enum MessageNormalizer {
             if let modelChange {
                 return "[Model has been changed to \(modelChange.provider)/\(modelChange.model)]"
             }
-            return AppLocalization.string("Model changed")
+            return AppLocalization.string("Model changed", table: .connection)
         case .personalitySwitch:
             // The physical marker embeds the full persona prompt; surface a
             // canned label instead, like Hermes Desktop does.
-            return projected ?? AppLocalization.string("Personality changed")
+            return projected ?? AppLocalization.string("Personality changed", table: .connection)
         case .autoContinue:
-            return projected ?? AppLocalization.string("Resumed interrupted turn")
+            return projected ?? AppLocalization.string("Resumed interrupted turn", table: .connection)
         case .asyncDelegationComplete:
             // The localized count notice outranks Hermes' English
             // `display_text`; the title covers rows that carry no usable count.
@@ -6249,7 +6249,7 @@ enum MessageNormalizer {
             // `display_text`; the canned label covers rows without one.
             return projected
                 ?? timelineDisplayText(metadata: metadata)
-                ?? AppLocalization.string("Background process finished")
+                ?? AppLocalization.string("Background process finished", table: .connection)
         case .internalNotification:
             // The row content is the operational notice itself (wake events,
             // background completions); show it as a system notice. An
@@ -6261,7 +6261,7 @@ enum MessageNormalizer {
                 return projected
             }
             let visible = systemNotice ?? rawVisible
-            return visible.isEmpty ? AppLocalization.string("System notification") : visible
+            return visible.isEmpty ? AppLocalization.string("System notification", table: .connection) : visible
         }
     }
 
@@ -6307,7 +6307,7 @@ enum MessageNormalizer {
             return body.isEmpty ? nil : body
         }
         if isUserCorrectionInterruptionNotice(trimmed) {
-            return AppLocalization.string("Response interrupted by a user correction.")
+            return AppLocalization.string("Response interrupted by a user correction.", table: .connection)
         }
         return nil
     }
@@ -6578,7 +6578,7 @@ enum MessageNormalizer {
         let description = ["description", "message", "prompt"]
             .compactMap { payload[$0]?.stringValue }
             .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? AppLocalization.string("Approval required")
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? AppLocalization.string("Approval required", table: .connection)
         let choices = payload["choices"]?.arrayValue?
             .compactMap { $0.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -6770,7 +6770,7 @@ enum MessageNormalizer {
             let type = url.pathExtension.isEmpty ? nil : UTType(filenameExtension: url.pathExtension)
             return Attachment(
                 id: "\(messageId)-gateway-file-\(index)",
-                name: name.isEmpty ? AppLocalization.string("Attached file") : name,
+                name: name.isEmpty ? AppLocalization.string("Attached file", table: .connection) : name,
                 uri: path,
                 mimeType: AttachmentTypePolicy.mimeType(for: type),
                 kind: AttachmentTypePolicy.kind(for: type)
@@ -6985,7 +6985,7 @@ enum MessageNormalizer {
             }
             return Attachment(
                 id: "\(messageId)-gateway-image-\(index)",
-                name: name.isEmpty ? AppLocalization.string("Attached image") : name,
+                name: name.isEmpty ? AppLocalization.string("Attached image", table: .connection) : name,
                 uri: path ?? "",
                 mimeType: path.flatMap { imageMimeType(for: $0) },
                 kind: .image,
@@ -7075,8 +7075,8 @@ enum MessageNormalizer {
         let labels = parts.map { part -> String? in
             switch part.lowercased() {
             case "memory updated": return AppLocalization.string("Memory")
-            case "user profile updated": return AppLocalization.string("User profile")
-            case "skill updated": return AppLocalization.string("Skill")
+            case "user profile updated": return AppLocalization.string("User profile", table: .connection)
+            case "skill updated": return AppLocalization.string("Skill", table: .connection)
             default: return nil
             }
         }
@@ -7086,7 +7086,7 @@ enum MessageNormalizer {
         var seen = Set<String>()
         return labels.compactMap { $0 }
             .filter { seen.insert($0).inserted }
-            .map { AppLocalization.string("\($0) updated") }
+            .map { AppLocalization.string("\($0) updated", table: .connection) }
             .joined(separator: " · ")
     }
 
@@ -7101,15 +7101,15 @@ enum MessageNormalizer {
         guard !details.isEmpty else { return ReviewActivity(summary: body, details: nil, fullSessionId: nil) }
         let labels = Set(details.compactMap { detail -> String? in
             let lower = detail.lowercased()
-            if lower.hasPrefix("user profile") { return AppLocalization.string("User profile") }
+            if lower.hasPrefix("user profile") { return AppLocalization.string("User profile", table: .connection) }
             if lower.hasPrefix("memory") { return AppLocalization.string("Memory") }
-            if lower.hasPrefix("skill") { return AppLocalization.string("Skill") }
+            if lower.hasPrefix("skill") { return AppLocalization.string("Skill", table: .connection) }
             return nil
         })
         let summary: String
-        if labels.count == 1, let label = labels.first { summary = AppLocalization.string("\(label) updated") }
-        else if labels.count > 1 { summary = AppLocalization.string("Memory and skills updated") }
-        else { summary = AppLocalization.string("Self-improvement updates saved") }
+        if labels.count == 1, let label = labels.first { summary = AppLocalization.string("\(label) updated", table: .connection) }
+        else if labels.count > 1 { summary = AppLocalization.string("Memory and skills updated", table: .connection) }
+        else { summary = AppLocalization.string("Self-improvement updates saved", table: .connection) }
         return ReviewActivity(summary: summary, details: details, fullSessionId: nil)
     }
 

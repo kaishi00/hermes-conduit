@@ -73,8 +73,8 @@ struct PhoneContactEdit: Equatable {
         if let nickname { parts.append("“\(nickname)”") }
         if let organization { parts.append(organization) }
         if let relation { parts.append(relation) }
-        if let phones { parts.append(phones.isEmpty ? AppLocalization.string("no phone numbers") : phones.map(\.number).joined(separator: ", ")) }
-        if let emails { parts.append(emails.isEmpty ? AppLocalization.string("no email addresses") : emails.map(\.address).joined(separator: ", ")) }
+        if let phones { parts.append(phones.isEmpty ? AppLocalization.string("no phone numbers", table: .phone) : phones.map(\.number).joined(separator: ", ")) }
+        if let emails { parts.append(emails.isEmpty ? AppLocalization.string("no email addresses", table: .phone) : emails.map(\.address).joined(separator: ", ")) }
         if let birthday, let day = Self.birthdayParts(birthday),
            let date = Calendar(identifier: .gregorian).date(from: DateComponents(year: day.year ?? 2000, month: day.month, day: day.day)) {
             parts.append(day.year == nil ? date.formatted(.dateTime.month(.abbreviated).day()) : date.formatted(date: .abbreviated, time: .omitted))
@@ -135,8 +135,8 @@ enum PhoneContactChangeError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .noAccess: return AppLocalization.string("Conduit needs Contacts access to change contacts. Allow it in the Settings app.")
-        case .notFound: return AppLocalization.string("That contact isn't on this iPhone any more.")
+        case .noAccess: return AppLocalization.string("Conduit needs Contacts access to change contacts. Allow it in the Settings app.", table: .phone)
+        case .notFound: return AppLocalization.string("That contact isn't on this iPhone any more.", table: .phone)
         }
     }
 }

@@ -434,14 +434,14 @@ extension GroupChatModelsTests {
         XCTAssertTrue(two.contains("Mona") && two.contains("Kazuha"), two)
 
         XCTAssertEqual(RoomDraftText.line(for: try draft([("Mona", "waiting")])),
-                       AppLocalization.string("Waiting for \(mona)"))
+                       AppLocalization.string("Waiting for \(mona)", table: .rooms))
         XCTAssertEqual(RoomDraftText.line(for: try draft([("Mona", "waiting"), ("Kazuha", "waiting")])),
-                       AppLocalization.string("Waiting for \(two)"))
+                       AppLocalization.string("Waiting for \(two)", table: .rooms))
         XCTAssertEqual(RoomDraftText.line(for: try draft([("Laifu", "joined"), ("Mona", "waiting")])),
-                       AppLocalization.string("\(RoomDraftText.names(["Laifu"])) joined, waiting for \(mona)"))
+                       AppLocalization.string("\(RoomDraftText.names(["Laifu"])) joined, waiting for \(mona)", table: .rooms))
         // Who declined isn't waited for.
         XCTAssertEqual(RoomDraftText.line(for: try draft([("Kazuha", "declined"), ("Mona", "waiting")])),
-                       AppLocalization.string("Waiting for \(mona)"))
+                       AppLocalization.string("Waiting for \(mona)", table: .rooms))
         // Everyone answered: it starts on the rooms loop's next pass.
         XCTAssertEqual(RoomDraftText.line(for: try draft([("Laifu", "joined"), ("Kazuha", "declined")])),
                        AppLocalization.string("Starting…"))
@@ -449,21 +449,21 @@ extension GroupChatModelsTests {
                        AppLocalization.string("Starting…"))
         // Why one ended.
         XCTAssertEqual(RoomDraftText.line(for: try draft(status: "ended", reason: "lapsed")),
-                       AppLocalization.string("The invites ran out before everyone answered"))
+                       AppLocalization.string("The invites ran out before everyone answered", table: .rooms))
         XCTAssertEqual(RoomDraftText.line(for: try draft(status: "ended", reason: "too_few")),
-                       AppLocalization.string("Nobody else joined, so it didn't start"))
+                       AppLocalization.string("Nobody else joined, so it didn't start", table: .rooms))
         XCTAssertEqual(RoomDraftText.line(for: try draft(status: "ended", reason: "start_failed")),
-                       AppLocalization.string("Your Hermes couldn't start it"))
+                       AppLocalization.string("Your Hermes couldn't start it", table: .rooms))
         XCTAssertEqual(RoomDraftText.line(for: try draft(status: "ended", reason: "withdrawn")),
-                       AppLocalization.string("You took it back"))
+                       AppLocalization.string("You took it back", table: .rooms))
         XCTAssertEqual(RoomDraftText.line(for: try draft(status: "ended", reason: "later")),
-                       AppLocalization.string("It ended before it started"))
+                       AppLocalization.string("It ended before it started", table: .rooms))
 
         // Each person, in the sheet.
         let people = try draft([("Laifu", "joined"), ("Mona", "waiting"), ("Kazuha", "declined"), ("Xiao", "paused")]).people
         XCTAssertEqual(people.map(RoomDraftText.status(of:)), [
-            AppLocalization.string("Joined with \(RoomDraftText.names(["Laifu's agent"]))"),
-            AppLocalization.string("Hasn't answered yet"),
+            AppLocalization.string("Joined with \(RoomDraftText.names(["Laifu's agent"]))", table: .rooms),
+            AppLocalization.string("Hasn't answered yet", table: .rooms),
             AppLocalization.string("Declined"),
             nil,
         ])
@@ -488,7 +488,7 @@ extension GroupChatModelsTests {
         let timedOut = DashboardTicketBridgeError.http(
             status: 504, detail: "The rooms mailbox didn't answer in time; look at the room again in a minute")
         XCTAssertEqual(RoomDraftsClient.createRefusal(for: timedOut),
-                       AppLocalization.string("Your Hermes is still sending the invites. The room shows under Group Chats once it has."))
+                       AppLocalization.string("Your Hermes is still sending the invites. The room shows under Group Chats once it has.", table: .rooms))
     }
 
     // MARK: - When the drafts are read

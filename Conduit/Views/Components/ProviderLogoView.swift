@@ -175,12 +175,12 @@ struct ProviderQuotaLine: View {
     static func text(_ summary: ProviderQuotaSummary, now: Date = Date()) -> String {
         let reset = summary.resetsAt.map { time($0, now: now) }
         guard !summary.isLimited, let left = summary.left else {
-            return reset.map { AppLocalization.string("Limited until \($0)") } ?? AppLocalization.string("Limited")
+            return reset.map { AppLocalization.string("Limited until \($0)", table: .settings) } ?? AppLocalization.string("Limited", table: .settings)
         }
         // A window nearly used up reads 0.4%, not 0%.
         let digits = left < 0.1 ? 0...1 : 0...0
         let percent = left.formatted(.percent.precision(.fractionLength(digits)).locale(AppLocalization.formattingLocale))
-        return reset.map { AppLocalization.string("\(percent) left · resets \($0)") } ?? AppLocalization.string("\(percent) left")
+        return reset.map { AppLocalization.string("\(percent) left · resets \($0)", table: .settings) } ?? AppLocalization.string("\(percent) left", table: .settings)
     }
 
     static func tint(_ summary: ProviderQuotaSummary) -> Color {

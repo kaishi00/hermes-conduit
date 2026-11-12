@@ -246,8 +246,8 @@ struct RichTableCard: View {
         .buttonStyle(.plain)
         .accessibilityHint(Text("Sorts the table by this column"))
         .accessibilityValue(sort?.column == column
-                            ? Text(sort?.ascending == true ? AppLocalization.string("Sorted ascending")
-                                                           : AppLocalization.string("Sorted descending"))
+                            ? Text(sort?.ascending == true ? AppLocalization.string("Sorted ascending", table: .chat)
+                                                           : AppLocalization.string("Sorted descending", table: .chat))
                             : Text(verbatim: ""))
     }
 }
@@ -363,7 +363,7 @@ struct RichChecklistCard: View {
         RichInfoCardFrame(title: card.title, source: card.source) {
             VStack(alignment: .leading, spacing: 12) {
                 let done = card.checklist.filter { ticked.contains($0.text.lowercased()) }.count
-                Text(AppLocalization.string("\(String(done)) of \(String(card.checklist.count)) done"))
+                Text(AppLocalization.string("\(String(done)) of \(String(card.checklist.count)) done", table: .chat))
                     .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 ForEach(Array(Self.groups(card.checklist).enumerated()), id: \.offset) { _, group in
@@ -587,7 +587,7 @@ struct RichCalloutCard: View {
 
     static func name(_ tone: RichCallout.Tone) -> String {
         switch tone {
-        case .tip: return AppLocalization.string("Tip")
+        case .tip: return AppLocalization.string("Tip", table: .chat)
         case .note: return AppLocalization.string("Note")
         case .warning: return AppLocalization.string("Warning")
         }

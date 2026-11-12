@@ -9,9 +9,9 @@ extension ChatResumeBehavior {
     var title: String {
         switch self {
         case .continueWhereLeftOff:
-            AppLocalization.string("Continue where I left off")
+            AppLocalization.string("Continue where I left off", table: .chat)
         case .latestActivity:
-            AppLocalization.string("Jump to latest activity")
+            AppLocalization.string("Jump to latest activity", table: .chat)
         }
     }
 }

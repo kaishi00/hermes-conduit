@@ -81,7 +81,7 @@ struct PluginCatalogShelf: View {
             title: AppLocalization.string("Plugin catalog"),
             symbol: "shippingbox",
             tint: .conduitAura,
-            footer: AppLocalization.string("Reviewed plugins from Hermes' catalog.")
+            footer: AppLocalization.string("Reviewed plugins from Hermes' catalog.", table: .bots)
         ) {
             if !featured.isEmpty {
                 ScrollView(.horizontal, showsIndicators: false) {
@@ -106,7 +106,7 @@ struct PluginCatalogShelf: View {
             } label: {
                 CapabilityRowLabel(
                     symbol: "square.grid.2x2",
-                    title: AppLocalization.string("Browse All Plugins"),
+                    title: AppLocalization.string("Browse All Plugins", table: .bots),
                     meta: "\(store.pluginCatalog.count)",
                     chevron: true
                 )
@@ -155,13 +155,13 @@ struct PluginCatalogBrowsePage: View {
             filters(catalog)
             if entries.isEmpty {
                 CapabilityEmptyState(
-                    title: AppLocalization.string("No matching plugins"),
+                    title: AppLocalization.string("No matching plugins", table: .bots),
                     symbol: "shippingbox",
                     message: query.isEmpty ? nil : AppLocalization.string("Nothing matches “\(query)”.")
                 )
             } else {
                 CapabilitySection(
-                    title: tier.map(PluginCatalogStyle.tierTitle) ?? AppLocalization.string("All Plugins"),
+                    title: tier.map(PluginCatalogStyle.tierTitle) ?? AppLocalization.string("All Plugins", table: .bots),
                     symbol: "shippingbox",
                     tint: .conduitAura
                 ) {
@@ -316,7 +316,7 @@ struct PluginCatalogDetailPage: View {
                 }
                 adds(entry)
                 if !entry.requiresEnv.isEmpty {
-                    ConduitSettingsSection(title: AppLocalization.string("Keys It Needs"), symbol: "key", tint: .orange) {
+                    ConduitSettingsSection(title: AppLocalization.string("Keys It Needs", table: .bots), symbol: "key", tint: .orange) {
                         ForEach(entry.requiresEnv, id: \.self) { key in
                             Text(verbatim: key)
                                 .scaledFont(.caption.monospaced())
@@ -328,7 +328,7 @@ struct PluginCatalogDetailPage: View {
                     }
                 }
                 if !entry.knownIssues.isEmpty {
-                    ConduitSettingsSection(title: AppLocalization.string("Known Issues"), symbol: "exclamationmark.triangle", tint: .orange) {
+                    ConduitSettingsSection(title: AppLocalization.string("Known Issues", table: .bots), symbol: "exclamationmark.triangle", tint: .orange) {
                         ForEach(entry.knownIssues, id: \.self) { issue in
                             Text(verbatim: issue)
                                 .scaledFont(.caption)
@@ -371,7 +371,7 @@ struct PluginCatalogDetailPage: View {
             Text(verbatim: entry.displayName)
                 .scaledFont(.title3.weight(.semibold))
             if !entry.maintainer.isEmpty {
-                Text(verbatim: AppLocalization.string("By \(entry.maintainer)"))
+                Text(verbatim: AppLocalization.string("By \(entry.maintainer)", table: .bots))
                     .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -389,7 +389,7 @@ struct PluginCatalogDetailPage: View {
                     CapabilityPill(text: "v\(entry.version)")
                 }
                 if entry.updateAvailable {
-                    CapabilityPill(text: AppLocalization.string("Update available"), tint: .conduitAccent)
+                    CapabilityPill(text: AppLocalization.string("Update available", table: .bots), tint: .conduitAccent)
                 }
             }
             control(entry)
@@ -416,7 +416,7 @@ struct PluginCatalogDetailPage: View {
                 confirmsInstall = true
             } label: {
                 Label(
-                    busy ? AppLocalization.string("Installing…") : AppLocalization.string("Install"),
+                    busy ? AppLocalization.string("Installing…", table: .bots) : AppLocalization.string("Install"),
                     systemImage: "arrow.down.circle"
                 )
                 .frame(maxWidth: .infinity)
@@ -448,11 +448,11 @@ struct PluginCatalogDetailPage: View {
     private func adds(_ entry: PluginCatalogEntry) -> some View {
         let groups: [(String, [String])] = [
             (AppLocalization.string("Tools"), entry.tools),
-            (AppLocalization.string("Hooks"), entry.hooks),
-            (AppLocalization.string("Middleware"), entry.middleware)
+            (AppLocalization.string("Hooks", table: .bots), entry.hooks),
+            (AppLocalization.string("Middleware", table: .bots), entry.middleware)
         ].filter { !$0.1.isEmpty }
         if !groups.isEmpty {
-            ConduitSettingsSection(title: AppLocalization.string("What It Adds"), symbol: "puzzlepiece.extension", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("What It Adds", table: .bots), symbol: "puzzlepiece.extension", tint: .conduitAccent) {
                 ForEach(groups, id: \.0) { group in
                     VStack(alignment: .leading, spacing: 6) {
                         Text(verbatim: group.0)
@@ -473,14 +473,14 @@ struct PluginCatalogDetailPage: View {
     private func details(_ entry: PluginCatalogEntry) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Details"), symbol: "list.bullet", tint: .conduitAura) {
             if !entry.platforms.isEmpty {
-                SettingsMetricRow(label: AppLocalization.string("Platforms"), value: entry.platforms.joined(separator: ", "), lineLimit: 2)
+                SettingsMetricRow(label: AppLocalization.string("Platforms", table: .bots), value: entry.platforms.joined(separator: ", "), lineLimit: 2)
             }
-            SettingsMetricRow(label: AppLocalization.string("Catalog name"), value: entry.name, lineLimit: 2)
+            SettingsMetricRow(label: AppLocalization.string("Catalog name", table: .bots), value: entry.name, lineLimit: 2)
             if let url = entry.docsURL {
                 Button {
                     openURL(url)
                 } label: {
-                    Label(AppLocalization.string("Documentation"), systemImage: "book")
+                    Label(AppLocalization.string("Documentation", table: .bots), systemImage: "book")
                         .scaledFont(.subheadline)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -490,7 +490,7 @@ struct PluginCatalogDetailPage: View {
                 Button {
                     openURL(url)
                 } label: {
-                    Label(AppLocalization.string("View Source"), systemImage: "arrow.up.right.square")
+                    Label(AppLocalization.string("View Source", table: .bots), systemImage: "arrow.up.right.square")
                         .scaledFont(.subheadline)
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
@@ -526,12 +526,12 @@ struct PluginCatalogDetailPage: View {
                 // Said only on the page's own dashboard and profile.
                 guard stillOn(owner) else { return }
                 if !outcome.missingEnv.isEmpty {
-                    message = AppLocalization.string("\(outcome.name) is installed but needs a key before it works: \(outcome.missingEnv.joined(separator: ", ")).")
+                    message = AppLocalization.string("\(outcome.name) is installed but needs a key before it works: \(outcome.missingEnv.joined(separator: ", ")).", table: .bots)
                 } else if outcome.restartRequired {
-                    message = AppLocalization.string("\(outcome.name) is installed. Restart the gateway to load it.")
+                    message = AppLocalization.string("\(outcome.name) is installed. Restart the gateway to load it.", table: .bots)
                 } else {
                     Haptics.success()
-                    message = AppLocalization.string("\(outcome.name) is installed and loaded.")
+                    message = AppLocalization.string("\(outcome.name) is installed and loaded.", table: .bots)
                 }
             } catch {
                 guard stillOn(owner) else { return }

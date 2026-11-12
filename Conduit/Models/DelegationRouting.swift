@@ -60,7 +60,7 @@ struct DelegationRouting: Equatable {
             [
                 provider.isEmpty ? baseURL : provider,
                 model,
-                reasoningEffort.isEmpty ? "" : AppLocalization.string("effort \(reasoningEffort)"),
+                reasoningEffort.isEmpty ? "" : AppLocalization.string("effort \(reasoningEffort)", table: .bots),
                 serviceTier,
             ].filter { !$0.isEmpty }
         }
@@ -277,12 +277,12 @@ struct DelegationModelRouteDraft: Equatable {
 
         var message: String {
             switch self {
-            case .name: AppLocalization.string("Give the route a name.")
-            case .nameSpaces: AppLocalization.string("A route's name can't have spaces.")
-            case .nameTaken: AppLocalization.string("Another route has that name.")
-            case .description: AppLocalization.string("Say what the route is for: the agent reads it to choose one.")
-            case .provider: AppLocalization.string("Pick a provider.")
-            case .model: AppLocalization.string("Pick a model.")
+            case .name: AppLocalization.string("Give the route a name.", table: .bots)
+            case .nameSpaces: AppLocalization.string("A route's name can't have spaces.", table: .bots)
+            case .nameTaken: AppLocalization.string("Another route has that name.", table: .bots)
+            case .description: AppLocalization.string("Say what the route is for: the agent reads it to choose one.", table: .bots)
+            case .provider: AppLocalization.string("Pick a provider.", table: .bots)
+            case .model: AppLocalization.string("Pick a model.", table: .bots)
             }
         }
     }

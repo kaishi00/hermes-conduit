@@ -151,5 +151,72 @@ class WorksheetTests(unittest.TestCase):
             l10n.remove(["Goodbye"], "Conduit/Localizable.xcstrings")
 
 
+class FeatureTableTests(unittest.TestCase):
+    """The app's feature tables, Conduit/Strings/<Name>.xcstrings (issue 823)."""
+
+    write = WorksheetTests.write
+    read = WorksheetTests.read
+    entries = WorksheetTests.entries
+
+    def setUp(self):
+        WorksheetTests.setUp(self)
+        os.makedirs(os.path.join(self.root, "Conduit", "Strings"))
+        os.makedirs(os.path.join(self.root, "Conduit", "Services"))
+        self.voice_path = os.path.join(self.root, "Conduit", "Strings", "Voice.xcstrings")
+        l10n.save(self.voice_path, {"sourceLanguage": "en", "version": "1.0", "strings": {
+            "Voice replies": {"localizations": {"ja": unit("音声の返信")}}}})
+        with open(os.path.join(self.root, "Conduit", "Services", "AppLanguage.swift"), "w",
+                  encoding="utf-8") as handle:
+            handle.write('enum LocalizationTable: String {\n    case voice = "Voice"\n}\n')
+
+    def voice(self):
+        return l10n.load(self.voice_path)["strings"]
+
+    def test_tables_follow_localizable(self):
+        self.assertEqual(l10n.catalogs()[:2], [
+            "Conduit/Localizable.xcstrings", "Conduit/Strings/Voice.xcstrings"])
+        entries = self.entries(l10n.export("ru", include_all=False))
+        self.assertEqual(entries["Voice replies"]["catalog"], "Conduit/Strings/Voice.xcstrings")
+
+    def test_call_sites_follow_the_table_a_call_names(self):
+        with open(os.path.join(self.root, "Conduit", "View.swift"), "w", encoding="utf-8") as handle:
+            handle.write('AppLocalization.string("Voice replies", table: .voice)\n'
+                         'AppLocalization.string("Hello")\n')
+        self.assertEqual(l10n.call_sites("Conduit/Strings/Voice.xcstrings"),
+                         {"Voice replies": ["Conduit/View.swift:1"]})
+        self.assertEqual(l10n.call_sites("Conduit/Localizable.xcstrings"),
+                         {"Hello": ["Conduit/View.swift:2"]})
+
+    def test_import_writes_a_feature_table(self):
+        worksheet = {"language": "fr", "entries": [
+            {"catalog": "Conduit/Strings/Voice.xcstrings", "key": "Voice replies",
+             "translation": "Réponses vocales"}]}
+        path = os.path.join(self.root, "fr.json")
+        with open(path, "w", encoding="utf-8") as handle:
+            json.dump(worksheet, handle)
+        self.assertEqual(l10n.import_worksheets([path]), 1)
+        self.assertEqual(self.voice()["Voice replies"]["localizations"]["fr"], unit("Réponses vocales"))
+
+    def test_move_carries_translations_between_tables(self):
+        l10n.move(["Voice replies"], "Conduit/Strings/Voice.xcstrings", "Conduit/Localizable.xcstrings")
+        self.assertNotIn("Voice replies", self.voice())
+        self.assertEqual(self.read()["strings"]["Voice replies"]["localizations"]["ja"],
+                         unit("音声の返信"))
+        l10n.move(["Voice replies", "Hello"], "Conduit/Localizable.xcstrings",
+                  "Conduit/Strings/Voice.xcstrings")
+        self.assertEqual(list(self.voice()), ["Voice replies", "Hello"])
+
+    def test_move_refuses_a_clash_and_other_catalogs(self):
+        l10n.save(self.voice_path, {"sourceLanguage": "en", "strings": {
+            "Hello": {"localizations": {}}}})
+        with self.assertRaises(KeyError):
+            l10n.move(["Hello"], "Conduit/Localizable.xcstrings", "Conduit/Strings/Voice.xcstrings")
+        self.assertIn("Hello", self.read()["strings"])
+        with self.assertRaises(ValueError):
+            l10n.move(["Hello"], "Conduit/Localizable.xcstrings", "ConduitWatch/Localizable.xcstrings")
+        with self.assertRaises(ValueError):
+            l10n.remove(["Hello"], "Conduit/Strings/Rooms.xcstrings")
+
+
 if __name__ == "__main__":
     unittest.main()

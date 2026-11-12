@@ -1054,7 +1054,7 @@ extension VoiceConversationControllerTests {
         supervisor.observe(.messageInterrupted(sessionId: "rt-1"))
         XCTAssertNil(supervisor.takePendingNotice(), "the user already heard the cancellation")
         let again = await supervisor.cancelAll()
-        XCTAssertEqual(again, AppLocalization.string("There are no background jobs to cancel."))
+        XCTAssertEqual(again, AppLocalization.string("There are no background jobs to cancel.", table: .voice))
     }
 
     func testAFailedHermesCancelIsReportedAndTheJobStaysSupervised() async throws {
@@ -1078,7 +1078,7 @@ extension VoiceConversationControllerTests {
 
         let reply = await supervisor.startJob(instructions: "anything")
 
-        XCTAssertEqual(reply, AppLocalization.string("Couldn't start the background job."))
+        XCTAssertEqual(reply, AppLocalization.string("Couldn't start the background job.", table: .voice))
         XCTAssertEqual(supervisor.activeJobCount, 0)
         XCTAssertNil(supervisor.takePendingNotice(), "the failure was already spoken as the reply")
     }
@@ -1107,7 +1107,7 @@ extension VoiceConversationControllerTests {
 
         let reply = await supervisor.startJob(instructions: "doomed")
 
-        XCTAssertEqual(reply, AppLocalization.string("Couldn't start the background job."))
+        XCTAssertEqual(reply, AppLocalization.string("Couldn't start the background job.", table: .voice))
         XCTAssertNil(supervisor.takePendingNotice(), "the failure was the reply; it is not announced twice")
     }
 
@@ -1117,7 +1117,7 @@ extension VoiceConversationControllerTests {
 
         let reply = await supervisor.startJob(instructions: "lost ack")
 
-        XCTAssertEqual(reply, AppLocalization.string("Couldn't start the background job."))
+        XCTAssertEqual(reply, AppLocalization.string("Couldn't start the background job.", table: .voice))
         XCTAssertEqual(fake.cancelled, ["rt-1"], "a turn Hermes may have accepted is interrupted, not left unmonitored")
         XCTAssertNil(supervisor.takePendingNotice())
     }
@@ -1295,7 +1295,7 @@ extension VoiceConversationControllerTests {
 
         supervisor.noticeSent(jobID: taken.jobID)
         XCTAssertTrue(supervisor.listedJobs.isEmpty)
-        XCTAssertEqual(supervisor.statusSummary(), AppLocalization.string("No background jobs are running."))
+        XCTAssertEqual(supervisor.statusSummary(), AppLocalization.string("No background jobs are running.", table: .voice))
     }
 
     func testResetForgetsJobsAndIgnoresTheirLateEvents() async {
@@ -1306,7 +1306,7 @@ extension VoiceConversationControllerTests {
 
         XCTAssertTrue(supervisor.jobs.isEmpty)
         XCTAssertNil(supervisor.takePendingNotice())
-        XCTAssertEqual(supervisor.statusSummary(), AppLocalization.string("No background jobs are running."))
+        XCTAssertEqual(supervisor.statusSummary(), AppLocalization.string("No background jobs are running.", table: .voice))
     }
 
     func testJobTitlesAreCutAtAWordBoundary() {
@@ -1754,9 +1754,9 @@ extension VoiceConversationControllerTests {
 
         XCTAssertEqual(supervisor.activeJobCount, 0)
         XCTAssertTrue(supervisor.backgroundJobs.isEmpty)
-        XCTAssertEqual(supervisor.statusSummary(), AppLocalization.string("No background jobs are running."))
+        XCTAssertEqual(supervisor.statusSummary(), AppLocalization.string("No background jobs are running.", table: .voice))
         let cancelled = await supervisor.cancelAll()
-        XCTAssertEqual(cancelled, AppLocalization.string("There are no background jobs to cancel."))
+        XCTAssertEqual(cancelled, AppLocalization.string("There are no background jobs to cancel.", table: .voice))
         XCTAssertEqual(supervisor.jobs.first?.status, .starting)
         supervisor.detachLiveThread()
     }

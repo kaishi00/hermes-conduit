@@ -183,7 +183,7 @@ struct ConnectionSetupView: View {
                 }
                 Button("Cancel", role: .cancel) {}
             } message: { owner in
-                Text(AppLocalization.string("This address is your saved dashboard “\(owner.label)”. Repair won't change its sign-in; switch to it instead."))
+                Text(AppLocalization.string("This address is your saved dashboard “\(owner.label)”. Repair won't change its sign-in; switch to it instead.", table: .connection))
             }
         }
     }
@@ -394,7 +394,7 @@ struct ConnectionSetupView: View {
         case .activated:
             UIAccessibility.post(
                 notification: .announcement,
-                argument: AppLocalization.string("Reconnected to Hermes.")
+                argument: AppLocalization.string("Reconnected to Hermes.", table: .connection)
             )
             dismiss()
         case .failed(let failure):
@@ -503,8 +503,8 @@ struct ConnectionSetupView: View {
     private var dashboardStep: some View {
         readinessQuestion(
             symbol: "server.rack",
-            question: AppLocalization.string("Is your Hermes dashboard running?"),
-            explanation: AppLocalization.string("Hermes Conduit connects to a Hermes dashboard you (or your assistant) run yourself. The dashboard has to be up before Conduit can reach it."),
+            question: AppLocalization.string("Is your Hermes dashboard running?", table: .connection),
+            explanation: AppLocalization.string("Hermes Conduit connects to a Hermes dashboard you (or your assistant) run yourself. The dashboard has to be up before Conduit can reach it.", table: .connection),
             selectedAnswer: flow.dashboardAnswer,
             onAnswer: { flow.answerDashboard($0) },
             guidance: { dashboardGuidance }
@@ -516,11 +516,11 @@ struct ConnectionSetupView: View {
         switch flow.dashboardAnswer {
         case .no:
             AskHermesPromptView(title: ConnectionSetupPrompt.dashboardNotRunning.title, prompt: ConnectionSetupPrompt.dashboardNotRunning.text)
-            continueButton(AppLocalization.string("Dashboard is ready")) { flow.confirmDashboardReady() }
+            continueButton(AppLocalization.string("Dashboard is ready", table: .connection)) { flow.confirmDashboardReady() }
                 .accessibilityIdentifier("setup.continue")
         case .unknown:
             AskHermesPromptView(title: ConnectionSetupPrompt.dashboardUnknown.title, prompt: ConnectionSetupPrompt.dashboardUnknown.text)
-            continueButton(AppLocalization.string("Dashboard is ready")) { flow.confirmDashboardReady() }
+            continueButton(AppLocalization.string("Dashboard is ready", table: .connection)) { flow.confirmDashboardReady() }
                 .accessibilityIdentifier("setup.continue")
         default:
             EmptyView()
@@ -532,8 +532,8 @@ struct ConnectionSetupView: View {
     private var credentialsStep: some View {
         readinessQuestion(
             symbol: "person.badge.key",
-            question: AppLocalization.string("Do you have your Hermes dashboard login credentials?"),
-            explanation: AppLocalization.string("This means the Hermes dashboard username and password you sign in with — not Tailscale, Cloudflare, or Apple credentials."),
+            question: AppLocalization.string("Do you have your Hermes dashboard login credentials?", table: .connection),
+            explanation: AppLocalization.string("This means the Hermes dashboard username and password you sign in with — not Tailscale, Cloudflare, or Apple credentials.", table: .connection),
             selectedAnswer: flow.credentialsAnswer,
             onAnswer: { flow.answerCredentials($0) },
             guidance: { credentialsGuidance }
@@ -545,11 +545,11 @@ struct ConnectionSetupView: View {
         switch flow.credentialsAnswer {
         case .no:
             AskHermesPromptView(title: ConnectionSetupPrompt.credentialsMissing.title, prompt: ConnectionSetupPrompt.credentialsMissing.text)
-            continueButton(AppLocalization.string("Credentials are ready")) { flow.confirmCredentialsReady() }
+            continueButton(AppLocalization.string("Credentials are ready", table: .connection)) { flow.confirmCredentialsReady() }
                 .accessibilityIdentifier("setup.continue")
         case .unknown:
             AskHermesPromptView(title: ConnectionSetupPrompt.credentialsUnknown.title, prompt: ConnectionSetupPrompt.credentialsUnknown.text)
-            continueButton(AppLocalization.string("Credentials are ready")) { flow.confirmCredentialsReady() }
+            continueButton(AppLocalization.string("Credentials are ready", table: .connection)) { flow.confirmCredentialsReady() }
                 .accessibilityIdentifier("setup.continue")
         default:
             EmptyView()
@@ -564,8 +564,8 @@ struct ConnectionSetupView: View {
                 symbol: "point.3.connected.trianglepath.dotted",
                 progress: flow.progressLabel,
                 progressStep: flow.progressStep,
-                title: AppLocalization.string("How will this iPhone or iPad reach Hermes?"),
-                detail: AppLocalization.string("Pick how Conduit should reach your self-hosted Hermes dashboard. You can change this later.")
+                title: AppLocalization.string("How will this iPhone or iPad reach Hermes?", table: .connection),
+                detail: AppLocalization.string("Pick how Conduit should reach your self-hosted Hermes dashboard. You can change this later.", table: .connection)
             )
 
             let existingAddress = flow.draft.existingServerURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -573,7 +573,7 @@ struct ConnectionSetupView: View {
                 ConnectionSetupCard {
                     ConnectionSetupChoiceRow(
                         icon: "server.rack",
-                        title: AppLocalization.string("Use or edit current dashboard address"),
+                        title: AppLocalization.string("Use or edit current dashboard address", table: .connection),
                         detail: existingAddress,
                         identifier: "setup.use-existing"
                     ) {
@@ -586,7 +586,7 @@ struct ConnectionSetupView: View {
                 ConnectionSetupChoiceRow(
                     icon: "wifi",
                     title: ConnectionAccessMethod.lan.displayTitle,
-                    detail: AppLocalization.string("Use this when Conduit and the Hermes machine are on the same home or local network."),
+                    detail: AppLocalization.string("Use this when Conduit and the Hermes machine are on the same home or local network.", table: .connection),
                     identifier: "setup.method-lan"
                 ) {
                     flow.selectAccessMethod(.lan)
@@ -594,8 +594,8 @@ struct ConnectionSetupView: View {
                 ConnectionSetupChoiceRow(
                     icon: "lock.shield",
                     title: ConnectionAccessMethod.tailscale.displayTitle,
-                    detail: AppLocalization.string("Use Tailscale when you want to reach Hermes securely while away from home."),
-                    badge: AppLocalization.string("Recommended for remote access"),
+                    detail: AppLocalization.string("Use Tailscale when you want to reach Hermes securely while away from home.", table: .connection),
+                    badge: AppLocalization.string("Recommended for remote access", table: .connection),
                     showsDivider: true,
                     identifier: "setup.method-tailscale"
                 ) {
@@ -604,7 +604,7 @@ struct ConnectionSetupView: View {
                 ConnectionSetupChoiceRow(
                     icon: "globe",
                     title: ConnectionAccessMethod.reverseProxy.displayTitle,
-                    detail: AppLocalization.string("Use this if you already access Hermes through an HTTPS hostname you manage."),
+                    detail: AppLocalization.string("Use this if you already access Hermes through an HTTPS hostname you manage.", table: .connection),
                     showsDivider: true,
                     identifier: "setup.method-reverseProxy"
                 ) {
@@ -622,7 +622,7 @@ struct ConnectionSetupView: View {
             // not require hitting the label text.
             ConnectionSetupChoiceRow(
                 icon: "questionmark.circle",
-                title: AppLocalization.string("I’m not sure"),
+                title: AppLocalization.string("I’m not sure", table: .connection),
                 accessory: .disclosure(expanded: showNotSureGuidance),
                 identifier: "setup.method-notsure"
             ) {
@@ -633,9 +633,9 @@ struct ConnectionSetupView: View {
 
             if showNotSureGuidance {
                 VStack(alignment: .leading, spacing: 12) {
-                    ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Using Conduit at home, on the same network as the Hermes machine? Choose “I’m on the same network as Hermes”."))
-                    ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Need access away from home without existing remote access? Choose Tailscale — the simplest secure option."))
-                    ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Already operating an HTTPS domain or reverse proxy for Hermes? Choose “I already have a domain or reverse proxy”."))
+                    ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Using Conduit at home, on the same network as the Hermes machine? Choose “I’m on the same network as Hermes”.", table: .connection))
+                    ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Need access away from home without existing remote access? Choose Tailscale — the simplest secure option.", table: .connection))
+                    ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Already operating an HTTPS domain or reverse proxy for Hermes? Choose “I already have a domain or reverse proxy”.", table: .connection))
                 }
                 .padding(.horizontal, 16)
                 .padding(.top, 12)
@@ -651,16 +651,16 @@ struct ConnectionSetupView: View {
     private var lanBranch: some View {
         branchShell(
             symbol: "wifi",
-            title: AppLocalization.string("Same network as Hermes"),
-            intro: AppLocalization.string("Here is what you will need to connect Conduit over your local network:"),
+            title: AppLocalization.string("Same network as Hermes", table: .connection),
+            intro: AppLocalization.string("Here is what you will need to connect Conduit over your local network:", table: .connection),
             prompt: .lanDetails
         ) {
             ConnectionSetupPanel {
-                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("The Hermes dashboard is running."))
-                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("You can sign in to the Hermes dashboard."))
-                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("You know the Hermes machine’s local IP address."))
-                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("You know the dashboard port."))
-                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("This device is on the same reachable network."))
+                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("The Hermes dashboard is running.", table: .connection))
+                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("You can sign in to the Hermes dashboard.", table: .connection))
+                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("You know the Hermes machine’s local IP address.", table: .connection))
+                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("You know the dashboard port.", table: .connection))
+                ConnectionSetupListItem(marker: .check, text: AppLocalization.string("This device is on the same reachable network.", table: .connection))
             }
         }
     }
@@ -670,21 +670,21 @@ struct ConnectionSetupView: View {
     private var tailscaleBranch: some View {
         branchShell(
             symbol: "lock.shield",
-            title: AppLocalization.string("Reach Hermes with Tailscale"),
-            intro: AppLocalization.string("Tailscale gives you secure access from anywhere, including the recommended Tailscale Serve path:"),
+            title: AppLocalization.string("Reach Hermes with Tailscale", table: .connection),
+            intro: AppLocalization.string("Tailscale gives you secure access from anywhere, including the recommended Tailscale Serve path:", table: .connection),
             prompt: .tailscaleServe
         ) {
             ConnectionSetupPanel {
-                ConnectionSetupListItem(marker: .number(1), text: AppLocalization.string("Tailscale is installed on the Hermes machine."))
-                ConnectionSetupListItem(marker: .number(2), text: AppLocalization.string("Tailscale is installed on this iPhone or iPad."))
-                ConnectionSetupListItem(marker: .number(3), text: AppLocalization.string("Both are signed in to the same tailnet."))
-                ConnectionSetupListItem(marker: .number(4), text: AppLocalization.string("The Hermes dashboard is running."))
-                ConnectionSetupListItem(marker: .number(5), text: AppLocalization.string("Hermes configures Tailscale Serve for the dashboard."))
-                ConnectionSetupListItem(marker: .number(6), text: AppLocalization.string("Hermes tells you the address to enter into Conduit."))
+                ConnectionSetupListItem(marker: .number(1), text: AppLocalization.string("Tailscale is installed on the Hermes machine.", table: .connection))
+                ConnectionSetupListItem(marker: .number(2), text: AppLocalization.string("Tailscale is installed on this iPhone or iPad.", table: .connection))
+                ConnectionSetupListItem(marker: .number(3), text: AppLocalization.string("Both are signed in to the same tailnet.", table: .connection))
+                ConnectionSetupListItem(marker: .number(4), text: AppLocalization.string("The Hermes dashboard is running.", table: .connection))
+                ConnectionSetupListItem(marker: .number(5), text: AppLocalization.string("Hermes configures Tailscale Serve for the dashboard.", table: .connection))
+                ConnectionSetupListItem(marker: .number(6), text: AppLocalization.string("Hermes tells you the address to enter into Conduit.", table: .connection))
             }
             ConnectionSetupNote(
                 symbol: "hand.raised",
-                text: AppLocalization.string("Conduit never installs or configures Tailscale, and it doesn’t assume an address or port — Hermes tells you what to use.")
+                text: AppLocalization.string("Conduit never installs or configures Tailscale, and it doesn’t assume an address or port — Hermes tells you what to use.", table: .connection)
             )
         }
     }
@@ -694,8 +694,8 @@ struct ConnectionSetupView: View {
     private var reverseProxyBranch: some View {
         branchShell(
             symbol: "globe",
-            title: AppLocalization.string("Use your existing HTTPS domain"),
-            intro: AppLocalization.string("This branch is only for HTTPS infrastructure you already operate — Conduit does not guide you through creating one."),
+            title: AppLocalization.string("Use your existing HTTPS domain", table: .connection),
+            intro: AppLocalization.string("This branch is only for HTTPS infrastructure you already operate — Conduit does not guide you through creating one.", table: .connection),
             prompt: .reverseProxyDetails
         ) {
             ConnectionSetupPanel {
@@ -703,14 +703,14 @@ struct ConnectionSetupView: View {
                     .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityAddTraits(.isHeader)
-                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Your existing HTTPS Hermes dashboard URL — for example https://hermes.example.com, https://hermes.example.com:9443, or https://example.com/hermes."))
-                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Any custom port."))
-                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Any path prefix your proxy uses."))
-                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("A way to sign in to the dashboard."))
+                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Your existing HTTPS Hermes dashboard URL — for example https://hermes.example.com, https://hermes.example.com:9443, or https://example.com/hermes.", table: .connection))
+                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Any custom port.", table: .connection))
+                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("Any path prefix your proxy uses.", table: .connection))
+                ConnectionSetupListItem(marker: .bullet, text: AppLocalization.string("A way to sign in to the dashboard.", table: .connection))
             }
             ConnectionSetupNote(
                 symbol: "lock.shield",
-                text: AppLocalization.string("Conduit will not ask you to expose a raw public port, create firewall rules, or bypass certificate checks.")
+                text: AppLocalization.string("Conduit will not ask you to expose a raw public port, create firewall rules, or bypass certificate checks.", table: .connection)
             )
         }
     }
@@ -730,8 +730,8 @@ struct ConnectionSetupView: View {
                 symbol: topic == .tls ? "lock.shield" : "cloud",
                 title: topic.displayName,
                 detail: topic == .tls
-                    ? AppLocalization.string("Checks for HTTPS and certificate problems when connecting to your dashboard.")
-                    : AppLocalization.string("Checks for Cloudflare Access service-token problems when connecting to your dashboard.")
+                    ? AppLocalization.string("Checks for HTTPS and certificate problems when connecting to your dashboard.", table: .connection)
+                    : AppLocalization.string("Checks for Cloudflare Access service-token problems when connecting to your dashboard.", table: .connection)
             )
 
             ConnectionSetupPanel(spacing: 14) {
@@ -779,14 +779,14 @@ struct ConnectionSetupView: View {
 
             ConnectionSetupCard {
                 ConnectionSetupChoiceRow(
-                    title: AppLocalization.string("Yes"),
+                    title: AppLocalization.string("Yes", table: .connection),
                     accessory: .checkmark(selected: selectedAnswer == .yes),
                     identifier: "setup.answer-yes"
                 ) {
                     onAnswer(.yes)
                 }
                 ConnectionSetupChoiceRow(
-                    title: AppLocalization.string("No"),
+                    title: AppLocalization.string("No", table: .connection),
                     accessory: .checkmark(selected: selectedAnswer == .no),
                     showsDivider: true,
                     identifier: "setup.answer-no"
@@ -794,7 +794,7 @@ struct ConnectionSetupView: View {
                     onAnswer(.no)
                 }
                 ConnectionSetupChoiceRow(
-                    title: AppLocalization.string("I don’t know"),
+                    title: AppLocalization.string("I don’t know", table: .connection),
                     accessory: .checkmark(selected: selectedAnswer == .unknown),
                     showsDivider: true,
                     identifier: "setup.answer-unknown"
@@ -818,7 +818,7 @@ struct ConnectionSetupView: View {
             ConnectionSetupHeader(symbol: symbol, title: title, detail: intro)
             needs()
             AskHermesPromptView(title: prompt.title, prompt: prompt.text)
-            continueButton(AppLocalization.string("I have the connection details")) { flow.confirmDetailsReady() }
+            continueButton(AppLocalization.string("I have the connection details", table: .connection)) { flow.confirmDetailsReady() }
                 .accessibilityIdentifier("setup.details-ready")
         }
     }
@@ -833,14 +833,14 @@ struct ConnectionSetupView: View {
 extension ConnectionHelpDestination {
     var displayName: String {
         switch self {
-        case .start: return AppLocalization.string("Getting started")
+        case .start: return AppLocalization.string("Getting started", table: .connection)
         case .dashboard: return AppLocalization.string("Dashboard address")
-        case .credentials: return AppLocalization.string("Credentials")
-        case .network: return AppLocalization.string("Network & reachability")
-        case .tls: return AppLocalization.string("HTTPS & certificates")
+        case .credentials: return AppLocalization.string("Credentials", table: .connection)
+        case .network: return AppLocalization.string("Network & reachability", table: .connection)
+        case .tls: return AppLocalization.string("HTTPS & certificates", table: .connection)
         case .cloudflare: return "Cloudflare Access"
-        case .currentConnection: return AppLocalization.string("Current connection")
-        case .repairConnection: return AppLocalization.string("Repair connection")
+        case .currentConnection: return AppLocalization.string("Current connection", table: .connection)
+        case .repairConnection: return AppLocalization.string("Repair connection", table: .connection)
         }
     }
 
@@ -854,17 +854,17 @@ extension ConnectionHelpDestination {
         switch self {
         case .tls:
             return [
-                AppLocalization.string("If you use your own certificate authority, install its profile on this device (Settings → General → VPN & Device Management), then turn on full trust for its root certificate (Settings → General → About → Certificate Trust Settings)."),
-                AppLocalization.string("Each iPhone and iPad keeps its own trust: turn on full trust on every device you connect from, even if another one already works."),
-                AppLocalization.string("The certificate must name the exact address you entered, as a host name or IP address in its Subject Alternative Name."),
-                AppLocalization.string("Check the server certificate’s expiration and validity dates."),
-                AppLocalization.string("Confirm this device’s date and time are correct.")
+                AppLocalization.string("If you use your own certificate authority, install its profile on this device (Settings → General → VPN & Device Management), then turn on full trust for its root certificate (Settings → General → About → Certificate Trust Settings).", table: .connection),
+                AppLocalization.string("Each iPhone and iPad keeps its own trust: turn on full trust on every device you connect from, even if another one already works.", table: .connection),
+                AppLocalization.string("The certificate must name the exact address you entered, as a host name or IP address in its Subject Alternative Name.", table: .connection),
+                AppLocalization.string("Check the server certificate’s expiration and validity dates.", table: .connection),
+                AppLocalization.string("Confirm this device’s date and time are correct.", table: .connection)
             ]
         case .cloudflare:
             return [
-                AppLocalization.string("Verify the Client ID and Secret belong to a Cloudflare Access service token for this application."),
-                AppLocalization.string("Make sure a Service Auth policy allows that token to reach this Access application."),
-                AppLocalization.string("Or turn off \"Use Cloudflare Access service token\" to sign in interactively through the in-app browser.")
+                AppLocalization.string("Verify the Client ID and Secret belong to a Cloudflare Access service token for this application.", table: .connection),
+                AppLocalization.string("Make sure a Service Auth policy allows that token to reach this Access application.", table: .connection),
+                AppLocalization.string("Or turn off \"Use Cloudflare Access service token\" to sign in interactively through the in-app browser.", table: .connection)
             ]
         case .start, .dashboard, .credentials, .network, .currentConnection, .repairConnection:
             return []

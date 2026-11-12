@@ -20,8 +20,8 @@ struct VoiceJobLinkCard: View {
 
     private var kicker: String {
         switch note.kind {
-        case .job: return AppLocalization.string("Background job")
-        case .chat: return AppLocalization.string("Sent to the chat")
+        case .job: return AppLocalization.string("Background job", table: .voice)
+        case .chat: return AppLocalization.string("Sent to the chat", table: .voice)
         }
     }
 

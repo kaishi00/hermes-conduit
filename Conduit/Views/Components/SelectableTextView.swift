@@ -906,7 +906,7 @@ struct SelectableTextView: UIViewRepresentable {
             var added: [UIMenuElement] = []
             if let quoteAction, quoteAction.isAvailable {
                 added.append(UIAction(
-                    title: AppLocalization.string("Quote"),
+                    title: AppLocalization.string("Quote", table: .chat),
                     image: UIImage(systemName: "text.quote")
                 ) { [weak textView] _ in
                     guard let textView else { return }
