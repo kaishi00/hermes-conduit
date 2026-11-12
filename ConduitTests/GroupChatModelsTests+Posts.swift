@@ -593,6 +593,9 @@ extension GroupChatModelsTests {
         XCTAssertEqual(RoomPeople.posts(response), ["user:aa": "Mona", "user:bb": "Guest"])
         XCTAssertNil(RoomPeople.you(response))
         XCTAssertEqual(RoomPeople.you(["ok": true, "you": "Eric", "members": [[String: Any]]()]), "Eric")
+        // On the home, who's in it with none of their agents (Just me).
+        XCTAssertEqual(RoomPeople.justMe(response), [])
+        XCTAssertEqual(RoomPeople.justMe(["ok": true, "just_me": ["Mona", "", 3, "Kuro"]]), ["Mona", "Kuro"])
 
         let attribution = RoomPostAttribution(isCopy: false, you: nil, posts: RoomPeople.posts(response))
         func event(_ id: String, kind: String = "message.user", text: String) -> GroupEvent {

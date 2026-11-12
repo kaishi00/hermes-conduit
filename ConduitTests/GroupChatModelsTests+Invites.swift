@@ -178,6 +178,17 @@ extension GroupChatModelsTests {
         list.adopt(other)
         XCTAssertEqual(list.invites.first?.id, "lk9z8y7x6w5v/conduit-1", "the same room over another Link is another invite")
         XCTAssertEqual(list.invites.count, invites.count + 1)
+
+        // Just me: offered where the host's plugin takes it, and kept once joined that way.
+        XCTAssertFalse(joined.justMe)
+        XCTAssertFalse(joined.justMeOffered, "an older plugin says nothing")
+        var alone = invitesInvite("conduit-1", status: "joined")
+        alone["just_me"] = true
+        alone["just_me_offered"] = true
+        let justMe = try XCTUnwrap(RoomInvitesClient.invite(alone))
+        XCTAssertTrue(justMe.justMe)
+        XCTAssertTrue(justMe.justMeOffered)
+        XCTAssertTrue(justMe.joined.isEmpty)
     }
 
     // MARK: - Answering

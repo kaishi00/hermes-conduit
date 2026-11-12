@@ -736,6 +736,7 @@ extension AppState {
         activeRoomPeople = [:]
         activeRoomLooks = .empty
         activeRoomHomeName = nil
+        activeRoomJustMe = []
         activeRoomLooksReadAt = nil
         activeRoomPeopleRetries = 0
         activeRoomPeopleReadFailed = false
@@ -1127,6 +1128,7 @@ extension AppState {
         activeRoomPeople = [:]
         activeRoomLooks = .empty
         activeRoomHomeName = nil
+        activeRoomJustMe = []
         activeRoomLooksReadAt = nil
         activeRoomPeopleRetries = 0
         activeRoomPeopleReadFailed = false
@@ -1674,6 +1676,8 @@ extension AppState {
         if people != activeRoomPeople { activeRoomPeople = people }
         let home = (response["home"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines)
         if home != activeRoomHomeName { activeRoomHomeName = home }
+        let justMe = RoomPeople.justMe(response)
+        if justMe != activeRoomJustMe { activeRoomJustMe = justMe }
         // How they look comes with who they are (RoomLooks.swift).
         Task { await self.readActiveRoomLooks(epoch: epoch) }
         let attribution = RoomPostAttribution(
@@ -1882,6 +1886,7 @@ extension AppState {
         activeRoomPeople = [:]
         activeRoomLooks = .empty
         activeRoomHomeName = nil
+        activeRoomJustMe = []
         activeRoomLooksReadAt = nil
         activeRoomCopyApprovalsReadAt = nil
         activeRoomPeopleRetries = 0

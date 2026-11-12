@@ -69,6 +69,11 @@ enum RoomLeaveText {
 
     static func leaveMessage(_ copy: RoomCopy) -> String {
         let host = copy.from.trimmingCharacters(in: .whitespacesAndNewlines)
+        if copy.justMe {
+            return host.isEmpty
+                ? AppLocalization.string("You stop getting this room, and the host is told. Your copy of it stays until you delete it.", table: .rooms)
+                : AppLocalization.string("You stop getting this room, and \(host) is told. Your copy of it stays until you delete it.", table: .rooms)
+        }
         if !host.isEmpty {
             return AppLocalization.string(
                 "Your agents stop taking part, and \(host) is told. Your copy of the room and their chats for it stay until you delete it.", table: .rooms)
@@ -182,10 +187,11 @@ extension AppState {
         return member.isPeer
     }
 
-    /// Whether your agents can leave the open room someone else hosts.
+    /// Whether your agents, or you with Just me, can leave the open room
+    /// someone else hosts.
     var canLeaveActiveRoom: Bool {
         guard canLeaveLinkedRooms, let copy = activeRoomSurface?.copy else { return false }
-        return !copy.isOver && !copy.yours.isEmpty
+        return !copy.isOver && (!copy.yours.isEmpty || copy.justMe)
     }
 
     /// Takes `member` out of the open room: your agent out of a room someone

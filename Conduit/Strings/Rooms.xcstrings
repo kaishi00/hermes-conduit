@@ -32032,6 +32032,498 @@
           }
         }
       }
+    },
+    "Also here without their bots: %@" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ebenfalls hier, ohne ihre Bots: %@"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "También aquí, sin sus bots: %@"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aussi ici, sans leurs bots : %@"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Juga di sini tanpa bot mereka: %@"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Qui anche senza i loro bot: %@"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボットなしで参加中: %@"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "봇 없이 함께하는 사람: %@"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Też tutaj, bez swoich botów: %@"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Também aqui, sem os bots: %@"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Также здесь без своих ботов: %@"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Botları olmadan burada: %@"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "也在这里（未带机器人）：%@"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "也在這裡（未帶機器人）：%@"
+          }
+        }
+      }
+    },
+    "Joins without your bots, to read the room and post in it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tritt ohne deine Bots bei, um den Raum zu lesen und darin zu schreiben."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te unes sin tus bots, para leer la sala y escribir en ella."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rejoindre sans vos bots, pour lire le salon et y écrire."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bergabung tanpa bot-mu, untuk membaca ruang dan menulis di dalamnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entra senza i tuoi bot, per leggere la stanza e scriverci."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボットを連れずに参加し、ルームを読んで投稿します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "봇 없이 참여해 방을 읽고 글을 씁니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dołączasz bez swoich botów, aby czytać pokój i w nim pisać."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Entra sem seus bots, para ler a sala e escrever nela."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Присоединиться без своих ботов, чтобы читать комнату и писать в ней."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Botların olmadan katıl; odayı oku ve yaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不带你的机器人加入，阅读房间并在其中发言。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "不帶你的機器人加入，閱讀房間並在其中發言。"
+          }
+        }
+      }
+    },
+    "Just Me" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nur ich"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo yo"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Moi seul"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hanya saya"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Solo io"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "自分だけ"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "나만"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tylko ja"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Só eu"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Только я"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sadece ben"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有我"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "只有我"
+          }
+        }
+      }
+    },
+    "You joined without your bots: you read this room and post in it yourself." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du bist ohne deine Bots beigetreten: Du liest diesen Raum und schreibst selbst darin."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te uniste sin tus bots: lees esta sala y escribes en ella tú mismo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous avez rejoint sans vos bots : vous lisez ce salon et y écrivez vous-même."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamu bergabung tanpa bot-mu: kamu membaca ruang ini dan menulis sendiri di dalamnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sei entrato senza i tuoi bot: leggi questa stanza e ci scrivi tu."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボットを連れずに参加しました。このルームを読んで、自分で投稿できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "봇 없이 참여했습니다. 이 방을 읽고 직접 글을 쓸 수 있습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dołączyłeś bez swoich botów: czytasz ten pokój i piszesz w nim sam."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você entrou sem seus bots: você lê esta sala e escreve nela você mesmo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вы присоединились без своих ботов: вы читаете эту комнату и пишете в ней сами."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Botların olmadan katıldın: bu odayı okuyup kendin yazıyorsun."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你没有带机器人加入：你可以阅读这个房间并亲自发言。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你沒有帶機器人加入：你可以閱讀這個房間並親自發言。"
+          }
+        }
+      }
+    },
+    "You stop getting this room, and %@ is told. Your copy of it stays until you delete it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du erhältst diesen Raum nicht mehr, und %@ wird informiert. Deine Kopie bleibt, bis du sie löschst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dejas de recibir esta sala y se avisa a %@. Tu copia se queda hasta que la elimines."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous ne recevez plus ce salon, et %@ en est informé. Votre copie reste jusqu’à ce que vous la supprimiez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamu berhenti menerima ruang ini, dan %@ diberi tahu. Salinanmu tetap ada sampai kamu menghapusnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non ricevi più questa stanza e %@ viene avvisato. La tua copia resta finché non la elimini."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このルームは届かなくなり、%@ に通知されます。コピーは削除するまで残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 방을 더 이상 받지 않으며 %@ 님에게 알립니다. 사본은 삭제할 때까지 남습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przestajesz otrzymywać ten pokój, a %@ zostaje powiadomiony. Twoja kopia zostaje, dopóki jej nie usuniesz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você deixa de receber esta sala, e %@ é avisado. Sua cópia fica até você excluí-la."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эта комната больше не будет к вам приходить, и %@ узнает об этом. Ваша копия останется, пока вы её не удалите."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu oda artık sana gelmez ve %@ bilgilendirilir. Kopyan sen silene kadar kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你将不再收到这个房间，%@ 会收到通知。你的副本会保留到你删除为止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你將不再收到這個房間，%@ 會收到通知。你的副本會保留到你刪除為止。"
+          }
+        }
+      }
+    },
+    "You stop getting this room, and the host is told. Your copy of it stays until you delete it." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Du erhältst diesen Raum nicht mehr, und der Gastgeber wird informiert. Deine Kopie bleibt, bis du sie löschst."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dejas de recibir esta sala y se avisa al anfitrión. Tu copia se queda hasta que la elimines."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Vous ne recevez plus ce salon, et l’hôte en est informé. Votre copie reste jusqu’à ce que vous la supprimiez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kamu berhenti menerima ruang ini, dan tuan rumah diberi tahu. Salinanmu tetap ada sampai kamu menghapusnya."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Non ricevi più questa stanza e l’host viene avvisato. La tua copia resta finché non la elimini."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "このルームは届かなくなり、ホストに通知されます。コピーは削除するまで残ります。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 방을 더 이상 받지 않으며 호스트에게 알립니다. 사본은 삭제할 때까지 남습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Przestajesz otrzymywać ten pokój, a gospodarz zostaje powiadomiony. Twoja kopia zostaje, dopóki jej nie usuniesz."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Você deixa de receber esta sala, e o anfitrião é avisado. Sua cópia fica até você excluí-la."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эта комната больше не будет к вам приходить, и хозяин узнает об этом. Ваша копия останется, пока вы её не удалите."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu oda artık sana gelmez ve ev sahibi bilgilendirilir. Kopyan sen silene kadar kalır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你将不再收到这个房间，主持人会收到通知。你的副本会保留到你删除为止。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你將不再收到這個房間，主持人會收到通知。你的副本會保留到你刪除為止。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

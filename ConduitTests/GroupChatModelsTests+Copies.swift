@@ -105,6 +105,16 @@ extension GroupChatModelsTests {
         XCTAssertEqual(told.room.members.map(\.out), [nil, nil, .removed])
         XCTAssertEqual(GroupRoomRecipients.pickable(told.room.members).compactMap(\.handle), ["nahida", "kuro"])
 
+        // In it with none of your agents (Just me): read it, post in it, leave it.
+        XCTAssertFalse(told.justMe)
+        var alone = copiesCopy()
+        alone["yours"] = [[String: Any]]()
+        alone["just_me"] = true
+        let justMe = try XCTUnwrap(RoomCopiesClient.copy(alone))
+        XCTAssertTrue(justMe.justMe)
+        XCTAssertEqual(RoomLeaveText.leaveMessage(justMe), AppLocalization.string(
+            "You stop getting this room, and \(justMe.from) is told. Your copy of it stays until you delete it.", table: .rooms))
+
         XCTAssertThrowsError(try RoomCopiesClient.parseList(["ok": false, "copies": [[String: Any]]()]))
         XCTAssertThrowsError(try RoomCopiesClient.parseList(["ok": true]))
     }

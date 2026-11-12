@@ -78,6 +78,7 @@ struct RoomInviteSheet: View {
     /// The answer is still on its way to the host.
     @State private var sendingNote: String?
     @State private var confirmingDecline = false
+    @State private var joiningAlone = false
     /// The Bots list isn't read yet: opened from its notification.
     @State private var readingBots = true
 
@@ -136,6 +137,10 @@ struct RoomInviteSheet: View {
                     bringSection(invite)
                     answerSection(invite)
                 } else {
+                    if invite.justMe {
+                        Text(AppLocalization.string("You joined without your bots: you read this room and post in it yourself.", table: .rooms))
+                            .settingsCaption()
+                    }
                     if !invite.joined.isEmpty {
                         ConduitSettingsSection(title: AppLocalization.string("Your bots", table: .rooms), symbol: "person.2", tint: .conduitAccent) {
                             ForEach(invite.joined, id: \.profile) { agent in
@@ -300,6 +305,24 @@ struct RoomInviteSheet: View {
             }
             .buttonStyle(.settingsPrimary)
             .disabled(busy || !RoomInviteLimits.canJoin(picked: pickedCount, places: invite.places))
+            // Read it and post in it, with none of your bots.
+            if invite.justMeOffered {
+                Button {
+                    answer(invite, agents: [], justMe: true)
+                } label: {
+                    HStack(spacing: 8) {
+                        Text(AppLocalization.string("Just Me", table: .rooms))
+                        if busy && joiningAlone {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.settings)
+                .disabled(busy || pickedCount > 0)
+                .accessibilityHint(Text(AppLocalization.string("Joins without your bots, to read the room and post in it.", table: .rooms)))
+            }
             Button(role: .destructive) {
                 confirmingDecline = true
             } label: {
@@ -333,20 +356,21 @@ struct RoomInviteSheet: View {
         answer(invite, agents: agents)
     }
 
-    /// Joins with `agents`, or declines with none.
-    private func answer(_ invite: RoomInvite, agents: [RoomInviteAgent]) {
+    /// Joins with `agents`, or declines with none; `justMe` joins with none.
+    private func answer(_ invite: RoomInvite, agents: [RoomInviteAgent], justMe: Bool = false) {
         guard !busy else { return }
         busy = true
-        declining = agents.isEmpty
+        declining = agents.isEmpty && !justMe
+        joiningAlone = justMe
         actionError = nil
         sendingNote = nil
         Task { @MainActor in
             defer { busy = false }
-            switch await appState.answerLinkedRoomInvite(invite, agents: agents) {
+            switch await appState.answerLinkedRoomInvite(invite, agents: agents, justMe: justMe) {
             case .answered:
                 Haptics.success()
                 // A declined invite has no row: the card goes with it.
-                if agents.isEmpty { dismiss() }
+                if agents.isEmpty && !justMe { dismiss() }
             case .refused(let message):
                 Haptics.error()
                 roomInvitesLogger.notice("Invite answer refused")

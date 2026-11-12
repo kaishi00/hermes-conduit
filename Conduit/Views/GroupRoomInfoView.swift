@@ -170,6 +170,11 @@ struct GroupRoomInfoSheet: View {
                     takingOut = member
                 })
             }
+            // People in it with none of their agents ("Just me").
+            if !appState.activeRoomJustMe.isEmpty {
+                Text(AppLocalization.string("Also here without their bots: \(ListFormatter.localizedString(byJoining: appState.activeRoomJustMe))", table: .rooms))
+                    .settingsCaption()
+            }
             if offersChoices {
                 Text(AppLocalization.string("Tap one of your agents to choose what it may do and share here. Other people choose for theirs.", table: .rooms))
                     .settingsCaption()
