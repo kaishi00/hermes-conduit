@@ -225,7 +225,8 @@ struct GroupChatView: View {
                 disclosure: rowDisclosure,
                 insets: proxy.safeAreaInsets,
                 conversation: "room:\(replay.roomID)",
-                composerFloats: isV2
+                composerFloats: isV2,
+                pasteTarget: .room
             )
             .ignoresSafeArea()
         }

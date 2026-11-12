@@ -515355,6 +515355,88 @@
           }
         }
       }
+    },
+    "On a Mac a live call is always in the chat's top bar, so the round button shows only for a voice message or dictation." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Auf einem Mac ist ein Live-Anruf immer in der oberen Leiste des Chats, daher erscheint der runde Knopf nur für eine Sprachnachricht oder das Diktieren."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "En un Mac, la llamada en directo está siempre en la barra superior del chat, así que el botón redondo solo aparece para un mensaje de voz o el dictado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sur un Mac, l’appel en direct est toujours dans la barre supérieure de la discussion : le bouton rond n’apparaît que pour un message vocal ou la dictée."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Di Mac, panggilan langsung selalu ada di bilah atas chat, jadi tombol bundar hanya muncul untuk pesan suara atau dikte."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Su un Mac la chiamata dal vivo è sempre nella barra superiore della chat, quindi il pulsante rotondo compare solo per un messaggio vocale o la dettatura."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac ではライブ通話は常にチャットの上部バーにあるため、丸いボタンはボイスメッセージか音声入力のときだけ表示されます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac에서는 라이브 통화가 항상 채팅 상단 막대에 있으므로, 둥근 버튼은 음성 메시지나 받아쓰기에만 표시됩니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Na Macu rozmowa na żywo jest zawsze na górnym pasku czatu, więc okrągły przycisk pojawia się tylko dla wiadomości głosowej lub dyktowania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "No Mac, a chamada ao vivo fica sempre na barra superior do chat, então o botão redondo só aparece para mensagem de voz ou ditado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "На Mac живой звонок всегда находится на верхней панели чата, поэтому круглая кнопка появляется только для голосового сообщения или диктовки."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mac'te canlı arama her zaman sohbetin üst çubuğundadır, bu yüzden yuvarlak düğme yalnızca sesli mesaj veya dikte için görünür."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Mac 上，实时通话始终位于聊天的顶部栏，因此圆形按钮只在语音消息或听写时显示。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Mac 上，即時通話一律位於聊天的頂部列，因此圓形按鈕只會在語音訊息或聽寫時顯示。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

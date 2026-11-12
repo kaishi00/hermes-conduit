@@ -519,7 +519,8 @@ struct ChatView: View {
                         renderRevision: scope.cacheRevision,
                         receivedScopedPreference: true
                     )
-                }
+                },
+                pasteTarget: .chat
             )
             .ignoresSafeArea()
         }

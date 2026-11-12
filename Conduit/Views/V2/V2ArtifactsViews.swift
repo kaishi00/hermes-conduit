@@ -59,7 +59,7 @@ struct V2ArtifactsPage: View {
         .navigationTitle(Text("Artifacts"))
         .navigationBarTitleDisplayMode(.large)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            MinimisedLiveVoiceBar()
+            V2ListCallBar()
         }
     }
 }

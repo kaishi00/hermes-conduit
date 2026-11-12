@@ -112,6 +112,44 @@ extension ComposerFullEditorTests {
         XCTAssertFalse(ComposerLayout.keepsFocusAfterSend(idiom: .phone, onMac: false, hardwareKeyboard: false))
     }
 
+    func testMacCallsFromTheHeaderAndKeepsTheRoundButtonForItsOtherJobs() {
+        // Issue 1534: on a Mac the call is in the chat's header, as a
+        // desktop client has it, and the round button goes.
+        XCTAssertTrue(ChatVoiceButtonAction.headerCallButton(.liveCall, onMac: true))
+        XCTAssertFalse(ChatVoiceButtonAction.roundButtonBeside(.liveCall, onMac: true))
+        // A voice message or dictation keeps its round button there.
+        XCTAssertTrue(ChatVoiceButtonAction.roundButtonBeside(.voiceMessage, onMac: true))
+        XCTAssertTrue(ChatVoiceButtonAction.roundButtonBeside(.dictation, onMac: true))
+        XCTAssertTrue(ChatVoiceButtonAction.headerCallButton(.dictation, onMac: true))
+        // An iPhone or iPad: the round button calls, and the header has no
+        // second call button unless the round one does something else.
+        XCTAssertTrue(ChatVoiceButtonAction.roundButtonBeside(.liveCall, onMac: false))
+        XCTAssertFalse(ChatVoiceButtonAction.headerCallButton(.liveCall, onMac: false))
+        XCTAssertTrue(ChatVoiceButtonAction.headerCallButton(.voiceMessage, onMac: false))
+    }
+
+    func testComposerKeepsTheRoundButtonsSpotOnlyWhereItStands() {
+        // Beside a resting or expanded composer, the button's 84 pt.
+        XCTAssertEqual(ComposerBar.trailingInset(keepsButtonSpot: true, roundButtonBeside: true, voiceMessageHeld: false, restsWhenIdle: true), 84)
+        // A Mac whose call is in the header: the leading side's 16 pt.
+        XCTAssertEqual(ComposerBar.trailingInset(keepsButtonSpot: true, roundButtonBeside: false, voiceMessageHeld: false, restsWhenIdle: true), 16)
+        // A voice message held on the button keeps it under the finger.
+        XCTAssertEqual(ComposerBar.trailingInset(keepsButtonSpot: false, roundButtonBeside: true, voiceMessageHeld: true, restsWhenIdle: true), 84)
+        // A composer in use, or V1's, as before.
+        XCTAssertEqual(ComposerBar.trailingInset(keepsButtonSpot: false, roundButtonBeside: true, voiceMessageHeld: false, restsWhenIdle: true), 12)
+        XCTAssertEqual(ComposerBar.trailingInset(keepsButtonSpot: false, roundButtonBeside: true, voiceMessageHeld: false, restsWhenIdle: false), 14)
+    }
+
+    func testMacOpensConversationsReadyToTypeAndPastesFromTheTranscript() {
+        // Issue 1692: a Mac focuses the composer of a chat or room that
+        // opens, and ⌘V in its transcript pastes there.
+        XCTAssertTrue(ComposerLayout.focusesOnOpen(onMac: true))
+        XCTAssertTrue(ComposerLayout.transcriptTakesPaste(onMac: true))
+        // An iPhone or iPad keeps the keyboard down until the field is tapped.
+        XCTAssertFalse(ComposerLayout.focusesOnOpen(onMac: false))
+        XCTAssertFalse(ComposerLayout.transcriptTakesPaste(onMac: false))
+    }
+
     func testExpandedComposerBesideTheBigButtonLeavesVoiceAndItsMicToIt() {
         // The big button beside it offers voice, so the slot keeps Send.
         XCTAssertEqual(ComposerBar.trailingControl(action: .unavailable, showsVoiceButton: false), .action)

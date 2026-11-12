@@ -43,6 +43,9 @@ struct TranscriptView: UIViewControllerRepresentable {
     /// has none.
     var renderedScope: ChatRenderedScrollScope? = nil
     var layoutSettled: @MainActor (ChatRenderedScrollScope) -> Void = { _ in }
+    /// The composer ⌘V in the transcript pastes into, on a Mac (issue
+    /// 1692): the chat's or the room's.
+    var pasteTarget: ComposerPasteTarget? = nil
 
     func makeUIViewController(context: Context) -> TranscriptViewController {
         TranscriptViewController(appState: appState, scroller: scroller)
@@ -51,6 +54,7 @@ struct TranscriptView: UIViewControllerRepresentable {
     func updateUIViewController(_ controller: TranscriptViewController, context: Context) {
         controller.rowContent = rowContent
         controller.layoutSettled = layoutSettled
+        controller.pasteTarget = pasteTarget
         let transaction = context.transaction
         controller.update(
             rows: rows,
@@ -154,6 +158,15 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         tap.cancelsTouchesInView = false
         tap.delegate = self
         collectionView.addGestureRecognizer(tap)
+        // On a Mac a click anywhere in the transcript, on a row too, leaves
+        // it the keys, so ⌘V pastes into the composer (issue 1692).
+        if ComposerLayout.transcriptTakesPaste() {
+            let pasteTap = UITapGestureRecognizer(target: self, action: #selector(takeKeysAfterClick))
+            pasteTap.cancelsTouchesInView = false
+            pasteTap.delegate = self
+            collectionView.addGestureRecognizer(pasteTap)
+            self.pasteTap = pasteTap
+        }
     }
 
     /// Saves a chat trace when rows on screen aren't drawn (issue 1942).
@@ -467,10 +480,58 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         ReturnKeyTextView.putAwayFocus()
     }
 
+    // MARK: - ⌘V on a Mac (issue 1692)
+
+    /// The composer ⌘V here pastes into; nil takes none.
+    var pasteTarget: ComposerPasteTarget?
+    private var pasteTap: UITapGestureRecognizer?
+
+    /// After a click that left nobody the keys (a click on the transcript
+    /// puts the composer's focus away), the transcript takes them, so ⌘V
+    /// still has somewhere to go. A click that selected text, or that a
+    /// field took, keeps its own.
+    @objc private func takeKeysAfterClick() {
+        // After the click's own handling: a row's tap puts focus away too.
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.canBecomeFirstResponder, self.view.window != nil,
+                  FirstResponderProbe.current == nil else { return }
+            _ = self.becomeFirstResponder()
+        }
+    }
+
+    override var canBecomeFirstResponder: Bool {
+        pasteTarget != nil && ComposerLayout.transcriptTakesPaste()
+    }
+
+    override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(paste(_:)) {
+            return pasteTarget != nil && ComposerPaste.clipboardHasSomething
+        }
+        return super.canPerformAction(action, withSender: sender)
+    }
+
+    /// ⌘V (or Edit › Paste) with the transcript holding the keys: the
+    /// conversation's composer takes focus and the paste.
+    override func paste(_ sender: Any?) {
+        guard let pasteTarget else { return }
+        ComposerPaste.requests.send(pasteTarget)
+    }
+
     /// Only touches on the collection view itself: one on a row is the
-    /// row's.
+    /// row's. The Mac's click that leaves the transcript the keys hears
+    /// them all.
     func gestureRecognizer(_ gestureRecognizer: UIGestureRecognizer, shouldReceive touch: UITouch) -> Bool {
-        touch.view === collectionView
+        if let pasteTap, gestureRecognizer === pasteTap { return true }
+        return touch.view === collectionView
+    }
+
+    /// The Mac's click recognizer never takes a click from anyone else's.
+    func gestureRecognizer(
+        _ gestureRecognizer: UIGestureRecognizer,
+        shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+    ) -> Bool {
+        if let pasteTap { return gestureRecognizer === pasteTap || otherGestureRecognizer === pasteTap }
+        return false
     }
 }
 

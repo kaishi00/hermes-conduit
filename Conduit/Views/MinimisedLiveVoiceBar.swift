@@ -10,6 +10,20 @@
 
 import SwiftUI
 
+/// The call bar under a list column: the Chats list, a project's page,
+/// Bots Home, Pulse and Artifacts. Split beside a chat or a room, that
+/// conversation shows the bar by its composer, so the list leaves it to
+/// it and the call shows once, not over both columns (issue 1534).
+struct V2ListCallBar: View {
+    @Environment(\.v2Shell) private var shell
+
+    var body: some View {
+        if !shell.hasChatBeside {
+            MinimisedLiveVoiceBar()
+        }
+    }
+}
+
 struct MinimisedLiveVoiceBar: View {
     @EnvironmentObject var appState: AppState
 
