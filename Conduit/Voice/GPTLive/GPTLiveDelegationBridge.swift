@@ -501,8 +501,9 @@ final class GPTLiveDelegationBridge {
             guard callGeneration == call, !isEnding else { return [] }
             if let said {
                 // Not passed on (busy, unreachable): the user's retry isn't
-                // "already sent".
-                if said != AppState.workstreamCallSent {
+                // "already sent". A sent request's result can go on (a
+                // picture that didn't go with it), so it's read by its start.
+                if !said.hasPrefix(AppState.workstreamCallSent) {
                     if confirmed { lastSentAt = nil }
                     lastUntaken = id
                 }
