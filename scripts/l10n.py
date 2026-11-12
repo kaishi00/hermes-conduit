@@ -357,8 +357,10 @@ def move(keys, source_path: str, destination_path: str) -> None:
             raise KeyError(f"{destination_path}: {key!r} already exists")
     for key in keys:
         destination["strings"][key] = source["strings"].pop(key)
-    save(os.path.join(REPO_ROOT, source_path), source)
+    # The destination first: a failed write then leaves the keys where
+    # they were instead of in neither table.
     save(os.path.join(REPO_ROOT, destination_path), destination)
+    save(os.path.join(REPO_ROOT, source_path), source)
 
 
 def main(argv=None) -> int:

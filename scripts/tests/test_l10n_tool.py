@@ -206,6 +206,20 @@ class FeatureTableTests(unittest.TestCase):
                   "Conduit/Strings/Voice.xcstrings")
         self.assertEqual(list(self.voice()), ["Voice replies", "Hello"])
 
+    def test_a_failed_move_keeps_the_keys_in_the_source(self):
+        real_save = l10n.save
+
+        def failing_save(path, catalog):
+            if path == self.voice_path:
+                raise OSError("read-only")
+            real_save(path, catalog)
+
+        l10n.save = failing_save
+        self.addCleanup(setattr, l10n, "save", real_save)
+        with self.assertRaises(OSError):
+            l10n.move(["Hello"], "Conduit/Localizable.xcstrings", "Conduit/Strings/Voice.xcstrings")
+        self.assertIn("Hello", self.read()["strings"])
+
     def test_move_refuses_a_clash_and_other_catalogs(self):
         l10n.save(self.voice_path, {"sourceLanguage": "en", "strings": {
             "Hello": {"localizations": {}}}})
