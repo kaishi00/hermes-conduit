@@ -9,9 +9,9 @@ their own. It changes no code, except:
 
 - Stored instance properties, `init` and `deinit` stay in AppState.swift
   (an extension can't hold them), under their region's MARK.
-- A `private` declaration that another file now uses becomes internal
-  (`private(set)` likewise, when another file now writes it), since Swift has
-  no access level that spans an extension's files.
+- A `private` or `fileprivate` declaration that another file now uses
+  becomes internal (`private(set)` likewise, when another file now writes
+  it), since Swift has no access level that spans an extension's files.
 
 It is deterministic, so a branch that still edits the old file can take
 main's split by running it on its own copy (see `--help`):
@@ -36,7 +36,7 @@ APP_STATE = "Conduit/Services/AppState.swift"
 SERVICES = "Conduit/Services"
 
 # Each step is one PR. A step maps a new file's name to what moves there:
-# region names in the class body (with "#2" for a name's second region), or
+# region names in the class body (with "@2" for a name's second region), or
 # for the types around the class, "file:<TypeName>".
 STEPS = [
     # 1: the types around the class, and its trailing extensions
@@ -121,7 +121,7 @@ STEPS = [
     # 8: profiles, capabilities, dashboards and jobs
     {
         "AppState+Profiles.swift": ["Profiles and preferences"],
-        "AppState+Capabilities.swift": ["Capabilities", "Capabilities#2", "Tools catalog for step rows"],
+        "AppState+Capabilities.swift": ["Capabilities", "Capabilities@2", "Tools catalog for step rows"],
         "AppState+ScheduledJobs.swift": ["Scheduled jobs"],
         "AppState+Dashboards.swift": ["Saved dashboards (#148)", "Dashboard-scoped presentation (#148)"],
         "AppState+UIState.swift": ["UI state", "Runtime"],
@@ -344,7 +344,7 @@ def segment(lines, masked, depths, lo, hi, base_depth, indent, region_names):
         if mark and len(line) - len(line.lstrip()) == indent:
             name = mark.group(1)
             seen[name] = seen.get(name, 0) + 1
-            region = name if seen[name] == 1 else f"{name}#{seen[name]}"
+            region = name if seen[name] == 1 else f"{name}@{seen[name]}"
             region_names.append((region, i))
             items.append(Item(pending if pending is not None else i, i + 1, "mark", [region], False, region, i))
             pending = None
@@ -519,16 +519,33 @@ MUTATION = (r"(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\s*(=(?!=)|\+=|-=|\*=|/=|\|=|&=|\
             r"swapAt|replaceSubrange|reserveCapacity|shuffle)\b")
 
 
+# `mutating func` names the app declares (set by run): calling one through a
+# `private(set)` property writes it, like `sessionCatalogLoadState.reset()`.
+APP_MUTATING = set()
+
+
+def mutating_names(repo):
+    names = set()
+    for p in sorted((repo / "Conduit").rglob("*.swift")) + sorted((repo / "Shared").rglob("*.swift")):
+        names.update(re.findall(r"\bmutating\s+func\s+(\w+)", p.read_text(errors="replace")))
+    return names
+
+
 def writes(masked_lines, name):
-    pat = re.compile(r"(?<![\w.])(self\.)?" + re.escape(name) + r"\b(?=" + MUTATION + r")"
+    mutation = MUTATION
+    if APP_MUTATING:
+        mutation += r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(" + "|".join(sorted(APP_MUTATING)) + r")\b(?!\s*:)"
+    pat = re.compile(r"(?<![\w.])(self\.)?" + re.escape(name) + r"\b(?=" + mutation + r")"
                      r"|&(self\.)?" + re.escape(name) + r"\b")
-    return any(pat.search(l) for l in masked_lines)
+    return pat.search("\n".join(masked_lines)) is not None
 
 
 def widen(line, which):
     """Drop `private ` (which='private') or `private(set) ` from a decl line."""
-    if which == "private(set)":
-        return re.sub(r"\bprivate\(set\)\s+", "", line, count=1)
+    if which in ("private(set)", "fileprivate(set)"):
+        return re.sub(r"\b" + re.escape(which) + r"\s+", "", line, count=1)
+    if which == "fileprivate":
+        return re.sub(r"\bfileprivate\s+(?!\(set\))", "", line, count=1)
     return re.sub(r"(?<![\w(])private\s+(?!\(set\))", "", line, count=1)
 
 
@@ -549,7 +566,7 @@ def references(masked_lines, name):
     n = re.escape(name)
     pat = re.compile(r"(?<![\w.])\$?" + n + r"\b(?!:)"
                      r"|(?:\bself|\bSelf|\bAppState|\\)\." + n + r"\b")
-    return any(pat.search(l) for l in masked_lines)
+    return pat.search("\n".join(masked_lines)) is not None
 
 
 def in_app_state(src, it):
@@ -576,26 +593,72 @@ def plan_access(src, file_items):
                 mods = getattr(d, "mods", None)
                 if mods is None:
                     _, mods, _ = parse_decl(src.masked[d.decl_line])
-                if "private" not in mods and "private(set)" not in mods:
+                hidden = [m for m in ("private", "fileprivate") if m in mods]
+                setter = [m for m in ("private(set)", "fileprivate(set)") if m in mods]
+                if not hidden and not setter:
                     continue
                 for other in file_items:
                     if other == f:
                         continue
-                    text = (scoped if member else every)[other]
+                    # fileprivate reaches the whole file, top-level code too
+                    file_wide = any(m.startswith("fileprivate") for m in mods)
+                    text = (scoped if member and not file_wide else every)[other]
                     used = [n for n in d.names if references(text, n)]
                     if not used:
                         continue
-                    if "private" in mods:
-                        line = widen(line, "private")
-                        widened.append((d, "private", other))
+                    if hidden:
+                        line = widen(line, hidden[0])
+                        widened.append((d, hidden[0], other))
                         break
                     if any(writes(text, n) for n in used):
-                        line = widen(line, "private(set)")
-                        widened.append((d, "private(set)", other))
+                        line = widen(line, setter[0])
+                        widened.append((d, setter[0], other))
                         break
                 if line != src.lines[d.decl_line]:
                     changes[d.decl_line] = line
+    # An internal declaration can't show a private type in its signature, or
+    # use a private name in a default argument: widen those names too.
+    hidden_decls = {}
+    for items in file_items.values():
+        for it in items:
+            for d in decl_lines_of(it):
+                mods = getattr(d, "mods", None)
+                if mods is None:
+                    _, mods, _ = parse_decl(src.masked[d.decl_line])
+                hidden = [m for m in ("private", "fileprivate") if m in mods]
+                if hidden and d.decl_line not in changes:
+                    for n in d.names:
+                        hidden_decls.setdefault(n, []).append((d, hidden[0]))
+    queue = [d for d, which, _ in widened if which in ("private", "fileprivate")]
+    while queue:
+        d = queue.pop()
+        for n in set(IDENT.findall(signature(src, d))) - set(d.names):
+            for e, which in hidden_decls.pop(n, []):
+                if e.decl_line in changes:
+                    continue
+                changes[e.decl_line] = widen(src.lines[e.decl_line], which)
+                widened.append((e, which, f"the signature of {d.names[0]}"))
+                queue.append(e)
     return changes, widened
+
+
+def signature(src, d):
+    """A declaration's text up to its body or initial value: what an internal
+    declaration shows of the types and names it uses."""
+    text = "\n".join(src.masked[d.decl_line:d.end])
+    if d.kind in ("enum", "struct", "class", "actor", "typealias"):
+        return text  # a type shows its members' types too
+    depth = 0
+    for k, ch in enumerate(text):
+        if ch in "([<" and not (ch == "<" and text[k - 1:k] == " "):
+            depth += 1
+        elif ch in ")]>" and not (ch == ">" and text[k - 1:k] in ("-", " ")):
+            depth -= 1
+        elif depth <= 0 and ch == "{":
+            return text[:k]
+        elif depth <= 0 and ch == "=" and d.kind in ("var", "let") and text[k + 1:k + 2] != "=":
+            return text[:k]
+    return text
 
 
 # ---------------------------------------------------------------- writing
@@ -640,7 +703,7 @@ def render_new_file(src, fname, items, changes, header_note):
             if it.region != last_region:
                 if not first:
                     out.append("")
-                out.append(f"    // MARK: - {it.region.split('#')[0]}")
+                out.append(f"    // MARK: - {it.region.split('@')[0]}")
                 out.append("")
                 last_region = it.region
             elif not first:
@@ -690,6 +753,9 @@ def render_app_state(src, moved, changes):
         if keep and keep[-1].rstrip().endswith("{"):
             while k < n and k not in skip and not src.lines[k].strip():
                 k += 1
+        # a MARK whose code moved keeps its blank line before what stays
+        if keep and keep[-1].strip().startswith("// MARK:") and k < n and src.lines[k].strip():
+            keep.append("")
     while keep and not keep[-1].strip():
         keep.pop()
     return "\n".join(keep) + "\n"
@@ -730,7 +796,7 @@ HEADER_NOTES = {
 def default_note(src, items):
     regions = []
     for it in items:
-        r = it.region.split("#")[0] if it.region else None
+        r = it.region.split("@")[0] if it.region else None
         if r and r not in regions:
             regions.append(r)
     if not regions:
@@ -758,7 +824,7 @@ def collisions(repo, src, widened, written):
               if p.relative_to(repo).as_posix() != APP_STATE and p.name not in written]
     texts = {p: p.read_text(errors="replace") for p in others}
     for d, which, _ in widened:
-        if which != "private":
+        if which not in ("private", "fileprivate"):
             continue
         member = any(d is x or d in getattr(x, "inner", []) for x in src.body)
         for n in d.names:
@@ -788,6 +854,8 @@ def run(repo, step, write, pr=None, today=None):
         file_items[f] = items
     # files that already exist and aren't written by this run can't see
     # AppState.swift's private names, so they need nothing.
+    APP_MUTATING.clear()
+    APP_MUTATING.update(mutating_names(repo))
     changes, widened = plan_access(src, file_items)
     report = []
     for f, items in moves.items():
@@ -807,18 +875,9 @@ def run(repo, step, write, pr=None, today=None):
         if target.exists() and (not f.startswith("AppState+") or any(it not in src.body for it in items)
                                 or "extension AppState" not in target.read_text()):
             raise SystemExit(f"{target} already exists; nothing written")
-        if target.exists() and any(f"// MARK: - {it.region.split('#')[0]}\n" in target.read_text()
+        if target.exists() and any(f"// MARK: - {it.region.split('@')[0]}\n" in target.read_text()
                                    for it in items):
             raise SystemExit(f"{target} already has this step's moves; nothing written")
-    for f, items in moves.items():
-        target = repo / SERVICES / f
-        if target.exists():
-            body = render_new_file(src, f, items, changes, ["-"])
-            block = body[body.index("extension AppState {"):]
-            target.write_text(target.read_text().rstrip("\n") + "\n\n" + block)
-        else:
-            target.write_text(render_new_file(src, f, items, changes, HEADER_NOTES.get(f, [])))
-    path.write_text(render_app_state(src, moved, changes))
     where = {}
     for it in src.outer_before + src.body + src.outer_after:
         if it.kind in ("mark", "tail"):
@@ -832,10 +891,22 @@ def run(repo, step, write, pr=None, today=None):
                 else:
                     where[n] = dest
     import datetime
-    manual = update_map(repo, {n: d for n, d in where.items() if d},
-                        pr, today or datetime.date.today().isoformat())
+    map_text, manual = update_map(repo, {n: d for n, d in where.items() if d},
+                                  pr, today or datetime.date.today().isoformat())
     for m in manual:
         report.append(f"  MAP rewrite by hand: {m[:160]}")
+    app_text = render_app_state(src, moved, changes)
+    for f, items in moves.items():
+        target = repo / SERVICES / f
+        if target.exists():
+            body = render_new_file(src, f, items, changes, ["-"])
+            block = body[body.index("extension AppState {"):]
+            target.write_text(target.read_text().rstrip("\n") + "\n\n" + block)
+        else:
+            target.write_text(render_new_file(src, f, items, changes, HEADER_NOTES.get(f, [])))
+    # AppState.swift last: until it's written, its regions are all still there
+    (repo / MAP).write_text(map_text)
+    path.write_text(app_text)
     print("\n".join(report))
 
 
@@ -911,8 +982,7 @@ def update_map(repo, where, pr, today):
     result = "".join(out)
     if result != text and pr:
         result = stamp_checked(text, result, pr, today)
-    path.write_text(result)
-    return manual
+    return result, manual
 
 
 def stamp_checked(before, after, pr, today):

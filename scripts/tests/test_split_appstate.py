@@ -34,6 +34,10 @@ final class AppState: ObservableObject {
     private var token: String?
     private(set) var attempts = 0
     private(set) var readOnly = 0
+    fileprivate var lastError: String?
+    private struct Claim { var kind: ClaimKind }
+    private enum ClaimKind { case server }
+    private var claims: [Claim] = []
     var isReady: Bool {
         isConnected && token != nil
     }
@@ -41,6 +45,8 @@ final class AppState: ObservableObject {
     /// Connects.
     func connect() {
         attempts += 1
+        lastError = nil
+        _ = claims
         lifecycleLog.info("connect \\(readOnly)")
         let text = """
         a { brace in a string
@@ -120,6 +126,11 @@ class SplitAppStateTests(unittest.TestCase):
         self.assertIn("private(set) var readOnly = 0", app, "only read elsewhere")
         self.assertIn("private func note(", app, "only AppState.swift calls it")
         self.assertIn("\nlet lifecycleLog", app)
+        self.assertIn("\n    var lastError: String?", app, "fileprivate is widened too")
+        self.assertIn("\n    var claims: [Claim]", app)
+        moved = self.read("AppState+Connection.swift")
+        self.assertIn("\n    struct Claim {", moved, "the widened property's type")
+        self.assertIn("\n    enum ClaimKind {", moved, "and the types that type shows")
 
     def test_widens_a_moved_extensions_members(self):
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")
@@ -136,6 +147,13 @@ class SplitAppStateTests(unittest.TestCase):
         self.assertFalse((self.repo / "Conduit/Services/AppState+Connection.swift").exists())
         self.assertEqual((self.repo / split.APP_STATE).read_text(), SOURCE)
 
+    def test_a_map_it_cant_read_stops_it_before_any_file_is_written(self):
+        (self.repo / split.MAP).unlink()
+        with self.assertRaises(FileNotFoundError):
+            split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        self.assertFalse((self.repo / "Conduit/Services/AppState+Connection.swift").exists())
+        self.assertEqual((self.repo / split.APP_STATE).read_text(), SOURCE)
+
     def test_appends_to_an_existing_extension_file(self):
         (self.repo / "Conduit/Services/AppState+Connection.swift").write_text(
             "import SwiftUI\n\nextension AppState {\n    func old() {}\n}\n")
@@ -145,6 +163,61 @@ class SplitAppStateTests(unittest.TestCase):
                                         "extension AppState {\n    // MARK: - Connection"), text)
         with self.assertRaises(SystemExit):
             split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+
+    def test_repeated_and_numbered_region_names(self):
+        (self.repo / split.APP_STATE).write_text('''import SwiftUI
+
+@MainActor
+final class AppState: ObservableObject {
+    // MARK: - Stars (#757)
+
+    var starred: Set<String> = []
+
+    func star() {}
+
+    // MARK: - Tools
+
+    func tools() {}
+
+    // MARK: - Tools
+
+    func moreTools() {}
+}
+''')
+        split.STEPS = [{"AppState+Stars.swift": ["Stars (#757)", "Tools@2"]}]
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        moved = self.read("AppState+Stars.swift")
+        app = self.read("AppState.swift")
+        self.assertIn("    // MARK: - Stars (#757)\n\n    func star() {}", moved)
+        self.assertIn("    // MARK: - Tools\n\n    func moreTools() {}", moved)
+        self.assertNotIn("@2", moved)
+        self.assertIn("func tools()", app, "the first Tools region stays")
+        self.assertIn("    // MARK: - Stars (#757)\n\n    var starred", app,
+                      "a MARK whose code moved keeps its blank line")
+
+    def test_a_mutating_call_counts_as_a_write(self):
+        (self.repo / "Shared/LoadState.swift").write_text(
+            "struct LoadState {\n    var n = 0\n    mutating func reset() { n = 0 }\n}\n")
+        (self.repo / split.APP_STATE).write_text('''import SwiftUI
+
+@MainActor
+final class AppState: ObservableObject {
+    // MARK: - Connection
+
+    private(set) var loadState = LoadState()
+    private(set) var other = LoadState()
+
+    func connect() {
+        loadState.reset()
+        _ = other.n
+    }
+}
+''')
+        split.STEPS = [{"AppState+Connection.swift": ["Connection"]}]
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        app = self.read("AppState.swift")
+        self.assertIn("\n    var loadState = LoadState()", app)
+        self.assertIn("private(set) var other = LoadState()", app)
 
     def test_points_the_map_at_the_new_file(self):
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")
