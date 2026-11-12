@@ -32,6 +32,12 @@ struct ChatListCatalogFreshness {
     /// longer in Low Power or Low Data Mode, PollCadence) while nothing
     /// moves.
     static let fallbackInterval: TimeInterval = 30
+    /// The same backstop on a gateway that pushes `sessions.changed`
+    /// (`change_events` in its `gateway.ready`, issue 851): each change is
+    /// read when it comes (CatalogChangeSignal), so this only covers a
+    /// signal that never came (a Hermes before 0.21.1 watches only its
+    /// launch profile's chats, and a dropped frame).
+    static let fallbackIntervalFollowingChanges: TimeInterval = 300
     /// Coming back to the app reads the list again when the last read is
     /// older than this.
     static let sceneActiveInterval: TimeInterval = 10

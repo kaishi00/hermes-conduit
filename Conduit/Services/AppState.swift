@@ -6372,10 +6372,18 @@ final class AppState: ObservableObject {
     /// The Chats list's poll pace, the sleep a return to the app or a tap
     /// cuts short, and a count of catalog reads that changed the list.
     private(set) var chatListPollPacer = ChatListPollPacer()
-    private let chatListPollSleep = WakeableSleep()
+    let chatListPollSleep = WakeableSleep()
     /// Published so a project's page beside the open chat reads its own
-    /// list again when the catalog changes (issue 1454).
-    @Published private(set) var chatListCatalogGeneration = 0
+    /// list again when the catalog changes (issue 1454). A change also
+    /// wakes the list's poll from a long wait, so a turn that started or
+    /// ended elsewhere (its messages move the catalog, which a gateway's
+    /// `sessions.changed` reads at once) shows Running or stops without
+    /// waiting out the backoff (issue 851).
+    @Published private(set) var chatListCatalogGeneration = 0 {
+        didSet {
+            if !chatListPollPacer.backoff.isAtShortest { chatListPollSleep.wake() }
+        }
+    }
     /// The chat New Chat (or a project's new chat) just made here. Hermes
     /// lists a chat only once its first message is stored, so until then
     /// every catalog read would drop the row the create put in, and a list
@@ -24685,22 +24693,24 @@ final class AppState: ObservableObject {
     /// the list and the open chat behind it. A chat the registry has and
     /// the list doesn't, one started on another device, reads the catalog
     /// again; so does a list left on screen for 30 s, for renames and
-    /// deletions made elsewhere. Reads go through the coalesced read Back
-    /// uses. Returns the wait before the next tick: 4 s while a turn runs
-    /// or something on the list changed, then 8, 15, 30 and 60 s while
-    /// nothing moves (PollCadence), stretched in Low Power and Low Data
-    /// Mode.
+    /// deletions made elsewhere (5 minutes on a gateway that pushes
+    /// `sessions.changed`, which reads them as they come). Reads go through
+    /// the coalesced read Back uses. Returns the wait before the next tick:
+    /// 4 s while a turn runs or something on the list changed, then 8, 15,
+    /// 30 and 60 s while nothing moves, and 120 s with change events
+    /// (PollCadence), stretched in Low Power and Low Data Mode.
     @discardableResult
     func chatListPollTick() async -> TimeInterval {
+        let followsChanges = client?.sendsChangeEvents == true
         // Off screen (voice or CarPlay keep the app running) nothing reads.
         guard isSceneActive, isConnected else {
-            return PollCadence.stretched(chatListPollPacer.backoff.interval, by: deviceConditions())
+            return PollCadence.stretched(chatListPollPacer.interval(followingChanges: followsChanges), by: deviceConditions())
         }
         let registryRead = await refreshLiveSessionStatuses()
         // Left the screen, or the poll stopped, while the registry read was
         // on its way: nothing more reads.
         guard isSceneActive, !Task.isCancelled else {
-            return PollCadence.stretched(chatListPollPacer.backoff.interval, by: deviceConditions())
+            return PollCadence.stretched(chatListPollPacer.interval(followingChanges: followsChanges), by: deviceConditions())
         }
         var registry: Set<String>?
         let listed = chatListListedIDs()
@@ -24730,12 +24740,22 @@ final class AppState: ObservableObject {
             // an empty one, so the list backs off.
             registry = []
         }
-        if chatListCatalogFreshness.shouldRead(olderThan: ChatListCatalogFreshness.fallbackInterval, now: chatSyncNow()) {
+        // A gateway that pushes `sessions.changed` has each change read as
+        // it comes: the timed read is only its backstop (issue 851).
+        let fallback = followsChanges
+            ? ChatListCatalogFreshness.fallbackIntervalFollowingChanges
+            : ChatListCatalogFreshness.fallbackInterval
+        if chatListCatalogFreshness.shouldRead(olderThan: fallback, now: chatSyncNow()) {
             refreshCatalogAfterLeavingChat(reportingFailure: false)
         }
         readPendingCatalogChange()
         return chatListPollPacer.next(
-            after: .init(registry: registry, turnRunning: turnRunning, catalogGeneration: chatListCatalogGeneration),
+            after: .init(
+                registry: registry,
+                turnRunning: turnRunning,
+                catalogGeneration: chatListCatalogGeneration,
+                followsChanges: followsChanges
+            ),
             conditions: deviceConditions(),
             random: pollJitter()
         )
@@ -40445,9 +40465,9 @@ final class AppState: ObservableObject {
     private func endDelegateAgent(_ agent: DelegateAgentActivity, as status: DelegateAgentActivity.Status = .completed) {
         guard let index = delegateAgents.firstIndex(where: { $0.id == agent.id && $0.sessionId == agent.sessionId }),
               delegateAgents[index].status.isActive else { return }
-        delegateAgents[index].status = status
-        delegateAgents[index].currentTool = nil
-        delegateAgents[index].updatedAt = Date()
+        let now = Date()
+        delegateAgents[index] = delegateAgents[index].ended(as: status, at: now)
+        delegateAgents[index].updatedAt = now
         activeAgents = delegateAgents.filter { $0.status.isActive }.count
     }
 
