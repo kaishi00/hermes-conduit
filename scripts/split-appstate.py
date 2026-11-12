@@ -136,17 +136,59 @@ STEPS = [
         ],
         "AppState+PendingSend.swift": ["Sending while connecting: what reads private state"],
     },
-    # 7: the composer and a turn's stream
+    # 7: the composer, sending, a turn's stream and voice
     {
         "AppState+Composer.swift": [
-            "Quoting into the composer (#385)", "Reactions", "Composer actions",
+            "Quoting into the composer (#385)|until automaticChatResumeWorkMayStillSelectSession",
+            "Composer actions|until TranscriptFreshnessGateOutcome",
         ],
-        "AppState+ChatTakeover.swift": ["Chat takeover"],
+        "AppState+TranscriptFreshness.swift": [
+            "Composer actions|from TranscriptFreshnessGateOutcome",
+        ],
+        "AppState+ChatResume.swift": [
+            "Quoting into the composer (#385)|from automaticChatResumeWorkMayStillSelectSession until invalidateBotModeState",
+        ],
+        "AppState+BotMode.swift": ["Quoting into the composer (#385)|from invalidateBotModeState"],
+        "AppState+Reactions.swift": ["Reactions"],
+        "AppState+NotifierPlugin.swift": ["Chat takeover|until chatTakeover"],
+        "AppState+ChatTakeover.swift": [
+            "Chat takeover|from chatTakeover until resendInPlaceOfLostEmptyChat",
+        ],
+        "AppState+SendMessage.swift": [
+            "Chat takeover|from resendInPlaceOfLostEmptyChat until toggleYolo",
+        ],
+        "AppState+YoloAndReasoning.swift": ["Chat takeover|from toggleYolo"],
         "AppState+SlashCommands.swift": ["Slash Commands"],
-        "AppState+Compression.swift": ["Session compression (`session.compress`)"],
-        "AppState+StreamEvents.swift": ["Stream event handling"],
-        "AppState+Clarify.swift": ["Clarify lifecycle"],
-        "AppState+ChatSupport.swift": ["Chat support surfaces"],
+        "AppState+Compression.swift": ["Session compression (`session.compress`)|until steer"],
+        "AppState+Steering.swift": [
+            "Session compression (`session.compress`)|from steer until respondToClarify",
+        ],
+        "AppState+Clarify.swift": [
+            "Session compression (`session.compress`)|from respondToClarify",
+            "Clarify lifecycle|until appendReasoning",
+        ],
+        "AppState+StreamEvents.swift": ["Stream event handling|until refreshDelegateAgents"],
+        "AppState+DelegateAgents.swift": ["Stream event handling|from refreshDelegateAgents"],
+        "AppState+StreamingText.swift": [
+            "Clarify lifecycle|from appendReasoning until requestChatScrollToLatest",
+            "Chat support surfaces|from scheduleStreamingPublish",
+        ],
+        "AppState+ChatSupport.swift": [
+            "Clarify lifecycle|from requestChatScrollToLatest",
+            "Chat support surfaces|until applyResponseHapticSignal",
+            "Chat support surfaces|from installVoiceCapabilityStateForTesting until loadVoiceProfilePreferences",
+        ],
+        "AppState+ResponseHaptics.swift": [
+            "Chat support surfaces|from applyResponseHapticSignal until spokenPromptSurface",
+        ],
+        "AppState+VoiceConversation.swift": [
+            "Chat support surfaces|from spokenPromptSurface until isWatchVoiceCallActive",
+            "Chat support surfaces|from handleCarPlayVoiceSurfaceRemoved until installVoiceCapabilityStateForTesting",
+            "Chat support surfaces|from loadVoiceProfilePreferences until scheduleStreamingPublish",
+        ],
+        "AppState+WatchCalls.swift": [
+            "Chat support surfaces|from isWatchVoiceCallActive until handleCarPlayVoiceSurfaceRemoved",
+        ],
     },
     # 8: profiles, capabilities, dashboards and jobs
     {
@@ -580,12 +622,25 @@ def mutating_names(repo):
     return names
 
 
-def writes(masked_lines, name):
+def mutation_pattern():
+    """What follows a name that writes it: an assignment or compound op, or a
+    call of a mutating method, through any chain of members or subscripts."""
     mutation = MUTATION
     if APP_MUTATING:
         mutation += r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(" + "|".join(sorted(APP_MUTATING)) + r")\b(?!\s*:)"
-    pat = re.compile(r"(?<![\w.])(self\??\.)?" + re.escape(name) + r"\b(?=" + mutation + r")"
+    return mutation
+
+
+def writes(masked_lines, name):
+    pat = re.compile(r"(?<![\w.])(self\??\.)?" + re.escape(name) + r"\b(?=" + mutation_pattern() + r")"
                      r"|&(self\??\.)?" + re.escape(name) + r"\b")
+    return pat.search("\n".join(masked_lines)) is not None
+
+
+def writes_member(masked_lines, name):
+    """Whether code writes `value.name` (another type's member)."""
+    pat = re.compile(r"\??\." + re.escape(name) + r"\b(?=" + mutation_pattern() + r")"
+                     r"|&[\w.?]*\." + re.escape(name) + r"\b")
     return pat.search("\n".join(masked_lines)) is not None
 
 
@@ -690,6 +745,7 @@ def plan_access(src, file_items):
                 queue.append(e)
     # A fileprivate member of another type in AppState.swift is reached as
     # `value.name`: widen it when moved code uses (or, for a setter, writes) it.
+    # (A private one never reached AppState's code, even in the same file.)
     for it in src.outer_before + src.outer_after:
         if it.dest or it.kind not in ("class", "struct", "enum", "actor"):
             continue
@@ -701,13 +757,12 @@ def plan_access(src, file_items):
             for f, text in every.items():
                 if f == APP_STATE:
                     continue
-                joined = "\n".join(text)
-                hit = (re.search(r"\." + re.escape(name) + r"\b(?=" + MUTATION + r")", joined)
-                       if which.endswith("(set)") else
-                       re.search(r"\." + re.escape(name) + r"\b", joined))
+                hit = (writes_member(text, name) if which.endswith("(set)") else
+                       re.search(r"\." + re.escape(name) + r"\b", "\n".join(text)))
                 if hit:
                     changes[k] = widen(changes.get(k, src.lines[k]), which)
-                    widened.append((SimpleNamespace(names=[name], decl_line=k), which, f))
+                    widened.append((SimpleNamespace(names=[name], decl_line=k, outer_member=True),
+                                    which, f))
                     break
     return changes, widened
 
@@ -774,12 +829,13 @@ def render_new_file(src, fname, items, changes, header_note):
         last_region = None
         first = True
         for it in in_class:
-            if it.region != last_region:
+            title = MARK_TITLES.get(fname, it.region.split('@')[0])
+            if title != last_region:
                 if not first:
                     out.append("")
-                out.append(f"    // MARK: - {MARK_TITLES.get(fname, it.region.split('@')[0])}")
+                out.append(f"    // MARK: - {title}")
                 out.append("")
-                last_region = it.region
+                last_region = title
             elif not first:
                 out.append("")
             out.extend(text(it))
@@ -876,9 +932,107 @@ MARK_TITLES = {"AppState+OpenChat.swift": "Opening chats",
                "AppState+Voice.swift": "Voice background jobs",
                "AppState+Reconciliation.swift": "Keeping row ids and local notes across a reconcile",
                "AppState+ChatResume.swift": "Resuming a chat: return surface, viewport and transport",
-               "AppState+PinnedChatOrder.swift": "Pinning chats, and the saved order of chats, bots and rooms"}
+               "AppState+PinnedChatOrder.swift": "Pinning chats, and the saved order of chats, bots and rooms",
+               "AppState+TranscriptFreshness.swift": "Checking the transcript is fresh before a send",
+               "AppState+BotMode.swift": "Resetting Bot Mode's state",
+               "AppState+Reactions.swift": "Reactions, and branching from a reply",
+               "AppState+NotifierPlugin.swift": "The Conduit plugin's status on this dashboard",
+               "AppState+SendMessage.swift": "Sending a message",
+               "AppState+YoloAndReasoning.swift": "YOLO mode and reasoning effort",
+               "AppState+Steering.swift": "Steering, interrupting and queued sends",
+               "AppState+Clarify.swift": "Clarify, approvals, input prompts and connections",
+               "AppState+DelegateAgents.swift": "Delegate agents",
+               "AppState+StreamingText.swift": "Publishing streamed text and reasoning",
+               "AppState+ChatSupport.swift": "Chat support surfaces",
+               "AppState+ResponseHaptics.swift": "Response haptics",
+               "AppState+VoiceConversation.swift": "Voice conversations and Read Aloud",
+               "AppState+WatchCalls.swift": "Watch calls"}
 
 HEADER_NOTES = {
+    "AppState+Composer.swift": [
+        "The composer: quoting and replying into it, prefills and drops, and",
+        "submitting what it holds (the submission's ownership and identity,",
+        "starting a chat for it, a send while busy). Moved out of AppState.swift",
+        "(issue 828).",
+    ],
+    "AppState+Reactions.swift": [
+        "Reacting to a message, the agent's reactions, and branching a new chat",
+        "from a reply. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+NotifierPlugin.swift": [
+        "The Conduit plugin's status on this dashboard: its version and the",
+        "newest one, its changelog and notice channel, and provisioning",
+        "notification encryption. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ChatTakeover.swift": [
+        "Taking over a chat another device or the CLI is running, for a typed",
+        "send and for a call, and the message held while it waits. Moved out",
+        "of AppState.swift (issue 828).",
+    ],
+    "AppState+SendMessage.swift": [
+        "Sending a message: sendMessage, resending in place of a lost empty",
+        "chat, send failures, and settling a prompt whose delivery is unknown",
+        "against the transcript. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+YoloAndReasoning.swift": [
+        "A session's YOLO mode and reasoning effort, written to Hermes. Moved",
+        "out of AppState.swift (issue 828).",
+    ],
+    "AppState+SlashCommands.swift": [
+        "Slash commands: the catalog, running a command on the phone or the",
+        "gateway, edit and resend, rewinding turns, and reloading MCP servers",
+        "and skills. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+Compression.swift": [
+        "Compressing a session (`session.compress`), its recovery and legacy",
+        "fallback, and adopting the compressed transcript. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Steering.swift": [
+        "Steering a running turn, redirecting or interrupting it to send, the",
+        "queued sends' rows, and cancelling the current turn. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Clarify.swift": [
+        "What the agent asks the user mid-turn: clarify questions and forms,",
+        "approvals, input prompts and connection asks, with their expiry and",
+        "the push cards they replace. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+StreamEvents.swift": [
+        "Applying a turn's stream events: status updates, server compaction",
+        "claims, buffering while reconciling, and each event's effect on the",
+        "open chat. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+DelegateAgents.swift": [
+        "The turn's delegate agents (subagents): their roster, steering,",
+        "interrupting, ending and tailing one, and pausing delegation. Moved out",
+        "of AppState.swift (issue 828).",
+    ],
+    "AppState+StreamingText.swift": [
+        "Publishing a turn's streamed text and reasoning to the transcript:",
+        "coalesced publishes, completion, partials and interim commentary.",
+        "Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ChatSupport.swift": [
+        "What the open chat leans on: the workspace, inline images and gateway",
+        "media, gateway diagnostics, the running state, scroll requests, the",
+        "session title, and test hooks. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ResponseHaptics.swift": [
+        "The haptics that mark a reply's activity and its end. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+VoiceConversation.swift": [
+        "Voice conversations and Read Aloud: what can start one, voice",
+        "preferences, switching voice modes, opening and closing a call, CarPlay,",
+        "waiting for the transport, and the voice tests in Settings. Moved out",
+        "of AppState.swift (issue 828).",
+    ],
+    "AppState+WatchCalls.swift": [
+        "Calls from the Watch: planning a direct, bridged, Grok or local live",
+        "call, its connection and host tools, and saving the call. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
     "AppState+PinSync.swift": [
         "Pinned chats kept on the phone and on the host (SessionPinSync), and",
         "the replies pinned in a chat. Moved out of AppState.swift (issue 828).",
@@ -971,6 +1125,8 @@ def collisions(repo, src, widened, written):
     for d, which, _ in widened:
         if which not in ("private", "fileprivate"):
             continue
+        if getattr(d, "outer_member", False):
+            continue  # another type's member: nothing else in its scope
         member = any(d is x or d in getattr(x, "inner", []) for x in src.body)
         for n in d.names:
             if member:

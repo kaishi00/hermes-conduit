@@ -508,3 +508,269 @@ extension AppState {
         }
     }
 }
+
+extension AppState {
+    // MARK: - Resuming a chat: return surface, viewport and transport
+
+    /// Whether any automatic-return work is outstanding that could still
+    /// replace the active session. `activeAutomaticChatResumeWork` alone is
+    /// not evidence: a completed foreground refresh leaves its token behind,
+    /// and nothing ever re-reads it once the scene attempt and its operations
+    /// have finished.
+    var automaticChatResumeWorkMayStillSelectSession: Bool {
+        scenePhaseAttemptID != nil
+            || reconnectTask != nil
+            || activeAutomaticSyncOperation != nil
+            || activeAutomaticReconnectOperation != nil
+            || recoverySequence.currentPurpose == .automaticReturn
+            || recoverySequence.queuedReconnectPurpose == .automaticReturn
+            || chatResumeRestorationRequest != nil
+    }
+
+    /// Connected, but not settled: a reconnect (which keeps `isConnected`
+    /// while it runs), the foreground refresh, an automatic sync or the
+    /// connect's chat sync may still replace the chat on screen, and the
+    /// chat's turn state isn't known until they finish. Ask Hermes About
+    /// Screen waits this out: a screenshot placed earlier lands on a chat
+    /// that is then replaced, and its voice start finds a turn in sync and
+    /// falls back to the keyboard. Some of this isn't published, so a
+    /// waiter re-checks it on a timer.
+    ///
+    /// Every part here is in-flight work that ends by itself: the scene
+    /// attempt (its health check times out), a reconnect timer (at most
+    /// 5 s), the automatic operations (finished with their sync or
+    /// reconnect) and the transitional turn states. A latch must never be
+    /// added, or a screenshot waits forever: that is why the recovery
+    /// sequence's purposes (kept until `complete()` or `cancel()`) and
+    /// `chatResumeRestorationRequest` (kept until the chat restores its
+    /// scroll), both in `automaticChatResumeWorkMayStillSelectSession`,
+    /// are left out.
+    var isSettlingConnection: Bool {
+        guard isConnected else { return false }
+        return isConnecting
+            || isProfileSwitching
+            || turnState == .synchronizing
+            || turnState == .reconnecting
+            || scenePhaseAttemptID != nil
+            || reconnectTask != nil
+            || activeAutomaticSyncOperation != nil
+            || activeAutomaticReconnectOperation != nil
+    }
+
+    func cancelChatResumeTransportRecovery() {
+        cancelExplicitSessionOpen()
+        cancelScheduledReconnect()
+        chatResumeCoordinator.cancelViewportRestoration(
+            keepViewportFrozen: chatViewportTransition != nil
+        )
+        cancelOwnedAutomaticOperations()
+        activeAutomaticChatResumeWork = nil
+        recoverySequence.cancel()
+        chatResumeRestorationRequest = nil
+    }
+
+    func beginAutomaticSyncOperation(
+        for token: ChatResumeAutomaticWorkToken?
+    ) -> UUID? {
+        guard token != nil else { return nil }
+        let operation = AutomaticSyncOperation(
+            id: UUID(),
+            previousTurnState: activeAutomaticSyncOperation?.previousTurnState
+                ?? turnState
+        )
+        activeAutomaticSyncOperation = operation
+        return operation.id
+    }
+
+    func finishAutomaticSyncOperation(id: UUID?, restoringBaseline: Bool = false) {
+        guard let id, activeAutomaticSyncOperation?.id == id else { return }
+        if restoringBaseline,
+           let operation = activeAutomaticSyncOperation,
+           turnState == .synchronizing {
+            turnState = operation.previousTurnState
+        }
+        activeAutomaticSyncOperation = nil
+    }
+
+    func beginAutomaticReconnectOperation(
+        for token: ChatResumeAutomaticWorkToken?
+    ) -> UUID? {
+        guard token != nil else { return nil }
+        let operation = AutomaticReconnectOperation(
+            id: UUID(),
+            previousIsConnecting: activeAutomaticReconnectOperation?.previousIsConnecting
+                ?? isConnecting,
+            previousTurnState: activeAutomaticReconnectOperation?.previousTurnState
+                ?? turnState
+        )
+        activeAutomaticReconnectOperation = operation
+        return operation.id
+    }
+
+    func finishAutomaticReconnectOperation(id: UUID?, restoringBaseline: Bool = false) {
+        guard let id, activeAutomaticReconnectOperation?.id == id else { return }
+        if restoringBaseline, let operation = activeAutomaticReconnectOperation {
+            if isConnecting {
+                isConnecting = operation.previousIsConnecting
+            }
+            if turnState == .reconnecting {
+                turnState = operation.previousTurnState
+            }
+        }
+        activeAutomaticReconnectOperation = nil
+    }
+
+    func cancelOwnedAutomaticOperations() {
+        cancelOwnedAutomaticSyncOperation()
+        cancelOwnedAutomaticReconnectOperation()
+    }
+
+    func cancelOwnedAutomaticSyncOperation() {
+        if let operation = activeAutomaticSyncOperation {
+            if turnState == .synchronizing {
+                turnState = operation.previousTurnState
+            }
+            activeAutomaticSyncOperation = nil
+        }
+    }
+
+    private func cancelOwnedAutomaticReconnectOperation() {
+        if let operation = activeAutomaticReconnectOperation {
+            if isConnecting {
+                isConnecting = operation.previousIsConnecting
+            }
+            if turnState == .reconnecting {
+                turnState = operation.previousTurnState
+            }
+            activeAutomaticReconnectOperation = nil
+        }
+    }
+
+    @discardableResult
+    func acceptChatResumeConversationReplacement(
+        _ replacement: ChatResumeConversationReplacement
+    ) -> UInt64 {
+        beginExplicitChatViewportTransition()
+    }
+
+    @discardableResult
+    func prepareChatResumeForConnection(to baseURL: String) -> Bool {
+        prepareChatResumeForConnection(to: baseURL, dashboardID: nil)
+    }
+
+    /// The authoritative server-change boundary. The dashboard UUID is the
+    /// server identity when the target is a saved dashboard: URL spellings
+    /// can collide across servers and a dashboard's address can move, while
+    /// the UUID is stable. Same-dashboard reconnects (same UUID) are never
+    /// treated as a server switch; every identity change retires the
+    /// outgoing server's runtime ownership exactly once, through this one
+    /// state machine.
+    @discardableResult
+    func prepareChatResumeForConnection(to baseURL: String, dashboardID: UUID?) -> Bool {
+        let identity: String
+        if let dashboardID {
+            identity = dashboardID.uuidString
+        } else if let normalized = Self.normalizedChatResumeServerIdentity(baseURL) {
+            identity = normalized
+        } else {
+            // An unparseable, dashboard-less URL is the caller's mistake; the
+            // stored identity must not be overwritten with garbage.
+            return false
+        }
+        let previousIdentity = defaults.string(forKey: Self.chatResumeServerIdentityKey)
+            .flatMap(Self.normalizedStoredChatResumeIdentity)
+            ?? initialChatResumeServerIdentity
+        defaults.set(identity, forKey: Self.chatResumeServerIdentityKey)
+        // A follow-up's turn may have ended while disconnected: its reply
+        // isn't watched for across a reconnect, so none is tagged wrongly.
+        stopWaitingForPredictiveFollowUp()
+        guard let previousIdentity, previousIdentity != identity else { return false }
+
+        retireSpeechOperationsForServerReplacement(previousIdentity: previousIdentity, identity: identity)
+        owedPostConnectBootstrap = nil
+        chatResumeCoordinator.clearResumeState()
+        cancelOwnedAutomaticOperations()
+        activeAutomaticChatResumeWork = nil
+        cancelScheduledReconnect()
+        recoverySequence.cancel()
+        chatResumeRestorationRequest = nil
+        invalidateReconciliation()
+        invalidateServerCompactionState()
+        sessionCatalogCache.removeAll()
+        sessionCatalogLoadState.reset()
+        sessions = []
+        cronSessions = []
+        archivedSessions = []
+        projects = []
+        supportsProjects = false
+        projectsLoading = false
+        projectsLoadFailed = false
+        profiles = []
+        clearPendingDecisionRestorationGuard()
+        activeSessionId = nil
+        activeSessionTitle = AppLocalization.string("New conversation")
+        keepDelegateAgents(of: [])
+        messages = []
+        clearAuthorityQueueState()
+        persistedTranscriptWindow = nil
+        resetTranscriptLifecycleEvidence()
+        clearStreamingText()
+        resetReasoningTurn()
+        activeSessionTitlesByProfile = [:]
+        pinnedSessionIDsByProfile = [:]
+        pinnedSessionIDs = []
+        resetHostPins()
+        sessionStars = SessionStars()
+        defaults.removeObject(forKey: SessionStars.storageKey)
+        pinnedChatOrder = PinnedChatOrder()
+        defaults.removeObject(forKey: PinnedChatOrder.storageKey)
+        defaults.removeObject(forKey: PinnedChatOrder.mixedStorageKey)
+        botOrder = BotOrder()
+        defaults.removeObject(forKey: BotOrder.storageKey)
+        groupRoomOrder = BotOrder.rooms
+        defaults.removeObject(forKey: BotOrder.roomStorageKey)
+        allProfilesCatalogTask?.cancel()
+        allProfilesCatalogTask = nil
+        allProfilesCatalog = AllProfilesCatalog()
+        clearPinnedReplies()
+        voiceJobSessionIDsByProfile = [:]
+        defaults.removeObject(forKey: activeSessionTitlesByProfileKey)
+        defaults.removeObject(forKey: pinnedSessionIDsByProfileKey)
+        defaults.removeObject(forKey: voiceJobSessionIDsByProfileKey)
+        defaults.removeObject(forKey: reviewSummaryCacheKey)
+        defaults.removeObject(forKey: knownProfilesKey)
+        defaults.removeObject(forKey: knownProfileNamesKey)
+        // Names are kept per dashboard: the selected one's come back, and
+        // the outgoing server's never show here.
+        profileHermesNames = profileAppearanceStore.loadHermesNames(dashboardID: activeDashboardID)
+        profileBotTitles = profileAppearanceStore.loadBotTitles(dashboardID: activeDashboardID)
+        refreshSiriProfileShortcuts()
+        clearSessionPresentationCache()
+        // Guesses name sessions, and a new server's ids can repeat the old one's.
+        forgetPredictiveState()
+        // Saved chats are kept apart per dashboard and stay for the next
+        // visit there: only removing the dashboard, signing out of it or
+        // Settings' Delete Saved Chats wipes them. What of them is in memory
+        // belongs to the outgoing server.
+        leaveSavedChats(dashboardID: nil)
+        // Identity evidence and per-session overrides are keyed only by
+        // (profile, session id); without this clear they would leak between
+        // Hermes servers whose strings collide. Same boundary that clears
+        // the resume store, titles, pins, and review cache.
+        conversationIdentityIndex.removeAll()
+        liveSessionStatusIndex = SessionLiveStatusIndex()
+        liveSessionStatusProfile = nil
+        liveSessionStatusAvailable = true
+        resetDesktopViews(host: nil)
+        sessionYoloStore.clearAllOverrides()
+        // Bot Mode state is per-server: the roster, the capability phase, and
+        // the in-memory bot-chat profile registry all describe the outgoing
+        // gateway. The next connection re-probes them before it decides which
+        // conversation this workspace was in.
+        invalidateBotModeState()
+        // Drafts are keyed by (profile, session id) only: they must not
+        // leak into another server whose strings collide.
+        composerDraftStore.removeAll()
+        return true
+    }
+}

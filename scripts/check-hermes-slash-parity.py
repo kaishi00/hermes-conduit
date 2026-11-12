@@ -5,9 +5,10 @@ Hermes' `slash.exec` refuses about half its commands for a chat like
 Conduit's (`unsupported_command`); its clients run those themselves or
 leave them out. Hermes publishes which ones in its gateway command parity
 table (website/docs/developer-guide/gateway-command-parity.md, generated
-from its registry). Conduit keeps two lists against it in AppState.swift:
-the commands it runs itself (`executeSlashCommand`'s cases) and the ones it
-hides (`slashCommandsWithoutConduitRoute`). This script compares them, plus
+from its registry). Conduit keeps two lists against it in
+AppState+SlashCommands.swift: the commands it runs itself
+(`executeSlashCommand`'s cases) and the ones it hides
+(`slashCommandsWithoutConduitRoute`). This script compares them, plus
 the argument words Conduit sends for /fast, /reasoning and /approvals, with
 a Hermes checkout:
 
@@ -27,7 +28,7 @@ from pathlib import Path
 
 PARITY_DOC = "website/docs/developer-guide/gateway-command-parity.md"
 COMMANDS_PY = "hermes_cli/commands.py"
-APP_STATE = "Conduit/Services/AppState.swift"
+APP_STATE = "Conduit/Services/AppState+SlashCommands.swift"
 MODEL_PICKER = "Conduit/Views/ModelPickerView.swift"
 SETTINGS_VIEWS = "Conduit/Views/AuxiliaryViews.swift"
 

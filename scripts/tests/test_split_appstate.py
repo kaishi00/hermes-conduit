@@ -256,6 +256,8 @@ final class AppState: ObservableObject {
     func connect() {
         projection.text = "on"
         _ = projection.count
+        projection.load.reset()
+        swap(&projection.n, &projection.m)
     }
 }
 
@@ -263,14 +265,32 @@ final class Projection {
     fileprivate(set) var text = ""
     fileprivate(set) var count = 0
     fileprivate var hidden = 0
+    fileprivate(set) var load = Load()
+    fileprivate(set) var n = 0
+    fileprivate(set) var m = 0
 }
 ''')
+        (self.repo / "Shared/Load.swift").write_text(
+            "struct Load {\n    var v = 0\n    mutating func reset() { v = 0 }\n}\n")
         split.STEPS = [{"AppState+Connection.swift": ["Connection"]}]
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")
         app = self.read("AppState.swift")
         self.assertIn("\n    var text = \"\"", app, "written as projection.text from the new file")
         self.assertIn("fileprivate(set) var count = 0", app, "only read")
         self.assertIn("fileprivate var hidden = 0", app, "not used")
+        self.assertIn("\n    var load = Load()", app, "a mutating call writes it")
+        self.assertIn("\n    var n = 0", app, "passed inout")
+
+    def test_one_mark_for_two_regions_under_one_title(self):
+        split.STEPS = [{"AppState+Both.swift": ["Connection|from connect", "Chats|from openChat"]}]
+        saved, split.MARK_TITLES = split.MARK_TITLES, {"AppState+Both.swift": "Both"}
+        try:
+            split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        finally:
+            split.MARK_TITLES = saved
+        both = self.read("AppState+Both.swift")
+        self.assertEqual(both.count("// MARK: - Both"), 1, both)
+        self.assertIn("func openChat()", both)
 
     def test_cuts_a_long_region_at_a_declaration(self):
         split.STEPS = [{"AppState+Connection.swift": ["Connection|until connect"],
