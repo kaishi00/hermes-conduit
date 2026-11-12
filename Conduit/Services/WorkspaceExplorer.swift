@@ -48,6 +48,9 @@ final class WorkspaceExplorer: ObservableObject {
     static let openFilesLimit = 12
     /// Open files with unsaved changes, which a new tab never pushes out.
     var keepsOpen: Set<String> = []
+    /// Bumped when the viewed file's tab went with no other left: the
+    /// reader closes rather than show a file that isn't there.
+    @Published private(set) var viewedGone = 0
 
     private weak var appState: AppState?
     /// Where the open folder's listing and recent files are kept: on the
@@ -547,8 +550,12 @@ final class WorkspaceExplorer: ObservableObject {
         }
         openFiles.removeAll { gone($0.path) && !keepsOpen.contains($0.path) }
         if let copied, gone(copied.path) { self.copied = nil }
-        if let viewed, !openFiles.contains(where: { $0.path == viewed.path }), let next = openFiles.last {
-            Task { await view(next) }
+        if let viewed, !openFiles.contains(where: { $0.path == viewed.path }) {
+            if let next = openFiles.last {
+                Task { await view(next) }
+            } else {
+                viewedGone += 1
+            }
         }
     }
 

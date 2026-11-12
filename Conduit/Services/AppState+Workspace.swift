@@ -63,8 +63,10 @@ extension AppState {
     }
 
     static func normalizedWorkspacePath(_ path: String) -> String {
+        // A POSIX name may end in a backslash: only slashes are trimmed there.
+        let posix = path.hasPrefix("/") || path.hasPrefix("~")
         var trimmed = path
-        while trimmed.count > 1, trimmed.hasSuffix("/") || trimmed.hasSuffix("\\") { trimmed.removeLast() }
+        while trimmed.count > 1, trimmed.hasSuffix("/") || (!posix && trimmed.hasSuffix("\\")) { trimmed.removeLast() }
         return trimmed
     }
 

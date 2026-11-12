@@ -2117,6 +2117,53 @@ extension AppStateMultiDashboardTests {
         XCTAssertTrue(explorer.openFiles.isEmpty)
     }
 
+    /// After a refresh (issue 1438): a tab whose file the folder's fresh
+    /// full listing no longer shows goes, and so does the copied entry; a
+    /// tab with changes stays, and the reader moves to another tab, or
+    /// closes when none is left.
+    func testATabWhoseFileIsGoneGoesOnTheNextRefresh() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.164.0", capabilities: []))
+        let explorer = WorkspaceExplorer()
+        explorer.attach(appState)
+        func listing(_ names: [String]) -> [String: Any] {
+            ["entries": names.map { ["name": $0, "path": "/w/\($0)", "isDirectory": false] }]
+        }
+        let open = Task { await explorer.open(root: "/w", profile: appState.workspaceProfile) }
+        try await held.answer(listing(["a.md", "b.md", "c.md"]), toPathEnding: "/api/fs/list")
+        await open.value
+        let files = explorer.rows().map(\.entry)
+        XCTAssertEqual(files.map(\.name), ["a.md", "b.md", "c.md"])
+        let text: [String: Any] = ["text": "notes", "language": "markdown"]
+        for file in files {
+            let viewing = Task { await explorer.view(file) }
+            try await held.answer(text, toPathEnding: "/api/fs/read-text")
+            await viewing.value
+        }
+        explorer.copied = files[0]
+        explorer.keepsOpen = [files[1].path]
+
+        // All three gone: b.md has changes and stays, the reader moves to it.
+        let refresh = Task { await explorer.refresh() }
+        try await held.answer(listing([]), toPathEnding: "/api/fs/list")
+        await refresh.value
+        XCTAssertEqual(explorer.openFiles.map(\.name), ["b.md"])
+        XCTAssertNil(explorer.copied, "the copied entry is gone too")
+        for _ in 0..<100 where explorer.viewed?.path != files[1].path { await Task.yield() }
+        XCTAssertEqual(explorer.viewed?.path, files[1].path)
+        try await held.answer(text, toPathEnding: "/api/fs/read-text")
+        XCTAssertEqual(explorer.viewedGone, 0)
+
+        // Its changes discarded, the next refresh takes it and the reader closes.
+        explorer.keepsOpen = []
+        let again = Task { await explorer.refresh() }
+        try await held.answer(listing([]), toPathEnding: "/api/fs/list")
+        await again.value
+        XCTAssertTrue(explorer.openFiles.isEmpty)
+        XCTAssertEqual(explorer.viewedGone, 1)
+        explorer.close()
+    }
+
     func testATappedFileNameAsksThePluginAndALaterTapWins() async throws {
         let (appState, held, _) = heldSwitchFixture()
         appState.setNotifierPluginStateForTesting(.reported(
