@@ -326,6 +326,12 @@ extension AppState {
         canReadRoomCopies && notifierPlugin.reports(RoomCopiesClient.forgetCapability)
     }
 
+    /// Whether this copy offers Delete: on its tile, its row and the open
+    /// room's menu alike.
+    func canDelete(_ copy: RoomCopy) -> Bool {
+        copy.isOver && canDeleteRoomCopies
+    }
+
     /// Requests stay with the dashboard they were made for.
     var roomCopiesClient: RoomCopiesClient {
         let dashboard = activeDashboardID

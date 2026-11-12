@@ -455,7 +455,9 @@ extension AppState {
                 guard !Task.isCancelled, let self, self.activeDashboardID == dashboard else { return }
                 guard early || self.linkedRoomOnItsWay else { return }
                 guard self.isSceneActive else { continue }
-                await self.refreshLinkedRoomDrafts()
+                // The people New Group Chat offers only in the first minutes,
+                // when a Link was just made; after, the drafts alone.
+                await self.refreshLinkedRoomDrafts(readingPeople: early)
                 await self.refreshGroupRoomsForStartedDrafts()
                 await self.refreshLinkedRoomInvites()
             }

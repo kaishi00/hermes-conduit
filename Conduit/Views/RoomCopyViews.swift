@@ -18,7 +18,7 @@ struct RoomCopyRosterRow: View {
     @EnvironmentObject private var appState: AppState
     @State private var confirmingDelete = false
 
-    private var canDelete: Bool { copy.isOver && appState.canDeleteRoomCopies }
+    private var canDelete: Bool { appState.canDelete(copy) }
 
     var body: some View {
         let line = RoomCopyText.line(for: copy)
@@ -64,7 +64,7 @@ struct RoomCopyPortrait: View {
     @Environment(\.v2OpenBeside) private var openBeside
     @State private var confirmingDelete = false
 
-    private var canDelete: Bool { copy.isOver && appState.canDeleteRoomCopies }
+    private var canDelete: Bool { appState.canDelete(copy) }
     private var selection: V2RowSelection { .room(copy.roomID, beside: openBeside) }
 
     private var zoomKey: String { BotZoomArm.roomKey(copy.roomID) }
@@ -152,9 +152,10 @@ struct HomeRoomLooksReader: ViewModifier {
 }
 
 /// Deleting a room someone else hosts once it's over: asked first, and
-/// a refusal said.
-private struct RoomCopyDelete: ViewModifier {
-    let copy: RoomCopy
+/// a refusal said. On its tile, its row, or the open room's screen (nil
+/// while no copy is open there).
+struct RoomCopyDelete: ViewModifier {
+    let copy: RoomCopy?
     @Binding var confirming: Bool
     @EnvironmentObject private var appState: AppState
     @State private var refusal: String?
@@ -163,6 +164,7 @@ private struct RoomCopyDelete: ViewModifier {
         content
             .confirmationDialog(RoomCopyText.deleteTitle, isPresented: $confirming, titleVisibility: .visible) {
                 Button(AppLocalization.string("Delete"), role: .destructive) {
+                    guard let copy else { return }
                     Task { @MainActor in
                         if case .refused(let message) = await appState.deleteLinkedRoomCopy(copy) {
                             Haptics.error()
