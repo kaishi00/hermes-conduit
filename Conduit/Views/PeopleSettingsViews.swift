@@ -513,15 +513,15 @@ struct PeopleSettingsPage: View {
 /// there's more than one. Read once the page shows the Links, and again when
 /// they change.
 @MainActor
-/// Your picture in rooms over Links: kept on this phone, given to your
-/// Hermes and shown beside your messages on the other people's screens
-/// (RoomLooks.swift).
+/// Your picture in rooms over Links: given to your Hermes, which keeps it
+/// for all your devices (on an older plugin, kept on this phone), and shown
+/// beside your messages on the other people's screens (RoomLooks.swift).
 struct RoomPersonPictureSection: View {
     @EnvironmentObject private var appState: AppState
     @State private var choosing = false
     @State private var picked: UIImage?
-    /// Said here, where the picture was picked.
-    @State private var unusable = false
+    /// Said here, where the picture was picked or removed.
+    @State private var failure: AppState.RoomPersonPictureChange?
 
     private var image: UIImage? { appState.roomPersonPicture.flatMap(RoomLookImages.image(for:)) }
 
@@ -549,16 +549,18 @@ struct RoomPersonPictureSection: View {
                 .buttonStyle(.settings)
                 if image != nil {
                     Button(role: .destructive) {
-                        unusable = false
-                        Task { await appState.setRoomPersonPicture(nil) }
+                        failure = nil
+                        Task { failure = Self.shownFailure(await appState.setRoomPersonPicture(nil)) }
                     } label: {
                         Label(AppLocalization.string("Remove"), systemImage: "trash")
                     }
                     .buttonStyle(.settings)
                 }
             }
-            if unusable {
-                Text(AppLocalization.string("That picture could not be used."))
+            if let failure {
+                Text(failure == .unusable
+                     ? AppLocalization.string("That picture could not be used.")
+                     : AppLocalization.string("Couldn't save"))
                     .scaledFont(.footnote)
                     .foregroundStyle(.red)
             }
@@ -569,8 +571,17 @@ struct RoomPersonPictureSection: View {
         .onChange(of: picked) { _, image in
             guard let image else { return }
             picked = nil
-            Task { unusable = !(await appState.setRoomPersonPicture(image)) }
+            Task { failure = Self.shownFailure(await appState.setRoomPersonPicture(image)) }
         }
+        // The one your Hermes keeps, which another of your devices may have
+        // chosen, for each dashboard.
+        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.isConnected)") {
+            await appState.readRoomPersonPicture()
+        }
+    }
+
+    private static func shownFailure(_ change: AppState.RoomPersonPictureChange) -> AppState.RoomPersonPictureChange? {
+        change == .saved ? nil : change
     }
 }
 
