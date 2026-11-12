@@ -40,7 +40,7 @@ struct ToolResultBodyView: View {
             }
             content
             if let exitCode = presentation.exitCode {
-                Text(AppLocalization.string("Exit code \(String(exitCode))"))
+                Text(AppLocalization.string("Exit code \(String(exitCode))", table: .chat))
                     .scaledFont(.caption2.monospaced())
                     .foregroundStyle(.secondary)
             }
@@ -194,7 +194,7 @@ private struct SubtaskAccessibilityValue: ViewModifier {
 
     func body(content: Content) -> some View {
         if isSubtask {
-            content.accessibilityValue(AppLocalization.string("Subtask"))
+            content.accessibilityValue(AppLocalization.string("Subtask", table: .chat))
         } else {
             content
         }

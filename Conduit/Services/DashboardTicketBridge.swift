@@ -418,7 +418,7 @@ enum DashboardTicketBridgeError: LocalizedError {
         case .notReady, .answeredAfterSwitch:
             return AppLocalization.string("Conduit is still connecting to your dashboard. Try again in a moment.")
         case .signInRequired:
-            return AppLocalization.string("Dashboard sign-in has expired. Sign in again to continue.")
+            return AppLocalization.string("Dashboard sign-in has expired. Sign in again to continue.", table: .connection)
         case .requestFailed(let message):
             return message
         case .http(let status, let detail):
@@ -430,7 +430,7 @@ enum DashboardTicketBridgeError: LocalizedError {
             // Transcript-specific messaging is mapped in the transcript
             // layer, which knows whether the request was a legacy one-shot
             // or a bounded current-Hermes page.
-            return AppLocalization.string("This response is too large to load safely.")
+            return AppLocalization.string("This response is too large to load safely.", table: .connection)
         }
     }
 
@@ -469,9 +469,9 @@ enum DashboardTicketBridgeError: LocalizedError {
             .compactMap { name in items.first(where: { $0.name == name })?.value?.trimmingCharacters(in: .whitespaces) }
             .first(where: { !$0.isEmpty })
         guard let profile = named, profile != "default" else {
-            return AppLocalization.string("Hermes has the \(plugin) plugin turned off. On the Hermes host, run hermes plugins enable \(plugin), then restart Hermes.")
+            return AppLocalization.string("Hermes has the \(plugin) plugin turned off. On the Hermes host, run hermes plugins enable \(plugin), then restart Hermes.", table: .connection)
         }
-        return AppLocalization.string("Hermes has the \(plugin) plugin turned off for the “\(profile)” profile. On the Hermes host, add \(plugin) to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes.")
+        return AppLocalization.string("Hermes has the \(plugin) plugin turned off for the “\(profile)” profile. On the Hermes host, add \(plugin) to plugins.enabled in that profile's config.yaml (and take it out of plugins.disabled), then restart Hermes.", table: .connection)
     }
 
     /// Runs `request` to `path`, turning Hermes' bare "Plugin not found" for
@@ -513,13 +513,13 @@ enum DashboardTicketBridgeError: LocalizedError {
 
     /// The dashboard answered but handed back no session ticket.
     static var noSessionTicketDetail: String {
-        AppLocalization.string("The dashboard didn't let Conduit start a session. Try again.")
+        AppLocalization.string("The dashboard didn't let Conduit start a session. Try again.", table: .connection)
     }
 
     /// Conduit's own 401 after it refreshed the sign-in for a request it
     /// won't replay: the fix is to try again, not to sign in.
     static var signInRefreshedDetail: String {
-        AppLocalization.string("Your dashboard sign-in was refreshed. Try that again.")
+        AppLocalization.string("Your dashboard sign-in was refreshed. Try that again.", table: .connection)
     }
 
     /// What a failed dashboard request means for the person using Conduit.
@@ -531,7 +531,7 @@ enum DashboardTicketBridgeError: LocalizedError {
         // A coded refusal (structuredDetail) is for the screen that sent the
         // request to word; anywhere else it reads as the plain failure.
         if isStructuredDetail(trimmed) {
-            return AppLocalization.string("Dashboard request failed (\(String(status))).")
+            return AppLocalization.string("Dashboard request failed (\(String(status))).", table: .connection)
         }
         let isMeaningful = meaningfulDetail(detail, status: status) != nil
         switch status {
@@ -540,21 +540,21 @@ enum DashboardTicketBridgeError: LocalizedError {
             if lowered.contains("abort") || lowered.contains("timeout") || lowered.contains("timed out") {
                 return HermesError.timeoutMessage
             }
-            return AppLocalization.string("Conduit couldn't reach your Hermes dashboard. Check this device's network connection and that the dashboard is running.")
+            return AppLocalization.string("Conduit couldn't reach your Hermes dashboard. Check this device's network connection and that the dashboard is running.", table: .connection)
         case 403 where trimmed.range(of: "profile_mismatch", options: .caseInsensitive) != nil:
-            return AppLocalization.string("Hermes says this chat belongs to another profile. Switch to that profile, then try again.")
+            return AppLocalization.string("Hermes says this chat belongs to another profile. Switch to that profile, then try again.", table: .connection)
         case 403 where SessionMutationIdentity.isRefusalDetail(trimmed):
-            return AppLocalization.string("Hermes only lets the computer it runs on change this older chat. Change it there instead.")
+            return AppLocalization.string("Hermes only lets the computer it runs on change this older chat. Change it there instead.", table: .connection)
         case 403 where isMeaningful:
             // Hermes' own refusal to someone signed in (a sensitive path, a
             // file it can't write): its reason says what to do.
             return trimmed
         case 401, 403:
             if trimmed == signInRefreshedDetail { return trimmed }
-            return AppLocalization.string("Hermes turned this down because the dashboard sign-in expired or doesn't allow it. Sign in again, then try once more.")
+            return AppLocalization.string("Hermes turned this down because the dashboard sign-in expired or doesn't allow it. Sign in again, then try once more.", table: .connection)
         case 404, 405, 501:
             if isMeaningful, status == 404 { return trimmed }
-            return AppLocalization.string("Your Hermes server doesn't support this yet. Update Hermes, then try again.")
+            return AppLocalization.string("Your Hermes server doesn't support this yet. Update Hermes, then try again.", table: .connection)
         case 408, 504, 524:
             return HermesError.timeoutMessage
         case 409 where (SessionMutationIdentity.retryableConflicts + ["session_busy"]).contains(where: { trimmed.localizedCaseInsensitiveContains($0) }):
@@ -564,15 +564,15 @@ enum DashboardTicketBridgeError: LocalizedError {
             if isMeaningful { return trimmed }
             return AppLocalization.string("Hermes is busy right now. Wait a moment, then try again.")
         case 502, 503, 520...523:
-            return AppLocalization.string("Your dashboard couldn't reach Hermes. Hermes may be restarting, so try again in a moment.")
+            return AppLocalization.string("Your dashboard couldn't reach Hermes. Hermes may be restarting, so try again in a moment.", table: .connection)
         case 500...599:
             if isMeaningful {
-                return AppLocalization.string("Hermes ran into a problem: \(trimmed). Check the Hermes logs, then try again.")
+                return AppLocalization.string("Hermes ran into a problem: \(trimmed). Check the Hermes logs, then try again.", table: .connection)
             }
-            return AppLocalization.string("Hermes ran into a problem on the server. Check the Hermes logs, then try again.")
+            return AppLocalization.string("Hermes ran into a problem on the server. Check the Hermes logs, then try again.", table: .connection)
         default:
             if isMeaningful { return trimmed }
-            return AppLocalization.string("Hermes didn't accept this request. Updating Hermes and Conduit usually fixes this.")
+            return AppLocalization.string("Hermes didn't accept this request. Updating Hermes and Conduit usually fixes this.", table: .connection)
         }
     }
 
@@ -583,7 +583,7 @@ enum DashboardTicketBridgeError: LocalizedError {
         let trimmed = detail.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty,
               !genericDetails.contains(trimmed.lowercased()),
-              trimmed != AppLocalization.string("Dashboard request failed (\(String(status))).") else { return nil }
+              trimmed != AppLocalization.string("Dashboard request failed (\(String(status))).", table: .connection) else { return nil }
         return trimmed
     }
 
@@ -1488,7 +1488,7 @@ final class DashboardTicketBridge: NSObject {
     private func javaScriptLiteral(_ value: Any) throws -> String {
         let data = try JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed])
         guard let literal = String(data: data, encoding: .utf8) else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("Could not encode dashboard request."))
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("Could not encode dashboard request.", table: .connection))
         }
         return literal
     }
@@ -1821,7 +1821,7 @@ extension DashboardTicketBridge: WKScriptMessageHandler {
         let status = payload["status"] as? Int ?? 0
         let detail = payload["error"] as? String
             ?? DashboardTicketBridgeError.structuredDetail(payload["error"])
-            ?? AppLocalization.string("Dashboard request failed (\(String(status))).")
+            ?? AppLocalization.string("Dashboard request failed (\(String(status))).", table: .connection)
         // Hermes' own 403 (its `detail` says why, such as a chat this
         // sign-in may not change or a file it won't serve) is a verdict on
         // the request, not an expired sign-in: signing in again can't change

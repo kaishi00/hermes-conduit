@@ -24,15 +24,15 @@ struct LiveVoiceConsentPanel: View {
                     .scaledFont(.largeTitle)
                     .foregroundStyle(Color.conduitAccent)
                     .accessibilityHidden(true)
-                Text(AppLocalization.string("Send your voice to \(mode.company)?"))
+                Text(AppLocalization.string("Send your voice to \(mode.company)?", table: .voice))
                     .scaledFont(.title3.weight(.semibold))
                     .multilineTextAlignment(.center)
                     .accessibilityAddTraits(.isHeader)
-                Text(AppLocalization.string("During a \(mode.displayName) call, Conduit sends your microphone audio, the transcript, and the context and tool results Hermes adds to \(mode.company). Their terms and privacy policy apply."))
+                Text(AppLocalization.string("During a \(mode.displayName) call, Conduit sends your microphone audio, the transcript, and the context and tool results Hermes adds to \(mode.company). Their terms and privacy policy apply.", table: .voice))
                     .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
-                Text(AppLocalization.string("Conduit asks once for each provider. You can take it back in Settings > Voice."))
+                Text(AppLocalization.string("Conduit asks once for each provider. You can take it back in Settings > Voice.", table: .voice))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -94,9 +94,9 @@ struct LiveVoiceConsentRow: View {
     var body: some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(AppLocalization.string("Your voice goes to \(mode.company)"))
+                Text(AppLocalization.string("Your voice goes to \(mode.company)", table: .voice))
                     .scaledFont(.footnote)
-                Text(granted ? AppLocalization.string("Allowed") : AppLocalization.string("Asks before the first call"))
+                Text(granted ? AppLocalization.string("Allowed", table: .voice) : AppLocalization.string("Asks before the first call", table: .voice))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -107,7 +107,7 @@ struct LiveVoiceConsentRow: View {
                     appState.setLiveVoiceConsent(false, for: mode)
                 }
                 .buttonStyle(.settings)
-                .accessibilityHint(AppLocalization.string("Ends a running call on this iPhone. The next call asks again."))
+                .accessibilityHint(AppLocalization.string("Ends a running call on this iPhone. The next call asks again.", table: .voice))
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: LiveVoiceProviderConsent.didChange)) { _ in

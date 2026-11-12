@@ -40,7 +40,7 @@ enum CronScheduleText {
         case "once":
             if let raw = schedule.runAt, let date = parseDate(raw) {
                 // An instant: shown in this iPhone's time, so no zone label.
-                return AppLocalization.string("Once, \(absoluteDateText(date, locale: locale))")
+                return AppLocalization.string("Once, \(absoluteDateText(date, locale: locale))", table: .tasks)
             }
         default:
             if let expr = schedule.expr ?? schedule.display, let text = describe(expression: expr, locale: locale) {
@@ -52,19 +52,19 @@ enum CronScheduleText {
 
     /// Hermes' "every N minutes" schedules.
     static func describe(intervalMinutes minutes: Int) -> String {
-        if minutes == 1 { return AppLocalization.string("Every minute") }
-        if minutes == 60 { return AppLocalization.string("Every hour") }
-        if minutes == 1_440 { return AppLocalization.string("Every day") }
+        if minutes == 1 { return AppLocalization.string("Every minute", table: .tasks) }
+        if minutes == 60 { return AppLocalization.string("Every hour", table: .tasks) }
+        if minutes == 1_440 { return AppLocalization.string("Every day", table: .tasks) }
         if minutes % 1_440 == 0 {
             let dayCount = minutes / 1_440
-            return AppLocalization.string("Every \(dayCount) days")
+            return AppLocalization.string("Every \(dayCount) days", table: .tasks)
         }
         if minutes % 60 == 0 {
             let hourCount = minutes / 60
-            return AppLocalization.string("Every \(hourCount) hours")
+            return AppLocalization.string("Every \(hourCount) hours", table: .tasks)
         }
         let minuteCount = minutes
-        return AppLocalization.string("Every \(minuteCount) minutes")
+        return AppLocalization.string("Every \(minuteCount) minutes", table: .tasks)
     }
 
     /// A five-field cron expression in words, or nil for a pattern this
@@ -78,19 +78,19 @@ enum CronScheduleText {
 
         // Every N minutes / every N hours / every hour.
         if hour == "*", dayOfMonth == "*", dayOfWeek == "*" {
-            if minute == "*" { return AppLocalization.string("Every minute") }
+            if minute == "*" { return AppLocalization.string("Every minute", table: .tasks) }
             if let step = step(minute), 60 % step == 0 {
-                return step == 1 ? AppLocalization.string("Every minute") : describe(intervalMinutes: step)
+                return step == 1 ? AppLocalization.string("Every minute", table: .tasks) : describe(intervalMinutes: step)
             }
             if let value = Int(minute), (0...59).contains(value) {
-                if value == 0 { return AppLocalization.string("Every hour") }
+                if value == 0 { return AppLocalization.string("Every hour", table: .tasks) }
                 let pastHour = String(format: "%02d", value)
-                return AppLocalization.string("Every hour at :\(pastHour)")
+                return AppLocalization.string("Every hour at :\(pastHour)", table: .tasks)
             }
             return nil
         }
         if let hourStep = step(hour), 24 % hourStep == 0, Int(minute) == 0, dayOfMonth == "*", dayOfWeek == "*" {
-            return hourStep == 1 ? AppLocalization.string("Every hour") : describe(intervalMinutes: hourStep * 60)
+            return hourStep == 1 ? AppLocalization.string("Every hour", table: .tasks) : describe(intervalMinutes: hourStep * 60)
         }
 
         // A time of day, then which days.
@@ -99,17 +99,17 @@ enum CronScheduleText {
         let time = timeText(hour: hourValue, minute: minuteValue, locale: locale)
 
         if dayOfMonth == "*" {
-            guard dayOfWeek != "*" else { return AppLocalization.string("Daily at \(time)") }
+            guard dayOfWeek != "*" else { return AppLocalization.string("Daily at \(time)", table: .tasks) }
             guard let days = weekdays(dayOfWeek) else { return nil }
-            if days == Set(1...5) { return AppLocalization.string("Weekdays at \(time)") }
-            if days == [0, 6] { return AppLocalization.string("Weekends at \(time)") }
-            if days == Set(0...6) { return AppLocalization.string("Daily at \(time)") }
+            if days == Set(1...5) { return AppLocalization.string("Weekdays at \(time)", table: .tasks) }
+            if days == [0, 6] { return AppLocalization.string("Weekends at \(time)", table: .tasks) }
+            if days == Set(0...6) { return AppLocalization.string("Daily at \(time)", table: .tasks) }
             let names = weekdayNames(days, locale: locale)
-            return AppLocalization.string("Every \(names) at \(time)")
+            return AppLocalization.string("Every \(names) at \(time)", table: .tasks)
         }
         if dayOfWeek == "*", let day = Int(dayOfMonth), (1...31).contains(day) {
             let dayText = String(day)
-            return AppLocalization.string("Monthly on day \(dayText) at \(time)")
+            return AppLocalization.string("Monthly on day \(dayText) at \(time)", table: .tasks)
         }
         return nil
     }

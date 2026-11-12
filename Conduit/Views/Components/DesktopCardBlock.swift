@@ -24,7 +24,7 @@ import SwiftUI
 extension DesktopCardDirective {
     /// Said or shown where the card is when the reply is read rather than
     /// drawn (Read Aloud, voice read-backs, a chat's preview line).
-    static var spokenNote: String { AppLocalization.string("(There's a card here for Hermes Desktop.)") }
+    static var spokenNote: String { AppLocalization.string("(There's a card here for Hermes Desktop.)", table: .chat) }
     static var previewNote: String { AppLocalization.string("Card for Hermes Desktop") }
 }
 
@@ -242,7 +242,7 @@ struct DesktopCardBlock: View {
             .contentShape(RoundedRectangle(cornerRadius: 13, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityHint(Text(AppLocalization.string("Shows the card's full summary and the line Hermes wrote.")))
+        .accessibilityHint(Text(AppLocalization.string("Shows the card's full summary and the line Hermes wrote.", table: .chat)))
         .task(id: card) {
             // One that can't be read yet is asked again while it's on
             // screen: soon while Hermes isn't connected or its page is

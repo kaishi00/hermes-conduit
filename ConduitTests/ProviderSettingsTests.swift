@@ -485,7 +485,7 @@ final class ProviderSettingsTests: XCTestCase {
         )
         XCTAssertEqual(uses.count, 5)
         XCTAssertEqual(uses.last, "Pulse memory", "Pulse's slot, set in Settings > Pulse, is named too")
-        XCTAssertEqual(Array(uses[2..<4]), [AppLocalization.string("Chat titles"), AppLocalization.string("Image reading")],
+        XCTAssertEqual(Array(uses[2..<4]), [AppLocalization.string("Chat titles", table: .bots), AppLocalization.string("Image reading", table: .bots)],
                        "helpers pinned to it, with or without a model")
     }
 
@@ -523,8 +523,8 @@ final class ProviderSettingsTests: XCTestCase {
         XCTAssertEqual(bedrock.status, .configured)
         let openrouter = try XCTUnwrap(entries.first { $0.id == "openrouter" })
         XCTAssertEqual(openrouter.status, .configured)
-        XCTAssertEqual(ProviderText.status(openrouter), AppLocalization.string("Settings saved, no key yet"))
-        XCTAssertEqual(ProviderText.status(bedrock), AppLocalization.string("Settings saved"))
+        XCTAssertEqual(ProviderText.status(openrouter), AppLocalization.string("Settings saved, no key yet", table: .settings))
+        XCTAssertEqual(ProviderText.status(bedrock), AppLocalization.string("Settings saved", table: .settings))
         XCTAssertEqual(ProviderCatalog.entries(summary: ProviderCatalog.summary(entries)), entries)
 
         // One that signs in isn't set up by a base URL alone.

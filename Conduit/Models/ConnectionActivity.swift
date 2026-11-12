@@ -146,9 +146,9 @@ struct ConnectionActivity: Equatable {
     /// The card's row text in the transcript (what a copy or a search
     /// reads). Never a key.
     static func transcriptLine(_ card: ConnectionActivity) -> String {
-        if card.isDisplay { return AppLocalization.string("Hermes suggests apps to connect") }
+        if card.isDisplay { return AppLocalization.string("Hermes suggests apps to connect", table: .connection) }
         let names = card.targets.map(\.title)
-        guard !names.isEmpty else { return AppLocalization.string("Connect apps") }
+        guard !names.isEmpty else { return AppLocalization.string("Connect apps", table: .connection) }
         return AppLocalization.string("Connect \(names.formatted(.list(type: .and)))")
     }
 

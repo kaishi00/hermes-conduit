@@ -59,14 +59,14 @@ struct PhoneSettingsPage: View {
 
     var body: some View {
         SettingsDetailContainer {
-            ConduitSettingsSection(title: AppLocalization.string("Calendar & phone for Hermes"), symbol: "calendar", tint: .red) {
+            ConduitSettingsSection(title: AppLocalization.string("Calendar & phone for Hermes", table: .phone), symbol: "calendar", tint: .red) {
                 Text("Share your calendar, reminders, Focus and phone status with Hermes so your agent can plan around your day, keep your reminders and pick good moments to reach you. It goes straight from this iPhone to your Hermes host, sealed end to end, and never through Conduit's notification relay.")
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 if preferences.isOn {
                     statusRows
                 } else if !pluginServes {
-                    Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to share your calendar and phone status.")))
+                    Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to share your calendar and phone status.", table: .phone)))
                         .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 }
@@ -100,7 +100,7 @@ struct PhoneSettingsPage: View {
             }
         }
         .confirmationDialog(
-            Text(AppLocalization.string("Let \(askingVoiceMode?.displayName ?? "") use your calendar and reminders?")),
+            Text(AppLocalization.string("Let \(askingVoiceMode?.displayName ?? "") use your calendar and reminders?", table: .phone)),
             isPresented: Binding(get: { askingVoiceMode != nil }, set: { if !$0 { askingVoiceMode = nil } }),
             titleVisibility: .visible,
             presenting: askingVoiceMode
@@ -108,7 +108,7 @@ struct PhoneSettingsPage: View {
             Button("Allow") { setVoiceUse(mode, allowed: true) }
             Button("Cancel", role: .cancel) {}
         } message: { mode in
-            Text(AppLocalization.string("On a call, what it reads goes to \(mode.company) under its terms. You can turn this off at any time."))
+            Text(AppLocalization.string("On a call, what it reads goes to \(mode.company) under its terms. You can turn this off at any time.", table: .phone))
         }
         .confirmationDialog("Turn off sharing?", isPresented: $showsTurnOff, titleVisibility: .visible) {
             Button("Turn off and delete from the host", role: .destructive) { turnOff(delete: true) }
@@ -129,7 +129,7 @@ struct PhoneSettingsPage: View {
     @ViewBuilder
     private var statusRows: some View {
         if let destination = preferences.destination {
-            Label(AppLocalization.string("Sharing with \(destination.profile) on \(destination.host)"), systemImage: "checkmark.shield")
+            Label(AppLocalization.string("Sharing with \(destination.profile) on \(destination.host)", table: .phone), systemImage: "checkmark.shield")
                 .scaledFont(.subheadline)
         }
         if engine.isSyncing {
@@ -141,7 +141,7 @@ struct PhoneSettingsPage: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else if let last = engine.state.lastSync {
-            Text(AppLocalization.string("Last synced \(last.formatted(.relative(presentation: .named)))"))
+            Text(AppLocalization.string("Last synced \(last.formatted(.relative(presentation: .named)))", table: .phone))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         } else {
@@ -159,7 +159,7 @@ struct PhoneSettingsPage: View {
     // MARK: Calendar and reminders
 
     private var calendarSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Calendar and reminders"), symbol: "calendar", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Calendar and reminders", table: .phone), symbol: "calendar", tint: .conduitAccent) {
             ConduitMenuPicker(
                 value: choices.calendar,
                 choices: PhoneCalendarAccess.allCases.map { (id: $0, title: $0.title) },
@@ -189,11 +189,11 @@ struct PhoneSettingsPage: View {
                     .scaledFont(.subheadline)
                     .padding(.leading, 28)
                     .accessibilityLabel(Text("Reminders read only"))
-                    .accessibilityHint(Text(AppLocalization.string("Hermes reads your reminders but can't add, change, complete or delete any.")))
+                    .accessibilityHint(Text(AppLocalization.string("Hermes reads your reminders but can't add, change, complete or delete any.", table: .phone)))
                     .accessibilityIdentifier("settings.phone.reminders-read-only")
                 Text(choices.remindersReadOnly
-                     ? AppLocalization.string("Hermes reads your reminders but can't add, change, complete or delete any.")
-                     : AppLocalization.string("Hermes reads your reminders and can ask to add, change or complete them."))
+                     ? AppLocalization.string("Hermes reads your reminders but can't add, change, complete or delete any.", table: .phone)
+                     : AppLocalization.string("Hermes reads your reminders and can ask to add, change or complete them.", table: .phone))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .padding(.leading, 28)
@@ -216,7 +216,7 @@ struct PhoneSettingsPage: View {
                     withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { showsCalendars.toggle() }
                 } label: {
                     HStack {
-                        Text(verbatim: AppLocalization.string("Calendars and lists"))
+                        Text(verbatim: AppLocalization.string("Calendars and lists", table: .phone))
                             .foregroundStyle(.primary)
                         Spacer(minLength: 8)
                         Image(systemName: "chevron.right")
@@ -245,13 +245,13 @@ struct PhoneSettingsPage: View {
     private var calendarCaption: String {
         switch choices.calendar {
         case .full:
-            return AppLocalization.string("Hermes reads events from the last week and the time ahead you choose, and can ask to add or change them.")
+            return AppLocalization.string("Hermes reads events from the last week and the time ahead you choose, and can ask to add or change them.", table: .phone)
         case .readOnly:
-            return AppLocalization.string("Hermes reads events from the last week and the time ahead you choose, but can't add, change or delete any. Good for calendars you share with other people.")
+            return AppLocalization.string("Hermes reads events from the last week and the time ahead you choose, but can't add, change or delete any. Good for calendars you share with other people.", table: .phone)
         case .writeOnly:
-            return AppLocalization.string("Hermes can ask to add events but can't read your calendar.")
+            return AppLocalization.string("Hermes can ask to add events but can't read your calendar.", table: .phone)
         case .off:
-            return AppLocalization.string("Hermes doesn't see your calendar.")
+            return AppLocalization.string("Hermes doesn't see your calendar.", table: .phone)
         }
     }
 
@@ -260,8 +260,8 @@ struct PhoneSettingsPage: View {
             ConduitMenuPicker(
                 value: choices.autoAdd,
                 choices: [
-                    (id: false, title: AppLocalization.string("Ask me each time")),
-                    (id: true, title: AppLocalization.string("Add without asking"))
+                    (id: false, title: AppLocalization.string("Ask me each time", table: .phone)),
+                    (id: true, title: AppLocalization.string("Add without asking", table: .phone))
                 ],
                 onSelect: { binding(\.autoAdd).wrappedValue = $0 }
             ) {
@@ -275,7 +275,7 @@ struct PhoneSettingsPage: View {
     }
 
     private var phoneSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Focus and phone status"), symbol: "iphone", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Focus and phone status", table: .phone), symbol: "iphone", tint: .conduitAccent) {
             Toggle(isOn: binding(\.focus)) {
                 Label("Focus", systemImage: "moon")
             }
@@ -296,7 +296,7 @@ struct PhoneSettingsPage: View {
     // MARK: Alarms and people
 
     private var alarmsSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Alarms and timers"), symbol: "alarm", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Alarms and timers", table: .phone), symbol: "alarm", tint: .conduitAccent) {
             Toggle(isOn: binding(\.alarms)) {
                 Label("Let Hermes set alarms and timers", systemImage: "alarm")
             }
@@ -380,7 +380,7 @@ struct PhoneSettingsPage: View {
     }
 
     private var photosSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Photos"), symbol: "photo.on.rectangle", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Photos", table: .phone), symbol: "photo.on.rectangle", tint: .conduitAccent) {
             Toggle(isOn: binding(\.photos)) {
                 Label("Let Hermes search your photos", systemImage: "photo.on.rectangle")
             }
@@ -397,7 +397,7 @@ struct PhoneSettingsPage: View {
             if choices.photos, preferences.photos {
                 let progress = engine.photoSource.progress
                 if progress.total > 0 {
-                    Text(AppLocalization.string("Photos described so far: \(Int(progress.described))"))
+                    Text(AppLocalization.string("Photos described so far: \(Int(progress.described))", table: .phone))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .monospacedDigit()
@@ -526,7 +526,7 @@ struct PhoneSettingsPage: View {
     /// Which live voice modes may use the calendar and phone on a call. Each
     /// is its own yes: what it reads goes to that mode's company.
     private var voiceSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Live voice calls"), symbol: "waveform", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Live voice calls", table: .phone), symbol: "waveform", tint: .conduitAccent) {
             ForEach(LiveVoiceModeName.all, id: \.storageID) { mode in
                 Toggle(isOn: voiceBinding(mode)) {
                     Text(verbatim: "\(mode.displayName) (\(mode.company))")
@@ -605,7 +605,7 @@ struct PhoneSettingsPage: View {
                     Haptics.selection()
                     showsConsent = true
                 } label: {
-                    Label(isWorking ? AppLocalization.string("Turning on…") : AppLocalization.string("Turn on sharing"), systemImage: "calendar")
+                    Label(isWorking ? AppLocalization.string("Turning on…") : AppLocalization.string("Turn on sharing", table: .phone), systemImage: "calendar")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 48)
                         .foregroundStyle(Color.white)
@@ -722,8 +722,8 @@ struct PhoneSettingsPage: View {
                 // A profile that turned the plugin off was reached and refused:
                 // say how to turn it on (issue 1671).
                 errorMessage = appState.phoneSync.deleteRefusedPluginOff.map {
-                    AppLocalization.string("Sharing is off. \($0) Conduit deletes the data there once it's on.")
-                } ?? AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.")
+                    AppLocalization.string("Sharing is off. \($0) Conduit deletes the data there once it's on.", table: .phone)
+                } ?? AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.", table: .phone)
             }
             choices = PhoneSyncPreferences(calendar: .full, reminders: true, status: true, focus: true)
             voiceUses = HealthVoiceReadLog()
@@ -753,7 +753,7 @@ struct PhonePersonRow: View {
                     .scaledFont(.caption)
                     .textInputAutocapitalization(.never)
                     .submitLabel(.done)
-                    .accessibilityLabel(Text(AppLocalization.string("Relation to \(person.name)")))
+                    .accessibilityLabel(Text(AppLocalization.string("Relation to \(person.name)", table: .phone)))
                     .onSubmit { save(relation.trimmingCharacters(in: .whitespacesAndNewlines)) }
                 if let problem { problemNote(problem) }
             }
@@ -836,7 +836,7 @@ struct PhoneSharingConsentSheet: View {
                         .accessibilityHidden(true)
                     Text("Share your calendar and phone with Hermes?")
                         .scaledFont(.title2.weight(.semibold))
-                    Label(AppLocalization.string("Conduit sends what you chose to the \(profile) profile on \(host), sealed end to end. It never goes through Conduit's notification relay, and Conduit's developer can't see it."), systemImage: "lock.shield")
+                    Label(AppLocalization.string("Conduit sends what you chose to the \(profile) profile on \(host), sealed end to end. It never goes through Conduit's notification relay, and Conduit's developer can't see it.", table: .phone), systemImage: "lock.shield")
                     Label("Your agent reads it when you ask, or when a task you set up needs it. Whatever it reads goes to the AI model provider your Hermes uses, under that provider's terms. If your Hermes is hosted by someone else, such as Hermes Cloud, they can read it too.", systemImage: "sparkles")
                     Label("Events can include other people's names. Notes, attendees and email addresses stay on this iPhone unless you turn them on.", systemImage: "person.2")
                     Label("Hermes can only ask for calendar changes. You approve each one unless you choose to let new items in without asking, and changes or deletions always ask.", systemImage: "hand.raised")
@@ -874,15 +874,15 @@ enum PhoneChangeWording {
     static func headline(_ change: PhoneChange) -> String {
         switch change.kind {
         case .addEvent: return AppLocalization.string("Hermes wants to add an event")
-        case .updateEvent: return AppLocalization.string("Hermes wants to change an event")
-        case .deleteEvent: return AppLocalization.string("Hermes wants to delete an event")
+        case .updateEvent: return AppLocalization.string("Hermes wants to change an event", table: .phone)
+        case .deleteEvent: return AppLocalization.string("Hermes wants to delete an event", table: .phone)
         case .addReminder: return AppLocalization.string("Hermes wants to add a reminder")
         case .updateReminder: return AppLocalization.string("Hermes wants to change a reminder")
         case .completeReminder:
             return change.fields.completed == false
-                ? AppLocalization.string("Hermes wants to reopen a reminder")
-                : AppLocalization.string("Hermes wants to mark a reminder done")
-        case .deleteReminder: return AppLocalization.string("Hermes wants to delete a reminder")
+                ? AppLocalization.string("Hermes wants to reopen a reminder", table: .phone)
+                : AppLocalization.string("Hermes wants to mark a reminder done", table: .phone)
+        case .deleteReminder: return AppLocalization.string("Hermes wants to delete a reminder", table: .phone)
         case .setAlarm: return AppLocalization.string("Hermes wants to set an alarm")
         case .setTimer: return AppLocalization.string("Hermes wants to start a timer")
         case .cancelAlarm: return AppLocalization.string("Hermes wants to cancel an alarm")
@@ -908,7 +908,7 @@ enum PhoneChangeWording {
             parts.append([clock, days(fields.repeats)].compactMap { $0 }.joined(separator: " "))
         }
         if parts.isEmpty {
-            parts.append(kind == .setTimer ? AppLocalization.string("Timer") : AppLocalization.string("Alarm"))
+            parts.append(kind == .setTimer ? AppLocalization.string("Timer", table: .phone) : AppLocalization.string("Alarm", table: .phone))
         }
         return parts.joined(separator: " · ")
     }
@@ -917,7 +917,7 @@ enum PhoneChangeWording {
     static func days(_ repeats: [String]?) -> String? {
         guard let repeats, !repeats.isEmpty else { return nil }
         let set = Set(repeats)
-        if set.count == 7 { return AppLocalization.string("every day") }
+        if set.count == 7 { return AppLocalization.string("every day", table: .phone) }
         if set == ["mon", "tue", "wed", "thu", "fri"] { return AppLocalization.string("weekdays") }
         if set == ["sat", "sun"] { return AppLocalization.string("weekends") }
         let symbols = Calendar.current.shortWeekdaySymbols
@@ -962,11 +962,11 @@ enum PhoneChangeWording {
         switch change.kind {
         case .addEvent, .addReminder: return AppLocalization.string("Add")
         case .deleteEvent, .deleteReminder: return AppLocalization.string("Delete")
-        case .completeReminder: return AppLocalization.string("Mark done")
+        case .completeReminder: return AppLocalization.string("Mark done", table: .phone)
         case .updateEvent, .updateReminder: return AppLocalization.string("Change")
         case .setAlarm: return AppLocalization.string("Set")
         case .setTimer: return AppLocalization.string("Start")
-        case .cancelAlarm: return AppLocalization.string("Cancel alarm")
+        case .cancelAlarm: return AppLocalization.string("Cancel alarm", table: .phone)
         case .runShortcut: return AppLocalization.string("Run")
         case .addContact: return AppLocalization.string("Add")
         case .updateContact: return AppLocalization.string("Change")
@@ -983,7 +983,7 @@ enum PhoneChangeWording {
 
     /// A run in a line: the shortcut's name, and the start of its text.
     static func shortcutSummary(_ fields: PhoneChangeFields) -> String {
-        let name = fields.shortcut ?? AppLocalization.string("Shortcut")
+        let name = fields.shortcut ?? AppLocalization.string("Shortcut", table: .phone)
         guard let input = fields.input?.trimmingCharacters(in: .whitespacesAndNewlines), !input.isEmpty else { return name }
         let preview = input.count > shortcutPreviewChars ? String(input.prefix(shortcutPreviewChars)) + "…" : input
         return "\(name) · “\(preview)”"
@@ -1070,10 +1070,10 @@ struct PhoneChangeCard: View {
                             .resizable()
                             .scaledToFit()
                             .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
-                            .accessibilityLabel(Text(AppLocalization.string("The photo Hermes asks for")))
+                            .accessibilityLabel(Text(AppLocalization.string("The photo Hermes asks for", table: .phone)))
                     } else if pictureMissing {
                         VStack(spacing: 6) {
-                            Text(AppLocalization.string("This photo isn't on your iPhone any more."))
+                            Text(AppLocalization.string("This photo isn't on your iPhone any more.", table: .phone))
                                 .scaledFont(.caption)
                                 .foregroundStyle(.secondary)
                             // A read that failed for now (iCloud, no connection) may work later.
@@ -1170,9 +1170,9 @@ struct PhoneAutoAddedBanner: View {
             Image(systemName: added.isAlarm ? "alarm" : added.isEvent ? "calendar.badge.checkmark" : "checklist.checked")
                 .accessibilityHidden(true)
             VStack(alignment: .leading, spacing: 2) {
-                Text(added.isAlarm ? AppLocalization.string("Hermes set \(added.title)")
-                     : added.calendarTitle.map { AppLocalization.string("Hermes added \(added.title) to \($0)") }
-                     ?? AppLocalization.string("Hermes added \(added.title)"))
+                Text(added.isAlarm ? AppLocalization.string("Hermes set \(added.title)", table: .phone)
+                     : added.calendarTitle.map { AppLocalization.string("Hermes added \(added.title) to \($0)", table: .phone) }
+                     ?? AppLocalization.string("Hermes added \(added.title)", table: .phone))
                     .scaledFont(.subheadline)
                     .lineLimit(2)
             }

@@ -53,10 +53,10 @@ struct ServerCertificateSection: View {
     private func content(for url: URL) -> some View {
         switch phase {
         case .idle:
-            LoginPrimaryButton(title: AppLocalization.string("Check this server’s certificate")) { start(url) }
+            LoginPrimaryButton(title: AppLocalization.string("Check this server’s certificate", table: .connection)) { start(url) }
                 .accessibilityIdentifier("setup.certificate-check")
         case .checking:
-            LoginPrimaryButton(title: AppLocalization.string("Checking the certificate…"), isBusy: true) {}
+            LoginPrimaryButton(title: AppLocalization.string("Checking the certificate…", table: .connection), isBusy: true) {}
                 .disabled(true)
         case .done(let check):
             result(check, url: url)
@@ -67,12 +67,12 @@ struct ServerCertificateSection: View {
     private func result(_ check: ServerCertificateCheck, url: URL) -> some View {
         switch check {
         case .alreadyTrusted:
-            ConnectionSetupNote(symbol: "checkmark.seal", text: AppLocalization.string("iOS already trusts this server’s certificate, so certificates aren’t what’s stopping Conduit."))
+            ConnectionSetupNote(symbol: "checkmark.seal", text: AppLocalization.string("iOS already trusts this server’s certificate, so certificates aren’t what’s stopping Conduit.", table: .connection))
             checkAgain(url)
         case .installable(let certificate):
             installable(certificate, url: url)
         case .rootNotSent:
-            ConnectionSetupNote(symbol: "exclamationmark.triangle", text: AppLocalization.string("The server doesn’t send its certificate authority’s root, so Conduit can’t save it. Install the root certificate from wherever you made your certificates, then turn on full trust for it."))
+            ConnectionSetupNote(symbol: "exclamationmark.triangle", text: AppLocalization.string("The server doesn’t send its certificate authority’s root, so Conduit can’t save it. Install the root certificate from wherever you made your certificates, then turn on full trust for it.", table: .connection))
             checkAgain(url)
         case .notFixedByInstalling(let failure), .unreachable(let failure):
             ConnectionSetupPanel(spacing: 6) {
@@ -102,7 +102,7 @@ struct ServerCertificateSection: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("setup.certificate-fingerprint")
         }
-        ConnectionSetupNote(symbol: "lock.shield", text: AppLocalization.string("Only install it if this fingerprint matches the one your server reports for this certificate. Anyone between you and the server could present a different one."))
+        ConnectionSetupNote(symbol: "lock.shield", text: AppLocalization.string("Only install it if this fingerprint matches the one your server reports for this certificate. Anyone between you and the server could present a different one.", table: .connection))
         AskHermesPromptView(
             title: ConnectionSetupPrompt.certificateFingerprint.title,
             prompt: ConnectionSetupPrompt.certificateFingerprint.text
@@ -124,7 +124,7 @@ struct ServerCertificateSection: View {
                 }
             }
         } else if profileFailed {
-            ConnectionSetupNote(symbol: "exclamationmark.triangle", text: AppLocalization.string("Conduit couldn’t save the profile. Try again."))
+            ConnectionSetupNote(symbol: "exclamationmark.triangle", text: AppLocalization.string("Conduit couldn’t save the profile. Try again.", table: .connection))
             checkAgain(url)
         }
     }
@@ -148,16 +148,16 @@ struct ServerCertificateSection: View {
     static var installSteps: [String] {
         if ProcessInfo.processInfo.isiOSAppOnMac {
             return [
-                AppLocalization.string("Save the profile, then open it in Finder."),
-                AppLocalization.string("Install it in System Settings → General → Device Management."),
-                AppLocalization.string("Come back here and connect again.")
+                AppLocalization.string("Save the profile, then open it in Finder.", table: .connection),
+                AppLocalization.string("Install it in System Settings → General → Device Management.", table: .connection),
+                AppLocalization.string("Come back here and connect again.", table: .connection)
             ]
         }
         return [
-            AppLocalization.string("Save the profile to Files, then open it in the Files app."),
-            AppLocalization.string("Install it in Settings → General → VPN & Device Management."),
-            AppLocalization.string("Turn on full trust for it in Settings → General → About → Certificate Trust Settings."),
-            AppLocalization.string("Come back here and connect again.")
+            AppLocalization.string("Save the profile to Files, then open it in the Files app.", table: .connection),
+            AppLocalization.string("Install it in Settings → General → VPN & Device Management.", table: .connection),
+            AppLocalization.string("Turn on full trust for it in Settings → General → About → Certificate Trust Settings.", table: .connection),
+            AppLocalization.string("Come back here and connect again.", table: .connection)
         ]
     }
 

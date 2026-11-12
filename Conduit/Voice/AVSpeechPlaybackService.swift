@@ -155,7 +155,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         // render Float32 only too.
         let stretched = rate != 1 || keepsRateAdjustable
         guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
-            throw VoiceAudioError.unavailable(AppLocalization.string("The gateway reported an unsupported PCM format."))
+            throw VoiceAudioError.unavailable(AppLocalization.string("The gateway reported an unsupported PCM format.", table: .voice))
         }
         lease = try coordinator.acquire(ownershipIntent, onTakenOver: onTakenOverByCapture)
         do {
@@ -218,7 +218,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             // immediately so the lease does not wait on the caller's error
             // path.
             stop()
-            throw VoiceAudioError.unavailable(AppLocalization.string("The gateway changed PCM sample rates during a stream."))
+            throw VoiceAudioError.unavailable(AppLocalization.string("The gateway changed PCM sample rates during a stream.", table: .voice))
         }
         remainder.append(data)
         let (pcm, leftover) = VoicePCMEncoding.splitPCM16(remainder)
@@ -276,7 +276,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
                 player.rate = rate
             }
             player.prepareToPlay()
-            guard player.play() else { throw VoiceAudioError.unavailable(AppLocalization.string("Could not play Hermes fallback speech.")) }
+            guard player.play() else { throw VoiceAudioError.unavailable(AppLocalization.string("Could not play Hermes fallback speech.", table: .voice)) }
             encodedPlayer = player
             isPlaying = true
         } catch {

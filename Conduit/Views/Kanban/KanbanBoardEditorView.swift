@@ -125,7 +125,7 @@ struct KanbanBoardEditorView: View {
                 projectSection
                 workspaceSection
                 if let effective = effectiveDirectory {
-                    ConduitSettingsSection(title: AppLocalization.string("Effective Directory"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+                    ConduitSettingsSection(title: AppLocalization.string("Effective Directory", table: .tasks), symbol: "slider.horizontal.3", tint: .conduitAccent) {
                         Label(effective, systemImage: "folder")
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
@@ -150,7 +150,7 @@ struct KanbanBoardEditorView: View {
             // Text fields as Settings draws them.
             .textFieldStyle(.roundedBorder)
             .tint(.conduitAccent)
-            .navigationTitle(isCreate ? AppLocalization.string("New Board") : AppLocalization.string("Board Settings"))
+            .navigationTitle(isCreate ? AppLocalization.string("New Board", table: .tasks) : AppLocalization.string("Board Settings", table: .tasks))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -185,7 +185,7 @@ struct KanbanBoardEditorView: View {
     }
 
     private var basicsSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Basics"), symbol: "square.and.pencil", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Basics", table: .tasks), symbol: "square.and.pencil", tint: .conduitAccent) {
             TextField("Name", text: $name)
                 .accessibilityLabel("Board name")
             if isCreate {
@@ -236,7 +236,7 @@ struct KanbanBoardEditorView: View {
         ConduitSettingsSection(title: AppLocalization.string("Project"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
             ConduitMenuPicker(
                 value: projectBinding.wrappedValue,
-                choices: [(id: String?.none, title: AppLocalization.string("No Project"))]
+                choices: [(id: String?.none, title: AppLocalization.string("No Project", table: .tasks))]
                     + store.projects.map { (id: String?.some($0.id), title: $0.name) },
                 onSelect: { projectBinding.wrappedValue = $0 }
             ) {
@@ -282,9 +282,9 @@ struct KanbanBoardEditorView: View {
                 // editor can never submit that phantom combination.
                 choices: [
                     projectID != nil
-                        ? (id: WorkspaceRow.projectDefault, title: AppLocalization.string("Project Default"))
-                        : (id: WorkspaceRow.none, title: AppLocalization.string("None / Scratch")),
-                    (id: WorkspaceRow.custom, title: AppLocalization.string("Custom Directory…")),
+                        ? (id: WorkspaceRow.projectDefault, title: AppLocalization.string("Project Default", table: .tasks))
+                        : (id: WorkspaceRow.none, title: AppLocalization.string("None / Scratch", table: .tasks)),
+                    (id: WorkspaceRow.custom, title: AppLocalization.string("Custom Directory…", table: .tasks)),
                 ],
                 onSelect: { workspaceRow = $0 }
             ) {
@@ -447,7 +447,7 @@ struct KanbanBoardEditorView: View {
             descriptionText = updated.description ?? ""
             projectID = (updated.projectID ?? "").isEmpty ? nil : updated.projectID
             seedDraft = currentDraft
-            notice = AppLocalization.string("Board settings saved.")
+            notice = AppLocalization.string("Board settings saved.", table: .tasks)
         } catch {
             if liveness.owns(operationID) { isSaving = false }
             guard store.isCurrentConfiguration(generation) else { return }

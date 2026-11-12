@@ -26,7 +26,7 @@ enum DictationEngine: String, CaseIterable, Identifiable {
         switch self {
         // Names, the same in every language.
         case .apple: return "Apple"
-        case .appleSpeechAnalyzer: return AppLocalization.string("Apple (new model)")
+        case .appleSpeechAnalyzer: return AppLocalization.string("Apple (new model)", table: .voice)
         case .hermes: return "Hermes"
         }
     }
@@ -34,11 +34,11 @@ enum DictationEngine: String, CaseIterable, Identifiable {
     var summary: String {
         switch self {
         case .apple:
-            return AppLocalization.string("Apple's dictation, on this iPhone when your language allows. Words appear as you speak.")
+            return AppLocalization.string("Apple's dictation, on this iPhone when your language allows. Words appear as you speak.", table: .voice)
         case .appleSpeechAnalyzer:
-            return AppLocalization.string("Apple's newer speech model, on this iPhone. Better with long sentences, though it may not use your custom words. The first use may download it.")
+            return AppLocalization.string("Apple's newer speech model, on this iPhone. Better with long sentences, though it may not use your custom words. The first use may download it.", table: .voice)
         case .hermes:
-            return AppLocalization.string("The speech to text your Hermes uses, such as Whisper. Audio goes to your Hermes. Words appear as you speak when Hermes streams them, otherwise when you stop.")
+            return AppLocalization.string("The speech to text your Hermes uses, such as Whisper. Audio goes to your Hermes. Words appear as you speak when Hermes streams them, otherwise when you stop.", table: .voice)
         }
     }
 

@@ -54,7 +54,7 @@ struct ModelVisibilityEditor: View {
     }
 
     var body: some View {
-        ModelPickerSection(title: AppLocalization.string("Model visibility"), symbol: "line.3.horizontal.decrease.circle", tint: .conduitAccent, flush: true) {
+        ModelPickerSection(title: AppLocalization.string("Model visibility", table: .settings), symbol: "line.3.horizontal.decrease.circle", tint: .conduitAccent, flush: true) {
             VStack(alignment: .leading, spacing: 10) {
                 TextField("Search providers or models", text: $query)
                     .textInputAutocapitalization(.never)
@@ -112,7 +112,7 @@ struct ModelVisibilityEditor: View {
                 }
                 .buttonStyle(.plain)
 
-                Button(providerHidden ? AppLocalization.string("Hidden") : AppLocalization.string("Visible")) {
+                Button(providerHidden ? AppLocalization.string("Hidden") : AppLocalization.string("Visible", table: .settings)) {
                     toggleProviderVisibility(provider.name)
                 }
                 .scaledFont(.caption.weight(.semibold))
@@ -145,7 +145,7 @@ struct ModelVisibilityEditor: View {
                         HStack {
                             Text(model.id).scaledFont(.footnote).lineLimit(2)
                             Spacer()
-                            Text(hidden ? AppLocalization.string("Hidden") : AppLocalization.string("Visible"))
+                            Text(hidden ? AppLocalization.string("Hidden") : AppLocalization.string("Visible", table: .settings))
                                 .scaledFont(.caption.weight(.semibold))
                                 .foregroundStyle(hidden ? Color.secondary : Color.green)
                         }
@@ -217,7 +217,7 @@ struct ModelVisibilityEditorPage: View {
         SettingsDetailContainer {
             ModelVisibilityEditor(visibility: $visibility, providers: providers, expandedProvider: expandedProvider)
         }
-        .navigationTitle(AppLocalization.string("Model visibility"))
+        .navigationTitle(AppLocalization.string("Model visibility", table: .settings))
         .navigationBarTitleDisplayMode(.inline)
         .onAppear {
             guard !started else { return }

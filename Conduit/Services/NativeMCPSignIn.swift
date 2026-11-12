@@ -62,7 +62,7 @@ enum NativeMCPSignIn {
             try checkCurrent()
             if let problem = BotMcpSetup.failure(started) { return .failed(problem) }
             guard let flow = BotMcpSetup.startedFlow(started, redirectURI: redirectURI) else {
-                return .failed(AppLocalization.string("Update Hermes to sign in to MCP servers from Conduit."))
+                return .failed(AppLocalization.string("Update Hermes to sign in to MCP servers from Conduit.", table: .connection))
             }
             loopback.expect(flow.state)
             open(flow.authURL)
@@ -102,7 +102,7 @@ enum NativeMCPSignIn {
                 default: try await Task.sleep(for: .seconds(1))
                 }
             }
-            return .failed(AppLocalization.string("Sign-in timed out. Please try again."))
+            return .failed(AppLocalization.string("Sign-in timed out. Please try again.", table: .connection))
         } catch is CancellationError {
             return .cancelled
         } catch {

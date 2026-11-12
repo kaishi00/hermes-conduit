@@ -430,7 +430,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(takeovers, 1)
         XCTAssertEqual(
             harness.appState.callRefusalMessageForOpenChat(),
-            AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.")
+            AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.", table: .chat)
         )
 
         let second = await harness.appState.submitComposerForCall(text: "Any new email")
@@ -483,7 +483,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
             XCTFail("A second refusal fails the request")
         } catch {
             XCTAssertEqual(error as? VoiceAudioError, .unavailable(
-                AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.")
+                AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.", table: .chat)
             ))
         }
         XCTAssertEqual(sends, 2)
@@ -4243,7 +4243,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         )
         XCTAssertEqual(
             harness.appState.composerNotice,
-            AppLocalization.string("Your message to “\("Trip plans")” wasn't sent. It's back in that chat's draft."),
+            AppLocalization.string("Your message to “\("Trip plans")” wasn't sent. It's back in that chat's draft.", table: .chat),
             "Nothing else said the send stopped"
         )
     }

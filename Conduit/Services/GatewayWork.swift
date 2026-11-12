@@ -80,17 +80,17 @@ struct GatewayWork: Equatable {
             case "chat":
                 let bot = unit.bot ?? "Hermes"
                 name = unit.title.map { AppLocalization.string("\(bot): \($0)") }
-                    ?? AppLocalization.string("\(bot): a chat")
+                    ?? AppLocalization.string("\(bot): a chat", table: .bots)
             case "cron":
-                name = AppLocalization.string("Scheduled job \(unit.title ?? unit.jobID ?? "?")")
+                name = AppLocalization.string("Scheduled job \(unit.title ?? unit.jobID ?? "?")", table: .bots)
             default:
-                name = AppLocalization.string("A background task")
+                name = AppLocalization.string("A background task", table: .bots)
             }
             guard let startedAt = unit.startedAt else { return name }
-            return AppLocalization.string("\(name), running \(Self.duration(now.timeIntervalSince(startedAt)))")
+            return AppLocalization.string("\(name), running \(Self.duration(now.timeIntervalSince(startedAt)))", table: .bots)
         }
         if units.isEmpty, count > 0 {
-            lines.append(AppLocalization.string("Hermes doesn't say what's running."))
+            lines.append(AppLocalization.string("Hermes doesn't say what's running.", table: .bots))
         }
         return lines
     }

@@ -243,7 +243,7 @@ struct SpeechServerSettingsView: View {
     private func save(_ value: String, for key: String, profile: String?) async -> Bool {
         let saved = await service.save(value: value, for: key)
         if !saved, draftsProfile == profile {
-            errorMessage = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.")
+            errorMessage = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.", table: .voice)
         }
         return saved
     }

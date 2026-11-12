@@ -66,17 +66,17 @@ enum NativeOAuthError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .invalidURL: return AppLocalization.string("The dashboard returned an invalid sign-in URL.")
-        case .randomGenerationFailed: return AppLocalization.string("Could not prepare a secure sign-in request.")
-        case .listenerFailed: return AppLocalization.string("Could not start the secure sign-in callback.")
-        case .callbackMalformed: return AppLocalization.string("The dashboard returned an invalid sign-in response.")
-        case .callbackRejected: return AppLocalization.string("The identity provider did not complete sign-in.")
-        case .stateMismatch: return AppLocalization.string("The sign-in response failed its security check.")
-        case .tokenResponseMalformed: return AppLocalization.string("The dashboard returned invalid authentication tokens.")
-        case .tokenStorageFailed: return AppLocalization.string("Could not save this dashboard.")
-        case .timedOut: return AppLocalization.string("Sign-in timed out. Please try again.")
-        case .browserFailed: return AppLocalization.string("The sign-in page couldn’t open. Please try again.")
-        case .requestFailed(let status): return AppLocalization.string("Dashboard sign-in failed (HTTP \(String(status))).")
+        case .invalidURL: return AppLocalization.string("The dashboard returned an invalid sign-in URL.", table: .connection)
+        case .randomGenerationFailed: return AppLocalization.string("Could not prepare a secure sign-in request.", table: .connection)
+        case .listenerFailed: return AppLocalization.string("Could not start the secure sign-in callback.", table: .connection)
+        case .callbackMalformed: return AppLocalization.string("The dashboard returned an invalid sign-in response.", table: .connection)
+        case .callbackRejected: return AppLocalization.string("The identity provider did not complete sign-in.", table: .connection)
+        case .stateMismatch: return AppLocalization.string("The sign-in response failed its security check.", table: .connection)
+        case .tokenResponseMalformed: return AppLocalization.string("The dashboard returned invalid authentication tokens.", table: .connection)
+        case .tokenStorageFailed: return AppLocalization.string("Could not save this dashboard.", table: .connection)
+        case .timedOut: return AppLocalization.string("Sign-in timed out. Please try again.", table: .connection)
+        case .browserFailed: return AppLocalization.string("The sign-in page couldn’t open. Please try again.", table: .connection)
+        case .requestFailed(let status): return AppLocalization.string("Dashboard sign-in failed (HTTP \(String(status))).", table: .connection)
         }
     }
 }
@@ -320,7 +320,7 @@ final class NativeOAuthAPIClient {
             }
             throw DashboardTicketBridgeError.http(
                 status: http.statusCode,
-                detail: Self.errorDetail(data) ?? AppLocalization.string("Dashboard request failed (\(String(http.statusCode))).")
+                detail: Self.errorDetail(data) ?? AppLocalization.string("Dashboard request failed (\(String(http.statusCode))).", table: .connection)
             )
         }
         guard !data.isEmpty else { return [:] }
@@ -717,11 +717,11 @@ final class NativeOAuthLoopbackServer: @unchecked Sendable {
                 self.queue.async { self.processRequest(request, on: connection) }
             } catch NativeOAuthHTTPReadError.tooLarge {
                 self.queue.async {
-                    self.sendResponse(on: connection, status: "431 Request Header Fields Too Large", message: AppLocalization.string("The sign-in response was too large."))
+                    self.sendResponse(on: connection, status: "431 Request Header Fields Too Large", message: AppLocalization.string("The sign-in response was too large.", table: .connection))
                 }
             } catch {
                 self.queue.async {
-                    self.sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response was incomplete."))
+                    self.sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response was incomplete.", table: .connection))
                 }
             }
         }
@@ -751,21 +751,21 @@ final class NativeOAuthLoopbackServer: @unchecked Sendable {
     private func processRequest(_ request: Data, on connection: NWConnection) {
         guard let requestText = String(data: request, encoding: .utf8),
               let requestLine = requestText.components(separatedBy: "\r\n").first else {
-            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response was invalid."))
+            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response was invalid.", table: .connection))
             return
         }
         let parts = requestLine.split(separator: " ", omittingEmptySubsequences: true)
         guard parts.count == 3, parts[0] == "GET" else {
-            sendResponse(on: connection, status: "405 Method Not Allowed", message: AppLocalization.string("Only GET callbacks are accepted."))
+            sendResponse(on: connection, status: "405 Method Not Allowed", message: AppLocalization.string("Only GET callbacks are accepted.", table: .connection))
             return
         }
         guard let port else {
-            sendResponse(on: connection, status: "503 Service Unavailable", message: AppLocalization.string("The sign-in callback is not ready."))
+            sendResponse(on: connection, status: "503 Service Unavailable", message: AppLocalization.string("The sign-in callback is not ready.", table: .connection))
             finish(.failure(NativeOAuthError.listenerFailed))
             return
         }
         guard let expectedState else {
-            sendResponse(on: connection, status: "503 Service Unavailable", message: AppLocalization.string("The sign-in callback is not ready."))
+            sendResponse(on: connection, status: "503 Service Unavailable", message: AppLocalization.string("The sign-in callback is not ready.", table: .connection))
             return
         }
         if relaysCallback {
@@ -778,19 +778,19 @@ final class NativeOAuthLoopbackServer: @unchecked Sendable {
                 expectedState: expectedState,
                 expectedPort: port
             )
-            sendResponse(on: connection, status: "200 OK", message: AppLocalization.string("✓ Signed in to Hermes. You can close this window and return to Conduit."))
+            sendResponse(on: connection, status: "200 OK", message: AppLocalization.string("✓ Signed in to Hermes. You can close this window and return to Conduit.", table: .connection))
             finish(.success(code))
         } catch NativeOAuthError.callbackRejected {
-            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("Sign-in was not completed. You can return to Conduit."))
+            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("Sign-in was not completed. You can return to Conduit.", table: .connection))
             finish(.failure(NativeOAuthError.callbackRejected))
         } catch NativeOAuthError.stateMismatch {
             // A different local process must not be able to terminate the
             // pending login without knowing the high-entropy state value.
-            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response failed its security check."))
+            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response failed its security check.", table: .connection))
         } catch {
             // Ignore malformed probes and keep listening for the real browser
             // callback until cancellation or the bounded timeout.
-            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response was invalid."))
+            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response was invalid.", table: .connection))
         }
     }
 
@@ -802,16 +802,16 @@ final class NativeOAuthLoopbackServer: @unchecked Sendable {
                 expectedPort: port
             )
             if values["error"]?.isEmpty == false {
-                sendResponse(on: connection, status: "200 OK", message: AppLocalization.string("Sign-in was not completed. You can return to Conduit."))
+                sendResponse(on: connection, status: "200 OK", message: AppLocalization.string("Sign-in was not completed. You can return to Conduit.", table: .connection))
             } else {
-                sendResponse(on: connection, status: "200 OK", message: AppLocalization.string("Finishing the sign-in. You can return to Conduit."))
+                sendResponse(on: connection, status: "200 OK", message: AppLocalization.string("Finishing the sign-in. You can return to Conduit.", table: .connection))
             }
             finish(.success(NativeOAuthFlow.encodedQuery(values)))
         } catch NativeOAuthError.stateMismatch {
-            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response failed its security check."))
+            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response failed its security check.", table: .connection))
         } catch {
             // A favicon or other probe: keep listening.
-            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response was invalid."))
+            sendResponse(on: connection, status: "400 Bad Request", message: AppLocalization.string("The sign-in response was invalid.", table: .connection))
         }
     }
 
@@ -821,7 +821,7 @@ final class NativeOAuthLoopbackServer: @unchecked Sendable {
             .replacingOccurrences(of: "&", with: "&amp;")
             .replacingOccurrences(of: "<", with: "&lt;")
             .replacingOccurrences(of: ">", with: "&gt;")
-        let html = "<!doctype html><meta charset=\"utf-8\"><title>\(AppLocalization.string("Hermes sign-in"))</title><body style=\"font:15px system-ui;margin:3rem;text-align:center\"><p>\(escaped)</p>"
+        let html = "<!doctype html><meta charset=\"utf-8\"><title>\(AppLocalization.string("Hermes sign-in", table: .connection))</title><body style=\"font:15px system-ui;margin:3rem;text-align:center\"><p>\(escaped)</p>"
         let body = Data(html.utf8)
         let headers = "HTTP/1.1 \(status)\r\nContent-Type: text/html; charset=utf-8\r\nContent-Length: \(body.count)\r\nConnection: close\r\nCache-Control: no-store\r\n\r\n"
         var response = Data(headers.utf8)

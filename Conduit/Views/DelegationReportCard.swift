@@ -64,7 +64,7 @@ struct DelegationReportCard: View {
                         entryView(entry)
                     }
                     if !expanded, report.entries.count > Self.foldedLimit {
-                        Text(AppLocalization.string("\(report.entries.count - Self.foldedLimit) more"))
+                        Text(AppLocalization.string("\(report.entries.count - Self.foldedLimit) more", table: .chat))
                             .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
@@ -98,7 +98,7 @@ struct DelegationReportCard: View {
                     .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(Self.tint(entry.outcome))
                     .accessibilityHidden(true)
-                Text(entry.goal.isEmpty ? AppLocalization.string("Delegate agent") : entry.goal)
+                Text(entry.goal.isEmpty ? AppLocalization.string("Delegate agent", table: .chat) : entry.goal)
                     .scaledFont(.footnote)
                     .foregroundStyle(.primary)
                     .lineLimit(expanded ? nil : 2)
@@ -155,7 +155,7 @@ struct DelegationReportCard: View {
     }
 
     static func spokenLine(_ entry: DelegationReport.Entry) -> String {
-        let goal = entry.goal.isEmpty ? AppLocalization.string("Delegate agent") : entry.goal
+        let goal = entry.goal.isEmpty ? AppLocalization.string("Delegate agent", table: .chat) : entry.goal
         return [goal, label(entry.outcome), ChatStepTiming.spokenText(entry.duration)].compactMap { $0 }.joined(separator: ", ")
     }
 }

@@ -113,7 +113,7 @@ final class VoiceMessageRecorder: ObservableObject {
         }
         guard self.generation == generation else { return }
         guard AVAudioApplication.shared.recordPermission == .granted else {
-            fail(AppLocalization.string("Voice messages need microphone access. You can allow it in Settings."))
+            fail(AppLocalization.string("Voice messages need microphone access. You can allow it in Settings.", table: .voice))
             return
         }
         // Words are a bonus: without a recognizer the audio still goes.
@@ -124,7 +124,7 @@ final class VoiceMessageRecorder: ObservableObject {
         }
         guard !audioCoordinator.hasCaptureOwner else {
             recognizer?.cancel()
-            fail(AppLocalization.string("The microphone is not available right now."))
+            fail(AppLocalization.string("The microphone is not available right now.", table: .voice))
             return
         }
         let url: URL
@@ -142,7 +142,7 @@ final class VoiceMessageRecorder: ObservableObject {
             recognizer?.cancel()
             stopAudio()
             releaseAudio()
-            fail(AppLocalization.string("The microphone is not available right now."))
+            fail(AppLocalization.string("The microphone is not available right now.", table: .voice))
             return
         }
         var recognizerInput: (any DictationAudioInput)?
@@ -185,7 +185,7 @@ final class VoiceMessageRecorder: ObservableObject {
             recognizer?.cancel()
             recognizer = nil
             try? FileManager.default.removeItem(at: url)
-            fail(AppLocalization.string("Couldn't save the voice message."))
+            fail(AppLocalization.string("Couldn't save the voice message.", table: .voice))
             return nil
         }
         // Until the preview takes it, so a cancel while the last words

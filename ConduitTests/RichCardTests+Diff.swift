@@ -53,7 +53,7 @@ extension AppStateVoiceCapabilityTests {
         XCTAssertEqual(login.folder, "Sources")
         XCTAssertEqual(diff.files[1].oldPath, "docs/sign-in.md")
         XCTAssertTrue(diff.files[2].binary)
-        XCTAssertEqual(RichDiffFileRow.statusName(diff.files[2]), AppLocalization.string("Binary"))
+        XCTAssertEqual(RichDiffFileRow.statusName(diff.files[2]), AppLocalization.string("Binary", table: .chat))
         XCTAssertNil(RichDiffFileRow.statusName(login), "a modified file needs no word")
     }
 

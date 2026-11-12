@@ -1682,12 +1682,12 @@ extension BotModeTests {
         XCTAssertTrue(controlling.isChat(in: ["s1", "durable-1"]))
         XCTAssertFalse(controlling.isChat(in: []))
         XCTAssertEqual(BotScreenUse.name(of: controlling), "Trip plans")
-        XCTAssertEqual(BotScreenUse.name(of: controlling, openChat: ["s1"]), AppLocalization.string("this chat"))
+        XCTAssertEqual(BotScreenUse.name(of: controlling, openChat: ["s1"]), AppLocalization.string("this chat", table: .bots))
         XCTAssertEqual(BotScreenUse.name(of: try XCTUnwrap(use.last), openChat: ["s1"]), "W1")
         XCTAssertEqual(BotScreenUse.controllingLine(controlling, openChat: ["s1"]),
-                       AppLocalization.string("This chat is using the screen"))
+                       AppLocalization.string("This chat is using the screen", table: .bots))
         XCTAssertEqual(BotScreenUse.controllingLine(controlling),
-                       AppLocalization.string("\("Trip plans") is using the screen"))
+                       AppLocalization.string("\("Trip plans") is using the screen", table: .bots))
     }
 
     /// Which bot's screen a chat's menu opens (issue 2132): a Bot Chat's or

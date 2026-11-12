@@ -82,7 +82,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertFalse(page.cards[0].isRatable)
         XCTAssertFalse(page.cards[0].isHeld)
         XCTAssertEqual(String(page.cards[0].formattedNews.characters), "Morning.\n- Flight on time")
-        XCTAssertEqual(PulseCardKind.title("report"), AppLocalization.string("Reports"))
+        XCTAssertEqual(PulseCardKind.title("report"), AppLocalization.string("Reports", table: .pulse))
         XCTAssertEqual(PulseCardKind.title("brief"), AppLocalization.string("Morning brief"))
 
         let older = try XCTUnwrap(PulseFeedPage(json: json(#"{"home_chat_id": "", "cards": []}"#)))
@@ -129,36 +129,36 @@ final class PulseFeedTests: XCTestCase {
         let lessons = learned.lessons
 
         XCTAssertEqual(lessons[0].text, AppLocalization.string("\(PulseCardKind.title("followup")): \(PulseLevel.screen.title)"))
-        XCTAssertEqual(lessons[0].causeText, AppLocalization.string("After thumbs down"))
+        XCTAssertEqual(lessons[0].causeText, AppLocalization.string("After thumbs down", table: .pulse))
         XCTAssertEqual(lessons[0].createdAt, Date(timeIntervalSince1970: 1761033600))
 
-        XCTAssertEqual(lessons[1].text, AppLocalization.string("No updates about “\("the weather")”"))
-        XCTAssertEqual(lessons[1].causeText, AppLocalization.string("You said not relevant"))
-        XCTAssertEqual(lessons[2].text, AppLocalization.string("Check on promises sooner"))
-        XCTAssertEqual(lessons[2].causeText, AppLocalization.string("You said too late"))
-        XCTAssertEqual(lessons[3].text, AppLocalization.string("Skip news you already saw in the chat"))
-        XCTAssertEqual(lessons[3].causeText, AppLocalization.string("You said you already knew"))
+        XCTAssertEqual(lessons[1].text, AppLocalization.string("No updates about “\("the weather")”", table: .pulse))
+        XCTAssertEqual(lessons[1].causeText, AppLocalization.string("You said not relevant", table: .pulse))
+        XCTAssertEqual(lessons[2].text, AppLocalization.string("Check on promises sooner", table: .pulse))
+        XCTAssertEqual(lessons[2].causeText, AppLocalization.string("You said too late", table: .pulse))
+        XCTAssertEqual(lessons[3].text, AppLocalization.string("Skip news you already saw in the chat", table: .pulse))
+        XCTAssertEqual(lessons[3].causeText, AppLocalization.string("You said you already knew", table: .pulse))
         XCTAssertEqual(lessons[4].text, AppLocalization.string("\(PulseCardKind.title("followup")): \(PulseLevel.off.title)"))
         XCTAssertNil(lessons[4].causeText)
         // A report card's reasons teach about its topic (0.81.1), and its lessons say which.
         XCTAssertEqual(lessons[5].text, AppLocalization.string("\(PulseCardKind.topic("commitment")): \(PulseLevel.brief.title)"))
-        XCTAssertEqual(lessons[5].causeText, AppLocalization.string("You said too often"))
-        XCTAssertEqual(lessons[6].text, AppLocalization.string("\(PulseCardKind.topic("date")): Bring up sooner"))
-        XCTAssertEqual(lessons[7].text, AppLocalization.string("\(PulseCardKind.topic("fact")): Skip what you already know"))
-        XCTAssertEqual(lessons[8].text, AppLocalization.string("No updates about “\("Send the deck")”"))
+        XCTAssertEqual(lessons[5].causeText, AppLocalization.string("You said too often", table: .pulse))
+        XCTAssertEqual(lessons[6].text, AppLocalization.string("\(PulseCardKind.topic("date")): Bring up sooner", table: .pulse))
+        XCTAssertEqual(lessons[7].text, AppLocalization.string("\(PulseCardKind.topic("fact")): Skip what you already know", table: .pulse))
+        XCTAssertEqual(lessons[8].text, AppLocalization.string("No updates about “\("Send the deck")”", table: .pulse))
         XCTAssertEqual(PulseCardKind.name("followup"), PulseCardKind.title("followup"))
         XCTAssertEqual(PulseCardKind.name("noticed"), PulseCardKind.title("noticed"))
         XCTAssertEqual(PulseCardKind.name("other"), PulseCardKind.topic("other"))
 
         // Before 0.81.1 thumbs move the levels; a plugin that learns says the level is the loudest Pulse gets.
         XCTAssertEqual(PulseLearned.levelsFooter(learns: false),
-                       AppLocalization.string("Thumbs move these too: two down make it quieter, two up louder."))
+                       AppLocalization.string("Thumbs move these too: two down make it quieter, two up louder.", table: .pulse))
         XCTAssertEqual(PulseLearned.levelsFooter(learns: true), AppLocalization.string(
-            "The loudest Pulse gets for each. Within that, your thumbs, Do it and Done teach it what to bring up and how loudly."))
+            "The loudest Pulse gets for each. Within that, your thumbs, Do it and Done teach it what to bring up and how loudly.", table: .pulse))
         XCTAssertEqual(PulseLearned.noLessons(learns: false),
-                       AppLocalization.string("Nothing yet. Rate Pulse's cards and what it learns shows up here."))
+                       AppLocalization.string("Nothing yet. Rate Pulse's cards and what it learns shows up here.", table: .pulse))
         XCTAssertEqual(PulseLearned.noLessons(learns: true), AppLocalization.string(
-            "Nothing yet. When you give a reason with a thumbs down, what it changes shows up here."))
+            "Nothing yet. When you give a reason with a thumbs down, what it changes shows up here.", table: .pulse))
         XCTAssertEqual(PulseClient.learnsCapability, "pulse_learns")
     }
 
@@ -191,44 +191,44 @@ final class PulseFeedTests: XCTestCase {
         // Every vote leans over Pulse's cards in general: only Start over forgets that.
         XCTAssertEqual(found.map(\.canReset), [true, true, true, true, true, true, false, true])
         XCTAssertEqual(found.map(\.subject), [
-            AppLocalization.string("Things from “\("Deploy")”"),
-            AppLocalization.string("How loudly “\(PulseCardKind.title("followup"))” cards come up"),
-            AppLocalization.string("“\(PulseCardKind.topic("promise"))” cards"),
-            AppLocalization.string("Things about “\(AppLocalization.string("Health and wellbeing"))”"),
-            AppLocalization.string("Things from “\(AppLocalization.string("Calendar"))”"),
-            AppLocalization.string("What isn't due within a day"),
-            AppLocalization.string("Pulse's cards in general"),
-            AppLocalization.string("Things from a chat")
+            AppLocalization.string("Things from “\("Deploy")”", table: .pulse),
+            AppLocalization.string("How loudly “\(PulseCardKind.title("followup"))” cards come up", table: .pulse),
+            AppLocalization.string("“\(PulseCardKind.topic("promise"))” cards", table: .pulse),
+            AppLocalization.string("Things about “\(AppLocalization.string("Health and wellbeing", table: .pulse))”", table: .pulse),
+            AppLocalization.string("Things from “\(AppLocalization.string("Calendar"))”", table: .pulse),
+            AppLocalization.string("What isn't due within a day", table: .pulse),
+            AppLocalization.string("Pulse's cards in general", table: .pulse),
+            AppLocalization.string("Things from a chat", table: .pulse)
         ])
         let dot = " · "
         XCTAssertEqual(found[0].detail, [
-            AppLocalization.string("Brings up less"), AppLocalization.string("Strong effect"),
-            AppLocalization.string("Useful \(PulsePreference.number(0)) out of \(PulsePreference.number(2)) lately")
+            AppLocalization.string("Brings up less", table: .pulse), AppLocalization.string("Strong effect", table: .pulse),
+            AppLocalization.string("Useful \(PulsePreference.number(0)) out of \(PulsePreference.number(2)) lately", table: .pulse)
         ].joined(separator: dot))
         let pushCount = 3
-        XCTAssertEqual(found[1].detail, AppLocalization.string("Louder") + dot
-            + AppLocalization.string("After \(pushCount) notifications you acted on within the hour"))
+        XCTAssertEqual(found[1].detail, AppLocalization.string("Louder", table: .pulse) + dot
+            + AppLocalization.string("After \(pushCount) notifications you acted on within the hour", table: .pulse))
         XCTAssertEqual(found[2].detail, [
-            AppLocalization.string("Brings up more"), AppLocalization.string("Moderate effect"),
-            AppLocalization.string("Useful \(PulsePreference.number(2.5)) out of \(PulsePreference.number(3)) lately")
+            AppLocalization.string("Brings up more", table: .pulse), AppLocalization.string("Moderate effect", table: .pulse),
+            AppLocalization.string("Useful \(PulsePreference.number(2.5)) out of \(PulsePreference.number(3)) lately", table: .pulse)
         ].joined(separator: dot))
-        XCTAssertEqual(found[3].strength, AppLocalization.string("Slight effect"))
+        XCTAssertEqual(found[3].strength, AppLocalization.string("Slight effect", table: .pulse))
         // No votes left in the window: which way, and how strongly.
-        XCTAssertEqual(found[5].detail, AppLocalization.string("Brings up less") + dot + AppLocalization.string("Slight effect"))
-        XCTAssertEqual(PulsePlace.area("travel"), AppLocalization.string("Trips and travel"))
-        XCTAssertEqual(PulsePlace.area("something new"), AppLocalization.string("Other matters"))
-        XCTAssertEqual(PulsePlace.source("notes"), AppLocalization.string("Hermes' notes"))
+        XCTAssertEqual(found[5].detail, AppLocalization.string("Brings up less", table: .pulse) + dot + AppLocalization.string("Slight effect", table: .pulse))
+        XCTAssertEqual(PulsePlace.area("travel"), AppLocalization.string("Trips and travel", table: .pulse))
+        XCTAssertEqual(PulsePlace.area("something new"), AppLocalization.string("Other matters", table: .pulse))
+        XCTAssertEqual(PulsePlace.source("notes"), AppLocalization.string("Hermes' notes", table: .pulse))
         XCTAssertEqual(PulsePlace.source("chat"), AppLocalization.string("Chats"))
 
         // A reset says what it forgot; Undo takes it back like any lesson.
         let lessons = learned.lessons
         XCTAssertEqual(lessons.map(\.id), [11, 12, 13])
-        XCTAssertEqual(lessons[0].text, AppLocalization.string("Reset: \(AppLocalization.string("Things from “\("Deploy")”"))"))
+        XCTAssertEqual(lessons[0].text, AppLocalization.string("Reset: \(AppLocalization.string("Things from “\("Deploy")”", table: .pulse))", table: .pulse))
         XCTAssertNil(lessons[0].causeText)
-        XCTAssertEqual(lessons[1].text, AppLocalization.string("Forgot everything learned before this"))
-        XCTAssertEqual(lessons[2].text, AppLocalization.string("Reset: \(AppLocalization.string("What's overdue or due within a day"))"))
+        XCTAssertEqual(lessons[1].text, AppLocalization.string("Forgot everything learned before this", table: .pulse))
+        XCTAssertEqual(lessons[2].text, AppLocalization.string("Reset: \(AppLocalization.string("What's overdue or due within a day", table: .pulse))", table: .pulse))
         XCTAssertEqual(PulseLearned.noPreferences, AppLocalization.string(
-            "Nothing stands out yet. The more you use thumbs, Do it and Done, the more Pulse learns what to bring up."))
+            "Nothing stands out yet. The more you use thumbs, Do it and Done, the more Pulse learns what to bring up.", table: .pulse))
         // A plugin from before lists none.
         let older = try XCTUnwrap(PulseLearned(json: json(#"{"lessons": []}"#)))
         XCTAssertEqual(older.preferences, [])
@@ -677,15 +677,15 @@ final class PulseFeedTests: XCTestCase {
         ]))
         XCTAssertTrue(state.pulseExplainsLearning)
         // Held for the brief by what thumbs taught about its chat: Why? says so, by the card's chat title.
-        XCTAssertEqual(held.learned?.subject, AppLocalization.string("Things from “\("Deploy")”"))
+        XCTAssertEqual(held.learned?.subject, AppLocalization.string("Things from “\("Deploy")”", table: .pulse))
         XCTAssertTrue(state.explainsPulseCard(held))
         XCTAssertFalse(state.explainsPulseCardReason(held))
-        XCTAssertEqual(promised.learned?.subject, AppLocalization.string("“\(PulseCardKind.topic("promise"))” cards"))
+        XCTAssertEqual(promised.learned?.subject, AppLocalization.string("“\(PulseCardKind.topic("promise"))” cards", table: .pulse))
         XCTAssertTrue(state.explainsPulseCardReason(promised))
         XCTAssertNil(plain.learned)
         XCTAssertFalse(state.explainsPulseCard(plain))
         // Another chat's title isn't the card's to give.
-        XCTAssertEqual(elsewhere.learned?.subject, AppLocalization.string("Things from a chat"))
+        XCTAssertEqual(elsewhere.learned?.subject, AppLocalization.string("Things from a chat", table: .pulse))
         XCTAssertNil(odd.learned)
         // A plugin from before has no What Pulse left out and no Reset, and
         // its Why? says nothing about learning even if a card carries it.
@@ -1310,7 +1310,7 @@ final class PulseFeedTests: XCTestCase {
         ]))
         XCTAssertEqual(state.pulseDownReasons, PulseDownReason.allCases)
         XCTAssertEqual(PulseDownReason.wrongTime.rawValue, "wrong_time")
-        XCTAssertEqual(PulseDownReason.wrongTime.title, AppLocalization.string("Wrong time"))
+        XCTAssertEqual(PulseDownReason.wrongTime.title, AppLocalization.string("Wrong time", table: .pulse))
         XCTAssertEqual(PulseClient.hoursCapability, "pulse_hours")
 
         // The plugin answers with when the card comes back, and what it learned.
@@ -1343,13 +1343,13 @@ final class PulseFeedTests: XCTestCase {
         """)))
         let followups = PulseCardKind.title("followup")
         XCTAssertEqual(learned.lessons.map(\.text), [
-            AppLocalization.string("\(followups): No notifications in the morning"),
-            AppLocalization.string("\(followups): No notifications in the middle of the day"),
-            AppLocalization.string("\(PulseCardKind.topic("date")): No notifications in the evening"),
-            AppLocalization.string("\(followups): No notifications at night"),
-            AppLocalization.string("\(followups): No notifications at that time of day")
+            AppLocalization.string("\(followups): No notifications in the morning", table: .pulse),
+            AppLocalization.string("\(followups): No notifications in the middle of the day", table: .pulse),
+            AppLocalization.string("\(PulseCardKind.topic("date")): No notifications in the evening", table: .pulse),
+            AppLocalization.string("\(followups): No notifications at night", table: .pulse),
+            AppLocalization.string("\(followups): No notifications at that time of day", table: .pulse)
         ])
-        XCTAssertEqual(learned.lessons.first?.causeText, AppLocalization.string("You said wrong time"))
+        XCTAssertEqual(learned.lessons.first?.causeText, AppLocalization.string("You said wrong time", table: .pulse))
     }
 
     func testNotNowsLaterTodayEndsWhenTheNightStarts() throws {
@@ -1485,17 +1485,17 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertTrue(cards.allSatisfy(\.isCleared))
         // In whatever language the test host's app is in.
         XCTAssertEqual(cards.map(\.clearedTitle), [
-            AppLocalization.string("Done, seen in the chat"),
+            AppLocalization.string("Done, seen in the chat", table: .pulse),
             AppLocalization.string("Not now") + " · " + PulseRest.backText(Date(timeIntervalSince1970: 90)),
             AppLocalization.string("Done"),
-            AppLocalization.string("Done, seen in the chat"),
+            AppLocalization.string("Done, seen in the chat", table: .pulse),
         ])
         // Undo on the done ones (the one only put off has Put back): the one put off stays put
         // off, a remembered thing is checked on again, and a found item is back on the list.
         XCTAssertEqual(cards.filter { $0.doneAt != nil }.map(\.undoDoneHint), [
-            AppLocalization.string("Keeps the card put away"),
-            AppLocalization.string("Pulse checks on it again"),
-            AppLocalization.string("Puts the card back on the list"),
+            AppLocalization.string("Keeps the card put away", table: .pulse),
+            AppLocalization.string("Pulse checks on it again", table: .pulse),
+            AppLocalization.string("Puts the card back on the list", table: .pulse),
         ])
     }
 
@@ -1507,13 +1507,13 @@ final class PulseFeedTests: XCTestCase {
             PulseRest.backText(noon.addingTimeInterval(hours * 3600), now: noon, calendar: calendar)
         }
         // In whatever language the test host's app is in.
-        XCTAssertEqual(back(3), AppLocalization.string("Back later today"))
-        XCTAssertEqual(back(-1), AppLocalization.string("Back later today"))  // its time came; the plugin brings it back on its next pass
-        XCTAssertEqual(back(19), AppLocalization.string("Back tomorrow"))
+        XCTAssertEqual(back(3), AppLocalization.string("Back later today", table: .pulse))
+        XCTAssertEqual(back(-1), AppLocalization.string("Back later today", table: .pulse))  // its time came; the plugin brings it back on its next pass
+        XCTAssertEqual(back(19), AppLocalization.string("Back tomorrow", table: .pulse))
         let weekday = back(3 * 24)
         XCTAssertFalse(weekday.contains("%@"))
         XCTAssertFalse([back(3), back(19), back(7 * 24)].contains(weekday))
-        XCTAssertEqual(back(7 * 24), AppLocalization.string("Back next week"))
+        XCTAssertEqual(back(7 * 24), AppLocalization.string("Back next week", table: .pulse))
         // The Undo bar says the time the plugin set, not the one asked for:
         // later today asked for at 22:40 comes back tomorrow.
         let returning = { (hours: Double) in
@@ -1554,26 +1554,26 @@ final class PulseFeedTests: XCTestCase {
         // What the user taught or set kept these out, so they're listed first.
         XCTAssertEqual(found.filter(\.isKeptOut).map(\.id), [1, 2, 3])
         XCTAssertEqual(found.map(\.reason), [
-            AppLocalization.string("What you did with cards like this kept it out"),
-            AppLocalization.string("You said things from this chat aren't relevant"),
-            AppLocalization.string("You turned this kind off"),
-            AppLocalization.string("Picked, but the report was full"),
-            AppLocalization.string("Not picked for the report"),
-            AppLocalization.string("The report passed over it"),
-            AppLocalization.string("Resting after your thumbs down"),
-            AppLocalization.string("Resting after you said Not now"),
-            AppLocalization.string("Already done"),
-            AppLocalization.string("Your calendar, reminders or a scheduled job covers it"),
-            AppLocalization.string("Brought up lately, and nothing changed since"),
-            AppLocalization.string("You said before that it wasn't useful"),
-            AppLocalization.string("Too minor to bring up"),
-            AppLocalization.string("Pulse chose to leave it out")
+            AppLocalization.string("What you did with cards like this kept it out", table: .pulse),
+            AppLocalization.string("You said things from this chat aren't relevant", table: .pulse),
+            AppLocalization.string("You turned this kind off", table: .pulse),
+            AppLocalization.string("Picked, but the report was full", table: .pulse),
+            AppLocalization.string("Not picked for the report", table: .pulse),
+            AppLocalization.string("The report passed over it", table: .pulse),
+            AppLocalization.string("Resting after your thumbs down", table: .pulse),
+            AppLocalization.string("Resting after you said Not now", table: .pulse),
+            AppLocalization.string("Already done", table: .pulse),
+            AppLocalization.string("Your calendar, reminders or a scheduled job covers it", table: .pulse),
+            AppLocalization.string("Brought up lately, and nothing changed since", table: .pulse),
+            AppLocalization.string("You said before that it wasn't useful", table: .pulse),
+            AppLocalization.string("Too minor to bring up", table: .pulse),
+            AppLocalization.string("Pulse chose to leave it out", table: .pulse)
         ])
         let gym = found[0]
         XCTAssertEqual(gym.kind, "watch")
         XCTAssertEqual(gym.chatTitle, "Deploy")
         XCTAssertEqual(gym.createdAt, Date(timeIntervalSince1970: 1761033600))
-        XCTAssertEqual(gym.learned?.subject, AppLocalization.string("Things from “\("Deploy")”"))
+        XCTAssertEqual(gym.learned?.subject, AppLocalization.string("Things from “\("Deploy")”", table: .pulse))
         XCTAssertNil(gym.cardID)
         // One already brought up says which card it became.
         XCTAssertEqual(found[3].cardID, 40)
@@ -1597,12 +1597,12 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(found.filter(\.isLookAhead).map(\.id), [1, 2, 3, 4])
         XCTAssertEqual(found.map(\.from), ["look_ahead", "look_ahead", "look_ahead", "look_ahead", "report", "report"])
         XCTAssertEqual(found.map(\.reason), [
-            AppLocalization.string("Picked, but the look ahead was full"),
-            AppLocalization.string("Not picked in the look ahead"),
-            AppLocalization.string("The look ahead passed over it"),
-            AppLocalization.string("Already done"),
-            AppLocalization.string("Not picked for the report"),
-            AppLocalization.string("The report passed over it")
+            AppLocalization.string("Picked, but the look ahead was full", table: .pulse),
+            AppLocalization.string("Not picked in the look ahead", table: .pulse),
+            AppLocalization.string("The look ahead passed over it", table: .pulse),
+            AppLocalization.string("Already done", table: .pulse),
+            AppLocalization.string("Not picked for the report", table: .pulse),
+            AppLocalization.string("The report passed over it", table: .pulse)
         ])
         XCTAssertEqual(PulseClient.datesCapability, "pulse_dates")
     }
@@ -1638,7 +1638,7 @@ final class PulseFeedTests: XCTestCase {
         state.applyPulseFeed(page)
         let deadline = try XCTUnwrap(page.cards.first)
         XCTAssertEqual(deadline.heading, AppLocalization.string("Deadline"))
-        XCTAssertEqual(PulseCardKind.name("deadline"), AppLocalization.string("Deadlines"))
+        XCTAssertEqual(PulseCardKind.name("deadline"), AppLocalization.string("Deadlines", table: .pulse))
         // Done closes the deadline, and Do it works on it, though it came from no chat.
         XCTAssertTrue(deadline.canBeDone && deadline.isActionable)
         XCTAssertFalse(deadline.isFound)
@@ -1654,7 +1654,7 @@ final class PulseFeedTests: XCTestCase {
         // What learning learns about deadlines is about the Shortcuts inbox.
         XCTAssertEqual(PulsePlace.source("inbox"), AppLocalization.string("Shortcuts inbox"))
         XCTAssertEqual(PulsePreference.subject(scope: "place", value: "source:inbox", chatTitle: ""),
-                       AppLocalization.string("Things from “\(AppLocalization.string("Shortcuts inbox"))”"))
+                       AppLocalization.string("Things from “\(AppLocalization.string("Shortcuts inbox"))”", table: .pulse))
         // Do it starts a chat in Pulse's profile and fills it.
         state.isConnected = true
         state.client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"),
@@ -1676,7 +1676,7 @@ final class PulseFeedTests: XCTestCase {
         """)))
         let next = try XCTUnwrap(page.cards.first)
         XCTAssertEqual(next.heading, AppLocalization.string("Next step"))
-        XCTAssertEqual(PulseCardKind.name("next"), AppLocalization.string("Next steps"))
+        XCTAssertEqual(PulseCardKind.name("next"), AppLocalization.string("Next steps", table: .pulse))
         // Pulse's own idea, held for the morning brief by default.
         XCTAssertTrue(next.isFound && next.isHeld)
         XCTAssertEqual(page.levels["next"], .brief)
@@ -1821,7 +1821,7 @@ final class PulseFeedTests: XCTestCase {
         let waiting = page.cards[0], adding = page.cards[1], added = page.cards[2], failed = page.cards[3]
         let notAdded = page.cards[4], removing = page.cards[5], unknown = page.cards[6]
         XCTAssertTrue(page.cards.allSatisfy(\.isProposal))
-        XCTAssertEqual(waiting.heading, AppLocalization.string("Suggestion"))
+        XCTAssertEqual(waiting.heading, AppLocalization.string("Suggestion", table: .pulse))
         XCTAssertEqual(waiting.proposal?.id, 4)
         XCTAssertEqual(waiting.proposal?.line, "Add to Personal: Dinner at Nopa, Sat 25 Oct, 19:00 to 21:00")
         XCTAssertEqual(waiting.proposal?.expiresAt, Date(timeIntervalSince1970: 1_761_400_000))
@@ -1839,13 +1839,13 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertTrue(adding.proposal?.isInFlight == true && removing.proposal?.isInFlight == true)
         // Undo once it's on the phone, not before or after.
         XCTAssertEqual(page.cards.compactMap(\.proposal).filter(\.canUndo).map(\.id), [6])
-        XCTAssertEqual(added.proposal?.stateText, AppLocalization.string("Added to your calendar"))
-        XCTAssertEqual(adding.proposal?.stateText, AppLocalization.string("Adding…"))
-        XCTAssertEqual(failed.proposal?.stateText, AppLocalization.string("Couldn't add it"))
+        XCTAssertEqual(added.proposal?.stateText, AppLocalization.string("Added to your calendar", table: .pulse))
+        XCTAssertEqual(adding.proposal?.stateText, AppLocalization.string("Adding…", table: .pulse))
+        XCTAssertEqual(failed.proposal?.stateText, AppLocalization.string("Couldn't add it", table: .pulse))
         XCTAssertEqual(failed.proposal?.note, "No access to Calendar")
         XCTAssertEqual(removing.proposal?.stateText, AppLocalization.string("Removing…"))
         XCTAssertEqual(PulseProposal(json: ["id": 1, "kind": "add_reminder", "state": "removed"])?.stateText,
-                       AppLocalization.string("Removed from your reminders"))
+                       AppLocalization.string("Removed from your reminders", table: .pulse))
         // A state this app doesn't know: no buttons, and out of the way.
         XCTAssertNil(unknown.proposal)
         XCTAssertTrue(unknown.isCleared)
@@ -1945,9 +1945,9 @@ final class PulseFeedTests: XCTestCase {
         """)))
         let looked = page.cards[0], plain = page.cards[1], unknown = page.cards[2]
         XCTAssertEqual(looked.looked, ["calendar", "maps", "something_new"])
-        let names = [AppLocalization.string("your calendar"), AppLocalization.string("Maps")]
+        let names = [AppLocalization.string("your calendar", table: .pulse), AppLocalization.string("Maps")]
         let list = names.formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
-        XCTAssertEqual(looked.lookedText, AppLocalization.string("Before writing this, Pulse looked at \(list)."))
+        XCTAssertEqual(looked.lookedText, AppLocalization.string("Before writing this, Pulse looked at \(list).", table: .pulse))
         XCTAssertNil(plain.lookedText)
         XCTAssertNil(unknown.lookedText)
         // Why? shows it once the plugin looks things up.
@@ -1964,7 +1964,7 @@ final class PulseFeedTests: XCTestCase {
         for label in ["calendar", "phone", "contacts", "maps", "web", "location"] {
             XCTAssertNotNil(PulseCardKind.lookedSource(label), label)
         }
-        XCTAssertEqual(PulseCardKind.lookedSource("location"), AppLocalization.string("where you are"))
+        XCTAssertEqual(PulseCardKind.lookedSource("location"), AppLocalization.string("where you are", table: .pulse))
     }
 
     // MARK: Looks (0.150.0)
@@ -2063,7 +2063,7 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertEqual(PulseLookStyle(.due(due: today, hasTime: false, noticed: nil), now: noon.addingTimeInterval(86_400)).tint, .red)
         // What fits no card type says so in What Pulse left out (0.157.7).
         let left = try XCTUnwrap(PulseLeftOut(json: ["id": 1, "text": "Idle fact", "decision": "skipped", "skip": "shapeless"]))
-        XCTAssertEqual(left.reason, AppLocalization.string("Didn't fit a card type"))
+        XCTAssertEqual(left.reason, AppLocalization.string("Didn't fit a card type", table: .pulse))
     }
 
     func testFactsThatDontHoldUpDrawPlain() throws {
@@ -2183,13 +2183,13 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertFalse(PulseLookStyle.pastLimit(value: 91, limit: nil, better: .down))
         let was = PulseLookBody.amount(78, "%")
         XCTAssertEqual(PulseLookBody.spokenChange(value: 91, was: 78, unit: "%", move: .bad),
-                       AppLocalization.string("Up from \(was), worse"))
+                       AppLocalization.string("Up from \(was), worse", table: .pulse))
         XCTAssertEqual(PulseLookBody.spokenChange(value: 60, was: 78, unit: "%", move: .good),
-                       AppLocalization.string("Down from \(was), better"))
+                       AppLocalization.string("Down from \(was), better", table: .pulse))
         XCTAssertEqual(PulseLookBody.spokenChange(value: 60, was: 78, unit: "%", move: .unsaid),
-                       AppLocalization.string("Down from \(was)"))
+                       AppLocalization.string("Down from \(was)", table: .pulse))
         XCTAssertEqual(PulseLookBody.spokenLimit(90, unit: "%", past: true),
-                       AppLocalization.string("Past the limit of \(PulseLookBody.amount(90, "%"))"))
+                       AppLocalization.string("Past the limit of \(PulseLookBody.amount(90, "%"))", table: .pulse))
         // The plugin offers them only to a Conduit that says it draws them.
         XCTAssertTrue(PresentedScreensSync.features.contains("pulse-more-shapes"))
     }

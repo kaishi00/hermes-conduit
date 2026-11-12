@@ -203,8 +203,8 @@ struct PulseLookBody: View {
             .accessibilityHidden(true)
             // One line that wraps, so a large text size keeps the job's name
             // whole rather than cutting it to fit the counts.
-            Text(verbatim: [job, AppLocalization.string("Runs: \(results.count)"),
-                            AppLocalization.string("Failed: \(failedCount)")]
+            Text(verbatim: [job, AppLocalization.string("Runs: \(results.count)", table: .pulse),
+                            AppLocalization.string("Failed: \(failedCount)", table: .pulse)]
                 .filter { !$0.isEmpty }.joined(separator: " · "))
                 .scaledFont(.caption.weight(.semibold))
                 .foregroundStyle(tint)
@@ -239,7 +239,7 @@ struct PulseLookBody: View {
         let title: String = switch state {
         case .ok: AppLocalization.string("OK")
         case .warn: AppLocalization.string("Warning")
-        case .fail: AppLocalization.string("Failing")
+        case .fail: AppLocalization.string("Failing", table: .pulse)
         }
         return HStack(spacing: 10) {
             Image(systemName: style.symbol)
@@ -275,7 +275,7 @@ struct PulseLookBody: View {
         let change = was.flatMap { was in was == value ? nil : HStack(alignment: .firstTextBaseline, spacing: 3) {
             Image(systemName: value > was ? "arrow.up" : "arrow.down")
                 .accessibilityHidden(true)
-            Text(AppLocalization.string("from \(Self.amount(was, unit))"))
+            Text(AppLocalization.string("from \(Self.amount(was, unit))", table: .pulse))
         }
         .scaledFont(.subheadline.weight(.semibold))
         .foregroundStyle(moved)
@@ -303,7 +303,7 @@ struct PulseLookBody: View {
                 if let limit {
                     Text(verbatim: " · ")
                         .foregroundStyle(.secondary)
-                    Text(AppLocalization.string("Limit \(Self.amount(limit, unit))"))
+                    Text(AppLocalization.string("Limit \(Self.amount(limit, unit))", table: .pulse))
                         .foregroundStyle(past ? Color.red : Color.secondary)
                         .accessibilityLabel(Text(verbatim: Self.spokenLimit(limit, unit: unit, past: past)))
                 }
@@ -319,20 +319,20 @@ struct PulseLookBody: View {
     static func spokenChange(value: Double, was: Double, unit: String, move: PulseLookStyle.Move) -> String {
         let from = amount(was, unit)
         switch (value > was, move) {
-        case (true, .good): return AppLocalization.string("Up from \(from), better")
-        case (true, .bad): return AppLocalization.string("Up from \(from), worse")
-        case (true, .unsaid): return AppLocalization.string("Up from \(from)")
-        case (false, .good): return AppLocalization.string("Down from \(from), better")
-        case (false, .bad): return AppLocalization.string("Down from \(from), worse")
-        case (false, .unsaid): return AppLocalization.string("Down from \(from)")
+        case (true, .good): return AppLocalization.string("Up from \(from), better", table: .pulse)
+        case (true, .bad): return AppLocalization.string("Up from \(from), worse", table: .pulse)
+        case (true, .unsaid): return AppLocalization.string("Up from \(from)", table: .pulse)
+        case (false, .good): return AppLocalization.string("Down from \(from), better", table: .pulse)
+        case (false, .bad): return AppLocalization.string("Down from \(from), worse", table: .pulse)
+        case (false, .unsaid): return AppLocalization.string("Down from \(from)", table: .pulse)
         }
     }
 
     /// A number's limit in words, saying so when the number is past it (the
     /// card shows that only by turning the limit red).
     static func spokenLimit(_ limit: Double, unit: String, past: Bool) -> String {
-        past ? AppLocalization.string("Past the limit of \(amount(limit, unit))")
-            : AppLocalization.string("Limit \(amount(limit, unit))")
+        past ? AppLocalization.string("Past the limit of \(amount(limit, unit))", table: .pulse)
+            : AppLocalization.string("Limit \(amount(limit, unit))", table: .pulse)
     }
 
     /// A number in the app's language with its unit: a percent or a degree
@@ -359,7 +359,7 @@ struct PulseLookBody: View {
                     .scaledFont(.subheadline)
                     .fixedSize(horizontal: false, vertical: true)
                 if let since {
-                    Text(AppLocalization.string("Since \(since.formatted(.dateTime.weekday(.abbreviated).day().month().locale(AppLocalization.formattingLocale))) · \(PulseLook.relativeDay(since))"))
+                    Text(AppLocalization.string("Since \(since.formatted(.dateTime.weekday(.abbreviated).day().month().locale(AppLocalization.formattingLocale))) · \(PulseLook.relativeDay(since))", table: .pulse))
                         .scaledFont(.caption.weight(.semibold))
                         .foregroundStyle(tint)
                         .fixedSize(horizontal: false, vertical: true)
@@ -383,7 +383,7 @@ struct PulseLookBody: View {
                     .scaledFont(.title3.weight(.bold))
                     .foregroundStyle(tint)
                     .fixedSize(horizontal: false, vertical: true)
-                Text(AppLocalization.string("You asked: \(asked) · \(place)"))
+                Text(AppLocalization.string("You asked: \(asked) · \(place)", table: .pulse))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -455,13 +455,13 @@ struct PulseBriefParts: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             if !today.isEmpty {
-                section(AppLocalization.string("Today (\(today.count))"), today)
+                section(AppLocalization.string("Today (\(today.count))", table: .pulse), today)
             }
             if !open.isEmpty {
-                section(AppLocalization.string("Still open (\(open.count))"), open)
+                section(AppLocalization.string("Still open (\(open.count))", table: .pulse), open)
             }
             if heldCount > 0 {
-                Text(AppLocalization.string("Held for this morning: \(heldCount)"))
+                Text(AppLocalization.string("Held for this morning: \(heldCount)", table: .pulse))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }

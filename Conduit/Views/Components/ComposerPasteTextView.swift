@@ -674,7 +674,7 @@ final class ImagePasteTextView: ReturnKeyTextView {
         let pasteEditorIdentity = pasteEditorIdentity ?? editorIdentity
         DispatchQueue.main.async { [weak self] in
             guard let self, self.editorIdentity == pasteEditorIdentity else { return }
-            self.onPastedImageError?(AppLocalization.string("The image provider returned invalid image data."))
+            self.onPastedImageError?(AppLocalization.string("The image provider returned invalid image data.", table: .chat))
         }
     }
 
@@ -693,7 +693,7 @@ final class ImagePasteTextView: ReturnKeyTextView {
     ) {
         let pasteEditorIdentity = pasteEditorIdentity ?? editorIdentity
         let message = error.map { UserFacingError.message(for: $0) }
-            ?? AppLocalization.string("Conduit couldn't read that image. Try copying it again.")
+            ?? AppLocalization.string("Conduit couldn't read that image. Try copying it again.", table: .chat)
         DispatchQueue.main.async { [weak self] in
             guard let self, self.editorIdentity == pasteEditorIdentity else { return }
             self.onPastedImageError?(message)

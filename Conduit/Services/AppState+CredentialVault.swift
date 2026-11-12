@@ -23,8 +23,8 @@ enum CredentialVaultError: Error, Equatable, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notConnected: AppLocalization.string("Connect to Hermes to see its saved logins.")
-        case .unsupported: AppLocalization.string("This Hermes has no credential vault yet. Update Hermes to 0.23 or later to keep logins here.")
+        case .notConnected: AppLocalization.string("Connect to Hermes to see its saved logins.", table: .connection)
+        case .unsupported: AppLocalization.string("This Hermes has no credential vault yet. Update Hermes to 0.23 or later to keep logins here.", table: .connection)
         case .superseded: AppLocalization.string("That was interrupted before it finished. Try again.")
         }
     }

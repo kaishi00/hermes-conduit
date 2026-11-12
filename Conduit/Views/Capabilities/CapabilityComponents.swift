@@ -22,7 +22,7 @@ enum CapabilitiesTab: String, CaseIterable, Identifiable {
         case .skills: return AppLocalization.string("Skills")
         case .tools: return AppLocalization.string("Tools")
         case .connectors: return AppLocalization.string("Connectors")
-        case .plugins: return AppLocalization.string("Plugins")
+        case .plugins: return AppLocalization.string("Plugins", table: .bots)
         }
     }
 }

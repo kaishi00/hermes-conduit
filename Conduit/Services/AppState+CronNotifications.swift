@@ -112,7 +112,7 @@ extension AppState {
             if error is CancellationError { return false }
             cronNotificationsLogger.notice("Cron notifications not saved: \(LogRedaction.message(error), privacy: .public)")
             if stillHere {
-                errorMessage = AppLocalization.string("Could not change this job's notifications: \(UserFacingError.message(for: error))")
+                errorMessage = AppLocalization.string("Could not change this job's notifications: \(UserFacingError.message(for: error))", table: .tasks)
             }
             return false
         }

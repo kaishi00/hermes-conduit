@@ -143,7 +143,7 @@ extension AppState {
                         case .notReady, .answeredAfterSwitch: break
                         case .http(status: 501, _):
                             // The gateway isn't a systemd service.
-                            return AppLocalization.string("Conduit can only force a restart for a gateway that systemd runs. Run hermes gateway stop, then hermes gateway start, on the host.")
+                            return AppLocalization.string("Conduit can only force a restart for a gateway that systemd runs. Run hermes gateway stop, then hermes gateway start, on the host.", table: .connection)
                         default: return UserFacingError.message(for: error)
                         }
                     } else if let dropped = error as? URLError,
