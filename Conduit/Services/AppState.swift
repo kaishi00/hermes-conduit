@@ -13277,6 +13277,12 @@ final class AppState: ObservableObject {
     /// A looks share is on its way, and another change waits for it.
     var roomLooksSharing = false
     var roomLooksShareAgain = false
+    /// Your room picture's changes so far: a read of the one Hermes keeps
+    /// that started before the latest is dropped.
+    var roomPersonPictureChanges = 0
+    /// A change of your room picture on its way to Hermes: one at a time,
+    /// so an older one can't land last (Settings waits on it).
+    @Published var roomPersonPictureSaving = false
     /// Each bot's picture as sent, by the image it was made from.
     var roomLookPictures: [String: (image: UIImage, data: Data?)] = [:]
     /// The picture you show in rooms over Links, kept on this phone.

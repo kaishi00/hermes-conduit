@@ -335,5 +335,16 @@ extension GroupChatModelsTests {
         XCTAssertEqual(removed, .saved)
         XCTAssertTrue(routes.looksPuts.last?["person"] is NSNull)
         XCTAssertNil(appState.roomPersonPicture)
+
+        // A read a change overtook doesn't put the older picture back.
+        routes.looksDelays = [.milliseconds(300)]
+        let read = Task { await appState.readRoomPersonPicture() }
+        try await Task.sleep(for: .milliseconds(50))
+        let again = await appState.setRoomPersonPicture(image)
+        XCTAssertEqual(again, .saved)
+        let saved = appState.roomPersonPicture
+        await read.value
+        XCTAssertNotNil(saved)
+        XCTAssertEqual(appState.roomPersonPicture, saved)
     }
 }

@@ -547,6 +547,7 @@ struct RoomPersonPictureSection: View {
                           systemImage: "photo")
                 }
                 .buttonStyle(.settings)
+                .disabled(appState.roomPersonPictureSaving)
                 if image != nil {
                     Button(role: .destructive) {
                         failure = nil
@@ -555,6 +556,7 @@ struct RoomPersonPictureSection: View {
                         Label(AppLocalization.string("Remove"), systemImage: "trash")
                     }
                     .buttonStyle(.settings)
+                    .disabled(appState.roomPersonPictureSaving)
                 }
             }
             if let failure {

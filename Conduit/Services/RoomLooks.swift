@@ -216,6 +216,10 @@ extension AppState {
     func setRoomPersonPicture(_ image: UIImage?) async -> RoomPersonPictureChange {
         let data = image.flatMap(RoomLooksUpload.picture)
         if image != nil, data == nil { return .unusable }
+        guard !roomPersonPictureSaving else { return .notSaved }
+        roomPersonPictureSaving = true
+        defer { roomPersonPictureSaving = false }
+        roomPersonPictureChanges &+= 1
         if roomLooksKeepYou {
             let person: Any = data.map { RoomLook(picture: $0, color: nil).body } ?? NSNull()
             guard isConnected,
@@ -232,12 +236,14 @@ extension AppState {
 
     /// Shows the picture your Hermes keeps for you, as another of your
     /// devices last gave it (`GET /rooms/looks` without a room). One that
-    /// fails keeps what's shown.
+    /// fails, or that a change here overtook, keeps what's shown.
     func readRoomPersonPicture() async {
-        guard roomLooksKeepYou, isConnected, let dashboard = activeDashboardID,
-              let response = try? await roomRouteJSON(path: RoomLooksUpload.path, method: "GET", body: nil,
+        guard roomLooksKeepYou, isConnected, let dashboard = activeDashboardID else { return }
+        let changes = roomPersonPictureChanges
+        guard let response = try? await roomRouteJSON(path: RoomLooksUpload.path, method: "GET", body: nil,
                                                       timeoutMilliseconds: nil),
-              response["ok"] as? Bool == true, activeDashboardID == dashboard else { return }
+              response["ok"] as? Bool == true, activeDashboardID == dashboard,
+              roomPersonPictureChanges == changes, !roomPersonPictureSaving else { return }
         keepRoomPersonPicture(RoomLook(response["person"])?.picture)
     }
 
