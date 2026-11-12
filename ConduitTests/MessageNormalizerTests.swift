@@ -3339,6 +3339,101 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertFalse(messages[0].content.contains("scaffold"))
     }
 
+    /// Issue 1553: the finished-agents notice carries each agent's result,
+    /// read from the report Hermes wrote for the model: its task, how it
+    /// ended, how long it ran and its summary, never the preamble or the
+    /// lines meant for the model.
+    func testAsyncDelegationCompleteReadsEachAgentsResult() throws {
+        let report = """
+        [ASYNC DELEGATION BATCH COMPLETE — deleg_1]
+        A background fan-out unit you dispatched earlier — 3 subagent(s) — has finished; its consolidated results are below.
+
+        Dispatched: 2026-10-30 21:50:00 (16m ago)
+        Context you provided: PRIVATE CONTEXT
+        Role: leaf   Model: glm   Total duration: 960s
+
+        --- ✓ TASK 1/3: Build A1 (dry-run)  (status=completed, api_calls=12, 63.2s) ---
+        Wrote scripts/a1.py.
+        Full live transcript (complete tool/assistant trace): /home/h/.hermes/live/sa-1.jsonl
+
+        --- ⚠ TASK 2/3: Build A2
+        across two lines  (status=completed, api_calls=40, 120s, TRUNCATED: hit max_iterations — work may be incomplete) ---
+        [TRUNCATED — subagent hit its iteration cap; the summary below may be incomplete. Verify before relying on it, or re-dispatch the unfinished part.]
+        Half of A2.
+
+        --- ✗ TASK 3/3: Build A3  (status=failed, 5s) ---
+        (failed: provider error)
+        This failure (auth) repeats for the same task on the same model and provider, so do not re-dispatch it unchanged.
+        """
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(320),
+                "role": .string("user"),
+                "content": .string(report),
+                "display_kind": .string("async_delegation_complete"),
+                "display_metadata": .object(["task_count": .number(3)])
+            ])
+        ])
+        XCTAssertEqual(messages.count, 1)
+        XCTAssertEqual(messages[0].content, "3 background agents finished")
+        let entries = try XCTUnwrap(messages[0].delegationReport?.entries)
+        XCTAssertEqual(entries.map(\.number), [1, 2, 3])
+        XCTAssertEqual(entries.map(\.goal), ["Build A1 (dry-run)", "Build A2 across two lines", "Build A3"])
+        XCTAssertEqual(entries.map(\.outcome), [.completed, .incomplete, .failed])
+        XCTAssertEqual(entries.map(\.duration), [63.2, 120, 5])
+        XCTAssertEqual(entries.map(\.result), ["Wrote scripts/a1.py.", "Half of A2.", "(failed: provider error)"])
+        let everything = entries.map { $0.goal + $0.result }.joined()
+        XCTAssertFalse(everything.contains("PRIVATE CONTEXT"))
+        XCTAssertFalse(everything.contains(".jsonl"))
+
+        let cached = try XCTUnwrap(OfflineCachedMessage(messages[0]))
+        let decoded = try JSONDecoder().decode(OfflineCachedMessage.self, from: JSONEncoder().encode(cached))
+        XCTAssertEqual(decoded.chatMessage.delegationReport, messages[0].delegationReport, "the saved copy keeps the results")
+    }
+
+    func testAsyncDelegationCompleteReadsOneAgentsResult() throws {
+        let report = """
+        [ASYNC DELEGATION COMPLETE — deleg_2]
+        A background subagent you dispatched earlier has finished.
+
+        Original goal: Summarize the inbox
+        Role: leaf
+        Status: interrupted   API calls: 3   Duration: 12.5s
+        --- RESULT ---
+        The subagent was interrupted before completing.
+        """
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(321), "role": .string("user"), "content": .string(report),
+                "display_kind": .string("async_delegation_complete"),
+                "display_metadata": .object(["task_count": .number(1)])
+            ])
+        ])
+        let entry = try XCTUnwrap(messages.first?.delegationReport?.entries.first)
+        XCTAssertEqual(entry.goal, "Summarize the inbox")
+        XCTAssertEqual(entry.outcome, .stopped)
+        XCTAssertEqual(entry.duration, 12.5)
+        XCTAssertEqual(entry.result, "The subagent was interrupted before completing.")
+    }
+
+    /// A projection Hermes chose, a report Conduit can't read, or any other
+    /// row keeps the plain notice.
+    func testAsyncDelegationCompleteKeepsThePlainNoticeWithoutAReadableReport() {
+        let rows: [AnyCodable] = [
+            .object(["id": .number(322), "role": .string("user"), "content": .string("[ASYNC DELEGATION COMPLETE — x]\nno result block"),
+                     "display_kind": .string("async_delegation_complete")]),
+            .object(["id": .number(323), "role": .string("user"),
+                     "content": .string("[ASYNC DELEGATION BATCH COMPLETE — y]\n\n--- ✓ TASK 1/1: g  (status=completed) ---\nok"),
+                     "display_content": .string("Agents done"),
+                     "display_kind": .string("async_delegation_complete")]),
+            .object(["id": .number(324), "role": .string("user"),
+                     "content": .string("[ASYNC DELEGATION BATCH COMPLETE — z]\n\n--- ✓ TASK 1/1: g  (status=completed) ---\nok")]),
+        ]
+        let messages = MessageNormalizer.normalizeMessages(rows)
+        XCTAssertFalse(messages.isEmpty)
+        XCTAssertTrue(messages.allSatisfy { $0.delegationReport == nil })
+    }
+
     func testAsyncDelegationCompleteUsesSingularForOneTask() {
         let messages = MessageNormalizer.normalizeMessages([
             .object([

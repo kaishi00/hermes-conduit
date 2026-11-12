@@ -440,6 +440,10 @@ final class TranscriptLayout: UICollectionViewLayout {
         case .message(let target):
             if target.isStep || target.isReview { return rowGap + 44 }
             let message = target.message
+            if let report = message.delegationReport {
+                // Folded: the notice and a line per agent shown.
+                return rowGap + 72 + CGFloat(min(report.entries.count, DelegationReportCard.foldedLimit)) * 24
+            }
             let attachments = CGFloat(message.attachments?.count ?? 0) * 200
             let width = message.role == .user ? width * 0.8 : width
             return rowGap + textHeight(message.content, width: width) + attachments

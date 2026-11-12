@@ -376,8 +376,18 @@ struct WorkspaceFolderView: View {
         } else if !query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, explorer.canChange {
             searchResults
         } else {
+            // The profile has the plugin off (issue 1438): how to turn it on.
+            if let remedy = explorer.pluginOff {
+                Label {
+                    Text(verbatim: remedy)
+                } icon: {
+                    Image(systemName: "puzzlepiece.extension")
+                }
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 8)
             // Not while the plugin hasn't said (offline, just connected).
-            if !explorer.canChange, !appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
+            } else if !explorer.canChange, !appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
                 Label {
                     Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to search this folder and make, move or delete files here. Settings › Conduit plugin can update it.")))
                 } icon: {
@@ -388,7 +398,8 @@ struct WorkspaceFolderView: View {
                 .padding(.vertical, 8)
             }
             // Kept ones show until the plugin says it doesn't serve them.
-            if !explorer.recent.isEmpty, appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
+            if !explorer.recent.isEmpty, explorer.pluginOff == nil,
+               appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
                 recentSection
             }
             let rows = explorer.rows()
