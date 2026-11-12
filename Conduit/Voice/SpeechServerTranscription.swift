@@ -27,7 +27,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
     nonisolated static let inputSampleRate: Double = 24_000
     /// Trailing silence at the end of speech, longer than a typical turn
     /// detector's silence window.
-    static let trailingSilence = Data(count: Int(inputSampleRate * 0.8) * 2)
+    nonisolated static let trailingSilence = Data(count: Int(inputSampleRate * 0.8) * 2)
 
     private enum Outcome {
         case finished(String?)
@@ -110,7 +110,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         if let outcome { return Self.transcript(outcome) }
         guard !ended else { return nil }
         ended = true
-        enqueueAudio(Self.trailingSilence)
+        enqueueAudio(Self.trailingSilence, from: Self.inputSampleRate)
         if let commit = try? Self.encode(["type": "input_audio_buffer.commit"]) {
             enqueue(.string(commit))
         }
@@ -198,8 +198,10 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
 
     /// Resampled and encoded off the main actor, in the send chain's order,
     /// as a live call's microphone is (issue 1959).
-    private func enqueueAudio(_ pcm16: Data) {
-        let rate = captureSampleRate
+    /// `rate` is the audio's own: the capture's, or the server's input
+    /// rate for the trailing silence, which is already there.
+    private func enqueueAudio(_ pcm16: Data, from rate: Double? = nil) {
+        let rate = rate ?? captureSampleRate
         enqueue {
             await LiveVoiceWireCoding.offMainActor {
                 let pcm24 = Self.resampled(pcm16, from: rate)

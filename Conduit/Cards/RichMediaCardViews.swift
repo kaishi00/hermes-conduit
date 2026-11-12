@@ -292,10 +292,12 @@ final class RichAudioPlayer: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in MainActor.assumeIsolated { if self?.playing == url { self?.stop() } } }
             .store(in: &endings)
+        // An interruption ends the item and lets its lease go, so nothing
+        // keeps holding the session (wake listening waits on that).
         NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)
             .filter { ($0.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue }
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in MainActor.assumeIsolated { if self?.playing == url { self?.stop(endingSession: false) } } }
+            .sink { [weak self] _ in MainActor.assumeIsolated { if self?.playing == url { self?.stop() } } }
             .store(in: &endings)
         self.player = player
         playing = url
