@@ -1152,7 +1152,7 @@ saved transcript (see Ending a call and what gets saved)
 
 **Code**
 - Gemini and Qwen: `Shared/GeminiLive/GeminiLiveProtocol.swift` (inputTranscription), `Shared/GeminiLive/QwenLiveSocket.swift` (maps Qwen's one completed transcript per item)
-- Grok: `Shared/GrokLive/GrokLiveProtocol.swift` (InputTranscriptStage), `Shared/GrokLive/GrokLiveSession.swift` (pendingInput, finishInput); the phone's calls, CarPlay and calls from Hermes build it in `Conduit/Services/AppState+GrokLive.swift`, and the Watch runs the same session (`ConduitWatch/WatchDirectCallModel.swift`)
+- Grok: `Shared/GrokLive/GrokLiveProtocol.swift` (InputTranscriptStage), `Shared/GrokLive/GrokLiveSession.swift` (pendingInput, finishInput); the phone's calls, CarPlay and calls from Hermes build it in `Conduit/Services/AppState.swift` (grokLiveController), with its client from `Conduit/Services/AppState+GrokLive.swift` (makeGrokLiveClient), and the Watch runs the same session (`ConduitWatch/WatchDirectCallModel.swift`)
 - Local Live: `Shared/LocalLive/LocalLiveSession.swift`, decoding with Grok's protocol
 - GPT-Live: `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` (inputTranscript deltas, the turn assembler)
 - Classic: `Conduit/Voice/SpeechServerTranscription.swift`

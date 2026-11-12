@@ -619,10 +619,11 @@ def assign(src, steps):
                         name, _, nth = name.partition("#")
                         found = [i for i, it in enumerate(items) if name in it.names]
                         if nth:
-                            if not nth.isdigit() or int(nth) < 1:
+                            n = int(nth) if nth.isascii() and nth.isdigit() else 0
+                            if not 1 <= n <= len(found):
                                 raise SystemExit(f"can't cut {part!r} at {cut!r}: "
-                                                 f"name one as {name}#N, N from 1")
-                            found = found[int(nth) - 1:int(nth)]
+                                                 f"name one as {name}#N, N from 1 to {len(found)}")
+                            found = found[n - 1:n]
                         elif len(found) != 1:
                             raise SystemExit(f"can't cut {part!r} at {cut!r}: "
                                              f"{len(found)} {name!r}, name one as {name}#N")

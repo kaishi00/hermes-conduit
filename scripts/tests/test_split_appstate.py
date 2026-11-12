@@ -347,8 +347,8 @@ final class AppState: ObservableObject {
         with self.assertRaises(SystemExit, msg="pick is two declarations"):
             split.STEPS = [{"AppState+Pick.swift": ["Picking|from pick"]}]
             split.run(self.repo, 1, True, pr=42, today="2026-11-12")
-        for bad in ("pick#x", "pick#0", "pick#3"):
-            with self.assertRaises(SystemExit, msg=bad):
+        for bad in ("pick#x", "pick#0", "pick#3", "pick#\u00b2"):
+            with self.assertRaisesRegex(SystemExit, r"name one as pick#N, N from 1 to 2", msg=bad):
                 split.STEPS = [{"AppState+Pick.swift": [f"Picking|from {bad}"]}]
                 split.run(self.repo, 1, True, pr=42, today="2026-11-12")
         split.STEPS = [{"AppState+Pick.swift": ["Picking|from pick#2"]}]
