@@ -85,7 +85,7 @@ final class AppState: ObservableObject {
     var allProfilesCatalogTask: Task<Void, Never>?
     /// Which read `allProfilesCatalogTask` is, so only it clears the handle.
     var allProfilesCatalogRead: UUID?
-    @Published private(set) var sessionFilterOrder: [SessionSource] = AppState.defaultSessionFilterOrder
+    @Published var sessionFilterOrder: [SessionSource] = AppState.defaultSessionFilterOrder
 
     var cachedGatewayMediaResolver: (profile: String, resolver: GatewayMediaDataURLResolver)?
     /// See `roomFilePicturesResolver` (GroupRoomFiles.swift).

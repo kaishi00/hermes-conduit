@@ -232,6 +232,7 @@ final class AppState: ObservableObject {
     private(set) var shifted = LoadState()
     private(set) var unshifted = 0
     private(set) var weakly = 0
+    private(set) var order = [0]
 
     func connect() {
         loadState.reset()
@@ -242,6 +243,7 @@ final class AppState: ObservableObject {
         shifted.n &<<= 3
         _ = unshifted &<< 1
         Task { [weak self] in self?.weakly = 1 }
+        order.move(fromOffsets: IndexSet(integer: 0), toOffset: 2)
     }
 }
 ''')
@@ -256,6 +258,7 @@ final class AppState: ObservableObject {
         self.assertIn("\n    var shifted = LoadState()", app, "&<<= through a property writes it")
         self.assertIn("private(set) var unshifted = 0", app, "a plain shift only reads it")
         self.assertIn("\n    var weakly = 0", app, "self?. writes it")
+        self.assertIn("\n    var order = [0]", app, "move(fromOffsets:toOffset:) writes it")
 
     def test_widens_another_types_fileprivate_member_the_moved_code_writes(self):
         (self.repo / split.APP_STATE).write_text('''import SwiftUI

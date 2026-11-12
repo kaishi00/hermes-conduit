@@ -653,7 +653,7 @@ def code_names(masked_lines):
 MUTATION = (r"(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\s*(=(?!=)|&?\+=|&?-=|&?\*=|/=|%=|\|=|&=|\^=|&?<<=|&?>>=|\?\?=)"
             r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(append|remove\w*|insert|merge|formUnion|"
             r"formIntersection|subtract|sort|reverse|popLast|popFirst|update\w*|toggle|"
-            r"swapAt|replaceSubrange|reserveCapacity|shuffle)\b")
+            r"swapAt|replaceSubrange|reserveCapacity|shuffle|move|partition|formSymmetricDifference)\b")
 
 
 # `mutating func` names the app declares (set by run): calling one through a
