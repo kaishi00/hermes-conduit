@@ -473,7 +473,7 @@ extension HermesVoiceGatewayTimeoutTests {
         trace.end("Ended")
         trace.note("Classic speaks afterwards")
         XCTAssertEqual(trace.steps.last.map { $0.hasSuffix("Ended") }, true, "nothing is noted once the reading ended")
-        XCTAssertEqual(trace.report?.components(separatedBy: "\n").first, "Last Read Aloud: steps")
+        XCTAssertEqual(trace.report?.components(separatedBy: "\n").first, "Last Read Aloud reading: steps")
     }
 
     func testAReplyTooShortToTellWaitsForASentenceThatSaysItsLanguage() async throws {

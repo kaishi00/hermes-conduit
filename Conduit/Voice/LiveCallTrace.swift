@@ -31,7 +31,7 @@ final class LiveCallTrace {
     /// The last Read Aloud reading (issue 1641). Its steps are taken only
     /// while the reading runs: the iPhone voice and the playback service
     /// it notes from serve Classic and the speech test too.
-    static let readAloud = LiveCallTrace(noun: "")
+    static let readAloud = LiveCallTrace(noun: "reading")
     static let maximumSteps = 200
     /// The call's first steps (its setup and microphone) are always kept;
     /// past the cap, the oldest after them make way for the newest, so a
@@ -86,7 +86,7 @@ final class LiveCallTrace {
     /// The copyable report, nil before any call.
     var report: String? {
         guard let name else { return nil }
-        var lines = ["Last \(noun.isEmpty ? name : "\(name) \(noun)"): steps"] + steps
+        var lines = ["Last \(name) \(noun): steps"] + steps
         if droppedSteps > 0 { lines.insert("… \(droppedSteps) steps not kept", at: 1 + Self.keptFirstSteps) }
         return lines.joined(separator: "\n")
     }
