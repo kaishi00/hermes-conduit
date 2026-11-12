@@ -1890,6 +1890,16 @@ final class AppState: ObservableObject {
     /// An iPad app on a Mac is inactive whenever another app is in front,
     /// where the reply stays in view, so there only the background counts.
     private var sceneHidesLiveRows = false
+    /// On a Mac, inactive means another app is in front, where Conduit's
+    /// window stays in view. Tests set their own.
+    var inactiveSceneStaysInView = ProcessInfo.processInfo.isiOSAppOnMac
+    /// Conduit's screens are in view: the scene is active, or on a Mac its
+    /// window shows behind another app's. The Chats list's live reads keep
+    /// going there, so its Running and Approve keep up with the chats
+    /// beside the app in front (issue 1615).
+    var sceneIsInView: Bool {
+        isSceneActive || (inactiveSceneStaysInView && sceneHasBeenActive && !sceneHidesLiveRows)
+    }
 
     private func pauseLivePublishes() {
         streamingPublishTask?.cancel()
@@ -10611,8 +10621,9 @@ final class AppState: ObservableObject {
     }
 
     /// Whether a turn is running in the conversation or it waits on the user.
-    /// The open chat's own turn state is authoritative for "working"; the
-    /// registry snapshot can lag it by a poll.
+    /// The open chat's own running turn is authoritative for "working", so
+    /// its row says what its working line says; the registry snapshot can
+    /// lag it by a poll.
     func sessionLiveStatus(_ session: SessionSummary) -> SessionLiveStatus? {
         // A snapshot from before a disconnect may be long stale.
         let registry = isConnected && liveSessionStatusProfile == activeProfile
@@ -10625,12 +10636,16 @@ final class AppState: ObservableObject {
         guard !isOtherProfileRow(session) else { return registry }
         if sessionMatchesActiveSession(session) {
             if registry == .needsInput { return .needsInput }
-            // Once the open chat's own turn state is known it is fresher
-            // than a poll; while it is still syncing or stale, the registry
-            // decides.
-            let localStateKnown = !turnStateIsStale && (turnState == .idle || turnState == .running)
-            guard localStateKnown else { return registry }
-            return isBusy ? .working : nil
+            // Running while the chat shows its working line, stale or not:
+            // a Mac window that isn't frontmost goes inactive, which marks
+            // the turn state stale while its events keep coming, and the
+            // row had gone quiet beside a chat still saying it worked
+            // (issue 1615).
+            if isBusy { return .working }
+            // A known idle is fresher than a poll; while the chat is still
+            // syncing, or its idle is stale, the registry decides.
+            let localIdleKnown = !turnStateIsStale && turnState == .idle
+            return localIdleKnown ? nil : registry
         }
         return registry
     }
@@ -10648,7 +10663,7 @@ final class AppState: ObservableObject {
     func refreshLiveSessionStatuses() async -> Bool {
         // Its own task: a slow plugin read must not hold up live status.
         Task { [weak self] in await self?.refreshDesktopViewsIfDue() }
-        guard isSceneActive, let client, isConnected else { return false }
+        guard sceneIsInView, let client, isConnected else { return false }
         guard client !== activeListUnsupportedClient else { return true }
         let profile = activeProfile
         do {
@@ -22401,7 +22416,7 @@ final class AppState: ObservableObject {
                 noteChatLeft(activeSessionId)
             }
             isSceneActive = false
-            if !ProcessInfo.processInfo.isiOSAppOnMac {
+            if !inactiveSceneStaysInView {
                 sceneHidesLiveRows = true
                 pauseLivePublishes()
             }
@@ -24118,13 +24133,13 @@ final class AppState: ObservableObject {
     func chatListPollTick() async -> TimeInterval {
         let followsChanges = client?.sendsChangeEvents == true
         // Off screen (voice or CarPlay keep the app running) nothing reads.
-        guard isSceneActive, isConnected else {
+        guard sceneIsInView, isConnected else {
             return PollCadence.stretched(chatListPollPacer.interval(followingChanges: followsChanges), by: deviceConditions())
         }
         let registryRead = await refreshLiveSessionStatuses()
         // Left the screen, or the poll stopped, while the registry read was
         // on its way: nothing more reads.
-        guard isSceneActive, !Task.isCancelled else {
+        guard sceneIsInView, !Task.isCancelled else {
             return PollCadence.stretched(chatListPollPacer.interval(followingChanges: followsChanges), by: deviceConditions())
         }
         var registry: Set<String>?

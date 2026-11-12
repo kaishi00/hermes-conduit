@@ -222,7 +222,7 @@ struct V2ProjectPage: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            MinimisedLiveVoiceBar()
+            V2ListCallBar()
         }
         // Read again when the chats list's catalog changes: beside the open
         // chat on a wide window the page stays on screen (issue 1454).
