@@ -160,9 +160,8 @@ extension AppState {
         if choices.photos, !current.photos, !(await phoneSync.photoSource.requestAccess()).canRead {
             throw PhoneSyncEngine.PhotosNotAllowed()
         }
-        // Their descriptions stay on the phone only while Photos is on.
-        if !choices.photos, current.photos { phoneSync.photoSource.forget() }
-        // A newer change, or turning sharing off, came in while iOS asked.
+        // A newer change, or turning sharing off, came in while iOS asked:
+        // this one does nothing, its Photos off included.
         guard mine == Self.phoneUpdateGeneration, phoneSync.preferences.destination == destination else { return }
         var preferences = choices
         preferences.destination = destination
@@ -174,6 +173,9 @@ extension AppState {
             await turnOffPhoneSync(deleteFromHost: true)
             return
         }
+        // Their descriptions stay on the phone only while Photos is on:
+        // forgotten as Photos off is saved, with nothing awaited between.
+        if !preferences.photos, phoneSync.preferences.photos { phoneSync.photoSource.forget() }
         phoneSync.savePreferences(preferences)
         Task { await runPhoneSync(reason: .manual) }
     }
@@ -246,9 +248,11 @@ extension AppState {
     /// answered one, and says how it went right away. On another device,
     /// or after 15 minutes, the phone asks as usual. Returns how the last
     /// pass went, so the card can say when this phone didn't get it yet.
+    /// `kind` is what the card showed: a change of another kind under the
+    /// same id gets the phone's own card.
     @discardableResult
-    func applyPulseApproval(_ changeID: String) async -> PhoneSyncEngine.Outcome {
-        await phoneSync.approveFromCard(changeID)
+    func applyPulseApproval(_ changeID: String, kind: PhoneChange.Kind) async -> PhoneSyncEngine.Outcome {
+        await phoneSync.approveFromCard(changeID, kind: kind)
         let outcome = await runPhoneSync(reason: .answered)
         // Applied when that pass took it from the host: the next one says so.
         if phoneSync.state.unreported.contains(where: { $0.id == changeID }) {

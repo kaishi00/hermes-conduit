@@ -596,7 +596,7 @@ extension HermesVoiceGatewayTimeoutTests {
 
         // Approved before the host handed it out: applied when it comes, with
         // no card, and reported on the next exchange. Another change still asks.
-        await engine.approveFromCard("ch_pulse")
+        await engine.approveFromCard("ch_pulse", kind: .addEvent)
         host.changes = [
             ["id": "ch_pulse", "kind": "add_event", "auto": false,
              "fields": ["title": "Dinner", "start": "2026-10-25T19:00:00Z", "end": "2026-10-25T21:00:00Z"]],
@@ -615,18 +615,48 @@ extension HermesVoiceGatewayTimeoutTests {
                              "target": ["event_id": "item_ch_pulse"], "fields": [String: Any]()])
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_other", "ch_undo"])
-        await engine.approveFromCard("ch_undo")
+        await engine.approveFromCard("ch_undo", kind: .deleteEvent)
         XCTAssertEqual(source.applied, ["ch_pulse", "ch_undo"])
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_other"])
 
         // One the host doesn't hand out within 15 minutes (another device's,
         // or a relaunch's) gets its card, as any change does.
-        await engine.approveFromCard("ch_late")
+        await engine.approveFromCard("ch_late", kind: .addReminder)
         clock = clock.addingTimeInterval(PhoneSyncEngine.cardApprovalWindow + 1)
         host.changes.append(["id": "ch_late", "kind": "add_reminder", "auto": false, "fields": ["title": "Late"]])
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(source.applied, ["ch_pulse", "ch_undo"])
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_other", "ch_late"])
+    }
+
+    /// Issue 2252: a Pulse tap approves the change its card showed. Another
+    /// kind under that id, handed out later or already waiting, keeps the
+    /// phone's own card.
+    func testAPulseApprovalDoesNotApplyAnotherKindOfChangeUnderItsID() async throws {
+        let source = FakePhoneCalendarSource()
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: source)
+        engine.savePreferences(phonePreferences())
+
+        // Shown as a reminder to add; the host hands out a delete under the id.
+        await engine.approveFromCard("ch_swap", kind: .addReminder)
+        host.changes = [["id": "ch_swap", "kind": "delete_event", "auto": false,
+                         "target": ["event_id": "ev_1"], "fields": [String: Any]()]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(source.applied, [])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_swap"], "It waits on its card")
+
+        // Its card already waiting: a tap for another kind doesn't answer it.
+        await engine.approveFromCard("ch_swap", kind: .addEvent)
+        XCTAssertEqual(source.applied, [])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_swap"])
+
+        // A kind no Pulse card shows is never approved by one.
+        await engine.approveFromCard("ch_run", kind: .runShortcut)
+        host.changes.append(["id": "ch_run", "kind": "add_reminder", "auto": false, "fields": ["title": "Buy milk"]])
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(source.applied, [])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_swap", "ch_run"])
     }
 
     func testPhoneVoiceCallsReadAnswerAndAdd() async throws {
@@ -1644,6 +1674,13 @@ extension HermesVoiceGatewayTimeoutTests {
         let fresh = SpokenApprovals.Waiting(phoneChanges: ["ch_new"], staleChanges: ["ch_old"])
         XCTAssertEqual(SpokenApprovals.answer("Yes", waiting: fresh)?.target, .phoneChange(id: "ch_new"))
 
+        // A photo or a shortcut run (issue 2253) is answered only on its
+        // card: Classic voice counts it as stale, so a yes leaves it waiting.
+        XCTAssertTrue(SpokenApprovals.answeredOnlyOnCard(.sendPhoto))
+        XCTAssertTrue(SpokenApprovals.answeredOnlyOnCard(.runShortcut))
+        XCTAssertFalse(SpokenApprovals.answeredOnlyOnCard(.addEvent))
+        XCTAssertFalse(SpokenApprovals.answeredOnlyOnCard(.deleteContact))
+
         // Nothing waiting, or more than one: a yes answers nothing.
         XCTAssertNil(SpokenApprovals.answer("Yes", waiting: SpokenApprovals.Waiting()))
         XCTAssertNil(SpokenApprovals.answer("Yes", waiting: SpokenApprovals.Waiting(phoneChanges: ["ch_1"], chatApprovals: ["m_1"])))
@@ -1688,8 +1725,8 @@ extension HermesVoiceGatewayTimeoutTests {
         let spoken = await PhoneVoiceTools.run(changesTool, arguments: ["action": "approve", "id": "ch_photo"], engine: engine,
                                                confirmed: { _, _ in true }, lastUserTurn: { (UUID(), "yes") }, answer: voiceAnswer)
         XCTAssertNotNil(spoken["error"])
-        await engine.approveFromCard("ch_photo")
-        await engine.approveFromCard("ch_early")
+        await engine.approveFromCard("ch_photo", kind: .sendPhoto)
+        await engine.approveFromCard("ch_early", kind: .addEvent)
         host.changes.append(["id": "ch_early", "kind": "send_photo", "auto": false, "target": ["photo_id": "ph_0000000000000001"]])
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(Set(engine.prompts.map(\.id)), ["ch_photo", "ch_early"])
@@ -1776,6 +1813,32 @@ extension HermesVoiceGatewayTimeoutTests {
             XCTAssertEqual((part["sharing"] as? [String: Any])?["photos"] as? Bool, false)
         }
         XCTAssertNil(engine.state.photoHashes, "The next pass sends descriptions again once access is back")
+    }
+
+    /// Issue 2254: access given back while a pass that began without it
+    /// reads the calendar. Its upload says Photos is on with the
+    /// descriptions it carries, and what it sent is what's recorded.
+    func testPhotoAccessGivenBackMidPassSaysPhotosIsOnWithItsDescriptions() async throws {
+        let source = FakePhoneCalendarSource()
+        let photos = FakePhonePhotoSource()
+        photos.entries = [["id": "ph_0000000000000001", "taken": "2026-10-12T15:00:00Z", "labels": ["beach"]]]
+        photos.granted = .denied
+        let host = FakePhoneHost()
+        let engine = makePhoneEngine(source: source, photos: photos)
+        var preferences = phonePreferences()
+        preferences.photos = true
+        engine.savePreferences(preferences)
+
+        source.whileReadingEvents = { [unowned photos] in photos.granted = .full }
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        source.whileReadingEvents = nil
+        let carrying = host.batches.filter { $0["photos"] != nil }
+        XCTAssertFalse(carrying.isEmpty, "Access came back before the photos were read: they go")
+        for part in host.batches {
+            XCTAssertEqual((part["sharing"] as? [String: Any])?["photos"] as? Bool, true,
+                           "No part says Photos is off while the pass sends descriptions")
+        }
+        XCTAssertNotNil(engine.state.photoHashes)
     }
 
     func testAPhotosOffPartTheHostTookThenARefusedPartSendsDescriptionsAgain() async throws {
@@ -2005,7 +2068,12 @@ private final class FakePhoneCalendarSource: PhoneCalendarSource {
     func calendars(eventsReadable: Bool, reminders: Bool) -> [[String: Any]] {
         [["id": "c_1", "title": "Personal", "kind": "event", "writable": true, "shared": false, "default": true]]
     }
-    func events(from: Date, to: Date, hidden: Set<String>, details: Bool, emails: Bool, limit: Int) -> [[String: Any]] { events }
+    /// What happens while a pass reads the calendar (the user giving Photos access back).
+    var whileReadingEvents: (() -> Void)?
+    func events(from: Date, to: Date, hidden: Set<String>, details: Bool, emails: Bool, limit: Int) -> [[String: Any]] {
+        whileReadingEvents?()
+        return events
+    }
     func reminders(hidden: Set<String>, details: Bool, completedSince: Date, limit: Int) async -> [[String: Any]] { reminderItems }
     /// Holds each apply until releaseApply, to land something in between.
     var holdApply = false

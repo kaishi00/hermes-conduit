@@ -235,11 +235,16 @@ final class PhoneSyncEngine: ObservableObject {
     /// one run of the app.
     private var applying: Set<String> = []
     /// Changes the user approved on a Pulse card (Add, or Undo of one), by
-    /// id, with when the approval lapses: the tap was the asking, so this
-    /// app applies them without the phone's own card. In memory too: the
-    /// host hands a change out right after the tap, and one that comes
-    /// later, or after a relaunch, gets the usual card.
-    private var approvedOnCard: [String: Date] = [:]
+    /// id, with the kind the card showed and when the approval lapses: the
+    /// tap was the asking, so this app applies them without the phone's own
+    /// card. In memory too: the host hands a change out right after the
+    /// tap, and one that comes later, or after a relaunch, gets the usual
+    /// card.
+    private var approvedOnCard: [String: CardApproval] = [:]
+    struct CardApproval {
+        let kind: PhoneChange.Kind
+        let until: Date
+    }
     static let cardApprovalWindow: TimeInterval = 15 * 60
 
     init(
@@ -682,6 +687,13 @@ final class PhoneSyncEngine: ObservableObject {
             batch["sharing"] = sharing
         }
         if preferences.photos, self.preferences.photos, photoSource.access.canRead {
+            // Access given back since the pass began: its upload says
+            // Photos is on, as the descriptions it carries do, or the host
+            // would drop them while this phone records them as sent.
+            if var sharing = batch["sharing"] as? [String: Any], sharing["photos"] as? Bool == false {
+                sharing["photos"] = true
+                batch["sharing"] = sharing
+            }
             let photos = photoSource.descriptions()
             // Nothing recorded as sent (first time, or after the host was
             // told Photos is off): replace whatever the host has.
@@ -724,10 +736,14 @@ final class PhoneSyncEngine: ObservableObject {
                 // A part that says Photos is off may make the host drop its
                 // descriptions, whatever happens to its answer or the rest:
                 // forget what was sent, so the next pass with Photos on
-                // replaces them whole.
-                if (part["sharing"] as? [String: Any])?["photos"] as? Bool == false, state.photoHashes != nil {
-                    state.photoHashes = nil
-                    persist()
+                // replaces them whole. Nothing this pass read is recorded
+                // as sent either.
+                if (part["sharing"] as? [String: Any])?["photos"] as? Bool == false {
+                    newPhotoHashes = nil
+                    if state.photoHashes != nil {
+                        state.photoHashes = nil
+                        persist()
+                    }
                 }
                 let batchID = UUID().uuidString.replacingOccurrences(of: "-", with: "").lowercased()
                 part["batch_id"] = batchID
@@ -972,10 +988,12 @@ final class PhoneSyncEngine: ObservableObject {
                 if !state.unreported.contains(refusal) { state.unreported.append(refusal) }
                 continue
             }
-            // A photo goes only from its own card, with the picture showing:
-            // a Pulse card's approval doesn't send one.
-            if let approved = approvedOnCard.removeValue(forKey: change.id), approved > now(),
-               change.kind != .sendPhoto {
+            // A Pulse card's approval covers only the kind of change the card
+            // showed (an event or reminder added, or its Undo): anything else
+            // under that id, a contact change, a run or a photo, gets its own
+            // card.
+            if let approved = approvedOnCard.removeValue(forKey: change.id), approved.until > now(),
+               approved.kind == change.kind {
                 await applyNow(change, auto: false)
             } else if change.auto, change.kind.addsWithoutAsking, preferences.autoAdd {
                 await applyNow(change, auto: true)
@@ -999,20 +1017,27 @@ final class PhoneSyncEngine: ObservableObject {
         persist()
     }
 
-    /// A change the user approved on a Pulse card, by its id: applied now
-    /// if its card is already waiting here, else when the host hands it out
-    /// within 15 minutes (AppState.applyPulseApproval runs the pass). A
-    /// change for another device never comes here, and its approval lapses.
-    func approveFromCard(_ changeID: String) async {
+    /// A change the user approved on a Pulse card, by its id and the kind
+    /// the card showed: applied now if its card is already waiting here,
+    /// else when the host hands it out within 15 minutes
+    /// (AppState.applyPulseApproval runs the pass). A change for another
+    /// device never comes here, and its approval lapses. Only what a Pulse
+    /// card shows is approved this way; a change of another kind under the
+    /// id keeps its own card (see the exchange).
+    func approveFromCard(_ changeID: String, kind: PhoneChange.Kind) async {
+        guard Self.pulseCardKinds.contains(kind) else { return }
         let now = self.now()
-        approvedOnCard = approvedOnCard.filter { $0.value > now }
+        approvedOnCard = approvedOnCard.filter { $0.value.until > now }
         if let prompt = prompts.first(where: { $0.id == changeID }) {
-            // A photo waits on its own card (see the exchange).
-            if prompt.change.kind != .sendPhoto { await answer(prompt, approve: true) }
+            if prompt.change.kind == kind { await answer(prompt, approve: true) }
             return
         }
-        approvedOnCard[changeID] = now.addingTimeInterval(Self.cardApprovalWindow)
+        approvedOnCard[changeID] = CardApproval(kind: kind, until: now.addingTimeInterval(Self.cardApprovalWindow))
     }
+
+    /// What a Pulse suggestion's Add (an event or a reminder) and its Undo
+    /// (deleting it) ask the phone for.
+    static let pulseCardKinds: Set<PhoneChange.Kind> = [.addEvent, .addReminder, .deleteEvent, .deleteReminder]
 
     /// The user's answer to a card (or to the question in a voice call).
     func answer(_ prompt: PhoneChangePrompt, approve: Bool) async {
