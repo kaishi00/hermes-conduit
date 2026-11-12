@@ -23,6 +23,15 @@ struct VoicePhotoTarget: Equatable {
     let callThread: VoiceThreadTarget?
 }
 
+extension VoiceThreadTarget {
+    /// The same call conversation, though its stored id may have been
+    /// learned since (the supervisor fills that in place).
+    func isSameConversation(as other: VoiceThreadTarget?) -> Bool {
+        guard let other else { return false }
+        return runtimeSessionID == other.runtimeSessionID && profile == other.profile
+    }
+}
+
 extension AppState {
     /// The conversation a Camera tap belongs to.
     var voicePhotoTarget: VoicePhotoTarget {
@@ -56,15 +65,17 @@ extension AppState {
         }
         guard activeDashboardID == dashboard else {
             Self.deleteStagedScreenshot(photo)
-            return Self.voicePhotoNoChatMessage
+            return Self.voicePhotoMovedOnMessage
         }
-        if isLiveVoiceCallActive {
+        if liveVoiceCallActiveForTesting ?? isLiveVoiceCallActive {
             return await addPhotoToLiveCall(photo, frame: frame, thread: callThread, dashboard: dashboard)
         }
         // Classic voice talks in the chat on screen: its next turn carries it.
         guard isVoiceInUse, let sessionID = activeSessionId, sessionID == classicChat, activeRoomSurface == nil else {
             Self.deleteStagedScreenshot(photo)
-            return Self.voicePhotoNoChatMessage
+            // A conversation that ended or moved on while the photo saved
+            // isn't a chat that failed to open.
+            return classicChat == nil ? Self.voicePhotoNoChatMessage : Self.voicePhotoMovedOnMessage
         }
         setPendingScreenshot(photo, forSession: sessionID, kind: .photo)
         return nil
@@ -72,6 +83,10 @@ extension AppState {
 
     private static var voicePhotoNoChatMessage: String {
         AppLocalization.string("The photo goes to the chat this conversation is in, and Conduit couldn't open it. Open the chat and try again.")
+    }
+
+    private static var voicePhotoMovedOnMessage: String {
+        AppLocalization.string("The conversation changed while the photo saved, so it wasn't added. Try again.")
     }
 
     /// The running call's conversation when its model takes pictures
@@ -90,12 +105,21 @@ extension AppState {
             Self.deleteStagedScreenshot(photo)
             return AppLocalization.string("The photo goes to the call's chat. Ask for something first, so the call has a chat, then add it.")
         }
-        if thread.profile == nil, !isOpenChat(thread) {
-            _ = await openSession(thread.storedSessionID ?? thread.runtimeSessionID)
+        // The call moved on while the photo saved: its old chat isn't opened.
+        guard let current = voiceBackgroundJobSupervisor.liveThread, current.isSameConversation(as: thread) else {
+            Self.deleteStagedScreenshot(photo)
+            return Self.voicePhotoMovedOnMessage
+        }
+        if current.profile == nil, !isOpenChat(current) {
+            _ = await openSession(current.storedSessionID ?? current.runtimeSessionID)
         }
         // The call may have ended, or moved on, while the chat opened.
-        guard isLiveVoiceCallActive, activeDashboardID == dashboard, voiceBackgroundJobSupervisor.liveThread == thread,
-              isOpenChat(thread), let sessionID = activeSessionId else {
+        guard liveVoiceCallActiveForTesting ?? isLiveVoiceCallActive, activeDashboardID == dashboard,
+              let now = voiceBackgroundJobSupervisor.liveThread, now.isSameConversation(as: thread) else {
+            Self.deleteStagedScreenshot(photo)
+            return Self.voicePhotoMovedOnMessage
+        }
+        guard isOpenChat(now), let sessionID = activeSessionId else {
             Self.deleteStagedScreenshot(photo)
             return Self.voicePhotoNoChatMessage
         }

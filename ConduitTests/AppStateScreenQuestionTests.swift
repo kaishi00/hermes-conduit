@@ -1468,6 +1468,44 @@ final class AppStateScreenQuestionTests: XCTestCase {
         XCTAssertEqual(recorder.uploads.map { $0.attachment.uri }, [photo.uri])
     }
 
+    func testTheCallsCameraPutsThePhotoOnTheCallsChat() async throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        let appState = harness.appState
+        let supervisor = appState.voiceBackgroundJobSupervisor
+        // A call is running (its controller isn't, in a test).
+        appState.liveVoiceCallActiveForTesting = true
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { context in
+            UIColor.green.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+
+        let noChat = await appState.addVoicePhoto(image, for: appState.voicePhotoTarget)
+        XCTAssertNotNil(noChat, "A call with no chat yet keeps nothing")
+        XCTAssertNil(appState.pendingScreenshot(forSession: "composer-origin"))
+
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat"))
+        let target = appState.voicePhotoTarget
+        // The chat's stored id is learned while the photo saves: still the
+        // same call, so the photo still goes.
+        supervisor.liveThread?.storedSessionID = "stored-origin"
+        let failure = await appState.addVoicePhoto(image, for: target)
+        XCTAssertNil(failure)
+        let photo = try XCTUnwrap(appState.pendingScreenshot(forSession: "composer-origin"))
+        addTeardownBlock { AppState.deleteStagedScreenshot(photo) }
+        XCTAssertEqual(appState.voiceScreenshotKind, .photo)
+        // No Gemini or Qwen call: the call hears that Hermes has it.
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.photoSharedPrompt)
+
+        // The call moved to another chat while the photo saved: nothing
+        // opens, and the photo already waiting stays.
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "other-chat", storedSessionID: nil, title: "Other"))
+        let moved = await appState.addVoicePhoto(image, for: target)
+        XCTAssertNotNil(moved)
+        XCTAssertEqual(appState.activeSessionId, "composer-origin")
+        XCTAssertEqual(appState.pendingScreenshot(forSession: "composer-origin")?.uri, photo.uri)
+    }
+
     func testRetakenScreenshotLeavesTheCallOneNote() throws {
         let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
         openChat("composer-origin", in: harness)

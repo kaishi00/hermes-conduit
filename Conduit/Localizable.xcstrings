@@ -515273,6 +515273,88 @@
           }
         }
       }
+    },
+    "The conversation changed while the photo saved, so it wasn't added. Try again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das Gespräch hat sich geändert, während das Foto gespeichert wurde, daher wurde es nicht hinzugefügt. Versuche es erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La conversación cambió mientras se guardaba la foto, así que no se añadió. Inténtalo de nuevo."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La conversation a changé pendant l'enregistrement de la photo, elle n'a donc pas été ajoutée. Réessayez."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Percakapan berubah saat foto disimpan, jadi foto tidak ditambahkan. Coba lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La conversazione è cambiata mentre la foto veniva salvata, quindi non è stata aggiunta. Riprova."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "写真の保存中に会話が変わったため、追加されませんでした。もう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "사진을 저장하는 동안 대화가 바뀌어 추가되지 않았습니다. 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Rozmowa zmieniła się podczas zapisywania zdjęcia, więc nie zostało dodane. Spróbuj ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A conversa mudou enquanto a foto era salva, então ela não foi adicionada. Tente novamente."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разговор изменился, пока сохранялось фото, поэтому оно не добавлено. Попробуйте ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Fotoğraf kaydedilirken konuşma değişti, bu yüzden eklenmedi. Tekrar deneyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "保存照片时对话已更改，因此未添加。请重试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "儲存照片時對話已變更，因此未加入。請再試一次。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
