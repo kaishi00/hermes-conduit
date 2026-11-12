@@ -80,8 +80,9 @@ private enum AudioSessionInterruptionForwarder {
                 AudioSessionInterruption.began.post()
             }
             _ = center.addObserver(forName: AVAudioSession.resumptionRecommendationNotification, object: nil, queue: nil) { note in
-                let context = note.userInfo?[AVAudioSession.resumptionContextKey] as? AVAudioSession.ResumptionContext
-                AudioSessionInterruption.ended(shouldResume: context?.recommendation == .shouldResume).post()
+                // Without its context the notification says nothing.
+                guard let context = note.userInfo?[AVAudioSession.resumptionContextKey] as? AVAudioSession.ResumptionContext else { return }
+                AudioSessionInterruption.ended(shouldResume: context.recommendation == .shouldResume).post()
             }
         } else {
             _ = center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { note in
