@@ -241,8 +241,11 @@ final class AppLanguageTests: XCTestCase {
 
     func testFeatureTablesShipInEveryLanguage() {
         // Each feature String Catalog (issue 823) compiles into every
-        // shipped lproj, so a key moved out of Localizable still translates.
-        for language in pinnedLanguages {
+        // translated lproj, so a key moved out of Localizable still
+        // translates. The source language needs no table of its own: a key
+        // the catalog doesn't vary falls back to itself, and Xcode leaves
+        // such a table out of en.lproj.
+        for language in translatedLanguages {
             guard let identifier = language.localizationIdentifier,
                   let path = Bundle.main.path(forResource: identifier, ofType: "lproj"),
                   let bundle = Bundle(path: path) else {
