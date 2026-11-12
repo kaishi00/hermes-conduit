@@ -101,6 +101,8 @@ final class FakeVoiceJobBackend {
     /// Watch call's job; and the sessions whose report a failed submit dropped.
     private(set) var surfaceReports: [(String, String, Bool)] = []
     private(set) var droppedSurfaces: [String] = []
+    /// Runs while a turn surface report goes, so a test can cancel meanwhile.
+    var onSurfaceReport: (@MainActor () async -> Void)?
     private(set) var cancelled: [String] = []
     /// The attached chat: whether a turn runs there, what was sent to it,
     /// and its latest reply.
@@ -183,6 +185,7 @@ final class FakeVoiceJobBackend {
             },
             reportTurnSurface: { [self] id, text, fromWatch in
                 self.surfaceReports.append((id, text, fromWatch))
+                await self.onSurfaceReport?()
                 return { [self] _ in self.droppedSurfaces.append(id) }
             },
             cancel: { [self] id in
@@ -306,6 +309,24 @@ extension VoiceConversationControllerTests {
         _ = await refused.performVoiceCommand(.start(instructions: "check the weather"))
         XCTAssertEqual(refusedFake.droppedSurfaces, refusedFake.submissions.map(\.0))
         XCTAssertEqual(refusedFake.droppedSurfaces.count, 1)
+        // A cancel while the report goes: nothing is sent, and the report is dropped.
+        let (cancelled, cancelledFake) = makeSupervisor()
+        cancelledFake.onSurfaceReport = { [weak cancelled] in
+            guard let cancelled, let id = cancelled.jobs.first?.id else { return }
+            _ = await cancelled.cancel(jobID: id)
+        }
+        _ = await cancelled.startJob(instructions: "check the disks")
+        XCTAssertTrue(cancelledFake.submissions.isEmpty)
+        XCTAssertEqual(cancelledFake.droppedSurfaces, cancelledFake.surfaceReports.map(\.0))
+        XCTAssertEqual(cancelledFake.droppedSurfaces.count, 1)
+        // A Watch call's later request, in the chat its first job made, is the Watch's too.
+        let (continued, continuedFake) = makeSupervisor()
+        _ = await continued.continueJob(instructions: "and the logs",
+                                        in: VoiceThreadTarget(runtimeSessionID: "rt-call", storedSessionID: nil, title: "Call"))
+        for _ in 0..<200 where continuedFake.submissions.isEmpty { try? await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(continuedFake.submissions.map(\.0), ["rt-call"])
+        XCTAssertEqual(continuedFake.surfaceReports.map(\.2), [true])
+        XCTAssertEqual(continuedFake.surfaceReports.map(\.1), continuedFake.submissions.map(\.1))
         // The surface: the Watch for its call's job, else where a spoken message is.
         XCTAssertEqual(TurnSurface.voiceJob(fromWatch: true, carPlay: true, device: .iphone), TurnSurface(place: .watch, input: .spoken))
         XCTAssertEqual(TurnSurface.voiceJob(fromWatch: false, carPlay: true, device: .iphone), TurnSurface(place: .carplay, input: .spoken))
