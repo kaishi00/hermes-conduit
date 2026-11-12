@@ -79,7 +79,8 @@ enum WatchBridgeDelegation {
     /// 2026-11-11, so a request split by pauses would reach Hermes as its
     /// last piece alone (issue 2292): text found word for word in what the
     /// user said gives way to all of it. A routing marker the model put
-    /// first ("Quick:", "Job 2:", "New job:") stays in front. Not UI copy.
+    /// first ("Quick:", "Job 2:", "New job:") stays in front; any other
+    /// command ("Read chat: 2") keeps its own words. Not UI copy.
     static func requestWords(itemText: String, userWords: String) -> String {
         let own = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
         let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -90,23 +91,34 @@ enum WatchBridgeDelegation {
             let words = comparable(String(text))
             return !words.isEmpty && said.contains(" " + words + " ")
         }
-        if repeats(own[...]) { return spoken }
+        // "Quick:" or "quickly," first, then the rest read as below.
         let quick = removingQuickMarker(own)
-        if quick != own, own.hasSuffix(quick) {
-            let marker = own.dropLast(quick.count).trimmingCharacters(in: .whitespaces)
-            return repeats(quick[...]) ? marker + " " + spoken : own
+        let hasQuick = quick != own && own.hasSuffix(quick)
+        let body = hasQuick ? quick : own
+        var markers = hasQuick ? [own.dropLast(quick.count).trimmingCharacters(in: .whitespaces)] : []
+        // Before a colon: a job marker leads a request of the user's; any
+        // other ("Read chat: 2", "Approve:", "End call:") is a command whose
+        // words are its own, so the text stays as the model wrote it.
+        if let colon = body.firstIndex(where: { $0 == ":" || $0 == "：" }),
+           body[..<colon].split(separator: " ").count <= maxMarkerWords {
+            guard isJobMarker(body[..<colon]) else { return own }
+            markers.append(String(body[...colon]))
+            let rest = body[body.index(after: colon)...]
+            return repeats(rest) ? (markers + [spoken]).joined(separator: " ") : own
         }
-        if let colon = own.firstIndex(where: { $0 == ":" || $0 == "：" }),
-           own[..<colon].split(separator: " ").count <= maxMarkerWords,
-           repeats(own[own.index(after: colon)...]) {
-            return String(own[...colon]) + " " + spoken
-        }
-        return own
+        return repeats(body[...]) ? (markers + [spoken]).joined(separator: " ") : own
     }
 
-    /// A routing marker before a delegation's colon is a few words at most
-    /// ("Add to job 12").
-    static let maxMarkerWords = 4
+    /// "New job", "Job 2" or "Add to job 2": the markers whose words after
+    /// the colon are the user's request (GPTLiveDelegationBridge).
+    static func isJobMarker(_ marker: Substring) -> Bool {
+        marker.trimmingCharacters(in: .whitespaces)
+            .range(of: #"^(new job|job \d+|add to job \d+)$"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// A marker before a delegation's colon is a few words at most
+    /// ("Call me about job 2").
+    static let maxMarkerWords = 5
 
     /// `text` as words to compare: lowercased, letters and digits only,
     /// one space between words.

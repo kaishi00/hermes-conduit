@@ -247,6 +247,12 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Reserve ramen for four on Friday", userWords: "Book a table on Friday"), "Reserve ramen for four on Friday")
         XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "cat", userWords: "concatenate these files"), "cat")
         XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "End call:", userWords: "bye"), "End call:")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "New job: on Friday", userWords: "Book a table on Friday"), "New job: Book a table on Friday")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Quick: Job 2: on Friday", userWords: "Make it on Friday"), "Quick: Job 2: Make it on Friday")
+        // Commands keep their own words, even ones the user said.
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Read chat: 2", userWords: "Please read chat number 2"), "Read chat: 2")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Read chat: 2", userWords: "read chat 2"), "Read chat: 2")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Approve: yes", userWords: "yes"), "Approve: yes")
         XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Weather", userWords: ""), "Weather")
 
         // Nothing new: no request, so Hermes doesn't redo the last one.
