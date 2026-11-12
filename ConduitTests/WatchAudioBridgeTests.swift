@@ -230,6 +230,25 @@ extension HermesVoiceGatewayTimeoutTests {
         )
         // Its own text wins over the user's words.
         XCTAssertTrue(WatchBridgeDelegation.request(itemText: "  Tokyo weather today ", lines: lines).hasPrefix("Tokyo weather today" + WatchBridgeDelegation.contextMarker))
+        // Text that only repeats the user's words gives way to all of them:
+        // Codex's ChatGPT-plan delegations carry the newest line (issue 2292).
+        let paused: [WatchBridgeDelegation.Line] = [
+            .init(role: .user, text: "Book a table for four", handled: false),
+            .init(role: .user, text: "at the ramen place, um, on Friday.", handled: false),
+        ]
+        XCTAssertTrue(WatchBridgeDelegation.request(itemText: "at the ramen place, um, on Friday.", lines: paused)
+            .hasPrefix("Book a table for four at the ramen place, um, on Friday." + WatchBridgeDelegation.contextMarker))
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "", userWords: "Book a table"), "Book a table")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Ramen place on Friday", userWords: "Book a table at the ramen place, on Friday."), "Book a table at the ramen place, on Friday.")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Quick: on Friday", userWords: "Book a table on Friday"), "Quick: Book a table on Friday")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "quickly, on Friday", userWords: "Book a table on Friday"), "quickly, Book a table on Friday")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Job 2: make it Friday", userWords: "Actually, make it Friday."), "Job 2: Actually, make it Friday.")
+        // The model's own words stay: a summary, a part word, or no words of the user's.
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Reserve ramen for four on Friday", userWords: "Book a table on Friday"), "Reserve ramen for four on Friday")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "cat", userWords: "concatenate these files"), "cat")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "End call:", userWords: "bye"), "End call:")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Weather", userWords: ""), "Weather")
+
         // Nothing new: no request, so Hermes doesn't redo the last one.
         XCTAssertEqual(WatchBridgeDelegation.request(itemText: "", lines: Array(lines.prefix(2))), "")
         XCTAssertEqual(WatchBridgeDelegation.request(itemText: "Weather", lines: []), "Weather")

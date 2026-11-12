@@ -1223,7 +1223,7 @@ final class WatchBridgeCallModel: ObservableObject {
         delegationUserLines[id] = userLinesDropped + lines.filter { $0.role == .user }.count
         let request = WatchBridgeDelegation.request(itemText: itemText, lines: lines)
         let userWords = lines.filter { $0.role == .user && !$0.handled }.map(\.text).joined(separator: " ")
-        let ownWords = itemText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? userWords : itemText
+        let ownWords = WatchBridgeDelegation.requestWords(itemText: itemText, userWords: userWords)
         note("bridgeDelegation", [
             "hasText": !itemText.isEmpty,
             "requestChars": request.count,

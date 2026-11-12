@@ -72,15 +72,58 @@ enum WatchBridgeDelegation {
         var handled: Bool
     }
 
-    /// The work a delegation asks for: its own text when it carries any,
-    /// otherwise the user's words since the last delegation, with the
+    /// The words a delegation asks for, on the phone and the Watch alike:
+    /// its own text when that adds something, otherwise the user's words
+    /// since the last delegation. Codex's ChatGPT-plan delegations have
+    /// carried the newest transcript line as their text since about
+    /// 2026-11-11, so a request split by pauses would reach Hermes as its
+    /// last piece alone (issue 2292): text found word for word in what the
+    /// user said gives way to all of it. A routing marker the model put
+    /// first ("Quick:", "Job 2:", "New job:") stays in front. Not UI copy.
+    static func requestWords(itemText: String, userWords: String) -> String {
+        let own = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !own.isEmpty else { return spoken }
+        guard !spoken.isEmpty else { return own }
+        let said = " " + comparable(spoken) + " "
+        func repeats(_ text: Substring) -> Bool {
+            let words = comparable(String(text))
+            return !words.isEmpty && said.contains(" " + words + " ")
+        }
+        if repeats(own[...]) { return spoken }
+        let quick = removingQuickMarker(own)
+        if quick != own, own.hasSuffix(quick) {
+            let marker = own.dropLast(quick.count).trimmingCharacters(in: .whitespaces)
+            return repeats(quick[...]) ? marker + " " + spoken : own
+        }
+        if let colon = own.firstIndex(where: { $0 == ":" || $0 == "：" }),
+           own[..<colon].split(separator: " ").count <= maxMarkerWords,
+           repeats(own[own.index(after: colon)...]) {
+            return String(own[...colon]) + " " + spoken
+        }
+        return own
+    }
+
+    /// A routing marker before a delegation's colon is a few words at most
+    /// ("Add to job 12").
+    static let maxMarkerWords = 4
+
+    /// `text` as words to compare: lowercased, letters and digits only,
+    /// one space between words.
+    static func comparable(_ text: String) -> String {
+        text.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    /// The work a delegation asks for: its words (requestWords), with the
     /// recent conversation for context, as the phone builds it
     /// (GPTLiveConversationController.delegationRequest), within the host's
     /// limit. Empty when there's nothing to ask for.
     static func request(itemText: String, lines: [Line]) -> String {
-        let own = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
         let userWords = lines.filter { $0.role == .user && !$0.handled }.map(\.text).joined(separator: " ")
-        let request = clipped(own.isEmpty ? userWords : own, bytes: maxRequestBytes)
+        let request = clipped(requestWords(itemText: itemText, userWords: userWords), bytes: maxRequestBytes)
         guard !request.isEmpty else { return "" }
         var budget = maxRequestBytes - request.utf8.count - contextMarker.utf8.count
         var context = ""
