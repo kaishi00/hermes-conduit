@@ -42,6 +42,10 @@ final class WorkspaceExplorer: ObservableObject {
     @Published private(set) var preview: WorkspaceFilePreview?
     @Published private(set) var previewError: String?
     @Published private(set) var previewLoading = false
+    /// The files opened since the folder did, one tab each (issue 1438),
+    /// the viewed one among them; the oldest goes past `openFilesLimit`.
+    @Published private(set) var openFiles: [WorkspaceEntry] = []
+    static let openFilesLimit = 12
 
     private weak var appState: AppState?
     /// Where the open folder's listing and recent files are kept: on the
@@ -96,6 +100,7 @@ final class WorkspaceExplorer: ObservableObject {
         searching = false
         pluginOff = nil
         copied = nil
+        openFiles = []
         closeFile()
         let answers = appState.screenAnswers(profile: profile)
         self.answers = answers
@@ -133,6 +138,7 @@ final class WorkspaceExplorer: ObservableObject {
         searchError = nil
         pluginOff = nil
         copied = nil
+        openFiles = []
         closeFile()
     }
 
@@ -351,6 +357,12 @@ final class WorkspaceExplorer: ObservableObject {
         previewRequest = request
         viewed = entry
         viewedLine = line
+        if let index = openFiles.firstIndex(where: { $0.path == entry.path }) {
+            openFiles[index] = entry
+        } else {
+            openFiles.append(entry)
+            if openFiles.count > Self.openFilesLimit { openFiles.removeFirst(openFiles.count - Self.openFilesLimit) }
+        }
         preview = nil
         previewError = nil
         previewLoading = true
@@ -492,7 +504,13 @@ final class WorkspaceExplorer: ObservableObject {
     }
 
     /// The viewed file after a save, its new date the next save checks.
+    /// Takes `path`'s tab away; the sheet shows another or closes.
+    func closeTab(_ path: String) {
+        openFiles.removeAll { $0.path == path }
+    }
+
     func saved(_ entry: WorkspaceEntry, text: String) {
+        if let index = openFiles.firstIndex(where: { $0.path == entry.path }) { openFiles[index] = entry }
         guard viewed?.path == entry.path else { return }
         viewed = entry
         if var preview {

@@ -2068,6 +2068,30 @@ extension AppStateMultiDashboardTests {
 
     }
 
+    /// Each file opened gets a tab (issue 1438), kept while the sheet
+    /// closes and opens again, the same file once; a closed tab goes, and
+    /// another folder starts with none.
+    func testOpenedFilesKeepTheirTabsUntilAnotherFolderOpens() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let explorer = WorkspaceExplorer()
+        explorer.attach(appState)
+        let a = WorkspaceEntry(name: "a.swift", path: "/w/a.swift", isDirectory: false)
+        let b = WorkspaceEntry(name: "b.md", path: "/w/b.md", isDirectory: false)
+        let text: [String: Any] = ["text": "let x = 1", "language": "swift"]
+        for file in [a, b, a] {
+            let viewing = Task { await explorer.view(file) }
+            try await held.answer(text, toPathEnding: "/api/fs/read-text")
+            await viewing.value
+        }
+        XCTAssertEqual(explorer.openFiles.map(\.name), ["a.swift", "b.md"])
+        explorer.closeFile()
+        XCTAssertEqual(explorer.openFiles.count, 2, "closing the sheet keeps the tabs")
+        explorer.closeTab(a.path)
+        XCTAssertEqual(explorer.openFiles.map(\.name), ["b.md"])
+        explorer.close()
+        XCTAssertTrue(explorer.openFiles.isEmpty)
+    }
+
     func testATappedFileNameAsksThePluginAndALaterTapWins() async throws {
         let (appState, held, _) = heldSwitchFixture()
         appState.setNotifierPluginStateForTesting(.reported(
