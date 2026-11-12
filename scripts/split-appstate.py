@@ -190,13 +190,51 @@ STEPS = [
             "Chat support surfaces|from isWatchVoiceCallActive until handleCarPlayVoiceSurfaceRemoved",
         ],
     },
-    # 8: profiles, capabilities, dashboards and jobs
+    # 8: profiles, capabilities, live voice modes, dashboards, jobs and UI state
     {
-        "AppState+Profiles.swift": ["Profiles and preferences"],
-        "AppState+Capabilities.swift": ["Capabilities", "Capabilities@2", "Tools catalog for step rows"],
-        "AppState+ScheduledJobs.swift": ["Scheduled jobs"],
-        "AppState+Dashboards.swift": ["Saved dashboards (#148)", "Dashboard-scoped presentation (#148)"],
-        "AppState+UIState.swift": ["UI state", "Runtime"],
+        "AppState+SessionCatalog.swift": [
+            "Profiles and preferences|until ForegroundPersistedTailOutcome",
+            "Profiles and preferences|from dashboardSessions until switchProfile#1",
+        ],
+        "AppState+TranscriptHistory.swift": [
+            "Profiles and preferences|from ForegroundPersistedTailOutcome until dashboardSessions",
+        ],
+        "AppState+Profiles.swift": [
+            "Profiles and preferences|from switchProfile#1 until isExpiredPromptError",
+            "Profiles and preferences|from orderedProfiles",
+        ],
+        "AppState+Clarify.swift": [
+            "Profiles and preferences|from isExpiredPromptError until refreshProjects",
+        ],
+        "AppState+Projects.swift": [
+            "Profiles and preferences|from refreshProjects until orderedProfiles",
+        ],
+        "AppState+HelperModels.swift": ["Capabilities|until setGeminiLiveSearchMode"],
+        "AppState+GeminiQwenLive.swift": [
+            "Capabilities|from setGeminiLiveSearchMode until setGPTLiveEnabled",
+        ],
+        "AppState+GPTLive.swift": ["Capabilities|from setGPTLiveEnabled until setGrokLiveEnabled"],
+        "AppState+GrokLive.swift": ["Capabilities|from setGrokLiveEnabled until usesLocalLiveAgent"],
+        "AppState+LocalLive.swift": ["Capabilities|from usesLocalLiveAgent until saveVoiceJobLedger"],
+        "AppState+Voice.swift": [
+            "Capabilities|from saveVoiceJobLedger until consumeVoiceSheetAutoListen",
+        ],
+        "AppState+VoiceConversation.swift": ["Capabilities|from consumeVoiceSheetAutoListen"],
+        "AppState+Capabilities.swift": ["Capabilities@2", "Tools catalog for step rows"],
+        "AppState+ScheduledJobs.swift": ["Scheduled jobs|until sendStartupReads"],
+        "AppState+ProfileConfig.swift": [
+            "Scheduled jobs|from sendStartupReads until KeptRoute",
+            "Scheduled jobs|from loadBusyInputMode",
+        ],
+        "AppState+KeptAnswers.swift": ["Scheduled jobs|from KeptRoute until loadBusyInputMode"],
+        "AppState+Dashboards.swift": [
+            "Dashboard-scoped presentation (#148)", "Saved dashboards (#148)|until makeClient",
+        ],
+        "AppState+SignIn.swift": ["Saved dashboards (#148)|from makeClient"],
+        "AppState+Pulse.swift": ["UI state|from setPulseDoItBot until composerPrefillText"],
+        "AppState+UIState.swift": [
+            "Runtime", "UI state|until setPulseDoItBot", "UI state|from composerPrefillText",
+        ],
     },
 ]
 
@@ -564,7 +602,8 @@ def assign(src, steps):
                         it.dest = fname
                         moves.setdefault(fname, []).append(it)
                     continue
-                # "Region|from name", "Region|until name" or "Region|from a until b":
+                # "Region|from name", "Region|until name" or "Region|from a until b"
+                # (a name with overloads is named as name#1, name#2, ...):
                 # the part of a long region from (or before) a declaration.
                 part, _, cut = part.partition("|")
                 if part not in known:
@@ -576,8 +615,15 @@ def assign(src, steps):
                         raise SystemExit(f"can't cut {part!r} at {cut!r}")
 
                     def at(name):
+                        # `name#2`: the second of a name's overloads
+                        name, _, nth = name.partition("#")
                         found = [i for i, it in enumerate(items) if name in it.names]
-                        if len(found) != 1:
+                        if nth:
+                            found = found[int(nth) - 1:int(nth)]
+                        elif len(found) != 1:
+                            raise SystemExit(f"can't cut {part!r} at {cut!r}: "
+                                             f"{len(found)} {name!r}, name one as {name}#N")
+                        if not found:
                             raise SystemExit(f"can't cut {part!r} at {cut!r}")
                         return found[0]
                     lo = at(m.group(1)) if m.group(1) else 0
@@ -607,7 +653,7 @@ def code_names(masked_lines):
 MUTATION = (r"(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\s*(=(?!=)|&?\+=|&?-=|&?\*=|/=|%=|\|=|&=|\^=|&?<<=|&?>>=|\?\?=)"
             r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(append|remove\w*|insert|merge|formUnion|"
             r"formIntersection|subtract|sort|reverse|popLast|popFirst|update\w*|toggle|"
-            r"swapAt|replaceSubrange|reserveCapacity|shuffle)\b")
+            r"swapAt|replaceSubrange|reserveCapacity|shuffle|move|partition|formSymmetricDifference)\b")
 
 
 # `mutating func` names the app declares (set by run): calling one through a
@@ -640,7 +686,7 @@ def writes(masked_lines, name):
 def writes_member(masked_lines, name):
     """Whether code writes `value.name` (another type's member)."""
     pat = re.compile(r"\??\." + re.escape(name) + r"\b(?=" + mutation_pattern() + r")"
-                     r"|&[\w.?]*\." + re.escape(name) + r"\b")
+                     r"|&[\w.?]*(?:\[[^\]\n]*\][\w.?]*)*\." + re.escape(name) + r"\b")
     return pat.search("\n".join(masked_lines)) is not None
 
 
@@ -946,9 +992,100 @@ MARK_TITLES = {"AppState+OpenChat.swift": "Opening chats",
                "AppState+ChatSupport.swift": "Chat support surfaces",
                "AppState+ResponseHaptics.swift": "Response haptics",
                "AppState+VoiceConversation.swift": "Voice conversations and Read Aloud",
-               "AppState+WatchCalls.swift": "Watch calls"}
+               "AppState+WatchCalls.swift": "Watch calls",
+               "AppState+SessionCatalog.swift": "Reading the session catalog",
+               "AppState+TranscriptHistory.swift": "Persisted transcripts and earlier messages",
+               "AppState+Profiles.swift": "Switching and reading profiles",
+               "AppState+Projects.swift": "Projects and workspace folders",
+               "AppState+HelperModels.swift": "Model providers, helper models and the voice reply model",
+               "AppState+GeminiQwenLive.swift": "Gemini Live and Qwen Live",
+               "AppState+GPTLive.swift": "GPT-Live",
+               "AppState+GrokLive.swift": "Grok Live",
+               "AppState+LocalLive.swift": "Local Live",
+               "AppState+ProfileConfig.swift": "A profile's settings, config and display preferences",
+               "AppState+KeptAnswers.swift": "Answers kept for screens to open on",
+               "AppState+SignIn.swift": "Signing in and restoring a saved connection",
+               "AppState+Pulse.swift": "Pulse's remembered homes, Do it bots and folded briefs"}
 
 HEADER_NOTES = {
+    "AppState+SessionCatalog.swift": [
+        "Reading the session catalog: deferred catalog pages, a profile's",
+        "sessions, archived and cron sessions, and which profile a session",
+        "belongs to. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+TranscriptHistory.swift": [
+        "A chat's persisted transcript: its tail on foregrounding, history",
+        "pages, row ids, and loading earlier messages. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Profiles.swift": [
+        "Switching profiles, reading the profile list, the Siri profile names",
+        "and the fallback profile, and the profiles' order. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Projects.swift": [
+        "Projects: listing, creating, renaming, deleting and moving sessions",
+        "between them, project folders and ideas, and the workspace folders",
+        "opened. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+HelperModels.swift": [
+        "The model routes a profile keeps: model providers, helper models, the",
+        "voice reply and voice job models, and the live voice status. Moved out",
+        "of AppState.swift (issue 828).",
+    ],
+    "AppState+GeminiQwenLive.swift": [
+        "Gemini Live and Qwen Live: their settings, opening and closing a call,",
+        "CarPlay, and the direct live controller they share. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+GPTLive.swift": [
+        "GPT-Live: its settings and billing, its briefing, and opening and",
+        "closing a call, CarPlay included. Moved out of AppState.swift (issue",
+        "828).",
+    ],
+    "AppState+GrokLive.swift": [
+        "Grok Live: its settings, its client, and opening and closing a call,",
+        "CarPlay included. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+LocalLive.swift": [
+        "Local Live: its agent and persona, its settings, its client, and",
+        "opening and closing a call, CarPlay included. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Capabilities.swift": [
+        "A profile's skills and toolsets (loading and toggling them) and the",
+        "tools catalog step rows read. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ScheduledJobs.swift": [
+        "Scheduled (cron) jobs: reading them and their runs, their actions,",
+        "creating, updating and deleting one, and blueprints. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+ProfileConfig.swift": [
+        "A profile's settings and config: the startup reads, display",
+        "preferences, the main and fallback models, config writes, and the busy",
+        "input mode. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+KeptAnswers.swift": [
+        "The answers kept so a screen opens on its last read (KeptRoute), and",
+        "the writes that update them. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+Dashboards.swift": [
+        "Saved dashboards: registering, adopting, switching, signing out of and",
+        "removing one, and what each dashboard keeps apart (display",
+        "preferences, relay gateway ids, model visibility). Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+SignIn.swift": [
+        "Signing in: the client, restoring a saved connection and its",
+        "credentials, Face ID, the offline chat instead of sign-in, and a",
+        "sign-in that's required. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+UIState.swift": [
+        "UI state that isn't a chat's: pausing live publishes, the sidebar,",
+        "a Bot Chat opening, Settings dismissal and room handoffs. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
     "AppState+Composer.swift": [
         "The composer: quoting and replying into it, prefills and drops, and",
         "submitting what it holds (the submission's ownership and identity,",
@@ -1202,6 +1339,11 @@ def run(repo, step, write, pr=None, today=None):
         if target.exists():
             body = render_new_file(src, f, items, changes, ["-"])
             block = body[body.index("extension AppState {"):]
+            existing = target.read_text()
+            head = block.split("\n", 3)
+            # a title the file already has: its MARK isn't repeated
+            if head[1].startswith("    // MARK: - ") and head[1] + "\n" in existing and not head[2]:
+                block = head[0] + "\n" + head[3]
             target.write_text(with_imports(target.read_text(), src.imports).rstrip("\n")
                               + "\n\n" + block)
         else:
