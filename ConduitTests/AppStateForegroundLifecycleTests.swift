@@ -3742,7 +3742,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
 
         XCTAssertEqual(appState.messages.last?.isSteer, true)
         XCTAssertNil(appState.sendFailureShown)
-        XCTAssertNotEqual(appState.errorMessage, "Failed to send")
+        XCTAssertNil(appState.errorMessage)
     }
 
     /// Only the line shown when the steer set out is its to clear: a newer
@@ -3773,9 +3773,9 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
     }
 
     func testSteerPersistedDuringTheRPCIsNotConfirmedTwice() async {
-        let appState = await runStaleIdleSteer(seeded: []) { appState in
+        let appState = await runStaleIdleSteer(seeded: [], duringSteer: { appState in
             appState.messages.append(self.persistedSteer("91", "Follow-up"))
-        }
+        })
 
         XCTAssertEqual(appState.messages.map(\.id), ["91"])
     }

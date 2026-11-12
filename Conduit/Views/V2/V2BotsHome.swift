@@ -989,6 +989,9 @@ enum BotPortraitStatus: Equatable {
     /// Answering another bot's ask (an open ask_in), by that bot's name.
     case helping(String)
     case working(Int)
+    /// Background agents the Bot Chat itself started, still running: its
+    /// workstreams are off, or it does the work itself (app issue 2206).
+    case agents(Int)
     /// Talking in group rooms now (their driver works), by room name,
     /// talked in last first.
     case inRooms([String])
@@ -997,11 +1000,15 @@ enum BotPortraitStatus: Equatable {
     case idle
 
     /// What needs the user first, then helping another bot, its own work,
-    /// talking in a room, and waiting on another bot. `rooms`: the talking
-    /// rooms it's in, which show without the plugin's workstreams too.
+    /// the Bot Chat's own background agents, talking in a room, and waiting
+    /// on another bot. `rooms`: the talking rooms it's in, which show
+    /// without the plugin's workstreams too. The Bot Chat's agents show with
+    /// its workstreams off too: then it's the one delegating.
     static func of(_ snapshot: BotWorkSnapshot?, talkingIn rooms: [String] = []) -> BotPortraitStatus {
         let quiet: BotPortraitStatus = rooms.isEmpty ? .idle : .inRooms(rooms)
-        guard let snapshot, snapshot.isOn else { return quiet }
+        guard let snapshot else { return quiet }
+        let agents = snapshot.botChatAgentCount
+        guard snapshot.isOn else { return agents > 0 ? .agents(agents) : quiet }
         if snapshot.needsYouCount > 0 { return .needsYou(snapshot.needsYouCount) }
         if let ask = snapshot.items.first(where: {
             $0.kind == .askIn && !$0.isClosed && ["starting", "running"].contains($0.status) && !$0.otherBot.isEmpty
@@ -1009,6 +1016,7 @@ enum BotPortraitStatus: Equatable {
             return .helping(ask.otherBot)
         }
         if snapshot.workingCount > 0 { return .working(snapshot.workingCount) }
+        if agents > 0 { return .agents(agents) }
         if !rooms.isEmpty { return quiet }
         if let ask = snapshot.items.first(where: {
             $0.kind == .askOut && !$0.isClosed && $0.status == "waiting" && !$0.otherBot.isEmpty
@@ -1038,6 +1046,7 @@ enum BotPortraitStatus: Equatable {
         case .needsYou(let count): return AppLocalization.string("\(count) needs you")
         case .helping(let name): return AppLocalization.string("Helping \(name)")
         case .working(let count): return AppLocalization.string("\(count) working")
+        case .agents(let count): return AppLocalization.string("\(count) agents running")
         case .inRooms(let rooms) where rooms.count == 1: return AppLocalization.string("In \(rooms[0])")
         case .inRooms(let rooms): return AppLocalization.string("In \(rooms.count) rooms")
         case .waitingOn(let name): return AppLocalization.string("Waiting on \(name)")
@@ -1049,7 +1058,7 @@ enum BotPortraitStatus: Equatable {
     var tint: Color {
         switch self {
         case .needsYou: return .orange
-        case .helping, .working, .inRooms: return .conduitAccent
+        case .helping, .working, .agents, .inRooms: return .conduitAccent
         case .waitingOn, .idle: return .secondary
         }
     }
@@ -1059,6 +1068,7 @@ enum BotPortraitStatus: Equatable {
         case .needsYou: return "exclamationmark.circle.fill"
         case .helping: return "arrowshape.turn.up.left.fill"
         case .working: return "arrow.triangle.2.circlepath"
+        case .agents: return "person.2.fill"
         case .inRooms: return "bubble.left.and.bubble.right.fill"
         case .waitingOn: return "hourglass"
         case .idle: return nil
@@ -2058,7 +2068,7 @@ struct BotPortraitMotion: ViewModifier {
 
     private var isWorking: Bool {
         switch status {
-        case .working, .helping: return true
+        case .working, .helping, .agents: return true
         default: return false
         }
     }

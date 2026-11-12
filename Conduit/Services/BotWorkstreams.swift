@@ -404,6 +404,10 @@ struct BotWorkSnapshot: Equatable {
     /// What the Bot Chat did to keep the work in step; nil from a plugin
     /// before the list (0.155).
     let coordination: BotWorkCoordination?
+    /// How many background agents the Bot Chat itself started that still
+    /// run (a Bot Chat on Everything Here, or with its workstreams off,
+    /// delegates itself); 0 from a plugin before the count (app issue 2206).
+    let botChatAgentCount: Int
 
     init?(response: [String: Any], profile: String) {
         guard response["ok"] as? Bool == true, let rows = response["work"] as? [[String: Any]] else { return nil }
@@ -419,6 +423,7 @@ struct BotWorkSnapshot: Equatable {
         knownSessionIDs = Set((response["workstream_sessions"] as? [String] ?? []).filter { !$0.isEmpty })
         screen = BotScreenUse(response["screen"] as? [String: Any])
         coordination = BotWorkCoordination(response["coordination"] as? [String: Any])
+        botChatAgentCount = max(0, (response["bot_chat_agents"] as? NSNumber)?.intValue ?? 0)
     }
 
     var isOn: Bool { policy != "off" }
