@@ -4721,20 +4721,26 @@ Classic's transcription streams · Watch calls (Gemini, Qwen, Grok, Local Live; 
 The steps of the last Grok Live, Qwen Live, Local Live or GPT-Live call that
 Diagnostics & logs (Last connection) shows and copies, so a user can paste them
 into an issue: setup, the microphone, the server's turn detection and the
-user's turns, and each tool call; for GPT-Live, its startup.
+user's turns, and each tool call; for GPT-Live, its startup. The last Read
+Aloud reading has its own trace there (issue 1641): which voice read it, how
+it was split, why each sentence ended, and how playback went.
 
 **Siblings:** Grok Live (phone, CarPlay, calls from Hermes) · Local Live ·
 Qwen Live (turn steps and the controller's tool steps) · GPT-Live on the iPhone,
 CarPlay and calls from Hermes (startup steps, #1611) · Gemini Live (no trace) ·
 Watch calls (no trace here; the Watch's own call log, Voice settings > Apple
 Watch, already keeps a GPT-Live call's `briefingApplied` and `greetingApplied`
-in `bridgeStarted`) · docs/VOICE_SETTINGS.md
+in `bridgeStarted`) · Read Aloud, a single reply and Read replies aloud (the
+iPhone voice, Hermes speech, the speech server and the standalone playback
+note into it; Classic and the speech test share those and take no steps) ·
+docs/VOICE_SETTINGS.md
 
 **Code**
 - The trace and its report: `Conduit/Voice/LiveCallTrace.swift`, `Conduit/Views/ChatSupportSheets.swift` (lastConnectionReport)
 - Steps: `Shared/GrokLive/GrokLiveSession.swift`, `Shared/LocalLive/LocalLiveSession.swift`, `Shared/GeminiLive/QwenLiveSocket.swift`, `Shared/GeminiLive/GeminiLiveSession.swift` (onTrace), `Shared/GrokLive/LiveTurnTrace.swift`, `Shared/GrokLive/GrokLiveProtocol.swift` (turnDetectionSummary), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (traceName, traceInputRoute)
 - GPT-Live's steps: `Conduit/Voice/GPTLive/GPTLiveSession.swift` (onTrace, requestStep, answerStep), `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (traceName), `Conduit/Voice/GPTLive/GPTLiveClient.swift` (the answer's `source`)
 - Wiring: `Conduit/Services/AppState.swift` (traceName, session.onTrace)
+- Read Aloud's trace: `Conduit/Voice/LiveCallTrace.swift` (readAloud, end), `Conduit/Voice/MessageReadAloudController.swift` (startOperation, traceEngine, traceRoute, settle), `Conduit/Voice/OnDeviceSpeech.swift` (append, finish, SystemSpeechSynthesizer.finish(how:), FallbackSpeechStream.switchToOnDevice), `Conduit/Voice/HermesVoiceGateway.swift` (HermesSpeechStream.complete, playFallback), `Conduit/Voice/AVSpeechPlaybackService.swift` (trace)
 
 **Rulings**
 - A long call keeps its first 20 steps (the setup) and its newest ones, up to 200, so a late turn that never ends is kept (2026-10-28, #1424).
@@ -4743,12 +4749,13 @@ in `bridgeStarted`) · docs/VOICE_SETTINGS.md
 - Qwen Live's trace has the turn steps, dropped microphone audio and the controller's tool steps; Grok's own session steps (setup, functions taken) have no Qwen counterpart (2026-10-28, #1424).
 - A tool step is noted only while its call is still the current one, so a lookup that returns after hang-up stays out of the next call's trace (2026-10-28, #1424).
 - GPT-Live's trace is its startup (#1611): the request's briefing length and whether it carried a persona and memory (by their blocks), whether it was a call from Hermes, a greeting or waits for the user, and how many history items; what the host answered (built by Hermes or the plugin, the billing path, `briefing_applied` and, when the host cut it to fit, `briefing_clipped` ("cut to fit", notifier #719), `greeting_applied`, the voice); session.started or its timeout; a briefing or opening Conduit sent after the start, or asked for again; which side spoke first; connection drops and the provider's error code, never its message. "Applied" means the text was in the session the host sent (the instructions, or on a ChatGPT plan its first seeded item), not that OpenAI took it or the model followed it (2026-11-01, #1611).
+- Read Aloud's trace runs from a reading's start to its end, and nothing is noted outside one, so Classic's iPhone voice and the speech test, which share its classes, never write into it. It names the engine, the route by port kind, each sentence's length and the voice's quality and identifier, why each sentence ended (end of speech, finished without one, quiet for 8 s) with the audio it produced, audio dropped after a sentence ended, and playback's restarts, interruptions, drain watchdog and end. A speech stream notes only into the reading it opened in, and the fallback names who speaks first (Hermes speech or the speech server). Never the reply's words (2026-11-11, #2242, from issue 1641).
 
 **Open gaps**
 - Gemini Live sends no turn detection events and GPT-Live's turns run over WebRTC, so neither has turn steps; Gemini Live has no trace; the Watch has no trace to show.
 - Every trace keeps only the last call, in memory until the app restarts (its steps also go to the system log, which keeps them longer), and nothing joins a call from Hermes, its saved call and the host's session request (#1611 asked for an alias).
 
-**Checked:** 2026-11-11, #2232 (the trace says when the host cut the briefing to fit, notifier #719); 2026-11-01, #1612 (GPT-Live's startup steps, from issue 1611); 2026-10-28, #1424.
+**Checked:** 2026-11-11, #2242 (Read Aloud's own trace, issue 1641); 2026-11-11, #2232 (the trace says when the host cut the briefing to fit, notifier #719); 2026-11-01, #1612 (GPT-Live's startup steps, from issue 1611); 2026-10-28, #1424.
 
 ## Narrated actions left out of speech
 

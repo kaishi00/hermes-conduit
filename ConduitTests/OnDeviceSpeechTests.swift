@@ -435,6 +435,47 @@ extension HermesVoiceGatewayTimeoutTests {
         ])
     }
 
+    func testReadAloudTraceSaysHowTheReplyWasSplitWithoutItsWords() async throws {
+        let trace = LiveCallTrace.readAloud
+        // A stream a stopped reading left behind notes nothing into the next.
+        let stale = OnDeviceSpeechStream(
+            synthesizer: FakeSpeechSynthesizer(),
+            fallbackLanguage: "en",
+            onStart: { _ in },
+            onPCM16: { _, _ in }
+        )
+        trace.begin("Read Aloud", first: "Reading 61 characters at 1x, on Speaker")
+        try await stale.append("An older reading. ")
+        stale.cancel()
+        defer { trace.end("Ended") }
+        let synthesizer = FakeSpeechSynthesizer()
+        let stream = OnDeviceSpeechStream(
+            synthesizer: synthesizer,
+            fallbackLanguage: "en",
+            onStart: { _ in },
+            onPCM16: { _, _ in }
+        )
+        try await stream.append("The first one is here. The second follows. And the end")
+        XCTAssertEqual(MessageReadAloudController.traceEngine(of: stream), "the iPhone voice")
+        let finishing = Task { try await stream.finish() }
+        for count in 1...3 {
+            await waitUntil { synthesizer.spoken.count == count }
+            synthesizer.finishCurrent(audio: Data([1, 0]))
+        }
+        _ = try await finishing.value
+        let steps = trace.steps.map { $0.split(separator: " ", maxSplits: 1).last.map(String.init) ?? "" }
+        XCTAssertEqual(steps, [
+            "Reading 61 characters at 1x, on Speaker",
+            "Queued 2 sentences (22, 19 characters)",
+            "Queued the rest (11 characters)",
+        ])
+        XCTAssertFalse(trace.report?.contains("second") ?? true, "the trace never holds the reply's words")
+        trace.end("Ended")
+        trace.note("Classic speaks afterwards")
+        XCTAssertEqual(trace.steps.last.map { $0.hasSuffix("Ended") }, true, "nothing is noted once the reading ended")
+        XCTAssertEqual(trace.report?.components(separatedBy: "\n").first, "Last Read Aloud: steps")
+    }
+
     func testAReplyTooShortToTellWaitsForASentenceThatSaysItsLanguage() async throws {
         let synthesizer = FakeSpeechSynthesizer()
         let stream = OnDeviceSpeechStream(

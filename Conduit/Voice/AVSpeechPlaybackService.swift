@@ -143,7 +143,9 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     }
 
     func start(sampleRate: Double) throws {
+        let unplayed = pendingBuffers
         stop()
+        trace("Playback started at \(String(format: "%.0f", sampleRate)) Hz" + (unplayed > 0 ? ", \(unplayed) chunks still unplayed dropped" : ""))
         interruptedStandaloneStream = false
         let rate = Self.clampedRate(playbackRate)
         // Every stream schedules Float32 buffers (converted in enqueuePCM16).
@@ -307,6 +309,8 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         // An odd tail is invalid PCM16 and is intentionally discarded rather
         // than shifted into the next response.
         discardRemainder()
+        let left = queuedBuffers.reduce(0) { $0 + Double($1.frameLength) / $1.format.sampleRate }
+        trace("All speech in: \(queuedBuffers.count) chunks, \(String(format: "%.1f", left)) s left to play" + (interruptedStandaloneStream ? ", but playback was interrupted" : ""))
         // Standalone speech that a phone call or a lost route ended after
         // its last chunk didn't play out: Read Aloud settles as it would on
         // a refused chunk, and the speech test can't report a pass.
@@ -350,6 +354,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
                 guard played < allowed else { break }
                 wait = allowed - played
             }
+            self?.trace("Playback stopped: its audio didn't finish playing in time")
             self?.stop()
         }
         await withCheckedContinuation { continuation in
@@ -525,6 +530,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             if self.ownershipIntent == .standalonePlayback, self.lease != nil {
                 self.interruptedStandaloneStream = true
             }
+            self.trace("Audio interrupted (a call, an alarm or another app)")
             // Playback can no longer continue: settle buffers and drain
             // waiters so awaiting controllers never hang, and release session
             // ownership so other media recovers. Resuming after the
@@ -538,6 +544,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         let generation = generationForSessionObservers
         Task { @MainActor [weak self] in
             guard let self, self.playbackGeneration == generation else { return }
+            self.trace("iOS reset its media services")
             self.stop()
         }
     }
@@ -570,6 +577,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     /// start a new stream past the audio just dropped (#1641), so it ends
     /// as after a phone call. A conversation's next chunk starts afresh.
     private func settleLostEngine(wasStreaming: Bool) {
+        trace("Playback engine stopped and couldn't restart: the reading ends")
         stop()
         if wasStreaming, ownershipIntent == .standalonePlayback {
             interruptedStandaloneStream = true
@@ -588,6 +596,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
     private func resumeOnFreshEngine() -> Bool {
         guard let format else { return false }
         let unplayed = queuedBuffers
+        trace("Audio route changed: playing on with \(unplayed.count) chunks on a fresh engine")
         queuedBuffers.removeAll()
         pendingBuffers = 0
         scheduledSeconds = 0
@@ -636,6 +645,7 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
         if !queuedBuffers.isEmpty { queuedBuffers.removeFirst() }
         guard pendingBuffers == 0 else { return }
         if isFinishing {
+            trace("Played everything scheduled")
             // Terminal: everything queued has rendered. stop() tears the
             // engine down, resumes drain waiters exactly once, and releases
             // session ownership so standalone speech un-ducks other media the
@@ -645,6 +655,13 @@ final class AVSpeechPlaybackService: NSObject, SpeechPlaybackService {
             isPlaying = false
             settleDrainWaiters()
         }
+    }
+
+    /// A step on Read Aloud's trace (issue 1641). The speech test also
+    /// plays standalone, but never while a reading's trace is open.
+    private func trace(_ label: String) {
+        guard ownershipIntent == .standalonePlayback else { return }
+        LiveCallTrace.readAloud.note(label)
     }
 
     private func settleDrainWaiters() {
@@ -658,6 +675,7 @@ extension AVSpeechPlaybackService: AVAudioPlayerDelegate {
     nonisolated func audioPlayerDidFinishPlaying(_ player: AVAudioPlayer, successfully flag: Bool) {
         Task { @MainActor [weak self] in
             guard let self, self.encodedPlayer === player else { return }
+            self.trace(flag ? "Played the clip to the end" : "The clip stopped early (it couldn't be decoded)")
             // Natural completion is terminal for the encoded path: stop()
             // clears the player, resumes drain waiters, and releases the
             // session lease.
