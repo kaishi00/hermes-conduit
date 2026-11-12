@@ -1566,7 +1566,7 @@ extension AppState {
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
             // Three independent reads, each guarding its own answer against a
-            // switch while it was out: sent together, so the connect tail
+            // switch while it was out: sent together, so the reconnect tail
             // waits one round trip for them, not three (issue 1727). The
             // check that follows is the connection's own.
             async let busyInputModeRead: Void = loadChatResumeBusyInputMode(using: client)

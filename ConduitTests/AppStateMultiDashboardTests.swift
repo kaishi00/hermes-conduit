@@ -111,6 +111,27 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertEqual(appState.busyInputMode, .interrupt, "another server's cache is not this one's")
     }
 
+    /// Profile discovery can adopt a fallback before the busy-mode read
+    /// starts: a client still addressing the profile that went reads nothing
+    /// and caches nothing under the new profile's key (issue 1727, #2308).
+    func testABusyModeReadForAProfileTheConnectionLeftCommitsNothing() async {
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        defaults.set("server-a", forKey: AppState.chatResumeServerIdentityKey)
+        let workKey = "\(AppState.busyInputModeCachePrefix)server-a|work"
+        defaults.set(BusyInputMode.queue.rawValue, forKey: workKey)
+        appState.setActiveProfileForTesting("work")
+        appState.busyInputMode = .steer
+
+        let leftClient = HermesClient(
+            connection: HermesConnection(baseUrl: "https://hermes.example", ticket: "ticket"),
+            profile: "old"
+        )
+        await appState.loadBusyInputMode(using: leftClient)
+
+        XCTAssertEqual(appState.busyInputMode, .steer, "the read for the profile that went shows nothing")
+        XCTAssertEqual(defaults.string(forKey: workKey), BusyInputMode.queue.rawValue, "nor caches under the new profile's key")
+    }
+
     // MARK: - Agent settings scope
 
     func testAgentSettingsScopeTellsApartDashboardsWhosePathsDifferInCase() {
