@@ -106,7 +106,11 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   (`ci-normalize-mtimes.py`) and sets XCBuild's
   `IgnoreFileSystemDeviceInodeChanges`. An incremental build that fails with
   no error in a source file is retried once from scratch. A new Xcode build
-  misses the cache and builds clean. The nightly timing repeats build
+  misses the cache and builds clean, and a build that restored no cache (the
+  nightly UI shards' every build) gets 1800 s instead of 1200 s: the first
+  Xcode 27 build outran 1200 s (#2319). Every macOS job selects the newest
+  released Xcode on its image (`ci-select-xcode.sh`), not the image's default
+  `Xcode.app`, which can lag it (27.1 beside 27.2 and its iOS 27.2 runtime). The nightly timing repeats build
   `project-tests.yml` too and restore the slim cache without saving it
   (since 2026-11-11: their clean full builds ran 1162-1590 s beside the unit
   shards and outran the 1200 s budget on 11-09 and 11-11). A night with a

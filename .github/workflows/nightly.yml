@@ -93,7 +93,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+        run: sudo bash scripts/ci-select-xcode.sh
 
       - name: Pick the build cache
         # DerivedData from the newest main build of the same project and
@@ -142,6 +142,8 @@ jobs:
         # hides behind the build. Exports XCRUN_FILE, DESTINATION and
         # SIMULATOR_UDID for the steps below.
         env:
+          # A clean build (no cache from this Xcode yet) gets 1800, as in PR CI.
+          BUILD_TIMEOUT_SECS: ${{ steps.cache.outputs.cache-matched-key && '1200' || '1800' }}
           # Named in the build's timing notice, to explain a clean build.
           BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
         run: bash scripts/ci-hosted-build.sh
@@ -335,7 +337,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+        run: sudo bash scripts/ci-select-xcode.sh
 
       - name: Pick the build cache
         # The timing families are ConduitTests classes, so they build the
@@ -377,6 +379,7 @@ jobs:
 
       - name: Build and boot the simulator in parallel
         env:
+          BUILD_TIMEOUT_SECS: ${{ steps.cache.outputs.cache-matched-key && '1200' || '1800' }}
           BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
         run: bash scripts/ci-hosted-build.sh
 
@@ -419,7 +422,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+        run: sudo bash scripts/ci-select-xcode.sh
 
       - name: Install xcodegen
         run: brew install xcodegen
@@ -428,6 +431,10 @@ jobs:
         run: xcodegen generate
 
       - name: Build and boot the simulator in parallel
+        env:
+          # The UI shards never restore a cache, so every build is clean: the
+          # clean-build budget, as in PR CI (#2319).
+          BUILD_TIMEOUT_SECS: "1800"
         run: bash scripts/ci-hosted-build.sh
 
       - name: Run this shard's UI classes

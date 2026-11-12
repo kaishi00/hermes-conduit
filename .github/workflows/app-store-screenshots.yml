@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+        run: sudo bash scripts/ci-select-xcode.sh
 
       - name: Install xcodegen
         run: brew install xcodegen
@@ -249,7 +249,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+        run: sudo bash scripts/ci-select-xcode.sh
 
       - name: Install xcodegen
         run: brew install xcodegen

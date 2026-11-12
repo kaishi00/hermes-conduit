@@ -373,7 +373,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+        run: sudo bash scripts/ci-select-xcode.sh
 
       - name: Pick the build cache
         # DerivedData from the newest build of the same project and Xcode
@@ -422,7 +422,9 @@ jobs:
         # SIMULATOR_UDID for the steps below.
         env:
           # 1200 like the nightly: 800-900 s builds were common (2026-10-13).
-          BUILD_TIMEOUT_SECS: 1200
+          # A clean build (no cache from this Xcode yet, as after an Xcode
+          # move) gets 1800: the first Xcode 27 build outran 1200 s (#2319).
+          BUILD_TIMEOUT_SECS: ${{ steps.cache.outputs.cache-matched-key && '1200' || '1800' }}
           # Named in the build's timing notice, to explain a clean build.
           BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
         run: bash scripts/ci-hosted-build.sh
