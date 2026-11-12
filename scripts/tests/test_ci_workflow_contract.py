@@ -173,6 +173,16 @@ class WorkflowContractTests(unittest.TestCase):
                              len(re.findall(r"runs-on: xcode-", text)), path)
             self.assertNotIn("xcode-select -s /Applications/Xcode.app", text, path)
 
+    def test_a_clean_build_gets_the_longer_budget(self):
+        """The first Xcode 27 build had no cache and outran 1200 s (#2319):
+        a build that restored no cache gets 1800 s, and the nightly UI shards,
+        which never restore one, always do."""
+        expr = "BUILD_TIMEOUT_SECS: ${{ steps.cache.outputs.cache-matched-key && '1200' || '1800' }}"
+        self.assertIn(expr, self._job_text("smoke"))
+        for job in ("unit", "timing"):
+            self.assertIn(expr, _job_text(NIGHTLY, job), job)
+        self.assertIn('BUILD_TIMEOUT_SECS: "1800"', _job_text(NIGHTLY, "ui"))
+
     def test_select_xcode_takes_the_newest_release(self):
         """The image's default Xcode.app lagged its newest release (27.1
         beside 27.2 and the iOS 27.2 runtime the device lookup picks); betas

@@ -6400,6 +6400,7 @@ docs/CI.md, its Budget section included
 - Nightly partition: `scripts/hosted-suite.json`, `.github/workflows/nightly.yml`; the app-only overlay its unit shards build: `project-tests.yml`
 - Tests: `scripts/tests/test_ci_workflow_contract.py`, `scripts/tests/test_smoke_job_runner.py`, `scripts/tests/test_hosted_ci.py`
 - Docs: `docs/CI.md`
+- Runner and Xcode: every macOS job's `runs-on: xcode-27` and its "Select Xcode" step, `scripts/ci-select-xcode.sh` (newest released Xcode on the image); the clean-build budget (`BUILD_TIMEOUT_SECS`, 1800 s when no cache was restored) in `.github/workflows/ci.yml` and `.github/workflows/nightly.yml`; their tests in `scripts/tests/test_ci_workflow_contract.py` (`test_every_macos_job_runs_on_the_same_image`, `test_select_xcode_takes_the_newest_release`, `test_a_clean_build_gets_the_longer_budget`)
 
 **Rulings**
 - Smoke pins single tests (Class/testMethod), never whole classes, under `max_unit_tests` (70) and `max_ui_tests` (4); `plan-tests.py smoke` fails a whole-class entry, a test its class doesn't declare, a pinned nightly-only timing family and a list over its cap. Add coverage by swapping a test; raising a cap is a deliberate change with its reason in the PR (Eric, 2026-10-29, #1508: whole classes let unit smoke grow from 195 s to 240 s with the list unchanged).
@@ -6414,7 +6415,7 @@ docs/CI.md, its Budget section included
 - A changed UI test class doesn't join Smoke: a UI test a PR adds or edits first runs at night. UI tests are the slow ones (36-150 s each) and the list is capped at 4 (2026-10-29, #1508).
 - A changed unit class with no timing baseline is charged 3 s of `changed_budget_s`, and `scripts/test-timings.json` was last seeded in August, so a PR adding several slow new classes isn't held to the budget (2026-10-29, #1508).
 
-**Checked:** 2026-11-12, #2319 (Smoke and the Nightly jobs run on the `xcode-27` image with its newest released Xcode, simulator iPhone 18 Pro, and a clean build gets 1800 s; selection unchanged); 2026-11-11, #2221 (the nightly timing repeats build the app-only overlay from the slim cache); 2026-11-02, #1646 (a PR's new run cancels its older runs); #1642; #1513; #1508.
+**Checked:** 2026-11-12, #2326 (the runner, Xcode selection and clean-build budget listed in Code, with a test for the budget); 2026-11-12, #2319 (Smoke and the Nightly jobs run on the `xcode-27` image with its newest released Xcode, simulator iPhone 18 Pro, and a clean build gets 1800 s; selection unchanged); 2026-11-11, #2221 (the nightly timing repeats build the app-only overlay from the slim cache); 2026-11-02, #1646 (a PR's new run cancels its older runs); #1642; #1513; #1508.
 
 ## Settings connection page
 
@@ -6512,7 +6513,7 @@ cut · scripts/app-store/README.md · README.md's "See it in action" strip · th
 clips (kaishi00/hermes-conduit-website)
 
 **Code**
-- Workflow: `.github/workflows/app-store-screenshots.yml`
+- Workflow: `.github/workflows/app-store-screenshots.yml` (both jobs run on `xcode-27` and select Xcode through `scripts/ci-select-xcode.sh`, see Smoke selection)
 - Scripts: `scripts/app-store/record-clip.sh`, `scripts/app-store/cut-preview.sh`
 - UI test: `ConduitScreenshots/AppStoreScreenshotTests.swift`
 - Fixtures: `Conduit/Services/ScreenshotCallFixture.swift`, `ConduitWatch/WatchVoiceCall.swift` (applyScreenshotFixture)
@@ -6528,7 +6529,7 @@ clips (kaishi00/hermes-conduit-website)
 **Open gaps**
 - No clips yet of an incoming Hermes call, of CarPlay or of a lock-screen approval. A simulator can't show any of them (calls ring through CallKit, and the CarPlay window opens only by hand), so they come from recordings on Eric's devices, then go into the README strip and the site (#1193).
 
-**Checked:** 2026-11-12, #2319 (both jobs run on the `xcode-27` image; default devices iPhone 18 Pro Max, iPad Pro 13-inch and Apple Watch Ultra 4); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-10-25, at #1228. 2026-11-03, #1678 (on `bot-workstreams` the app opens on Bots, so both the screenshots and the App Preview tap Sessions first).
+**Checked:** 2026-11-12, #2326 (Code names the Xcode selection script); 2026-11-12, #2319 (both jobs run on the `xcode-27` image; default devices iPhone 18 Pro Max, iPad Pro 13-inch and Apple Watch Ultra 4); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-10-25, at #1228. 2026-11-03, #1678 (on `bot-workstreams` the app opens on Bots, so both the screenshots and the App Preview tap Sessions first).
 
 ## What your sent message shows
 
