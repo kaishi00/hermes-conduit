@@ -114,6 +114,21 @@ final class QwenLiveSocket: GeminiLiveSocket {
         }
     }
 
+    /// A microphone chunk goes out as Qwen's append frame, built off the
+    /// main actor on the network socket (issue 1959); `encode`'s Gemini
+    /// frame isn't needed, since Qwen takes the same base64 audio.
+    func sendAudio(_ pcm16: Data, encode: @escaping @Sendable (Data) throws -> String) async throws {
+        hasSentAudio = true
+        try await upstream.sendAudio(pcm16) { pcm16 in
+            try GeminiLiveProtocol.encode([
+                "type": "input_audio_buffer.append",
+                "audio": pcm16.base64EncodedString(),
+                "event_id": UUID().uuidString,
+            ])
+        }
+        if let onTrace, let step = turnTrace.add(pcm16) { onTrace(step) }
+    }
+
     static func sessionUpdate(setup: [String: Any], voice: String) -> [String: Any] {
         let parts = (setup["systemInstruction"] as? [String: Any])?["parts"] as? [[String: Any]] ?? []
         let declarations = (setup["tools"] as? [[String: Any]] ?? []).flatMap {
@@ -140,9 +155,48 @@ final class QwenLiveSocket: GeminiLiveSocket {
 
     func receive() async throws -> Data {
         while true {
-            let data = try await upstream.receive()
+            if let mapped = try await map(try await upstream.receive()) { return mapped }
+        }
+    }
+
+    /// The model's speech, the frames that come many a second, is mapped
+    /// and decoded off the main actor on the network socket (issue 1959);
+    /// every other event changes this adapter's state, so it is mapped here.
+    func receive<T: Sendable>(decoding decode: @escaping @Sendable (Data) -> T) async throws -> T {
+        while true {
+            let inbound = try await upstream.receive(decoding: { data -> QwenInbound<T> in
+                if let speech = QwenLiveSocket.mappedSpeech(data) { return .decoded(decode(speech)) }
+                return .event(data)
+            })
+            switch inbound {
+            case .decoded(let value):
+                return value
+            case .event(let data):
+                if let mapped = try await map(data) { return decode(mapped) }
+            }
+        }
+    }
+
+    /// A `response.audio.delta` as the Gemini frame the session reads;
+    /// nil for any other event.
+    nonisolated static func mappedSpeech(_ data: Data) -> Data? {
+        guard data.range(of: Data("response.audio.delta".utf8)) != nil,
+              let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              event["type"] as? String == "response.audio.delta",
+              let audio = event["delta"] as? String else { return nil }
+        return try? JSONSerialization.data(withJSONObject: [
+            "serverContent": ["modelTurn": ["parts": [["inlineData": [
+                "mimeType": "audio/pcm;rate=24000", "data": audio,
+            ]]]]],
+        ])
+    }
+
+    /// One Qwen event as the Gemini frame the session reads, nil for one
+    /// it doesn't need.
+    private func map(_ data: Data) async throws -> Data? {
+        do {
             guard let event = try JSONSerialization.jsonObject(with: data) as? [String: Any],
-                  let type = event["type"] as? String else { continue }
+                  let type = event["type"] as? String else { return nil }
             var mapped: [String: Any]?
             switch type {
             case "session.updated":
@@ -201,6 +255,7 @@ final class QwenLiveSocket: GeminiLiveSocket {
             default: break
             }
             if let mapped { return try JSONSerialization.data(withJSONObject: mapped) }
+            return nil
         }
     }
 
@@ -208,6 +263,13 @@ final class QwenLiveSocket: GeminiLiveSocket {
     func serverClose(within timeout: Duration) async -> GeminiLiveServerClose? {
         await upstream.serverClose(within: timeout)
     }
+}
+
+/// One upstream frame: the model's speech already decoded, or an event
+/// for the adapter to map.
+private enum QwenInbound<T: Sendable>: Sendable {
+    case decoded(T)
+    case event(Data)
 }
 
 enum QwenLiveError: LocalizedError {

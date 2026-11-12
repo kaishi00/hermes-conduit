@@ -206,6 +206,14 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             onFailure?()
             return
         }
+        if case .audio(let pcm16) = message {
+            // Interpolated and encoded on its way out, off the main actor on
+            // a network socket; the stream's place moves on here (issue 1959).
+            let queued = enqueue(GrokLiveProtocol.audioAppend(inputUpsampler.plan(pcm16)), isAudio: true, onSent: onSent, onFailure: onFailure)
+            // Only audio the server gets counts toward the turn's levels.
+            if queued, let onTrace, let step = turnTrace.add(pcm16) { onTrace(step) }
+            return
+        }
         let (frames, wantsResponse) = GrokLiveProtocol.frames(for: message, upsampler: &inputUpsampler)
         var texts = frames.compactMap { try? LocalLiveProtocol.encode($0) }
         guard texts.count == frames.count else {
@@ -217,9 +225,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
         if wantsResponse, let create = try? LocalLiveProtocol.encode(GrokLiveProtocol.responseCreate) {
             texts.append(create)
         }
-        let queued = enqueue(texts, isAudio: message.isAudio, onSent: onSent, onFailure: onFailure)
-        // Only audio the server gets counts toward the turn's levels.
-        if queued, let onTrace, case .audio(let pcm16) = message, let step = turnTrace.add(pcm16) { onTrace(step) }
+        enqueue(texts, isAudio: message.isAudio, onSent: onSent, onFailure: onFailure)
     }
 
     /// The user stopped the reply: the server stops it, and one that shuts
@@ -275,8 +281,17 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
     /// behind a full queue.
     @discardableResult
     private func enqueue(_ texts: [String], isAudio: Bool = false, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) -> Bool {
-        guard !texts.isEmpty, let socket else {
-            if texts.isEmpty { onSent?() } else { onFailure?() }
+        guard !texts.isEmpty else {
+            onSent?()
+            return false
+        }
+        return enqueue(.texts(texts), isAudio: isAudio, onSent: onSent, onFailure: onFailure)
+    }
+
+    @discardableResult
+    private func enqueue(_ payload: LiveVoiceSocketWriter.Payload, isAudio: Bool, onSent: (@MainActor () -> Void)?, onFailure: (@MainActor () -> Void)?) -> Bool {
+        guard let socket else {
+            onFailure?()
             return false
         }
         let id = connectionID
@@ -287,7 +302,7 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
             writer = LiveVoiceSocketWriter(socket: socket)
             self.writer = writer
         }
-        let queued = writer.enqueue(texts, isAudio: isAudio) { [weak self] error in
+        let queued = writer.enqueue(payload, isAudio: isAudio) { [weak self] error in
             guard let error else {
                 onSent?()
                 return
@@ -418,9 +433,10 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
 
     private func receiveLoop(_ socket: GeminiLiveSocket, id: UUID) async {
         while !Task.isCancelled {
-            let data: Data
+            let inbound: LocalLiveProtocol.Inbound
             do {
-                data = try await socket.receive()
+                // Read off the main actor on a network socket (issue 1959).
+                inbound = try await socket.receive(decoding: { LocalLiveProtocol.Inbound($0) })
             } catch {
                 let beforeSetup = awaitingSetup?.id == id
                 let close = await socket.serverClose(within: beforeSetup ? .milliseconds(400) : .milliseconds(100))
@@ -428,29 +444,28 @@ final class LocalLiveSession: GeminiLiveSessionControlling {
                 return
             }
             guard id == connectionID else { return }
-            if let frame = LocalLiveProtocol.agentFrame(data) {
+            switch inbound {
+            case .agent(let frame):
                 switch frame {
                 case .toolCall(let call):
                     onEvent?(.toolCall([call]))
                 case .late(let callID):
                     sayLateAnswer(callID)
                 }
-                continue
-            }
-            if let turn = LocalLiveProtocol.turnFrame(data) {
+            case .turn(let turn):
                 handle(turn, connection: id)
-                continue
-            }
-            readinessResponseEnding = false
-            // Stopped first, so no audio already queued plays on; the
-            // check's own response is said by no one.
-            if !readinessResponseOpen, LocalLiveProtocol.stopsPlayback(data) {
-                onEvent?(.interrupted)
-            }
-            for frame in GrokLiveProtocol.decode(data) {
-                // A frame can end this connection.
-                guard id == connectionID else { return }
-                handle(frame, connection: id)
+            case .server(let stopsPlayback, let frames):
+                readinessResponseEnding = false
+                // Stopped first, so no audio already queued plays on; the
+                // check's own response is said by no one.
+                if !readinessResponseOpen, stopsPlayback {
+                    onEvent?(.interrupted)
+                }
+                for frame in frames {
+                    // A frame can end this connection.
+                    guard id == connectionID else { return }
+                    handle(frame, connection: id)
+                }
             }
         }
     }

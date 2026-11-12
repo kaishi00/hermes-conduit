@@ -162,20 +162,32 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
             onFailure?()
             return
         }
-        let (frames, wantsResponse) = GrokLiveProtocol.frames(for: message, upsampler: &inputUpsampler)
-        // A message with nothing to send here (a picture) is done.
-        guard !frames.isEmpty else {
-            onSent?()
-            return
-        }
-        let texts = frames.compactMap { try? GrokLiveProtocol.encode($0) }
-        guard texts.count == frames.count else {
-            onFailure?()
-            return
+        let payload: LiveVoiceSocketWriter.Payload
+        let wantsResponse: Bool
+        if case .audio(let pcm16) = message {
+            // Interpolated and encoded on its way out, off the main actor
+            // on a network socket; the stream's place moves on here
+            // (issue 1959).
+            payload = GrokLiveProtocol.audioAppend(inputUpsampler.plan(pcm16))
+            wantsResponse = false
+        } else {
+            let (frames, wants) = GrokLiveProtocol.frames(for: message, upsampler: &inputUpsampler)
+            // A message with nothing to send here (a picture) is done.
+            guard !frames.isEmpty else {
+                onSent?()
+                return
+            }
+            let texts = frames.compactMap { try? GrokLiveProtocol.encode($0) }
+            guard texts.count == frames.count else {
+                onFailure?()
+                return
+            }
+            payload = .texts(texts)
+            wantsResponse = wants
         }
         let id = connectionID
         let writer = socketWriter(for: socket)
-        let queued = writer.enqueue(texts, isAudio: message.isAudio) { [weak self] error in
+        let queued = writer.enqueue(payload, isAudio: message.isAudio) { [weak self] error in
             if let error {
                 onFailure?()
                 self?.writeFailed(id, error: error)
@@ -414,16 +426,17 @@ final class GrokLiveSession: GeminiLiveSessionControlling {
 
     private func receiveLoop(_ socket: GeminiLiveSocket, id: UUID) async {
         while !Task.isCancelled {
-            let data: Data
+            let frames: [GrokLiveProtocol.ServerFrame]
             do {
-                data = try await socket.receive()
+                // Decoded off the main actor on a network socket (issue 1959).
+                frames = try await socket.receive(decoding: { GrokLiveProtocol.decode($0) })
             } catch {
                 let beforeSetup = awaitingSetup?.id == id
                 let close = await socket.serverClose(within: beforeSetup ? .milliseconds(400) : .milliseconds(100))
                 connectionFailed(id, error: error, serverClose: close)
                 return
             }
-            for frame in GrokLiveProtocol.decode(data) {
+            for frame in frames {
                 // A frame can end this connection.
                 guard id == connectionID else { return }
                 handle(frame, connection: id)

@@ -28,8 +28,17 @@ final class LiveVoiceSocketWriter {
     /// The socket stopped taking frames: everything queued failed with this.
     struct Backlogged: Error {}
 
+    /// What one frame sends.
+    enum Payload {
+        /// Text frames, sent together in order.
+        case texts([String])
+        /// A microphone chunk the socket encodes as it sends it, off the
+        /// main actor on a network socket (issue 1959).
+        case audio(Data, encode: @Sendable (Data) throws -> String)
+    }
+
     private struct Frame {
-        let texts: [String]
+        let payload: Payload
         let isAudio: Bool
         let done: @MainActor (Error?) -> Void
     }
@@ -61,6 +70,15 @@ final class LiveVoiceSocketWriter {
     /// queue is full of audio and this audio was dropped.
     @discardableResult
     func enqueue(_ texts: [String], isAudio: Bool, done: @escaping @MainActor (Error?) -> Void) -> Bool {
+        enqueue(.texts(texts), isAudio: isAudio, done: done)
+    }
+
+    /// `enqueue` for any payload: an audio chunk counts as audio whatever
+    /// `isAudio` says.
+    @discardableResult
+    func enqueue(_ payload: Payload, isAudio: Bool, done: @escaping @MainActor (Error?) -> Void) -> Bool {
+        var isAudio = isAudio
+        if case .audio = payload { isAudio = true }
         guard !isClosed else {
             done(CancellationError())
             return true
@@ -84,7 +102,7 @@ final class LiveVoiceSocketWriter {
             }
             queuedOther += 1
         }
-        queue.append(Frame(texts: texts, isAudio: isAudio, done: done))
+        queue.append(Frame(payload: payload, isAudio: isAudio, done: done))
         if drainTask == nil {
             drainTask = Task { [weak self] in await self?.drain() }
         }
@@ -119,7 +137,12 @@ final class LiveVoiceSocketWriter {
             let frame = queue.removeFirst()
             var error: Error?
             do {
-                for text in frame.texts { try await socket.send(text) }
+                switch frame.payload {
+                case .texts(let texts):
+                    for text in texts { try await socket.send(text) }
+                case .audio(let pcm16, let encode):
+                    try await socket.sendAudio(pcm16, encode: encode)
+                }
             } catch let failure {
                 error = failure
             }
