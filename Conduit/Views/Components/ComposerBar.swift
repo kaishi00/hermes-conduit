@@ -2939,10 +2939,22 @@ struct ComposerBar: View, Equatable {
     /// one like picked documents. A locked composer takes none, as its
     /// Attach menu is off then. A folder isn't attached; the notice names
     /// it and says to drop the files inside.
-    private func handleDroppedFiles(_ providers: [NSItemProvider]) {
-        guard appState.composerIsEnabled, !providers.isEmpty else { return }
+    private func handleDroppedFiles(_ dropped: [NSItemProvider]) {
+        guard appState.composerIsEnabled, !dropped.isEmpty else { return }
         composerErrorMessage = nil
         let origin = asyncAttachmentContext
+        // Dragged from the Folder: their paths go in the draft (issue 1438).
+        let entries = dropped.filter(WorkspaceDrag.isEntry)
+        if !entries.isEmpty {
+            Task {
+                let reference = WorkspaceDrag.reference(to: await WorkspaceDrag.paths(from: entries))
+                guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin), !reference.isEmpty else { return }
+                replaceComposerText(WorkspaceDrag.appending(reference, to: text), cursorAtEnd: true)
+                isFocused = true
+            }
+        }
+        let providers = dropped.filter { !WorkspaceDrag.isEntry($0) }
+        guard !providers.isEmpty else { return }
         let limitMegabytes = attachmentLimitMegabytes
         let files = providers.filter { !AttachmentDrop.isFolder($0) }
         let hasFolders = files.count < providers.count

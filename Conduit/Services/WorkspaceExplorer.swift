@@ -33,6 +33,8 @@ final class WorkspaceExplorer: ObservableObject {
     /// folder browses through Hermes' own listing meanwhile, with no search
     /// or changes, though the dashboard's own profile reports the routes.
     @Published private(set) var pluginOff: String?
+    /// What Copy picked, for Paste into a folder of the open one.
+    @Published var copied: WorkspaceEntry?
 
     // The file being viewed.
     @Published private(set) var viewed: WorkspaceEntry?
@@ -59,6 +61,18 @@ final class WorkspaceExplorer: ObservableObject {
     /// the open folder's profile.
     var canChange: Bool { (appState?.supportsWorkspaceFiles ?? false) && pluginOff == nil }
 
+    /// Whether the plugin pastes a copy into another folder.
+    var canCopy: Bool { canChange && (appState?.notifierPlugin.reports(WorkspaceFilesClient.copyCapability) ?? false) }
+
+    /// Whether `source` may go into `folder`: not where it already is, and
+    /// a folder never into itself or a folder inside it.
+    static func canMove(_ source: String, into folder: String) -> Bool {
+        let from = AppState.normalizedWorkspacePath(source)
+        let to = AppState.normalizedWorkspacePath(folder)
+        guard to != from, !to.hasPrefix(from.hasSuffix("/") ? from : from + "/") else { return false }
+        return AppState.parentWorkspacePath(from).map(AppState.normalizedWorkspacePath) != to
+    }
+
     func attach(_ appState: AppState) {
         self.appState = appState
     }
@@ -81,6 +95,7 @@ final class WorkspaceExplorer: ObservableObject {
         searchError = nil
         searching = false
         pluginOff = nil
+        copied = nil
         closeFile()
         let answers = appState.screenAnswers(profile: profile)
         self.answers = answers
@@ -117,6 +132,7 @@ final class WorkspaceExplorer: ObservableObject {
         search = nil
         searchError = nil
         pluginOff = nil
+        copied = nil
         closeFile()
     }
 
@@ -229,6 +245,9 @@ final class WorkspaceExplorer: ObservableObject {
                     guard isCurrent(ticket, owner, scope.profile) else { return false }
                     askedPlugin = true
                     remedy = DashboardTicketBridgeError.pluginOffDetail(of: refused)
+                    // Said even when Hermes' own listing then fails too, so
+                    // no change is offered on a profile that refuses them.
+                    markPluginOff(remedy)
                     listed = try await appState.workspaceDirectoryEntries(at: folder, profile: scope.profile)
                 }
             } else if folder == scope.root, showsKeptRoot,
@@ -245,15 +264,7 @@ final class WorkspaceExplorer: ObservableObject {
             // re-check also covers a switch landing between that answer and
             // this resumption, so no other dashboard's listing merges in.
             guard isCurrent(ticket, owner, scope.profile) else { return false }
-            if askedPlugin, remedy != pluginOff {
-                pluginOff = remedy
-                if remedy != nil {
-                    // Nothing the plugin gave for this profile still shows.
-                    recent = []
-                    search = nil
-                    searchError = nil
-                }
-            }
+            if askedPlugin { markPluginOff(remedy) }
             entries[folder] = listed
             if cut { truncated.insert(folder) } else { truncated.remove(folder) }
             if folder == scope.root { showsKeptRoot = false }
@@ -271,6 +282,19 @@ final class WorkspaceExplorer: ObservableObject {
             }
             return false
         }
+    }
+
+    /// Whether the open folder's profile has the plugin off (`remedy`) or
+    /// on again (nil).
+    private func markPluginOff(_ remedy: String?) {
+        guard remedy != pluginOff else { return }
+        pluginOff = remedy
+        guard remedy != nil else { return }
+        // Nothing the plugin gave for this profile still shows.
+        recent = []
+        search = nil
+        searchError = nil
+        copied = nil
     }
 
     private func loadRecent() async {

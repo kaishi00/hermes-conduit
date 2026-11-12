@@ -118,9 +118,10 @@ enum AttachmentDrop {
     /// A drop on a chat or room: hands its files to `onDrop` and says
     /// whether it was taken. Words and links, or a locked composer, turn
     /// it down.
-    static func take(_ providers: [NSItemProvider], isEnabled: Bool, onDrop: ([NSItemProvider]) -> Void) -> Bool {
+    static func take(_ providers: [NSItemProvider], isEnabled: Bool, takesWorkspaceEntries: Bool = false,
+                     onDrop: ([NSItemProvider]) -> Void) -> Bool {
         guard isEnabled else { return false }
-        let found = files(in: providers)
+        let found = providers.filter { takes($0) || (takesWorkspaceEntries && WorkspaceDrag.isEntry($0)) }
         guard !found.isEmpty else { return false }
         onDrop(found)
         return true
@@ -206,6 +207,9 @@ extension Notification.Name {
 /// target, outlined while something is dragged over it.
 struct AttachmentDropTarget: ViewModifier {
     let isEnabled: Bool
+    /// A file or folder dragged from the Folder: the chat's composer takes
+    /// its path (issue 1438).
+    var takesWorkspaceEntries = false
     let onDrop: ([NSItemProvider]) -> Void
     @State private var isTargeted = false
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -220,7 +224,8 @@ struct AttachmentDropTarget: ViewModifier {
             // field's drag ending lower it too.
             .onDrop(of: [.item], isTargeted: $isTargeted) { providers in
                 isTargeted = false
-                return AttachmentDrop.take(providers, isEnabled: isEnabled, onDrop: onDrop)
+                return AttachmentDrop.take(providers, isEnabled: isEnabled,
+                                           takesWorkspaceEntries: takesWorkspaceEntries, onDrop: onDrop)
             }
             .onReceive(NotificationCenter.default.publisher(for: .attachmentDragEnded)) { _ in
                 isTargeted = false
@@ -251,7 +256,62 @@ struct AttachmentDropTarget: ViewModifier {
 }
 
 extension View {
-    func attachmentDropTarget(isEnabled: Bool = true, onDrop: @escaping ([NSItemProvider]) -> Void) -> some View {
-        modifier(AttachmentDropTarget(isEnabled: isEnabled, onDrop: onDrop))
+    func attachmentDropTarget(isEnabled: Bool = true, takesWorkspaceEntries: Bool = false,
+                              onDrop: @escaping ([NSItemProvider]) -> Void) -> some View {
+        modifier(AttachmentDropTarget(isEnabled: isEnabled, takesWorkspaceEntries: takesWorkspaceEntries, onDrop: onDrop))
+    }
+}
+
+/// A file or folder dragged out of the Folder (issue 1438). It carries its
+/// host path: dropped on a chat, the composer puts the path in the draft
+/// for the user to send (the file stays on the host, where Hermes reads
+/// it; nothing is uploaded or zipped); dropped on a folder in the tree, it
+/// moves there. Other apps and text fields get the same path as text.
+enum WorkspaceDrag {
+    /// Conduit's own type, seen only inside the app.
+    static let typeIdentifier = "app.conduit.workspace-entry"
+
+    static func provider(for entry: WorkspaceEntry) -> NSItemProvider {
+        let provider = NSItemProvider(object: reference(to: [entry.path]) as NSString)
+        let data = Data(entry.path.utf8)
+        provider.registerDataRepresentation(forTypeIdentifier: typeIdentifier, visibility: .ownProcess) { done in
+            done(data, nil)
+            return nil
+        }
+        return provider
+    }
+
+    static func isEntry(_ provider: NSItemProvider) -> Bool {
+        provider.registeredTypeIdentifiers.contains(typeIdentifier)
+    }
+
+    /// The dragged entry's host path.
+    static func path(from provider: NSItemProvider) async -> String? {
+        await withCheckedContinuation { continuation in
+            _ = provider.loadDataRepresentation(forTypeIdentifier: typeIdentifier) { data, _ in
+                continuation.resume(returning: data.flatMap { String(data: $0, encoding: .utf8) })
+            }
+        }
+    }
+
+    static func paths(from providers: [NSItemProvider]) async -> [String] {
+        var paths: [String] = []
+        for provider in providers where isEntry(provider) {
+            if let path = await path(from: provider), !path.isEmpty { paths.append(path) }
+        }
+        return paths
+    }
+
+    /// The paths as a message names them: a path with a space in inline
+    /// code, so it reads as one path (and opens as a link in the reply).
+    static func reference(to paths: [String]) -> String {
+        paths.map { $0.contains(where: \.isWhitespace) ? "`\($0)`" : $0 }.joined(separator: " ")
+    }
+
+    /// `draft` with `reference` after it, a space between.
+    static func appending(_ reference: String, to draft: String) -> String {
+        guard !reference.isEmpty else { return draft }
+        guard let last = draft.last else { return reference }
+        return draft + (last.isWhitespace ? "" : " ") + reference
     }
 }

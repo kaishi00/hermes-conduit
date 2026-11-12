@@ -10,6 +10,9 @@ final class WorkspaceFilesClient {
     /// `GET /workspace/resolve` (plugin 0.132): where a file a reply names
     /// by its name or a relative path is (issue 1809).
     static let resolveCapability = "workspace-resolve"
+    /// `POST /workspace/duplicate` with `to` (plugin 0.164.12): Copy, then
+    /// Paste into another folder (issue 1438).
+    static let copyCapability = "workspace-copy"
     static let path = "/api/plugins/conduit_push/workspace"
 
     typealias Request = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
@@ -111,10 +114,14 @@ final class WorkspaceFilesClient {
         try await change("move", ["root": root, "path": path, "to": folder, "name": name, "overwrite": replacing])
     }
 
+    /// A copy beside `path`, or with `folder` a copy pasted there, keeping
+    /// its name when free (`copyCapability`).
     @MainActor
     @discardableResult
-    func duplicate(root: String, path: String) async throws -> WorkspaceEntry? {
-        try await change("duplicate", ["root": root, "path": path])
+    func duplicate(root: String, path: String, into folder: String? = nil) async throws -> WorkspaceEntry? {
+        var body: [String: Any] = ["root": root, "path": path]
+        if let folder { body["to"] = folder }
+        return try await change("duplicate", body)
     }
 
     @MainActor

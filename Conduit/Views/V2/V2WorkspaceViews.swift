@@ -100,6 +100,11 @@ struct WorkspaceFolderView: View {
         roots.first { $0.path == rootPath } ?? roots.first
     }
 
+    private struct SearchKey: Equatable {
+        let query: String
+        let canSearch: Bool
+    }
+
     private struct Key: Equatable {
         let dashboard: UUID?
         let profile: String
@@ -166,7 +171,9 @@ struct WorkspaceFolderView: View {
             openToken = nil
             opening = nil
         }
-        .task(id: query) {
+        // Again when search comes back, the plugin turned on for the
+        // profile, with the words still in the field.
+        .task(id: SearchKey(query: query, canSearch: explorer.canChange)) {
             // Typing settles before the host is asked.
             if !query.isEmpty {
                 try? await Task.sleep(for: .milliseconds(350))
@@ -296,6 +303,9 @@ struct WorkspaceFolderView: View {
             }
             .disabled(roots.count < 2)
             .accessibilityLabel(AppLocalization.string("Folder: \(root?.title ?? AppLocalization.string("No folder"))"))
+            .modifier(WorkspaceMoveDropTarget(folder: root?.path ?? "", isEnabled: root != nil && explorer.canChange) { dragged in
+                if let root { moveDropped(dragged, into: root.path) }
+            })
             if let root, explorer.canChange {
                 Menu {
                     actions(in: root.path)
@@ -327,6 +337,17 @@ struct WorkspaceFolderView: View {
             showsImporter = true
         } label: {
             Label(AppLocalization.string("Upload Files"), systemImage: "square.and.arrow.up")
+        }
+        // Copy, then Paste here (issue 1438): a folder never into itself.
+        if explorer.canCopy, let copied = explorer.copied,
+           !(copied.isDirectory && Self.path(folder, isIn: copied.path)) {
+            Button {
+                Task {
+                    await perform { client, root in try await client.duplicate(root: root, path: copied.path, into: folder) }
+                }
+            } label: {
+                Label(AppLocalization.string("Paste \(copied.name)"), systemImage: "doc.on.clipboard")
+            }
         }
     }
 
@@ -557,10 +578,25 @@ struct WorkspaceFolderView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityValue(explorer.expanded.contains(entry.path)
                                     ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
+                .modifier(WorkspaceMoveDropTarget(folder: entry.path, isEnabled: explorer.canChange) { dragged in
+                    moveDropped(dragged, into: entry.path)
+                })
             } else {
                 fileRow(entry, depth: depth, detail: details(entry))
             }
         }
+        // To a folder in the tree, the open folder's top, or the chat.
+        .onDrag { WorkspaceDrag.provider(for: entry) }
+    }
+
+    /// An entry dropped on a folder in the tree moves there; one already
+    /// there, or a folder dropped into itself, stays (issue 1438).
+    private func moveDropped(_ path: String, into folder: String) {
+        guard explorer.canChange, explorer.contains(path),
+              WorkspaceExplorer.canMove(path, into: folder) else { return }
+        let name = (path as NSString).lastPathComponent
+        Haptics.selection()
+        Task { await perform { client, root in try await client.move(root: root, path: path, to: folder, name: name) } }
     }
 
     private func fileRow(_ entry: WorkspaceEntry, depth: Int, detail: String) -> some View {
@@ -678,6 +714,21 @@ struct WorkspaceFolderView: View {
         } label: {
             Label(AppLocalization.string("Copy Path"), systemImage: "doc.on.doc")
         }
+        // From the open folder's top, as a project names it (issue 1438).
+        if let relative = relativePath(entry.path) {
+            Button {
+                UIPasteboard.general.string = relative
+            } label: {
+                Label(AppLocalization.string("Copy Relative Path"), systemImage: "arrow.turn.down.right")
+            }
+        }
+        if explorer.canCopy {
+            Button {
+                explorer.copied = entry
+            } label: {
+                Label(AppLocalization.string("Copy"), systemImage: "doc.on.doc.fill")
+            }
+        }
         if explorer.canChange {
             if entry.isDirectory {
                 Section {
@@ -728,6 +779,16 @@ struct WorkspaceFolderView: View {
         let place = relativeLocation(path: entry.folder)
         let parts = [place, entry.modified.map(Self.dateText) ?? ""].filter { !$0.isEmpty }
         return parts.joined(separator: " · ")
+    }
+
+    /// `path` from the open folder's top (`src/app.ts`); nil outside it,
+    /// or for the folder itself.
+    private func relativePath(_ path: String) -> String? {
+        guard let root = root?.path else { return nil }
+        let base = AppState.normalizedWorkspacePath(root)
+        guard path != base, Self.path(path, isIn: base) else { return nil }
+        let rest = String(path.dropFirst(base.count).drop { $0 == "/" || $0 == "\\" })
+        return rest.isEmpty ? nil : rest
     }
 
     private func relativeLocation(path: String) -> String {
@@ -949,6 +1010,33 @@ struct WorkspaceFolderView: View {
 
     /// The plugin takes up to 25 MB a file.
     static let maxUploadBytes = 25 * 1024 * 1024
+}
+
+/// A folder in the Folder's tree that takes an entry dragged from the tree,
+/// outlined while one is over it (issue 1438).
+private struct WorkspaceMoveDropTarget: ViewModifier {
+    let folder: String
+    let isEnabled: Bool
+    let onDrop: (String) -> Void
+    @State private var isTargeted = false
+
+    func body(content: Content) -> some View {
+        content
+            .onDrop(of: [.item], isTargeted: $isTargeted) { providers in
+                guard isEnabled, let provider = providers.first(where: WorkspaceDrag.isEntry) else { return false }
+                Task { @MainActor in
+                    if let path = await WorkspaceDrag.path(from: provider) { onDrop(path) }
+                }
+                return true
+            }
+            .background {
+                if isTargeted && isEnabled {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.conduitAccent.opacity(0.14))
+                        .allowsHitTesting(false)
+                }
+            }
+    }
 }
 
 /// How a file opens: as text (Markdown drawn), as a page, or in Quick Look.
