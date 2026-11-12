@@ -2099,20 +2099,32 @@ struct BotZoomDestination: ViewModifier {
     let fromHome: Bool
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    /// The portrait this chat grew from, once its chat landed. Back lets
+    /// the arm go at the pop's start; without this the screen changed
+    /// branch there and was built again as it shrank.
+    @State private var landedSource: String?
 
     func body(content: Content) -> some View {
         // A workstream opened from the Bot Chat shows in the same pushed
         // screen: it counts as its bot's, so the zoom holds through the
         // visit and Back still shrinks the Bot Chat home. A transition
         // changed on a pushed screen leaves Back with no animation.
-        if #available(iOS 18.0, *), route == .conversation, fromHome, !reduceMotion,
-           let source = appState.botZoom.source(open: appState.botZoomRoomKey
-                ?? appState.activeBotChatProfile ?? appState.activeWorkstream?.profile) {
-            content
-                .navigationTransition(.zoom(sourceID: source, in: namespace))
-                .environment(\.botChatZoomed, true)
-        } else {
-            content
+        let open = appState.botZoomRoomKey ?? appState.activeBotChatProfile ?? appState.activeWorkstream?.profile
+        let armed = route == .conversation && fromHome && !reduceMotion ? appState.botZoom.source(open: open) : nil
+        let held = landedSource.flatMap { source in
+            open?.caseInsensitiveCompare(source) == .orderedSame ? source : nil
+        }
+        Group {
+            if #available(iOS 18.0, *), let source = armed ?? held {
+                content
+                    .navigationTransition(.zoom(sourceID: source, in: namespace))
+                    .environment(\.botChatZoomed, true)
+            } else {
+                content
+            }
+        }
+        .onChange(of: appState.botZoom.landed ? armed : nil, initial: true) { _, landed in
+            if let landed { landedSource = landed }
         }
     }
 }
