@@ -8,6 +8,12 @@
 //
 
 import Foundation
+import SwiftUI
+import Combine
+import CryptoKit
+import OSLog
+import UIKit
+import WebKit
 
 extension AppState {
     /// `rows` with each profile's pinned chats in its order.

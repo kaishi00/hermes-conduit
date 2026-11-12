@@ -164,6 +164,13 @@ class SplitAppStateTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             split.run(self.repo, 1, True, pr=42, today="2026-11-12")
 
+    def test_appending_brings_the_imports_the_code_used(self):
+        (self.repo / "Conduit/Services/AppState+Connection.swift").write_text(
+            "//\n//  AppState+Connection.swift\n//\n\nimport Foundation\n\nextension AppState {\n    func old() {}\n}\n")
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        text = self.read("AppState+Connection.swift")
+        self.assertIn("\nimport Foundation\nimport SwiftUI\n\nextension AppState {\n    func old()", text)
+
     def test_repeated_and_numbered_region_names(self):
         (self.repo / split.APP_STATE).write_text('''import SwiftUI
 

@@ -11,6 +11,11 @@
 import AVFAudio
 import Combine
 import Foundation
+import SwiftUI
+import CryptoKit
+import OSLog
+import UIKit
+import WebKit
 
 extension AppState {
     /// The dashboard key wake phrases are stored under.

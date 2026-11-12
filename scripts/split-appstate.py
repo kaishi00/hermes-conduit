@@ -743,6 +743,21 @@ def render_new_file(src, fname, items, changes, header_note):
     return "\n".join(out)
 
 
+def with_imports(text, imports):
+    """`text` with any of AppState.swift's imports it lacks, after its own:
+    code appended to an existing file needs what it used where it was."""
+    lines = text.split("\n")
+    have = {l.strip() for l in lines if l.startswith("import ")}
+    missing = [i for i in imports if i.strip() not in have]
+    if not missing:
+        return text
+    at = max((k for k, l in enumerate(lines) if l.startswith("import ")), default=None)
+    if at is None:
+        at = next(k for k, l in enumerate(lines) if l.strip() and not l.startswith("//")) - 1
+        missing = missing + [""]
+    return "\n".join(lines[:at + 1] + missing + lines[at + 1:])
+
+
 def render_app_state(src, moved, changes):
     keep = []
     skip = set()
@@ -962,7 +977,8 @@ def run(repo, step, write, pr=None, today=None):
         if target.exists():
             body = render_new_file(src, f, items, changes, ["-"])
             block = body[body.index("extension AppState {"):]
-            target.write_text(target.read_text().rstrip("\n") + "\n\n" + block)
+            target.write_text(with_imports(target.read_text(), src.imports).rstrip("\n")
+                              + "\n\n" + block)
         else:
             target.write_text(render_new_file(src, f, items, changes, HEADER_NOTES.get(f, [])))
     # AppState.swift last: until it's written, its regions are all still there
