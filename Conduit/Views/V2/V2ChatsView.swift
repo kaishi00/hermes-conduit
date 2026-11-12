@@ -557,7 +557,7 @@ struct V2ChatsView: View, Equatable {
                 .withAllProfilesChip()
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            MinimisedLiveVoiceBar()
+            V2ListCallBar()
         }
         .environmentObject(updates)
         // The feed's every-minute read, drawn by the tab so hiding the bar's

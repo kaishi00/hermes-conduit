@@ -248,6 +248,18 @@ private struct RichMediaViewer: View {
             player.pause()
             RichAudioPlayer.endPlayback()
         }
+        // A call or Siri taking the audio pauses the video and lets its
+        // lease go, as it ends the audio row's item, so wake listening
+        // isn't held off while the sheet stays up.
+        .onReceive(
+            NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)
+                .filter { ($0.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue }
+                .receive(on: DispatchQueue.main)
+        ) { _ in
+            guard let player else { return }
+            player.pause()
+            RichAudioPlayer.endPlayback()
+        }
     }
 }
 
@@ -292,10 +304,12 @@ final class RichAudioPlayer: ObservableObject {
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in MainActor.assumeIsolated { if self?.playing == url { self?.stop() } } }
             .store(in: &endings)
+        // An interruption ends the item and lets its lease go, so nothing
+        // keeps holding the session (wake listening waits on that).
         NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)
             .filter { ($0.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue }
             .receive(on: DispatchQueue.main)
-            .sink { [weak self] _ in MainActor.assumeIsolated { if self?.playing == url { self?.stop(endingSession: false) } } }
+            .sink { [weak self] _ in MainActor.assumeIsolated { if self?.playing == url { self?.stop() } } }
             .store(in: &endings)
         self.player = player
         playing = url
@@ -304,25 +318,28 @@ final class RichAudioPlayer: ObservableObject {
         player.play()
     }
 
-    /// Whether a call, a voice conversation or Read Aloud holds the audio
-    /// session, which a card then plays within and leaves alone.
-    private static var sessionIsOwnedElsewhere: Bool {
-        let coordinator = VoiceAudioSessionCoordinator.shared
-        return coordinator.appliedPolicy != nil || coordinator.isInNativeCall
-            || AVAudioSession.sharedInstance().category == .playAndRecord
-    }
+    /// The card media's hold on the audio session, one for the audio row
+    /// and the video player alike (one plays at a time). The coordinator
+    /// decides: alone it pauses other apps' media, as a player does; under
+    /// a call, a voice conversation or Read Aloud it plays within theirs and
+    /// changes nothing (issue 826).
+    private static var lease: VoiceAudioLease?
 
     /// Media plays even with the ringer switch off, as a player does.
+    /// Dictation or a voice message taking the microphone stops the audio
+    /// row, as it pauses a voice clip, so the recording never hears it.
     static func preparePlayback() {
-        guard !sessionIsOwnedElsewhere else { return }
-        VoiceAudioSessionCoordinator.shared.activateForCardPlayback()
+        guard lease == nil else { return }
+        lease = try? VoiceAudioSessionCoordinator.shared.acquire(.mediaPlayback) {
+            RichAudioPlayer.shared.stop()
+        }
     }
 
     /// Hands the audio back to whatever the card's media paused.
     static func endPlayback() {
-        let session = AVAudioSession.sharedInstance()
-        guard !sessionIsOwnedElsewhere, session.category == .playback else { return }
-        VoiceAudioSessionCoordinator.shared.deactivateAfterCardPlayback()
+        guard let lease else { return }
+        Self.lease = nil
+        VoiceAudioSessionCoordinator.shared.release(lease)
     }
 
     /// `endingSession` false: another item starts right away.

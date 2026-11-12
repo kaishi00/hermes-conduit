@@ -88,10 +88,32 @@ private final class WatchMeteredSocket: GeminiLiveSocket {
 
     func receive() async throws -> Data {
         let data = try await inner.receive()
+        metered(data.count)
+        return data
+    }
+
+    /// Passes the inner socket's off-main coding through (issue 1959),
+    /// counting the bytes on the way.
+    func sendAudio(_ pcm16: Data, encode: @escaping @Sendable (Data) throws -> String) async throws {
+        let size = WatchByteCount()
+        try await inner.sendAudio(pcm16) { pcm16 in
+            let text = try encode(pcm16)
+            size.value = text.utf8.count
+            return text
+        }
+        meter.sent(size.value)
+    }
+
+    func receive<T: Sendable>(decoding decode: @escaping @Sendable (Data) -> T) async throws -> T {
+        let read = try await inner.receive(decoding: { WatchMeteredFrame(value: decode($0), bytes: $0.count) })
+        metered(read.bytes)
+        return read.value
+    }
+
+    private func metered(_ bytes: Int) {
         let first = !heardFromServer
         heardFromServer = true
-        meter.received(data.count, api: api, first: first)
-        return data
+        meter.received(bytes, api: api, first: first)
     }
 
     func close() {
@@ -101,6 +123,17 @@ private final class WatchMeteredSocket: GeminiLiveSocket {
     func serverClose(within timeout: Duration) async -> GeminiLiveServerClose? {
         await inner.serverClose(within: timeout)
     }
+}
+
+private struct WatchMeteredFrame<T: Sendable>: Sendable {
+    let value: T
+    let bytes: Int
+}
+
+/// A frame's size, set where it was encoded and read once its send
+/// returned, after the encode finished.
+private final class WatchByteCount: @unchecked Sendable {
+    var value = 0
 }
 
 /// A network path as the call's log records it.
@@ -174,7 +207,24 @@ final class WatchURLSessionGeminiLiveSocket: GeminiLiveSocket {
     }
 
     func receive() async throws -> Data {
-        switch try await task.receive() {
+        Self.payload(try await task.receive())
+    }
+
+    /// Encoded off the main actor, as the iPhone's socket does (issue 1959).
+    func sendAudio(_ pcm16: Data, encode: @escaping @Sendable (Data) throws -> String) async throws {
+        let text = try await LiveVoiceWireCoding.throwingOffMainActor { try encode(pcm16) }
+        try await task.send(.string(text))
+    }
+
+    /// Decoded off the main actor, as the iPhone's socket does (issue 1959).
+    func receive<T: Sendable>(decoding decode: @escaping @Sendable (Data) -> T) async throws -> T {
+        let message = try await task.receive()
+        return await LiveVoiceWireCoding.offMainActor { decode(Self.payload(message)) }
+    }
+
+    /// Text frames as UTF-8.
+    private nonisolated static func payload(_ message: URLSessionWebSocketTask.Message) -> Data {
+        switch message {
         case .string(let text): return Data(text.utf8)
         case .data(let data): return data
         @unknown default: return Data()

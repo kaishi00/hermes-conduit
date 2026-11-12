@@ -463,7 +463,40 @@ class ReturnKeyTextView: UITextView {
         return pasted
     }
 
+    // MARK: ⌘V from the transcript
+
+    /// ⌘V in the open conversation's transcript, handed to its composer
+    /// (issue 1692): the paste as if ⌘V had come to this field, a long
+    /// paste offered as an attachment and a picture attached as ever.
+    @objc func pasteFromTranscript(_ sender: Any?) {
+        paste(sender)
+    }
+
+    /// After the composer on screen asked its field for focus: pastes into
+    /// it once it has it. Focus moves just after the update that asked
+    /// (`setFocusIntent`), so this tries for a moment; a field that never
+    /// takes focus (typing off, a sheet in front) gets nothing.
+    @MainActor
+    static func pasteOnceFocused() {
+        Task { @MainActor in
+            for _ in 0..<12 {
+                if UIApplication.shared.sendAction(#selector(ReturnKeyTextView.pasteFromTranscript(_:)), to: nil, from: nil, for: nil) { return }
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+        }
+    }
+
+    /// Another text field has focus: one that isn't a composer's (the
+    /// list's search, a rename field).
+    @MainActor static var anotherFieldHasFocus: Bool {
+        guard let responder = FirstResponderProbe.current else { return false }
+        return (responder is UITextField || responder is UITextView) && !(responder is ReturnKeyTextView)
+    }
+
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(pasteFromTranscript(_:)) {
+            return isEditable
+        }
         if action == #selector(suggestionUpPressed) || action == #selector(suggestionDownPressed)
             || action == #selector(suggestionTabPressed) || action == #selector(suggestionEscapePressed) {
             // Declining keeps the key's own job: the cursor moves, Tab
@@ -915,5 +948,26 @@ final class FieldDropHandler: NSObject, UIDropInteractionDelegate, UITextDragDel
             return
         }
         field.takeDrop(providers, at: point)
+    }
+}
+
+/// Finds the first responder: the action goes to whoever has it, which
+/// says so.
+@MainActor
+enum FirstResponderProbe {
+    fileprivate static weak var found: UIResponder?
+
+    static var current: UIResponder? {
+        found = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.conduitReportFirstResponder(_:)), to: nil, from: nil, for: nil)
+        let responder = found
+        found = nil
+        return responder
+    }
+}
+
+extension UIResponder {
+    @objc fileprivate func conduitReportFirstResponder(_ sender: Any?) {
+        FirstResponderProbe.found = self
     }
 }

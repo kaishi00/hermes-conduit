@@ -218,6 +218,14 @@ struct GroupRoomComposer: View {
             applyQuoteRequest(appState.roomQuoteRequest)
             applyRecipientRequest(appState.roomRecipientRequest)
             applyDraftHandBack(appState.roomDraftHandBack)
+            focusOnOpen()
+        }
+        // ⌘V in the room's transcript on a Mac: the field takes focus and
+        // the paste, as a chat's does (issue 1692).
+        .onReceive(ComposerPaste.requests) { target in
+            guard target == .room, takesKeys else { return }
+            isFocused = true
+            ReturnKeyTextView.pasteOnceFocused()
         }
         .onChange(of: appState.roomQuoteRequest) { _, request in
             applyQuoteRequest(request)
@@ -612,6 +620,22 @@ struct GroupRoomComposer: View {
         }
         .accessibilityLabel(Text(AppLocalization.string("Send")))
         .accessibilityIdentifier("room.composer.send")
+    }
+
+    /// The room on screen: not one split Settings covers, a hidden tab's,
+    /// or one a Bot Chat on its way covers.
+    private var takesKeys: Bool {
+        shell.chatTakesKeys && appState.botChatComingOverAnother == nil
+    }
+
+    /// On a Mac a room opens ready to type, as a chat does (issue 1692).
+    /// The view is keyed by room, so this runs once a room.
+    private func focusOnOpen() {
+        guard ComposerLayout.focusesOnOpen(), takesKeys else { return }
+        Task { @MainActor in
+            guard takesKeys, ComposerLayout.openMayTakeFocus else { return }
+            isFocused = true
+        }
     }
 
     // MARK: - Sending

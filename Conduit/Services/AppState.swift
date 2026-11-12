@@ -1890,6 +1890,16 @@ final class AppState: ObservableObject {
     /// An iPad app on a Mac is inactive whenever another app is in front,
     /// where the reply stays in view, so there only the background counts.
     private var sceneHidesLiveRows = false
+    /// On a Mac, inactive means another app is in front, where Conduit's
+    /// window stays in view. Tests set their own.
+    var inactiveSceneStaysInView = ProcessInfo.processInfo.isiOSAppOnMac
+    /// Conduit's screens are in view: the scene is active, or on a Mac its
+    /// window shows behind another app's. The Chats list's live reads keep
+    /// going there, so its Running and Approve keep up with the chats
+    /// beside the app in front (issue 1615).
+    var sceneIsInView: Bool {
+        isSceneActive || (inactiveSceneStaysInView && sceneHasBeenActive && !sceneHidesLiveRows)
+    }
 
     private func pauseLivePublishes() {
         streamingPublishTask?.cancel()
@@ -10611,8 +10621,9 @@ final class AppState: ObservableObject {
     }
 
     /// Whether a turn is running in the conversation or it waits on the user.
-    /// The open chat's own turn state is authoritative for "working"; the
-    /// registry snapshot can lag it by a poll.
+    /// The open chat's own running turn is authoritative for "working", so
+    /// its row says what its working line says; the registry snapshot can
+    /// lag it by a poll.
     func sessionLiveStatus(_ session: SessionSummary) -> SessionLiveStatus? {
         // A snapshot from before a disconnect may be long stale.
         let registry = isConnected && liveSessionStatusProfile == activeProfile
@@ -10625,12 +10636,16 @@ final class AppState: ObservableObject {
         guard !isOtherProfileRow(session) else { return registry }
         if sessionMatchesActiveSession(session) {
             if registry == .needsInput { return .needsInput }
-            // Once the open chat's own turn state is known it is fresher
-            // than a poll; while it is still syncing or stale, the registry
-            // decides.
-            let localStateKnown = !turnStateIsStale && (turnState == .idle || turnState == .running)
-            guard localStateKnown else { return registry }
-            return isBusy ? .working : nil
+            // Running while the chat shows its working line, stale or not:
+            // a Mac window that isn't frontmost goes inactive, which marks
+            // the turn state stale while its events keep coming, and the
+            // row had gone quiet beside a chat still saying it worked
+            // (issue 1615).
+            if isBusy { return .working }
+            // A known idle is fresher than a poll; while the chat is still
+            // syncing, or its idle is stale, the registry decides.
+            let localIdleKnown = !turnStateIsStale && turnState == .idle
+            return localIdleKnown ? nil : registry
         }
         return registry
     }
@@ -10648,7 +10663,7 @@ final class AppState: ObservableObject {
     func refreshLiveSessionStatuses() async -> Bool {
         // Its own task: a slow plugin read must not hold up live status.
         Task { [weak self] in await self?.refreshDesktopViewsIfDue() }
-        guard isSceneActive, let client, isConnected else { return false }
+        guard sceneIsInView, let client, isConnected else { return false }
         guard client !== activeListUnsupportedClient else { return true }
         let profile = activeProfile
         do {
@@ -22213,6 +22228,18 @@ final class AppState: ObservableObject {
                     lifecycleLog.notice(
                         "Foreground refresh start: transport=retained localTurn=\(self.turnStateLogValue, privacy: .public)"
                     )
+                    // The registry probe goes out alongside the health ping
+                    // (issue 1727): both are reads on the same socket, and
+                    // its rows count only once the ping passed. Not when a
+                    // bootstrap is owed, which never reads them.
+                    let probeRead: Task<ForegroundRuntimeRowsRead, Never>?
+                    if self.activeSessionId != nil,
+                       !(self.owedPostConnectBootstrap.map { $0.client === client } ?? false) {
+                        probeRead = self.startForegroundRuntimeRowsRead(using: client)
+                    } else {
+                        probeRead = nil
+                    }
+                    defer { probeRead?.cancel() }
                     do {
                         try await self.verifyChatResumeTransportHealth(client)
                         guard self.scenePhaseAttemptIsCurrent(sceneAttemptID),
@@ -22233,6 +22260,7 @@ final class AppState: ObservableObject {
                         } else {
                             await self.refreshForegroundOnHealthyTransport(
                                 using: client,
+                                probeRead: probeRead,
                                 freshnessCheckArmed: freshnessCheckArmed,
                                 reconciliationToken: token,
                                 automaticWorkToken: automaticWorkToken
@@ -22401,7 +22429,7 @@ final class AppState: ObservableObject {
                 noteChatLeft(activeSessionId)
             }
             isSceneActive = false
-            if !ProcessInfo.processInfo.isiOSAppOnMac {
+            if !inactiveSceneStaysInView {
                 sceneHidesLiveRows = true
                 pauseLivePublishes()
             }
@@ -22724,6 +22752,7 @@ final class AppState: ObservableObject {
     /// gone (or cannot answer).
     private func refreshForegroundOnHealthyTransport(
         using client: HermesClient,
+        probeRead: Task<ForegroundRuntimeRowsRead, Never>? = nil,
         freshnessCheckArmed: Bool,
         reconciliationToken token: UUID,
         automaticWorkToken: ChatResumeAutomaticWorkToken?
@@ -22743,7 +22772,8 @@ final class AppState: ObservableObject {
         if let requestedSessionID {
             probe = await probeForegroundRuntime(
                 requestedSessionID: requestedSessionID,
-                using: client
+                using: client,
+                alreadyReading: probeRead
             )
         } else {
             probe = .absent
@@ -22979,34 +23009,66 @@ final class AppState: ObservableObject {
         }
     }
 
+    /// One `session.active_list` read, with the connection it was asked
+    /// on: rows from before a server change must not count.
+    struct ForegroundRuntimeRowsRead: Sendable {
+        let rows: Result<[LiveSessionStatus], Error>
+        let profile: String
+        let serverIdentity: String?
+    }
+
+    /// Starts the registry read now, so the foreground's health ping and
+    /// this read share one round trip (issue 1727). Reading has no side
+    /// effects; the rows are judged in `probeForegroundRuntime`.
+    private func startForegroundRuntimeRowsRead(using client: HermesClient) -> Task<ForegroundRuntimeRowsRead, Never> {
+        let profile = activeProfile
+        let serverIdentity = defaults.string(forKey: Self.chatResumeServerIdentityKey)
+        let probeActiveSessions = chatResumeLifecycleOperations.probeActiveSessions
+        return Task { @MainActor in
+            let rows: Result<[LiveSessionStatus], Error>
+            do {
+                if let probeActiveSessions {
+                    rows = .success(try await probeActiveSessions(client))
+                } else {
+                    rows = .success(try await client.activeSessions())
+                }
+            } catch {
+                rows = .failure(error)
+            }
+            return ForegroundRuntimeRowsRead(rows: rows, profile: profile, serverIdentity: serverIdentity)
+        }
+    }
+
     /// Read-only registry probe for the active conversation. Matches a row by
     /// ANY identity the conversation is known under (requested, stored, and
     /// runtime aliases), so a runtime-id rotation cannot be mistaken for a
     /// dead runtime while the catalog already knows the alias.
+    /// `alreadyReading` is a read the foreground started beside its health
+    /// ping; without one the probe reads now.
     private func probeForegroundRuntime(
         requestedSessionID: String,
-        using client: HermesClient
+        using client: HermesClient,
+        alreadyReading: Task<ForegroundRuntimeRowsRead, Never>? = nil
     ) async -> ForegroundRuntimeProbe {
-        let evidenceProfile = activeProfile
-        let evidenceServerIdentity = defaults.string(forKey: Self.chatResumeServerIdentityKey)
+        let reading = alreadyReading ?? startForegroundRuntimeRowsRead(using: client)
+        let read = await withTaskCancellationHandler {
+            await reading.value
+        } onCancel: {
+            reading.cancel()
+        }
         do {
-            let rows: [LiveSessionStatus]
-            if let probeActiveSessions = chatResumeLifecycleOperations.probeActiveSessions {
-                rows = try await probeActiveSessions(client)
-            } else {
-                rows = try await client.activeSessions()
-            }
+            let rows = try read.rows.get()
             // Currency fence: rows observed before a SERVER change must not
             // repopulate the index scope that change cleared. The fence is
             // the committed server identity — the exact boundary
             // prepareChatResumeForConnection uses — so a same-server client
             // replacement (reconnect, possibly re-addressed) stays valid
             // while a real server switch discards its in-flight rows.
-            guard evidenceProfile == activeProfile,
-                  defaults.string(forKey: Self.chatResumeServerIdentityKey) == evidenceServerIdentity else {
+            guard read.profile == activeProfile,
+                  defaults.string(forKey: Self.chatResumeServerIdentityKey) == read.serverIdentity else {
                 return .unavailable("Probe superseded by connection change")
             }
-            recordActiveListEvidence(rows, profile: evidenceProfile)
+            recordActiveListEvidence(rows, profile: read.profile)
             let acceptedIDs = acceptedIdentitySessionIDs(forRequested: requestedSessionID)
             if let row = rows.first(where: {
                 acceptedIDs.contains($0.runtimeSessionId) || acceptedIDs.contains($0.storedSessionId)
@@ -24118,13 +24180,13 @@ final class AppState: ObservableObject {
     func chatListPollTick() async -> TimeInterval {
         let followsChanges = client?.sendsChangeEvents == true
         // Off screen (voice or CarPlay keep the app running) nothing reads.
-        guard isSceneActive, isConnected else {
+        guard sceneIsInView, isConnected else {
             return PollCadence.stretched(chatListPollPacer.interval(followingChanges: followsChanges), by: deviceConditions())
         }
         let registryRead = await refreshLiveSessionStatuses()
         // Left the screen, or the poll stopped, while the registry read was
         // on its way: nothing more reads.
-        guard isSceneActive, !Task.isCancelled else {
+        guard sceneIsInView, !Task.isCancelled else {
             return PollCadence.stretched(chatListPollPacer.interval(followingChanges: followsChanges), by: deviceConditions())
         }
         var registry: Set<String>?

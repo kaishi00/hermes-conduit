@@ -106,6 +106,10 @@ struct V2ConversationScreen: View {
     @ObservedObject private var voiceMessages = VoiceMessageRecorder.shared
 
     private var hidesVoiceButton: Bool { composerExpanded && !voiceMessages.isHeld }
+    /// What the round button beside the composer does here.
+    private var chatVoiceButtonAction: ChatVoiceButtonAction {
+        ChatVoiceButtonAction.resolved(profile: appState.chatVoiceButtonOverride, app: appChatVoiceButton)
+    }
     @State private var chatTitlePendingRename: SessionSummary?
     @State private var chatTitlePendingDeletion: SessionSummary?
     @State private var confirmsRoomDisband = false
@@ -455,7 +459,9 @@ struct V2ConversationScreen: View {
                 .offset(x: swapShift * chatColumnWidth)
                 .opacity(1 - Double(abs(swapShift)) * 0.6)
                 .overlay(alignment: .bottomTrailing) {
-                    if appState.activeRoomSurface == nil {
+                    // On a Mac, not when all it would do is the call the
+                    // header has (issue 1534).
+                    if appState.activeRoomSurface == nil, ChatVoiceButtonAction.roundButtonBeside(chatVoiceButtonAction) {
                         // Beside the resting composer; it slides aside,
                         // shrinks and fades while the composer is expanded
                         // for use. One that stays expanded keeps it.
@@ -665,9 +671,11 @@ struct V2ConversationScreen: View {
             }
         }
         // The big button does something else: a live call stays one
-        // tap away up here.
+        // tap away up here. On a Mac the call is always up here, where a
+        // desktop client has it, and shows a minimised call in gold
+        // (issue 1534).
         if appState.activeRoomSurface == nil, appState.botChatComingOverAnother == nil,
-           ChatVoiceButtonAction.resolved(profile: appState.chatVoiceButtonOverride, app: appChatVoiceButton) != .liveCall {
+           ChatVoiceButtonAction.headerCallButton(chatVoiceButtonAction) {
             ToolbarItem(placement: .topBarTrailing) {
                 V2VoiceButton(context: .conversation, style: .toolbar)
             }
