@@ -206,8 +206,6 @@ extension AppState {
         try await sendSessionMutation(hostID, body: ["pinned": pinned], profile: profile, bridge: bridge)
     }
 
-    // MARK: - Pins kept on the phone and on the host, and pinned replies
-
     /// `unpinOnHost`: also clear Hermes' flag, so a chat restored later
     /// doesn't come back pinned (an archived row keeps its flag there).
     func removePinnedState(for session: SessionSummary, unpinOnHost: Bool = false) {
