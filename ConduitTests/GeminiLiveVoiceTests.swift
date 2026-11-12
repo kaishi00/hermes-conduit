@@ -3818,7 +3818,10 @@ extension HermesVoiceGatewayTimeoutTests {
             if index == 3 {
                 XCTAssertTrue(writer.enqueue(["turn"], isAudio: false) { _ in outcomes += 1 })
             }
-            let queued = writer.enqueue(.audio(Data([UInt8(index)]), encode: { "a\($0.first!)" }), isAudio: false) { _ in outcomes += 1 }
+            let queued = writer.enqueue(.audio(Data([UInt8(index)]), encode: { chunk in
+                guard let byte = chunk.first else { throw URLError(.cannotDecodeRawData) }
+                return "a\(byte)"
+            }), isAudio: false) { _ in outcomes += 1 }
             XCTAssertTrue(queued)
         }
         await settle(until: { outcomes == 7 })

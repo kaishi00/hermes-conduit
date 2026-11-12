@@ -745,6 +745,14 @@ extension GatewayRestartTests {
         XCTAssertNil(NotifierPluginStatus.runtime(from: ["ok": true, "version": "0.23.0", "capabilities": []]))
     }
 
+    func testARuntimeSaysWhenTheHostKeepsDisbandedRoomsChats() {
+        let base: [String: Any] = ["ok": true, "version": "0.165.0", "loaded_version": "0.165.0", "capabilities": []]
+        XCTAssertEqual(NotifierPluginStatus.runtime(from: base)?.roomChatsKept, false)
+        var kept = base
+        kept["room_chats_kept"] = true
+        XCTAssertEqual(NotifierPluginStatus.runtime(from: kept)?.roomChatsKept, true)
+    }
+
     func testProfilePairingOwner() {
         XCTAssertEqual(PushNotificationService.profilePairing(status: ["paired": false], installationID: "i1"), .unpaired)
         XCTAssertEqual(PushNotificationService.profilePairing(status: ["paired": true, "installation_id": "i1"], installationID: "i1"), .thisDevice)

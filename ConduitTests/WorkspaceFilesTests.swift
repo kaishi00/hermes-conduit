@@ -129,6 +129,36 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(result.matches.first?.lines, [.init(number: 12, text: "    print('hello')", matchStart: 11, matchLength: 5)])
     }
 
+    /// Copy, then Paste into another folder (issue 1438): the copy names
+    /// the folder; a plain Duplicate doesn't. A drag to a folder moves only
+    /// somewhere new, never a folder into itself; a drag to the chat puts
+    /// the paths in the draft, one with a space in inline code.
+    func testAPastedCopyNamesItsFolderAndADragMovesOnlySomewhereNew() async throws {
+        var bodies: [[String: Any]] = []
+        let client = workspaceClient(answer: { _, _, _ in ["ok": true, "entry": ["name": "a.md", "path": "/w/out/a.md"]] },
+                                     requests: { _, _, body in bodies.append(body ?? [:]) })
+        _ = try await client.duplicate(root: "/w", path: "/w/docs/a.md", into: "/w/out")
+        _ = try await client.duplicate(root: "/w", path: "/w/docs/a.md")
+        XCTAssertEqual(bodies.first?["to"] as? String, "/w/out")
+        XCTAssertNil(bodies.last?["to"])
+
+        XCTAssertTrue(WorkspaceExplorer.canMove("/w/docs/a.md", into: "/w/out"))
+        XCTAssertTrue(WorkspaceExplorer.canMove("/w/docs", into: "/w/docs2"), "a sibling sharing its start")
+        XCTAssertFalse(WorkspaceExplorer.canMove("/w/docs/a.md", into: "/w/docs"), "already there")
+        XCTAssertFalse(WorkspaceExplorer.canMove("/w/docs", into: "/w/docs"))
+        XCTAssertFalse(WorkspaceExplorer.canMove("/w/docs", into: "/w/docs/sub"), "into itself")
+
+        XCTAssertEqual(WorkspaceDrag.reference(to: ["/w/a.md", "/w/My Notes/b.md"]), "/w/a.md `/w/My Notes/b.md`")
+        XCTAssertEqual(WorkspaceDrag.appending("/w/a.md", to: "Read"), "Read /w/a.md")
+        XCTAssertEqual(WorkspaceDrag.appending("/w/a.md", to: "Read "), "Read /w/a.md")
+        XCTAssertEqual(WorkspaceDrag.appending("/w/a.md", to: ""), "/w/a.md")
+        let provider = WorkspaceDrag.provider(for: WorkspaceEntry(name: "a.md", path: "/w/a.md", isDirectory: false))
+        XCTAssertTrue(WorkspaceDrag.isEntry(provider))
+        XCTAssertFalse(AttachmentDrop.takes(provider), "a Folder drag is never staged as an upload")
+        let path = await WorkspaceDrag.path(from: provider)
+        XCTAssertEqual(path, "/w/a.md")
+    }
+
     func testWorkspaceAnswerWithoutOKIsRefused() async {
         let client = workspaceClient(answer: { _, _, _ in ["entries": []] })
         do {

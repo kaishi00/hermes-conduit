@@ -542,7 +542,7 @@ struct ComposerBar: View, Equatable {
         .preference(key: V2ComposerExpandedKey.self, value: restsWhenIdle && !keepsVoiceButtonBeside && !rests)
         .preference(key: V2ComposerTypingKey.self, value: Self.hidesMinimisedCallBar(
             restsWhenIdle: restsWhenIdle,
-            isFocused: isTyping,
+            isTyping: isTyping,
             hasText: hasText,
             keepsFocusAfterSend: ComposerLayout.keepsFocusAfterSend()
         ))
@@ -683,6 +683,8 @@ struct ComposerBar: View, Equatable {
         }
         .onDisappear {
             dictation.cancel()
+            // A transcript paste still waiting for focus belongs to this chat.
+            ReturnKeyTextView.cancelPendingPaste()
             if voiceMessages.isActive, !voiceMessages.isSending { voiceMessages.cancel() }
             collapseTask?.cancel()
             collapseTask = nil
@@ -1064,11 +1066,11 @@ struct ComposerBar: View, Equatable {
     /// typing: the bar hides only while the field holds words.
     static func hidesMinimisedCallBar(
         restsWhenIdle: Bool,
-        isFocused: Bool,
+        isTyping: Bool,
         hasText: Bool = true,
         keepsFocusAfterSend: Bool = false
     ) -> Bool {
-        restsWhenIdle && isFocused && (hasText || !keepsFocusAfterSend)
+        restsWhenIdle && isTyping && (hasText || !keepsFocusAfterSend)
     }
 
     /// V2's resting composer: attach and the placeholder in a slim bar.
@@ -2628,9 +2630,11 @@ struct ComposerBar: View, Equatable {
             applyPendingPrefill()
             return
         }
-        // Dictated words belong to the draft they started in, and the full
-        // editor to the chat it was opened in.
+        // Dictated words belong to the draft they started in, the full
+        // editor to the chat it was opened in, and a pending transcript
+        // paste to the chat it was asked in.
         dictation.cancel()
+        ReturnKeyTextView.cancelPendingPaste()
         isShowingFullEditor = false
         // A send from the sheet kept focus for the chat it was in, not the
         // one loading now.
@@ -2995,10 +2999,22 @@ struct ComposerBar: View, Equatable {
     /// one like picked documents. A locked composer takes none, as its
     /// Attach menu is off then. A folder isn't attached; the notice names
     /// it and says to drop the files inside.
-    private func handleDroppedFiles(_ providers: [NSItemProvider]) {
-        guard appState.composerIsEnabled, !providers.isEmpty else { return }
+    private func handleDroppedFiles(_ dropped: [NSItemProvider]) {
+        guard appState.composerIsEnabled, !dropped.isEmpty else { return }
         composerErrorMessage = nil
         let origin = asyncAttachmentContext
+        // Dragged from the Folder: their paths go in the draft (issue 1438).
+        let entries = dropped.filter(WorkspaceDrag.isEntry)
+        if !entries.isEmpty {
+            Task {
+                let reference = WorkspaceDrag.reference(to: await WorkspaceDrag.paths(from: entries))
+                guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin), !reference.isEmpty else { return }
+                replaceComposerText(WorkspaceDrag.appending(reference, to: text), cursorAtEnd: true)
+                isFocused = true
+            }
+        }
+        let providers = dropped.filter { !WorkspaceDrag.isEntry($0) }
+        guard !providers.isEmpty else { return }
         let limitMegabytes = attachmentLimitMegabytes
         let files = providers.filter { !AttachmentDrop.isFolder($0) }
         let hasFolders = files.count < providers.count

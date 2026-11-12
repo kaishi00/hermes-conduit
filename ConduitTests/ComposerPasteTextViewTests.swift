@@ -62,6 +62,15 @@ final class ComposerPasteTextViewTests: XCTestCase {
         XCTAssertFalse(field.canPerformAction(paste, withSender: nil))
     }
 
+    /// A chat or room switch drops a transcript paste still waiting for
+    /// its field's focus, so it can't land in the next conversation.
+    func testAChatSwitchDropsATranscriptPasteStillWaiting() {
+        ReturnKeyTextView.pasteOnceFocused()
+        XCTAssertTrue(ReturnKeyTextView.hasPendingPaste)
+        ReturnKeyTextView.cancelPendingPaste()
+        XCTAssertFalse(ReturnKeyTextView.hasPendingPaste)
+    }
+
     func testAPastedImageLinkThatAnsweredWithAPageIsRefused() {
         XCTAssertNil(PastedRemoteImage.image(from: Data("<html><body>Not found</body></html>".utf8)))
     }
@@ -546,6 +555,12 @@ final class ComposerPasteTextViewTests: XCTestCase {
             ReturnKeyTextView.fieldDrop(registeredTypeIdentifiers: [jpeg], suggestedNames: ["a.jpg"], isEditable: false, takesFiles: true),
             .declined,
             "A locked field takes no files"
+        )
+        XCTAssertEqual(
+            ReturnKeyTextView.fieldDrop(registeredTypeIdentifiers: [[WorkspaceDrag.typeIdentifier] + words], suggestedNames: [nil],
+                                        isEditable: true, takesFiles: true),
+            .declined,
+            "A Folder row is left to the chat or room around the field, never pasted as its path"
         )
     }
 

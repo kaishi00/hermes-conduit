@@ -71,6 +71,7 @@ struct WorkspaceFolderView: View {
     @State private var deleting: WorkspaceEntry?
     @State private var uploadFolder: String?
     @State private var showsImporter = false
+    @State private var showsFolderPicker = false
     @State private var failure: String?
     /// The latest open; one that lands after another, or after the folder,
     /// profile or server changed, is dropped.
@@ -98,6 +99,11 @@ struct WorkspaceFolderView: View {
 
     private var root: WorkspaceRoot? {
         roots.first { $0.path == rootPath } ?? roots.first
+    }
+
+    private struct SearchKey: Equatable {
+        let query: String
+        let canSearch: Bool
     }
 
     private struct Key: Equatable {
@@ -166,7 +172,9 @@ struct WorkspaceFolderView: View {
             openToken = nil
             opening = nil
         }
-        .task(id: query) {
+        // Again when search comes back, the plugin turned on for the
+        // profile, with the words still in the field.
+        .task(id: SearchKey(query: query, canSearch: explorer.canChange)) {
             // Typing settles before the host is asked.
             if !query.isEmpty {
                 try? await Task.sleep(for: .milliseconds(350))
@@ -236,6 +244,16 @@ struct WorkspaceFolderView: View {
         } message: {
             Text(verbatim: failure ?? "")
         }
+        .sheet(isPresented: $showsFolderPicker) {
+            ProjectFolderPickerSheet(rootPath: root?.path ?? appState.projectFolderPickerRoot,
+                                     profile: appState.workspaceProfile) { folder in
+                appState.rememberOpenedWorkspaceFolder(folder, profile: appState.workspaceProfile)
+                rootPath = folder
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .environmentObject(appState)
+        }
         .fileImporter(isPresented: $showsImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result, let folder = uploadFolder else { return }
             Task { await upload(urls, into: folder) }
@@ -268,6 +286,23 @@ struct WorkspaceFolderView: View {
                         }
                     }
                 }
+                // Any folder on the Hermes host, as far as the host lets
+                // the Folder go (issue 1438).
+                Section {
+                    Button {
+                        showsFolderPicker = true
+                    } label: {
+                        Label(AppLocalization.string("Open Folder…", table: .chat), systemImage: "folder.badge.plus")
+                    }
+                    if let root, root.kind == .opened {
+                        Button {
+                            appState.forgetOpenedWorkspaceFolder(root.path, profile: appState.workspaceProfile)
+                            rootPath = nil
+                        } label: {
+                            Label(AppLocalization.string("Remove from List", table: .chat), systemImage: "minus.circle")
+                        }
+                    }
+                }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "folder.fill")
@@ -285,7 +320,7 @@ struct WorkspaceFolderView: View {
                                 .truncationMode(.head)
                         }
                     }
-                    if roots.count > 1 {
+                    if !roots.isEmpty {
                         Image(systemName: "chevron.up.chevron.down")
                             .scaledFont(.caption2.weight(.bold))
                             .foregroundStyle(.secondary)
@@ -294,8 +329,10 @@ struct WorkspaceFolderView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
-            .disabled(roots.count < 2)
             .accessibilityLabel(AppLocalization.string("Folder: \(root?.title ?? AppLocalization.string("No folder", table: .chat))", table: .chat))
+            .modifier(WorkspaceMoveDropTarget(folder: root?.path ?? "", isEnabled: root != nil && explorer.canChange) { dragged in
+                if let root { moveDropped(dragged, into: root.path) }
+            })
             if let root, explorer.canChange {
                 Menu {
                     actions(in: root.path)
@@ -327,6 +364,17 @@ struct WorkspaceFolderView: View {
             showsImporter = true
         } label: {
             Label(AppLocalization.string("Upload Files", table: .chat), systemImage: "square.and.arrow.up")
+        }
+        // Copy, then Paste here (issue 1438): a folder never into itself.
+        if explorer.canCopy, let copied = explorer.copied,
+           !(copied.isDirectory && Self.path(folder, isIn: copied.path)) {
+            Button {
+                Task {
+                    await perform { client, root in try await client.duplicate(root: root, path: copied.path, into: folder) }
+                }
+            } label: {
+                Label(AppLocalization.string("Paste \(copied.name)", table: .chat), systemImage: "doc.on.clipboard")
+            }
         }
     }
 
@@ -557,10 +605,25 @@ struct WorkspaceFolderView: View {
                 .accessibilityElement(children: .combine)
                 .accessibilityValue(explorer.expanded.contains(entry.path)
                                     ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed"))
+                .modifier(WorkspaceMoveDropTarget(folder: entry.path, isEnabled: explorer.canChange) { dragged in
+                    moveDropped(dragged, into: entry.path)
+                })
             } else {
                 fileRow(entry, depth: depth, detail: details(entry))
             }
         }
+        // To a folder in the tree, the open folder's top, or the chat.
+        .onDrag { WorkspaceDrag.provider(for: entry) }
+    }
+
+    /// An entry dropped on a folder in the tree moves there; one already
+    /// there, or a folder dropped into itself, stays (issue 1438).
+    private func moveDropped(_ path: String, into folder: String) {
+        guard explorer.canChange, explorer.contains(path),
+              WorkspaceExplorer.canMove(path, into: folder) else { return }
+        let name = (path as NSString).lastPathComponent
+        Haptics.selection()
+        Task { await perform { client, root in try await client.move(root: root, path: path, to: folder, name: name) } }
     }
 
     private func fileRow(_ entry: WorkspaceEntry, depth: Int, detail: String) -> some View {
@@ -624,7 +687,11 @@ struct WorkspaceFolderView: View {
                 .truncationMode(.head)
             ForEach(match.lines, id: \.self) { line in
                 Button {
-                    open(WorkspaceEntry(name: match.name, path: match.path, isDirectory: false), line: line.number)
+                    // As the tree lists it, so an edit's save checks its date.
+                    Task {
+                        let listed = await explorer.reveal(match.path)
+                        open(listed, line: line.number)
+                    }
                 } label: {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(verbatim: "\(line.number)")
@@ -678,6 +745,21 @@ struct WorkspaceFolderView: View {
         } label: {
             Label(AppLocalization.string("Copy Path"), systemImage: "doc.on.doc")
         }
+        // From the open folder's top, as a project names it (issue 1438).
+        if let relative = relativePath(entry.path) {
+            Button {
+                UIPasteboard.general.string = relative
+            } label: {
+                Label(AppLocalization.string("Copy Relative Path", table: .chat), systemImage: "arrow.turn.down.right")
+            }
+        }
+        if explorer.canCopy {
+            Button {
+                explorer.copied = entry
+            } label: {
+                Label(AppLocalization.string("Copy"), systemImage: "doc.on.doc.fill")
+            }
+        }
         if explorer.canChange {
             if entry.isDirectory {
                 Section {
@@ -728,6 +810,16 @@ struct WorkspaceFolderView: View {
         let place = relativeLocation(path: entry.folder)
         let parts = [place, entry.modified.map(Self.dateText) ?? ""].filter { !$0.isEmpty }
         return parts.joined(separator: " · ")
+    }
+
+    /// `path` from the open folder's top (`src/app.ts`); nil outside it,
+    /// or for the folder itself.
+    private func relativePath(_ path: String) -> String? {
+        guard let root = root?.path else { return nil }
+        let base = AppState.normalizedWorkspacePath(root)
+        guard path != base, Self.path(path, isIn: base) else { return nil }
+        let rest = String(path.dropFirst(base.count).drop { $0 == "/" || $0 == "\\" })
+        return rest.isEmpty ? nil : rest
     }
 
     private func relativeLocation(path: String) -> String {
@@ -951,6 +1043,33 @@ struct WorkspaceFolderView: View {
     static let maxUploadBytes = 25 * 1024 * 1024
 }
 
+/// A folder in the Folder's tree that takes an entry dragged from the tree,
+/// outlined while one is over it (issue 1438).
+private struct WorkspaceMoveDropTarget: ViewModifier {
+    let folder: String
+    let isEnabled: Bool
+    let onDrop: (String) -> Void
+    @State private var isTargeted = false
+
+    func body(content: Content) -> some View {
+        content
+            .onDrop(of: [.item], isTargeted: $isTargeted) { providers in
+                guard isEnabled, let provider = providers.first(where: WorkspaceDrag.isEntry) else { return false }
+                Task { @MainActor in
+                    if let path = await WorkspaceDrag.path(from: provider) { onDrop(path) }
+                }
+                return true
+            }
+            .background {
+                if isTargeted && isEnabled {
+                    RoundedRectangle(cornerRadius: 10, style: .continuous)
+                        .fill(Color.conduitAccent.opacity(0.14))
+                        .allowsHitTesting(false)
+                }
+            }
+    }
+}
+
 /// How a file opens: as text (Markdown drawn), as a page, or in Quick Look.
 enum WorkspaceFileKind: Equatable {
     case text
@@ -998,17 +1117,38 @@ struct WorkspaceFileSheet: View {
     @ObservedObject var explorer: WorkspaceExplorer
     let entry: WorkspaceEntry
 
+    /// A file being edited: its text, the text it started from, and the
+    /// date the file had then, which a save checks (issue 1438: one per tab).
+    private struct Draft {
+        var text: String
+        let original: String
+        let readAt: Date?
+        var changed: Bool { text != original }
+    }
+
     @State private var showsSource = false
     /// A Markdown file's pictures, which a tapped one pages through.
     @State private var imageGallery = ImageGallerySource()
-    @State private var editing = false
-    @State private var draft = ""
+    @State private var drafts: [String: Draft] = [:]
     @State private var saving = false
-    @State private var conflict = false
-    @State private var discarding = false
+    /// The file whose save the host refused as changed since it was read:
+    /// Replace It saves this one, whichever tab shows now.
+    @State private var conflicted: WorkspaceEntry?
+    /// The tab whose changes Cancel or its close button would discard.
+    @State private var discarding: WorkspaceEntry?
+    /// Done with changes in tabs: discard them all?
+    @State private var discardingAll = false
     @State private var failure: String?
+    @State private var findRequest = 0
 
     private var shown: WorkspaceEntry { explorer.viewed ?? entry }
+    private var editing: Bool { drafts[shown.path] != nil }
+    private var hasChanges: Bool { drafts.values.contains(where: \.changed) }
+
+    private var draft: Binding<String> {
+        Binding(get: { drafts[shown.path]?.text ?? "" },
+                set: { drafts[shown.path]?.text = $0 })
+    }
 
     private var canEdit: Bool {
         guard explorer.canChange, explorer.contains(shown.path), let preview = explorer.preview else { return false }
@@ -1019,29 +1159,57 @@ struct WorkspaceFileSheet: View {
         NavigationStack {
             Group {
                 if editing {
-                    TextEditor(text: $draft)
-                        .scaledFont(.footnote.monospaced())
-                        .textInputAutocapitalization(.never)
-                        .autocorrectionDisabled()
-                        .padding(.horizontal, 8)
+                    WorkspaceCodeEditor(text: draft, language: explorer.preview?.language ?? "text", findRequest: findRequest)
+                        .id(shown.path)
                 } else {
                     reader
                 }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if explorer.openFiles.count > 1 { tabs }
             }
             .navigationTitle(Text(verbatim: shown.name))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { fileToolbar }
         }
         .presentationDragIndicator(.visible)
-        .interactiveDismissDisabled(editing && draft != explorer.preview?.text)
-        .alert(AppLocalization.string("This file changed on your Hermes host", table: .chat), isPresented: $conflict) {
-            Button(AppLocalization.string("Replace It", table: .chat), role: .destructive) { Task { await save(force: true) } }
-            Button(AppLocalization.string("Keep Editing", table: .chat), role: .cancel) {}
+        .interactiveDismissDisabled(hasChanges)
+        .onChange(of: Set(drafts.filter { $0.value.changed }.keys), initial: true) { _, changed in
+            explorer.keepsOpen = changed
+        }
+        .onDisappear { explorer.keepsOpen = [] }
+        .alert(AppLocalization.string("This file changed on your Hermes host", table: .chat), isPresented: Binding(
+            get: { conflicted != nil }, set: { if !$0 { conflicted = nil } }
+        )) {
+            Button(AppLocalization.string("Replace It", table: .chat), role: .destructive) {
+                guard let file = conflicted else { return }
+                conflicted = nil
+                Task { await save(file, force: true) }
+            }
+            Button(AppLocalization.string("Keep Editing", table: .chat), role: .cancel) { conflicted = nil }
         } message: {
             Text("It changed after you opened it. Replace it with your version, or keep editing and copy what you need.")
         }
-        .alert(AppLocalization.string("Discard unsaved changes?"), isPresented: $discarding) {
-            Button(AppLocalization.string("Discard Draft"), role: .destructive) { editing = false }
+        .alert(AppLocalization.string("Discard unsaved changes?"), isPresented: Binding(
+            get: { discarding != nil }, set: { if !$0 { discarding = nil } }
+        )) {
+            Button(AppLocalization.string("Discard Draft"), role: .destructive) {
+                guard let file = discarding else { return }
+                discarding = nil
+                drafts[file.path] = nil
+                if closingTab == file.path { close(file) }
+                closingTab = nil
+            }
+            Button(AppLocalization.string("Keep Editing", table: .chat), role: .cancel) {
+                discarding = nil
+                closingTab = nil
+            }
+        }
+        .alert(AppLocalization.string("Discard unsaved changes?"), isPresented: $discardingAll) {
+            Button(AppLocalization.string("Discard Draft"), role: .destructive) {
+                drafts = [:]
+                dismiss()
+            }
             Button(AppLocalization.string("Keep Editing", table: .chat), role: .cancel) {}
         }
         .alert(AppLocalization.string("Couldn't save"), isPresented: Binding(
@@ -1053,26 +1221,131 @@ struct WorkspaceFileSheet: View {
         }
     }
 
+    /// Closing this tab once its changes are discarded.
+    @State private var closingTab: String?
+
+    /// The open files, one tab each: a dot on one with changes, and its
+    /// own close button (issue 1438).
+    private var tabs: some View {
+        ScrollViewReader { proxy in
+            ScrollView(.horizontal, showsIndicators: false) {
+                HStack(spacing: 6) {
+                    ForEach(explorer.openFiles) { file in
+                        tab(file).id(file.path)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+            }
+            .background(.bar)
+            .onChange(of: shown.path, initial: true) { _, path in
+                proxy.scrollTo(path)
+            }
+        }
+    }
+
+    private func tab(_ file: WorkspaceEntry) -> some View {
+        let selected = file.path == shown.path
+        let changed = drafts[file.path]?.changed == true
+        return HStack(spacing: 4) {
+            Button {
+                guard !selected else { return }
+                Haptics.selection()
+                showsSource = false
+                Task { await explorer.view(file) }
+            } label: {
+                HStack(spacing: 5) {
+                    if changed {
+                        Circle()
+                            .fill(Color.conduitAccent)
+                            .frame(width: 6, height: 6)
+                            .accessibilityHidden(true)
+                    }
+                    Text(verbatim: file.name)
+                        .scaledFont(.footnote.weight(selected ? .semibold : .regular))
+                        .lineLimit(1)
+                        .truncationMode(.middle)
+                        .frame(maxWidth: 180)
+                }
+            }
+            .buttonStyle(.plain)
+            .accessibilityAddTraits(selected ? .isSelected : [])
+            .accessibilityValue(changed ? AppLocalization.string("Unsaved Changes", table: .chat) : "")
+            Button {
+                ask(toClose: file)
+            } label: {
+                Image(systemName: "xmark")
+                    .scaledFont(.caption2.weight(.bold))
+                    .foregroundStyle(.secondary)
+                    .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(AppLocalization.string("Close Tab", table: .chat))
+        }
+        .padding(.leading, 10)
+        .padding(.trailing, 4)
+        .padding(.vertical, 4)
+        .background(
+            Capsule().fill(selected ? Color.conduitAccent.opacity(0.18) : Color.secondary.opacity(0.10))
+        )
+    }
+
+    /// Closes `file`'s tab, asking first when it has changes.
+    private func ask(toClose file: WorkspaceEntry) {
+        if drafts[file.path]?.changed == true {
+            closingTab = file.path
+            discarding = file
+        } else {
+            drafts[file.path] = nil
+            close(file)
+        }
+    }
+
+    /// Another tab shows in its place; the last one closes the sheet.
+    private func close(_ file: WorkspaceEntry) {
+        let index = explorer.openFiles.firstIndex { $0.path == file.path } ?? 0
+        explorer.closeTab(file.path)
+        guard file.path == shown.path else { return }
+        let rest = explorer.openFiles
+        guard !rest.isEmpty else {
+            dismiss()
+            return
+        }
+        showsSource = false
+        Task { await explorer.view(rest[min(index, rest.count - 1)]) }
+    }
+
     @ToolbarContentBuilder
     private var fileToolbar: some ToolbarContent {
         if editing {
             ToolbarItem(placement: .cancellationAction) {
                 // Asks first, as the swipe does, when the draft has changes.
                 Button(AppLocalization.string("Cancel")) {
-                    if draft != explorer.preview?.text { discarding = true } else { editing = false }
+                    if drafts[shown.path]?.changed == true { discarding = shown } else { drafts[shown.path] = nil }
                 }
             }
-            ToolbarItem(placement: .confirmationAction) {
+            ToolbarItemGroup(placement: .primaryAction) {
+                Button {
+                    findRequest &+= 1
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                }
+                .accessibilityLabel(AppLocalization.string("Find", table: .chat))
+                .keyboardShortcut("f", modifiers: .command)
                 if saving {
                     ProgressView()
                 } else {
-                    Button(AppLocalization.string("Save")) { Task { await save(force: false) } }
-                        .disabled(draft == explorer.preview?.text)
+                    Button(AppLocalization.string("Save")) { Task { await save(shown, force: false) } }
+                        .disabled(drafts[shown.path]?.changed != true)
+                        .keyboardShortcut("s", modifiers: .command)
                 }
             }
         } else {
             ToolbarItem(placement: .cancellationAction) {
-                Button(AppLocalization.string("Done")) { dismiss() }
+                Button(AppLocalization.string("Done")) {
+                    if hasChanges { discardingAll = true } else { dismiss() }
+                }
             }
             ToolbarItemGroup(placement: .primaryAction) {
                 if WorkspaceFileKind(name: shown.name) == .markdown, explorer.preview != nil {
@@ -1085,8 +1358,11 @@ struct WorkspaceFileSheet: View {
                 }
                 if canEdit {
                     Button(AppLocalization.string("Edit")) {
-                        draft = explorer.preview?.text ?? ""
-                        editing = true
+                        let text = explorer.preview?.text ?? ""
+                        // A file opened from search has no date of its own:
+                        // its folder's listing gives the one the save checks.
+                        drafts[shown.path] = Draft(text: text, original: text,
+                                                   readAt: shown.modified ?? explorer.listed(shown.path)?.modified)
                     }
                 }
             }
@@ -1125,7 +1401,7 @@ struct WorkspaceFileSheet: View {
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .environment(\.imageGallery, imageGallery)
                             } else {
-                                WorkspaceCodeText(text: preview.text, highlight: explorer.viewedLine)
+                                WorkspaceCodeText(text: preview.text, language: preview.language, highlight: explorer.viewedLine)
                             }
                             if preview.truncated {
                                 Text("Only the start of this file shows here. Share or Save opens all of it.")
@@ -1164,31 +1440,39 @@ struct WorkspaceFileSheet: View {
         }
     }
 
-    private func save(force: Bool) async {
-        let text = draft
-        let file = shown
+    private func save(_ file: WorkspaceEntry, force: Bool) async {
+        guard let edited = drafts[file.path] else { return }
+        let text = edited.text
         saving = true
         defer { saving = false }
         var saved: WorkspaceEntry?
         let error = await explorer.change { client, root in
-            saved = try await client.save(root: root, path: file.path, content: text, readAt: force ? nil : file.modified)
+            saved = try await client.save(root: root, path: file.path, content: text, readAt: force ? nil : edited.readAt)
         }
         if let error {
             if case DashboardTicketBridgeError.http(status: 409, _) = error {
-                conflict = true
+                conflicted = file
             } else {
                 failure = UserFacingError.message(for: error)
             }
             return
         }
         explorer.saved(saved ?? file, text: text)
-        editing = false
+        if let typed = drafts[file.path]?.text, typed != text {
+            // Typed while the save ran: kept as changes on the saved file.
+            drafts[file.path] = Draft(text: typed, original: text, readAt: saved?.modified)
+        } else {
+            drafts[file.path] = nil
+        }
     }
 }
 
 /// A text file's lines, numbered, one line marked.
 struct WorkspaceCodeText: View {
     let text: String
+    /// Hermes' name for the file's language, which colors it as the chat
+    /// colors code (issue 1438).
+    var language = "text"
     let highlight: Int?
 
     static func lineID(_ line: Int) -> String { "line-\(line)" }
@@ -1204,7 +1488,9 @@ struct WorkspaceCodeText: View {
                             .foregroundStyle(.conduitTertiary)
                             .frame(minWidth: 30, alignment: .trailing)
                             .accessibilityHidden(true)
-                        Text(verbatim: line.isEmpty ? " " : line)
+                        Text(line.isEmpty || !WorkspaceCodeEditor.colorsCode(language)
+                             ? AttributedString(line.isEmpty ? " " : line)
+                             : SyntaxHighlighter.highlight(line, language: language))
                             .scaledFont(.caption.monospaced())
                             .fixedSize(horizontal: true, vertical: false)
                             .textSelection(.enabled)

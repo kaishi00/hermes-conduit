@@ -107,6 +107,8 @@ final class FakeVoiceJobBackend {
     /// The attached chat: whether a turn runs there, what was sent to it,
     /// and its latest reply.
     var threadBusy = false
+    /// How long a threadIsBusy read takes, so two reads can overlap.
+    var threadBusyDelay: Duration?
     var threadSubmitError: Error?
     var threadReply: String?
     /// The runtime the chat resumes onto; nil keeps the target's own.
@@ -205,7 +207,10 @@ final class FakeVoiceJobBackend {
                 return self.liveRows
             },
             resolveProfile: { [self] name in self.profileTargets[name.lowercased()] ?? .unknown },
-            threadIsBusy: { [self] _ in self.threadBusy },
+            threadIsBusy: { [self] _ in
+                if let delay = self.threadBusyDelay { try? await Task.sleep(for: delay) }
+                return self.threadBusy
+            },
             resolveThreadRuntime: { [self] thread in
                 if let error = self.threadRuntimeError { throw error }
                 return self.threadRuntime ?? thread.runtimeSessionID
@@ -293,7 +298,7 @@ extension VoiceConversationControllerTests {
 
     /// Bot workstreams M5: the job is kept in its bot's registry by its
     /// stored id, once Hermes takes its request; the runtime id when Hermes names no other.
-    func testAJobReportsItsTurnSurfaceBeforeItsSubmitAndDropsItWhenRefused() async {
+    func testAJobReportsItsTurnSurfaceBeforeItsSubmitAndDropsItWhenRefused() async throws {
         // Where the request came from reaches Hermes with the job's own
         // prompt, the exact text submitted (#888): a Watch call's job says so.
         let (supervisor, fake) = makeSupervisor()
@@ -347,6 +352,39 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(cancelledContinuedFake.droppedSurfaces, ["rt-call"])
         XCTAssertTrue(cancelledContinuedFake.submissions.isEmpty)
         XCTAssertTrue(cancelledContinuedFake.cancelled.isEmpty)
+        // Cancelled once its submit began, it interrupts its turn in the chat.
+        let (sentContinued, sentContinuedFake) = makeSupervisor()
+        _ = await sentContinued.continueJob(instructions: "and the backups",
+                                            in: VoiceThreadTarget(runtimeSessionID: "rt-call", storedSessionID: nil, title: "Call"))
+        for _ in 0..<200 where sentContinuedFake.submissions.isEmpty { try? await Task.sleep(for: .milliseconds(10)) }
+        let sentID = try XCTUnwrap(sentContinued.jobs.first?.id)
+        _ = await sentContinued.cancel(jobID: sentID)
+        XCTAssertEqual(sentContinuedFake.cancelled, ["rt-call"])
+        XCTAssertTrue(sentContinuedFake.droppedSurfaces.isEmpty)
+        // Two of the call's requests at once: while one checks the chat is
+        // free, the other waits, so only one is sent (issue 2283).
+        let pairedFake = FakeVoiceJobBackend()
+        let paired = VoiceBackgroundJobSupervisor(
+            backend: pairedFake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5)
+        )
+        pairedFake.threadBusyDelay = .milliseconds(50)
+        let chat = VoiceThreadTarget(runtimeSessionID: "rt-call", storedSessionID: nil, title: "Call")
+        _ = await paired.continueJob(instructions: "check the disks", in: chat)
+        _ = await paired.continueJob(instructions: "check the logs", in: chat)
+        await waitFor { !pairedFake.submissions.isEmpty }
+        try? await Task.sleep(for: .milliseconds(200))
+        XCTAssertEqual(pairedFake.submissions.count, 1)
+        XCTAssertTrue(pairedFake.submissions.first?.1.contains("check the disks") ?? false)
+        // Once the first is over, the second goes in, then ends too.
+        let pairedIDs = paired.jobs.map(\.id)
+        XCTAssertEqual(pairedIDs.count, 2)
+        _ = await paired.cancel(jobID: pairedIDs[0])
+        await waitFor { pairedFake.submissions.count == 2 }
+        XCTAssertEqual(pairedFake.submissions.count, 2)
+        XCTAssertTrue(pairedFake.submissions.last?.1.contains("check the logs") ?? false)
+        _ = await paired.cancel(jobID: pairedIDs[1])
+        XCTAssertEqual(pairedFake.cancelled, ["rt-call", "rt-call"])
+        XCTAssertFalse(paired.jobs.contains { $0.status.isActive })
         // The surface: the Watch for its call's job, else where a spoken message is.
         XCTAssertEqual(TurnSurface.voiceJob(fromWatch: true, carPlay: true, device: .iphone), TurnSurface(place: .watch, input: .spoken))
         XCTAssertEqual(TurnSurface.voiceJob(fromWatch: false, carPlay: true, device: .iphone), TurnSurface(place: .carplay, input: .spoken))

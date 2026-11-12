@@ -59,6 +59,11 @@ class ReturnKeyTextView: UITextView {
         isEditable: Bool,
         takesFiles: Bool
     ) -> FieldDrop {
+        // A Folder row: the chat around the field puts its path in the
+        // draft; a room, whose agents may be on other hosts, turns it down.
+        if registeredTypeIdentifiers.contains(where: { $0.contains(WorkspaceDrag.typeIdentifier) }) {
+            return .declined
+        }
         let items = zip(registeredTypeIdentifiers, suggestedNames)
         if items.contains(where: { AttachmentDrop.takes(registeredTypeIdentifiers: $0, suggestedName: $1) }) {
             // A locked field takes no files, as its Attach menu is off.
@@ -470,15 +475,31 @@ class ReturnKeyTextView: UITextView {
     /// After the composer on screen asked its field for focus: pastes into
     /// it once it has it. Focus moves just after the update that asked
     /// (`setFocusIntent`), so this tries for a moment; a field that never
-    /// takes focus (typing off, a sheet in front) gets nothing.
+    /// takes focus (typing off, a sheet in front) gets nothing. A chat or
+    /// room switch in those moments cancels it (`cancelPendingPaste`), so
+    /// the words never land in the next conversation's field.
     @MainActor
     static func pasteOnceFocused() {
-        Task { @MainActor in
+        pendingPaste?.cancel()
+        pendingPaste = Task { @MainActor in
             for _ in 0..<12 {
+                if Task.isCancelled { return }
                 if UIApplication.shared.sendAction(#selector(ReturnKeyTextView.pasteFromTranscript(_:)), to: nil, from: nil, for: nil) { return }
                 try? await Task.sleep(for: .milliseconds(25))
             }
         }
+    }
+
+    @MainActor private static var pendingPaste: Task<Void, Never>?
+
+    /// A transcript paste is still waiting for its field's focus.
+    @MainActor static var hasPendingPaste: Bool { pendingPaste != nil }
+
+    /// Drops a transcript paste still waiting for its field's focus.
+    @MainActor
+    static func cancelPendingPaste() {
+        pendingPaste?.cancel()
+        pendingPaste = nil
     }
 
     /// Another text field has focus: one that isn't a composer's (the

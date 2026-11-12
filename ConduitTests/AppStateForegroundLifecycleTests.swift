@@ -3763,6 +3763,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
 
     private func runStaleIdleSteer(
         seeded: [ChatMessage],
+        beforeSend: @MainActor (AppState) -> Void = { _ in },
         duringSteer: @escaping @MainActor (AppState) -> Void = { _ in }
     ) async -> AppState {
         let active = session("stored-a")
@@ -3788,10 +3789,39 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         harness.appState.activeSessionId = active.id
         harness.appState.messages = seeded
         harness.appState.handleScenePhase(.background)
+        beforeSend(harness.appState)
 
         let submitted = await harness.appState.submitComposer(text: "Follow-up")
         XCTAssertTrue(submitted)
         return harness.appState
+    }
+
+    /// A steer that goes through ends the failed send's line shown when it
+    /// set out (issue 2095, #2110).
+    func testASteerThatGoesThroughClearsTheFailedSendsLine() async {
+        let appState = await runStaleIdleSteer(seeded: [], beforeSend: { appState in
+            appState.errorMessage = "Failed to send"
+            appState.sendFailureShown = "Failed to send"
+        })
+
+        XCTAssertEqual(appState.messages.last?.isSteer, true)
+        XCTAssertNil(appState.sendFailureShown)
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    /// Only the line shown when the steer set out is its to clear: a newer
+    /// send's failure, shown while the steer was on its way, stays.
+    func testASteerLeavesANewerFailedSendsLine() async {
+        let appState = await runStaleIdleSteer(seeded: [], beforeSend: { appState in
+            appState.errorMessage = "Failed to send"
+            appState.sendFailureShown = "Failed to send"
+        }, duringSteer: { appState in
+            appState.errorMessage = "Failed to send the photo"
+            appState.sendFailureShown = "Failed to send the photo"
+        })
+
+        XCTAssertEqual(appState.sendFailureShown, "Failed to send the photo")
+        XCTAssertEqual(appState.errorMessage, "Failed to send the photo")
     }
 
     private func persistedSteer(_ id: String, _ text: String) -> ChatMessage {
@@ -3807,9 +3837,9 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
     }
 
     func testSteerPersistedDuringTheRPCIsNotConfirmedTwice() async {
-        let appState = await runStaleIdleSteer(seeded: []) { appState in
+        let appState = await runStaleIdleSteer(seeded: [], duringSteer: { appState in
             appState.messages.append(self.persistedSteer("91", "Follow-up"))
-        }
+        })
 
         XCTAssertEqual(appState.messages.map(\.id), ["91"])
     }

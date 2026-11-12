@@ -191531,6 +191531,170 @@
           }
         }
       }
+    },
+    "The room ends for everyone. Your Hermes is set to keep your agents' sessions for it, and agents on other people's Hermes keep theirs. This cannot be undone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Raum endet für alle. Dein Hermes ist so eingestellt, dass er die Sitzungen deiner Agenten dafür behält, und Agenten auf dem Hermes anderer Personen behalten ihre. Dies kann nicht widerrufen werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sala termina para todos. Tu Hermes está configurado para conservar las sesiones de tus agentes en ella, y los agentes en el Hermes de otras personas conservan las suyas. Esta acción no se puede deshacer."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le salon prend fin pour tout le monde. Votre Hermes est réglé pour garder les sessions de vos agents pour celui-ci, et les agents sur le Hermes d'autres personnes gardent les leurs. Cette action est irréversible."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ruang berakhir untuk semua orang. Hermes Anda diatur untuk menyimpan sesi agen Anda untuk ruang ini, dan agen di Hermes milik orang lain tetap menyimpan sesinya. Tindakan ini tidak dapat diurungkan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La stanza termina per tutti. Il tuo Hermes è impostato per conservare le sessioni dei tuoi agenti per questa stanza, e gli agenti sull'Hermes di altre persone conservano le loro. Questa azione non può essere annullata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "グループは全員に対して終了します。あなたのHermesは、このグループでのあなたのエージェントのセッションを保持するよう設定されており、ほかの人のHermes上のエージェントも自分のセッションを保持します。この操作は取り消せません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "방이 모두에게 종료돼요. 내 Hermes는 이 방에 대한 내 에이전트의 세션을 유지하도록 설정되어 있고, 다른 사람의 Hermes에 있는 에이전트도 자신의 세션을 유지해요. 이 동작은 되돌릴 수 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pokój kończy się dla wszystkich. Twój Hermes jest ustawiony tak, by zachować sesje Twoich agentów w nim, a agenci na Hermesie innych osób zachowują swoje. Tej operacji nie można cofnąć."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A sala termina para todos. Seu Hermes está configurado para manter as sessões dos seus agentes nela, e os agentes no Hermes de outras pessoas mantêm as deles. Isso não pode ser desfeito."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Комната завершится для всех. Ваш Hermes настроен сохранять сеансы ваших агентов в ней, а агенты на Hermes других людей сохранят свои. Это действие нельзя отменить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oda herkes için sona erer. Hermes'iniz ajanlarınızın bu odadaki oturumlarını korumak üzere ayarlı ve başkalarının Hermes'indeki ajanlar da kendi oturumlarını korur. Bu işlem geri alınamaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊将对所有人结束。你的 Hermes 设置为保留你的智能体在其中的会话，其他人 Hermes 上的智能体也会保留他们自己的会话。此操作无法撤销。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群組將對所有人結束。你的 Hermes 設定為保留你的代理程式在其中的工作階段，其他人 Hermes 上的代理程式也會保留他們自己的工作階段。此動作無法還原。"
+          }
+        }
+      }
+    },
+    "The room and its history end permanently. Your Hermes is set to keep its members' sessions. This cannot be undone." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Der Raum und sein Verlauf enden dauerhaft. Dein Hermes ist so eingestellt, dass er die Sitzungen seiner Mitglieder behält. Dies kann nicht widerrufen werden."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La sala y su historial terminan para siempre. Tu Hermes está configurado para conservar las sesiones de sus miembros. Esta acción no se puede deshacer."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le salon et son historique prennent fin définitivement. Votre Hermes est réglé pour garder les sessions de ses membres. Cette action est irréversible."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ruang dan riwayatnya berakhir secara permanen. Hermes Anda diatur untuk menyimpan sesi para anggotanya. Tindakan ini tidak dapat diurungkan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La stanza e la sua cronologia terminano definitivamente. Il tuo Hermes è impostato per conservare le sessioni dei suoi membri. Questa azione non può essere annullata."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "グループとその履歴は完全に終了します。あなたのHermesは、メンバーのセッションを保持するよう設定されています。この操作は取り消せません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "방과 기록이 영구적으로 종료돼요. 내 Hermes는 멤버의 세션을 유지하도록 설정되어 있어요. 이 동작은 되돌릴 수 없어요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pokój i jego historia zostaną trwale zakończone. Twój Hermes jest ustawiony tak, by zachować sesje uczestników. Tej operacji nie można cofnąć."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A sala e o histórico terminam permanentemente. Seu Hermes está configurado para manter as sessões dos membros. Isso não pode ser desfeito."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Комната и её история будут безвозвратно завершены. Ваш Hermes настроен сохранять сеансы её участников. Это действие нельзя отменить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Oda ve geçmişi kalıcı olarak sona erer. Hermes'iniz üyelerin oturumlarını korumak üzere ayarlı. Bu işlem geri alınamaz."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群聊及其历史记录将永久结束。你的 Hermes 设置为保留其成员的会话。此操作无法撤销。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "群組及其歷史記錄將永久結束。你的 Hermes 設定為保留其成員的工作階段。此動作無法還原。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -125,7 +125,8 @@ extension SidebarLayoutTests {
 
     func testV2SplitListLeavesVoiceToTheChatBesideIt() {
         let project = ProjectSummary(id: "p1", title: "Trips", isHome: false, sessionCount: 0, previewSessions: [])
-        // A chat beside the list has its own voice button by the composer.
+        // A chat beside the list has its own voice button (by the composer,
+        // or a Mac's live call in the chat's header).
         XCTAssertTrue(V2SplitLayout.hasChatVoiceBeside(split: true, path: [.conversation], inRoom: false))
         XCTAssertTrue(V2SplitLayout.hasChatVoiceBeside(split: true, path: [.project(project), .conversation], inRoom: false))
         // No chat shown, a group room (no voice button), or one column
