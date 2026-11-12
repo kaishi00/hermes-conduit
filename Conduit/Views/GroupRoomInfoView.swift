@@ -82,6 +82,8 @@ struct GroupRoomInfoSheet: View {
             } message: { target in
                 Text(verbatim: RoomBlock.message(target.name))
             }
+            // A Block asked for on one dashboard isn't confirmed on another.
+            .onChange(of: appState.activeDashboardID) { _, _ in blocking = nil }
             .confirmationDialog(RoomLeaveText.leaveTitle, isPresented: $confirmingLeave, titleVisibility: .visible) {
                 Button(AppLocalization.string("Leave Room", table: .rooms), role: .destructive) {
                     leave()

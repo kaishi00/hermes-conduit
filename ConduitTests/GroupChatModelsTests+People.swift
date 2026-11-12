@@ -853,6 +853,21 @@ extension GroupChatModelsTests {
         XCTAssertEqual(RoomBlock.title("Mona"), AppLocalization.string("Block \("Mona")?", table: .rooms))
     }
 
+    @MainActor
+    func testABlockListedOnAnotherDashboardIsRefused() async {
+        let suite = "GroupChatModelsTests.People.\(UUID().uuidString)"
+        guard let defaults = UserDefaults(suiteName: suite) else { return XCTFail("No test defaults") }
+        addTeardownBlock { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let target = RoomBlockTarget(id: "lk-mona", name: "Mona", dashboardID: UUID())
+        do {
+            _ = try await appState.block(target)
+            XCTFail("a Block from another dashboard went through")
+        } catch {
+            XCTAssertTrue(error is CancellationError, "\(error)")
+        }
+    }
+
     func testWhatTheyCanAskSaysWhoAnswersAndThatQuestionsWaitForYou() {
         let asking = LinkAskRules(freeOn: "ask", questions: "ask", profile: "default")
         let caption = LinkAskText.caption(asking, name: "Laifu", profileName: "Furina")

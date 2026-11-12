@@ -132,7 +132,11 @@ final class SheetAboveAllHost {
     func close() {
         decided = nil
         shownID = nil
-        if let controller, controller.presentingViewController != nil, !controller.isBeingDismissed {
+        // Dismissing it would take down whatever came up over it too (a room
+        // approval over an invite), so with something above it stays: the
+        // person closes it themselves, and its item is no longer the binding's.
+        if let controller, controller.presentingViewController != nil, !controller.isBeingDismissed,
+           controller.presentedViewController == nil {
             controller.dismiss(animated: true)
         }
         controller = nil

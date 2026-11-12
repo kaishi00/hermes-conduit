@@ -296,7 +296,7 @@ struct RoomInviteSheet: View {
             } label: {
                 HStack(spacing: 8) {
                     Text(AppLocalization.string("Join", table: .rooms))
-                    if busy && !declining {
+                    if busy && !declining && !joiningAlone {
                         ProgressView()
                             .controlSize(.small)
                     }

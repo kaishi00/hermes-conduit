@@ -240,8 +240,9 @@ struct BotRosterView: View {
             await appState.refreshGroupChatSupport()
         }
         // Your agents' approvals in rooms other people host, kept current
-        // while the list is on screen.
-        .task(id: rosterRefreshKey) {
+        // while the list is on screen (a hidden Bots tab stays mounted).
+        .task(id: "\(rosterRefreshKey)|\(shell.isTabActive)") {
+            guard shell.isTabActive else { return }
             await appState.followLinkedRoomApprovalsOnScreen()
         }
         .onChange(of: createRequest?.wrappedValue ?? false) { _, requested in

@@ -18,6 +18,9 @@ struct RoomBlockTarget: Identifiable, Equatable {
     /// The Link's id.
     let id: String
     let name: String
+    /// The dashboard the Link is on, so a Block confirmed after a switch
+    /// doesn't go to another Hermes.
+    var dashboardID: UUID? = nil
 }
 
 enum RoomBlock {
@@ -48,13 +51,19 @@ extension AppState {
     /// Who Group Info's Block lists for the open room.
     var activeRoomBlockTargets: [RoomBlockTarget] {
         guard canInviteLinkedPeople, let surface = activeRoomSurface else { return [] }
-        if let copy = surface.copy { return RoomBlock.targets(copy: copy, draft: nil) }
-        return RoomBlock.targets(copy: nil, draft: linkedRoomDraft(surface.room.roomID))
+        let targets = surface.copy.map { RoomBlock.targets(copy: $0, draft: nil) }
+            ?? RoomBlock.targets(copy: nil, draft: linkedRoomDraft(surface.room.roomID))
+        let dashboard = activeDashboardID
+        return targets.map { RoomBlockTarget(id: $0.id, name: $0.name, dashboardID: dashboard) }
     }
 
     /// Unlinks them, then reads the rooms again. False when the Link was
-    /// already gone.
+    /// already gone. Refused once the dashboard it was listed on isn't the
+    /// active one.
     func block(_ target: RoomBlockTarget) async throws -> Bool {
+        guard target.dashboardID == nil || target.dashboardID == activeDashboardID else {
+            throw CancellationError()
+        }
         let removed = try await roomLinksClient.unlink(target.id)
         await refreshGroupRooms()
         await refreshLinkedRoomCopies()
