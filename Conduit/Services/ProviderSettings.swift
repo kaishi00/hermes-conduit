@@ -608,12 +608,12 @@ struct ProviderSignIn: Equatable {
             switch answer["status"] as? String ?? "pending" {
             case "pending": self = .pending
             case "approved": self = .approved
-            case "denied": self = .failed(AppLocalization.string("The sign-in was declined."))
-            case "expired": self = .failed(AppLocalization.string("The code expired. Start again."))
-            case "cancelled": self = .failed(AppLocalization.string("The sign-in was cancelled."))
+            case "denied": self = .failed(AppLocalization.string("The sign-in was declined.", table: .settings))
+            case "expired": self = .failed(AppLocalization.string("The code expired. Start again.", table: .settings))
+            case "cancelled": self = .failed(AppLocalization.string("The sign-in was cancelled.", table: .settings))
             default:
                 let message = (answer["error_message"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-                self = .failed(message.isEmpty ? AppLocalization.string("The sign-in didn’t finish.") : message)
+                self = .failed(message.isEmpty ? AppLocalization.string("The sign-in didn’t finish.", table: .settings) : message)
             }
         }
     }
@@ -1080,6 +1080,6 @@ enum ProviderSettingsError: LocalizedError {
     case unexpectedAnswer
 
     var errorDescription: String? {
-        AppLocalization.string("Hermes gave an answer Conduit didn’t expect. Update Hermes and try again.")
+        AppLocalization.string("Hermes gave an answer Conduit didn’t expect. Update Hermes and try again.", table: .settings)
     }
 }

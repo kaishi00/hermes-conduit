@@ -74,10 +74,10 @@ extension GroupChatModelsTests {
             "m-laifu": RoomPerson(owner: "Mona", isYours: false, out: .removed),
         ]
         let members = GroupRoomTurns.members(copy.room.members, people: people)
-        let yours = AppLocalization.string("Your agent")
-        let left = AppLocalization.string("Left the room")
+        let yours = AppLocalization.string("Your agent", table: .rooms)
+        let left = AppLocalization.string("Left the room", table: .rooms)
         let mona = AppLocalization.string("Mona's agent")
-        let takenOut = AppLocalization.string("Taken out")
+        let takenOut = AppLocalization.string("Taken out", table: .rooms)
         XCTAssertEqual(members.map(GroupRoomTurns.ownerLine(of:)), [
             AppLocalization.string("Furina's agent"),
             // Once yours left, the copy lists it as the host's, as Eric's:
@@ -123,7 +123,7 @@ extension GroupChatModelsTests {
         routes.leavingStatus = 504
         routes.people = leaveOwnPeople(laifu: "removed")
         let result = await appState.takeOut(laifu)
-        XCTAssertEqual(result, .sending(AppLocalization.string("Your Hermes is still sending this. The room shows it once it has.")))
+        XCTAssertEqual(result, .sending(AppLocalization.string("Your Hermes is still sending this. The room shows it once it has.", table: .rooms)))
         XCTAssertEqual(appState.activeRoomPeople["m-laifu"]?.out, .removed, "who's in is read again")
         appState.closeGroupRoom()
     }
@@ -213,7 +213,7 @@ extension GroupChatModelsTests {
         let out = try XCTUnwrap(appState.activeRoomMembers.first { $0.memberID == "m-laifu" })
         XCTAssertEqual(out.out, .removed)
         let mona = AppLocalization.string("Mona's agent")
-        let takenOut = AppLocalization.string("Taken out")
+        let takenOut = AppLocalization.string("Taken out", table: .rooms)
         XCTAssertEqual(GroupRoomTurns.ownerLine(of: out), AppLocalization.string("\(mona) · \(takenOut)"))
         XCTAssertFalse(appState.canTakeOut(out), "it's out already")
         appState.closeGroupRoom()
@@ -228,14 +228,14 @@ extension GroupChatModelsTests {
         await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
 
         let result = await appState.leaveActiveRoom()
-        XCTAssertEqual(result, .refused(AppLocalization.string("Could not leave this room: \(refusal)")))
+        XCTAssertEqual(result, .refused(AppLocalization.string("Could not leave this room: \(refusal)", table: .rooms)))
         XCTAssertEqual(appState.activeRoomSurface?.copy?.status, "started")
         XCTAssertTrue(appState.canLeaveActiveRoom)
         XCTAssertTrue(appState.isPollingActiveRoom)
 
         let kuro = try XCTUnwrap(appState.activeRoomMembers.first { $0.memberID == "m-kuro" })
         let refused = await appState.takeOut(kuro)
-        XCTAssertEqual(refused, .refused(AppLocalization.string("Could not take this agent out: \(refusal)")))
+        XCTAssertEqual(refused, .refused(AppLocalization.string("Could not take this agent out: \(refusal)", table: .rooms)))
         appState.closeGroupRoom()
     }
 
@@ -254,7 +254,7 @@ extension GroupChatModelsTests {
         routes.copies = [copiesCopy(status: "left", yours: [])]
         routes.invites = [routes.leftInvite]
         let result = await appState.leaveActiveRoom()
-        XCTAssertEqual(result, .sending(AppLocalization.string("Your Hermes is still sending this. The room shows it once it has.")))
+        XCTAssertEqual(result, .sending(AppLocalization.string("Your Hermes is still sending this. The room shows it once it has.", table: .rooms)))
         XCTAssertEqual(appState.activeRoomSurface?.copy?.status, "left", "the copy is read again")
         XCTAssertEqual(appState.linkedRoomInvite(copy.id)?.status, "left", "and its invite")
         XCTAssertFalse(appState.canLeaveActiveRoom)
@@ -271,8 +271,8 @@ extension GroupChatModelsTests {
         let kuro = try XCTUnwrap(appState.activeRoomMembers.first { $0.memberID == "m-kuro" })
         XCTAssertTrue(kuro.isYours)
         XCTAssertEqual(kuro.out, .left)
-        let yours = AppLocalization.string("Your agent")
-        let left = AppLocalization.string("Left the room")
+        let yours = AppLocalization.string("Your agent", table: .rooms)
+        let left = AppLocalization.string("Left the room", table: .rooms)
         XCTAssertEqual(GroupRoomTurns.ownerLine(of: kuro), AppLocalization.string("\(yours) · \(left)"))
         XCTAssertNil(GroupRoomTurns.shownOwner(of: kuro), "not the host's name for you")
         let laifu = try XCTUnwrap(appState.activeRoomMembers.first { $0.memberID == "m-laifu" })

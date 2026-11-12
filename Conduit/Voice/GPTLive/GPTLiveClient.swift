@@ -22,7 +22,7 @@ extension GPTLiveBilling {
     var badge: String {
         switch self {
         case .subscription: return AppLocalization.string("ChatGPT plan")
-        case .api: return AppLocalization.string("API key · billed per minute")
+        case .api: return AppLocalization.string("API key · billed per minute", table: .voice)
         }
     }
 }
@@ -47,7 +47,7 @@ enum GPTLiveAvailability: Equatable {
             return nil
         case .unavailable(let reason):
             if let reason, !reason.isEmpty {
-                return AppLocalization.string("GPT-Live is not available on this Hermes server: \(reason)")
+                return AppLocalization.string("GPT-Live is not available on this Hermes server: \(reason)", table: .voice)
             }
             return AppLocalization.string("GPT-Live is not available on this Hermes server.")
         case .pluginMissing:
@@ -110,13 +110,13 @@ enum GPTLiveClientError: LocalizedError, Equatable {
         case .host(let detail):
             return detail
         case .malformedResponse:
-            return AppLocalization.string("Hermes returned an invalid GPT-Live answer.")
+            return AppLocalization.string("Hermes returned an invalid GPT-Live answer.", table: .voice)
         case .notSubscription:
-            return AppLocalization.string("Hermes did not start GPT-Live on the ChatGPT subscription, so Conduit did not connect.")
+            return AppLocalization.string("Hermes did not start GPT-Live on the ChatGPT subscription, so Conduit did not connect.", table: .voice)
         case .notAPIKey:
             return PluginUpdateAsk.text(
-                AppLocalization.string("Hermes did not start GPT-Live on the API key, so Conduit did not connect. Update the Hermes notifier plugin."),
-                lead: AppLocalization.string("Hermes did not start GPT-Live on the API key, so Conduit did not connect.")
+                AppLocalization.string("Hermes did not start GPT-Live on the API key, so Conduit did not connect. Update the Hermes notifier plugin.", table: .voice),
+                lead: AppLocalization.string("Hermes did not start GPT-Live on the API key, so Conduit did not connect.", table: .voice)
             )
         }
     }
@@ -238,7 +238,7 @@ final class GPTLiveClient: GPTLiveSessionProviding {
         }
         guard let api = response["api"] as? [String: Any] else {
             return .unavailable(reason: PluginUpdateAsk.text(
-                AppLocalization.string("GPT-Live on an API key needs the Hermes notifier plugin 0.22 or newer."),
+                AppLocalization.string("GPT-Live on an API key needs the Hermes notifier plugin 0.22 or newer.", table: .voice),
                 lead: AppLocalization.string("Needs Conduit plugin \("0.22") or later.")
             ))
         }

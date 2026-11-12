@@ -1173,7 +1173,7 @@ extension VoiceConversationControllerTests {
         let prompt = HermesCallSettingsFormat.watchPrompt("  Only if the homelab is down for over 10 minutes. \n\n Never before 9 am. ")
         XCTAssertEqual(
             prompt,
-            AppLocalization.string("Make my scheduled checks that call me match this note. Update the ones I already have instead of adding new ones:\n\("Only if the homelab is down for over 10 minutes.\nNever before 9 am.")"),
+            AppLocalization.string("Make my scheduled checks that call me match this note. Update the ones I already have instead of adding new ones:\n\("Only if the homelab is down for over 10 minutes.\nNever before 9 am.")", table: .voice),
             "The request, then the note trimmed line by line"
         )
     }

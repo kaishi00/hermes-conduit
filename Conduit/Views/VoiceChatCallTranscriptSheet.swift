@@ -65,13 +65,13 @@ struct VoiceChatCallTranscriptSheet: View {
 
     /// Who spoke each line, as the live call sheet says it.
     private func label(for entry: VoiceConversationTranscriptEntry) -> String {
-        guard entry.speaker == .assistant else { return AppLocalization.string("You: \(entry.text)") }
+        guard entry.speaker == .assistant else { return AppLocalization.string("You: \(entry.text)", table: .voice) }
         switch call.engine {
-        case .gptLive: return AppLocalization.string("GPT-Live: \(entry.text)")
-        case .grokLive: return AppLocalization.string("Grok: \(entry.text)")
+        case .gptLive: return AppLocalization.string("GPT-Live: \(entry.text)", table: .voice)
+        case .grokLive: return AppLocalization.string("Grok: \(entry.text)", table: .voice)
         case .localLive: return AppLocalization.string("Hermes: \(entry.text)")
-        case .geminiLive: return AppLocalization.string("Gemini: \(entry.text)")
-        case .qwenLive: return AppLocalization.string("Qwen: \(entry.text)")
+        case .geminiLive: return AppLocalization.string("Gemini: \(entry.text)", table: .voice)
+        case .qwenLive: return AppLocalization.string("Qwen: \(entry.text)", table: .voice)
         case nil: return entry.text
         }
     }

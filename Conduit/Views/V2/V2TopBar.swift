@@ -491,9 +491,9 @@ struct V2ProfileStrip: View {
         .buttonStyle(PressableButtonStyle())
         .modifier(DashboardSwitchMenu(enabled: profile == appState.activeProfile))
         .accessibilityIdentifier(isSelected ? "sidebar.workspace" : "v2.profile.\(profile)")
-        .accessibilityLabel(AppLocalization.string("\(name) profile"))
+        .accessibilityLabel(AppLocalization.string("\(name) profile", table: .chat))
         .accessibilityValue(Self.spokenValue(waiting: waiting, unread: unreadValue))
-        .accessibilityHint(currentOnly || (isSelected && !(appState.isProfileSwitching || shell.isPickingProfile)) ? AppLocalization.string("Manage profiles") : AppLocalization.string("Switches to this profile"))
+        .accessibilityHint(currentOnly || (isSelected && !(appState.isProfileSwitching || shell.isPickingProfile)) ? AppLocalization.string("Manage profiles", table: .chat) : AppLocalization.string("Switches to this profile", table: .chat))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -591,7 +591,7 @@ struct V2ProfileStrip: View {
             unread: currentOnly && !unread.isEmpty ? AppLocalization.string("Unread in another profile") : nil
         ))
         .accessibilityHint(isSelected
-            ? AppLocalization.string("Chooses which profiles All shows")
+            ? AppLocalization.string("Chooses which profiles All shows", table: .chat)
             : AppLocalization.string("Shows the chats of several profiles in one list"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
@@ -772,7 +772,7 @@ extension V2ProfileStrip {
     /// A chip's spoken value: what waits there, then its unread line, which
     /// the one chip words as another profile's.
     static func spokenValue(waiting: Int, unread: String?) -> String {
-        [waiting > 0 ? AppLocalization.string("\(Int(waiting)) waiting on you") : nil, unread]
+        [waiting > 0 ? AppLocalization.string("\(Int(waiting)) waiting on you", table: .chat) : nil, unread]
             .compactMap { $0 }.joined(separator: ", ")
     }
 

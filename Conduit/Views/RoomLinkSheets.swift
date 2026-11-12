@@ -23,12 +23,12 @@ enum RoomLinkSheetText {
     static func stop(_ stop: RoomLinkPreview.Stop, name: String, existing: RoomLink?) -> String {
         switch stop {
         case .own:
-            return AppLocalization.string("This invite is from your own Hermes. Send it to the person you're linking with.")
+            return AppLocalization.string("This invite is from your own Hermes. Send it to the person you're linking with.", table: .rooms)
         case .expired:
-            return AppLocalization.string("This invite has run out. Ask \(name) for a new one.")
+            return AppLocalization.string("This invite has run out. Ask \(name) for a new one.", table: .rooms)
         case .linked:
             let linked = existing?.name ?? name
-            return AppLocalization.string("Your Hermes is already linked with \(linked).")
+            return AppLocalization.string("Your Hermes is already linked with \(linked).", table: .rooms)
         }
     }
 }
@@ -68,7 +68,7 @@ private struct RoomLinkQRCodeView: View {
         .frame(maxWidth: 280)
         .frame(maxWidth: .infinity)
         .accessibilityElement()
-        .accessibilityLabel(Text(AppLocalization.string("The invite's QR code")))
+        .accessibilityLabel(Text(AppLocalization.string("The invite's QR code", table: .rooms)))
         .task(id: text) { image = RoomLinkQRCode.image(for: text) }
     }
 }
@@ -81,9 +81,9 @@ private struct RoomLinkNameField: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(AppLocalization.string("Your name"))
+            Text(AppLocalization.string("Your name", table: .rooms))
                 .scaledFont(.subheadline.weight(.semibold))
-            TextField(AppLocalization.string("Your name"), text: $name)
+            TextField(AppLocalization.string("Your name", table: .rooms), text: $name)
                 .textContentType(.name)
                 .textInputAutocapitalization(.words)
                 .autocorrectionDisabled()
@@ -164,7 +164,7 @@ struct RoomLinkInviteSheet: View {
                     ask
                 }
             }
-            .navigationTitle(Text(AppLocalization.string("Link with someone")))
+            .navigationTitle(Text(AppLocalization.string("Link with someone", table: .rooms)))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -179,12 +179,12 @@ struct RoomLinkInviteSheet: View {
     }
 
     private var ask: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Invite"), symbol: "link.badge.plus", tint: .conduitAccent) {
-            Text(AppLocalization.string("Make an invite for the person you're linking with. They open it in Conduit to link your Hermes with theirs."))
+        ConduitSettingsSection(title: AppLocalization.string("Invite", table: .rooms), symbol: "link.badge.plus", tint: .conduitAccent) {
+            Text(AppLocalization.string("Make an invite for the person you're linking with. They open it in Conduit to link your Hermes with theirs.", table: .rooms))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            RoomLinkNameField(name: $name, caption: AppLocalization.string("The invite says it's from this name."))
+            RoomLinkNameField(name: $name, caption: AppLocalization.string("The invite says it's from this name.", table: .rooms))
             if let error {
                 Label(error, systemImage: "exclamationmark.triangle.fill")
                     .scaledFont(.footnote)
@@ -196,7 +196,7 @@ struct RoomLinkInviteSheet: View {
                     ProgressView()
                         .controlSize(.small)
                 }
-                Button(AppLocalization.string("Make invite")) { makeInvite() }
+                Button(AppLocalization.string("Make invite", table: .rooms)) { makeInvite() }
                     .buttonStyle(.settingsPrimary)
                     .disabled(working || trimmedName.isEmpty)
             }
@@ -206,23 +206,23 @@ struct RoomLinkInviteSheet: View {
     @ViewBuilder
     private func invite(_ made: RoomLinkInviteMade) -> some View {
         if let linkedWith {
-            Label(AppLocalization.string("Linked with \(linkedWith.name)"), systemImage: "checkmark.circle.fill")
+            Label(AppLocalization.string("Linked with \(linkedWith.name)", table: .rooms), systemImage: "checkmark.circle.fill")
                 .scaledFont(.headline)
                 .foregroundStyle(.green)
         }
-        ConduitSettingsSection(title: AppLocalization.string("Invite"), symbol: "qrcode", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Invite", table: .rooms), symbol: "qrcode", tint: .conduitAccent) {
             RoomLinkQRCodeView(text: made.url.text)
-            Text(AppLocalization.string("Ask them to scan this with their iPhone's camera, or send them the invite. It opens in Conduit."))
+            Text(AppLocalization.string("Ask them to scan this with their iPhone's camera, or send them the invite. It opens in Conduit.", table: .rooms))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let url = URL(string: made.url.text) {
                 ShareLink(
                     item: url,
-                    subject: Text(AppLocalization.string("Link with me in Conduit")),
-                    message: Text(AppLocalization.string("Open this in Conduit to link your Hermes with mine."))
+                    subject: Text(AppLocalization.string("Link with me in Conduit", table: .rooms)),
+                    message: Text(AppLocalization.string("Open this in Conduit to link your Hermes with mine.", table: .rooms))
                 ) {
-                    Label(AppLocalization.string("Send the invite"), systemImage: "square.and.arrow.up")
+                    Label(AppLocalization.string("Send the invite", table: .rooms), systemImage: "square.and.arrow.up")
                 }
                 .buttonStyle(.settings)
             }
@@ -230,11 +230,11 @@ struct RoomLinkInviteSheet: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
-        ConduitSettingsSection(title: AppLocalization.string("Your Hermes' words"), symbol: "checkmark.shield", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Your Hermes' words", table: .rooms), symbol: "checkmark.shield", tint: .conduitAccent) {
             RoomLinkWordsCard(
-                title: AppLocalization.string("Your Hermes' words"),
+                title: AppLocalization.string("Your Hermes' words", table: .rooms),
                 words: made.words,
-                caption: AppLocalization.string("When they open the invite, their Conduit shows these four words. Check together that the words match before they link.")
+                caption: AppLocalization.string("When they open the invite, their Conduit shows these four words. Check together that the words match before they link.", table: .rooms)
             )
         }
     }
@@ -243,7 +243,7 @@ struct RoomLinkInviteSheet: View {
         let until = invite.expiresAt.formatted(
             .dateTime.weekday(.abbreviated).hour().minute().locale(AppLocalization.formattingLocale)
         )
-        return AppLocalization.string("Works until \(until), for one person.")
+        return AppLocalization.string("Works until \(until), for one person.", table: .rooms)
     }
 
     private func makeInvite() {
@@ -267,7 +267,7 @@ struct RoomLinkInviteSheet: View {
                 guard !(error is CancellationError), key == self.key else { return }
                 Haptics.error()
                 roomLinkLogger.notice("Invite not made: \(LogRedaction.message(error), privacy: .public)")
-                self.error = AppLocalization.string("Could not make the invite: \(RoomLinksClient.message(for: error))")
+                self.error = AppLocalization.string("Could not make the invite: \(RoomLinksClient.message(for: error))", table: .rooms)
             }
         }
     }
@@ -346,7 +346,7 @@ struct RoomLinkOpenedSheet: View {
             SettingsDetailContainer {
                 content
             }
-            .navigationTitle(Text(AppLocalization.string("Link invite")))
+            .navigationTitle(Text(AppLocalization.string("Link invite", table: .rooms)))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -367,22 +367,22 @@ struct RoomLinkOpenedSheet: View {
             if waitsForHermes {
                 HStack(spacing: 10) {
                     ProgressView()
-                    Text(AppLocalization.string("Conduit opens this invite once it's connected to your Hermes."))
+                    Text(AppLocalization.string("Conduit opens this invite once it's connected to your Hermes.", table: .rooms))
                         .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
                 }
             } else {
-                Label(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to link with someone.")), systemImage: "exclamationmark.triangle.fill")
+                Label(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to link with someone.", table: .rooms)), systemImage: "exclamationmark.triangle.fill")
                     .scaledFont(.subheadline)
                     .foregroundStyle(.orange)
             }
         } else if let shown {
             header(shown.preview)
-            ConduitSettingsSection(title: AppLocalization.string("Their Hermes' words"), symbol: "checkmark.shield", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("Their Hermes' words", table: .rooms), symbol: "checkmark.shield", tint: .conduitAccent) {
                 RoomLinkWordsCard(
                     title: AppLocalization.string("\(shown.preview.name)'s Hermes"),
                     words: shown.preview.words,
-                    caption: AppLocalization.string("Check that these are the four words \(shown.preview.name)'s Conduit shows for their Hermes. If they don't match, the invite isn't from them: don't link.")
+                    caption: AppLocalization.string("Check that these are the four words \(shown.preview.name)'s Conduit shows for their Hermes. If they don't match, the invite isn't from them: don't link.", table: .rooms)
                 )
             }
             details(shown.preview)
@@ -415,11 +415,11 @@ struct RoomLinkOpenedSheet: View {
                 .frame(width: 64, height: 64)
                 .background(Color.conduitAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .accessibilityHidden(true)
-            Text(AppLocalization.string("Link with \(preview.name)?"))
+            Text(AppLocalization.string("Link with \(preview.name)?", table: .rooms))
                 .scaledFont(.title2.weight(.semibold))
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
-            Text(AppLocalization.string("A Link lets you and someone else bring your agents into rooms together. It grants nothing by itself: in each room, you choose what your agents may do."))
+            Text(AppLocalization.string("A Link lets you and someone else bring your agents into rooms together. It grants nothing by itself: in each room, you choose what your agents may do.", table: .rooms))
                 .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -433,20 +433,20 @@ struct RoomLinkOpenedSheet: View {
             .dateTime.weekday(.abbreviated).hour().minute().locale(AppLocalization.formattingLocale)
         )
         let registry = appState.savedDashboardRegistry
-        return ConduitSettingsSection(title: AppLocalization.string("Invite"), symbol: "envelope", tint: .conduitAccent) {
+        return ConduitSettingsSection(title: AppLocalization.string("Invite", table: .rooms), symbol: "envelope", tint: .conduitAccent) {
             SettingsMetricRow(label: AppLocalization.string("From"), value: preview.name)
-            SettingsMetricRow(label: AppLocalization.string("Mailbox"), value: preview.mailbox, lineLimit: 1)
-            SettingsMetricRow(label: AppLocalization.string("Works until"), value: until)
+            SettingsMetricRow(label: AppLocalization.string("Mailbox", table: .rooms), value: preview.mailbox, lineLimit: 1)
+            SettingsMetricRow(label: AppLocalization.string("Works until", table: .rooms), value: until)
             // Which Hermes links, when there's more than one.
             if registry.dashboards.count > 1, let label = registry.activeDashboardLabel {
-                SettingsMetricRow(label: AppLocalization.string("Your Hermes"), value: label, lineLimit: 1)
+                SettingsMetricRow(label: AppLocalization.string("Your Hermes", table: .rooms), value: label, lineLimit: 1)
             }
         }
     }
 
     private func acceptForm(_ preview: RoomLinkPreview) -> some View {
         SettingsCard {
-            RoomLinkNameField(name: $name, caption: AppLocalization.string("\(preview.name) sees you by this name."))
+            RoomLinkNameField(name: $name, caption: AppLocalization.string("\(preview.name) sees you by this name.", table: .rooms))
             if let acceptError {
                 Label(acceptError, systemImage: "exclamationmark.triangle.fill")
                     .scaledFont(.footnote)
@@ -458,7 +458,7 @@ struct RoomLinkOpenedSheet: View {
                     ProgressView()
                         .controlSize(.small)
                 }
-                Button(AppLocalization.string("Link with \(preview.name)")) { accept(preview) }
+                Button(AppLocalization.string("Link with \(preview.name)", table: .rooms)) { accept(preview) }
                     .buttonStyle(.settingsPrimary)
                     .disabled(working || trimmedName.isEmpty)
             }
@@ -473,28 +473,28 @@ struct RoomLinkOpenedSheet: View {
                 .foregroundStyle(.orange)
         }
         if gone {
-            Label(AppLocalization.string("This Link is gone from your Hermes. Ask \(link.name) for a new invite."), systemImage: "exclamationmark.triangle.fill")
+            Label(AppLocalization.string("This Link is gone from your Hermes. Ask \(link.name) for a new invite.", table: .rooms), systemImage: "exclamationmark.triangle.fill")
                 .scaledFont(.subheadline)
                 .foregroundStyle(.orange)
         } else if link.status == "linked" {
             VStack(alignment: .leading, spacing: 6) {
-                Label(AppLocalization.string("Linked with \(link.name)"), systemImage: "checkmark.circle.fill")
+                Label(AppLocalization.string("Linked with \(link.name)", table: .rooms), systemImage: "checkmark.circle.fill")
                     .scaledFont(.headline)
                     .foregroundStyle(.green)
-                Text(AppLocalization.string("Your agents and theirs can now join rooms together. Settings › Multiplayer lists your Links."))
+                Text(AppLocalization.string("Your agents and theirs can now join rooms together. Settings › Multiplayer lists your Links.", table: .rooms))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
         } else if stillWaiting {
-            Text(AppLocalization.string("\(link.name)'s Hermes hasn't confirmed yet. It does once it reads its mailbox, and Settings › Multiplayer shows when it has."))
+            Text(AppLocalization.string("\(link.name)'s Hermes hasn't confirmed yet. It does once it reads its mailbox, and Settings › Multiplayer shows when it has.", table: .rooms))
                 .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         } else if link.status == "waiting" {
             HStack(spacing: 10) {
                 ProgressView()
-                Text(AppLocalization.string("Waiting for \(link.name)'s Hermes to confirm"))
+                Text(AppLocalization.string("Waiting for \(link.name)'s Hermes to confirm", table: .rooms))
                     .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
             }
@@ -534,7 +534,7 @@ struct RoomLinkOpenedSheet: View {
         } catch {
             guard !(error is CancellationError), !Task.isCancelled, key == self.key else { return }
             roomLinkLogger.notice("Invite not read: \(LogRedaction.message(error), privacy: .public)")
-            readError = AppLocalization.string("Could not read this invite: \(RoomLinksClient.message(for: error))")
+            readError = AppLocalization.string("Could not read this invite: \(RoomLinksClient.message(for: error))", table: .rooms)
         }
     }
 
@@ -558,7 +558,7 @@ struct RoomLinkOpenedSheet: View {
                 guard !(error is CancellationError), key == self.key else { return }
                 Haptics.error()
                 roomLinkLogger.notice("Invite not accepted: \(LogRedaction.message(error), privacy: .public)")
-                acceptError = AppLocalization.string("Could not link: \(RoomLinksClient.message(for: error))")
+                acceptError = AppLocalization.string("Could not link: \(RoomLinksClient.message(for: error))", table: .rooms)
                 // An accept the mailbox couldn't take yet keeps its Link,
                 // waiting, and goes later while the invite lasts.
                 let kept = try? await client.list().links.first { $0.words == preview.words && $0.status == "waiting" }

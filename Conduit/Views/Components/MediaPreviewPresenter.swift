@@ -64,9 +64,9 @@ enum GatewayMediaKind: Equatable {
     var label: String {
         switch self {
         case .image: return AppLocalization.string("Image")
-        case .video: return AppLocalization.string("Video")
+        case .video: return AppLocalization.string("Video", table: .chat)
         case .audio: return AppLocalization.string("Audio")
-        case .document: return AppLocalization.string("File")
+        case .document: return AppLocalization.string("File", table: .chat)
         }
     }
 }

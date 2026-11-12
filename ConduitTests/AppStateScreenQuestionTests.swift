@@ -1042,7 +1042,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
 
         XCTAssertFalse(moved)
         XCTAssertEqual(harness.appState.pendingScreenshot(forSession: "recent"), shot)
-        let message = AppLocalization.string("Hermes could not start a new chat, so the screenshot is still in this one.")
+        let message = AppLocalization.string("Hermes could not start a new chat, so the screenshot is still in this one.", table: .phone)
         let error = try XCTUnwrap(harness.appState.errorMessage)
         XCTAssertTrue(error.hasPrefix(message), "Says where the screenshot is first: \(error)")
         XCTAssertNotEqual(error, message, "Hermes's own reason follows")
@@ -1501,7 +1501,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         // opens, and the photo already waiting stays.
         supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "other-chat", storedSessionID: nil, title: "Other"))
         let moved = await appState.addVoicePhoto(image, for: target)
-        XCTAssertEqual(moved, AppLocalization.string("The conversation changed while the photo saved, so it wasn't added. Try again."))
+        XCTAssertEqual(moved, AppLocalization.string("The conversation changed while the photo saved, so it wasn't added. Try again.", table: .voice))
         XCTAssertEqual(appState.activeSessionId, "composer-origin")
         XCTAssertEqual(appState.pendingScreenshot(forSession: "composer-origin")?.uri, photo.uri)
     }

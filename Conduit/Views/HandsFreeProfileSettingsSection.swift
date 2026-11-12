@@ -17,10 +17,10 @@ struct HandsFreeProfileSettingsSection: View {
     var body: some View {
         // One profile has nothing to choose between.
         if appState.profiles.count > 1 {
-            ConduitSettingsSection(title: AppLocalization.string("Watch and Siri calls"), symbol: "applewatch.radiowaves.left.and.right", tint: .conduitAura) {
+            ConduitSettingsSection(title: AppLocalization.string("Watch and Siri calls", table: .voice), symbol: "applewatch.radiowaves.left.and.right", tint: .conduitAura) {
                 ConduitMenuPicker(
                     value: chosen,
-                    choices: [(id: "", title: AppLocalization.string("Profile open on iPhone"))]
+                    choices: [(id: "", title: AppLocalization.string("Profile open on iPhone", table: .voice))]
                         + appState.profiles.map { (id: $0, title: appState.profileDisplayName($0)) },
                     onSelect: { appState.setHandsFreeProfileChoice($0.isEmpty ? nil : $0) }
                 ) {
@@ -43,9 +43,9 @@ struct HandsFreeProfileSettingsSection: View {
 
     private var caption: String {
         if chosen.isEmpty {
-            return AppLocalization.string("Calls from your Apple Watch, and from Siri or the Action button when the shortcut names no profile, use the profile open on your iPhone.")
+            return AppLocalization.string("Calls from your Apple Watch, and from Siri or the Action button when the shortcut names no profile, use the profile open on your iPhone.", table: .voice)
         }
         let name = appState.profileDisplayName(chosen)
-        return AppLocalization.string("Calls from your Apple Watch, and from Siri or the Action button when the shortcut names no profile, use \(name). A Watch call doesn't switch your iPhone's profile; a Siri call does. Answering a call from Hermes keeps that call's profile.")
+        return AppLocalization.string("Calls from your Apple Watch, and from Siri or the Action button when the shortcut names no profile, use \(name). A Watch call doesn't switch your iPhone's profile; a Siri call does. Answering a call from Hermes keeps that call's profile.", table: .voice)
     }
 }

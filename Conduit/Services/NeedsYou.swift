@@ -92,7 +92,7 @@ struct NeedsYouItem: Identifiable, Equatable {
     var kindLine: String {
         switch kind {
         case .approval: return AppLocalization.string("Approval needed")
-        case .question where questions > 1: return AppLocalization.string("\(Int(questions)) questions")
+        case .question where questions > 1: return AppLocalization.string("\(Int(questions)) questions", table: .chat)
         case .question: return AppLocalization.string("Question")
         }
     }

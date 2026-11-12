@@ -20,7 +20,7 @@ enum LocalLiveClientError: LocalizedError, Equatable {
         case .unavailable(let reason):
             return PluginUpdateAsk.reason(reason) ?? reason
         case .socketUnavailable:
-            return AppLocalization.string("Could not open the Local Live connection.")
+            return AppLocalization.string("Could not open the Local Live connection.", table: .voice)
         }
     }
 }
@@ -86,6 +86,6 @@ final class LocalLiveClient: LocalLiveConnecting {
     static func unavailableReason(_ status: SpeechServerVoiceStatus) -> String? {
         guard !status.available else { return nil }
         if let reason = status.reason, !reason.isEmpty { return reason }
-        return AppLocalization.string("Local Live is not available on this Hermes server.")
+        return AppLocalization.string("Local Live is not available on this Hermes server.", table: .voice)
     }
 }

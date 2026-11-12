@@ -315,22 +315,22 @@ extension HermesVoiceConfigurationServiceTests {
         ]])
         XCTAssertEqual(slots.map(\.id), ["vision", "title_generation", "brand_new_slot", "conduit_predict", "notes_digest", "compression",
                                          HelperModelSlot.workWatch])
-        XCTAssertEqual(slots[0].title, AppLocalization.string("Image reading"))
+        XCTAssertEqual(slots[0].title, AppLocalization.string("Image reading", table: .bots))
         XCTAssertEqual(slots[0].value, AppLocalization.string("Same as chats"))
         XCTAssertEqual(slots[1].value, "fast/titles")
         XCTAssertEqual(slots[1].setting.reasoningEffort, "low")
         XCTAssertEqual(slots[2].title, "Brand new slot", "a slot a newer Hermes added reads as its key")
-        XCTAssertEqual(slots[3].title, AppLocalization.string("Conduit predictions"))
+        XCTAssertEqual(slots[3].title, AppLocalization.string("Conduit predictions", table: .bots))
         XCTAssertEqual(slots[4].title, "Notes digest")
         XCTAssertEqual(slots[4].caption, "Digests notes.")
-        let compaction = AppLocalization.string("Compaction")
-        XCTAssertEqual(slots[4].value, AppLocalization.string("Same as \(compaction)"))
-        XCTAssertEqual(slots[4].followTitle, AppLocalization.string("Same as \(compaction)"))
+        let compaction = AppLocalization.string("Compaction", table: .bots)
+        XCTAssertEqual(slots[4].value, AppLocalization.string("Same as \(compaction)", table: .bots))
+        XCTAssertEqual(slots[4].followTitle, AppLocalization.string("Same as \(compaction)", table: .bots))
         XCTAssertEqual(slots[5].followTitle, AppLocalization.string("Same as chats"))
         // Edit Bot > Work shows the work watch's slot by this name too, in
         // the app's language rather than the plugin's English label.
-        XCTAssertEqual(slots[6].title, AppLocalization.string("Conduit work watch"))
-        XCTAssertEqual(slots[6].caption, AppLocalization.string("Reads what a bot’s workstreams report while they work and tells its Bot Chat when one may affect another."))
+        XCTAssertEqual(slots[6].title, AppLocalization.string("Conduit work watch", table: .bots))
+        XCTAssertEqual(slots[6].caption, AppLocalization.string("Reads what a bot’s workstreams report while they work and tells its Bot Chat when one may affect another.", table: .bots))
         XCTAssertEqual(slots[6].value, "fast/watch")
     }
 

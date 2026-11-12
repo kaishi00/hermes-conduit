@@ -126,7 +126,7 @@ struct ProfilePersonalitySection: View {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                 }
-                Text(AppLocalization.string("Saved as the profile's SOUL.md, the same one Edit Bot shows."))
+                Text(AppLocalization.string("Saved as the profile's SOUL.md, the same one Edit Bot shows.", table: .settings))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -142,7 +142,7 @@ struct ProfilePersonalitySection: View {
     /// that comes back doesn't need Edit profile left and opened again.
     @ViewBuilder
     private var readFailure: some View {
-        Text(AppLocalization.string("Could not load this profile's personality."))
+        Text(AppLocalization.string("Could not load this profile's personality.", table: .settings))
             .foregroundStyle(.secondary)
         if isLoading {
             // The note stays up until the read asked again answers.
@@ -192,7 +192,7 @@ private struct ProfileSoulEditor: View {
             soul: Binding(get: { draft ?? loaded ?? kept ?? "" }, set: { draft = $0 }),
             // A save compares with Hermes' own, never the kept copy.
             isReadOnly: loaded == nil,
-            footer: AppLocalization.string("Saved as the profile's SOUL.md, the same one Edit Bot shows."),
+            footer: AppLocalization.string("Saved as the profile's SOUL.md, the same one Edit Bot shows.", table: .settings),
             error: error,
             isDisabled: isSaving
         )

@@ -92,7 +92,7 @@ struct KanbanOrchestrationSettingsSheet: View {
                                 .settingsCaption()
                         }
 
-                        ConduitSettingsSection(title: AppLocalization.string("Orchestrator Profile"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+                        ConduitSettingsSection(title: AppLocalization.string("Orchestrator Profile", table: .tasks), symbol: "slider.horizontal.3", tint: .conduitAccent) {
                             ConduitMenuPicker(
                                 value: orchestratorProfile,
                                 choices: [(id: "", title: orchestratorSelectionLabel)]
@@ -105,7 +105,7 @@ struct KanbanOrchestrationSettingsSheet: View {
                                 .settingsCaption()
                         }
 
-                        ConduitSettingsSection(title: AppLocalization.string("Default Assignee"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+                        ConduitSettingsSection(title: AppLocalization.string("Default Assignee", table: .tasks), symbol: "slider.horizontal.3", tint: .conduitAccent) {
                             ConduitMenuPicker(
                                 value: defaultAssignee,
                                 choices: [(id: "", title: assigneeSelectionLabel)]
@@ -238,7 +238,7 @@ struct KanbanOrchestrationSettingsSheet: View {
                 orchestratorProfile: orchestratorProfile,
                 defaultAssignee: defaultAssignee
             )
-            notice = AppLocalization.string("Orchestration settings saved.")
+            notice = AppLocalization.string("Orchestration settings saved.", table: .tasks)
         } catch {
             if liveness.owns(operationID) { isSaving = false }
             guard store.isCurrentConfiguration(generation) else { return }

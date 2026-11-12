@@ -54,9 +54,9 @@ enum ChatVoiceButtonAction: String, CaseIterable, Equatable {
 
     var title: String {
         switch self {
-        case .liveCall: return AppLocalization.string("Live call")
+        case .liveCall: return AppLocalization.string("Live call", table: .voice)
         case .voiceMessage: return AppLocalization.string("Voice message")
-        case .dictation: return AppLocalization.string("Dictation")
+        case .dictation: return AppLocalization.string("Dictation", table: .voice)
         }
     }
 

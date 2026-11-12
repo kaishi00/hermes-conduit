@@ -246,8 +246,8 @@ extension AppState {
         let named = title.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
             ? AppLocalization.string("New chat") : title
         composerNotice = composerDraftKeysAreSameChat(key, durableComposerDraftKeyOnScreen)
-            ? AppLocalization.string("Your message wasn't sent. It's back in the composer.")
-            : AppLocalization.string("Your message to “\(named)” wasn't sent. It's back in that chat's draft.")
+            ? AppLocalization.string("Your message wasn't sent. It's back in the composer.", table: .chat)
+            : AppLocalization.string("Your message to “\(named)” wasn't sent. It's back in that chat's draft.", table: .chat)
     }
 
     /// The composer put the words back: the waiting message's file goes too.
@@ -485,14 +485,14 @@ extension AppState {
 
     func pendingComposerSendNotice(for pending: PendingComposerSend, onScreen: Bool, chatIsGone: Bool = false) -> String {
         if chatIsGone {
-            return AppLocalization.string("Your message to “\(pending.title)” wasn't sent: Hermes no longer has that chat. It's in the composer now.")
+            return AppLocalization.string("Your message to “\(pending.title)” wasn't sent: Hermes no longer has that chat. It's in the composer now.", table: .chat)
         }
         if pending.isNewChat {
-            return AppLocalization.string("Your message for a new chat wasn't sent. It's saved for your next new chat.")
+            return AppLocalization.string("Your message for a new chat wasn't sent. It's saved for your next new chat.", table: .chat)
         }
         if onScreen {
-            return AppLocalization.string("Your message wasn't sent. It's back in the composer.")
+            return AppLocalization.string("Your message wasn't sent. It's back in the composer.", table: .chat)
         }
-        return AppLocalization.string("Your message to “\(pending.title)” wasn't sent. It's back in that chat's draft.")
+        return AppLocalization.string("Your message to “\(pending.title)” wasn't sent. It's back in that chat's draft.", table: .chat)
     }
 }

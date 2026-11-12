@@ -118,7 +118,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
             try? await Task.sleep(for: finishTimeout)
             guard !Task.isCancelled, let self else { return }
             if self.segments.isEmpty {
-                self.resolve(.failed(self.lastError ?? AppLocalization.string("Your speech server didn't send any words back in time.")))
+                self.resolve(.failed(self.lastError ?? AppLocalization.string("Your speech server didn't send any words back in time.", table: .voice)))
             } else {
                 self.resolve(.finished(self.joinedTranscript))
             }
@@ -213,7 +213,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
             do {
                 try await socket.send(message)
             } catch {
-                self?.resolve(.failed(AppLocalization.string("Lost the connection to your speech server.")))
+                self?.resolve(.failed(AppLocalization.string("Lost the connection to your speech server.", table: .voice)))
             }
         }
     }
@@ -260,7 +260,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
             // segment already closed; anything else is kept as the reason
             // if no words come.
             if let message = Self.errorMessage(frame), !Self.isEmptyCommit(frame) {
-                lastError = AppLocalization.string("Your speech server reported: \(message)")
+                lastError = AppLocalization.string("Your speech server reported: \(message)", table: .voice)
             }
         default:
             break
@@ -293,7 +293,7 @@ final class SpeechServerTranscription: VoiceLiveTranscription {
         if ended, startedSegments > 0, finishedSegments >= startedSegments {
             resolve(.finished(joinedTranscript))
         } else {
-            resolve(.failed(lastError ?? AppLocalization.string("Lost the connection to your speech server.")))
+            resolve(.failed(lastError ?? AppLocalization.string("Lost the connection to your speech server.", table: .voice)))
         }
     }
 
@@ -428,7 +428,7 @@ struct SpeechServerStatus: Equatable {
     var readFailed = false
 
     static var pluginMissingReason: String {
-        PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to use your own speech server."))
+        PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to use your own speech server.", table: .voice))
     }
 
     static var pluginMissing: SpeechServerStatus {
@@ -490,10 +490,10 @@ struct SpeechServerTestResult: Equatable {
     var message: String {
         if connected {
             if let latencyMilliseconds {
-                return AppLocalization.string("Connected. Your speech server answered in \(String(latencyMilliseconds)) ms.")
+                return AppLocalization.string("Connected. Your speech server answered in \(String(latencyMilliseconds)) ms.", table: .voice)
             }
-            return AppLocalization.string("Connected to your speech server.")
+            return AppLocalization.string("Connected to your speech server.", table: .voice)
         }
-        return reason ?? AppLocalization.string("Could not reach your speech server.")
+        return reason ?? AppLocalization.string("Could not reach your speech server.", table: .voice)
     }
 }

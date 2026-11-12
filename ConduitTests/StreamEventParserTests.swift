@@ -601,6 +601,20 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(start.merged(with: silentEnd).duration, 10)
         XCTAssertEqual(start.ended(as: .interrupted, at: Date(timeIntervalSince1970: 1_005)).duration, 5)
 
+        // An end only the roster found shows no time; a later end event's
+        // own figure still fills it in.
+        var running = start
+        running.hasGatewayID = true
+        running.sessionId = "s1"
+        running.updatedAt = Date(timeIntervalSince1970: 1_001)
+        let found = try XCTUnwrap(DelegateAgentActivity.reconciled(
+            [running], sessionId: "s1", liveIDs: [], changedBefore: Date(timeIntervalSince1970: 2_000)
+        ).first)
+        XCTAssertEqual(found.status, .completed)
+        XCTAssertNil(found.duration)
+        XCTAssertNil(found.elapsed(at: Date(timeIntervalSince1970: 3_000)))
+        XCTAssertEqual(found.merged(with: complete).duration, 63.5)
+
         let queued = try activity(#"{"type": "subagent.spawn_requested", "session_id": "s1", "payload": {"goal": "g", "task_count": 1, "task_index": 0, "subagent_id": "sa-2"}}"#)
         XCTAssertNil(queued.startedAt)
         XCTAssertNil(queued.elapsed(at: Date()), "a queued agent has no time yet")
@@ -1067,14 +1081,14 @@ final class StreamEventParserTests: XCTestCase {
     /// Hermes' fixed English summaries read in the app's language; a
     /// summary naming something (a skill) stays as Hermes wrote it.
     func testFixedReviewSummariesGoThroughTheAppLanguage() {
-        let memory = AppLocalization.string("\(AppLocalization.string("Memory")) updated")
+        let memory = AppLocalization.string("\(AppLocalization.string("Memory")) updated", table: .connection)
         // The parsed review keeps Hermes' words; the card localizes them.
         XCTAssertEqual(MessageNormalizer.reviewActivity(fromText: "💾 Self-improvement review: Memory updated")?.summary, "Memory updated")
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated"), memory)
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("User profile updated"),
-                       AppLocalization.string("\(AppLocalization.string("User profile")) updated"))
+                       AppLocalization.string("\(AppLocalization.string("User profile", table: .connection)) updated", table: .connection))
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · User profile updated"),
-                       "\(memory) · \(AppLocalization.string("\(AppLocalization.string("User profile")) updated"))")
+                       "\(memory) · \(AppLocalization.string("\(AppLocalization.string("User profile", table: .connection)) updated", table: .connection))")
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · Memory updated"), memory)
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("📝 Skill 'hermes-release' patched"), "📝 Skill 'hermes-release' patched")
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · 📝 Skill 'x' created: y"), "Memory updated · 📝 Skill 'x' created: y")

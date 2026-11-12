@@ -141,7 +141,7 @@ struct BotWorkTitleLine: View {
                 // bar has one line's room; the panel it opens scales fully.
                 .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                 .accessibilityLabel(text)
-                .accessibilityHint(AppLocalization.string("Shows this bot's work"))
+                .accessibilityHint(AppLocalization.string("Shows this bot's work", table: .bots))
                 .accessibilityIdentifier("botWork.titleLine")
             }
         }
@@ -162,7 +162,7 @@ struct WorkstreamTitleLine: View {
     }
 
     var body: some View {
-        let text = AppLocalization.string("\(botName)’s work · \(item.ref) · \(item.statusText)")
+        let text = AppLocalization.string("\(botName)’s work · \(item.ref) · \(item.statusText)", table: .bots)
         Button {
             Haptics.light()
             appState.openCoordinator(profile: profile)
@@ -184,7 +184,7 @@ struct WorkstreamTitleLine: View {
         // Capped as the chat's other title lines are (one line's room).
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
         .accessibilityLabel(text)
-        .accessibilityHint(AppLocalization.string("Back to \(botName)"))
+        .accessibilityHint(AppLocalization.string("Back to \(botName)", table: .bots))
         .accessibilityIdentifier("workstream.back")
     }
 }
@@ -278,7 +278,7 @@ struct BotWorkPanel: View {
                     onWillOpen?()
                     appState.openWorkstream(item, profile: profile)
                 } label: {
-                    Label(AppLocalization.string("Open \(item.ref)’s chat"), systemImage: "bubble.left.and.bubble.right")
+                    Label(AppLocalization.string("Open \(item.ref)’s chat", table: .bots), systemImage: "bubble.left.and.bubble.right")
                 }
             }
         }
@@ -289,10 +289,10 @@ struct BotWorkPanel: View {
             switch action {
             case .pin: return (AppLocalization.string("Pin"), "pin", .orange)
             case .unpin: return (AppLocalization.string("Unpin"), "pin.slash", .gray)
-            case .resolve: return (AppLocalization.string("Resolve"), "checkmark.circle", .green)
-            case .leaveAlone: return (AppLocalization.string("Leave Alone"), "hand.raised", .gray)
-            case .coordinate: return (AppLocalization.string("Let \(botName) Coordinate It"), "point.3.connected.trianglepath.dotted", .blue)
-            default: return (AppLocalization.string("Reopen"), "arrow.uturn.backward.circle", .conduitAccent)
+            case .resolve: return (AppLocalization.string("Resolve", table: .bots), "checkmark.circle", .green)
+            case .leaveAlone: return (AppLocalization.string("Leave Alone", table: .bots), "hand.raised", .gray)
+            case .coordinate: return (AppLocalization.string("Let \(botName) Coordinate It", table: .bots), "point.3.connected.trianglepath.dotted", .blue)
+            default: return (AppLocalization.string("Reopen", table: .bots), "arrow.uturn.backward.circle", .conduitAccent)
             }
         }()
         return Button {
@@ -391,8 +391,8 @@ struct BotWorkPanel: View {
             }
             VStack(alignment: .leading, spacing: 1) {
                 Text(showsResolved ? AppLocalization.string("Resolved")
-                     : showsCoordination ? AppLocalization.string("Coordination")
-                     : AppLocalization.string("\(botName)’s work"))
+                     : showsCoordination ? AppLocalization.string("Coordination", table: .bots)
+                     : AppLocalization.string("\(botName)’s work", table: .bots))
                     .scaledFont(.headline)
                     .lineLimit(1)
                     .accessibilityAddTraits(.isHeader)
@@ -479,7 +479,7 @@ struct BotWorkPanel: View {
                             withAnimation(ConduitMotion.response) { showsAllRecent.toggle() }
                         } label: {
                             Text(showsAllRecent ? AppLocalization.string("Show less")
-                                 : AppLocalization.string("Show all \(String(recent.count))"))
+                                 : AppLocalization.string("Show all \(String(recent.count))", table: .bots))
                                 .scaledFont(.subheadline.weight(.semibold))
                                 .foregroundStyle(Color.conduitAccent)
                                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -500,7 +500,7 @@ struct BotWorkPanel: View {
                             Image(systemName: "arrow.triangle.branch")
                                 .foregroundStyle(.secondary)
                                 .accessibilityHidden(true)
-                            Text(AppLocalization.string("Coordination"))
+                            Text(AppLocalization.string("Coordination", table: .bots))
                                 .scaledFont(.body.weight(.semibold))
                                 .foregroundStyle(Color.primary)
                             Spacer(minLength: 4)
@@ -717,7 +717,7 @@ struct BotWorkWhySheet: View {
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .settingsCard()
                     if !item.why.isEmpty {
-                        SettingsSectionHeader(title: AppLocalization.string("What was behind it"),
+                        SettingsSectionHeader(title: AppLocalization.string("What was behind it", table: .bots),
                                               symbol: "list.bullet.rectangle", tint: .conduitAccent)
                         if let caption = item.whyCaption(botName: botName) {
                             Text(caption)
@@ -782,15 +782,15 @@ private struct BotWorkRow: View {
         // Resolved before it finished: "Resolved", not where it was left.
         if item.isResolvedUnfinished { return item.statusText }
         if item.isClosed {
-            return item.resolvedBy == "bot" ? AppLocalization.string("\(item.statusText) · resolved by the bot")
-                : AppLocalization.string("\(item.statusText) · resolved by you")
+            return item.resolvedBy == "bot" ? AppLocalization.string("\(item.statusText) · resolved by the bot", table: .bots)
+                : AppLocalization.string("\(item.statusText) · resolved by you", table: .bots)
         }
         if !item.screenAsk.isEmpty {
-            return AppLocalization.string("Needs you on the screen · \(item.screenAsk)")
+            return AppLocalization.string("Needs you on the screen · \(item.screenAsk)", table: .bots)
         }
         if let doing = item.doing { return doing }
         if item.needsYou, !item.error.isEmpty {
-            return AppLocalization.string("Needs you · \(item.error)")
+            return AppLocalization.string("Needs you · \(item.error)", table: .bots)
         }
         if !item.error.isEmpty, item.status != "done" { return "\(item.statusText) · \(item.error)" }
         return item.statusText
@@ -857,9 +857,9 @@ private struct BotWorkRow: View {
     private var screenBox: some View {
         VStack(alignment: .leading, spacing: 10) {
             Label {
-                Text(item.screen == "controlling" ? AppLocalization.string("Using the bot's screen now")
-                     : item.screen == "waiting" ? AppLocalization.string("Waiting for the bot's screen")
-                     : AppLocalization.string("Needs you on the bot's screen"))
+                Text(item.screen == "controlling" ? AppLocalization.string("Using the bot's screen now", table: .bots)
+                     : item.screen == "waiting" ? AppLocalization.string("Waiting for the bot's screen", table: .bots)
+                     : AppLocalization.string("Needs you on the bot's screen", table: .bots))
                     .scaledFont(.footnote.weight(.semibold))
                     .fixedSize(horizontal: false, vertical: true)
             } icon: {
@@ -879,10 +879,10 @@ private struct BotWorkRow: View {
                         Haptics.light()
                         Task {
                             await appState.actOnWorkstream(item, profile: profile, action: .send,
-                                                           text: AppLocalization.string("I did it on the screen. Carry on."))
+                                                           text: AppLocalization.string("I did it on the screen. Carry on.", table: .bots))
                         }
                     } label: {
-                        Text(AppLocalization.string("Done, Carry On"))
+                        Text(AppLocalization.string("Done, Carry On", table: .bots))
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.settingsPrimary)
@@ -918,7 +918,7 @@ private struct BotWorkRow: View {
                         Image(systemName: "hand.raised.fill")
                             .scaledFont(.caption2)
                             .foregroundStyle(.secondary)
-                            .accessibilityLabel(AppLocalization.string("Left alone"))
+                            .accessibilityLabel(AppLocalization.string("Left alone", table: .bots))
                     }
                     if item.isPinned {
                         Image(systemName: "pin.fill")
@@ -964,8 +964,8 @@ private struct BotWorkRow: View {
 
     /// A voice call's job: the call tells the user what it found.
     private var fromCallLine: some View {
-        Label(item.call == "watch" ? AppLocalization.string("From a Watch call")
-                  : AppLocalization.string("From a voice call"),
+        Label(item.call == "watch" ? AppLocalization.string("From a Watch call", table: .bots)
+                  : AppLocalization.string("From a voice call", table: .bots),
               systemImage: item.call == "watch" ? "applewatch" : "waveform")
             .scaledFont(.caption)
             .foregroundStyle(.secondary)
@@ -976,8 +976,8 @@ private struct BotWorkRow: View {
     /// back there, so the line names the room, by its name when Hermes
     /// lists it.
     private var fromRoomLine: some View {
-        Label(roomName.map { AppLocalization.string("From the group chat “\($0)”") }
-                  ?? AppLocalization.string("From a group chat"),
+        Label(roomName.map { AppLocalization.string("From the group chat “\($0)”", table: .bots) }
+                  ?? AppLocalization.string("From a group chat", table: .bots),
               systemImage: "person.3")
             .scaledFont(.caption)
             .foregroundStyle(.secondary)
@@ -1004,7 +1004,7 @@ private struct BotWorkRow: View {
             willOpen?()
             Task { await appState.openGroupRoom(room) }
         } label: {
-            Label(AppLocalization.string("Open the group chat"), systemImage: "person.3")
+            Label(AppLocalization.string("Open the group chat", table: .bots), systemImage: "person.3")
                 .frame(maxWidth: .infinity, minHeight: 36)
         }
         .buttonStyle(.settings)
@@ -1029,11 +1029,11 @@ private struct BotWorkRow: View {
                 UIPasteboard.general.string = item.branch
                 Haptics.light()
             } label: {
-                Label(AppLocalization.string("Copy Branch"), systemImage: "doc.on.doc")
+                Label(AppLocalization.string("Copy Branch", table: .bots), systemImage: "doc.on.doc")
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(AppLocalization.string("Branch \(item.branch)"))
+        .accessibilityLabel(AppLocalization.string("Branch \(item.branch)", table: .bots))
     }
 
     /// How far its checklist is: a bar and "1 of 3".
@@ -1103,7 +1103,7 @@ private struct BotWorkRow: View {
             willOpen?()
             appState.openWorkstream(item, profile: profile)
         } label: {
-            Label(AppLocalization.string("Open \(item.ref)’s chat"), systemImage: "bubble.left.and.bubble.right")
+            Label(AppLocalization.string("Open \(item.ref)’s chat", table: .bots), systemImage: "bubble.left.and.bubble.right")
                 .frame(maxWidth: .infinity, minHeight: 36)
         }
         .buttonStyle(.settings)
@@ -1113,7 +1113,7 @@ private struct BotWorkRow: View {
     private func controlButton(_ action: BotWorkItem.Action, prominent: Bool) -> some View {
         let title: String = {
             switch action {
-            case .check: return AppLocalization.string("Check first")
+            case .check: return AppLocalization.string("Check first", table: .bots)
             case .continue: return AppLocalization.string("Continue")
             default: return AppLocalization.string("Stop")
             }
@@ -1133,7 +1133,7 @@ private struct BotWorkRow: View {
 
     private var replyField: some View {
         HStack(alignment: .bottom, spacing: 8) {
-            TextField(AppLocalization.string("Reply to \(item.ref)…"), text: $reply, axis: .vertical)
+            TextField(AppLocalization.string("Reply to \(item.ref)…", table: .bots), text: $reply, axis: .vertical)
                 .scaledFont(.body)
                 .lineLimit(2...6)
                 .padding(.vertical, 6)
@@ -1156,7 +1156,7 @@ private struct BotWorkRow: View {
             .padding(.bottom, 4)
             .disabled(isActing || !appState.isConnected
                       || reply.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-            .accessibilityLabel(AppLocalization.string("Send to \(item.ref)"))
+            .accessibilityLabel(AppLocalization.string("Send to \(item.ref)", table: .bots))
         }
         .padding(.leading, 14)
         .padding(.trailing, 6)
@@ -1237,7 +1237,7 @@ struct WorkstreamBar: View {
     private func barButton(_ action: BotWorkItem.Action) -> some View {
         let title: String = {
             switch action {
-            case .check: return AppLocalization.string("Check first")
+            case .check: return AppLocalization.string("Check first", table: .bots)
             case .continue: return AppLocalization.string("Continue")
             default: return AppLocalization.string("Stop")
             }
@@ -1340,7 +1340,7 @@ struct WorkstreamBriefCard: View {
         } label: {
             VStack(alignment: .leading, spacing: 6) {
                 HStack(spacing: 8) {
-                    Text(AppLocalization.string("Brief from \(brief.bot)"))
+                    Text(AppLocalization.string("Brief from \(brief.bot)", table: .bots))
                         .scaledFont(.caption.weight(.bold))
                         .textCase(.uppercase)
                         .foregroundStyle(Color.conduitAccent)
@@ -1365,7 +1365,7 @@ struct WorkstreamBriefCard: View {
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
                 if let words = brief.userWords {
-                    Text(AppLocalization.string("For: “\(words)”"))
+                    Text(AppLocalization.string("For: “\(words)”", table: .bots))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .lineLimit(expanded ? nil : 1)
@@ -1467,7 +1467,7 @@ struct BotWorkLinkCard: View {
                         Text(verbatim: link.ref)
                             .scaledFont(.caption.weight(.semibold).monospacedDigit())
                             .foregroundStyle(.secondary)
-                        Text(item?.shownTitle ?? AppLocalization.string("Open \(link.ref)’s chat"))
+                        Text(item?.shownTitle ?? AppLocalization.string("Open \(link.ref)’s chat", table: .bots))
                             .scaledFont(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
@@ -1486,7 +1486,7 @@ struct BotWorkLinkCard: View {
             .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityHint(AppLocalization.string("Open \(link.ref)’s chat"))
+        .accessibilityHint(AppLocalization.string("Open \(link.ref)’s chat", table: .bots))
         .accessibilityIdentifier("botWork.link.\(link.ref)")
     }
 }
@@ -1526,7 +1526,7 @@ private struct WorkstreamApprovalBox: View {
                 let layout = dynamicTypeSize.isAccessibilitySize
                     ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
                 if !approval.isApprovable {
-                    Text(AppLocalization.string("This card can’t show all of it. Approve it in its chat, or deny it here."))
+                    Text(AppLocalization.string("This card can’t show all of it. Approve it in its chat, or deny it here.", table: .bots))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
@@ -1535,7 +1535,7 @@ private struct WorkstreamApprovalBox: View {
                     if approval.isApprovable {
                         answerButton(approval, AppLocalization.string("Approve"), approve: true)
                     }
-                    answerButton(approval, AppLocalization.string("Deny"), approve: false)
+                    answerButton(approval, AppLocalization.string("Deny", table: .bots), approve: false)
                 }
                 .disabled(isActing || !appState.isConnected)
             }

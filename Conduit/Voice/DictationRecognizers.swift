@@ -65,7 +65,7 @@ final class AppleSpeechDictationRecognizer: DictationRecognizer {
     init(words: [String]) throws {
         guard let recognizer = SFSpeechRecognizer(locale: SpeechRecognitionLocale.preferred()) ?? SFSpeechRecognizer(),
               recognizer.isAvailable else {
-            throw ComposerDictationService.DictationError.message(AppLocalization.string("Dictation isn't available right now."))
+            throw ComposerDictationService.DictationError.message(AppLocalization.string("Dictation isn't available right now.", table: .voice))
         }
         self.recognizer = recognizer
         self.words = words
@@ -117,7 +117,7 @@ final class AppleSpeechDictationRecognizer: DictationRecognizer {
         // Keep any recognized words, then report a runtime failure separately.
         onUpdate?(.text(transcript.text, isFinal: isFinal && !failed))
         if failed {
-            onUpdate?(.failed(AppLocalization.string("Dictation isn't available right now.")))
+            onUpdate?(.failed(AppLocalization.string("Dictation isn't available right now.", table: .voice)))
         }
     }
 }
@@ -180,10 +180,10 @@ final class SpeechAnalyzerDictationRecognizer: DictationRecognizer {
 
     private static func makeTranscriber() async throws -> SpeechTranscriber {
         guard SpeechTranscriber.isAvailable else {
-            throw ComposerDictationService.DictationError.message(AppLocalization.string("Apple's new speech model isn't available on this iPhone."))
+            throw ComposerDictationService.DictationError.message(AppLocalization.string("Apple's new speech model isn't available on this iPhone.", table: .voice))
         }
         guard let locale = await SpeechTranscriber.supportedLocale(equivalentTo: SpeechRecognitionLocale.preferred()) else {
-            throw ComposerDictationService.DictationError.message(AppLocalization.string("Apple's new speech model doesn't support your language yet. Pick Apple in Voice settings."))
+            throw ComposerDictationService.DictationError.message(AppLocalization.string("Apple's new speech model doesn't support your language yet. Pick Apple in Voice settings.", table: .voice))
         }
         return SpeechTranscriber(locale: locale, transcriptionOptions: [], reportingOptions: [.volatileResults], attributeOptions: [])
     }
@@ -194,7 +194,7 @@ final class SpeechAnalyzerDictationRecognizer: DictationRecognizer {
                 try await request.downloadAndInstall()
             }
         } catch {
-            throw ComposerDictationService.DictationError.message(AppLocalization.string("Apple's new speech model couldn't be downloaded. Check your connection and try again."))
+            throw ComposerDictationService.DictationError.message(AppLocalization.string("Apple's new speech model couldn't be downloaded. Check your connection and try again.", table: .voice))
         }
     }
 
@@ -252,7 +252,7 @@ final class SpeechAnalyzerDictationRecognizer: DictationRecognizer {
         guard let onUpdate else { return }
         self.onUpdate = nil
         if failed, transcript.text.isEmpty {
-            onUpdate(.failed(AppLocalization.string("Dictation isn't available right now.")))
+            onUpdate(.failed(AppLocalization.string("Dictation isn't available right now.", table: .voice)))
         } else {
             onUpdate(.text(transcript.text, isFinal: true))
         }
@@ -345,7 +345,7 @@ final class HermesDictationRecognizer: DictationRecognizer {
         onUpdate: @escaping @MainActor (DictationUpdate) -> Void
     ) throws -> any DictationAudioInput {
         guard let output = AVAudioFormat(standardFormatWithSampleRate: Self.sampleRate, channels: 1) else {
-            throw ComposerDictationService.DictationError.message(AppLocalization.string("The microphone is not available right now."))
+            throw ComposerDictationService.DictationError.message(AppLocalization.string("The microphone is not available right now.", table: .voice))
         }
         self.onUpdate = onUpdate
         let identity = gateway.identity

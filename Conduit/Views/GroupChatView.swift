@@ -388,7 +388,7 @@ struct GroupChatView: View {
                         Task { await appState.sendGroupRoomMessage(text) }
                     } label: {
                         Label(
-                            AppLocalization.string("Not delivered — retry"),
+                            AppLocalization.string("Not delivered — retry", table: .rooms),
                             systemImage: "arrow.clockwise"
                         )
                         .scaledFont(.caption.weight(.semibold))
@@ -422,7 +422,7 @@ struct GroupChatView: View {
                     Image(systemName: "xmark")
                         .scaledFont(.subheadline.weight(.semibold))
                 }
-                .accessibilityLabel(Text(AppLocalization.string("Leave this group chat")))
+                .accessibilityLabel(Text(AppLocalization.string("Leave this group chat", table: .rooms)))
             }
         }
         ToolbarItem(placement: .principal) {
@@ -452,7 +452,7 @@ struct GroupChatView: View {
                     Image(systemName: "ellipsis.circle")
                         .scaledFont(.callout.weight(.semibold))
                 }
-                .accessibilityLabel(Text(AppLocalization.string("Group chat actions")))
+                .accessibilityLabel(Text(AppLocalization.string("Group chat actions", table: .rooms)))
             }
         }
     }
@@ -496,7 +496,7 @@ struct GroupChatView: View {
             return GroupRoomTurns.displayName(of: member)
         }
         let key = memberID.trimmingCharacters(in: .whitespacesAndNewlines)
-        return key.isEmpty ? AppLocalization.string("A member") : key
+        return key.isEmpty ? AppLocalization.string("A member", table: .rooms) : key
     }
 
     private var memberSummary: String {
@@ -506,25 +506,25 @@ struct GroupChatView: View {
         }
         if case .leadChoosing(let lead)? = appState.activeRoomPendingRoute {
             let named = GroupRoomTurns.members([lead], namedBy: appState.shownBotRoster).first ?? lead
-            return AppLocalization.string("\(GroupRoomTurns.displayName(of: named)) is choosing who answers…")
+            return AppLocalization.string("\(GroupRoomTurns.displayName(of: named)) is choosing who answers…", table: .rooms)
         }
         if case .routerChoosing? = appState.activeRoomPendingRoute {
-            return AppLocalization.string("Choosing who answers…")
+            return AppLocalization.string("Choosing who answers…", table: .rooms)
         }
         if let responder = respondingMember {
             let name = GroupRoomTurns.displayName(of: responder)
             switch appState.activeRoomResponderState {
-            case .responding: return AppLocalization.string("\(name) is responding…")
-            case .cutOff: return AppLocalization.string("\(name) is cut off")
-            case .unreachable: return AppLocalization.string("\(name) can't be reached")
+            case .responding: return AppLocalization.string("\(name) is responding…", table: .rooms)
+            case .cutOff: return AppLocalization.string("\(name) is cut off", table: .rooms)
+            case .unreachable: return AppLocalization.string("\(name) can't be reached", table: .rooms)
             }
         }
         if let driver = appState.activeRoomDriverStatus, driver.working {
-            return AppLocalization.string("\(count) members · working…")
+            return AppLocalization.string("\(count) members · working…", table: .rooms)
         }
         if appState.activeRoomSettled {
             // Where the transcript said "The room settled.".
-            return AppLocalization.string("Settled, nobody had more to say")
+            return AppLocalization.string("Settled, nobody had more to say", table: .rooms)
         }
         return AppLocalization.string("\(count) members")
     }
@@ -564,8 +564,8 @@ private struct GroupRoomEmptyState: View {
         VStack(spacing: 12) {
             GroupRoomIcon(picture: appState.groupRoomPicture(roomID: roomID), members: members, size: 56)
             Text(takesPosts
-                ? AppLocalization.string("No messages yet. Say something to the room.")
-                : AppLocalization.string("No messages yet."))
+                ? AppLocalization.string("No messages yet. Say something to the room.", table: .rooms)
+                : AppLocalization.string("No messages yet.", table: .rooms))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
@@ -590,7 +590,7 @@ struct GroupRoomActionItems: View {
 
     var body: some View {
         Button(action: onShowInfo) {
-            Label(AppLocalization.string("Group Info"), systemImage: "info.circle")
+            Label(AppLocalization.string("Group Info", table: .rooms), systemImage: "info.circle")
         }
         // A room someone else hosts is theirs to change.
         if let copy = appState.activeRoomSurface?.copy {
@@ -907,7 +907,7 @@ struct GroupEventRow: View {
     /// chip beside it (GroupMemberOwnerChip).
     private var speakerLabel: String {
         let label = event.actor.displayLabel(members: members)
-        return label.isEmpty ? AppLocalization.string("Member") : label
+        return label.isEmpty ? AppLocalization.string("Member", table: .rooms) : label
     }
 
     /// Two rows in a row from one member (or both from the user, or both
@@ -1017,7 +1017,7 @@ private struct GroupMessageFiles: View {
                 }
                 .foregroundStyle(onAccent ? Color.white : Color.primary)
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel(Text(AppLocalization.string("Attached: \(AttachmentTypePolicy.displayName(for: file))")))
+                .accessibilityLabel(Text(AppLocalization.string("Attached: \(AttachmentTypePolicy.displayName(for: file))", table: .rooms)))
             }
         }
     }
@@ -1235,7 +1235,7 @@ struct GroupMemberOwnerChip: View {
         .padding(.vertical, 2)
         .background(Color.primary.opacity(0.07), in: Capsule())
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(AppLocalization.string("\(owner)'s agent")))
+        .accessibilityLabel(Text(AppLocalization.string("\(owner)'s agent", table: .rooms)))
     }
 }
 
@@ -1265,7 +1265,7 @@ struct GroupRoomStatusStrip: View {
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: statuses)
             .accessibilityElement(children: .contain)
-            .accessibilityLabel(AppLocalization.string("Members"))
+            .accessibilityLabel(AppLocalization.string("Members", table: .rooms))
         }
     }
 
@@ -1284,7 +1284,7 @@ struct GroupRoomStatusStrip: View {
             GroupMemberMentionButton(handle: handle, name: name) { label }
                 .accessibilityLabel(Text(GroupRoomStatusPill.spokenName(name, isLead: isLead)))
                 .accessibilityValue(Text(status?.spoken ?? ""))
-                .accessibilityHint(Text(AppLocalization.string("Picks this bot in the To row")))
+                .accessibilityHint(Text(AppLocalization.string("Picks this bot in the To row", table: .rooms)))
         }
     }
 }
@@ -1299,7 +1299,7 @@ struct GroupRoomStatusPill: View {
     var isLead = false
 
     static func spokenName(_ name: String, isLead: Bool) -> String {
-        isLead ? "\(name), \(AppLocalization.string("Lead"))" : name
+        isLead ? "\(name), \(AppLocalization.string("Lead", table: .rooms))" : name
     }
 
     var body: some View {
@@ -1413,53 +1413,53 @@ struct GroupSystemEventCaption: View {
     private var caption: String {
         let name = GroupRoomTurns.member(for: event, members: members).map { GroupRoomTurns.displayName(of: $0) } ?? ""
         switch event.kind {
-        case "room.renamed": return AppLocalization.string("The room was renamed.")
-        case "room.members_changed": return AppLocalization.string("The room's members changed.")
-        case "room.disbanded": return AppLocalization.string("This room was disbanded.")
-        case "room.stop_requested": return AppLocalization.string("Stop requested.")
-        case "room.context_set": return AppLocalization.string("The room's settings changed.")
-        case "room.continued": return AppLocalization.string("The conversation continued.")
+        case "room.renamed": return AppLocalization.string("The room was renamed.", table: .rooms)
+        case "room.members_changed": return AppLocalization.string("The room's members changed.", table: .rooms)
+        case "room.disbanded": return AppLocalization.string("This room was disbanded.", table: .rooms)
+        case "room.stop_requested": return AppLocalization.string("Stop requested.", table: .rooms)
+        case "room.context_set": return AppLocalization.string("The room's settings changed.", table: .rooms)
+        case "room.continued": return AppLocalization.string("The conversation continued.", table: .rooms)
         case "room.assignment":
             // The lead's pick for a message that named nobody.
             let lead = event.payload["lead_member_id"]?.stringValue
                 .flatMap { GroupRoomTurns.member(withID: $0, in: members) }
-                .map(GroupRoomTurns.displayName(of:)) ?? AppLocalization.string("The lead")
+                .map(GroupRoomTurns.displayName(of:)) ?? AppLocalization.string("The lead", table: .rooms)
             let picked = GroupRoomTurns.memberIDs(event.payload["member_ids"], in: members)
             let leadID = event.payload["lead_member_id"]?.stringValue?.lowercased()
             let keptIt = picked.count == 1 && (picked[0].memberID?.lowercased() ?? picked[0].identityKey.lowercased()) == leadID
             if event.payload["fallback"]?.boolValue == true || picked.isEmpty || keptIt {
-                return AppLocalization.string("\(lead) is taking this.")
+                return AppLocalization.string("\(lead) is taking this.", table: .rooms)
             }
-            return AppLocalization.string("\(lead) gave this to \(names(picked)).")
+            return AppLocalization.string("\(lead) gave this to \(names(picked)).", table: .rooms)
         case "room.routed":
             // The router's pick for a message that named nobody.
             if event.payload["fallback"]?.boolValue == true {
-                return AppLocalization.string("Couldn't choose who answers, so everyone will.")
+                return AppLocalization.string("Couldn't choose who answers, so everyone will.", table: .rooms)
             }
             let picked = GroupRoomTurns.memberIDs(event.payload["member_ids"], in: members)
             if event.payload["everyone"]?.boolValue == true || picked.isEmpty {
-                return AppLocalization.string("Assigned to everyone.")
+                return AppLocalization.string("Assigned to everyone.", table: .rooms)
             }
-            return AppLocalization.string("Assigned to \(names(picked)).")
+            return AppLocalization.string("Assigned to \(names(picked)).", table: .rooms)
         case "room.activity":
             switch GroupRoomTurns.roomActivityOutcome(event) {
             // Settled is the title's ("Settled, nobody had more to say").
-            case .settled, .other: return AppLocalization.string("Room updated.")
-            case .bounded: return AppLocalization.string("The conversation reached its turn limit.")
+            case .settled, .other: return AppLocalization.string("Room updated.", table: .rooms)
+            case .bounded: return AppLocalization.string("The conversation reached its turn limit.", table: .rooms)
             }
         case "turn.failed":
             return name.isEmpty
-                ? AppLocalization.string("A member's turn failed.")
-                : AppLocalization.string("\(name)'s turn failed.")
+                ? AppLocalization.string("A member's turn failed.", table: .rooms)
+                : AppLocalization.string("\(name)'s turn failed.", table: .rooms)
         case "turn.cancelled":
             return name.isEmpty
-                ? AppLocalization.string("Work was stopped.")
-                : AppLocalization.string("\(name)'s turn was stopped.")
+                ? AppLocalization.string("Work was stopped.", table: .rooms)
+                : AppLocalization.string("\(name)'s turn was stopped.", table: .rooms)
         case "member.unavailable":
             return name.isEmpty
-                ? AppLocalization.string("A member is unavailable.")
-                : AppLocalization.string("\(name) is unavailable.")
-        default: return AppLocalization.string("Room updated.")
+                ? AppLocalization.string("A member is unavailable.", table: .rooms)
+                : AppLocalization.string("\(name) is unavailable.", table: .rooms)
+        default: return AppLocalization.string("Room updated.", table: .rooms)
         }
     }
 }
@@ -1486,7 +1486,7 @@ struct GroupRoomContinueButton: View {
             .controlSize(.small)
             .tint(.conduitAccent)
             .disabled(continuing || !appState.isConnected)
-            .accessibilityHint(Text(AppLocalization.string("Lets the members keep talking about this message.")))
+            .accessibilityHint(Text(AppLocalization.string("Lets the members keep talking about this message.", table: .rooms)))
         }
     }
 }
@@ -1528,14 +1528,14 @@ struct GroupRespondingRow: View {
                         Image(systemName: "exclamationmark.triangle")
                             .scaledFont(.footnote)
                             .foregroundStyle(.orange)
-                        Text(AppLocalization.string("Cut off: its Hermes no longer accepts this room"))
+                        Text(AppLocalization.string("Cut off: its Hermes no longer accepts this room", table: .rooms))
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     case .unreachable:
                         Image(systemName: "wifi.exclamationmark")
                             .scaledFont(.footnote)
                             .foregroundStyle(.orange)
-                        Text(AppLocalization.string("Can't be reached. Hermes keeps trying."))
+                        Text(AppLocalization.string("Can't be reached. Hermes keeps trying.", table: .rooms))
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                     }
@@ -1553,7 +1553,7 @@ struct GroupRespondingRow: View {
         // The row reads as one, so its picture's mention is an action.
         .accessibilityActions {
             if let handle, appState.canQuoteIntoRoom() {
-                Button(AppLocalization.string("Mention \(name)")) {
+                Button(AppLocalization.string("Mention \(name)", table: .rooms)) {
                     appState.mentionInRoomComposer(handle: handle)
                 }
             }
@@ -1562,9 +1562,9 @@ struct GroupRespondingRow: View {
 
     private func spokenLabel(_ name: String) -> String {
         switch state {
-        case .responding: return AppLocalization.string("\(name) is responding…")
-        case .cutOff: return AppLocalization.string("\(name) is cut off")
-        case .unreachable: return AppLocalization.string("\(name) can't be reached")
+        case .responding: return AppLocalization.string("\(name) is responding…", table: .rooms)
+        case .cutOff: return AppLocalization.string("\(name) is cut off", table: .rooms)
+        case .unreachable: return AppLocalization.string("\(name) can't be reached", table: .rooms)
         }
     }
 }
@@ -1786,11 +1786,11 @@ struct GroupMessageCopyButton: View {
     @State private var resetTask: Task<Void, Never>?
 
     private var copiedTitle: String {
-        label == .response ? AppLocalization.string("Response copied") : AppLocalization.string("Message copied")
+        label == .response ? AppLocalization.string("Response copied") : AppLocalization.string("Message copied", table: .rooms)
     }
 
     private var title: String {
-        label == .response ? AppLocalization.string("Copy response") : AppLocalization.string("Copy message")
+        label == .response ? AppLocalization.string("Copy response") : AppLocalization.string("Copy message", table: .rooms)
     }
 
     var body: some View {
@@ -1874,8 +1874,8 @@ struct GroupMessageQuoteButton: View {
         .disabled(!appState.canQuoteIntoRoom())
         .accessibilityLabel(
             authorHandle == nil
-                ? AppLocalization.string("Quote this response")
-                : AppLocalization.string("Reply to \(authorName)")
+                ? AppLocalization.string("Quote this response", table: .rooms)
+                : AppLocalization.string("Reply to \(authorName)", table: .rooms)
         )
     }
 }
@@ -1906,7 +1906,7 @@ struct GroupMemberMentionButton<Label: View>: View {
         }
         .buttonStyle(.plain)
         .disabled(!appState.canQuoteIntoRoom())
-        .accessibilityLabel(AppLocalization.string("Mention \(name)"))
+        .accessibilityLabel(AppLocalization.string("Mention \(name)", table: .rooms))
     }
 }
 
@@ -2040,7 +2040,7 @@ struct MentionSuggestionList: View {
                     .buttonStyle(.plain)
                     .background(index == highlighted ? Color.conduitAccent.opacity(0.14) : Color.clear)
                     .accessibilityAddTraits(index == highlighted ? .isSelected : [])
-                    .accessibilityHint(Text(AppLocalization.string("Inserts this mention.")))
+                    .accessibilityHint(Text(AppLocalization.string("Inserts this mention.", table: .rooms)))
                     if index < candidates.count - 1 {
                         Divider().opacity(0.3)
                     }
@@ -2174,14 +2174,14 @@ struct GroupCreateSheet: View {
                         .submitLabel(.done)
                 }
                 ConduitSettingsSection(
-                    title: pickedPeople.isEmpty ? AppLocalization.string("Members (2–6)") : AppLocalization.string("Your bots"),
+                    title: pickedPeople.isEmpty ? AppLocalization.string("Members (2–6)", table: .rooms) : AppLocalization.string("Your bots", table: .rooms),
                     symbol: "person.3", tint: .blue
                 ) {
                     ForEach(visibleBots) { bot in
                         memberToggleRow(bot)
                     }
                     Text(AppLocalization.string(
-                        "Group chats run on this gateway. The gateway drives each member's turn — closing Conduit never stops a room."
+                        "Group chats run on this gateway. The gateway drives each member's turn — closing Conduit never stops a room.", table: .rooms
                     ))
                     .settingsCaption()
                 }
@@ -2191,19 +2191,19 @@ struct GroupCreateSheet: View {
                             personToggleRow(person)
                         }
                         Text(AppLocalization.string(
-                            "Each person gets an invite on their Hermes. The room starts once they've all answered, or when you start it."
+                            "Each person gets an invite on their Hermes. The room starts once they've all answered, or when you start it.", table: .rooms
                         ))
                         .settingsCaption()
-                        Text(AppLocalization.string("A room holds up to 6 agents: your bots, and at least one for each person."))
+                        Text(AppLocalization.string("A room holds up to 6 agents: your bots, and at least one for each person.", table: .rooms))
                             .settingsCaption()
                         // Linking is set up here too, where rooms with people
                         // are made (Eric, 2026-11-08), not only in Settings.
-                        linkSomeoneLink(AppLocalization.string("Link with someone else"))
+                        linkSomeoneLink(AppLocalization.string("Link with someone else", table: .rooms))
                     }
                 } else if appState.linkedRoomStartsUnavailable {
                     ConduitSettingsSection(title: AppLocalization.string("Multiplayer"), symbol: "person.2", tint: .green) {
                         Text(AppLocalization.string(
-                            "Your Hermes can't host rooms with people you've linked yet. Update Hermes to invite them."
+                            "Your Hermes can't host rooms with people you've linked yet. Update Hermes to invite them.", table: .rooms
                         ))
                         .settingsCaption()
                     }
@@ -2211,7 +2211,7 @@ struct GroupCreateSheet: View {
                     // Links, but a plugin too old to start rooms with them.
                     ConduitSettingsSection(title: AppLocalization.string("Multiplayer"), symbol: "person.2", tint: .green) {
                         Text(AppLocalization.string(
-                            "Your Hermes can't host rooms with people you've linked yet. Update Hermes to invite them."
+                            "Your Hermes can't host rooms with people you've linked yet. Update Hermes to invite them.", table: .rooms
                         ))
                         .settingsCaption()
                     }
@@ -2220,8 +2220,8 @@ struct GroupCreateSheet: View {
                     // people are found from here too. Not before the drafts
                     // are read, which say whether rooms with people can start.
                     ConduitSettingsSection(title: AppLocalization.string("Multiplayer"), symbol: "person.2", tint: .green) {
-                        linkSomeoneLink(AppLocalization.string("Link with someone"))
-                        Text(AppLocalization.string("Link with someone to make rooms with their agents."))
+                        linkSomeoneLink(AppLocalization.string("Link with someone", table: .rooms))
+                        Text(AppLocalization.string("Link with someone to make rooms with their agents.", table: .rooms))
                             .settingsCaption()
                     }
                 }
@@ -2414,37 +2414,37 @@ struct GroupRoomSettingsSheet: View {
                         .scaledFont(.footnote)
                         .foregroundStyle(.red)
                 }
-                ConduitSettingsSection(title: AppLocalization.string("Purpose"), symbol: "scope", tint: .conduitAccent) {
-                    TextField(AppLocalization.string("What this room is for, in one line"), text: $draft.purpose)
+                ConduitSettingsSection(title: AppLocalization.string("Purpose", table: .rooms), symbol: "scope", tint: .conduitAccent) {
+                    TextField(AppLocalization.string("What this room is for, in one line", table: .rooms), text: $draft.purpose)
                         .textFieldStyle(.roundedBorder)
                         .submitLabel(.done)
                     if purposeTooLong {
-                        Text(AppLocalization.string("Keep the purpose under 500 characters."))
+                        Text(AppLocalization.string("Keep the purpose under 500 characters.", table: .rooms))
                             .scaledFont(.caption)
                             .foregroundStyle(.red)
                     }
                 }
-                ConduitSettingsSection(title: AppLocalization.string("Shared notes"), symbol: "note.text", tint: .orange) {
+                ConduitSettingsSection(title: AppLocalization.string("Shared notes", table: .rooms), symbol: "note.text", tint: .orange) {
                     TextField(
-                        AppLocalization.string("Facts every member should keep in mind"),
+                        AppLocalization.string("Facts every member should keep in mind", table: .rooms),
                         text: $draft.notes,
                         axis: .vertical
                     )
                     .lineLimit(3...10)
                     .textFieldStyle(.roundedBorder)
                     if notesTooLong {
-                        Text(AppLocalization.string("Shared notes are too long. Keep them under 4 KB."))
+                        Text(AppLocalization.string("Shared notes are too long. Keep them under 4 KB.", table: .rooms))
                             .scaledFont(.caption)
                             .foregroundStyle(.red)
                     }
                     Text(AppLocalization.string(
-                        "Every member reads the purpose and notes with each message. A change applies from the next message."
+                        "Every member reads the purpose and notes with each message. A change applies from the next message.", table: .rooms
                     ))
                     .settingsCaption()
                 }
                 if !modes.isEmpty {
                     ConduitSettingsSection(
-                        title: AppLocalization.string("Who answers"),
+                        title: AppLocalization.string("Who answers", table: .rooms),
                         symbol: "arrow.triangle.branch",
                         tint: .purple
                     ) {
@@ -2458,7 +2458,7 @@ struct GroupRoomSettingsSheet: View {
                             .settingsCaption()
                     }
                     if draft.routing == .lead {
-                        ConduitSettingsSection(title: AppLocalization.string("Lead"), symbol: "crown", tint: .yellow) {
+                        ConduitSettingsSection(title: AppLocalization.string("Lead", table: .rooms), symbol: "crown", tint: .yellow) {
                             ForEach(members, id: \.identityKey) { member in
                                 leadRow(member)
                             }
@@ -2502,28 +2502,28 @@ struct GroupRoomSettingsSheet: View {
     private var modeCaption: String {
         if !draft.newerRouting.isEmpty {
             return AppLocalization.string(
-                "This room answers in a way set in a newer app. It stays that way unless you pick another."
+                "This room answers in a way set in a newer app. It stays that way unless you pick another.", table: .rooms
             )
         }
         switch draft.routing {
         case .everyone:
-            return AppLocalization.string("Every member gets a turn on a message that names nobody.")
+            return AppLocalization.string("Every member gets a turn on a message that names nobody.", table: .rooms)
         case .lead:
             return AppLocalization.string(
-                "The lead picks who takes a message that names nobody. @mentions and @everyone still go straight to those members."
+                "The lead picks who takes a message that names nobody. @mentions and @everyone still go straight to those members.", table: .rooms
             )
         case .auto:
             return AppLocalization.string(
-                "A quick model call picks who a message is for. @mentions still go straight to the members you name."
+                "A quick model call picks who a message is for. @mentions still go straight to the members you name.", table: .rooms
             )
         }
     }
 
     private func modeTitle(_ mode: GroupRouting) -> String {
         switch mode {
-        case .everyone: return AppLocalization.string("Everyone answers")
-        case .lead: return AppLocalization.string("A lead picks who answers")
-        case .auto: return AppLocalization.string("Pick who answers automatically")
+        case .everyone: return AppLocalization.string("Everyone answers", table: .rooms)
+        case .lead: return AppLocalization.string("A lead picks who answers", table: .rooms)
+        case .auto: return AppLocalization.string("Pick who answers automatically", table: .rooms)
         }
     }
 
@@ -2538,7 +2538,7 @@ struct GroupRoomSettingsSheet: View {
             draft.newerRouting = original.newerRouting
         } label: {
             HStack(spacing: 12) {
-                Text(AppLocalization.string("As set elsewhere (\(original.newerRouting))"))
+                Text(AppLocalization.string("As set elsewhere (\(original.newerRouting))", table: .rooms))
                     .scaledFont(.body)
                     .foregroundStyle(.primary)
                 Spacer(minLength: 0)
@@ -2635,7 +2635,7 @@ struct GroupRoomSettingsSheet: View {
             )
             isSaving = false
             if let error {
-                failure = AppLocalization.string("Could not save this group chat's settings: \(error)")
+                failure = AppLocalization.string("Could not save this group chat's settings: \(error)", table: .rooms)
             } else {
                 dismiss()
             }
@@ -2699,7 +2699,7 @@ struct DesktopGroupChatView: View {
                 ScrollView {
                     LazyVStack(spacing: 10) {
                         Text(AppLocalization.string(
-                            "Created in Hermes Desktop. Desktop runs this group's conversation, so reply from there; this shows the latest synced messages."
+                            "Created in Hermes Desktop. Desktop runs this group's conversation, so reply from there; this shows the latest synced messages.", table: .rooms
                         ))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
@@ -2707,7 +2707,7 @@ struct DesktopGroupChatView: View {
                         .frame(maxWidth: .infinity)
                         .padding(.bottom, 4)
                         if group.omitted > 0 {
-                            Text(AppLocalization.string("Earlier messages are only in Hermes Desktop."))
+                            Text(AppLocalization.string("Earlier messages are only in Hermes Desktop.", table: .rooms))
                                 .scaledFont(.caption2)
                                 .foregroundStyle(.conduitTertiary)
                                 .frame(maxWidth: .infinity)
@@ -2717,7 +2717,7 @@ struct DesktopGroupChatView: View {
                                 .id(message.id)
                         }
                         if group.messages.isEmpty {
-                            Text(AppLocalization.string("No messages yet."))
+                            Text(AppLocalization.string("No messages yet.", table: .rooms))
                                 .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                                 .padding(.top, 32)
@@ -2756,7 +2756,7 @@ struct DesktopGroupChatView: View {
             if message.isMember {
                 GroupMemberBubble(
                     member: nil,
-                    name: speaker.isEmpty ? AppLocalization.string("Member") : speaker,
+                    name: speaker.isEmpty ? AppLocalization.string("Member", table: .rooms) : speaker,
                     text: message.text,
                     members: mentionMembers,
                     timestamp: message.timestamp
@@ -2767,7 +2767,7 @@ struct DesktopGroupChatView: View {
                 }
             }
             if message.truncated {
-                Text(AppLocalization.string("Shortened — the full message is in Hermes Desktop."))
+                Text(AppLocalization.string("Shortened — the full message is in Hermes Desktop.", table: .rooms))
                     .scaledFont(.caption2)
                     .foregroundStyle(.secondary)
                     .padding(.leading, message.isMember ? 4 : 0)

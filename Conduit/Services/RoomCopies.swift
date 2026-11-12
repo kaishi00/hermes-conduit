@@ -112,15 +112,15 @@ enum RoomCopyText {
         case "ended":
             return AppLocalization.string("Ended")
         case "left":
-            return AppLocalization.string("Your agents left")
+            return AppLocalization.string("Your agents left", table: .rooms)
         default:
             break
         }
         let host = copy.from.trimmingCharacters(in: .whitespacesAndNewlines)
         if copy.state.working {
             return host.isEmpty
-                ? AppLocalization.string("Hosted elsewhere · working…")
-                : AppLocalization.string("Hosted by \(host) · working…")
+                ? AppLocalization.string("Hosted elsewhere · working…", table: .rooms)
+                : AppLocalization.string("Hosted by \(host) · working…", table: .rooms)
         }
         // The count in a string of its own, for its plural.
         let hostLine = self.host(for: copy)
@@ -131,13 +131,13 @@ enum RoomCopyText {
     /// Group Info's first line.
     static func host(for copy: RoomCopy) -> String {
         let host = copy.from.trimmingCharacters(in: .whitespacesAndNewlines)
-        return host.isEmpty ? AppLocalization.string("Hosted elsewhere") : AppLocalization.string("Hosted by \(host)")
+        return host.isEmpty ? AppLocalization.string("Hosted elsewhere", table: .rooms) : AppLocalization.string("Hosted by \(host)", table: .rooms)
     }
 
     /// Who posts the room's people's messages, by the host's name.
     static func hostName(for copy: RoomCopy) -> String {
         let host = copy.from.trimmingCharacters(in: .whitespacesAndNewlines)
-        return host.isEmpty ? AppLocalization.string("The host") : host
+        return host.isEmpty ? AppLocalization.string("The host", table: .rooms) : host
     }
 
     /// In the composer's place, when it can't be posted in: it's over, or
@@ -147,23 +147,23 @@ enum RoomCopyText {
         let host = copy.from.trimmingCharacters(in: .whitespacesAndNewlines)
         if canPost || copy.isOver {
             return host.isEmpty
-                ? AppLocalization.string("Hosted elsewhere. You can read it here.")
-                : AppLocalization.string("Hosted by \(host). You can read it here.")
+                ? AppLocalization.string("Hosted elsewhere. You can read it here.", table: .rooms)
+                : AppLocalization.string("Hosted by \(host). You can read it here.", table: .rooms)
         }
         return host.isEmpty
-            ? PluginUpdateAsk.text(AppLocalization.string("Hosted elsewhere. Update the Conduit plugin on your Hermes to post in it."),
-                                   lead: AppLocalization.string("Hosted elsewhere."))
-            : PluginUpdateAsk.text(AppLocalization.string("Hosted by \(host). Update the Conduit plugin on your Hermes to post in it."),
-                                   lead: AppLocalization.string("Hosted by \(host)."))
+            ? PluginUpdateAsk.text(AppLocalization.string("Hosted elsewhere. Update the Conduit plugin on your Hermes to post in it.", table: .rooms),
+                                   lead: AppLocalization.string("Hosted elsewhere.", table: .rooms))
+            : PluginUpdateAsk.text(AppLocalization.string("Hosted by \(host). Update the Conduit plugin on your Hermes to post in it.", table: .rooms),
+                                   lead: AppLocalization.string("Hosted by \(host).", table: .rooms))
     }
 
-    static var deleteTitle: String { AppLocalization.string("Delete this room?") }
+    static var deleteTitle: String { AppLocalization.string("Delete this room?", table: .rooms) }
     static var deleteMessage: String {
-        AppLocalization.string("Your copy of it and your agents' chats for it are deleted from your Hermes. The others keep theirs.")
+        AppLocalization.string("Your copy of it and your agents' chats for it are deleted from your Hermes. The others keep theirs.", table: .rooms)
     }
 
     static func deleteRefusal(for error: Error) -> String {
-        AppLocalization.string("Could not delete this room: \(RoomLinksClient.message(for: error))")
+        AppLocalization.string("Could not delete this room: \(RoomLinksClient.message(for: error))", table: .rooms)
     }
 }
 

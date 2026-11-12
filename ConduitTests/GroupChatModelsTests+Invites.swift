@@ -278,17 +278,17 @@ extension GroupChatModelsTests {
         XCTAssertEqual(RoomInvitesClient.message(for: DashboardTicketBridgeError.http(status: 404, detail: notLinked)), notLinked)
         let answered = "This invite has been answered"
         XCTAssertEqual(RoomInvitesClient.answerRefusal(for: DashboardTicketBridgeError.http(status: 409, detail: answered), joining: true),
-                       AppLocalization.string("Could not join: \(answered)"))
+                       AppLocalization.string("Could not join: \(answered)", table: .rooms))
         let lapsed = "This invite ran out"
         XCTAssertEqual(RoomInvitesClient.answerRefusal(for: DashboardTicketBridgeError.http(status: 410, detail: lapsed), joining: false),
-                       AppLocalization.string("Could not decline: \(lapsed)"))
+                       AppLocalization.string("Could not decline: \(lapsed)", table: .rooms))
         // A 504: the answer is still on its way over the mailbox.
         let timedOut = DashboardTicketBridgeError.http(
             status: 504, detail: "The rooms mailbox didn't answer in time; look at the room again in a minute")
         XCTAssertEqual(RoomInvitesClient.answerRefusal(for: timedOut, joining: true),
-                       AppLocalization.string("Your Hermes is still sending your answer. The invite shows it once it has."))
+                       AppLocalization.string("Your Hermes is still sending your answer. The invite shows it once it has.", table: .rooms))
         XCTAssertEqual(RoomInvitesClient.answerRefusal(for: timedOut, joining: false),
-                       AppLocalization.string("Your Hermes is still sending your answer. The invite shows it once it has."))
+                       AppLocalization.string("Your Hermes is still sending your answer. The invite shows it once it has.", table: .rooms))
     }
 
     // MARK: - What it says
@@ -300,28 +300,28 @@ extension GroupChatModelsTests {
             )))
         }
         let furina = "Furina"
-        let someone = AppLocalization.string("Someone you've linked with")
-        XCTAssertEqual(try line("waiting"), AppLocalization.string("\(furina) invited you"))
-        XCTAssertEqual(try line("waiting", from: ""), AppLocalization.string("\(someone) invited you"))
-        XCTAssertEqual(try line("joined"), AppLocalization.string("You joined, waiting for the room to start"))
-        XCTAssertEqual(try line("started"), AppLocalization.string("Started with your agents in it"))
-        XCTAssertEqual(try line("lapsed"), AppLocalization.string("The invite ran out"))
+        let someone = AppLocalization.string("Someone you've linked with", table: .rooms)
+        XCTAssertEqual(try line("waiting"), AppLocalization.string("\(furina) invited you", table: .rooms))
+        XCTAssertEqual(try line("waiting", from: ""), AppLocalization.string("\(someone) invited you", table: .rooms))
+        XCTAssertEqual(try line("joined"), AppLocalization.string("You joined, waiting for the room to start", table: .rooms))
+        XCTAssertEqual(try line("started"), AppLocalization.string("Started with your agents in it", table: .rooms))
+        XCTAssertEqual(try line("lapsed"), AppLocalization.string("The invite ran out", table: .rooms))
         XCTAssertEqual(try line("declined"), AppLocalization.string("You declined"))
-        XCTAssertEqual(try line("left", reason: "left"), AppLocalization.string("Your agents left"))
+        XCTAssertEqual(try line("left", reason: "left"), AppLocalization.string("Your agents left", table: .rooms))
         // Why it was called off, before it started.
-        XCTAssertEqual(try line("cancelled", reason: "withdrawn"), AppLocalization.string("\(furina) took it back"))
-        XCTAssertEqual(try line("cancelled", reason: "withdrawn", from: ""), AppLocalization.string("\(someone) took it back"))
-        XCTAssertEqual(try line("cancelled", reason: "lapsed"), AppLocalization.string("It ran out before the room started"))
-        XCTAssertEqual(try line("cancelled", reason: "too_few"), AppLocalization.string("Too few joined, so it didn't start"))
-        XCTAssertEqual(try line("cancelled", reason: "start_failed"), AppLocalization.string("Their Hermes couldn't start it"))
+        XCTAssertEqual(try line("cancelled", reason: "withdrawn"), AppLocalization.string("\(furina) took it back", table: .rooms))
+        XCTAssertEqual(try line("cancelled", reason: "withdrawn", from: ""), AppLocalization.string("\(someone) took it back", table: .rooms))
+        XCTAssertEqual(try line("cancelled", reason: "lapsed"), AppLocalization.string("It ran out before the room started", table: .rooms))
+        XCTAssertEqual(try line("cancelled", reason: "too_few"), AppLocalization.string("Too few joined, so it didn't start", table: .rooms))
+        XCTAssertEqual(try line("cancelled", reason: "start_failed"), AppLocalization.string("Their Hermes couldn't start it", table: .rooms))
         XCTAssertEqual(try line("cancelled", reason: "refused"),
-                       AppLocalization.string("It started, but your agents couldn't be added"))
-        XCTAssertEqual(try line("cancelled", reason: "started_without_you"), AppLocalization.string("It started without you"))
-        XCTAssertEqual(try line("cancelled", reason: "later"), AppLocalization.string("It was called off"))
+                       AppLocalization.string("It started, but your agents couldn't be added", table: .rooms))
+        XCTAssertEqual(try line("cancelled", reason: "started_without_you"), AppLocalization.string("It started without you", table: .rooms))
+        XCTAssertEqual(try line("cancelled", reason: "later"), AppLocalization.string("It was called off", table: .rooms))
         // Why it ended, once it had started.
-        XCTAssertEqual(try line("ended", reason: "removed"), AppLocalization.string("\(furina) took your agents out"))
-        XCTAssertEqual(try line("ended", reason: "disbanded"), AppLocalization.string("\(furina) ended the room"))
-        XCTAssertEqual(try line("ended", reason: "later"), AppLocalization.string("It ended"))
+        XCTAssertEqual(try line("ended", reason: "removed"), AppLocalization.string("\(furina) took your agents out", table: .rooms))
+        XCTAssertEqual(try line("ended", reason: "disbanded"), AppLocalization.string("\(furina) ended the room", table: .rooms))
+        XCTAssertEqual(try line("ended", reason: "later"), AppLocalization.string("It ended", table: .rooms))
     }
 
     func testRoomChoicesReadTakesPartAndTurnsADay() throws {
@@ -572,7 +572,7 @@ extension GroupChatModelsTests {
         let gone = await appState.openRoomInvite(RoomInviteTarget(link: "lk1a2b3c4d5e6f", roomID: "conduit-9", dashboardID: dashboard))
         XCTAssertEqual(gone, .failed)
         XCTAssertNil(appState.presentedRoomInvite)
-        XCTAssertEqual(appState.errorMessage, AppLocalization.string("This invite isn't on your Hermes any more."))
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("This invite isn't on your Hermes any more.", table: .rooms))
 
         let unknown = await appState.openRoomInvite(RoomInviteTarget(link: "lk1a2b3c4d5e6f", roomID: "conduit-1", dashboardID: UUID()))
         XCTAssertEqual(unknown, .failed)

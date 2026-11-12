@@ -113,11 +113,11 @@ struct LiveVoiceStyleSettingsSection: View {
 
     private var toneChoices: [(id: String, title: String)] {
         let tones: [(id: String, title: String)] = LiveVoiceTone.allCases.map { (id: $0.rawValue, title: $0.label) }
-        return [(id: "", title: AppLocalization.string("Model default"))] + tones
+        return [(id: "", title: AppLocalization.string("Model default", table: .voice))] + tones
     }
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Live call style"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Live call style", table: .voice), symbol: "slider.horizontal.3", tint: .conduitAccent) {
             Toggle("Greet me when a call connects", isOn: Binding(
                 get: { greets },
                 set: { requested in
@@ -126,7 +126,7 @@ struct LiveVoiceStyleSettingsSection: View {
                 }
             ))
             if greets {
-                TextField(AppLocalization.string("Greeting"), text: $greeting, prompt: Text("A short greeting of its own"))
+                TextField(AppLocalization.string("Greeting", table: .voice), text: $greeting, prompt: Text("A short greeting of its own"))
                     .textFieldStyle(.roundedBorder)
                     .submitLabel(.done)
                     .onChange(of: greeting) { _, newValue in
@@ -191,7 +191,7 @@ struct LiveVoiceStyleSettingsSection: View {
             Text("The voice model tells you what it will send and waits for your OK before Hermes starts on it. Say “send it to Hermes” to skip the question. Change it during a call with the call screen's button or by asking. Applies to the next call.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
-            TextField(AppLocalization.string("Your instructions"), text: $extraInstructions, prompt: Text("Your instructions for the voice model"), axis: .vertical)
+            TextField(AppLocalization.string("Your instructions", table: .voice), text: $extraInstructions, prompt: Text("Your instructions for the voice model"), axis: .vertical)
                 .lineLimit(3...8)
                 .textFieldStyle(.roundedBorder)
                 .accessibilityIdentifier("voice.liveStyle.extraInstructions")
@@ -211,7 +211,7 @@ struct LiveVoiceStyleSettingsSection: View {
                 flushPendingSave()
                 showsPreview = true
             } label: {
-                Label(AppLocalization.string("What Conduit sends"), systemImage: "doc.text.magnifyingglass")
+                Label(AppLocalization.string("What Conduit sends", table: .voice), systemImage: "doc.text.magnifyingglass")
                     .frame(maxWidth: .infinity)
                     .frame(minHeight: 44)
             }
@@ -286,8 +286,8 @@ struct LiveVoiceInstructionsPreview: View {
                         // Local Live's fast model gets this as all its instructions:
                         // no server adds a persona of its own.
                         Text(preview.isLocalLive
-                            ? AppLocalization.string("Conduit sends this to your fast model as its instructions for every call; nothing else is added before it. Personality is read when a call starts.")
-                            : AppLocalization.string("Conduit adds this to \(preview.mode)'s instructions for every call. Your Hermes server adds its own voice persona before it. Memory and personality are read when a call starts."))
+                            ? AppLocalization.string("Conduit sends this to your fast model as its instructions for every call; nothing else is added before it. Personality is read when a call starts.", table: .voice)
+                            : AppLocalization.string("Conduit adds this to \(preview.mode)'s instructions for every call. Your Hermes server adds its own voice persona before it. Memory and personality are read when a call starts.", table: .voice))
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                         Text(verbatim: preview.instructions)
@@ -311,7 +311,7 @@ struct LiveVoiceInstructionsPreview: View {
                 }
                 .padding(16)
             }
-            .navigationTitle(AppLocalization.string("What Conduit sends"))
+            .navigationTitle(AppLocalization.string("What Conduit sends", table: .voice))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

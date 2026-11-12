@@ -243,7 +243,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
         }, for: .touchUpInside)
 
         var quoteConfiguration = pillConfiguration
-        quoteConfiguration.title = AppLocalization.string("Quote")
+        quoteConfiguration.title = AppLocalization.string("Quote", table: .chat)
         quoteConfiguration.image = UIImage(systemName: "text.quote")
         quoteConfiguration.contentInsets = NSDirectionalEdgeInsets(top: 8, leading: 8, bottom: 8, trailing: 16)
 
@@ -312,7 +312,7 @@ final class MarkdownSelectionHandleContainerView: UIView, UIGestureRecognizerDel
     private static func endpointAccessibilityValue(_ segmentID: String, offset: Int) -> String {
         // VoiceOver position of a selection endpoint. A position, not a
         // count: String(offset) keeps it out of plural rules.
-        AppLocalization.string("character \(String(offset))")
+        AppLocalization.string("character \(String(offset))", table: .chat)
     }
 
     /// The container sits outside the transcript scroll view, so nothing
@@ -586,7 +586,7 @@ final class MarkdownSelectionHandleView: UIView {
         // both VoiceOver and the UI tests' identifier queries.
         isAccessibilityElement = true
         accessibilityTraits = .adjustable
-        accessibilityLabel = role == .anchor ? AppLocalization.string("Selection start handle") : AppLocalization.string("Selection end handle")
+        accessibilityLabel = role == .anchor ? AppLocalization.string("Selection start handle", table: .chat) : AppLocalization.string("Selection end handle", table: .chat)
     }
 
     override func accessibilityIncrement() {

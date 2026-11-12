@@ -65,10 +65,10 @@ enum ConduitKeyboardShortcut: String, CaseIterable, Identifiable {
         case .chatList: return AppLocalization.string("Show chat list")
         case .artifacts: return AppLocalization.string("Show artifacts")
         case .settings: return AppLocalization.string("Settings")
-        case .biggerText: return AppLocalization.string("Make Text Bigger")
-        case .smallerText: return AppLocalization.string("Make Text Smaller")
-        case .normalText: return AppLocalization.string("Make Text Normal Size")
-        case .shortcutList: return AppLocalization.string("Keyboard Shortcuts")
+        case .biggerText: return AppLocalization.string("Make Text Bigger", table: .settings)
+        case .smallerText: return AppLocalization.string("Make Text Smaller", table: .settings)
+        case .normalText: return AppLocalization.string("Make Text Normal Size", table: .settings)
+        case .shortcutList: return AppLocalization.string("Keyboard Shortcuts", table: .settings)
         }
     }
 
@@ -178,7 +178,7 @@ struct ConduitKeyboardCommands: Commands {
                 .keyboardShortcut(ConduitKeyboardShortcut.newChat.shortcut)
         }
         CommandGroup(replacing: .appSettings) {
-            Button(AppLocalization.string("Settings…")) { KeyboardCommands.show(.settings) }
+            Button(AppLocalization.string("Settings…", table: .settings)) { KeyboardCommands.show(.settings) }
                 .keyboardShortcut(ConduitKeyboardShortcut.settings.shortcut)
         }
         CommandGroup(before: .sidebar) {
@@ -230,10 +230,10 @@ struct KeyboardShortcutsSheet: View {
                     // The chat list and Artifacts toggles exist only in a
                     // window with room for a column beside the chat.
                     if usesTabs {
-                        Text(AppLocalization.string("Show chat list and Show artifacts work in a window wide enough to put that column beside the chat."))
+                        Text(AppLocalization.string("Show chat list and Show artifacts work in a window wide enough to put that column beside the chat.", table: .settings))
                     }
                 }
-                Section(AppLocalization.string("Go to")) {
+                Section(AppLocalization.string("Go to", table: .settings)) {
                     if usesTabs {
                         ForEach(V2Tab.destinations) { tab in
                             if let glyphs = ConduitKeyboardShortcut.tabGlyphs(tab) {
@@ -255,11 +255,11 @@ struct KeyboardShortcutsSheet: View {
                     row(.shortcutList)
                 } footer: {
                     if !ProcessInfo.processInfo.isiOSAppOnMac {
-                        Text(AppLocalization.string("On an iPad, hold ⌘ to see the shortcuts for the screen you're on."))
+                        Text(AppLocalization.string("On an iPad, hold ⌘ to see the shortcuts for the screen you're on.", table: .settings))
                     }
                 }
             }
-            .navigationTitle(AppLocalization.string("Keyboard Shortcuts"))
+            .navigationTitle(AppLocalization.string("Keyboard Shortcuts", table: .settings))
             .navigationBarTitleDisplayMode(.inline)
             // ⌘/ closes it, from ⌘/ or from Settings > Keyboard alike.
             .onReceive(KeyboardCommands.shortcutListRequests) { _ in dismiss() }

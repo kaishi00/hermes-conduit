@@ -107,7 +107,7 @@ enum KanbanProfileDescriptionPolicy {
                 baselineIsAuto: false,
                 draft: submitted,
                 isDirtyAfter: false,
-                notice: AppLocalization.string("Description saved.")
+                notice: AppLocalization.string("Description saved.", table: .tasks)
             )
         }
         return CompletionOutcome(
@@ -115,7 +115,7 @@ enum KanbanProfileDescriptionPolicy {
             baselineIsAuto: false,
             draft: currentRawDraft,
             isDirtyAfter: true,
-            notice: AppLocalization.string("Description saved. Your newer edits are still unsaved.")
+            notice: AppLocalization.string("Description saved. Your newer edits are still unsaved.", table: .tasks)
         )
     }
 
@@ -133,7 +133,7 @@ enum KanbanProfileDescriptionPolicy {
                 baselineIsAuto: true,
                 draft: generated,
                 isDirtyAfter: false,
-                notice: AppLocalization.string("Generated automatically — review recommended.")
+                notice: AppLocalization.string("Generated automatically — review recommended.", table: .tasks)
             )
         }
         return CompletionOutcome(
@@ -141,7 +141,7 @@ enum KanbanProfileDescriptionPolicy {
             baselineIsAuto: true,
             draft: currentRawDraft,
             isDirtyAfter: true,
-            notice: AppLocalization.string("Hermes generated a new routing description. Your newer local edits were preserved and are still unsaved.")
+            notice: AppLocalization.string("Hermes generated a new routing description. Your newer local edits were preserved and are still unsaved.", table: .tasks)
         )
     }
 }
@@ -271,11 +271,11 @@ enum KanbanOrchestrationDisplay {
         let configuredName = configured.trimmingCharacters(in: .whitespaces)
         if configuredName.isEmpty {
             if resolvedName.isEmpty {
-                return AppLocalization.string("Default inherits the active Hermes profile.")
+                return AppLocalization.string("Default inherits the active Hermes profile.", table: .tasks)
             }
-            return AppLocalization.string("Default resolves to \(resolvedName).")
+            return AppLocalization.string("Default resolves to \(resolvedName).", table: .tasks)
         }
-        return AppLocalization.string("Pinned to \(configuredName).")
+        return AppLocalization.string("Pinned to \(configuredName).", table: .tasks)
     }
 }
 
@@ -298,9 +298,9 @@ enum KanbanTriageActionsPolicy {
     }
 
     /// The confirmation dialog copy (title + message).
-    static var decomposeConfirmationTitle: String { AppLocalization.string("Decompose this task?") }
+    static var decomposeConfirmationTitle: String { AppLocalization.string("Decompose this task?", table: .tasks) }
     static var decomposeConfirmationMessage: String {
-        AppLocalization.string("Hermes may create and assign multiple dependent tasks.")
+        AppLocalization.string("Hermes may create and assign multiple dependent tasks.", table: .tasks)
     }
 
     /// Success notice after a completed decompose, built from the backend's
@@ -310,11 +310,11 @@ enum KanbanTriageActionsPolicy {
         if fanout {
             // Plural variations in the catalog own both grammars; the Int
             // argument drives the plural rule.
-            return AppLocalization.string("Decomposed into \(childCount) task")
+            return AppLocalization.string("Decomposed into \(childCount) task", table: .tasks)
         }
         // Decompose's single-task fallback (backend fanout=false == a
         // spec-style promotion; distinct from a plain Specify).
-        return AppLocalization.string("Decomposed (single task, no fan-out)")
+        return AppLocalization.string("Decomposed (single task, no fan-out)", table: .tasks)
     }
 
     /// Partial-success notice when the mutation reached the server but the
@@ -324,6 +324,6 @@ enum KanbanTriageActionsPolicy {
     static func successNoticeWithRefreshFailure(base: String, storeRefreshError: String?) -> String {
         guard let storeRefreshError,
               !storeRefreshError.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return base }
-        return AppLocalization.string("\(base), but the board could not be refreshed. \(storeRefreshError)")
+        return AppLocalization.string("\(base), but the board could not be refreshed. \(storeRefreshError)", table: .tasks)
     }
 }

@@ -17,9 +17,9 @@ extension AppState {
         case .send:
             return nil
         case .steer, .interrupt, .queue, .stop:
-            return AppLocalization.string("Voice messages send once the reply has finished.")
+            return AppLocalization.string("Voice messages send once the reply has finished.", table: .voice)
         case .unavailable:
-            return AppLocalization.string("Voice messages send once Conduit is connected to the chat.")
+            return AppLocalization.string("Voice messages send once Conduit is connected to the chat.", table: .voice)
         }
     }
 
@@ -78,10 +78,10 @@ extension AppState {
         case .staged(let staged):
             attachment = staged
         case .tooLarge:
-            recorder.errorMessage = AppLocalization.string("This voice message is larger than your attachment size limit.")
+            recorder.errorMessage = AppLocalization.string("This voice message is larger than your attachment size limit.", table: .voice)
             return false
         case .failed:
-            recorder.errorMessage = AppLocalization.string("Couldn't prepare the voice message.")
+            recorder.errorMessage = AppLocalization.string("Couldn't prepare the voice message.", table: .voice)
             return false
         }
         // Still this chat's, and nobody threw it away while it was copied.
@@ -94,7 +94,7 @@ extension AppState {
         let sent = await submitComposer(text: text, attachments: [attachment], context: context)
         guard sent else {
             if recorder.recording == recording {
-                recorder.errorMessage = AppLocalization.string("Couldn't send the voice message. Try again.")
+                recorder.errorMessage = AppLocalization.string("Couldn't send the voice message. Try again.", table: .voice)
             }
             Haptics.error()
             return false

@@ -497,7 +497,7 @@ struct V2ProjectPage: View {
             .contentShape(Capsule())
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(name.map { AppLocalization.string("\($0) profile") } ?? AppLocalization.string("All"))
+        .accessibilityLabel(name.map { AppLocalization.string("\($0) profile", table: .chat) } ?? AppLocalization.string("All"))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 

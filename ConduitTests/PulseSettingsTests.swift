@@ -357,8 +357,8 @@ final class PulseSettingsTests: XCTestCase {
         // A fact about a yearly date (0.88.0) says its day; the rest, and a day that isn't one, say nothing.
         let british = Locale(identifier: "en_GB")
         XCTAssertEqual(items.map { $0.everyYearText(locale: british) }, [
-            nil, AppLocalization.string("Every year on \("3 March")"),
-            AppLocalization.string("Every year on \("29 February")"), nil, nil, nil
+            nil, AppLocalization.string("Every year on \("3 March")", table: .pulse),
+            AppLocalization.string("Every year on \("29 February")", table: .pulse), nil, nil, nil
         ])
         XCTAssertEqual(PulseMemoryKind.sorted(["fact", "zzz", "commitment"]), ["commitment", "fact", "zzz"])
         // A deadline from the Shortcuts inbox (0.90.0) says who it's from and when it was logged, not a chat.
@@ -368,11 +368,11 @@ final class PulseSettingsTests: XCTestCase {
         XCTAssertEqual(deadline.loggedAt, Date(timeIntervalSince1970: 1_760_346_000))
         let logged = Date(timeIntervalSince1970: 1_760_346_000)
             .formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale))
-        XCTAssertEqual(deadline.loggedText(), AppLocalization.string("From \("Netflix"), logged \(logged)"))
-        XCTAssertEqual(items[5].loggedText(), AppLocalization.string("Logged on your phone \(logged)"))
+        XCTAssertEqual(deadline.loggedText(), AppLocalization.string("From \("Netflix"), logged \(logged)", table: .pulse))
+        XCTAssertEqual(items[5].loggedText(), AppLocalization.string("Logged on your phone \(logged)", table: .pulse))
         XCTAssertFalse(items[0].fromInbox)
         XCTAssertNil(items[0].loggedText())
-        XCTAssertEqual(PulseMemoryKind.title("deadline"), AppLocalization.string("Deadlines"))
+        XCTAssertEqual(PulseMemoryKind.title("deadline"), AppLocalization.string("Deadlines", table: .pulse))
         XCTAssertEqual(PulseMemoryKind.sorted(["deadline", "zzz", "watch"]), ["watch", "deadline", "zzz"])
     }
 
@@ -390,12 +390,12 @@ final class PulseSettingsTests: XCTestCase {
         """)
         let items = (response["items"] as? [Any] ?? []).compactMap(PulseMemoryItem.init(json:))
         XCTAssertEqual(items.map(\.place?.leaving), [false, true, false, nil, nil])
-        XCTAssertEqual(items[0].place?.text, AppLocalization.string("When you get to \("Costco")"))
-        XCTAssertEqual(items[1].place?.text, AppLocalization.string("When you leave \("work")"))
+        XCTAssertEqual(items[0].place?.text, AppLocalization.string("When you get to \("Costco")", table: .pulse))
+        XCTAssertEqual(items[1].place?.text, AppLocalization.string("When you leave \("work")", table: .pulse))
         // The saved place it matches, unless the words are its name, or that none matches yet.
         XCTAssertNil(items[0].place?.savedText)
-        XCTAssertEqual(items[1].place?.savedText, AppLocalization.string("Saved place: \("Office")"))
-        XCTAssertEqual(items[2].place?.savedText, AppLocalization.string("No saved place has that name yet."))
+        XCTAssertEqual(items[1].place?.savedText, AppLocalization.string("Saved place: \("Office")", table: .pulse))
+        XCTAssertEqual(items[2].place?.savedText, AppLocalization.string("No saved place has that name yet.", table: .pulse))
         XCTAssertNil(PulseMemoryPlace(json: ["words": "costco", "on": "arrive", "saved": "Costco"])?.savedText)
         let spaced = PulseMemoryPlace(json: ["words": " Costco ", "on": "arrive", "saved": "Costco Wholesale "])
         XCTAssertEqual(spaced?.words, "Costco")

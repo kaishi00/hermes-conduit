@@ -149,7 +149,7 @@ struct MarkdownDocumentSheet: View {
             } label: {
                 Image(systemName: showsSource ? "doc.richtext" : "chevron.left.forwardslash.chevron.right")
             }
-            .accessibilityLabel(showsSource ? AppLocalization.string("Show Formatted") : AppLocalization.string("Show Source"))
+            .accessibilityLabel(showsSource ? AppLocalization.string("Show Formatted", table: .chat) : AppLocalization.string("Show Source", table: .chat))
             if let shareURL {
                 Menu {
                     // The system's Open In menu lists the apps that read

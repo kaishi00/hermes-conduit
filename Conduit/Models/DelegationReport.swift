@@ -48,15 +48,20 @@ struct DelegationReport: Equatable, Codable {
 
     // `--- ✓ TASK 2/6: goal  (status=completed, api_calls=4, 12.5s) ---`.
     // A goal can run over lines, so it ends at the two spaces before
-    // `(status=` on the header's last line (Desktop's split does the same).
+    // `(status=` on the header's last line (Desktop's split does the same),
+    // never past the next task's header.
     private static let taskHeader = try! NSRegularExpression(
-        pattern: #"^--- [✓✗⚠] TASK (\d+)/\d+(?:: ([\s\S]*?))? {2}\(status=([^\n]*)\) ---\n?"#,
+        pattern: #"^--- [✓✗⚠] TASK (\d+)/\d+(?:: ((?:(?!\n--- [✓✗⚠] TASK )[\s\S])*?))? {2}\(status=([^\n]*)\) ---\n?"#,
         options: [.anchorsMatchLines]
     )
 
     private static func batchEntries(_ text: String) -> [Entry] {
         let ns = text as NSString
         let matches = taskHeader.matches(in: text, range: NSRange(location: 0, length: ns.length))
+        // A header Conduit can't read would hide its task: the plain notice
+        // then, never a list short of one.
+        let headers = text.components(separatedBy: "\n").filter { $0.range(of: #"^--- [✓✗⚠] TASK \d+/\d+"#, options: .regularExpression) != nil }
+        guard matches.count == headers.count else { return [] }
         return matches.enumerated().map { index, match in
             let bodyStart = match.range.location + match.range.length
             let bodyEnd = index + 1 < matches.count ? matches[index + 1].range.location : ns.length
@@ -82,8 +87,14 @@ struct DelegationReport: Equatable, Codable {
         let lines = text.components(separatedBy: "\n")
         guard let resultIndex = lines.firstIndex(of: "--- RESULT ---"),
               let statusLine = lines[..<resultIndex].last(where: { $0.hasPrefix("Status: ") }) else { return nil }
-        let goal = lines[..<resultIndex].first(where: { $0.hasPrefix("Original goal: ") })
-            .map { String($0.dropFirst("Original goal: ".count)) } ?? ""
+        // A goal can run over lines, up to the preamble's next field.
+        var goal = ""
+        if let goalIndex = lines[..<resultIndex].firstIndex(where: { $0.hasPrefix("Original goal: ") }) {
+            let rest = lines[(goalIndex + 1)..<resultIndex].prefix { line in
+                !preambleFields.contains { line.hasPrefix($0) }
+            }
+            goal = ([String(lines[goalIndex].dropFirst("Original goal: ".count))] + rest).joined(separator: "\n")
+        }
         return Entry(
             number: 1,
             goal: oneLine(goal),
@@ -92,6 +103,9 @@ struct DelegationReport: Equatable, Codable {
             result: cleaned(lines[(resultIndex + 1)...].joined(separator: "\n"))
         )
     }
+
+    /// The lines `_preamble` writes after the goal, and the status line.
+    private static let preambleFields = ["Context you provided: ", "Toolsets: ", "Role: ", "Status: "]
 
     /// Hermes' early word that one agent of a batch still running failed:
     /// `Task:`, `Status:` and the error.

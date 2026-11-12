@@ -184,7 +184,7 @@ struct MarkupBlock: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(kind == .mermaid ? AppLocalization.string("Diagram") : AppLocalization.string("Formula")))
+        .accessibilityLabel(Text(kind == .mermaid ? AppLocalization.string("Diagram", table: .chat) : AppLocalization.string("Formula", table: .chat)))
         // The source is the only text form of what's drawn.
         .accessibilityValue(Text(verbatim: String(source.prefix(Self.accessibilitySourceLimit))))
         .accessibilityAddTraits(.isButton)
@@ -197,7 +197,7 @@ struct MarkupBlock: View {
 
     private func failure(_ detail: String?) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(kind == .mermaid ? AppLocalization.string("Couldn't draw this diagram.") : AppLocalization.string("Couldn't draw this formula."))
+            Text(kind == .mermaid ? AppLocalization.string("Couldn't draw this diagram.", table: .chat) : AppLocalization.string("Couldn't draw this formula.", table: .chat))
                 .scaledFont(.footnote.weight(.semibold))
             if let detail, !detail.isEmpty {
                 Text(verbatim: detail)
@@ -439,7 +439,7 @@ struct MarkupPreviewSheet: View {
                 }
                     .frame(maxHeight: 96)
             }
-            .navigationTitle(document.kind == .mermaid ? AppLocalization.string("Diagram") : AppLocalization.string("Formula"))
+            .navigationTitle(document.kind == .mermaid ? AppLocalization.string("Diagram", table: .chat) : AppLocalization.string("Formula", table: .chat))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar { ToolbarItem(placement: .topBarTrailing) { Button("Done") { dismiss() } } }
         }
@@ -619,7 +619,7 @@ enum MarkupHTML {
         <style>html,body{margin:0;padding:0;background:\(background);color:\(palette.foreground)}#content{padding:\(padding);box-sizing:border-box}svg{display:block;max-width:100%;height:auto;margin:auto}\(heightLimit).error{font:14px -apple-system,sans-serif;color:#d14b4b;white-space:pre-wrap}</style>
         </head><body><div id="content"></div>
         \(mermaidScript.scriptTag)
-        <script>\(reportingScript(failureTitle: AppLocalization.string("Couldn't draw this diagram.")))
+        <script>\(reportingScript(failureTitle: AppLocalization.string("Couldn't draw this diagram.", table: .chat)))
         (async function(){const content=document.getElementById('content');if(typeof mermaid==='undefined'){fail('');return;}try{mermaid.initialize({startOnLoad:false,securityLevel:'strict',suppressErrorRendering:true,theme:'base',themeVariables:{background:'\(palette.background)',primaryColor:'\(palette.primary)',primaryTextColor:'\(palette.foreground)',primaryBorderColor:'\(palette.border)',lineColor:'\(palette.muted)',fontFamily:'-apple-system,BlinkMacSystemFont,sans-serif'}});const result=await mermaid.render('conduit-diagram',\(jsonString(MermaidSourceRepair.repaired(document.source))));content.innerHTML=result.svg;const send=()=>report({height:Math.ceil(content.getBoundingClientRect().height)});new ResizeObserver(send).observe(content);send();}catch(error){fail(String(error&&error.message?error.message:error));}})();</script></body></html>
         """
     }
@@ -644,7 +644,7 @@ enum MarkupHTML {
         <style>html,body{margin:0;padding:0;background:\(background);color:\(palette.foreground)}body{font-size:\(fontSize)}\(contentStyle).error{font:14px -apple-system,sans-serif;color:#d14b4b;white-space:pre-wrap}</style>
         </head><body><div id="content"></div>
         \(katexScript.scriptTag)
-        <script>\(reportingScript(failureTitle: AppLocalization.string("Couldn't draw this formula.")))
+        <script>\(reportingScript(failureTitle: AppLocalization.string("Couldn't draw this formula.", table: .chat)))
         (function(){const content=document.getElementById('content');if(typeof katex==='undefined'){fail('');return;}try{katex.render(\(jsonString(document.source)),content,{displayMode:true,throwOnError:\(throwsOnError),trust:false});}catch(error){fail(String(error&&error.message?error.message:error));return;}\(fitting)const send=()=>{fit();report({height:Math.ceil(content.getBoundingClientRect().height)});};new ResizeObserver(send).observe(content);document.fonts.ready.then(send);send();})();</script></body></html>
         """
     }

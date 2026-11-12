@@ -79,19 +79,19 @@ struct GatewayRestartStatusView: View {
         case .idle:
             return nil
         case .requesting:
-            return GatewayRestartRow(title: AppLocalization.string("Asking Hermes to restart the gateway…"))
+            return GatewayRestartRow(title: AppLocalization.string("Asking Hermes to restart the gateway…", table: .connection))
         case .restarting(let stage, let detail):
             return GatewayRestartRow(title: title(for: stage), detail: detail, logDetail: true)
         case .restarted(let sharedProfiles):
             return GatewayRestartRow(
-                title: AppLocalization.string("Gateway restarted"),
-                detail: sharedProfiles.isEmpty ? nil : AppLocalization.string("Profiles on this gateway: \(list(sharedProfiles))"),
+                title: AppLocalization.string("Gateway restarted", table: .connection),
+                detail: sharedProfiles.isEmpty ? nil : AppLocalization.string("Profiles on this gateway: \(list(sharedProfiles))", table: .connection),
                 symbol: "checkmark.circle.fill",
                 tint: .green
             )
         case .failed(let detail):
             return GatewayRestartRow(
-                title: AppLocalization.string("Couldn't restart the gateway"),
+                title: AppLocalization.string("Couldn't restart the gateway", table: .connection),
                 detail: detail,
                 logDetail: true,
                 symbol: "exclamationmark.triangle.fill",
@@ -99,22 +99,22 @@ struct GatewayRestartStatusView: View {
             )
         case .failedToStart:
             return GatewayRestartRow(
-                title: AppLocalization.string("The gateway didn't start"),
-                detail: AppLocalization.string("Run hermes gateway status on the host to see why."),
+                title: AppLocalization.string("The gateway didn't start", table: .connection),
+                detail: AppLocalization.string("Run hermes gateway status on the host to see why.", table: .connection),
                 symbol: "exclamationmark.triangle.fill",
                 tint: .red
             )
         case .notBackYet:
             return GatewayRestartRow(
-                title: AppLocalization.string("The gateway isn't back yet"),
-                detail: AppLocalization.string("It may still be finishing running tasks. Run hermes gateway status on the host to check."),
+                title: AppLocalization.string("The gateway isn't back yet", table: .connection),
+                detail: AppLocalization.string("It may still be finishing running tasks. Run hermes gateway status on the host to check.", table: .connection),
                 symbol: "clock.badge.exclamationmark",
                 tint: .orange
             )
         case .unsupported:
             return GatewayRestartRow(
-                title: AppLocalization.string("This Hermes can't restart its gateway from Conduit"),
-                detail: AppLocalization.string("Update Hermes, or run hermes gateway restart on the host."),
+                title: AppLocalization.string("This Hermes can't restart its gateway from Conduit", table: .connection),
+                detail: AppLocalization.string("Update Hermes, or run hermes gateway restart on the host.", table: .connection),
                 symbol: "exclamationmark.circle.fill",
                 tint: .orange
             )
@@ -166,8 +166,8 @@ struct GatewayRestartStatusView: View {
     private static func title(for stage: GatewayRestartStage) -> String {
         switch stage {
         case .draining: return AppLocalization.string("Letting running tasks finish…")
-        case .stopping: return AppLocalization.string("Stopping the gateway…")
-        case .starting: return AppLocalization.string("Starting the gateway…")
+        case .stopping: return AppLocalization.string("Stopping the gateway…", table: .connection)
+        case .starting: return AppLocalization.string("Starting the gateway…", table: .connection)
         }
     }
 
@@ -201,7 +201,7 @@ struct GatewayWaitView: View {
                                         .fixedSize(horizontal: false, vertical: true)
                                 }
                                 if let restartsBy = work.restartsBy {
-                                    Text(verbatim: AppLocalization.string("Restarts on its own by \(restartsBy.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(AppLocalization.formattingLocale)))"))
+                                    Text(verbatim: AppLocalization.string("Restarts on its own by \(restartsBy.formatted(Date.FormatStyle(date: .omitted, time: .shortened).locale(AppLocalization.formattingLocale)))", table: .connection))
                                         .scaledFont(.footnote)
                                         .foregroundStyle(.secondary)
                                 }
@@ -219,14 +219,14 @@ struct GatewayWaitView: View {
                     Button {
                         Task { await appState.restartGatewayNow() }
                     } label: {
-                        Text(verbatim: appState.gatewayRestartingNow ? AppLocalization.string("Stopping running tasks…") : AppLocalization.string("Restart Now"))
+                        Text(verbatim: appState.gatewayRestartingNow ? AppLocalization.string("Stopping running tasks…", table: .connection) : AppLocalization.string("Restart Now", table: .connection))
                             .scaledFont(.subheadline.weight(.semibold))
                             .frame(minHeight: 44)
                             .contentShape(Rectangle())
                     }
                     .buttonStyle(.borderless)
                     .disabled(appState.gatewayRestartingNow)
-                    .accessibilityHint(Text(AppLocalization.string("Stops the running tasks and restarts the gateway now.")))
+                    .accessibilityHint(Text(AppLocalization.string("Stops the running tasks and restarts the gateway now.", table: .connection)))
                     .accessibilityIdentifier("gatewayRestart.restartNow")
                 }
                 // VoiceOver hears a failed Restart now: nothing else on the
