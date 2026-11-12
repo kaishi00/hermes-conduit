@@ -156,6 +156,9 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(AppState.workspaceName(#"C:\dev\Site\a.md"#), "a.md")
         XCTAssertEqual(AppState.workspaceName(#"/w/odd\name"#), #"odd\name"#)
         XCTAssertEqual(AppState.workspaceName(#"/w/notes\"#), #"notes\"#, "a POSIX name may end in a backslash")
+        XCTAssertEqual(AppState.normalizedWorkspacePath(#"/w/notes\"#), #"/w/notes\"#, "only slashes are trimmed on POSIX")
+        XCTAssertEqual(AppState.normalizedWorkspacePath("/w/notes/"), "/w/notes")
+        XCTAssertEqual(AppState.normalizedWorkspacePath(#"C:\dev\"#), #"C:\dev"#)
 
         XCTAssertEqual(WorkspaceDrag.reference(to: ["/w/a.md", "/w/My Notes/b.md"]), "/w/a.md `/w/My Notes/b.md`")
         XCTAssertEqual(WorkspaceDrag.appending("/w/a.md", to: "Read"), "Read /w/a.md")
