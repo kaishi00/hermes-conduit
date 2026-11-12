@@ -305,7 +305,7 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(fake.droppedSurfaces.isEmpty)
         // A refused submit drops its report, so it can't label another turn.
         let (refused, refusedFake) = makeSupervisor()
-        refusedFake.submitError = HermesError.timeout("prompt.submit")
+        refusedFake.submitError = RpcError(code: 4009, message: "session busy")
         _ = await refused.performVoiceCommand(.start(instructions: "check the weather"))
         XCTAssertEqual(refusedFake.droppedSurfaces, refusedFake.submissions.map(\.0))
         XCTAssertEqual(refusedFake.droppedSurfaces.count, 1)
@@ -327,6 +327,26 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(continuedFake.submissions.map(\.0), ["rt-call"])
         XCTAssertEqual(continuedFake.surfaceReports.map(\.2), [true])
         XCTAssertEqual(continuedFake.surfaceReports.map(\.1), continuedFake.submissions.map(\.1))
+        // Refused there, its report is dropped too.
+        let (refusedContinued, refusedContinuedFake) = makeSupervisor()
+        refusedContinuedFake.submitError = RpcError(code: 4009, message: "session busy")
+        _ = await refusedContinued.continueJob(instructions: "and the logs",
+                                               in: VoiceThreadTarget(runtimeSessionID: "rt-call", storedSessionID: nil, title: "Call"))
+        for _ in 0..<200 where refusedContinuedFake.droppedSurfaces.isEmpty { try? await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(refusedContinuedFake.droppedSurfaces, ["rt-call"])
+        // Cancelled while its report goes: nothing is sent, the report is
+        // dropped, and the chat's running turn (another's) isn't interrupted.
+        let (cancelledContinued, cancelledContinuedFake) = makeSupervisor()
+        cancelledContinuedFake.onSurfaceReport = { [weak cancelledContinued] in
+            guard let cancelledContinued, let id = cancelledContinued.jobs.first?.id else { return }
+            _ = await cancelledContinued.cancel(jobID: id)
+        }
+        _ = await cancelledContinued.continueJob(instructions: "and the disks",
+                                                 in: VoiceThreadTarget(runtimeSessionID: "rt-call", storedSessionID: nil, title: "Call"))
+        for _ in 0..<200 where cancelledContinuedFake.droppedSurfaces.isEmpty { try? await Task.sleep(for: .milliseconds(10)) }
+        XCTAssertEqual(cancelledContinuedFake.droppedSurfaces, ["rt-call"])
+        XCTAssertTrue(cancelledContinuedFake.submissions.isEmpty)
+        XCTAssertTrue(cancelledContinuedFake.cancelled.isEmpty)
         // The surface: the Watch for its call's job, else where a spoken message is.
         XCTAssertEqual(TurnSurface.voiceJob(fromWatch: true, carPlay: true, device: .iphone), TurnSurface(place: .watch, input: .spoken))
         XCTAssertEqual(TurnSurface.voiceJob(fromWatch: false, carPlay: true, device: .iphone), TurnSurface(place: .carplay, input: .spoken))
