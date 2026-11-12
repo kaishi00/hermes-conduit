@@ -111,6 +111,27 @@ final class AppStateMultiDashboardTests: XCTestCase {
         XCTAssertEqual(appState.busyInputMode, .interrupt, "another server's cache is not this one's")
     }
 
+    /// Profile discovery can adopt a fallback before the busy-mode read
+    /// starts: a client still addressing the profile that went reads nothing
+    /// and caches nothing under the new profile's key (issue 1727, #2308).
+    func testABusyModeReadForAProfileTheConnectionLeftCommitsNothing() async {
+        let appState = makeAppState(registry: SavedDashboardRegistry())
+        defaults.set("server-a", forKey: AppState.chatResumeServerIdentityKey)
+        let workKey = "\(AppState.busyInputModeCachePrefix)server-a|work"
+        defaults.set(BusyInputMode.queue.rawValue, forKey: workKey)
+        appState.setActiveProfileForTesting("work")
+        appState.busyInputMode = .steer
+
+        let leftClient = HermesClient(
+            connection: HermesConnection(baseUrl: "https://hermes.example", ticket: "ticket"),
+            profile: "old"
+        )
+        await appState.loadBusyInputMode(using: leftClient)
+
+        XCTAssertEqual(appState.busyInputMode, .steer, "the read for the profile that went shows nothing")
+        XCTAssertEqual(defaults.string(forKey: workKey), BusyInputMode.queue.rawValue, "nor caches under the new profile's key")
+    }
+
     // MARK: - Agent settings scope
 
     func testAgentSettingsScopeTellsApartDashboardsWhosePathsDifferInCase() {
@@ -2046,6 +2067,54 @@ extension AppStateMultiDashboardTests {
         XCTAssertNil(explorer.pluginOff)
         XCTAssertTrue(explorer.canChange)
         XCTAssertEqual(explorer.recent.map(\.name), ["notes.md"])
+    }
+
+    /// Hermes' own listing failing too still leaves the folder browse-only
+    /// with the remedy shown: the refusal is what says the plugin is off
+    /// (issue 2280).
+    func testAFolderOnAProfileWithThePluginOffSaysSoWhenHermesListingFailsToo() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.164.0", capabilities: [WorkspaceFilesClient.capability]))
+        let refused: [String: Any] = ["detail": "Plugin not found"]
+        let explorer = WorkspaceExplorer()
+        explorer.attach(appState)
+        let open = Task { await explorer.open(root: "/w/atlas", profile: "atlas") }
+        try await held.waitForRequests(2)
+        try await held.answer(refused, toPathEnding: "/workspace/list", status: 404)
+        try await held.answer(refused, toPathEnding: "/workspace/recent", status: 404)
+        try await held.answer(["error": "No such directory"], toPathEnding: "/api/fs/list")
+        await open.value
+
+        XCTAssertNotNil(explorer.error, "the failure shows")
+        XCTAssertFalse(explorer.canChange, "no search, Add menu or changes")
+        XCTAssertNotNil(explorer.pluginOff, "the remedy shows")
+    }
+
+    /// A path a reply named splits as the rest of the Folder splits: a
+    /// POSIX name may hold a backslash, so the file's real folder opens and
+    /// the file keeps its listed date for Edit's save check (issue 2303).
+    func testRevealingAPOSIXNameWithABackslashOpensItsRealFolder() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.164.0", capabilities: [WorkspaceFilesClient.capability]))
+        let explorer = WorkspaceExplorer()
+        explorer.attach(appState)
+        let profile = appState.workspaceProfile
+        let open = Task { await explorer.open(root: "/w", profile: profile) }
+        try await held.waitForRequests(2)
+        try await held.answer(["ok": true, "entries": [["name": "sub", "path": "/w/sub", "isDirectory": true]]], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [[String: Any]]()], toPathEnding: "/workspace/recent")
+        await open.value
+
+        let path = #"/w/sub/odd\name"#
+        let reveal = Task { await explorer.reveal(path) }
+        try await held.answer(["ok": true, "entries": [["name": #"odd\name"#, "path": path, "mtime": 1_700_000_000]]], toPathEnding: "/workspace/list")
+        let entry = await reveal.value
+
+        XCTAssertEqual(entry.name, #"odd\name"#)
+        XCTAssertEqual(entry.modified, Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(explorer.listed(path)?.modified, entry.modified)
+        XCTAssertEqual(explorer.rows().map { $0.entry.path }, ["/w/sub", path])
+        XCTAssertEqual(held.sent.filter { $0.path.hasSuffix("/workspace/list") }.count, 2, "no read of a folder cut at the backslash")
     }
 
     /// Open Folder… (issue 1438): a folder opened is listed after the

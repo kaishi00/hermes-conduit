@@ -660,6 +660,29 @@ final class HermesClientTests: XCTestCase {
         _ = try await awaitResult(of: blankTask, "the blank-profile resume response")
         XCTAssertEqual(client.sessionProfile(for: "runtime-1"), "atlas")
 
+        // A branch of it is made in the bot's profile and keeps it, on a
+        // socket without the session authority too (issue 2281).
+        sent = expectSend()
+        let branchTask = Task {
+            try await client.branchSession(
+                parentSessionId: "runtime-1",
+                messages: [SessionBranchMessage(role: .user, content: "Hi"), SessionBranchMessage(role: .assistant, content: "Hello")],
+                title: "Branch of Bot Chat",
+                cwd: nil
+            )
+        }
+        try await sent.wait("the branch's session.create to be sent")
+        let branch = try lastRequest()
+        XCTAssertEqual(branch["method"] as? String, "session.create")
+        XCTAssertEqual(
+            (branch["params"] as? [String: Any])?["profile"] as? String, "atlas",
+            "the branch names its parent's profile, not the client's"
+        )
+        try answer(branch, ["session_id": "runtime-branch", "stored_session_id": "stored-branch"])
+        _ = try await awaitResult(of: branchTask, "the branch's create response")
+        XCTAssertEqual(client.sessionProfile(for: "runtime-branch"), "atlas")
+        XCTAssertEqual(client.sessionProfile(for: "stored-branch"), "atlas")
+
         // Opened again under the client's own profile, it takes that scope.
         sent = expectSend()
         let ownTask = Task<SessionResumeResult, Error> {

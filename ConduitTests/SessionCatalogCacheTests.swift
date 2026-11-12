@@ -33,6 +33,27 @@ final class SessionCatalogCacheTests: XCTestCase {
         XCTAssertTrue(cache.sessions(forKey: "default:exclude").isEmpty)
     }
 
+    /// A read that started later and committed first keeps its rows: the
+    /// older one is told so before it writes, and a purge forgets it, so a
+    /// read in flight then reads again (issue 2293).
+    func testANewerCommittedReadIsNotOverwrittenByAnOlderOne() {
+        var cache = SessionCatalogCache()
+        let generation = cache.mutationGeneration
+        XCTAssertFalse(cache.hasNewerCommit(than: 1, forKey: "default:exclude"))
+        XCTAssertTrue(cache.commit(
+            liveSessions: [session(id: "renamed", title: "New name")], liveKey: "default:exclude",
+            cronSessions: nil, cronKey: "default:cron",
+            historyMarkers: [:], at: generation, read: 2
+        ))
+        XCTAssertTrue(cache.hasNewerCommit(than: 1, forKey: "default:exclude"), "the older read yields")
+        XCTAssertFalse(cache.hasNewerCommit(than: 2, forKey: "default:exclude"))
+        XCTAssertFalse(cache.hasNewerCommit(than: 3, forKey: "default:exclude"))
+        XCTAssertFalse(cache.hasNewerCommit(than: 1, forKey: "analyst:exclude"), "per profile")
+
+        cache.removeAll()
+        XCTAssertFalse(cache.hasNewerCommit(than: 1, forKey: "default:exclude"), "a purge holds nothing newer")
+    }
+
     /// What a connection's early chat-list read is fenced on: a removal
     /// moves the generation, a committed listing moves the commit count,
     /// and a refused commit moves neither.

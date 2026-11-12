@@ -2530,6 +2530,9 @@ final class AppState: ObservableObject {
     var leaveCatalogRefreshTask: Task<Void, Never>?
     var leaveCatalogRefreshPending = false
     var leaveCatalogRefreshReportsFailure = false
+    /// The coalesced read serves a `sessions.changed`: if it fails, the
+    /// change stays pending (issue 2294).
+    var leaveCatalogRefreshReadsChange = false
     /// One chat on two devices (ChatSync.swift): when the list reads the
     /// catalog on its own, the open chat's registry checks, and the newest
     /// `session.active_list` snapshot they share, so the open chat reuses

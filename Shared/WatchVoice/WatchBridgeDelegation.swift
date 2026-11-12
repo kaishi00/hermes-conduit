@@ -72,15 +72,80 @@ enum WatchBridgeDelegation {
         var handled: Bool
     }
 
-    /// The work a delegation asks for: its own text when it carries any,
-    /// otherwise the user's words since the last delegation, with the
+    /// The words a delegation asks for, on the phone and the Watch alike:
+    /// its own text when that adds something, otherwise the user's words
+    /// since the last delegation. Codex's ChatGPT-plan delegations have
+    /// carried the newest transcript line as their text since about
+    /// 2026-11-11, so a request split by pauses would reach Hermes as its
+    /// last piece alone (issue 2292): text found word for word in what the
+    /// user said gives way to all of it. A routing marker the model put
+    /// first ("Quick:", "Job 2:", "New job:") stays in front; any other
+    /// command ("Read chat: 2") keeps its own words. Not UI copy.
+    static func requestWords(itemText: String, userWords: String) -> String {
+        let own = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
+        let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !own.isEmpty else { return spoken }
+        guard !spoken.isEmpty else { return own }
+        // "Read chat 2" and "Open chat: 2" name a chat by its number alone,
+        // with or without a colon.
+        guard VoiceChatToolText.readChatMarker(in: own) == nil,
+              VoiceChatToolText.openChatMarker(in: own) == nil else { return own }
+        let said = " " + comparable(spoken) + " "
+        func repeats(_ text: Substring) -> Bool {
+            let words = comparable(String(text))
+            return !words.isEmpty && said.contains(" " + words + " ")
+        }
+        // "Quick:" or "quickly," first, then the rest read as below.
+        let quick = removingQuickMarker(own)
+        let hasQuick = quick != own && own.hasSuffix(quick)
+        let body = hasQuick ? quick : own
+        var markers = hasQuick ? [own.dropLast(quick.count).trimmingCharacters(in: .whitespaces)] : []
+        // Before a colon: a job marker leads a request of the user's; any
+        // other ("Read chat: 2", "Approve:", "End call:") is a command whose
+        // words are its own, so the text stays as the model wrote it.
+        // A colon between digits is a time ("9:30"), not a marker;
+        // "Answer:2" is still one.
+        if let colon = body.indices.first(where: { index in
+               (body[index] == ":" || body[index] == "：")
+                   && !(index > body.startIndex && body[body.index(before: index)].isNumber
+                        && body[body.index(after: index)...].first?.isNumber == true)
+           }),
+           body[..<colon].split(separator: " ").count <= maxMarkerWords {
+            guard isJobMarker(body[..<colon]) else { return own }
+            markers.append(String(body[...colon]))
+            let rest = body[body.index(after: colon)...]
+            return repeats(rest) ? (markers + [spoken]).joined(separator: " ") : own
+        }
+        return repeats(body[...]) ? (markers + [spoken]).joined(separator: " ") : own
+    }
+
+    /// "New job", "Job 2" or "Add to job 2": the markers whose words after
+    /// the colon are the user's request (GPTLiveDelegationBridge).
+    static func isJobMarker(_ marker: Substring) -> Bool {
+        marker.trimmingCharacters(in: .whitespaces)
+            .range(of: #"^(new job|job \d+|add to job \d+)$"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// A marker before a delegation's colon is a few words at most
+    /// ("Call me about job 2").
+    static let maxMarkerWords = 5
+
+    /// `text` as words to compare: lowercased, letters and digits only,
+    /// one space between words.
+    static func comparable(_ text: String) -> String {
+        text.lowercased()
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty }
+            .joined(separator: " ")
+    }
+
+    /// The work a delegation asks for: its words (requestWords), with the
     /// recent conversation for context, as the phone builds it
     /// (GPTLiveConversationController.delegationRequest), within the host's
     /// limit. Empty when there's nothing to ask for.
     static func request(itemText: String, lines: [Line]) -> String {
-        let own = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
         let userWords = lines.filter { $0.role == .user && !$0.handled }.map(\.text).joined(separator: " ")
-        let request = clipped(own.isEmpty ? userWords : own, bytes: maxRequestBytes)
+        let request = clipped(requestWords(itemText: itemText, userWords: userWords), bytes: maxRequestBytes)
         guard !request.isEmpty else { return "" }
         var budget = maxRequestBytes - request.utf8.count - contextMarker.utf8.count
         var context = ""

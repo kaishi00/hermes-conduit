@@ -149,6 +149,19 @@ extension AppState {
                     if yieldsToNewerReads, readSequence != catalogReadSequence {
                         throw CatalogReadSuperseded()
                     }
+                    // Nor does any read write over the cached rows of one
+                    // that started after it and already committed: a host
+                    // delete or rename that one saw would come back (issue
+                    // 2293). It answers with those newer rows instead (a
+                    // chat sync still picks its chat from them).
+                    if sessionCatalogCache.hasNewerCommit(than: readSequence, forKey: cacheKey) {
+                        return ProfileCatalogLoad(
+                            sessions: sessionCatalogCache.sessions(forKey: cacheKey).filter {
+                                sessionBelongsToProfile($0, profile: profile)
+                            },
+                            olderPagesDeferred: false
+                        )
+                    }
 
                     let combined = uniqueSessions(
                         merged + (cronSessions ?? cachedCronSessions ?? publishedCronSnapshot)
@@ -167,7 +180,8 @@ extension AppState {
                             cronSessions: cronSessions,
                             cronKey: cronKey,
                             historyMarkers: historyMarkers,
-                            at: generation
+                            at: generation,
+                            read: readSequence
                         ) else {
                             catalogRetryCount += 1
                             guard catalogRetryCount < maximumCatalogRetries else {

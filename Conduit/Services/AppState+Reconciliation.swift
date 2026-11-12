@@ -2175,6 +2175,14 @@ extension AppState {
             let cacheSessionIDs = self.presentationCacheSessionIDs(for: sessionId)
 
             if let replacingLegacyErrorMessageID {
+                // The error that started this read may since have been
+                // retried (the card reads Sending) or answered: that
+                // submission owns the card now and settles it, so this
+                // read replaces nothing.
+                if let card = self.messages.first(where: { $0.id == replacingLegacyErrorMessageID }),
+                   card.approval?.status != .error {
+                    return
+                }
                 let identifiedApprovals = acceptedApprovals.filter { $0.requestId != nil }
                 if !identifiedApprovals.isEmpty {
                     self.messages.removeAll { $0.id == replacingLegacyErrorMessageID }

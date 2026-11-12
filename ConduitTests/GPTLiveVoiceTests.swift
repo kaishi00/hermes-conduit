@@ -1397,6 +1397,27 @@ extension VoiceConversationControllerTests {
         controller.stop()
     }
 
+    /// Issue 2292: a ChatGPT-plan delegation whose text is only the newest
+    /// of the user's lines hands Hermes everything they said since the last
+    /// delegation, not that last piece.
+    func testGPTLiveDelegationRepeatingTheNewestLineHandsHermesTheWholeRequest() async {
+        let (controller, session, _, fake) = makeGPTController(clock: { Date(timeIntervalSince1970: 1_000) })
+        await controller.start()
+        session.becomeReady()
+        session.onEvent?(.turnDone(role: "user", transcript: "Find me a ramen place near the office"))
+        session.onEvent?(.turnDone(role: "user", transcript: "that's open after nine, um, on Friday."))
+        session.onEvent?(.delegation(id: "del_1", text: "that's open after nine, um, on Friday."))
+        await settle(40)
+
+        XCTAssertEqual(fake.submissions.count, 1)
+        XCTAssertTrue(fake.submissions[0].1.contains("Find me a ramen place near the office that's open after nine, um, on Friday."))
+
+        // The model's own words still win when they say something new.
+        let parts = controller.delegationRequest(itemText: "Check the ramen place's Friday hours")
+        XCTAssertTrue(parts.request.hasPrefix("Check the ramen place's Friday hours"))
+        controller.stop()
+    }
+
     /// #945: GPT-Live said it was sending the request to Hermes but made no
     /// delegation. Once the call is quiet, Conduit sends the words itself.
     func testGPTLiveSaidItWasSendingWithNoDelegationSendsTheWordsAnyway() async {
