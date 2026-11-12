@@ -450,6 +450,33 @@ final class AppStateDecisionFenceTests: XCTestCase {
         XCTAssertNil(appState.errorMessage, "A stale failure must not surface a user-facing banner on B")
     }
 
+    func testStaleSubmissionRearmsACardTheReplacementClientReplayed() async throws {
+        let appState = makeAppState()
+        appState.messages = [approvalFixture(requestId: "request-a")]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+
+        // The replacement client replays the same request while the old
+        // submission is still out: the card keeps reading Sending.
+        appState.client = makeReplacementClient(baseURL: "https://two.example")
+        var replay = try XCTUnwrap(approvalFixture(requestId: "request-a").approval)
+        replay.status = .pending
+        appState.applyApprovalActivity(replay, authoritative: true)
+        XCTAssertEqual(appState.messages.first?.approval?.status, .submitting)
+
+        deliverResult(socket, rpcID: parked.rpcID, result: ["resolved": 1])
+        await parked.task.value
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.requestId, "request-a")
+        XCTAssertEqual(card.status, .pending, "nothing else would settle a card left on Sending")
+        XCTAssertNil(card.choice)
+        XCTAssertNil(card.error)
+    }
+
     // MARK: - Stale native clarify completions
 
     func testStaleClarifySuccessCannotMutateReplacedClientState() async throws {
@@ -724,6 +751,39 @@ final class AppStateDecisionFenceTests: XCTestCase {
         XCTAssertEqual(appState.messages.count, 1)
         XCTAssertEqual(appState.messages[0].approval?.status, .error)
         XCTAssertNil(appState.messages[0].approval?.requestId)
+    }
+
+    func testLegacyErrorRefreshLeavesARetriedCardToItsRetry() async throws {
+        let appState = makeAppState()
+        prepareActiveSession(appState)
+        appState.messages = [approvalFixture()]
+        appState.messages[0].approval?.sessionId = "runtime-queue"
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        let client = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        deliverError(socket, rpcID: parked.rpcID, code: 4002, message: "temporary failure")
+        await parked.task.value
+        for _ in 0..<1_000 where socket.sentTexts.count < 2 { await Task.yield() }
+        let refresh = appState.schedulePendingApprovalsRefresh(
+            sessionId: "runtime-queue",
+            using: client,
+            replacingLegacyErrorMessageID: "approval-msg"
+        )
+        for _ in 0..<1_000 where socket.sentTexts.count < 3 { await Task.yield() }
+        // The person retries while the queue read is out.
+        appState.messages[0].approval?.status = .submitting
+        appState.messages[0].approval?.choice = "approve"
+        appState.messages[0].approval?.error = nil
+        deliverResult(socket, rpcID: try rpcID(socket.sentTexts[2]), result: ["approvals": [
+            ["request_id": "approval-a", "description": "Run A?"]
+        ]])
+        await refresh.value
+
+        let card = try XCTUnwrap(appState.messages.first { $0.id == "approval-msg" }?.approval)
+        XCTAssertEqual(card.status, .submitting, "the retry still owns its card")
+        XCTAssertEqual(card.choice, "approve")
     }
 
     func testLegacyFailureReplacementRefreshCannotPopulateReplacementClient() async throws {
@@ -2306,20 +2366,26 @@ final class AppStateDecisionFenceTests: XCTestCase {
         XCTAssertEqual(answers.requestIds, [], "a card without its command cannot tell these apart")
     }
 
-    func testRedactedPushApprovalAnswersTheOnlyQueuedRequest() async {
+    func testRedactedPushApprovalShowsEvenTheOnlyQueuedRequestBeforeAnswering() async {
         let answers = RecordedApprovalAnswers()
+        var queueReads = 0
         let appState = makePushRestoredApprovalAppState(
             description: "Hermes needs your approval. Open Conduit for details.",
-            queue: { [
-                self.queuedApproval("req-only", command: "rm -rf build", description: "Delete the build folder?")
-            ] },
+            queue: {
+                queueReads += 1
+                // The push's own request may have gone; this one asks
+                // something the person never saw.
+                return [self.queuedApproval("req-only", command: "rm -rf build", description: "Delete the build folder?")]
+            },
             recording: answers
         )
 
         await appState.respondToApproval(messageId: "approval-runtime-1", choice: "once")
+        for _ in 0..<1_000 where queueReads < 2 { await Task.yield() }
 
-        XCTAssertEqual(answers.requestIds, ["req-only"])
-        XCTAssertEqual(appState.messages.first { $0.id == "approval-runtime-1" }?.approval?.status, .approved)
+        XCTAssertEqual(answers.requestIds, [], "a redacted card cannot say which request it was")
+        XCTAssertGreaterThanOrEqual(queueReads, 2, "the queue's own card is fetched to replace it")
+        XCTAssertNotEqual(appState.messages.first { $0.id == "approval-runtime-1" }?.approval?.status, .approved)
     }
 
     func testRedactedPushApprovalWithTwoQueuedSendsNothingAndRefreshes() async {
