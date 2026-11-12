@@ -2088,6 +2088,25 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(explorer.openFiles.count, 2, "closing the sheet keeps the tabs")
         explorer.closeTab(a.path)
         XCTAssertEqual(explorer.openFiles.map(\.name), ["b.md"])
+
+        // Past the limit the oldest tab goes, never one with unsaved changes.
+        explorer.keepsOpen = [b.path]
+        for index in 1...WorkspaceExplorer.openFilesLimit {
+            let file = WorkspaceEntry(name: "f\(index).txt", path: "/w/f\(index).txt", isDirectory: false)
+            let viewing = Task { await explorer.view(file) }
+            try await held.answer(text, toPathEnding: "/api/fs/read-text")
+            await viewing.value
+        }
+        XCTAssertEqual(explorer.openFiles.count, WorkspaceExplorer.openFilesLimit)
+        XCTAssertEqual(explorer.openFiles.first?.path, b.path, "a tab with changes stays")
+        XCTAssertFalse(explorer.openFiles.contains { $0.path == "/w/f1.txt" }, "the oldest unchanged tab went")
+
+        // Another folder starts with none.
+        let opening = Task { await explorer.open(root: "/w/other", profile: "default") }
+        for _ in 0..<100 where !explorer.openFiles.isEmpty { await Task.yield() }
+        XCTAssertTrue(explorer.openFiles.isEmpty)
+        XCTAssertTrue(explorer.keepsOpen.isEmpty)
+        opening.cancel()
         explorer.close()
         XCTAssertTrue(explorer.openFiles.isEmpty)
     }

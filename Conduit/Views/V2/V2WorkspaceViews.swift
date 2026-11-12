@@ -687,7 +687,11 @@ struct WorkspaceFolderView: View {
                 .truncationMode(.head)
             ForEach(match.lines, id: \.self) { line in
                 Button {
-                    open(WorkspaceEntry(name: match.name, path: match.path, isDirectory: false), line: line.number)
+                    // As the tree lists it, so an edit's save checks its date.
+                    Task {
+                        let listed = await explorer.reveal(match.path)
+                        open(listed, line: line.number)
+                    }
                 } label: {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(verbatim: "\(line.number)")
@@ -1170,6 +1174,10 @@ struct WorkspaceFileSheet: View {
         }
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(hasChanges)
+        .onChange(of: Set(drafts.filter { $0.value.changed }.keys), initial: true) { _, changed in
+            explorer.keepsOpen = changed
+        }
+        .onDisappear { explorer.keepsOpen = [] }
         .alert(AppLocalization.string("This file changed on your Hermes host"), isPresented: Binding(
             get: { conflicted != nil }, set: { if !$0 { conflicted = nil } }
         )) {
@@ -1351,7 +1359,10 @@ struct WorkspaceFileSheet: View {
                 if canEdit {
                     Button(AppLocalization.string("Edit")) {
                         let text = explorer.preview?.text ?? ""
-                        drafts[shown.path] = Draft(text: text, original: text, readAt: shown.modified)
+                        // A file opened from search has no date of its own:
+                        // its folder's listing gives the one the save checks.
+                        drafts[shown.path] = Draft(text: text, original: text,
+                                                   readAt: shown.modified ?? explorer.listed(shown.path)?.modified)
                     }
                 }
             }
@@ -1447,7 +1458,12 @@ struct WorkspaceFileSheet: View {
             return
         }
         explorer.saved(saved ?? file, text: text)
-        drafts[file.path] = nil
+        if let typed = drafts[file.path]?.text, typed != text {
+            // Typed while the save ran: kept as changes on the saved file.
+            drafts[file.path] = Draft(text: typed, original: text, readAt: saved?.modified)
+        } else {
+            drafts[file.path] = nil
+        }
     }
 }
 

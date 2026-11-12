@@ -46,6 +46,8 @@ final class WorkspaceExplorer: ObservableObject {
     /// the viewed one among them; the oldest goes past `openFilesLimit`.
     @Published private(set) var openFiles: [WorkspaceEntry] = []
     static let openFilesLimit = 12
+    /// Open files with unsaved changes, which a new tab never pushes out.
+    var keepsOpen: Set<String> = []
 
     private weak var appState: AppState?
     /// Where the open folder's listing and recent files are kept: on the
@@ -105,6 +107,7 @@ final class WorkspaceExplorer: ObservableObject {
         pluginOff = nil
         copied = nil
         openFiles = []
+        keepsOpen = []
         closeFile()
         let answers = appState.screenAnswers(profile: profile)
         self.answers = answers
@@ -143,6 +146,7 @@ final class WorkspaceExplorer: ObservableObject {
         pluginOff = nil
         copied = nil
         openFiles = []
+        keepsOpen = []
         closeFile()
     }
 
@@ -368,7 +372,10 @@ final class WorkspaceExplorer: ObservableObject {
             openFiles[index] = entry
         } else {
             openFiles.append(entry)
-            if openFiles.count > Self.openFilesLimit { openFiles.removeFirst(openFiles.count - Self.openFilesLimit) }
+            while openFiles.count > Self.openFilesLimit,
+                  let oldest = openFiles.firstIndex(where: { $0.path != entry.path && !keepsOpen.contains($0.path) }) {
+                openFiles.remove(at: oldest)
+            }
         }
         preview = nil
         previewError = nil
@@ -481,11 +488,15 @@ final class WorkspaceExplorer: ObservableObject {
         if let failedAt {
             expanded.subtract(folders[failedAt...].filter(opening.contains))
         }
-        let parent = (path as NSString).deletingLastPathComponent
-        if let listed = entries[parent == AppState.normalizedWorkspacePath(root) ? root : parent]?.first(where: { $0.path == path }) {
-            entry = listed
-        }
+        if let listed = listed(path) { entry = listed }
         return entry
+    }
+
+    /// `path` as its folder's listing has it, with its modified date.
+    func listed(_ path: String) -> WorkspaceEntry? {
+        guard let root else { return nil }
+        let parent = (path as NSString).deletingLastPathComponent
+        return entries[parent == AppState.normalizedWorkspacePath(root) ? root : parent]?.first(where: { $0.path == path })
     }
 
     // MARK: - Changing
