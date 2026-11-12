@@ -304,8 +304,10 @@ struct ChatView: View {
     private var bottomBar: some View {
         VStack(spacing: 0) {
             // A live call swiped down keeps running; its bar sits here
-            // (in V2, not while someone types in the composer).
-            if !composerTyping {
+            // (in V2, not while someone types in the composer). Beside the
+            // list it stays while typing too: the list leaves its own bar
+            // to this one (V2ListCallBar), so it's the only one there.
+            if !composerTyping || shell.hasChatBeside {
                 MinimisedLiveVoiceBar()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }

@@ -804,7 +804,7 @@ tabs in a Duo's status strip)
 - The round button's touch-and-hold Recent menu goes with it while a chat is beside the list; the chat's own button offers a call or dictation, not Recent, so closing the chat brings the menu back (2026-10-26, #1319).
 - Split, Settings opens in the chat's column with the Chats list kept beside it, and the bar stays under the list; a chat tapped there opens in Chats. Tasks and a list shown alone have no list column and center the bar under the screen, at the list column's width (Eric, 2026-10-26, #1319; replaces #1169's bar kept at the leading edge).
 - Under a list the user widened, the bar keeps the standard list width, centered under the list's column (2026-10-29, #1492, see Resizable columns on a split window).
-- Split, a chat or room beside the list shows a minimised call's bar (and a reading's player) by its composer, so the list column leaves it out: the call shows once, not over both columns. Settings covering the chat column gives it back to the list; Tasks, with no list column, keeps its own (2026-11-12, #2270, issue 1534).
+- Split, a chat or room beside the list shows a minimised call's bar (and a reading's player) by its composer, so the list column leaves it out: the call shows once, not over both columns. Being the only one, the chat's bar stays while words are typed there, where one column hides it (ChatView's bottomBar). Settings covering the chat column gives it back to the list; Tasks, with no list column, keeps its own (2026-11-12, #2270, issue 1534).
 
 **Open gaps**
 - Recent isn't reachable beside a chat on a split window (see Rulings).
@@ -3662,6 +3662,9 @@ keyboard line (done, #2270) · no Settings caption describes it
 - Where the field keeps focus, focus alone doesn't hide the minimised call
   bar: it shows after a send and hides only while words are typed, so a
   kept focus never hides a call (2026-10-30, #1527).
+  Beside the list on a split window it doesn't hide while words are typed
+  either: the list leaves its own bar to the chat's, so hiding it left no
+  mute, end or reading controls anywhere (2026-11-12, #2270).
 - A send or Stop from the full editor gives the field focus once the sheet
   has gone, not while it is dismissing; if the composer hands off to another
   chat first, that focus doesn't follow it there (2026-10-30, #1527).
