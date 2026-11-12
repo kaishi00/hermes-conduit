@@ -826,7 +826,8 @@ struct WorkspaceFolderView: View {
         guard let root = root?.path else { return path }
         let base = AppState.normalizedWorkspacePath(root)
         guard Self.path(path, isIn: base) else { return path }
-        let rest = path.dropFirst(base.count).drop { $0 == "/" || $0 == "\\" }
+        let posix = base.hasPrefix("/") || base.hasPrefix("~")
+        let rest = path.dropFirst(base.count).drop { $0 == "/" || (!posix && $0 == "\\") }
         return rest.isEmpty ? AppState.workspaceName(base) : String(rest)
     }
 

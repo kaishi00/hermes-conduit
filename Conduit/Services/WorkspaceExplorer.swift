@@ -528,11 +528,21 @@ final class WorkspaceExplorer: ObservableObject {
         guard let root else { return }
         let base = AppState.normalizedWorkspacePath(root)
         let read = Set([root] + expanded)
+        // Gone when a folder on its way up, just read in full, no longer
+        // lists the part below it (the file, or a folder holding it).
         func gone(_ path: String) -> Bool {
-            let parent = (path as NSString).deletingLastPathComponent
-            let folder = parent == base ? root : parent
-            guard read.contains(folder), let listed = entries[folder] else { return false }
-            return !listed.contains { $0.path == path }
+            var child = path
+            while let parent = AppState.parentWorkspacePath(child), contains(parent) {
+                let atTop = AppState.normalizedWorkspacePath(parent) == base
+                let folder = atTop ? root : parent
+                if read.contains(folder), !truncated.contains(folder), let listed = entries[folder],
+                   !listed.contains(where: { $0.path == child }) {
+                    return true
+                }
+                if atTop { break }
+                child = parent
+            }
+            return false
         }
         openFiles.removeAll { gone($0.path) && !keepsOpen.contains($0.path) }
         if let copied, gone(copied.path) { self.copied = nil }

@@ -81,8 +81,12 @@ extension AppState {
 
     /// `path`'s last part, split as `workspacePath(_:isIn:)` splits.
     static func workspaceName(_ path: String) -> String {
-        let normalized = normalizedWorkspacePath(path)
-        let posix = normalized.hasPrefix("/") || normalized.hasPrefix("~")
+        // A POSIX name may end in a backslash: only slashes are trimmed there.
+        let posix = path.hasPrefix("/") || path.hasPrefix("~")
+        var normalized = path
+        while normalized.count > 1, normalized.hasSuffix("/") || (!posix && normalized.hasSuffix("\\")) {
+            normalized.removeLast()
+        }
         guard let cut = normalized.lastIndex(where: { $0 == "/" || (!posix && $0 == "\\") }) else { return normalized }
         return String(normalized[normalized.index(after: cut)...])
     }
