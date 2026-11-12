@@ -31,7 +31,7 @@ struct WidgetEntryModel {
     let resumeLink: WidgetLaunchLink
     let newChatLink: WidgetLaunchLink?
     let talkLink: WidgetLaunchLink?
-    /// The workspace's other saved chats, pinned then recent, for the large
+    /// The workspace's other saved chats (last used, pinned, recent), for the large
     /// size. Empty while the title is hidden or the widget needs a refresh.
     var moreChats: [WidgetChatLink] = []
 
