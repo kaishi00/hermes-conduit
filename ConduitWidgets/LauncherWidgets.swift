@@ -48,6 +48,7 @@ private struct LauncherWidgetView: View {
 
     @Environment(\.widgetFamily) private var family
     @Environment(\.widgetRenderingMode) private var renderingMode
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
         Group {
@@ -240,7 +241,8 @@ private struct LauncherWidgetView: View {
             Text(verbatim: WidgetLocalization.string("Chats", language: entry.appLanguage))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
-            ForEach(entry.model.moreChats, id: \.link.url) { chat in
+            // Two rows at accessibility text sizes, so the last still fits.
+            ForEach(Array(entry.model.moreChats.prefix(dynamicTypeSize.isAccessibilitySize ? 2 : WidgetSelection.moreChatsLimit)), id: \.link.url) { chat in
                 Link(destination: chat.link.url) {
                     HStack(spacing: 8) {
                         Image(systemName: chat.isPinned ? "pin.fill" : "bubble.left")
@@ -257,6 +259,7 @@ private struct LauncherWidgetView: View {
                     .padding(.vertical, 4)
                 }
                 .accessibilityLabel(Text(verbatim: chat.title))
+                .accessibilityValue(Text(verbatim: chat.isPinned ? WidgetLocalization.string("Pinned", language: entry.appLanguage) : ""))
             }
         }
     }
