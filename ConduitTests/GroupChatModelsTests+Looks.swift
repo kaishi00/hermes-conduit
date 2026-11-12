@@ -346,5 +346,18 @@ extension GroupChatModelsTests {
         await read.value
         XCTAssertNotNil(saved)
         XCTAssertEqual(appState.roomPersonPicture, saved)
+
+        // Nor does one that started while a save was out and is answered
+        // after it, with the picture from before it.
+        routes.looksPutDelays = [.milliseconds(200)]
+        routes.looksDelays = [.milliseconds(400)]
+        let removing = Task { await appState.setRoomPersonPicture(nil) }
+        try await Task.sleep(for: .milliseconds(50))
+        let during = Task { await appState.readRoomPersonPicture() }
+        let removedAgain = await removing.value
+        XCTAssertEqual(removedAgain, .saved)
+        await during.value
+        XCTAssertNil(appState.roomPersonPicture)
+        XCTAssertNil(appState.appDefaults.data(forKey: RoomLooksUpload.personPictureKey))
     }
 }

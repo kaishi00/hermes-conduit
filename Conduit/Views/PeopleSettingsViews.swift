@@ -573,11 +573,13 @@ struct RoomPersonPictureSection: View {
         .onChange(of: picked) { _, image in
             guard let image else { return }
             picked = nil
+            failure = nil
             Task { failure = Self.shownFailure(await appState.setRoomPersonPicture(image)) }
         }
         // The one your Hermes keeps, which another of your devices may have
-        // chosen, for each dashboard.
-        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.isConnected)") {
+        // chosen, for each dashboard: read again once the plugin says it
+        // keeps one, and once a save that dropped a read is done.
+        .task(id: "\(appState.activeDashboardID?.uuidString ?? "")|\(appState.isConnected)|\(appState.roomLooksKeepYou)|\(appState.roomPersonPictureSaving)") {
             await appState.readRoomPersonPicture()
         }
     }

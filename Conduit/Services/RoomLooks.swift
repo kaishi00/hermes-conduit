@@ -218,14 +218,23 @@ extension AppState {
         if image != nil, data == nil { return .unusable }
         guard !roomPersonPictureSaving else { return .notSaved }
         roomPersonPictureSaving = true
-        defer { roomPersonPictureSaving = false }
         roomPersonPictureChanges &+= 1
+        // Again as it ends: a read that started while it was out may hold
+        // the picture from before it.
+        defer {
+            roomPersonPictureChanges &+= 1
+            roomPersonPictureSaving = false
+        }
         if roomLooksKeepYou {
+            let dashboard = activeDashboardID
             let person: Any = data.map { RoomLook(picture: $0, color: nil).body } ?? NSNull()
             guard isConnected,
                   let response = try? await roomRouteJSON(path: RoomLooksUpload.path, method: "PUT",
                                                           body: ["person": person], timeoutMilliseconds: nil),
                   response["ok"] as? Bool == true else { return .notSaved }
+            // Kept on the dashboard it was saved to; another one shown now
+            // keeps showing its own, which its read brings back.
+            guard activeDashboardID == dashboard else { return .saved }
             keepRoomPersonPicture(data)
             return .saved
         }
