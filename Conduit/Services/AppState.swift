@@ -22683,8 +22683,9 @@ final class AppState: ObservableObject {
             LocationSharingController.shared.appBecameActive()
             Task { await runPhoneSync(reason: .foreground) }
             Task { await syncPresentedScreens() }
-            // An invite that came while Conduit was away, its push missed.
-            Task { await refreshLinkedRoomInvites() }
+            // An invite that came while Conduit was away, its push missed,
+            // and a room that started meanwhile.
+            Task { await refreshLinkedRoomsOnForeground() }
             scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
             // surface (the phone sheet, or CarPlay), so it can be false here

@@ -485,13 +485,17 @@ extension AppState {
             if linkedRoomDraft(draft.id) == nil {
                 await refreshLinkedRoomDrafts(readingPeople: false)
             }
+            // It starts once everyone has answered, maybe after its sheet
+            // is closed: Group Chats follows it until its room is listed.
+            if activeDashboardID == client.dashboardID { followLinkedRoomInvites() }
             return .made
         } catch {
             guard activeDashboardID == client.dashboardID else { return .refused }
             errorMessage = RoomDraftsClient.createRefusal(for: error)
             guard case DashboardTicketBridgeError.http(504, _) = error else { return .refused }
-            // It was made: its row shows once read.
+            // It was made: its row shows once read, and its room once it starts.
             await refreshLinkedRoomDrafts(readingPeople: false)
+            if activeDashboardID == client.dashboardID { followLinkedRoomInvites() }
             return .sending
         }
     }
