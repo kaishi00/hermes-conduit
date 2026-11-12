@@ -682,8 +682,11 @@ GPT-Live, Grok Live and Local Live hand questions about it to Hermes; Classic
 voice's next turn carries it) · a call from Hermes (the same call screen) ·
 Ask Hermes About Screen's screenshot (the same waiting picture, notes and
 banner) · the composer, which shows the waiting photo as it does a screenshot
-(see Attaching files) · what models read: the quiet notes and the call's
-instructions · README.md's voice features. Not the Apple Watch or CarPlay:
+(see Attaching files) · a new chat that the photo waits on and an empty new
+chat Hermes lost, which hand it on as a photo (see both entries) · the call
+screen's row of buttons (see Audio route, Speaker and mute) · what models
+read: the quiet notes and the call's instructions · README.md's voice
+features. Not the Apple Watch or CarPlay:
 neither has a camera surface.
 
 **Code**
@@ -703,7 +706,7 @@ neither has a camera surface.
 **Open gaps**
 - Not device-tested yet: whether the camera, opened mid-call, leaves the call's audio alone (photo mode records no audio), and how Gemini 3.8 Live and Qwen Omni answer about a frame.
 
-**Checked:** 2026-11-11, #2243 (added).
+**Checked:** 2026-11-12, #2243 (siblings: the new-chat hand-offs and the call screen's row); 2026-11-11, #2243 (added).
 
 ## The language a live call speaks
 
@@ -995,7 +998,7 @@ keep) · text: no Settings caption or doc describes it
 **Open gaps**
 - Upstream: Hermes' `_resume_live_unpersisted` should send `running: false` and `status` like every other resume; Conduit no longer depends on it (2026-11-04, #1758).
 
-**Checked:** 2026-11-04, #1758 (a lazy reattach without `running` reads idle; the old not-reproduced gap closed: Eric's screenshot showed the cause); 2026-11-04, #1752 (added).
+**Checked:** 2026-11-12, #2243 (a waiting voice photo is handed to the fresh chat as a photo); 2026-11-04, #1758 (a lazy reattach without `running` reads idle; the old not-reproduced gap closed: Eric's screenshot showed the cause); 2026-11-04, #1752 (added).
 
 ## Chat open elsewhere
 
@@ -1354,7 +1357,7 @@ microphone · voice clips in the chat · the Read Aloud buttons in chats and gro
 
 **Rulings**
 - During a call from Hermes, CallKit owns the audio session: Conduit never deactivates or re-activates it, so the Speaker button stays true (2026-10-21, #1093; 2026-10-23, #1148).
-- A call from Hermes starts on the earpiece (or the headset, the car), like a phone call (#1171). Conduit's call screen covers CallKit's, whose Speaker button iOS shows only on the lock screen or away from the app, so every mode's call screen (Classic, Gemini, Qwen, Grok, GPT-Live, Local Live) has Speaker of its own during a call from Hermes on an iPhone (not iPad or Mac, which have no earpiece). It makes the same override CallKit's button does, never re-activating or reconfiguring the session; off clears it, back to the earpiece or the headset that is on. It is lit whenever the call plays from the loudspeaker, whichever control put it there. A row of six sizes its buttons to fit; Silence's glyph is a waveform so it isn't taken for Speaker (2026-11-06, #1847).
+- A call from Hermes starts on the earpiece (or the headset, the car), like a phone call (#1171). Conduit's call screen covers CallKit's, whose Speaker button iOS shows only on the lock screen or away from the app, so every mode's call screen (Classic, Gemini, Qwen, Grok, GPT-Live, Local Live) has Speaker of its own during a call from Hermes on an iPhone (not iPad or Mac, which have no earpiece). It makes the same override CallKit's button does, never re-activating or reconfiguring the session; off clears it, back to the earpiece or the headset that is on. It is lit whenever the call plays from the loudspeaker, whichever control put it there. A row of six, or seven with the Camera, sizes its buttons to fit; Silence's glyph is a waveform so it isn't taken for Speaker (2026-11-06, #1847).
 - A conversation's replies move from the earpiece to the speaker, never during a CallKit call (2026-10-19, #943).
 - Silence mutes the assistant's voice apart from the microphone; its speech is dropped, not held, and job news waits for unmute (2026-10-09, #488).
 - An alarm or phone call pauses a live call, which comes back when the audio does (2026-10-04, #380).
@@ -1371,7 +1374,7 @@ microphone · voice clips in the chat · the Read Aloud buttons in chats and gro
 - Silence isn't on CarPlay or the minimised bar (#488).
 - Classic still ends with "Audio was interrupted." when an alarm or phone call takes the audio, where live calls pause; only CarPlay and calls from Hermes restart it (#380, #1155).
 
-**Checked:** 2026-11-07, #1977 (capture converts on the tap thread, Classic's meter publishes on its own, issues 1959 and 1970; the fallback clip's decode stays on the main thread so its failure reaches the speech stream); 2026-11-06, #1847 (an answered call from Hermes has Speaker on the call screen in every mode, for a tester who couldn't leave the earpiece; CarPlay and the Watch play on their own routes, the minimised bar opens the screen); 2026-11-05, #1794 (a live reply's odd trailing byte is dropped at turnComplete instead of shifting the next reply, Gemini, Qwen, Grok and Local Live on both audios, issue 1791; Classic and Read Aloud already did, the Watch carries none, GPT-Live is WebRTC); 2026-11-05, #1772 (Read Aloud kept off calls and the microphone, standalone playback leaves a call from Hermes' session alone, issue 1770); 2026-11-04, #1733 (a stream's odd byte kept on its own storage, so a route change's restart no longer traps); 2026-11-02, #1650 (Read Aloud and the speech test play on after a route change instead of restarting with the queued middle dropped, issue 1641; headphones taken out pause Read Aloud); 2026-10-30, #1524 (Read Aloud reads a Desktop card as a short note; route, Speaker and mute unchanged); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
+**Checked:** 2026-11-12, #2243 (the voice Camera takes a seventh slot in the call screen's row; no audio change); 2026-11-07, #1977 (capture converts on the tap thread, Classic's meter publishes on its own, issues 1959 and 1970; the fallback clip's decode stays on the main thread so its failure reaches the speech stream); 2026-11-06, #1847 (an answered call from Hermes has Speaker on the call screen in every mode, for a tester who couldn't leave the earpiece; CarPlay and the Watch play on their own routes, the minimised bar opens the screen); 2026-11-05, #1794 (a live reply's odd trailing byte is dropped at turnComplete instead of shifting the next reply, Gemini, Qwen, Grok and Local Live on both audios, issue 1791; Classic and Read Aloud already did, the Watch carries none, GPT-Live is WebRTC); 2026-11-05, #1772 (Read Aloud kept off calls and the microphone, standalone playback leaves a call from Hermes' session alone, issue 1770); 2026-11-04, #1733 (a stream's odd byte kept on its own storage, so a route change's restart no longer traps); 2026-11-02, #1650 (Read Aloud and the speech test play on after a route change instead of restarting with the queued middle dropped, issue 1641; headphones taken out pause Read Aloud); 2026-10-30, #1524 (Read Aloud reads a Desktop card as a short note; route, Speaker and mute unchanged); 2026-10-26, #1247 (a mute reaching the Watch keeps Conduit running through BackgroundTaskHold); 2026-10-25, Qwen in the siblings, and its mute reaching the Watch, at #1182, carried in #1235; 2026-10-24, #1225: the Watch's Mute and End for a call kept on the iPhone's headset; seeded from main at 64d53c3.
 
 ## Local Live's fast model on every speech server
 
@@ -3067,7 +3070,7 @@ what waited (An empty new chat Hermes lost)
 **Open gaps**
 - A widget's or Shortcut's New Chat and /new put nothing in the chat, so they only report whether the open chat changed.
 
-**Checked:** 2026-11-11, #2211 (Do it and Ask on a card from no chat can open a picked bot's Bot Chat in place of a new chat); 2026-11-09, #2058 (Pulse's Ask leaves its words only in the chat its own create returned, as Do it does); 2026-11-04, #1752 (an empty chat Hermes lost hands its screenshot, composer prompt, focus and Classic voice filing to the fresh chat in its place, see An empty new chat Hermes lost); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479, carrying #1473 from the `pulse` branch (Do it on a card from a Kanban task's worker takes the same new chat); 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
+**Checked:** 2026-11-12, #2243 (a voice photo moved to a new chat keeps its photo kind); 2026-11-11, #2211 (Do it and Ask on a card from no chat can open a picked bot's Bot Chat in place of a new chat); 2026-11-09, #2058 (Pulse's Ask leaves its words only in the chat its own create returned, as Do it does); 2026-11-04, #1752 (an empty chat Hermes lost hands its screenshot, composer prompt, focus and Classic voice filing to the fresh chat in its place, see An empty new chat Hermes lost); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-29, #1479, carrying #1473 from the `pulse` branch (Do it on a card from a Kanban task's worker takes the same new chat); 2026-10-25, #1241 (Pulse's Do it, from #1240 on the `pulse` branch); main's code as at #1191.
 
 ## /new in a Bot Chat
 
