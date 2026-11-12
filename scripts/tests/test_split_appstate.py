@@ -85,7 +85,7 @@ class SplitAppStateTests(unittest.TestCase):
         return (self.repo / "Conduit/Services" / name).read_text()
 
     def test_moves_code_and_keeps_stored_properties(self):
-        split.run(self.repo, 0, True, pr=42, today="2026-11-12")
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
         app = self.read("AppState.swift")
         moved = self.read("AppState+Connection.swift")
         self.assertIn("extension AppState {\n    // MARK: - Connection", moved)
@@ -98,7 +98,7 @@ class SplitAppStateTests(unittest.TestCase):
         self.assertIn('a { brace in a string', moved)
 
     def test_widens_only_what_another_file_uses(self):
-        split.run(self.repo, 0, True, pr=42, today="2026-11-12")
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
         app = self.read("AppState.swift")
         self.assertIn("\n    var token: String?", app, "read by isReady, now in another file")
         self.assertIn("\n    var attempts = 0", app, "written by connect")
@@ -107,7 +107,7 @@ class SplitAppStateTests(unittest.TestCase):
         self.assertIn("\nlet lifecycleLog", app)
 
     def test_points_the_map_at_the_new_file(self):
-        split.run(self.repo, 0, True, pr=42, today="2026-11-12")
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
         text = (self.repo / split.MAP).read_text()
         self.assertIn("`Conduit/Services/AppState+Connection.swift` (connect), "
                       "`Conduit/Services/AppState.swift` (openChat)", text)

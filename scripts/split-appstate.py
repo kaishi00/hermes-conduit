@@ -16,12 +16,14 @@ their own. It changes no code, except:
 It is deterministic, so a branch that still edits the old file can take
 main's split by running it on its own copy (see `--help`):
 
-    python3 scripts/split-appstate.py plan    # what would move where
-    python3 scripts/split-appstate.py write   # write the files
-    python3 scripts/split-appstate.py write --step 2   # only step 2's moves
+    python3 scripts/split-appstate.py regions            # the regions and their sizes
+    python3 scripts/split-appstate.py plan --step 2      # what step 2 moves and widens
+    python3 scripts/split-appstate.py write --step 2     # make step 2's moves
 
-`STEPS` below lists each PR's moves, in order. `write --step N` applies the
-steps up to N.
+`STEPS` below lists each PR's moves, in order. A step runs on a file the
+steps before it already ran on, as main's is once their PRs merge. `write
+--pr N` also points the feature map's paths at the new files and names PR N
+on the Checked line of each entry it changes.
 """
 
 import argparse
@@ -444,7 +446,10 @@ class Source:
 
 
 def steps_upto(n):
-    return STEPS[:n] if n else STEPS
+    """Step n alone (the steps before it already ran on main)."""
+    if not 1 <= n <= len(STEPS):
+        raise SystemExit(f"--step takes 1 to {len(STEPS)}")
+    return [STEPS[n - 1]]
 
 
 def assign(src, steps):
@@ -908,7 +913,7 @@ def main(argv=None):
                     "feature map entry whose paths change")
     ap.add_argument("--today", default=None, help="write: the Checked line's date (default today)")
     ap.add_argument("--repo-root", default=".")
-    ap.add_argument("--step", type=int, default=0, help="apply steps up to this one (default: all)")
+    ap.add_argument("--step", type=int, default=0, help="plan and write: the step to make")
     args = ap.parse_args(argv)
     repo = Path(args.repo_root)
     if args.command == "regions":
