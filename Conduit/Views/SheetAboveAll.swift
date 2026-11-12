@@ -98,7 +98,32 @@ final class SheetAboveAllHost {
         Self.showing.insert(key)
         controller = hosting
         shownID = id
-        presenter.present(hosting, animated: true)
+        let present: @MainActor () -> Void = { [weak self] in
+            // The top again: what was going may have gone, or another sheet come.
+            guard let self, self.controller === hosting, let top = Self.topPresenter() else {
+                Self.showing.remove(key)
+                return
+            }
+            top.present(hosting, animated: true)
+            // UIKit refuses a presentation it can't make now (no callback,
+            // no onDisappear): forget it so the item can show again.
+            Task { @MainActor [weak self] in
+                try? await Task.sleep(nanoseconds: 1_000_000_000)
+                guard hosting.presentingViewController == nil, !hosting.isBeingPresented else { return }
+                Self.showing.remove(key)
+                guard let self, self.controller === hosting else { return }
+                self.controller = nil
+                self.shownID = nil
+                closed()
+            }
+        }
+        // One this replaced is still animating away (close()): present once it's gone.
+        if let going = presenter.presentedViewController, going.isBeingDismissed,
+           let coordinator = going.transitionCoordinator {
+            coordinator.animate(alongsideTransition: nil) { _ in Task { @MainActor in present() } }
+        } else {
+            present()
+        }
     }
 
     private static var showing: Set<String> = []
