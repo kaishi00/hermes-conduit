@@ -1474,6 +1474,7 @@ final class HermesClient: ObservableObject {
         speaksSessionAuthority = predecessor.speaksSessionAuthority
         executionGenerations.merge(predecessor.executionGenerations) { mine, _ in mine }
         sessionRevisions.merge(predecessor.sessionRevisions) { mine, _ in mine }
+        sessionProfiles.merge(predecessor.sessionProfiles) { mine, _ in mine }
         authorityPrompts.merge(predecessor.authorityPrompts) { mine, _ in mine }
         authorityPromptSessions.merge(predecessor.authorityPromptSessions) { mine, _ in mine }
         // A confirm token belongs to the socket, which stays the same.
@@ -3053,7 +3054,9 @@ final class HermesClient: ObservableObject {
         // The profile the resume went to: the one named, else the one
         // `scopeParams` named for this chat. Only a named profile changes it.
         noteSessionProfile(profile ?? sessionProfiles[sessionId], for: [
-            sessionId, object["session_id"]?.stringValue, object["stored_session_id"]?.stringValue
+            sessionId, object["session_id"]?.stringValue,
+            object["stored_session_id"]?.stringValue, object["storedSessionId"]?.stringValue,
+            object["session_key"]?.stringValue
         ])
         if speaksSessionAuthority {
             // The authority's open questions come back in `prompts`, in the
