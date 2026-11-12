@@ -34,6 +34,7 @@ final class AppState: ObservableObject {
     private var token: String?
     private(set) var attempts = 0
     private(set) var readOnly = 0
+    fileprivate var lastError: String?
     var isReady: Bool {
         isConnected && token != nil
     }
@@ -41,6 +42,7 @@ final class AppState: ObservableObject {
     /// Connects.
     func connect() {
         attempts += 1
+        lastError = nil
         lifecycleLog.info("connect \\(readOnly)")
         let text = """
         a { brace in a string
@@ -120,6 +122,7 @@ class SplitAppStateTests(unittest.TestCase):
         self.assertIn("private(set) var readOnly = 0", app, "only read elsewhere")
         self.assertIn("private func note(", app, "only AppState.swift calls it")
         self.assertIn("\nlet lifecycleLog", app)
+        self.assertIn("\n    var lastError: String?", app, "fileprivate is widened too")
 
     def test_widens_a_moved_extensions_members(self):
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")
@@ -132,6 +135,13 @@ class SplitAppStateTests(unittest.TestCase):
     def test_refuses_before_writing_anything(self):
         (self.repo / "Conduit/Services/HelperType.swift").write_text("// already here\n")
         with self.assertRaises(SystemExit):
+            split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        self.assertFalse((self.repo / "Conduit/Services/AppState+Connection.swift").exists())
+        self.assertEqual((self.repo / split.APP_STATE).read_text(), SOURCE)
+
+    def test_a_map_it_cant_read_stops_it_before_any_file_is_written(self):
+        (self.repo / split.MAP).unlink()
+        with self.assertRaises(FileNotFoundError):
             split.run(self.repo, 1, True, pr=42, today="2026-11-12")
         self.assertFalse((self.repo / "Conduit/Services/AppState+Connection.swift").exists())
         self.assertEqual((self.repo / split.APP_STATE).read_text(), SOURCE)
