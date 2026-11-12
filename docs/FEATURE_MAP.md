@@ -2058,8 +2058,8 @@ needed) · docs/WIDGETS.md · README.md
 - Tests: `ConduitTests/WidgetSnapshotTests.swift` (selection, the large list, the small tap), `ConduitTests/WidgetConfigurationTests.swift`, `ConduitTests/WidgetLaunchLinkTests.swift`, `ConduitTests/WidgetLaunchCoordinatorTests.swift`
 
 **Rulings**
-- The small size is one tap target (WidgetKit takes no links there). It opens the conversation by default; New Chat or Talk when picked, falling back to the conversation (or its Open Conduit recovery) while that action has no link (#PRNUM).
-- The large size lists up to four of the workspace's other saved chats, in the snapshot's order (the last used, pinned, then recent), never the one shown above them. With Hide conversation title on, or while the widget says Open Conduit to refresh, it lists none: titles stay off a widget that hides them (#PRNUM).
+- The small size is one tap target (WidgetKit takes no links there). It opens the conversation by default; New Chat or Talk when picked, falling back to the conversation (or its Open Conduit recovery) while that action has no link (#2264).
+- The large size lists up to four of the workspace's other saved chats, in the snapshot's order (the last used, pinned, then recent), never the one shown above them. With Hide conversation title on, or while the widget says Open Conduit to refresh, it lists none: titles stay off a widget that hides them (#2264).
 - Titles and workspace labels are privacy-sensitive, so a locked StandBy redacts them (#550).
 
 **Open gaps**
@@ -2067,7 +2067,7 @@ needed) · docs/WIDGETS.md · README.md
 - Whether the launcher widgets load on macOS 14 is untried (see Live Activity for a running turn).
 - Not tried on a device: the small and large layouts on the smallest and largest phones and iPad.
 
-**Checked:** 2026-11-12, #PRNUM.
+**Checked:** 2026-11-12, #2264.
 
 ## Pulse widget
 
