@@ -107,8 +107,8 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
     private var stream: WatchAudioBridgeStream?
     private var started = false
     private var startWaiters: [CheckedContinuation<Void, Error>] = []
-    private var inbox: [Data] = []
-    private var receiver: CheckedContinuation<Data, Error>?
+    private var inbox: [Inbound] = []
+    private var receiver: CheckedContinuation<Inbound, Error>?
     private var failure: Error?
     /// The host's refusal, as the session reads a server's close.
     private var refusal: GeminiLiveServerClose?
@@ -168,7 +168,7 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
     }
 
     /// The PCM of an input_audio_buffer.append event, else nil.
-    static func appendedAudio(_ text: String) -> Data? {
+    nonisolated static func appendedAudio(_ text: String) -> Data? {
         guard text.contains("input_audio_buffer.append"),
               let object = try? JSONSerialization.jsonObject(with: Data(text.utf8)) as? [String: Any],
               object["type"] as? String == "input_audio_buffer.append",
@@ -183,12 +183,60 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
     }
 
     func receive() async throws -> Data {
+        Self.frame(try await nextInbound())
+    }
+
+    /// The model's speech is framed and decoded off the main actor, the
+    /// way the iPhone's network socket does it (issue 1959).
+    func receive<T: Sendable>(decoding decode: @escaping @Sendable (Data) -> T) async throws -> T {
+        let inbound = try await nextInbound()
+        guard case .audio = inbound else { return decode(Self.frame(inbound)) }
+        return await LiveVoiceWireCoding.offMainActor { decode(Self.frame(inbound)) }
+    }
+
+    /// The microphone: the session's frame is built and read back to PCM
+    /// off the main actor (issue 1959), then sealed here as audio.
+    func sendAudio(_ pcm16: Data, encode: @escaping @Sendable (Data) throws -> String) async throws {
+        let (text, appended) = try await LiveVoiceWireCoding.throwingOffMainActor {
+            let text = try encode(pcm16)
+            return (text, Self.appendedAudio(text))
+        }
+        guard let pcm = appended else {
+            try await send(text)
+            return
+        }
+        try await waitForStart()
+        for chunk in Self.audioChunks(pcm) {
+            try await seal(chunk, kind: .audio)
+        }
+    }
+
+    private func nextInbound() async throws -> Inbound {
         if !inbox.isEmpty { return inbox.removeFirst() }
         if let failure { throw failure }
         return try await withCheckedThrowingContinuation { continuation in
             // One receive at a time, as the session reads.
             receiver?.resume(throwing: Failure.closed)
             receiver = continuation
+        }
+    }
+
+    /// One frame for the session: an event as the host sent it, or the
+    /// model's speech, framed only when it is read.
+    private enum Inbound: Sendable {
+        case event(Data)
+        case audio(Data)
+    }
+
+    /// The frame the session reads.
+    private nonisolated static func frame(_ inbound: Inbound) -> Data {
+        switch inbound {
+        case .event(let data):
+            return data
+        case .audio(let pcm):
+            // As xAI sent it, before the host took it out to pace it.
+            let event: [String: Any] = ["type": "response.output_audio.delta", "delta": pcm.base64EncodedString()]
+            return (try? JSONSerialization.data(withJSONObject: event)) ?? Data()
         }
     }
 
@@ -294,11 +342,9 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
                 onApproval?(approval)
                 return
             }
-            deliver(opened.plain)
+            deliver(.event(opened.plain))
         case .audio:
-            // As xAI sent it, before the host took it out to pace it.
-            let event: [String: Any] = ["type": "response.output_audio.delta", "delta": opened.plain.base64EncodedString()]
-            if let text = try? JSONSerialization.data(withJSONObject: event) { deliver(text) }
+            deliver(.audio(opened.plain))
         }
     }
 
@@ -372,7 +418,7 @@ final class WatchGrokBridgeSocket: GeminiLiveSocket {
         fail(Failure.closed)
     }
 
-    private func deliver(_ data: Data) {
+    private func deliver(_ data: Inbound) {
         if let receiver {
             self.receiver = nil
             receiver.resume(returning: data)
