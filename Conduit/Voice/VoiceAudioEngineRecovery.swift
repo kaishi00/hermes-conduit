@@ -32,7 +32,7 @@ private let engineRecoveryLogger = Logger(subsystem: "com.milim.relay", category
 /// microphone if it persists.
 struct VoiceAudioInputFormatUnavailable: LocalizedError, Equatable {
     var errorDescription: String? {
-        AppLocalization.string("The selected microphone is unavailable.")
+        AppLocalization.string("The selected microphone is unavailable.", table: .voice)
     }
 }
 

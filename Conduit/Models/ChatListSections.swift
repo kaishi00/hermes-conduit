@@ -29,10 +29,10 @@ enum ChatListSection: String, CaseIterable, Hashable {
     var title: String {
         switch self {
         case .pinned: return AppLocalization.string("Pinned")
-        case .today: return AppLocalization.string("Today")
-        case .yesterday: return AppLocalization.string("Yesterday")
-        case .lastSevenDays: return AppLocalization.string("Last 7 days")
-        case .older: return AppLocalization.string("Older")
+        case .today: return AppLocalization.string("Today", table: .chat)
+        case .yesterday: return AppLocalization.string("Yesterday", table: .chat)
+        case .lastSevenDays: return AppLocalization.string("Last 7 days", table: .chat)
+        case .older: return AppLocalization.string("Older", table: .chat)
         }
     }
 

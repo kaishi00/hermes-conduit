@@ -85,7 +85,7 @@ private struct BotScreenContent: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
-                ConduitSheetHeader(title: AppLocalization.string("\(target.botName)'s Screen"), close: { dismiss() })
+                ConduitSheetHeader(title: AppLocalization.string("\(target.botName)'s Screen", table: .bots), close: { dismiss() })
             }
         }
         // Made while Conduit is already in the background (a reconnect
@@ -123,13 +123,13 @@ private struct BotScreenContent: View {
         }
         // A new or cancelled ask never takes the password typed for another.
         .onChange(of: model.sudoRequestID) { _, _ in sudoPassword = "" }
-        .confirmationDialog(AppLocalization.string("Stop the screen?"), isPresented: $confirmsStop,
+        .confirmationDialog(AppLocalization.string("Stop the screen?", table: .bots), isPresented: $confirmsStop,
                             titleVisibility: .visible) {
-            Button(AppLocalization.string("Stop Screen"), role: .destructive) {
+            Button(AppLocalization.string("Stop Screen", table: .bots), role: .destructive) {
                 Task { await model.stop() }
             }
         } message: {
-            Text(AppLocalization.string("The bot's open windows close. It starts again the next time it's needed."))
+            Text(AppLocalization.string("The bot's open windows close. It starts again the next time it's needed.", table: .bots))
         }
     }
 
@@ -140,13 +140,13 @@ private struct BotScreenContent: View {
                 .frame(maxWidth: .infinity, minHeight: 200)
         case .unsupported:
             ContentUnavailableView(
-                AppLocalization.string("No screen on this host"),
+                AppLocalization.string("No screen on this host", table: .bots),
                 systemImage: "display.trianglebadge.exclamationmark",
-                description: Text(AppLocalization.string("A bot's screen needs Hermes on a Linux host and a recent Hermes."))
+                description: Text(AppLocalization.string("A bot's screen needs Hermes on a Linux host and a recent Hermes.", table: .bots))
             )
         case .failed(let reason):
             ContentUnavailableView {
-                Label(AppLocalization.string("Couldn't read the screen"), systemImage: "exclamationmark.triangle")
+                Label(AppLocalization.string("Couldn't read the screen", table: .bots), systemImage: "exclamationmark.triangle")
             } description: {
                 Text(reason)
             } actions: {
@@ -177,16 +177,16 @@ private struct BotScreenContent: View {
 
     private func notInstalled(_ status: BotScreenStatus) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(AppLocalization.string("The screen isn't set up on this host yet"), systemImage: "display")
+            Label(AppLocalization.string("The screen isn't set up on this host yet", table: .bots), systemImage: "display")
                 .scaledFont(.headline)
-            Text(AppLocalization.string("Installing adds a small desktop and its packages on the Hermes host (about 1 GB of disk). Hermes asks for the host's password if it needs one."))
+            Text(AppLocalization.string("Installing adds a small desktop and its packages on the Hermes host (about 1 GB of disk). Hermes asks for the host's password if it needs one.", table: .bots))
                 .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             Button {
                 Task { await model.install() }
             } label: {
-                Label(AppLocalization.string("Install on Host"), systemImage: "arrow.down.circle")
+                Label(AppLocalization.string("Install on Host", table: .bots), systemImage: "arrow.down.circle")
                     .frame(maxWidth: .infinity)
             }
             .buttonStyle(.borderedProminent)
@@ -194,7 +194,7 @@ private struct BotScreenContent: View {
             if let command = status.installCommand {
                 commandBox(command)
             } else {
-                Text(AppLocalization.string("This host has no package manager Hermes knows (apt, dnf or pacman)."))
+                Text(AppLocalization.string("This host has no package manager Hermes knows (apt, dnf or pacman).", table: .bots))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -205,15 +205,15 @@ private struct BotScreenContent: View {
         VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 if model.isInstalling { ProgressView() }
-                Text(model.isInstalling ? AppLocalization.string("Installing on the host…")
-                     : AppLocalization.string("Install finished"))
+                Text(model.isInstalling ? AppLocalization.string("Installing on the host…", table: .bots)
+                     : AppLocalization.string("Install finished", table: .bots))
                     .scaledFont(.headline)
             }
             if model.sudoRequestID != nil {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text(AppLocalization.string("The host's sudo password"))
+                    Text(AppLocalization.string("The host's sudo password", table: .bots))
                         .scaledFont(.subheadline.weight(.semibold))
-                    Text(AppLocalization.string("It goes to the Hermes host only, for this install, and isn't kept."))
+                    Text(AppLocalization.string("It goes to the Hermes host only, for this install, and isn't kept.", table: .bots))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     HStack {
@@ -225,7 +225,7 @@ private struct BotScreenContent: View {
                             .buttonStyle(.borderedProminent)
                             .disabled(sudoPassword.isEmpty)
                     }
-                    Button(AppLocalization.string("Cancel Install"), role: .cancel) {
+                    Button(AppLocalization.string("Cancel Install", table: .bots), role: .cancel) {
                         sudoPassword = ""
                         Task { await model.answerSudo("") }
                     }
@@ -273,7 +273,7 @@ private struct BotScreenContent: View {
 
     private func commandBox(_ command: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(AppLocalization.string("Or run this on the host:"))
+            Text(AppLocalization.string("Or run this on the host:", table: .bots))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             HStack(alignment: .top) {
@@ -287,7 +287,7 @@ private struct BotScreenContent: View {
                 } label: {
                     Image(systemName: "doc.on.doc")
                 }
-                .accessibilityLabel(AppLocalization.string("Copy Command"))
+                .accessibilityLabel(AppLocalization.string("Copy Command", table: .bots))
             }
             .padding(10)
             .background(Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
@@ -296,16 +296,16 @@ private struct BotScreenContent: View {
 
     private func imageSwitch(_ image: BotScreenStatus.ImageSwitch) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(AppLocalization.string("The bot's sandbox needs the desktop image"), systemImage: "shippingbox")
+            Label(AppLocalization.string("The bot's sandbox needs the desktop image", table: .bots), systemImage: "shippingbox")
                 .scaledFont(.headline)
-            Text(AppLocalization.string("Its sandbox runs \(image.current). The screen needs \(image.target). Switching keeps its files; packages installed inside it come back on use."))
+            Text(AppLocalization.string("Its sandbox runs \(image.current). The screen needs \(image.target). Switching keeps its files; packages installed inside it come back on use.", table: .bots))
                 .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             HStack {
-                Button(AppLocalization.string("Switch Image")) { Task { await model.switchImage(approve: true) } }
+                Button(AppLocalization.string("Switch Image", table: .bots)) { Task { await model.switchImage(approve: true) } }
                     .buttonStyle(.borderedProminent)
-                Button(AppLocalization.string("Keep Current Image")) { Task { await model.switchImage(approve: false) } }
+                Button(AppLocalization.string("Keep Current Image", table: .bots)) { Task { await model.switchImage(approve: false) } }
                     .buttonStyle(.bordered)
             }
             .disabled(model.isBusy)
@@ -314,9 +314,9 @@ private struct BotScreenContent: View {
 
     private func stopped(_ status: BotScreenStatus) -> some View {
         VStack(alignment: .leading, spacing: 12) {
-            Label(AppLocalization.string("The screen is off"), systemImage: "display")
+            Label(AppLocalization.string("The screen is off", table: .bots), systemImage: "display")
                 .scaledFont(.headline)
-            Text(AppLocalization.string("It starts when you start it here, and stops after a while nobody uses it."))
+            Text(AppLocalization.string("It starts when you start it here, and stops after a while nobody uses it.", table: .bots))
                 .scaledFont(.subheadline)
                 .foregroundStyle(.secondary)
             if let blocker = status.blocker {
@@ -328,7 +328,7 @@ private struct BotScreenContent: View {
                 Button {
                     Task { await model.start() }
                 } label: {
-                    Label(AppLocalization.string("Start Screen"), systemImage: "play.fill")
+                    Label(AppLocalization.string("Start Screen", table: .bots), systemImage: "play.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -343,14 +343,14 @@ private struct BotScreenContent: View {
             controlChip(status)
             if showsFullScreen {
                 // One page draws the screen at a time: the full screen's, now.
-                Label(AppLocalization.string("Showing in full screen"), systemImage: "arrow.up.left.and.arrow.down.right")
+                Label(AppLocalization.string("Showing in full screen", table: .bots), systemImage: "arrow.up.left.and.arrow.down.right")
                     .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, minHeight: 120)
                     .background(Color.black.opacity(0.06), in: RoundedRectangle(cornerRadius: 10))
             } else {
                 screenView(status)
-                Text(AppLocalization.string("Pinch to zoom in. Drag with two fingers to look around."))
+                Text(AppLocalization.string("Pinch to zoom in. Drag with two fingers to look around.", table: .bots))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -388,10 +388,10 @@ private struct BotScreenContent: View {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(AppLocalization.string("Show Whole Screen"))
+                    .accessibilityLabel(AppLocalization.string("Show Whole Screen", table: .bots))
                 }
             }
-            .accessibilityLabel(AppLocalization.string("\(target.botName)'s Screen"))
+            .accessibilityLabel(AppLocalization.string("\(target.botName)'s Screen", table: .bots))
     }
 
     /// The screen filling the phone, turned sideways with it (Eric
@@ -439,21 +439,21 @@ private struct BotScreenContent: View {
     private func fullScreenControls(wide: Bool) -> some View {
         let buttons = Group {
             // Exit always works, even while a takeover or hand back is on its way.
-            fullScreenButton(AppLocalization.string("Exit Full Screen"), systemImage: "xmark") {
+            fullScreenButton(AppLocalization.string("Exit Full Screen", table: .bots), systemImage: "xmark") {
                 showsFullScreen = false
             }
             Group {
                 if model.iHold {
-                    fullScreenButton(AppLocalization.string("Hand Back"), systemImage: "arrow.uturn.backward", tint: .red) {
+                    fullScreenButton(AppLocalization.string("Hand Back", table: .bots), systemImage: "arrow.uturn.backward", tint: .red) {
                         Haptics.light()
                         Task { await model.handBack() }
                     }
-                    fullScreenButton(fullScreenTyping ? AppLocalization.string("Hide Keyboard") : AppLocalization.string("Type on the screen"),
+                    fullScreenButton(fullScreenTyping ? AppLocalization.string("Hide Keyboard", table: .bots) : AppLocalization.string("Type on the screen", table: .bots),
                                      systemImage: "keyboard", selected: fullScreenTyping) {
                         fullScreenTyping.toggle()
                     }
                 } else {
-                    fullScreenButton(AppLocalization.string("Take Over"), systemImage: "hand.raised") {
+                    fullScreenButton(AppLocalization.string("Take Over", table: .bots), systemImage: "hand.raised") {
                         Haptics.light()
                         Task { await model.takeOver() }
                     }
@@ -508,13 +508,13 @@ private struct BotScreenContent: View {
         let text: String
         let color: Color
         if model.iHold {
-            text = AppLocalization.string("You're in control")
+            text = AppLocalization.string("You're in control", table: .bots)
             color = .red
         } else if status.lease.isHuman {
-            text = AppLocalization.string("Someone else is in control")
+            text = AppLocalization.string("Someone else is in control", table: .bots)
             color = .orange
         } else {
-            text = AppLocalization.string("\(target.botName) is in control")
+            text = AppLocalization.string("\(target.botName) is in control", table: .bots)
             color = .green
         }
         return Label(text, systemImage: "circle.fill")
@@ -530,7 +530,7 @@ private struct BotScreenContent: View {
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         } else if let last = use?.last, let at = last.at {
-            Text(AppLocalization.string("Nobody is using it now. Last used by \(BotScreenUse.name(of: last, openChat: target.chatSessionIDs)), \(at.formatted(.relative(presentation: .named)))."))
+            Text(AppLocalization.string("Nobody is using it now. Last used by \(BotScreenUse.name(of: last, openChat: target.chatSessionIDs)), \(at.formatted(.relative(presentation: .named))).", table: .bots))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -543,7 +543,7 @@ private struct BotScreenContent: View {
                     Haptics.light()
                     Task { await model.handBack() }
                 } label: {
-                    Label(AppLocalization.string("Hand Back"), systemImage: "arrow.uturn.backward")
+                    Label(AppLocalization.string("Hand Back", table: .bots), systemImage: "arrow.uturn.backward")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -552,7 +552,7 @@ private struct BotScreenContent: View {
                     Haptics.light()
                     Task { await model.takeOver() }
                 } label: {
-                    Label(AppLocalization.string("Take Over"), systemImage: "hand.raised")
+                    Label(AppLocalization.string("Take Over", table: .bots), systemImage: "hand.raised")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.borderedProminent)
@@ -565,13 +565,13 @@ private struct BotScreenContent: View {
                 Image(systemName: "arrow.up.left.and.arrow.down.right")
                     .imageScale(.large)
             }
-            .accessibilityLabel(AppLocalization.string("Full Screen"))
+            .accessibilityLabel(AppLocalization.string("Full Screen", table: .bots))
             .disabled(model.stream != .live)
             Menu {
                 if model.someoneElseHolds {
-                    Button(AppLocalization.string("Hand Back for Them")) { Task { await model.handBack(force: true) } }
+                    Button(AppLocalization.string("Hand Back for Them", table: .bots)) { Task { await model.handBack(force: true) } }
                 }
-                Button(AppLocalization.string("Stop Screen"), role: .destructive) { confirmsStop = true }
+                Button(AppLocalization.string("Stop Screen", table: .bots), role: .destructive) { confirmsStop = true }
             } label: {
                 Image(systemName: "ellipsis.circle")
                     .imageScale(.large)
@@ -588,9 +588,9 @@ private struct BotScreenContent: View {
             HStack {
                 Group {
                     if typesSecret {
-                        SecureField(AppLocalization.string("Type on the screen"), text: $typed)
+                        SecureField(AppLocalization.string("Type on the screen", table: .bots), text: $typed)
                     } else {
-                        TextField(AppLocalization.string("Type on the screen"), text: $typed)
+                        TextField(AppLocalization.string("Type on the screen", table: .bots), text: $typed)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
                     }
@@ -603,19 +603,19 @@ private struct BotScreenContent: View {
                 } label: {
                     Image(systemName: typesSecret ? "eye" : "eye.slash")
                 }
-                .accessibilityLabel(typesSecret ? AppLocalization.string("Show Typing")
-                                    : AppLocalization.string("Hide Typing"))
+                .accessibilityLabel(typesSecret ? AppLocalization.string("Show Typing", table: .bots)
+                                    : AppLocalization.string("Hide Typing", table: .bots))
                 Button(AppLocalization.string("Send"), action: sendTyped)
                     .buttonStyle(.bordered)
                     .disabled(typed.isEmpty)
             }
             HStack(spacing: 8) {
-                keyButton(.enter, AppLocalization.string("Return"))
-                keyButton(.tab, AppLocalization.string("Tab"))
+                keyButton(.enter, AppLocalization.string("Return", table: .bots))
+                keyButton(.tab, AppLocalization.string("Tab", table: .bots))
                 keyButton(.backspace, AppLocalization.string("Delete"))
-                keyButton(.escape, AppLocalization.string("Esc"))
+                keyButton(.escape, AppLocalization.string("Esc", table: .bots))
             }
-            Text(AppLocalization.string("Tap the screen to click. What you type in this bar lands as you typed it, whatever your keyboard's layout."))
+            Text(AppLocalization.string("Tap the screen to click. What you type in this bar lands as you typed it, whatever your keyboard's layout.", table: .bots))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -877,7 +877,7 @@ final class BotScreenZoomView: UIView, UIGestureRecognizerDelegate {
             recognizer.delegate = self
             addGestureRecognizer(recognizer)
         }
-        accessibilityHint = AppLocalization.string("Pinch to zoom in. Drag with two fingers to look around.")
+        accessibilityHint = AppLocalization.string("Pinch to zoom in. Drag with two fingers to look around.", table: .bots)
     }
 
     @available(*, unavailable)
@@ -1008,10 +1008,10 @@ struct BotScreenButton: View {
                             .contentShape(Circle())
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel(title ?? AppLocalization.string("Open Screen"))
+                    .accessibilityLabel(title ?? AppLocalization.string("Open Screen", table: .bots))
                 } else {
                     Button(action: open) {
-                        Label(title ?? AppLocalization.string("Open Screen"), systemImage: "display")
+                        Label(title ?? AppLocalization.string("Open Screen", table: .bots), systemImage: "display")
                     }
                 }
             }

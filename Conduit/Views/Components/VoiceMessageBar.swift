@@ -67,7 +67,7 @@ struct VoiceMessageBar: View {
         }
         .buttonStyle(.plain)
         .disabled(recorder.isSending)
-        .accessibilityLabel(AppLocalization.string("Delete voice message"))
+        .accessibilityLabel(AppLocalization.string("Delete voice message", table: .voice))
     }
 
     private var stopButton: some View {
@@ -91,13 +91,13 @@ struct VoiceMessageBar: View {
         }
         .buttonStyle(.plain)
         .disabled(recorder.phase != .recording)
-        .accessibilityLabel(AppLocalization.string("Stop recording"))
+        .accessibilityLabel(AppLocalization.string("Stop recording", table: .voice))
     }
 
     private func preview(_ recording: VoiceMessageRecorder.Recording) -> some View {
         InlineAudioClipView(
             id: "voice-message-preview:\(recording.url.lastPathComponent)",
-            name: AppLocalization.string("Voice message, \(VoiceMessage.durationLabel(recording.duration))"),
+            name: AppLocalization.string("Voice message, \(VoiceMessage.durationLabel(recording.duration))", table: .voice),
             filename: recording.url.lastPathComponent,
             style: .card,
             opening: false,
@@ -130,7 +130,7 @@ struct VoiceMessageBar: View {
         }
         .buttonStyle(.plain)
         .disabled(recorder.isSending)
-        .accessibilityLabel(AppLocalization.string("Send voice message"))
+        .accessibilityLabel(AppLocalization.string("Send voice message", table: .voice))
     }
 }
 
@@ -150,7 +150,7 @@ private struct VoiceMessageRecordingRow: View {
             Text(verbatim: VoiceMessage.durationLabel(meter.elapsed))
                 .scaledFont(.subheadline.monospacedDigit().weight(.semibold))
             if isHeld {
-                Text(AppLocalization.string("Release to send, slide away to cancel"))
+                Text(AppLocalization.string("Release to send, slide away to cancel", table: .voice))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
@@ -166,7 +166,7 @@ private struct VoiceMessageRecordingRow: View {
         }
         .frame(maxWidth: .infinity, minHeight: 36)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(AppLocalization.string("Recording voice message, \(VoiceMessage.durationLabel(meter.elapsed))"))
+        .accessibilityLabel(AppLocalization.string("Recording voice message, \(VoiceMessage.durationLabel(meter.elapsed))", table: .voice))
     }
 
     private var levelBars: some View {

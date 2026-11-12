@@ -340,7 +340,7 @@ enum KanbanRunningGroupPolicy {
         return orderedKeys.map { key in
             Group(
                 key: key,
-                displayName: key == unassignedKey ? AppLocalization.string("Unassigned") : key,
+                displayName: key == unassignedKey ? AppLocalization.string("Unassigned", table: .tasks) : key,
                 tasks: buckets[key] ?? []
             )
         }
@@ -368,12 +368,12 @@ enum KanbanBoardAdminMessage {
     /// the authoritative pre-POST board list. Never fabricate more than that.
     static func createOutcomeMessage(knewSlugBeforeRequest: Bool, name: String) -> String {
         if knewSlugBeforeRequest {
-            return AppLocalization.string("Board \"\(name)\" already exists — opened it.")
+            return AppLocalization.string("Board \"\(name)\" already exists — opened it.", table: .tasks)
         }
-        return AppLocalization.string("Board \"\(name)\" created and selected.")
+        return AppLocalization.string("Board \"\(name)\" created and selected.", table: .tasks)
     }
 
     static func archiveRefreshFailureMessage(_ detail: String) -> String {
-        AppLocalization.string("The board was archived, but the board list could not be refreshed. \(detail)")
+        AppLocalization.string("The board was archived, but the board list could not be refreshed. \(detail)", table: .tasks)
     }
 }

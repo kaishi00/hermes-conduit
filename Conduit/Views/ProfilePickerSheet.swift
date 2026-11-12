@@ -32,8 +32,8 @@ struct ProfilePickerSheet: View {
 
     private var photosFootnote: String {
         appState.profilePhotosLiveOnHermes
-            ? AppLocalization.string("Sessions and settings follow the active profile. Photos are saved to Hermes, so bots and Hermes Desktop show them too.")
-            : AppLocalization.string("Sessions and settings follow the active profile. Photos stay only on this device.")
+            ? AppLocalization.string("Sessions and settings follow the active profile. Photos are saved to Hermes, so bots and Hermes Desktop show them too.", table: .settings)
+            : AppLocalization.string("Sessions and settings follow the active profile. Photos stay only on this device.", table: .settings)
     }
 
     var body: some View {
@@ -53,12 +53,12 @@ struct ProfilePickerSheet: View {
                         }
                         HStack(alignment: .top, spacing: 12) {
                             Text(isReordering
-                                 ? AppLocalization.string("Use the arrows to choose the order profiles appear throughout Conduit.")
+                                 ? AppLocalization.string("Use the arrows to choose the order profiles appear throughout Conduit.", table: .settings)
                                  : photosFootnote)
                                 .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                             Spacer(minLength: 0)
-                            Button(isReordering ? AppLocalization.string("Done") : AppLocalization.string("Reorder")) {
+                            Button(isReordering ? AppLocalization.string("Done") : AppLocalization.string("Reorder", table: .settings)) {
                                 Haptics.selection()
                                 withAnimation(ConduitMotion.response) { isReordering.toggle() }
                             }
@@ -309,15 +309,15 @@ private struct ProfilePickerRow: View {
                 UIAccessibility.post(notification: .announcement, argument: saveError)
             }
         )
-        .alert(AppLocalization.string("Rename profile"), isPresented: $isRenaming) {
+        .alert(AppLocalization.string("Rename profile", table: .settings), isPresented: $isRenaming) {
             TextField(AppLocalization.string("Name"), text: $draftName)
                 .textInputAutocapitalization(.words)
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
             Button(AppLocalization.string("Save")) { saveName(draftName) }
         } message: {
             Text(BotManagement.isDefaultProfile(profile) || !appState.profilePhotosLiveOnHermes
-                 ? AppLocalization.string("This only changes how the profile is named in Conduit.")
-                 : AppLocalization.string("Chats and settings stay with the profile. Bots and Hermes Desktop show the new name too."))
+                 ? AppLocalization.string("This only changes how the profile is named in Conduit.", table: .settings)
+                 : AppLocalization.string("Chats and settings stay with the profile. Bots and Hermes Desktop show the new name too.", table: .settings))
         }
     }
 
@@ -353,7 +353,7 @@ private struct ProfilePickerRow: View {
             Button(action: select) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(appState.profileDisplayName(profile)).scaledFont(.headline).foregroundStyle(.primary)
-                    Text(BotManagement.isDefaultProfile(profile) ? AppLocalization.string("Primary Hermes profile") : AppLocalization.string("Hermes profile")).scaledFont(.caption).foregroundStyle(.secondary)
+                    Text(BotManagement.isDefaultProfile(profile) ? AppLocalization.string("Primary Hermes profile", table: .settings) : AppLocalization.string("Hermes profile", table: .settings)).scaledFont(.caption).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }
@@ -456,7 +456,7 @@ private struct ProfilePickerRow: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            Text(AppLocalization.string("Background glow"))
+            Text(AppLocalization.string("Background glow", table: .settings))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
@@ -474,7 +474,7 @@ private struct ProfilePickerRow: View {
                 .accessibilityLabel("Automatic background glow for \(appState.profileDisplayName(profile))")
             }
             ColorPicker(selection: glowColor, supportsOpacity: false) {
-                Text(AppLocalization.string("Background glow"))
+                Text(AppLocalization.string("Background glow", table: .settings))
             }
             .labelsHidden()
             .frame(minWidth: 44, minHeight: 44)

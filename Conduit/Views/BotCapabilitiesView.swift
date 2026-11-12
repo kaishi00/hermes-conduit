@@ -33,10 +33,10 @@ struct BotSkillsView: View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Skills"), symbol: "book", tint: .conduitAccent) {
                 if skillsSkipped {
-                    Text(AppLocalization.string("Skip Bundled Skills is on, so this bot starts with no skills."))
+                    Text(AppLocalization.string("Skip Bundled Skills is on, so this bot starts with no skills.", table: .bots))
                         .foregroundStyle(.secondary)
                 } else if capabilities.skills.isEmpty {
-                    Text(AppLocalization.string("No skills installed."))
+                    Text(AppLocalization.string("No skills installed.", table: .bots))
                         .foregroundStyle(.secondary)
                 } else {
                     TextField(AppLocalization.string("Search skills"), text: $query)
@@ -46,7 +46,7 @@ struct BotSkillsView: View {
                     skillRows
                 }
                 if let sourceLabel, !skillsSkipped {
-                    Text(AppLocalization.string("Starts from what \(sourceLabel) has installed."))
+                    Text(AppLocalization.string("Starts from what \(sourceLabel) has installed.", table: .bots))
                         .settingsCaption()
                 }
             }
@@ -133,7 +133,7 @@ struct BotToolsView: View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Tools"), symbol: "wrench.and.screwdriver", tint: .blue) {
                 if capabilities.toolsets.isEmpty {
-                    Text(AppLocalization.string("No tools to choose from."))
+                    Text(AppLocalization.string("No tools to choose from.", table: .bots))
                         .foregroundStyle(.secondary)
                 } else {
                     // Hermes reads no tools as its default tools, so the
@@ -143,7 +143,7 @@ struct BotToolsView: View {
                         capabilities.setEnabled(\.toolsets, name: name, on: on)
                     }
                     .equatable()
-                    Text(AppLocalization.string("With every tool on, the bot follows Hermes' default tools. At least one tool stays on."))
+                    Text(AppLocalization.string("With every tool on, the bot follows Hermes' default tools. At least one tool stays on.", table: .bots))
                         .settingsCaption()
                 }
             }
@@ -199,7 +199,7 @@ struct BotMcpServersView: View {
                         .foregroundStyle(mcpNotice.isError ? Color.red : Color.secondary)
                 }
                 if capabilities.mcpServers.isEmpty {
-                    Text(AppLocalization.string("No MCP servers set up."))
+                    Text(AppLocalization.string("No MCP servers set up.", table: .bots))
                         .foregroundStyle(.secondary)
                 } else {
                     ForEach(capabilities.mcpServers.map(\.name), id: \.self) { name in
@@ -213,14 +213,14 @@ struct BotMcpServersView: View {
                 }
                 Group {
                     if mcpProfile == nil {
-                        Text(AppLocalization.string("Add servers from Hermes' catalog in Edit Bot, once the bot is made."))
+                        Text(AppLocalization.string("Add servers from Hermes' catalog in Edit Bot, once the bot is made.", table: .bots))
                     } else if mcpSetup == nil && mcpSetupRead {
-                        Text(AppLocalization.string("Add new MCP servers from Hermes on your computer."))
+                        Text(AppLocalization.string("Add new MCP servers from Hermes on your computer.", table: .bots))
                     } else if mcpSetupKept && mcpSetupRead {
                         // Hermes didn't answer: Add and Sign In wait over the
                         // kept catalog until it does.
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(AppLocalization.string("Add new MCP servers from Hermes on your computer."))
+                            Text(AppLocalization.string("Add new MCP servers from Hermes on your computer.", table: .bots))
                             Button(AppLocalization.string("Try Again")) {
                                 Task { await readMcpSetup() }
                             }
@@ -232,11 +232,11 @@ struct BotMcpServersView: View {
                 .settingsCaption()
             }
             if let mcpSetup, !offeredServers(mcpSetup).isEmpty {
-                ConduitSettingsSection(title: AppLocalization.string("Hermes' MCP Catalog"), symbol: "square.grid.2x2", tint: .purple) {
+                ConduitSettingsSection(title: AppLocalization.string("Hermes' MCP Catalog", table: .bots), symbol: "square.grid.2x2", tint: .purple) {
                     ForEach(offeredServers(mcpSetup)) { entry in
                         catalogRow(entry)
                     }
-                    Text(AppLocalization.string("Adding a server writes it to this bot's profile right away. Its keys and sign-ins stay on Hermes."))
+                    Text(AppLocalization.string("Adding a server writes it to this bot's profile right away. Its keys and sign-ins stay on Hermes.", table: .bots))
                         .settingsCaption()
                 }
             }
@@ -309,7 +309,7 @@ struct BotMcpServersView: View {
                         .lineLimit(2)
                 }
                 if !entry.requires.isEmpty {
-                    Text(AppLocalization.string("Needs \(entry.requires.joined(separator: ", "))"))
+                    Text(AppLocalization.string("Needs \(entry.requires.joined(separator: ", "))", table: .bots))
                         .scaledFont(.caption)
                         .foregroundStyle(.tertiary)
                 }
@@ -334,7 +334,7 @@ struct BotMcpServersView: View {
 
     private func signInRow(_ name: String) -> some View {
         HStack {
-            Text(AppLocalization.string("Needs a sign-in to connect."))
+            Text(AppLocalization.string("Needs a sign-in to connect.", table: .bots))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 8)
@@ -344,7 +344,7 @@ struct BotMcpServersView: View {
                 Button(AppLocalization.string("Sign In")) { signIn(name) }
                     .buttonStyle(.settings)
                     .disabled(mcpBusy != nil || !canSetUpServers)
-                    .accessibilityLabel(Text(AppLocalization.string("Sign in to \(name)")))
+                    .accessibilityLabel(Text(AppLocalization.string("Sign in to \(name)", table: .bots)))
             }
         }
     }
@@ -365,13 +365,13 @@ struct BotMcpServersView: View {
             switch outcome {
             case .ready:
                 Haptics.success()
-                mcpNotice = MCPNotice(text: AppLocalization.string("Added \(entry.name)."), isError: false)
+                mcpNotice = MCPNotice(text: AppLocalization.string("Added \(entry.name).", table: .bots), isError: false)
             case .needsSignIn:
                 mcpSetup?.servers[entry.name] = BotMcpServerSummary(name: entry.name, auth: "oauth", oauthTokensPresent: false)
                 signIn(entry.name)
             case .addedWithProblem(let message):
                 Haptics.warning()
-                mcpNotice = MCPNotice(text: AppLocalization.string("Added \(entry.name), but it did not connect: \(message)"), isError: true)
+                mcpNotice = MCPNotice(text: AppLocalization.string("Added \(entry.name), but it did not connect: \(message)", table: .bots), isError: true)
             case .failed(let message):
                 Haptics.warning()
                 mcpNotice = MCPNotice(text: message, isError: true)
@@ -394,12 +394,12 @@ struct BotMcpServersView: View {
             case .signedIn:
                 Haptics.success()
                 mcpSetup?.servers[name] = BotMcpServerSummary(name: name, auth: "oauth", oauthTokensPresent: true)
-                mcpNotice = MCPNotice(text: AppLocalization.string("Signed in to \(name)."), isError: false)
+                mcpNotice = MCPNotice(text: AppLocalization.string("Signed in to \(name).", table: .bots), isError: false)
             case .cancelled:
                 break
             case .failed(let message):
                 Haptics.warning()
-                mcpNotice = MCPNotice(text: AppLocalization.string("Could not sign in to \(name): \(message)"), isError: true)
+                mcpNotice = MCPNotice(text: AppLocalization.string("Could not sign in to \(name): \(message)", table: .bots), isError: true)
             }
         }
     }
@@ -467,7 +467,7 @@ struct BotCapabilityRows: View, Equatable {
                 .tint(.conduitAccent)
                 .disabled(!editable || locked)
                 .accessibilityHint(locked
-                    ? Text(AppLocalization.string("At least one tool stays on."))
+                    ? Text(AppLocalization.string("At least one tool stays on.", table: .bots))
                     : Text(verbatim: ""))
             }
         }
@@ -526,7 +526,7 @@ struct BotMcpKeysSheet: View {
     var body: some View {
         NavigationStack {
             SettingsDetailContainer {
-                ConduitSettingsSection(title: AppLocalization.string("Keys"), symbol: "key", tint: .conduitAccent) {
+                ConduitSettingsSection(title: AppLocalization.string("Keys", table: .bots), symbol: "key", tint: .conduitAccent) {
                     ForEach(entry.requires, id: \.self) { envVar in
                         SecureField(
                             text: Binding(
@@ -541,7 +541,7 @@ struct BotMcpKeysSheet: View {
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
                     }
-                    Text(AppLocalization.string("Hermes stores these in the bot's profile and checks that \(entry.name) connects. Leave one empty to set it on Hermes instead."))
+                    Text(AppLocalization.string("Hermes stores these in the bot's profile and checks that \(entry.name) connects. Leave one empty to set it on Hermes instead.", table: .bots))
                         .settingsCaption()
                 }
             }

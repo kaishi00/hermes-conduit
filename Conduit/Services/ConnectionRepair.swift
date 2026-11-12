@@ -271,15 +271,15 @@ struct ConnectionSetupSettingsReview {
     /// The Review headline when Sign In Again is offered.
     static func signInAgainMessage(connected: Bool) -> String {
         connected
-            ? AppLocalization.string("This dashboard uses browser-based sign-in. Sign in again here if Conduit stops connecting to it.")
-            : AppLocalization.string("This dashboard uses browser-based sign-in, and Conduit isn’t signed in to it right now. Sign in again to reconnect.")
+            ? AppLocalization.string("This dashboard uses browser-based sign-in. Sign in again here if Conduit stops connecting to it.", table: .connection)
+            : AppLocalization.string("This dashboard uses browser-based sign-in, and Conduit isn’t signed in to it right now. Sign in again to reconnect.", table: .connection)
     }
 
     /// What Use these settings / Done does with the current session. Only a
     /// connected session "stays connected".
     static func applyNote(connected: Bool) -> String {
         connected
-            ? AppLocalization.string("Applying saves these settings for your next reconnect. Your current session stays connected.")
-            : AppLocalization.string("Applying saves these settings for your next reconnect. Conduit isn’t connected to this dashboard right now.")
+            ? AppLocalization.string("Applying saves these settings for your next reconnect. Your current session stays connected.", table: .connection)
+            : AppLocalization.string("Applying saves these settings for your next reconnect. Conduit isn’t connected to this dashboard right now.", table: .connection)
     }
 }

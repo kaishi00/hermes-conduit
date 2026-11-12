@@ -64,10 +64,10 @@ enum ShortcutSendOutcome: Equatable {
         switch self {
         case .answered(let reply): return reply
         case .sent: return AppLocalization.string("Sent to Hermes.")
-        case .stillWorking: return AppLocalization.string("Hermes is still working on it. The answer will be in the chat in Conduit.")
-        case .needsInput: return AppLocalization.string("Hermes needs your answer. Open the chat in Conduit.")
-        case .queued: return AppLocalization.string("Hermes is busy in that chat, so it will read this when its current reply finishes.")
-        case .joinedRunningReply: return AppLocalization.string("Hermes added this to the reply already running in that chat.")
+        case .stillWorking: return AppLocalization.string("Hermes is still working on it. The answer will be in the chat in Conduit.", table: .phone)
+        case .needsInput: return AppLocalization.string("Hermes needs your answer. Open the chat in Conduit.", table: .phone)
+        case .queued: return AppLocalization.string("Hermes is busy in that chat, so it will read this when its current reply finishes.", table: .phone)
+        case .joinedRunningReply: return AppLocalization.string("Hermes added this to the reply already running in that chat.", table: .phone)
         }
     }
 }
@@ -77,11 +77,11 @@ struct ShortcutSendError: LocalizedError, Equatable {
     var errorDescription: String? { message }
 
     static var empty: ShortcutSendError {
-        ShortcutSendError(message: AppLocalization.string("There's no text to send. Give Send to Hermes a message."))
+        ShortcutSendError(message: AppLocalization.string("There's no text to send. Give Send to Hermes a message.", table: .phone))
     }
 
     static var outOfTime: ShortcutSendError {
-        ShortcutSendError(message: AppLocalization.string("Conduit ran out of time before it could send this. Nothing was sent; try again."))
+        ShortcutSendError(message: AppLocalization.string("Conduit ran out of time before it could send this. Nothing was sent; try again.", table: .phone))
     }
 
     static var notConnected: ShortcutSendError {
@@ -90,23 +90,23 @@ struct ShortcutSendError: LocalizedError, Equatable {
 
     /// The picked chat isn't on Hermes any more (deleted, or a bot removed).
     static var chatUnavailable: ShortcutSendError {
-        ShortcutSendError(message: AppLocalization.string("Conduit couldn't find that chat on Hermes, so nothing was sent. Pick another chat."))
+        ShortcutSendError(message: AppLocalization.string("Conduit couldn't find that chat on Hermes, so nothing was sent. Pick another chat.", table: .phone))
     }
 
     /// Hermes didn't confirm the picked bot's chat either way: worth a retry.
     static var chatUnconfirmed: ShortcutSendError {
-        ShortcutSendError(message: AppLocalization.string("Conduit couldn't confirm that chat on Hermes, so nothing was sent. Try again."))
+        ShortcutSendError(message: AppLocalization.string("Conduit couldn't confirm that chat on Hermes, so nothing was sent. Try again.", table: .phone))
     }
 
     /// The picked chat is on a dashboard Conduit isn't connected to.
     static var chatOnAnotherDashboard: ShortcutSendError {
-        ShortcutSendError(message: AppLocalization.string("That chat is on another Hermes dashboard. Switch to it in Conduit first, then run this again."))
+        ShortcutSendError(message: AppLocalization.string("That chat is on another Hermes dashboard. Switch to it in Conduit first, then run this again.", table: .phone))
     }
 
     /// The chat's runtime was gone and reopening it failed too: Hermes's
     /// own error ("session not found") would mean nothing to the listener.
     static var reopenFailed: ShortcutSendError {
-        ShortcutSendError(message: AppLocalization.string("Conduit couldn't reopen that chat, so nothing was sent. Open it in Conduit and try again."))
+        ShortcutSendError(message: AppLocalization.string("Conduit couldn't reopen that chat, so nothing was sent. Open it in Conduit and try again.", table: .phone))
     }
 }
 
@@ -401,7 +401,7 @@ struct ShortcutSender {
         let line = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         let short = trimmed.count > 60 ? String(trimmed.prefix(59)) + "…" : trimmed
-        return AppLocalization.string("Shortcut: \(short)")
+        return AppLocalization.string("Shortcut: \(short)", table: .phone)
     }
 
     private static func cleaned(_ value: String?) -> String? {

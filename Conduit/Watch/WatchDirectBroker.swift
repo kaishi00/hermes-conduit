@@ -458,7 +458,7 @@ final class WatchDirectBroker {
                 break
             }
             guard let picked = chosen else {
-                throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch."))
+                throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch.", table: .watchCarPlay))
             }
             let (session, packed) = picked
             link.log.note("watchDirectPrepared", [
@@ -556,9 +556,9 @@ final class WatchDirectBroker {
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             ledger.setGrant(grantScope, for: id)
             guard let grant, let audio = grant.audio else {
-                throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open GPT-Live for the Watch: \($0)") }
-                    ?? PluginUpdateAsk.text(AppLocalization.string("Hermes couldn't open GPT-Live for the Watch. Update the Conduit notifier plugin and the push relay."),
-                                         lead: AppLocalization.string("Hermes couldn't open GPT-Live for the Watch.")))
+                throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open GPT-Live for the Watch: \($0)", table: .watchCarPlay) }
+                    ?? PluginUpdateAsk.text(AppLocalization.string("Hermes couldn't open GPT-Live for the Watch. Update the Conduit notifier plugin and the push relay.", table: .watchCarPlay),
+                                         lead: AppLocalization.string("Hermes couldn't open GPT-Live for the Watch.", table: .watchCarPlay)))
             }
             if !audio.engines.contains(engine) {
                 try await prepareRuntime(id, profile: plan.connection.profile)
@@ -568,7 +568,7 @@ final class WatchDirectBroker {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
             }
             guard let packed = WatchVoiceWire.BridgeSession.pack(plan.briefing) else {
-                throw WatchDirectPrepareError(AppLocalization.string("The call's briefing couldn't be packed for the Watch."))
+                throw WatchDirectPrepareError(AppLocalization.string("The call's briefing couldn't be packed for the Watch.", table: .watchCarPlay))
             }
             let reply = WatchVoiceWire.Message.bridgeSession(callID: id, session: .init(
                 engine: engine,
@@ -583,10 +583,10 @@ final class WatchDirectBroker {
             // The reply travels in one Watch message, which carries about
             // 65 KB as sent (the briefing as base64 in JSON).
             guard let replyBytes = (WatchVoiceWire.encode(reply)[WatchVoiceWire.messageKey] as? Data)?.count else {
-                throw WatchDirectPrepareError(AppLocalization.string("The call's briefing couldn't be packed for the Watch."))
+                throw WatchDirectPrepareError(AppLocalization.string("The call's briefing couldn't be packed for the Watch.", table: .watchCarPlay))
             }
             guard replyBytes <= Self.bridgeReplyLimit else {
-                throw WatchDirectPrepareError(AppLocalization.string("The call's briefing (memory and persona) is too large to send to the Watch."))
+                throw WatchDirectPrepareError(AppLocalization.string("The call's briefing (memory and persona) is too large to send to the Watch.", table: .watchCarPlay))
             }
             link.log.note("watchBridgePrepared", [
                 "callID": Int(id),
@@ -673,9 +673,9 @@ final class WatchDirectBroker {
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             ledger.setGrant(grantScope, for: id)
             guard let grant, let audio = grant.audio, audio.engines.contains(WatchAudioBridgeWire.grok) else {
-                throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Grok for the Watch: \($0)") }
-                    ?? PluginUpdateAsk.text(AppLocalization.string("Hermes couldn't open Grok for the Watch. Update the Conduit notifier plugin and the push relay."),
-                                         lead: AppLocalization.string("Hermes couldn't open Grok for the Watch.")))
+                throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Grok for the Watch: \($0)", table: .watchCarPlay) }
+                    ?? PluginUpdateAsk.text(AppLocalization.string("Hermes couldn't open Grok for the Watch. Update the Conduit notifier plugin and the push relay.", table: .watchCarPlay),
+                                         lead: AppLocalization.string("Hermes couldn't open Grok for the Watch.", table: .watchCarPlay)))
             }
             guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
@@ -692,7 +692,7 @@ final class WatchDirectBroker {
                 let instruction = tools.isEmpty ? plan.systemInstruction : plan.systemInstructionWithHostTools
                 let setup = WatchVoiceWire.DirectSetup(systemInstruction: instruction, functions: declared)
                 guard setup.functions.count == declared.count, let packed = setup.compressed() else {
-                    if tools.isEmpty { throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch.")) }
+                    if tools.isEmpty { throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch.", table: .watchCarPlay)) }
                     continue
                 }
                 let reply = WatchVoiceWire.Message.grokSession(callID: id, session: .init(
@@ -704,11 +704,11 @@ final class WatchDirectBroker {
                     endPhrases: plan.endPhrases
                 ))
                 guard let replyBytes = Self.messageBytes(reply) else {
-                    if tools.isEmpty { throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch.")) }
+                    if tools.isEmpty { throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch.", table: .watchCarPlay)) }
                     continue
                 }
                 guard replyBytes <= Self.bridgeReplyLimit else {
-                    if tools.isEmpty { throw WatchDirectPrepareError(AppLocalization.string("The call's briefing (memory and persona) is too large to send to the Watch.")) }
+                    if tools.isEmpty { throw WatchDirectPrepareError(AppLocalization.string("The call's briefing (memory and persona) is too large to send to the Watch.", table: .watchCarPlay)) }
                     continue
                 }
                 chosen = (reply, packed, replyBytes)
@@ -718,7 +718,7 @@ final class WatchDirectBroker {
                 break
             }
             guard let picked = chosen else {
-                throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch."))
+                throw WatchDirectPrepareError(AppLocalization.string("The call's setup couldn't be packed for the Watch.", table: .watchCarPlay))
             }
             let (reply, packed, replyBytes) = picked
             link.log.note("watchGrokPrepared", [
@@ -807,9 +807,9 @@ final class WatchDirectBroker {
             guard callID == id else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.ended) }
             ledger.setGrant(grantScope, for: id)
             guard let grant, let audio = grant.audio, audio.engines.contains(WatchAudioBridgeWire.localLive) else {
-                throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Local Live for the Watch: \($0)") }
-                    ?? PluginUpdateAsk.text(AppLocalization.string("Hermes couldn't open Local Live for the Watch. Update the Conduit notifier plugin and the push relay."),
-                                         lead: AppLocalization.string("Hermes couldn't open Local Live for the Watch.")))
+                throw WatchDirectPrepareError(lastGrantError.map { AppLocalization.string("Hermes couldn't open Local Live for the Watch: \($0)", table: .watchCarPlay) }
+                    ?? PluginUpdateAsk.text(AppLocalization.string("Hermes couldn't open Local Live for the Watch. Update the Conduit notifier plugin and the push relay.", table: .watchCarPlay),
+                                         lead: AppLocalization.string("Hermes couldn't open Local Live for the Watch.", table: .watchCarPlay)))
             }
             guard appState.watchConnectionIsCurrent(plan.connection) else {
                 throw WatchDirectPrepareError(WatchVoiceStartFailure.connectionChanged)
@@ -876,9 +876,9 @@ final class WatchDirectBroker {
         case "ready":
             return
         case "preparing":
-            throw WatchDirectPrepareError(AppLocalization.string("Hermes is setting up GPT-Live for the Watch, which takes a few minutes the first time. Try again shortly."))
+            throw WatchDirectPrepareError(AppLocalization.string("Hermes is setting up GPT-Live for the Watch, which takes a few minutes the first time. Try again shortly.", table: .watchCarPlay))
         default:
-            throw WatchDirectPrepareError(status.reason ?? AppLocalization.string("Hermes couldn't set up GPT-Live for the Watch."))
+            throw WatchDirectPrepareError(status.reason ?? AppLocalization.string("Hermes couldn't set up GPT-Live for the Watch.", table: .watchCarPlay))
         }
     }
 
@@ -1371,7 +1371,7 @@ final class WatchDirectBroker {
             return .callRefused(callID: id, reason: refusal)
         }
         guard id == callID, let profile = connection?.profile, !grantTools.isEmpty || !grantJobTools.isEmpty || grantLiveToken else {
-            return .callRefused(callID: id, reason: AppLocalization.string("This call has no Watch lookups to renew."))
+            return .callRefused(callID: id, reason: AppLocalization.string("This call has no Watch lookups to renew.", table: .watchCarPlay))
         }
         guard await appState.connectForWatchDirectCall(timeout: Self.connectWait) else {
             return .callRefused(callID: id, reason: WatchVoiceStartFailure.hermesUnreachable)
@@ -1381,7 +1381,7 @@ final class WatchDirectBroker {
         let renewed = await requestGrant(id, profile: profile, carryJobsFrom: carry)
         if callID == id { ledger.setGrant(grantScope, for: id) }
         guard let grant = renewed else {
-            return .callRefused(callID: id, reason: AppLocalization.string("Hermes couldn't renew the Watch lookups."))
+            return .callRefused(callID: id, reason: AppLocalization.string("Hermes couldn't renew the Watch lookups.", table: .watchCarPlay))
         }
         // Ending the call revokes the new grant with the others.
         guard onCallsConnection(id) else { return .callRefused(callID: id, reason: WatchVoiceStartFailure.connectionChanged) }

@@ -35,16 +35,16 @@ struct ShortcutInboxSettingsPage: View {
     var body: some View {
         SettingsDetailContainer {
             ConduitSettingsSection(title: AppLocalization.string("Shortcuts inbox"), symbol: "tray.full", tint: .indigo) {
-                Text(AppLocalization.string("What your Shortcuts automations logged with Log to Hermes. Hermes can look these up, and Pulse reads them when it's on. Only this iPhone's events show here, and they're deleted after 30 days."))
+                Text(AppLocalization.string("What your Shortcuts automations logged with Log to Hermes. Hermes can look these up, and Pulse reads them when it's on. Only this iPhone's events show here, and they're deleted after 30 days.", table: .phone))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 if pulseKeepsDeadlines {
-                    Text(AppLocalization.string("When “Deadlines from Shortcuts” is on in Pulse's settings, Pulse keeps the deadlines it finds here, like a trial ending or a bill due. Deleting an event deletes them too."))
+                    Text(AppLocalization.string("When “Deadlines from Shortcuts” is on in Pulse's settings, Pulse keeps the deadlines it finds here, like a trial ending or a bill due. Deleting an event deletes them too.", table: .phone))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
                 if waitingCount > 0 {
-                    Label(AppLocalization.string("\(waitingCount) waiting on this iPhone for the next run"), systemImage: "clock")
+                    Label(AppLocalization.string("\(waitingCount) waiting on this iPhone for the next run", table: .phone), systemImage: "clock")
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -57,28 +57,28 @@ struct ShortcutInboxSettingsPage: View {
                 }
             }
             if ShortcutJunkFilter.isAvailable {
-                ConduitSettingsSection(title: AppLocalization.string("Junk"), symbol: "line.3.horizontal.decrease.circle", tint: .indigo) {
+                ConduitSettingsSection(title: AppLocalization.string("Junk", table: .phone), symbol: "line.3.horizontal.decrease.circle", tint: .indigo) {
                     Toggle(isOn: $leavesOutJunk) {
-                        Text(AppLocalization.string("Leave out junk"))
+                        Text(AppLocalization.string("Leave out junk", table: .phone))
                     }
                     .onChange(of: leavesOutJunk) { _, on in ShortcutJunkFilter.setOn(on) }
                     .accessibilityIdentifier("settings.shortcut-inbox.junk")
-                    Text(AppLocalization.string("When this is on, Apple Intelligence on this iPhone sorts notifications, messages and emails before they're logged and leaves out what looks like marketing, newsletters, spam or app nudges. It's told to keep anything from a person, bills, deliveries and alerts, but it can get one wrong. When it's unsure or takes too long, the event is logged."))
+                    Text(AppLocalization.string("When this is on, Apple Intelligence on this iPhone sorts notifications, messages and emails before they're logged and leaves out what looks like marketing, newsletters, spam or app nudges. It's told to keep anything from a person, bills, deliveries and alerts, but it can get one wrong. When it's unsure or takes too long, the event is logged.", table: .phone))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                     if leavesOutJunk, junkLeftOut > 0 {
-                        Text(AppLocalization.string("\(Int(junkLeftOut)) left out in the last 7 days"))
+                        Text(AppLocalization.string("\(Int(junkLeftOut)) left out in the last 7 days", table: .phone))
                             .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
                 }
             }
-            ConduitSettingsSection(title: AppLocalization.string("Logged"), symbol: "list.bullet", tint: .indigo) {
+            ConduitSettingsSection(title: AppLocalization.string("Logged", table: .phone), symbol: "list.bullet", tint: .indigo) {
                 if !loaded {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                 } else if entries.isEmpty && next == nil {
-                    Text(AppLocalization.string("Nothing logged from this iPhone. Add Log to Hermes to an automation in the Shortcuts app."))
+                    Text(AppLocalization.string("Nothing logged from this iPhone. Add Log to Hermes to an automation in the Shortcuts app.", table: .phone))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 } else {
@@ -88,27 +88,27 @@ struct ShortcutInboxSettingsPage: View {
                 }
                 // Older pages stay reachable after the last row on this one is deleted.
                 if loaded, let next {
-                    Button(AppLocalization.string("Load More")) { load(before: next) }
+                    Button(AppLocalization.string("Load More", table: .phone)) { load(before: next) }
                         .disabled(isWorking)
                 }
             }
             if !entries.isEmpty || next != nil || waitingCount > 0 {
                 ConduitSettingsSection(title: AppLocalization.string("Delete"), symbol: "trash", tint: .red) {
-                    Button(AppLocalization.string("Delete Everything From This iPhone"), role: .destructive) { showsDeleteAll = true }
+                    Button(AppLocalization.string("Delete Everything From This iPhone", table: .phone), role: .destructive) { showsDeleteAll = true }
                         .disabled(isWorking)
                 }
             }
         }
         .navigationTitle(AppLocalization.string("Shortcuts inbox"))
         .task { if !loaded { load(before: nil) } }
-        .confirmationDialog(AppLocalization.string("Delete everything this iPhone logged?"), isPresented: $showsDeleteAll,
+        .confirmationDialog(AppLocalization.string("Delete everything this iPhone logged?", table: .phone), isPresented: $showsDeleteAll,
                             titleVisibility: .visible) {
-            Button(AppLocalization.string("Delete Everything"), role: .destructive) { deleteAll() }
+            Button(AppLocalization.string("Delete Everything", table: .phone), role: .destructive) { deleteAll() }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: {
             Text(pulseKeepsDeadlines
-                ? AppLocalization.string("Hermes and Pulse can no longer read it, and Pulse forgets the deadlines it kept from it. Your automations keep logging new events.")
-                : AppLocalization.string("Hermes and Pulse can no longer read it. Your automations keep logging new events."))
+                ? AppLocalization.string("Hermes and Pulse can no longer read it, and Pulse forgets the deadlines it kept from it. Your automations keep logging new events.", table: .phone)
+                : AppLocalization.string("Hermes and Pulse can no longer read it. Your automations keep logging new events.", table: .phone))
         }
     }
 
@@ -148,7 +148,7 @@ struct ShortcutInboxSettingsPage: View {
             }
             .buttonStyle(.borderless)
             .disabled(isWorking)
-            .accessibilityLabel(AppLocalization.string("Delete this event"))
+            .accessibilityLabel(AppLocalization.string("Delete this event", table: .phone))
         }
     }
 
@@ -178,7 +178,7 @@ struct ShortcutInboxSettingsPage: View {
         refreshWaiting()
         guard let scope, let request = appState.shortcutInboxRequest(for: scope) else {
             loaded = true
-            errorMessage = AppLocalization.string("Connect to your Hermes dashboard to see what was logged.")
+            errorMessage = AppLocalization.string("Connect to your Hermes dashboard to see what was logged.", table: .phone)
             return
         }
         isWorking = true
@@ -249,9 +249,9 @@ struct ShortcutInboxSettingsPage: View {
         // A profile that turned the plugin off says how to turn it on.
         if let remedy = DashboardTicketBridgeError.pluginOffDetail(of: error) { return remedy }
         if isPluginTooOld(error) {
-            return PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to see and delete what was logged."))
+            return PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to see and delete what was logged.", table: .phone))
         }
-        return AppLocalization.string("Conduit couldn't reach the inbox on your Hermes host. Try again in a moment.")
+        return AppLocalization.string("Conduit couldn't reach the inbox on your Hermes host. Try again in a moment.", table: .phone)
     }
 
     /// A delete that didn't reach the host says so: nothing there changed.
@@ -260,6 +260,6 @@ struct ShortcutInboxSettingsPage: View {
     }
 
     private static var unreachableDeleteMessage: String {
-        AppLocalization.string("Conduit couldn't reach Hermes, so what it keeps wasn't deleted. Try again once you're connected.")
+        AppLocalization.string("Conduit couldn't reach Hermes, so what it keeps wasn't deleted. Try again once you're connected.", table: .phone)
     }
 }

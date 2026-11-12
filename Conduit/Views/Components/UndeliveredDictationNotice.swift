@@ -29,7 +29,7 @@ struct UndeliveredDictationNotice: View {
                 }
             }
             .confirmationDialog(
-                AppLocalization.string("Delete this recording? Its words haven't been transcribed."),
+                AppLocalization.string("Delete this recording? Its words haven't been transcribed.", table: .voice),
                 isPresented: Binding(
                     get: { confirmingDelete != nil },
                     set: { if !$0 { confirmingDelete = nil } }
@@ -46,7 +46,7 @@ struct UndeliveredDictationNotice: View {
     }
 
     private func row(_ clip: DictationClip) -> some View {
-        let message = AppLocalization.string("Your \(VoiceMessage.durationLabel(clip.duration)) dictation wasn't transcribed. Its recording is saved.")
+        let message = AppLocalization.string("Your \(VoiceMessage.durationLabel(clip.duration)) dictation wasn't transcribed. Its recording is saved.", table: .voice)
         return HStack(alignment: .center, spacing: 8) {
             Image(systemName: "waveform.badge.exclamationmark")
                 .foregroundStyle(.secondary)

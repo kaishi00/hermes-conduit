@@ -941,7 +941,7 @@ extension VoiceConversationControllerTests {
     func testLocalLiveSaysWhyATurnCouldNotGoToTheChat() {
         // #1061: the chat is open in Hermes Desktop and couldn't be taken
         // over. The call says so rather than a bare failure.
-        let reason = AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.")
+        let reason = AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.", table: .chat)
         XCTAssertEqual(LocalLiveTurnRunner.spokenFailure(for: VoiceAudioError.unavailable(reason)), reason)
         XCTAssertEqual(LocalLiveTurnRunner.spokenFailure(for: VoiceThreadBusyError()), LocalLiveTurnRunner.busyLine)
         XCTAssertEqual(LocalLiveTurnRunner.spokenFailure(for: URLError(.timedOut)), LocalLiveTurnRunner.failureLine)

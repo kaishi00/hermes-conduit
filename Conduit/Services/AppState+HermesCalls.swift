@@ -113,7 +113,7 @@ extension AppState {
             return true
         } catch {
             hermesCallsStateLogger.error("Call settings not saved: \(LogRedaction.message(error), privacy: .public)")
-            errorMessage = AppLocalization.string("Couldn't save Hermes' call settings. Check your connection and try again.")
+            errorMessage = AppLocalization.string("Couldn't save Hermes' call settings. Check your connection and try again.", table: .voice)
             return false
         }
     }

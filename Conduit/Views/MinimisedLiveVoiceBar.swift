@@ -72,11 +72,11 @@ private struct GeminiLiveBarContent: View {
         case .idle: return AppLocalization.string("Not connected")
         case .connecting: return AppLocalization.string("Connecting…")
         case .reconnecting: return AppLocalization.string("Reconnecting…")
-        case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
+        case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted", table: .voice) : AppLocalization.string("Listening")
         case .speaking: return AppLocalization.string("Speaking")
         case .paused: return AppLocalization.string("Paused")
-        case .ending: return AppLocalization.string("Ending conversation…")
-        case .failed: return AppLocalization.string("Call stopped. Tap to see why.")
+        case .ending: return AppLocalization.string("Ending conversation…", table: .voice)
+        case .failed: return AppLocalization.string("Call stopped. Tap to see why.", table: .voice)
         }
     }
 
@@ -117,7 +117,7 @@ private struct GPTLiveBarContent: View {
     var body: some View {
         LiveVoiceBarRow(
             // The bar says an API-key call is one, like the call screen.
-            name: controller.billing == .api ? AppLocalization.string("GPT-Live · API key") : "GPT-Live",
+            name: controller.billing == .api ? AppLocalization.string("GPT-Live · API key", table: .voice) : "GPT-Live",
             status: status,
             symbol: symbol,
             thread: jobs.liveThread?.title,
@@ -136,11 +136,11 @@ private struct GPTLiveBarContent: View {
         switch controller.phase {
         case .idle: return AppLocalization.string("Not connected")
         case .connecting: return AppLocalization.string("Connecting…")
-        case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
+        case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted", table: .voice) : AppLocalization.string("Listening")
         case .speaking: return AppLocalization.string("Speaking")
         case .paused: return AppLocalization.string("Paused")
-        case .ending: return AppLocalization.string("Ending conversation…")
-        case .failed: return AppLocalization.string("Call stopped. Tap to see why.")
+        case .ending: return AppLocalization.string("Ending conversation…", table: .voice)
+        case .failed: return AppLocalization.string("Call stopped. Tap to see why.", table: .voice)
         }
     }
 

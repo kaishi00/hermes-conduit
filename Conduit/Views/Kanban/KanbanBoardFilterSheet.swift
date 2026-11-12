@@ -22,7 +22,7 @@ struct KanbanBoardFilterSheet: View {
                 ConduitSettingsSection(title: AppLocalization.string("Assignee"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
                     ConduitMenuPicker(
                         value: assigneeBinding.wrappedValue,
-                        choices: [(id: String?.none, title: AppLocalization.string("All Profiles"))]
+                        choices: [(id: String?.none, title: AppLocalization.string("All Profiles", table: .tasks))]
                             + assignees.map { (id: String?.some($0), title: $0) },
                         onSelect: { assigneeBinding.wrappedValue = $0 }
                     ) {
@@ -33,7 +33,7 @@ struct KanbanBoardFilterSheet: View {
                     ConduitSettingsSection(title: AppLocalization.string("Tenant"), symbol: "person.2", tint: .conduitAccent) {
                         ConduitMenuPicker(
                             value: tenantBinding.wrappedValue,
-                            choices: [(id: String?.none, title: AppLocalization.string("All Tenants"))]
+                            choices: [(id: String?.none, title: AppLocalization.string("All Tenants", table: .tasks))]
                                 + tenants.map { (id: String?.some($0), title: $0) },
                             onSelect: { tenantBinding.wrappedValue = $0 }
                         ) {

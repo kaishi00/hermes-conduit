@@ -60,18 +60,18 @@ enum RoomApprovalText {
     static func line(for approval: RoomApproval) -> String {
         let agent = [approval.agentName, approval.agentHandle, approval.agentProfile]
             .compactMap { $0?.trimmingCharacters(in: .whitespacesAndNewlines) }
-            .first { !$0.isEmpty } ?? AppLocalization.string("Your agent")
+            .first { !$0.isEmpty } ?? AppLocalization.string("Your agent", table: .rooms)
         let room = approval.room?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let host = approval.from?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         switch (room.isEmpty, host.isEmpty) {
         case (false, false):
-            return AppLocalization.string("\(agent) in \(room), hosted by \(host)")
+            return AppLocalization.string("\(agent) in \(room), hosted by \(host)", table: .rooms)
         case (false, true):
-            return AppLocalization.string("\(agent) in \(room)")
+            return AppLocalization.string("\(agent) in \(room)", table: .rooms)
         case (true, false):
-            return AppLocalization.string("\(agent) in a room hosted by \(host)")
+            return AppLocalization.string("\(agent) in a room hosted by \(host)", table: .rooms)
         case (true, true):
-            return AppLocalization.string("\(agent) in a room hosted elsewhere")
+            return AppLocalization.string("\(agent) in a room hosted elsewhere", table: .rooms)
         }
     }
 }
@@ -150,7 +150,7 @@ struct RoomApprovalsClient {
     /// the turn moved on, the agent's place in the room ended, its API
     /// server down).
     static func refusal(for error: Error) -> String {
-        AppLocalization.string("Could not answer: \(RoomLinksClient.message(for: error))")
+        AppLocalization.string("Could not answer: \(RoomLinksClient.message(for: error))", table: .rooms)
     }
 }
 

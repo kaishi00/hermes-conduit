@@ -32,7 +32,7 @@ struct RoomDraftRosterRow: View {
         .rosterListRow()
         .accessibilityLabel(Text(verbatim: draft.name))
         .accessibilityValue(Text(verbatim: line))
-        .accessibilityHint(Text(AppLocalization.string("Shows who's invited and how they answered.")))
+        .accessibilityHint(Text(AppLocalization.string("Shows who's invited and how they answered.", table: .rooms)))
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             if draft.status == "ended" {
                 Button(AppLocalization.string("Remove")) {
@@ -99,24 +99,24 @@ struct RoomDraftSheet: View {
                         .scaledFont(.footnote)
                         .foregroundStyle(.red)
                 }
-                ConduitSettingsSection(title: AppLocalization.string("Room"), symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
+                ConduitSettingsSection(title: AppLocalization.string("Room", table: .rooms), symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
                     Text(verbatim: line(for: draft))
                         .scaledFont(.body)
                         .fixedSize(horizontal: false, vertical: true)
                     if draft.status == "waiting", let expiresAt = draft.expiresAt {
-                        Text(AppLocalization.string("Invites work until \(RoomDraftText.until(expiresAt))"))
+                        Text(AppLocalization.string("Invites work until \(RoomDraftText.until(expiresAt))", table: .rooms))
                             .settingsCaption()
                     }
                 }
                 if !draft.people.isEmpty {
-                    ConduitSettingsSection(title: AppLocalization.string("Invited"), symbol: "person.2", tint: .conduitAccent) {
+                    ConduitSettingsSection(title: AppLocalization.string("Invited", table: .rooms), symbol: "person.2", tint: .conduitAccent) {
                         ForEach(draft.people) { person in
                             personRow(person)
                         }
                     }
                 }
                 if !draft.agents.isEmpty {
-                    ConduitSettingsSection(title: AppLocalization.string("Your bots"), symbol: "person.crop.square", tint: .conduitAccent) {
+                    ConduitSettingsSection(title: AppLocalization.string("Your bots", table: .rooms), symbol: "person.crop.square", tint: .conduitAccent) {
                         ForEach(Array(draft.agents.enumerated()), id: \.offset) { _, agent in
                             Text(verbatim: agent)
                                 .frame(minHeight: 32, alignment: .leading)
@@ -137,24 +137,24 @@ struct RoomDraftSheet: View {
                 }
             }
             .confirmationDialog(
-                AppLocalization.string("Start without \(RoomDraftText.names(draft.waiting.map(\.name)))?"),
+                AppLocalization.string("Start without \(RoomDraftText.names(draft.waiting.map(\.name)))?", table: .rooms),
                 isPresented: $confirmingStart,
                 titleVisibility: .visible
             ) {
-                Button(AppLocalization.string("Start now")) { start() }
+                Button(AppLocalization.string("Start now", table: .rooms)) { start() }
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
             } message: {
-                Text(AppLocalization.string("They're told it started without them."))
+                Text(AppLocalization.string("They're told it started without them.", table: .rooms))
             }
             .confirmationDialog(
-                AppLocalization.string("Take back \(draft.name)?"),
+                AppLocalization.string("Take back \(draft.name)?", table: .rooms),
                 isPresented: $confirmingTakeBack,
                 titleVisibility: .visible
             ) {
                 Button(AppLocalization.string("Take back"), role: .destructive) { takeBack() }
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
             } message: {
-                Text(AppLocalization.string("Everyone you invited is told, and their agents' joins are undone."))
+                Text(AppLocalization.string("Everyone you invited is told, and their agents' joins are undone.", table: .rooms))
             }
         }
         .task(id: roomID) { await follow() }
@@ -190,7 +190,7 @@ struct RoomDraftSheet: View {
         if draft.status == "waiting" {
             VStack(spacing: 10) {
                 if !startRequested, draft.canStartNow {
-                    Button(AppLocalization.string("Start now")) { confirmingStart = true }
+                    Button(AppLocalization.string("Start now", table: .rooms)) { confirmingStart = true }
                         .buttonStyle(.settingsPrimary)
                         .disabled(busy)
                 }
@@ -223,7 +223,7 @@ struct RoomDraftSheet: View {
                 guard !(error is CancellationError) else { return }
                 Haptics.error()
                 roomDraftsLogger.notice("Start now refused: \(LogRedaction.message(error), privacy: .public)")
-                actionError = AppLocalization.string("Could not start it: \(RoomDraftsClient.message(for: error))")
+                actionError = AppLocalization.string("Could not start it: \(RoomDraftsClient.message(for: error))", table: .rooms)
             }
         }
     }
@@ -245,7 +245,7 @@ struct RoomDraftSheet: View {
                 await appState.refreshLinkedRoomDrafts(readingPeople: false)
                 guard appState.linkedRoomDraft(roomID)?.reason == "withdrawn" else {
                     Haptics.error()
-                    actionError = AppLocalization.string("Could not take it back: \(RoomDraftsClient.message(for: error))")
+                    actionError = AppLocalization.string("Could not take it back: \(RoomDraftsClient.message(for: error))", table: .rooms)
                     return
                 }
             }

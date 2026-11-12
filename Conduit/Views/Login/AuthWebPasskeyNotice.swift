@@ -215,9 +215,9 @@ struct AuthWebPasskeyNotice: View {
     /// after the page's own error.
     static let announcementDelay: Duration = .milliseconds(600)
 
-    static var title: String { AppLocalization.string("Passkeys don't work here") }
+    static var title: String { AppLocalization.string("Passkeys don't work here", table: .connection) }
     static var message: String {
-        AppLocalization.string("iOS doesn't let apps use passkeys on a sign-in page like this one. Choose another way to sign in on this page, such as with another device or a code. You can approve that sign-in in Safari on this iPhone, where your passkeys work.")
+        AppLocalization.string("iOS doesn't let apps use passkeys on a sign-in page like this one. Choose another way to sign in on this page, such as with another device or a code. You can approve that sign-in in Safari on this iPhone, where your passkeys work.", table: .connection)
     }
 
     var body: some View {

@@ -22,14 +22,14 @@ enum NotifierPluginSummary {
         case .predatesCapabilities:
             // A managed host has the plugin; this dashboard doesn't run it.
             if status.isNotServed || status.isManaged { return AppLocalization.string("Installed but not running") }
-            return AppLocalization.string("Not installed or out of date")
+            return AppLocalization.string("Not installed or out of date", table: .notifications)
         case .reported:
             let version = status.runningVersion ?? status.version ?? "?"
-            if status.updateAvailable { return AppLocalization.string("\(version) · Update available") }
-            if status.restartPending { return AppLocalization.string("\(version) · Restart to finish updating") }
+            if status.updateAvailable { return AppLocalization.string("\(version) · Update available", table: .notifications) }
+            if status.restartPending { return AppLocalization.string("\(version) · Restart to finish updating", table: .notifications) }
             // Not "up to date": a managed plugin can be behind; the host decides.
-            if status.isManaged { return AppLocalization.string("\(version) · Managed by the host") }
-            return AppLocalization.string("\(version) · Up to date")
+            if status.isManaged { return AppLocalization.string("\(version) · Managed by the host", table: .notifications) }
+            return AppLocalization.string("\(version) · Up to date", table: .notifications)
         }
     }
 }
@@ -62,19 +62,19 @@ enum NotifierPluginFeature: CaseIterable {
     @MainActor
     var title: String {
         switch self {
-        case .chatTakeover: return AppLocalization.string("Taking chats over from Hermes Desktop")
-        case .savedCalls: return AppLocalization.string("Saved voice calls")
-        case .liveVoiceContext: return AppLocalization.string("Memory, personality and web search in live voice")
+        case .chatTakeover: return AppLocalization.string("Taking chats over from Hermes Desktop", table: .notifications)
+        case .savedCalls: return AppLocalization.string("Saved voice calls", table: .notifications)
+        case .liveVoiceContext: return AppLocalization.string("Memory, personality and web search in live voice", table: .notifications)
         case .geminiLive: return AppLocalization.string("Gemini Live")
         case .qwenLive: return AppLocalization.string("Qwen Live")
         case .gptLive: return AppLocalization.string("GPT-Live")
         case .grokLive: return AppLocalization.string("Grok Live")
-        case .encryptedNotifications: return AppLocalization.string("Encrypted notifications")
-        case .pairing: return AppLocalization.string("Pairing from Conduit")
+        case .encryptedNotifications: return AppLocalization.string("Encrypted notifications", table: .notifications)
+        case .pairing: return AppLocalization.string("Pairing from Conduit", table: .notifications)
         case .hermesCalls: return AppLocalization.string("Calls from Hermes")
         case .agentSettings: return AppLocalization.string("Let Hermes change settings")
-        case .healthSync: return AppLocalization.string("Health data")
-        case .updates: return AppLocalization.string("Updates from Conduit")
+        case .healthSync: return AppLocalization.string("Health data", table: .notifications)
+        case .updates: return AppLocalization.string("Updates from Conduit", table: .notifications)
         }
     }
 
@@ -122,7 +122,7 @@ struct ConduitPluginSettingsDetail: View {
                             NotifierPluginChangesList(changes: notes.changes)
                                 .padding(.top, 8)
                         } label: {
-                            Text(verbatim: AppLocalization.string("What's new in \(notes.version)"))
+                            Text(verbatim: AppLocalization.string("What's new in \(notes.version)", table: .notifications))
                                 .scaledFont(.subheadline.weight(.semibold))
                         }
                         .accessibilityIdentifier("settings.plugin.whatsNew")
@@ -147,7 +147,7 @@ struct ConduitPluginSettingsDetail: View {
                 NotifierPluginUpdateStatusView()
             }
 
-            ConduitSettingsSection(title: AppLocalization.string("Update notices"), symbol: "bell.badge", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("Update notices", table: .notifications), symbol: "bell.badge", tint: .conduitAccent) {
                 ConduitMenuPicker(
                     value: appState.notifierPluginNoticeChannel,
                     choices: NotifierPluginNoticeChannel.allCases.map { (id: $0, title: Self.title(of: $0)) },
@@ -165,7 +165,7 @@ struct ConduitPluginSettingsDetail: View {
             }
 
             if case .reported = status.state {
-                ConduitSettingsSection(title: AppLocalization.string("What it does here"), symbol: "checklist", tint: .conduitAccent) {
+                ConduitSettingsSection(title: AppLocalization.string("What it does here", table: .notifications), symbol: "checklist", tint: .conduitAccent) {
                     ForEach(NotifierPluginFeature.allCases, id: \.self) { feature in
                         let served = feature.isServed(by: status)
                         HStack(spacing: 10) {
@@ -188,11 +188,11 @@ struct ConduitPluginSettingsDetail: View {
             // that would replace the copy it pinned. Turning on a copy the
             // dashboard doesn't run replaces nothing, so those steps stay.
             if !status.isManaged || status.state == .predatesCapabilities {
-                ConduitSettingsSection(title: AppLocalization.string("Do it manually"), symbol: "terminal", tint: .conduitAura) {
+                ConduitSettingsSection(title: AppLocalization.string("Do it manually", table: .notifications), symbol: "terminal", tint: .conduitAura) {
                     DisclosureGroup(isExpanded: $showsCommands) {
                         VStack(alignment: .leading, spacing: 12) {
                             if status.isNotServed || status.isManaged {
-                                NotificationSetupCommand(step: 1, title: AppLocalization.string("Turn on the notifier"), command: "hermes plugins enable conduit_push")
+                                NotificationSetupCommand(step: 1, title: AppLocalization.string("Turn on the notifier", table: .notifications), command: "hermes plugins enable conduit_push")
                             } else if status.offersInstall {
                                 NotificationSetupCommand(step: 1, title: AppLocalization.string("Install the notifier"), command: "hermes plugins install \(NotifierPluginStatus.repository) --enable")
                             } else {
@@ -230,22 +230,22 @@ struct ConduitPluginSettingsDetail: View {
 
     private static func title(of channel: NotifierPluginNoticeChannel) -> String {
         switch channel {
-        case .everyVersion: return AppLocalization.string("Every new version")
-        case .stableOnly: return AppLocalization.string("Stable versions only")
-        case .never: return AppLocalization.string("Never")
+        case .everyVersion: return AppLocalization.string("Every new version", table: .notifications)
+        case .stableOnly: return AppLocalization.string("Stable versions only", table: .notifications)
+        case .never: return AppLocalization.string("Never", table: .notifications)
         }
     }
 
     private var noticeChannelDetail: String {
         if appState.notifierPlugin.isManaged {
-            return AppLocalization.string("This dashboard's host keeps the plugin up to date, so Conduit doesn't ask to update it here. This choice is for your other dashboards.")
+            return AppLocalization.string("This dashboard's host keeps the plugin up to date, so Conduit doesn't ask to update it here. This choice is for your other dashboards.", table: .notifications)
         }
         guard appState.notifierPluginNoticeChannel.asksToUpdate else {
-            return AppLocalization.string("Conduit doesn't ask you to update. New versions, security fixes included, wait here until you update. An update you start still asks for its restart.")
+            return AppLocalization.string("Conduit doesn't ask you to update. New versions, security fixes included, wait here until you update. An update you start still asks for its restart.", table: .notifications)
         }
         return appState.notifierPluginNoticeChannel.followsMain
-            ? AppLocalization.string("Conduit asks you to update whenever a new plugin version is out.")
-            : AppLocalization.string("Conduit asks you to update only when a plugin version is marked stable, or this app needs a newer one. You can still update here any time.")
+            ? AppLocalization.string("Conduit asks you to update whenever a new plugin version is out.", table: .notifications)
+            : AppLocalization.string("Conduit asks you to update only when a plugin version is marked stable, or this app needs a newer one. You can still update here any time.", table: .notifications)
     }
 
     private func isInstall(_ status: NotifierPluginStatus) -> Bool {
@@ -258,19 +258,19 @@ struct ConduitPluginSettingsDetail: View {
     }
 
     private func actionTitle(_ status: NotifierPluginStatus) -> String {
-        if isInstall(status) { return AppLocalization.string("Install or Update") }
+        if isInstall(status) { return AppLocalization.string("Install or Update", table: .notifications) }
         if status.restartPending && !status.updateAvailable { return AppLocalization.string("Finish Update") }
-        return AppLocalization.string("Update to \(status.offeredVersion)")
+        return AppLocalization.string("Update to \(status.offeredVersion)", table: .notifications)
     }
 
     private func statusText(_ status: NotifierPluginStatus) -> String {
         switch status.state {
         case .unknown:
             return checking
-                ? AppLocalization.string("Checking this dashboard's notifier…")
+                ? AppLocalization.string("Checking this dashboard's notifier…", table: .notifications)
                 : appState.isConnected
-                    ? AppLocalization.string("Couldn't reach this dashboard's notifier. Open this page again to retry.")
-                    : AppLocalization.string("Connect to this dashboard to check its notifier.")
+                    ? AppLocalization.string("Couldn't reach this dashboard's notifier. Open this page again to retry.", table: .notifications)
+                    : AppLocalization.string("Connect to this dashboard to check its notifier.", table: .notifications)
         case .predatesCapabilities:
             if status.isNotServed || status.isManaged {
                 return AppLocalization.string("Installed on this dashboard's host, but the dashboard doesn't run it. Turn it on in Hermes, then restart the gateway and the dashboard.")
@@ -305,11 +305,11 @@ private struct NotifierPluginUpdateConfirmation: ViewModifier {
 
     func body(content: Content) -> some View {
         content.confirmationDialog(
-            Text(restartOnly ? AppLocalization.string("Finish the update?") : AppLocalization.string("Update the Conduit plugin?")),
+            Text(restartOnly ? AppLocalization.string("Finish the update?", table: .notifications) : AppLocalization.string("Update the Conduit plugin?", table: .notifications)),
             isPresented: $isPresented,
             titleVisibility: .visible
         ) {
-            Button(restartOnly ? AppLocalization.string("Restart Hermes") : AppLocalization.string("Update and Restart Hermes")) {
+            Button(restartOnly ? AppLocalization.string("Restart Hermes", table: .notifications) : AppLocalization.string("Update and Restart Hermes", table: .notifications)) {
                 appState.updateNotifierPlugin(install: install)
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
@@ -449,36 +449,36 @@ struct NotifierPluginUpdateStatusView: View {
             return Row(title: title(for: step))
         case .updated(let version):
             return Row(
-                title: version.map { AppLocalization.string("Conduit plugin \($0) is ready") }
-                    ?? AppLocalization.string("The Conduit plugin is up to date"),
+                title: version.map { AppLocalization.string("Conduit plugin \($0) is ready", table: .notifications) }
+                    ?? AppLocalization.string("The Conduit plugin is up to date", table: .notifications),
                 symbol: "checkmark.circle.fill",
                 tint: .green
             )
         case .needsDashboardRestart(let detail):
             return Row(
-                title: AppLocalization.string("Restart the Hermes dashboard to finish"),
-                detail: detail ?? AppLocalization.string("The new plugin is on the host, but this dashboard can't restart itself. Restart it on the host once."),
+                title: AppLocalization.string("Restart the Hermes dashboard to finish", table: .notifications),
+                detail: detail ?? AppLocalization.string("The new plugin is on the host, but this dashboard can't restart itself. Restart it on the host once.", table: .notifications),
                 symbol: "clock.badge.exclamationmark",
                 tint: .orange
             )
         case .failed(let detail):
             return Row(
-                title: AppLocalization.string("Couldn't update the Conduit plugin"),
+                title: AppLocalization.string("Couldn't update the Conduit plugin", table: .notifications),
                 detail: detail,
                 symbol: "exclamationmark.triangle.fill",
                 tint: .red
             )
         case .runningOnHost:
             return Row(
-                title: AppLocalization.string("Still updating on the host"),
-                detail: AppLocalization.string("The update is still running on the host. You'll get a notification when it's done."),
+                title: AppLocalization.string("Still updating on the host", table: .notifications),
+                detail: AppLocalization.string("The update is still running on the host. You'll get a notification when it's done.", table: .notifications),
                 symbol: "clock",
                 tint: .secondary
             )
         case .unsupported:
             return Row(
-                title: AppLocalization.string("This Hermes can't update plugins from Conduit"),
-                detail: AppLocalization.string("Update Hermes, or run the commands under Do it manually."),
+                title: AppLocalization.string("This Hermes can't update plugins from Conduit", table: .notifications),
+                detail: AppLocalization.string("Update Hermes, or run the commands under Do it manually.", table: .notifications),
                 symbol: "exclamationmark.circle.fill",
                 tint: .orange
             )
@@ -488,11 +488,11 @@ struct NotifierPluginUpdateStatusView: View {
     @MainActor
     private static func firstManualUpdateRow(plugin: NotifierPluginStatus, hermesDetail: String?) -> Row {
         let why = plugin.version.map {
-            AppLocalization.string("This dashboard's plugin (version \($0)) is older than one-tap updates. Run the steps under Do it manually on the host once. After that, Conduit updates it for you.")
-        } ?? AppLocalization.string("This dashboard's plugin is missing or older than one-tap updates. Run the steps under Do it manually on the host once. After that, Conduit updates it for you.")
-        let detail = hermesDetail.flatMap { $0.isEmpty ? nil : AppLocalization.string("Hermes said: \($0)") }
+            AppLocalization.string("This dashboard's plugin (version \($0)) is older than one-tap updates. Run the steps under Do it manually on the host once. After that, Conduit updates it for you.", table: .notifications)
+        } ?? AppLocalization.string("This dashboard's plugin is missing or older than one-tap updates. Run the steps under Do it manually on the host once. After that, Conduit updates it for you.", table: .notifications)
+        let detail = hermesDetail.flatMap { $0.isEmpty ? nil : AppLocalization.string("Hermes said: \($0)", table: .notifications) }
         return Row(
-            title: AppLocalization.string("Update the plugin on the host this once"),
+            title: AppLocalization.string("Update the plugin on the host this once", table: .notifications),
             detail: [why, detail].compactMap { $0 }.joined(separator: "\n\n"),
             symbol: "terminal",
             tint: .orange
@@ -502,15 +502,15 @@ struct NotifierPluginUpdateStatusView: View {
     @MainActor
     private static func title(for step: NotifierPluginUpdateStep) -> String {
         switch step {
-        case .downloading: return AppLocalization.string("Downloading the plugin…")
-        case .installing: return AppLocalization.string("Installing the plugin…")
+        case .downloading: return AppLocalization.string("Downloading the plugin…", table: .notifications)
+        case .installing: return AppLocalization.string("Installing the plugin…", table: .notifications)
         case .restartingGateway(let stage):
             return stage == .draining
                 ? AppLocalization.string("Letting running tasks finish…")
-                : AppLocalization.string("Restarting the gateway…")
+                : AppLocalization.string("Restarting the gateway…", table: .notifications)
         case .waitingForChats(let count):
-            return AppLocalization.string("Waiting for \(count) running chats to finish…")
-        case .restartingDashboard: return AppLocalization.string("Restarting the dashboard…")
+            return AppLocalization.string("Waiting for \(count) running chats to finish…", table: .notifications)
+        case .restartingDashboard: return AppLocalization.string("Restarting the dashboard…", table: .notifications)
         case .reconnecting: return AppLocalization.string("Reconnecting…")
         }
     }
@@ -566,12 +566,12 @@ struct NotifierPluginUpdateBanner: View {
         // Updated on the host already: only the restart is left.
         let restartOnly = offer == .restart
         let offerText = switch offer {
-        case .restart: AppLocalization.string("\(AppLocalization.string("Conduit plugin")) · Restart to finish updating")
+        case .restart: AppLocalization.string("\(AppLocalization.string("Conduit plugin")) · Restart to finish updating", table: .notifications)
         // Out of date too, when the host couldn't list its plugins.
         case .install: status.hostCopy == .missing
-            ? AppLocalization.string("\(AppLocalization.string("Conduit plugin")) · Not installed")
-            : AppLocalization.string("\(AppLocalization.string("Conduit plugin")) · Not installed or out of date")
-        case .update, .none: AppLocalization.string("Conduit plugin \(status.offeredVersion) is available")
+            ? AppLocalization.string("\(AppLocalization.string("Conduit plugin")) · Not installed", table: .notifications)
+            : AppLocalization.string("\(AppLocalization.string("Conduit plugin")) · Not installed or out of date", table: .notifications)
+        case .update, .none: AppLocalization.string("Conduit plugin \(status.offeredVersion) is available", table: .notifications)
         }
         let text = row?.title ?? offerText
         return HStack(spacing: 10) {
@@ -588,7 +588,7 @@ struct NotifierPluginUpdateBanner: View {
                     .lineLimit(2)
                 // When it came out and what's in it (#297, #300).
                 if update == .idle, offer == .update, let notes {
-                    let line = [notes.summary, notes.changes.isEmpty ? nil : AppLocalization.string("What's New")]
+                    let line = [notes.summary, notes.changes.isEmpty ? nil : AppLocalization.string("What's New", table: .notifications)]
                         .compactMap { $0 }.joined(separator: " · ")
                     if notes.changes.isEmpty, !line.isEmpty {
                         Text(verbatim: line)
@@ -734,7 +734,7 @@ struct NotifierPluginChangesList: View {
 
     static func title(of kind: NotifierPluginChangelog.Kind) -> String {
         switch kind {
-        case .security: return AppLocalization.string("Security fixes")
+        case .security: return AppLocalization.string("Security fixes", table: .notifications)
         case .fixes: return AppLocalization.string("Fixes")
         case .new: return AppLocalization.string("New and improved")
         }
@@ -779,9 +779,9 @@ struct NotifierPluginReleaseNotes: Equatable, Identifiable {
             let day = released.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted,
                                                           locale: AppLocalization.formattingLocale,
                                                           timeZone: TimeZone(identifier: "UTC") ?? .current))
-            parts.append(AppLocalization.string("Released \(day)"))
+            parts.append(AppLocalization.string("Released \(day)", table: .notifications))
         }
-        if hasSecurityFixes { parts.append(AppLocalization.string("Includes security fixes")) }
+        if hasSecurityFixes { parts.append(AppLocalization.string("Includes security fixes", table: .notifications)) }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
 }
@@ -805,7 +805,7 @@ struct NotifierPluginChangesSheet: View {
                 }
                 .padding(16)
             }
-            .navigationTitle(Text(verbatim: AppLocalization.string("What's new in \(notes.version)")))
+            .navigationTitle(Text(verbatim: AppLocalization.string("What's new in \(notes.version)", table: .notifications)))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {

@@ -51,10 +51,10 @@ enum AttachmentSizeLimit {
     static func tooLargeMessage(names: [String], megabytes: Int) -> String {
         let limit = String(clampedMegabytes(megabytes))
         if names.count == 1, let name = names.first {
-            return AppLocalization.string("\(name) is larger than the \(limit) MB attachment limit. You can raise the limit in Settings › Chat.")
+            return AppLocalization.string("\(name) is larger than the \(limit) MB attachment limit. You can raise the limit in Settings › Chat.", table: .chat)
         }
         let list = names.joined(separator: ", ")
-        return AppLocalization.string("These files are larger than the \(limit) MB attachment limit: \(list). You can raise the limit in Settings › Chat.")
+        return AppLocalization.string("These files are larger than the \(limit) MB attachment limit: \(list). You can raise the limit in Settings › Chat.", table: .chat)
     }
 
     static func fileSize(at url: URL) -> Int64? {
@@ -124,8 +124,8 @@ enum AttachmentTypePolicy {
         } else {
             switch attachment.kind {
             case .image: typeLabel = AppLocalization.string("Image")
-            case .video: typeLabel = AppLocalization.string("Video")
-            case .document: typeLabel = AppLocalization.string("File")
+            case .video: typeLabel = AppLocalization.string("Video", table: .chat)
+            case .document: typeLabel = AppLocalization.string("File", table: .chat)
             }
         }
         guard let byteCount else { return typeLabel }
@@ -425,7 +425,7 @@ struct ComposerAttachmentChip: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(Text(PastedText.displayName))
                 .accessibilityValue(Text(pastedPreview ?? ""))
-                .accessibilityHint(Text(AppLocalization.string("Shows the pasted text")))
+                .accessibilityHint(Text(AppLocalization.string("Shows the pasted text", table: .chat)))
                 .accessibilityIdentifier("composer.pastedText.chip")
             } else {
                 summary

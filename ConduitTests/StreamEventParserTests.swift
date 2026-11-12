@@ -1081,14 +1081,14 @@ final class StreamEventParserTests: XCTestCase {
     /// Hermes' fixed English summaries read in the app's language; a
     /// summary naming something (a skill) stays as Hermes wrote it.
     func testFixedReviewSummariesGoThroughTheAppLanguage() {
-        let memory = AppLocalization.string("\(AppLocalization.string("Memory")) updated")
+        let memory = AppLocalization.string("\(AppLocalization.string("Memory")) updated", table: .connection)
         // The parsed review keeps Hermes' words; the card localizes them.
         XCTAssertEqual(MessageNormalizer.reviewActivity(fromText: "💾 Self-improvement review: Memory updated")?.summary, "Memory updated")
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated"), memory)
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("User profile updated"),
-                       AppLocalization.string("\(AppLocalization.string("User profile")) updated"))
+                       AppLocalization.string("\(AppLocalization.string("User profile", table: .connection)) updated", table: .connection))
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · User profile updated"),
-                       "\(memory) · \(AppLocalization.string("\(AppLocalization.string("User profile")) updated"))")
+                       "\(memory) · \(AppLocalization.string("\(AppLocalization.string("User profile", table: .connection)) updated", table: .connection))")
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · Memory updated"), memory)
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("📝 Skill 'hermes-release' patched"), "📝 Skill 'hermes-release' patched")
         XCTAssertEqual(MessageNormalizer.localizedReviewSummary("Memory updated · 📝 Skill 'x' created: y"), "Memory updated · 📝 Skill 'x' created: y")

@@ -148,7 +148,7 @@ extension GroupChatModelsTests {
             "title run-new \(RoomChatText.chatTitle("Zoo trip"))",
             "open new-chat research",
         ])
-        XCTAssertEqual(RoomChatText.chatTitle(" Zoo trip "), AppLocalization.string("About \("Zoo trip")"))
+        XCTAssertEqual(RoomChatText.chatTitle(" Zoo trip "), AppLocalization.string("About \("Zoo trip")", table: .rooms))
     }
 
     @MainActor

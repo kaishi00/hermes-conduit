@@ -22,9 +22,9 @@ enum LiveVoiceTone: String, Codable, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .relaxed: return AppLocalization.string("Relaxed")
-        case .neutral: return AppLocalization.string("Neutral")
-        case .professional: return AppLocalization.string("Professional")
+        case .relaxed: return AppLocalization.string("Relaxed", table: .voice)
+        case .neutral: return AppLocalization.string("Neutral", table: .voice)
+        case .professional: return AppLocalization.string("Professional", table: .voice)
         }
     }
 }
@@ -44,7 +44,7 @@ enum LiveVoiceAnswerLength: String, Codable, CaseIterable, Identifiable {
         switch self {
         case .concise: return AppLocalization.string("Concise")
         case .standard: return AppLocalization.string("Default")
-        case .detailed: return AppLocalization.string("Detailed")
+        case .detailed: return AppLocalization.string("Detailed", table: .voice)
         }
     }
 

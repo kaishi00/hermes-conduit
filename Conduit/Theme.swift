@@ -101,10 +101,10 @@ enum ConduitAccentChoice: String, CaseIterable, Identifiable, Sendable {
 
     var title: String {
         switch self {
-        case .amber: return AppLocalization.string("Amber")
+        case .amber: return AppLocalization.string("Amber", table: .settings)
         case .blue: return AppLocalization.string("Blue")
         case .green: return AppLocalization.string("Green")
-        case .teal: return AppLocalization.string("Teal")
+        case .teal: return AppLocalization.string("Teal", table: .settings)
         case .purple: return AppLocalization.string("Purple")
         case .pink: return AppLocalization.string("Pink")
         }

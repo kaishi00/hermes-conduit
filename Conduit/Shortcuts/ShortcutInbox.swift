@@ -521,7 +521,7 @@ struct ShortcutInboxSender {
             "public_key": NotificationE2E.base64URL(devicePrivate.publicKey.rawRepresentation),
         ])
         guard let hostPublic = answer["host_public_key"] as? String, let kid = answer["kid"] as? String else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The host didn't return a key."))
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The host didn't return a key.", table: .phone))
         }
         let key = try ShortcutInboxCrypto.agree(devicePrivate: devicePrivate, deviceID: deviceID,
                                                 hostPublicKey: hostPublic, kid: kid)

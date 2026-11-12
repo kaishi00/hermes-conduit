@@ -99,7 +99,7 @@ struct BotEditorSheet: View {
                 nameSection
                 ConduitSettingsSection(title: AppLocalization.string("Description"), symbol: "text.alignleft", tint: .blue) {
                     TextField(
-                        AppLocalization.string("What this bot is for"),
+                        AppLocalization.string("What this bot is for", table: .bots),
                         text: $draft.description,
                         axis: .vertical
                     )
@@ -110,7 +110,7 @@ struct BotEditorSheet: View {
                 workSection
                 advancedSection
             }
-            .navigationTitle(isCreating ? AppLocalization.string("New Bot") : AppLocalization.string("Edit Bot"))
+            .navigationTitle(isCreating ? AppLocalization.string("New Bot", table: .bots) : AppLocalization.string("Edit Bot"))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Cancel")) { dismiss() }
@@ -132,14 +132,14 @@ struct BotEditorSheet: View {
         // without saying so.
         .interactiveDismissDisabled(isSaving || modelConfirmation != nil)
         .alert(
-            AppLocalization.string("Use This Model?"),
+            AppLocalization.string("Use This Model?", table: .bots),
             isPresented: Binding(
                 get: { modelConfirmation != nil },
                 set: { if !$0 { modelConfirmation = nil } }
             ),
             presenting: modelConfirmation
         ) { _ in
-            Button(AppLocalization.string("Use Anyway")) { confirmModel() }
+            Button(AppLocalization.string("Use Anyway", table: .bots)) { confirmModel() }
             Button(AppLocalization.string("Cancel"), role: .cancel) {
                 // Everything else already saved; only the model stays.
                 dismiss()
@@ -220,7 +220,7 @@ struct BotEditorSheet: View {
             // The avatar itself is decorative everywhere else; here it is the
             // only sign of whether the bot will have a picture.
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(Text(AppLocalization.string("Picture")))
+            .accessibilityLabel(Text(AppLocalization.string("Picture", table: .bots)))
             .accessibilityValue(Text(pictureStateDescription))
             // One menu for every way to set the picture: side by side they
             // wrapped letter by letter on a phone (Eric, 2026-11-06).
@@ -266,11 +266,11 @@ struct BotEditorSheet: View {
                         Haptics.light()
                         draft.removesAvatar = false
                     } label: {
-                        Label(AppLocalization.string("Keep Photo"), systemImage: "arrow.uturn.backward")
+                        Label(AppLocalization.string("Keep Photo", table: .bots), systemImage: "arrow.uturn.backward")
                     }
                 }
             } label: {
-                Label(AppLocalization.string("Edit Picture"), systemImage: "photo.badge.plus")
+                Label(AppLocalization.string("Edit Picture", table: .bots), systemImage: "photo.badge.plus")
             }
             .buttonStyle(.settings)
             .accessibilityIdentifier("bot-editor-picture-menu")
@@ -278,17 +278,17 @@ struct BotEditorSheet: View {
             // A picked GIF or video lands in the draft once it's made, so
             // nothing else may change the picture meanwhile.
             .disabled(isPreparingAnimation)
-            Text(AppLocalization.string("A GIF, a short video or a picture brought to life moves on Bots Home and in Hermes Desktop."))
+            Text(AppLocalization.string("A GIF, a short video or a picture brought to life moves on Bots Home and in Hermes Desktop.", table: .bots))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .multilineTextAlignment(.center)
             if playground == .canTurnOn {
-                Text(AppLocalization.string("Turn on Apple Intelligence in Settings > Apple Intelligence & Siri to create pictures with Image Playground."))
+                Text(AppLocalization.string("Turn on Apple Intelligence in Settings > Apple Intelligence & Siri to create pictures with Image Playground.", table: .bots))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
             } else if canGeneratePictures == false, playground != .available {
-                Text(AppLocalization.string("Set up image generation in Hermes to generate pictures."))
+                Text(AppLocalization.string("Set up image generation in Hermes to generate pictures.", table: .bots))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .multilineTextAlignment(.center)
@@ -317,7 +317,7 @@ struct BotEditorSheet: View {
                     Haptics.light()
                     showingGenerator = true
                 } label: {
-                    Label(AppLocalization.string("With Hermes"), systemImage: "sparkles")
+                    Label(AppLocalization.string("With Hermes", table: .bots), systemImage: "sparkles")
                 }
             } label: {
                 Label(AppLocalization.string("Generate"), systemImage: "sparkles")
@@ -400,27 +400,27 @@ struct BotEditorSheet: View {
 
     private var pictureStateDescription: String {
         if draft.newAvatarPNG != nil {
-            return AppLocalization.string("New photo chosen")
+            return AppLocalization.string("New photo chosen", table: .bots)
         }
         if draft.removesAvatar {
-            return AppLocalization.string("Photo will be removed")
+            return AppLocalization.string("Photo will be removed", table: .bots)
         }
-        return hasStoredAvatar ? AppLocalization.string("Photo set") : AppLocalization.string("No photo")
+        return hasStoredAvatar ? AppLocalization.string("Photo set", table: .bots) : AppLocalization.string("No photo", table: .bots)
     }
 
     private var colorSection: some View {
         let names = swatchNames
-        return ConduitSettingsSection(title: AppLocalization.string("Color"), symbol: "paintpalette", tint: .pink) {
+        return ConduitSettingsSection(title: AppLocalization.string("Color", table: .bots), symbol: "paintpalette", tint: .pink) {
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 10), count: 6), spacing: 8) {
-                swatch(nil, name: AppLocalization.string("Automatic color"))
+                swatch(nil, name: AppLocalization.string("Automatic color", table: .bots))
                 ForEach(Array(BotAvatarColor.swatches.enumerated()), id: \.element) { item in
                     swatch(
                         item.element,
-                        name: names.indices.contains(item.offset) ? names[item.offset] : AppLocalization.string("Color")
+                        name: names.indices.contains(item.offset) ? names[item.offset] : AppLocalization.string("Color", table: .bots)
                     )
                 }
             }
-            Text(AppLocalization.string("Shown behind the bot's initial when it has no picture."))
+            Text(AppLocalization.string("Shown behind the bot's initial when it has no picture.", table: .bots))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         }
@@ -431,17 +431,17 @@ struct BotEditorSheet: View {
     /// immediately.
     private var swatchNames: [String] {
         [
-            AppLocalization.string("Red"),
-            AppLocalization.string("Orange"),
-            AppLocalization.string("Yellow"),
-            AppLocalization.string("Lime"),
+            AppLocalization.string("Red", table: .bots),
+            AppLocalization.string("Orange", table: .bots),
+            AppLocalization.string("Yellow", table: .bots),
+            AppLocalization.string("Lime", table: .bots),
             AppLocalization.string("Green"),
-            AppLocalization.string("Mint"),
-            AppLocalization.string("Cyan"),
-            AppLocalization.string("Sky Blue"),
+            AppLocalization.string("Mint", table: .bots),
+            AppLocalization.string("Cyan", table: .bots),
+            AppLocalization.string("Sky Blue", table: .bots),
             AppLocalization.string("Blue"),
             AppLocalization.string("Purple"),
-            AppLocalization.string("Magenta"),
+            AppLocalization.string("Magenta", table: .bots),
             AppLocalization.string("Pink")
         ]
     }
@@ -479,11 +479,11 @@ struct BotEditorSheet: View {
     @ViewBuilder
     private var nameSection: some View {
         if let bot = editedBot {
-            ConduitSettingsSection(title: AppLocalization.string("Display Name"), symbol: "person.text.rectangle", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("Display Name", table: .bots), symbol: "person.text.rectangle", tint: .conduitAccent) {
                 TextField(bot.displayName.isEmpty ? bot.name : bot.displayName, text: $draft.name)
                     .textFieldStyle(.roundedBorder)
                     .textInputAutocapitalization(.words)
-                Text(AppLocalization.string("Profile ID: \(bot.name)"))
+                Text(AppLocalization.string("Profile ID: \(bot.name)", table: .bots))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -504,15 +504,15 @@ struct BotEditorSheet: View {
     private var createNameFooter: some View {
         let identity = appState.newBotSlug(for: draft.name)
         if draft.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            Text(AppLocalization.string("The bot gets its own Hermes profile, chat, memory and skills."))
+            Text(AppLocalization.string("The bot gets its own Hermes profile, chat, memory and skills.", table: .bots))
         } else if !identity.isValid {
-            Text(AppLocalization.string("Use at least one letter or number."))
+            Text(AppLocalization.string("Use at least one letter or number.", table: .bots))
                 .foregroundStyle(.red)
         } else if identity.isTaken {
             Text(AppLocalization.string("A profile named \(identity.slug) already exists."))
                 .foregroundStyle(.red)
         } else {
-            Text(AppLocalization.string("Profile ID: \(identity.slug)"))
+            Text(AppLocalization.string("Profile ID: \(identity.slug)", table: .bots))
         }
     }
 
@@ -540,12 +540,12 @@ struct BotEditorSheet: View {
                 }
                 .buttonStyle(.plain)
                 if showsKeptDetails, detailsState == .failed {
-                    Text(AppLocalization.string("Could not load this bot's personality."))
+                    Text(AppLocalization.string("Could not load this bot's personality.", table: .bots))
                         .foregroundStyle(.secondary)
                     detailsRetry
                 }
             } else if detailsState == .failed {
-                Text(AppLocalization.string("Could not load this bot's personality."))
+                Text(AppLocalization.string("Could not load this bot's personality.", table: .bots))
                     .foregroundStyle(.secondary)
                 detailsRetry
             } else {
@@ -570,8 +570,8 @@ struct BotEditorSheet: View {
 
     private var personalityFooter: String {
         isCreating
-            ? AppLocalization.string("Optional. Leave empty to start from a short identity built from the name and description.")
-            : AppLocalization.string("Saved as the bot's SOUL.md.")
+            ? AppLocalization.string("Optional. Leave empty to start from a short identity built from the name and description.", table: .bots)
+            : AppLocalization.string("Saved as the bot's SOUL.md.", table: .bots)
     }
 
     /// The row's opening lines of the SOUL, or what an empty one means.
@@ -579,7 +579,7 @@ struct BotEditorSheet: View {
         SoulPreview(
             soul: soul,
             emptyText: isCreating
-                ? AppLocalization.string("Built from the name and description")
+                ? AppLocalization.string("Built from the name and description", table: .bots)
                 : AppLocalization.string("Not set")
         )
     }
@@ -598,7 +598,7 @@ struct BotEditorSheet: View {
                     SettingsLinkRow(title: AppLocalization.string("Work"))
                 }
                 .buttonStyle(.plain)
-                Text(AppLocalization.string("How \(bot.displayLabel) hands tasks to workstreams and keeps track of them in its Bot Chat."))
+                Text(AppLocalization.string("How \(bot.displayLabel) hands tasks to workstreams and keeps track of them in its Bot Chat.", table: .bots))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
@@ -633,17 +633,17 @@ struct BotEditorSheet: View {
                 }
                 // A row like Work's above it, not an accent link.
                 .buttonStyle(.plain)
-                .accessibilityValue(Text(showsAdvanced ? AppLocalization.string("Shown") : AppLocalization.string("Hidden")))
+                .accessibilityValue(Text(showsAdvanced ? AppLocalization.string("Shown", table: .bots) : AppLocalization.string("Hidden")))
                 if showsAdvanced {
                     if isCreating {
                         ConduitMenuPicker(
                             value: startFromSelection.wrappedValue,
-                            choices: [(id: BotCreateRequest.mainProfile, title: AppLocalization.string("Main Profile"))]
+                            choices: [(id: BotCreateRequest.mainProfile, title: AppLocalization.string("Main Profile", table: .bots))]
                                 + cloneSources.map { (id: $0.name, title: $0.displayLabel) }
-                                + [(id: "", title: AppLocalization.string("Fresh Profile"))],
+                                + [(id: "", title: AppLocalization.string("Fresh Profile", table: .bots))],
                             onSelect: { startFromSelection.wrappedValue = $0 }
                         ) {
-                            Text(AppLocalization.string("Start From")).foregroundStyle(.secondary)
+                            Text(AppLocalization.string("Start From", table: .bots)).foregroundStyle(.secondary)
                         }
                     }
                     NavigationLink {
@@ -671,12 +671,12 @@ struct BotEditorSheet: View {
                     .disabled(showsKeptDetails)
                     capabilitiesRow
                     if isCreating {
-                        Toggle(AppLocalization.string("Share Keys and Accounts"), isOn: $draft.shareAuth)
+                        Toggle(AppLocalization.string("Share Keys and Accounts", table: .bots), isOn: $draft.shareAuth)
                             .tint(.conduitAccent)
-                        Text(AppLocalization.string("Shared keys and accounts stay one set with the main profile, so a sign-in refresh in one never signs the other out. Turn it off for a separate copy."))
+                        Text(AppLocalization.string("Shared keys and accounts stay one set with the main profile, so a sign-in refresh in one never signs the other out. Turn it off for a separate copy.", table: .bots))
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
-                        Toggle(AppLocalization.string("Skip Bundled Skills"), isOn: $draft.noSkills)
+                        Toggle(AppLocalization.string("Skip Bundled Skills", table: .bots), isOn: $draft.noSkills)
                             .tint(.conduitAccent)
                     }
                 }
@@ -690,8 +690,8 @@ struct BotEditorSheet: View {
             // Nothing to diff against before the profile exists: a fresh
             // one starts with Hermes' own defaults.
             Text(draft.noSkills
-                ? AppLocalization.string("A fresh profile starts with Hermes' default tools. Edit the bot afterwards to change them.")
-                : AppLocalization.string("A fresh profile starts with Hermes' bundled skills and default tools. Edit the bot afterwards to change them."))
+                ? AppLocalization.string("A fresh profile starts with Hermes' default tools. Edit the bot afterwards to change them.", table: .bots)
+                : AppLocalization.string("A fresh profile starts with Hermes' bundled skills and default tools. Edit the bot afterwards to change them.", table: .bots))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
         } else if draft.capabilities != nil || shownKeptCapabilities != nil {
@@ -743,7 +743,7 @@ struct BotEditorSheet: View {
         } else if capabilitiesLoadFailed {
             capabilitiesFailure
         } else {
-            LabeledContent(AppLocalization.string("Skills, Tools and MCP")) {
+            LabeledContent(AppLocalization.string("Skills, Tools and MCP", table: .bots)) {
                 ProgressView()
             }
         }
@@ -760,7 +760,7 @@ struct BotEditorSheet: View {
 
     private var capabilitiesFailure: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(AppLocalization.string("Could not load skills, tools or MCP servers."))
+            Text(AppLocalization.string("Could not load skills, tools or MCP servers.", table: .bots))
                 .foregroundStyle(.secondary)
             Button(AppLocalization.string("Try Again")) {
                 Task { await loadStartFromCapabilities() }
@@ -787,7 +787,7 @@ struct BotEditorSheet: View {
 
     private var startFromLabel: String {
         let source = capabilitySource ?? BotCreateRequest.mainProfile
-        if BotManagement.isDefaultProfile(source) { return AppLocalization.string("Main Profile") }
+        if BotManagement.isDefaultProfile(source) { return AppLocalization.string("Main Profile", table: .bots) }
         return appState.botRoster.first { $0.name == source }?.displayLabel ?? source
     }
 

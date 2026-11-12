@@ -201,7 +201,7 @@ struct PulseCard: Equatable, Identifiable {
     /// done (while it rested too), who saw it done.
     var clearedTitle: String {
         guard isResting else {
-            return doneBy == "pulse" ? AppLocalization.string("Done, seen in the chat") : AppLocalization.string("Done")
+            return doneBy == "pulse" ? AppLocalization.string("Done, seen in the chat", table: .pulse) : AppLocalization.string("Done")
         }
         let away = isAwayForWrongTime ? PulseDownReason.wrongTime.title : AppLocalization.string("Not now")
         guard let restUntil else { return away }
@@ -212,9 +212,9 @@ struct PulseCard: Equatable, Identifiable {
     /// one about something Pulse remembers has that thing checked on again;
     /// any other is back on the list.
     var undoDoneHint: String {
-        if dismissedAt != nil { return AppLocalization.string("Keeps the card put away") }
-        return itemID != nil ? AppLocalization.string("Pulse checks on it again")
-            : AppLocalization.string("Puts the card back on the list")
+        if dismissedAt != nil { return AppLocalization.string("Keeps the card put away", table: .pulse) }
+        return itemID != nil ? AppLocalization.string("Pulse checks on it again", table: .pulse)
+            : AppLocalization.string("Puts the card back on the list", table: .pulse)
     }
 
     /// Follow-ups and report items take ratings; a whole report or a brief
@@ -249,8 +249,8 @@ struct PulseCard: Equatable, Identifiable {
         guard let backActedAt else { return nil }
         let when = PulseLook.relativeFormatter().localizedString(for: backActedAt, relativeTo: now)
         switch back {
-        case "unsent": return AppLocalization.string("You tapped Do it \(when) but didn't send it.")
-        case "not_done": return AppLocalization.string("You tapped Do it \(when), and it isn't done yet.")
+        case "unsent": return AppLocalization.string("You tapped Do it \(when) but didn't send it.", table: .pulse)
+        case "not_done": return AppLocalization.string("You tapped Do it \(when), and it isn't done yet.", table: .pulse)
         default: return nil
         }
     }
@@ -261,7 +261,7 @@ struct PulseCard: Equatable, Identifiable {
         let names = looked.compactMap(PulseCardKind.lookedSource)
         guard !names.isEmpty else { return nil }
         let list = names.formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
-        return AppLocalization.string("Before writing this, Pulse looked at \(list).")
+        return AppLocalization.string("Before writing this, Pulse looked at \(list).", table: .pulse)
     }
 
     /// What Do it leaves in that chat's composer: the reminder, and an ask
@@ -279,30 +279,30 @@ struct PulseCard: Equatable, Identifiable {
         let reminder = news.isEmpty ? title : news
         if let kanbanTask {
             return kanbanTask.isEmpty
-                ? AppLocalization.string("Pulse reminded me: \(reminder)\n\nIt came up in the work on a Kanban task. Find the task on the board, and if it's stuck, get it going again.")
-                : AppLocalization.string("Pulse reminded me: \(reminder)\n\nIt came up in the work on Kanban task \(kanbanTask). Check the task on the board, and if it's stuck, get it going again.")
+                ? AppLocalization.string("Pulse reminded me: \(reminder)\n\nIt came up in the work on a Kanban task. Find the task on the board, and if it's stuck, get it going again.", table: .pulse)
+                : AppLocalization.string("Pulse reminded me: \(reminder)\n\nIt came up in the work on Kanban task \(kanbanTask). Check the task on the board, and if it's stuck, get it going again.", table: .pulse)
         }
         // Something that went wrong asks for a fix, not another status
         // question (issue 2082): its look shows a status that isn't OK or a
         // job whose latest run failed.
         if showsProblem {
-            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nFind out what's wrong and fix it.")
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nFind out what's wrong and fix it.", table: .pulse)
         }
         switch kind == "followup" ? "promise" : topic {
         case "promise":
-            return AppLocalization.string("Pulse reminded me: \(reminder)\n\nGo ahead with it now.")
+            return AppLocalization.string("Pulse reminded me: \(reminder)\n\nGo ahead with it now.", table: .pulse)
         case "commitment", "reminder", "intention", "follow-up", "next":
-            return AppLocalization.string("Pulse reminded me: \(reminder)\n\nLet's take care of it now.")
+            return AppLocalization.string("Pulse reminded me: \(reminder)\n\nLet's take care of it now.", table: .pulse)
         case "date":
-            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nHelp me get ready for it.")
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nHelp me get ready for it.", table: .pulse)
         case "deadline":
-            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nHelp me take care of it before then.")
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nHelp me take care of it before then.", table: .pulse)
         case "watch":
-            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nWhere does that stand now?")
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nWhere does that stand now?", table: .pulse)
         case "interest":
-            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nTell me more.")
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nTell me more.", table: .pulse)
         default:
-            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nLet's look into it.")
+            return AppLocalization.string("Pulse brought this up: \(reminder)\n\nLet's look into it.", table: .pulse)
         }
     }
 
@@ -420,18 +420,18 @@ struct PulseProposal: Equatable {
     var stateText: String {
         switch state {
         case .waiting: return ""
-        case .adding: return AppLocalization.string("Adding…")
+        case .adding: return AppLocalization.string("Adding…", table: .pulse)
         case .added:
-            return isEvent ? AppLocalization.string("Added to your calendar")
-                : AppLocalization.string("Added to your reminders")
-        case .changed: return AppLocalization.string("Added, then changed on your phone")
-        case .failed: return AppLocalization.string("Couldn't add it")
-        case .notAdded: return AppLocalization.string("Not added")
-        case .expired: return AppLocalization.string("Expired")
+            return isEvent ? AppLocalization.string("Added to your calendar", table: .pulse)
+                : AppLocalization.string("Added to your reminders", table: .pulse)
+        case .changed: return AppLocalization.string("Added, then changed on your phone", table: .pulse)
+        case .failed: return AppLocalization.string("Couldn't add it", table: .pulse)
+        case .notAdded: return AppLocalization.string("Not added", table: .pulse)
+        case .expired: return AppLocalization.string("Expired", table: .pulse)
         case .removing: return AppLocalization.string("Removing…")
         case .removed:
-            return isEvent ? AppLocalization.string("Removed from your calendar")
-                : AppLocalization.string("Removed from your reminders")
+            return isEvent ? AppLocalization.string("Removed from your calendar", table: .pulse)
+                : AppLocalization.string("Removed from your reminders", table: .pulse)
         }
     }
 }
@@ -543,9 +543,9 @@ enum PulseLevel: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .push: return AppLocalization.string("Right away, with a notification")
-        case .screen: return AppLocalization.string("In Pulse, no notification")
-        case .brief: return AppLocalization.string("In the morning brief")
+        case .push: return AppLocalization.string("Right away, with a notification", table: .pulse)
+        case .screen: return AppLocalization.string("In Pulse, no notification", table: .pulse)
+        case .brief: return AppLocalization.string("In the morning brief", table: .pulse)
         case .off: return AppLocalization.string("Off")
         }
     }
@@ -567,11 +567,11 @@ enum PulseDownReason: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .notRelevant: return AppLocalization.string("Not relevant")
-        case .alreadyKnew: return AppLocalization.string("I already knew")
-        case .tooLate: return AppLocalization.string("Too late")
-        case .tooOften: return AppLocalization.string("Too often")
-        case .wrongTime: return AppLocalization.string("Wrong time")
+        case .notRelevant: return AppLocalization.string("Not relevant", table: .pulse)
+        case .alreadyKnew: return AppLocalization.string("I already knew", table: .pulse)
+        case .tooLate: return AppLocalization.string("Too late", table: .pulse)
+        case .tooOften: return AppLocalization.string("Too often", table: .pulse)
+        case .wrongTime: return AppLocalization.string("Wrong time", table: .pulse)
         }
     }
 
@@ -586,10 +586,10 @@ enum PulseCardKind {
     static func title(_ kind: String) -> String {
         switch kind {
         case "followup": return AppLocalization.string("Follow-ups")
-        case "report": return AppLocalization.string("Reports")
+        case "report": return AppLocalization.string("Reports", table: .pulse)
         case "brief": return AppLocalization.string("Morning brief")
         case "noticed": return AppLocalization.string("Noticed")
-        case PulseProposal.kind: return AppLocalization.string("Suggestion")
+        case PulseProposal.kind: return AppLocalization.string("Suggestion", table: .pulse)
         default: return kind
         }
     }
@@ -598,12 +598,12 @@ enum PulseCardKind {
     /// names it; nil for a source this app doesn't know.
     static func lookedSource(_ label: String) -> String? {
         switch label {
-        case "calendar": return AppLocalization.string("your calendar")
-        case "phone": return AppLocalization.string("your phone")
-        case "contacts": return AppLocalization.string("your contacts")
+        case "calendar": return AppLocalization.string("your calendar", table: .pulse)
+        case "phone": return AppLocalization.string("your phone", table: .pulse)
+        case "contacts": return AppLocalization.string("your contacts", table: .pulse)
         case "maps": return AppLocalization.string("Maps")
-        case "web": return AppLocalization.string("the web")
-        case "location": return AppLocalization.string("where you are")
+        case "web": return AppLocalization.string("the web", table: .pulse)
+        case "location": return AppLocalization.string("where you are", table: .pulse)
         default: return nil
         }
     }
@@ -631,8 +631,8 @@ enum PulseCardKind {
     static func name(_ kind: String) -> String {
         switch kind {
         case "followup", "report", "brief", "noticed": return title(kind)
-        case "deadline": return AppLocalization.string("Deadlines")
-        case "next": return AppLocalization.string("Next steps")
+        case "deadline": return AppLocalization.string("Deadlines", table: .pulse)
+        case "next": return AppLocalization.string("Next steps", table: .pulse)
         default: return topic(kind)
         }
     }
@@ -674,25 +674,25 @@ struct PulseLesson: Equatable, Identifiable {
             let level = PulseLevel(rawValue: value)?.title ?? value
             return AppLocalization.string("\(PulseCardKind.name(kind)): \(level)")
         case "rule":
-            return AppLocalization.string("No updates about “\(value)”")
+            return AppLocalization.string("No updates about “\(value)”", table: .pulse)
         case "sooner":
-            return kind == "followup" ? AppLocalization.string("Check on promises sooner")
-                : AppLocalization.string("\(PulseCardKind.name(kind)): Bring up sooner")
+            return kind == "followup" ? AppLocalization.string("Check on promises sooner", table: .pulse)
+                : AppLocalization.string("\(PulseCardKind.name(kind)): Bring up sooner", table: .pulse)
         case "seen":
-            return kind == "followup" ? AppLocalization.string("Skip news you already saw in the chat")
-                : AppLocalization.string("\(PulseCardKind.name(kind)): Skip what you already know")
+            return kind == "followup" ? AppLocalization.string("Skip news you already saw in the chat", table: .pulse)
+                : AppLocalization.string("\(PulseCardKind.name(kind)): Skip what you already know", table: .pulse)
         case "reset":
             // A reset is about what learning held (its kind is the scope), or everything.
-            return kind == "everything" ? AppLocalization.string("Forgot everything learned before this")
-                : AppLocalization.string("Reset: \(PulsePreference.subject(scope: kind, value: value, chatTitle: chatTitle))")
+            return kind == "everything" ? AppLocalization.string("Forgot everything learned before this", table: .pulse)
+                : AppLocalization.string("Reset: \(PulsePreference.subject(scope: kind, value: value, chatTitle: chatTitle))", table: .pulse)
         case "part":
             let name = PulseCardKind.name(kind)
             switch value {
-            case "morning": return AppLocalization.string("\(name): No notifications in the morning")
-            case "midday": return AppLocalization.string("\(name): No notifications in the middle of the day")
-            case "evening": return AppLocalization.string("\(name): No notifications in the evening")
-            case "night": return AppLocalization.string("\(name): No notifications at night")
-            default: return AppLocalization.string("\(name): No notifications at that time of day")
+            case "morning": return AppLocalization.string("\(name): No notifications in the morning", table: .pulse)
+            case "midday": return AppLocalization.string("\(name): No notifications in the middle of the day", table: .pulse)
+            case "evening": return AppLocalization.string("\(name): No notifications in the evening", table: .pulse)
+            case "night": return AppLocalization.string("\(name): No notifications at night", table: .pulse)
+            default: return AppLocalization.string("\(name): No notifications at that time of day", table: .pulse)
             }
         default:
             return what
@@ -703,14 +703,14 @@ struct PulseLesson: Equatable, Identifiable {
     var causeText: String? {
         switch cause {
         case "", "set", "reset": return nil
-        case "too often": return AppLocalization.string("You said too often")
-        case "too late": return AppLocalization.string("You said too late")
-        case "already knew": return AppLocalization.string("You said you already knew")
-        case "not relevant": return AppLocalization.string("You said not relevant")
-        case "wrong time": return AppLocalization.string("You said wrong time")
+        case "too often": return AppLocalization.string("You said too often", table: .pulse)
+        case "too late": return AppLocalization.string("You said too late", table: .pulse)
+        case "already knew": return AppLocalization.string("You said you already knew", table: .pulse)
+        case "not relevant": return AppLocalization.string("You said not relevant", table: .pulse)
+        case "wrong time": return AppLocalization.string("You said wrong time", table: .pulse)
         default:
-            return cause.hasSuffix("thumbs up") ? AppLocalization.string("After thumbs up")
-                : cause.hasSuffix("thumbs down") ? AppLocalization.string("After thumbs down") : cause
+            return cause.hasSuffix("thumbs up") ? AppLocalization.string("After thumbs up", table: .pulse)
+                : cause.hasSuffix("thumbs down") ? AppLocalization.string("After thumbs down", table: .pulse) : cause
         }
     }
 }
@@ -794,8 +794,8 @@ struct PulseLearned: Equatable {
     /// gets, and thumbs teach it within that instead of moving the level.
     static func levelsFooter(learns: Bool) -> String {
         learns
-            ? AppLocalization.string("The loudest Pulse gets for each. Within that, your thumbs, Do it and Done teach it what to bring up and how loudly.")
-            : AppLocalization.string("Thumbs move these too: two down make it quieter, two up louder.")
+            ? AppLocalization.string("The loudest Pulse gets for each. Within that, your thumbs, Do it and Done teach it what to bring up and how loudly.", table: .pulse)
+            : AppLocalization.string("Thumbs move these too: two down make it quieter, two up louder.", table: .pulse)
     }
 
     /// What Pulse learned with no lessons yet. With a plugin that learns, a
@@ -803,13 +803,13 @@ struct PulseLearned: Equatable {
     /// down's reason does.
     static func noLessons(learns: Bool) -> String {
         learns
-            ? AppLocalization.string("Nothing yet. When you give a reason with a thumbs down, what it changes shows up here.")
-            : AppLocalization.string("Nothing yet. Rate Pulse's cards and what it learns shows up here.")
+            ? AppLocalization.string("Nothing yet. When you give a reason with a thumbs down, what it changes shows up here.", table: .pulse)
+            : AppLocalization.string("Nothing yet. Rate Pulse's cards and what it learns shows up here.", table: .pulse)
     }
 
     /// What Pulse learned with nothing that stands out yet.
     static var noPreferences: String {
-        AppLocalization.string("Nothing stands out yet. The more you use thumbs, Do it and Done, the more Pulse learns what to bring up.")
+        AppLocalization.string("Nothing stands out yet. The more you use thumbs, Do it and Done, the more Pulse learns what to bring up.", table: .pulse)
     }
 }
 
@@ -869,23 +869,23 @@ struct PulsePreference: Equatable, Identifiable {
     static func subject(scope: String, value: String, chatTitle: String) -> String {
         switch scope {
         case "all":
-            return AppLocalization.string("Pulse's cards in general")
+            return AppLocalization.string("Pulse's cards in general", table: .pulse)
         case "kind":
-            return AppLocalization.string("“\(PulseCardKind.name(value))” cards")
+            return AppLocalization.string("“\(PulseCardKind.name(value))” cards", table: .pulse)
         case "loud":
-            return AppLocalization.string("How loudly “\(PulseCardKind.name(value))” cards come up")
+            return AppLocalization.string("How loudly “\(PulseCardKind.name(value))” cards come up", table: .pulse)
         case "timely":
-            return value == "yes" ? AppLocalization.string("What's overdue or due within a day")
-                : AppLocalization.string("What isn't due within a day")
+            return value == "yes" ? AppLocalization.string("What's overdue or due within a day", table: .pulse)
+                : AppLocalization.string("What isn't due within a day", table: .pulse)
         default:
             if value.hasPrefix("area:") {
-                return AppLocalization.string("Things about “\(PulsePlace.area(String(value.dropFirst(5))))”")
+                return AppLocalization.string("Things about “\(PulsePlace.area(String(value.dropFirst(5))))”", table: .pulse)
             }
             if value.hasPrefix("source:") {
-                return AppLocalization.string("Things from “\(PulsePlace.source(String(value.dropFirst(7))))”")
+                return AppLocalization.string("Things from “\(PulsePlace.source(String(value.dropFirst(7))))”", table: .pulse)
             }
-            return chatTitle.isEmpty ? AppLocalization.string("Things from a chat")
-                : AppLocalization.string("Things from “\(chatTitle)”")
+            return chatTitle.isEmpty ? AppLocalization.string("Things from a chat", table: .pulse)
+                : AppLocalization.string("Things from “\(chatTitle)”", table: .pulse)
         }
     }
 
@@ -893,14 +893,14 @@ struct PulsePreference: Equatable, Identifiable {
     /// lately (as they came, not faded as learning fades them).
     var detail: String {
         if scope == "loud" {
-            let louder = AppLocalization.string("Louder")
+            let louder = AppLocalization.string("Louder", table: .pulse)
             return pushCount > 0
-                ? louder + " · " + AppLocalization.string("After \(pushCount) notifications you acted on within the hour")
+                ? louder + " · " + AppLocalization.string("After \(pushCount) notifications you acted on within the hour", table: .pulse)
                 : louder
         }
-        var parts = [effect > 0 ? AppLocalization.string("Brings up more") : AppLocalization.string("Brings up less"), strength]
+        var parts = [effect > 0 ? AppLocalization.string("Brings up more", table: .pulse) : AppLocalization.string("Brings up less", table: .pulse), strength]
         if votes > 0 {
-            parts.append(AppLocalization.string("Useful \(Self.number(useful)) out of \(Self.number(votes)) lately"))
+            parts.append(AppLocalization.string("Useful \(Self.number(useful)) out of \(Self.number(votes)) lately", table: .pulse))
         }
         return parts.joined(separator: " · ")
     }
@@ -908,8 +908,8 @@ struct PulsePreference: Equatable, Identifiable {
     /// How strongly it moves things, as the notifier's `pulse learned` words it.
     var strength: String {
         let size = abs(effect)
-        return size >= 1.5 ? AppLocalization.string("Strong effect")
-            : size >= 0.5 ? AppLocalization.string("Moderate effect") : AppLocalization.string("Slight effect")
+        return size >= 1.5 ? AppLocalization.string("Strong effect", table: .pulse)
+            : size >= 0.5 ? AppLocalization.string("Moderate effect", table: .pulse) : AppLocalization.string("Slight effect", table: .pulse)
     }
 
     /// Votes count Do it and Done as parts of one (opened, something sent,
@@ -924,14 +924,14 @@ struct PulsePreference: Equatable, Identifiable {
 enum PulsePlace {
     static func area(_ area: String) -> String {
         switch area {
-        case "work": AppLocalization.string("Work and career")
-        case "personal": AppLocalization.string("Personal matters")
-        case "health": AppLocalization.string("Health and wellbeing")
-        case "home": AppLocalization.string("Home and household")
-        case "money": AppLocalization.string("Money and finances")
-        case "social": AppLocalization.string("Friends and family")
-        case "travel": AppLocalization.string("Trips and travel")
-        default: AppLocalization.string("Other matters")
+        case "work": AppLocalization.string("Work and career", table: .pulse)
+        case "personal": AppLocalization.string("Personal matters", table: .pulse)
+        case "health": AppLocalization.string("Health and wellbeing", table: .pulse)
+        case "home": AppLocalization.string("Home and household", table: .pulse)
+        case "money": AppLocalization.string("Money and finances", table: .pulse)
+        case "social": AppLocalization.string("Friends and family", table: .pulse)
+        case "travel": AppLocalization.string("Trips and travel", table: .pulse)
+        default: AppLocalization.string("Other matters", table: .pulse)
         }
     }
 
@@ -939,7 +939,7 @@ enum PulsePlace {
         switch source {
         case "calendar": AppLocalization.string("Calendar")
         case "reminders": AppLocalization.string("Reminders")
-        case "notes": AppLocalization.string("Hermes' notes")
+        case "notes": AppLocalization.string("Hermes' notes", table: .pulse)
         case "jobs": AppLocalization.string("Scheduled jobs")
         case "tools": AppLocalization.string("Tools")
         case "inbox": AppLocalization.string("Shortcuts inbox")
@@ -1002,31 +1002,31 @@ struct PulseLeftOut: Equatable, Identifiable {
     /// Why it stayed out, in a line.
     var reason: String {
         switch decision {
-        case "quieted": return AppLocalization.string("What you did with cards like this kept it out")
-        case "muted": return AppLocalization.string("You said things from this chat aren't relevant")
-        case "off": return AppLocalization.string("You turned this kind off")
+        case "quieted": return AppLocalization.string("What you did with cards like this kept it out", table: .pulse)
+        case "muted": return AppLocalization.string("You said things from this chat aren't relevant", table: .pulse)
+        case "off": return AppLocalization.string("You turned this kind off", table: .pulse)
         case "over_limit":
-            return isLookAhead ? AppLocalization.string("Picked, but the look ahead was full")
-                : AppLocalization.string("Picked, but the report was full")
+            return isLookAhead ? AppLocalization.string("Picked, but the look ahead was full", table: .pulse)
+                : AppLocalization.string("Picked, but the report was full", table: .pulse)
         case "not_picked":
-            return isLookAhead ? AppLocalization.string("Not picked in the look ahead")
-                : AppLocalization.string("Not picked for the report")
+            return isLookAhead ? AppLocalization.string("Not picked in the look ahead", table: .pulse)
+                : AppLocalization.string("Not picked for the report", table: .pulse)
         case "unanswered":
-            return isLookAhead ? AppLocalization.string("The look ahead passed over it")
-                : AppLocalization.string("The report passed over it")
+            return isLookAhead ? AppLocalization.string("The look ahead passed over it", table: .pulse)
+                : AppLocalization.string("The report passed over it", table: .pulse)
         case "resting":
-            return skip == "rated" ? AppLocalization.string("Resting after your thumbs down")
-                : AppLocalization.string("Resting after you said Not now")
+            return skip == "rated" ? AppLocalization.string("Resting after your thumbs down", table: .pulse)
+                : AppLocalization.string("Resting after you said Not now", table: .pulse)
         default:
             switch skip {
-            case "done": return AppLocalization.string("Already done")
-            case "covered": return AppLocalization.string("Your calendar, reminders or a scheduled job covers it")
-            case "raised": return AppLocalization.string("Brought up lately, and nothing changed since")
-            case "rated": return AppLocalization.string("You said before that it wasn't useful")
-            case "minor": return AppLocalization.string("Too minor to bring up")
+            case "done": return AppLocalization.string("Already done", table: .pulse)
+            case "covered": return AppLocalization.string("Your calendar, reminders or a scheduled job covers it", table: .pulse)
+            case "raised": return AppLocalization.string("Brought up lately, and nothing changed since", table: .pulse)
+            case "rated": return AppLocalization.string("You said before that it wasn't useful", table: .pulse)
+            case "minor": return AppLocalization.string("Too minor to bring up", table: .pulse)
             // 0.157.7: what fits no card type stays out.
-            case "shapeless": return AppLocalization.string("Didn't fit a card type")
-            default: return AppLocalization.string("Pulse chose to leave it out")
+            case "shapeless": return AppLocalization.string("Didn't fit a card type", table: .pulse)
+            default: return AppLocalization.string("Pulse chose to leave it out", table: .pulse)
             }
         }
     }
@@ -1477,7 +1477,7 @@ extension AppState {
         if picked == nil, let name = pulseDoItBotUnconfirmed {
             // A read still in flight will answer: worth a retry (issue 2215).
             if botModePhase == .loading {
-                return AppLocalization.string("\(name)'s Bot Chat is still loading. Try again in a moment.")
+                return AppLocalization.string("\(name)'s Bot Chat is still loading. Try again in a moment.", table: .pulse)
             }
             return AppLocalization.string("Could not open \(name)'s Bot Chat.")
         }
@@ -1498,7 +1498,7 @@ extension AppState {
             return AppLocalization.string("Conduit is still connecting to your dashboard. Try again in a moment.")
         }
         if isStartingNewChat || showsPendingNewChat {
-            return AppLocalization.string("Another new chat is starting. Try again in a moment.")
+            return AppLocalization.string("Another new chat is starting. Try again in a moment.", table: .pulse)
         }
         return nil
     }
@@ -1688,18 +1688,18 @@ enum PulseRest: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .laterToday: AppLocalization.string("Later today")
-        case .tomorrow: AppLocalization.string("Tomorrow")
-        case .nextWeek: AppLocalization.string("Next week")
+        case .laterToday: AppLocalization.string("Later today", table: .pulse)
+        case .tomorrow: AppLocalization.string("Tomorrow", table: .pulse)
+        case .nextWeek: AppLocalization.string("Next week", table: .pulse)
         }
     }
 
     /// The Undo bar's line once a card is put off.
     var undoMessage: String {
         switch self {
-        case .laterToday: AppLocalization.string("Put off until later today. It comes back as new then.")
-        case .tomorrow: AppLocalization.string("Put off until tomorrow. It comes back as new then.")
-        case .nextWeek: AppLocalization.string("Put off until next week. It comes back as new then.")
+        case .laterToday: AppLocalization.string("Put off until later today. It comes back as new then.", table: .pulse)
+        case .tomorrow: AppLocalization.string("Put off until tomorrow. It comes back as new then.", table: .pulse)
+        case .nextWeek: AppLocalization.string("Put off until next week. It comes back as new then.", table: .pulse)
         }
     }
 
@@ -1742,14 +1742,14 @@ enum PulseRest: String, CaseIterable, Identifiable {
     /// next week.
     static func backText(_ date: Date, now: Date = Date(), calendar: Calendar = .current) -> String {
         let ahead = Self.days(to: date, now: now, calendar: calendar)
-        if ahead <= 0 { return AppLocalization.string("Back later today") }
-        if ahead == 1 { return AppLocalization.string("Back tomorrow") }
+        if ahead <= 0 { return AppLocalization.string("Back later today", table: .pulse) }
+        if ahead == 1 { return AppLocalization.string("Back tomorrow", table: .pulse) }
         if ahead < 7 {
             let weekday = Date.FormatStyle(locale: AppLocalization.formattingLocale, calendar: calendar,
                                            timeZone: calendar.timeZone).weekday(.wide)
-            return AppLocalization.string("Back on \(date.formatted(weekday))")
+            return AppLocalization.string("Back on \(date.formatted(weekday))", table: .pulse)
         }
-        return AppLocalization.string("Back next week")
+        return AppLocalization.string("Back next week", table: .pulse)
     }
 
     /// Days from `now` to `date`'s day, not from the clock: a time already

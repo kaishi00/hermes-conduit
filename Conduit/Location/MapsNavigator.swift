@@ -107,8 +107,8 @@ enum MapsNavigator {
         let settings = await center.notificationSettings()
         guard settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { return false }
         let content = UNMutableNotificationContent()
-        content.title = AppLocalization.string("Directions to \(name)")
-        content.body = AppLocalization.string("Tap to open Apple Maps.")
+        content.title = AppLocalization.string("Directions to \(name)", table: .phone)
+        content.body = AppLocalization.string("Tap to open Apple Maps.", table: .phone)
         content.sound = .default
         content.userInfo = [urlKey: url.absoluteString]
         // One at a time: a newer destination replaces the last.

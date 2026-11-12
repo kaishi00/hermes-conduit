@@ -27,15 +27,15 @@ enum CapabilitiesStoreError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .notConnected:
-            return AppLocalization.string("Connect to a Hermes dashboard to load capabilities.")
+            return AppLocalization.string("Connect to a Hermes dashboard to load capabilities.", table: .bots)
         case .timedOut:
-            return AppLocalization.string("Hermes is still working on it. Check again in a moment.")
+            return AppLocalization.string("Hermes is still working on it. Check again in a moment.", table: .bots)
         case .declined(let reason):
             return reason
         case .editUnsupported:
-            return AppLocalization.string("This Hermes can't change servers yet. Update Hermes and try again.")
+            return AppLocalization.string("This Hermes can't change servers yet. Update Hermes and try again.", table: .bots)
         case .profileChanged:
-            return AppLocalization.string("Conduit switched to another profile, so nothing was saved.")
+            return AppLocalization.string("Conduit switched to another profile, so nothing was saved.", table: .bots)
         }
     }
 }
@@ -495,7 +495,7 @@ final class CapabilitiesStore {
                 timeout: 45_000
             )
             guard let action = started["name"] as? String else {
-                throw CapabilitiesStoreError.declined(AppLocalization.string("Hermes didn't start the install."))
+                throw CapabilitiesStoreError.declined(AppLocalization.string("Hermes didn't start the install.", table: .bots))
             }
             let status = try await waitForAction(action, token: token)
             if status.succeeded {
@@ -505,7 +505,7 @@ final class CapabilitiesStore {
             }
             guard token == generation else { return false }
             guard status.succeeded else {
-                skillInstalls[identifier] = .failed(status.failureReason ?? AppLocalization.string("The install didn't finish."))
+                skillInstalls[identifier] = .failed(status.failureReason ?? AppLocalization.string("The install didn't finish.", table: .bots))
                 return false
             }
             skillInstalls[identifier] = nil
@@ -590,12 +590,12 @@ final class CapabilitiesStore {
                 timeout: 45_000
             )
             guard let action = started["name"] as? String else {
-                throw CapabilitiesStoreError.declined(AppLocalization.string("Hermes didn't start removing it."))
+                throw CapabilitiesStoreError.declined(AppLocalization.string("Hermes didn't start removing it.", table: .bots))
             }
             let status = try await waitForAction(action, token: token)
             guard token == generation else { return false }
             guard status.succeeded else {
-                skillRemovals[name] = .failed(status.failureReason ?? AppLocalization.string("Removing it didn't finish."))
+                skillRemovals[name] = .failed(status.failureReason ?? AppLocalization.string("Removing it didn't finish.", table: .bots))
                 return false
             }
             skillRemovals[name] = nil
@@ -635,7 +635,7 @@ final class CapabilitiesStore {
             let status = try await waitForAction(action, token: token)
             guard token == generation else { return false }
             guard status.succeeded else {
-                skillsUpdate = .failed(status.failureReason ?? AppLocalization.string("The update didn't finish."))
+                skillsUpdate = .failed(status.failureReason ?? AppLocalization.string("The update didn't finish.", table: .bots))
                 return false
             }
             skillsUpdate = nil
@@ -1054,7 +1054,7 @@ final class CapabilitiesStore {
                 let status = try await waitForAction(action, token: token)
                 guard status.succeeded else {
                     guard token == generation else { return false }
-                    connectorInstalls[entry.name] = .failed(status.failureReason ?? AppLocalization.string("The install didn't finish."))
+                    connectorInstalls[entry.name] = .failed(status.failureReason ?? AppLocalization.string("The install didn't finish.", table: .bots))
                     return false
                 }
             }

@@ -15,7 +15,7 @@ import Foundation
 enum VoiceReadBack {
     /// Said in place of a code block. Read word for word like the rest of
     /// the reply, so it's in the app's language.
-    static var codeBlockNote: String { AppLocalization.string("(There's code here; it's in the chat.)") }
+    static var codeBlockNote: String { AppLocalization.string("(There's code here; it's in the chat.)", table: .voice) }
 
     /// `markdown` as plain speech, paragraphs kept.
     static func plainSpeech(_ markdown: String) -> String {

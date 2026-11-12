@@ -513,7 +513,7 @@ extension AppState {
                 Haptics.warning()
                 // Gone only when Hermes says so; a failed send leaves it to try again.
                 let text = status == .expired
-                    ? AppLocalization.string("\(item.ref) isn't waiting on that any more.")
+                    ? AppLocalization.string("\(item.ref) isn't waiting on that any more.", table: .bots)
                     : AppLocalization.string("Couldn't reach this bot's work. Try again in a moment.")
                 botWork.setRefusal(text, profile: profile, ref: item.ref)
             } else if status == .pending || status == .submitting {

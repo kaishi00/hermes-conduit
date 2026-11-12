@@ -143,7 +143,7 @@ extension ChatTextSelectionTests {
         let menu = try XCTUnwrap(delegate.textView?(textView, editMenuForTextIn: range, suggestedActions: suggested) ?? nil)
         XCTAssertEqual(menu.children.count, 3)
         XCTAssertEqual((menu.children[0] as? UIMenu)?.identifier, .standardEdit)
-        XCTAssertEqual((menu.children[1] as? UIAction)?.title, AppLocalization.string("Quote"))
+        XCTAssertEqual((menu.children[1] as? UIAction)?.title, AppLocalization.string("Quote", table: .chat))
         XCTAssertTrue(menu.children[2] === lookUp)
 
         // Without a standard edit group, Quote leads.
