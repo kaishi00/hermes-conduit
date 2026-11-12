@@ -56,6 +56,10 @@ struct RoomCopy: Identifiable, Equatable {
     /// The last event the copy holds.
     let lastSeq: Int
     let updatedAt: Double
+    /// Who left or was taken out, by member id: yours from their invite,
+    /// everyone else's as the home last said (plugin 0.166+ on both
+    /// sides; empty from an older one, which shows everyone as in).
+    var out: [String: RoomMemberOut] = [:]
 
     /// It ended, or your agents left: nothing more comes, and it can be
     /// deleted.
@@ -79,6 +83,7 @@ struct RoomCopy: Identifiable, Equatable {
             if agent == nil {
                 shown.owner = member.owner ?? (host.isEmpty ? nil : host)
             }
+            shown.out = out[member.memberID]
             return shown
         }
         return GroupRoom(
@@ -109,6 +114,12 @@ enum RoomCopyText {
     /// The row's line: who hosts it and how it stands.
     static func line(for copy: RoomCopy) -> String {
         switch copy.status {
+        case "ended" where copy.reason == "removed":
+            // The room goes on without your agents: it didn't end.
+            let host = copy.from.trimmingCharacters(in: .whitespacesAndNewlines)
+            return host.isEmpty
+                ? AppLocalization.string("Your agents were taken out", table: .rooms)
+                : AppLocalization.string("\(host) took your agents out", table: .rooms)
         case "ended":
             return AppLocalization.string("Ended")
         case "left":
@@ -263,7 +274,10 @@ struct RoomCopiesClient {
             reason: text(object["reason"]),
             state: state(object["state"] as? [String: Any] ?? [:]),
             lastSeq: object["last_seq"] as? Int ?? 0,
-            updatedAt: (object["updated_at"] as? NSNumber)?.doubleValue ?? 0
+            updatedAt: (object["updated_at"] as? NSNumber)?.doubleValue ?? 0,
+            out: (object["out"] as? [String: Any] ?? [:]).reduce(into: [:]) { kept, pair in
+                if let how = (pair.value as? String).flatMap(RoomMemberOut.init(rawValue:)) { kept[pair.key] = how }
+            }
         )
     }
 

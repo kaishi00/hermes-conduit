@@ -94,6 +94,17 @@ extension GroupChatModelsTests {
         let unnamed = try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(from: "")))
         XCTAssertNil(unnamed.room.members[0].owner)
 
+        XCTAssertEqual(copy.out, [:], "an older plugin names nobody out")
+
+        // Who's out, as the home said (plugin 0.166): out of the To row and
+        // @mentions; a reason this app predates is left as in.
+        var object = copiesCopy()
+        object["out"] = ["m-laifu": "removed", "m-nahida": "gone"]
+        let told = try XCTUnwrap(RoomCopiesClient.copy(object))
+        XCTAssertEqual(told.out, ["m-laifu": .removed])
+        XCTAssertEqual(told.room.members.map(\.out), [nil, nil, .removed])
+        XCTAssertEqual(GroupRoomRecipients.pickable(told.room.members).compactMap(\.handle), ["nahida", "kuro"])
+
         XCTAssertThrowsError(try RoomCopiesClient.parseList(["ok": false, "copies": [[String: Any]]()]))
         XCTAssertThrowsError(try RoomCopiesClient.parseList(["ok": true]))
     }
@@ -113,6 +124,11 @@ extension GroupChatModelsTests {
         XCTAssertEqual(try line(copiesCopy(from: "", working: true)), AppLocalization.string("Hosted elsewhere · working…", table: .rooms))
         XCTAssertEqual(try line(copiesCopy(status: "ended", reason: "disbanded")), AppLocalization.string("Ended"))
         XCTAssertEqual(try line(copiesCopy(status: "left", yours: [])), AppLocalization.string("Your agents left", table: .rooms))
+        // Taken out, the room goes on without them: it didn't end.
+        XCTAssertEqual(try line(copiesCopy(status: "ended", reason: "removed", yours: [])),
+                       AppLocalization.string("\(host) took your agents out", table: .rooms))
+        XCTAssertEqual(try line(copiesCopy(status: "ended", reason: "removed", from: "", yours: [])),
+                       AppLocalization.string("Your agents were taken out", table: .rooms))
         XCTAssertTrue(try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(status: "ended"))).isOver)
         XCTAssertTrue(try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(status: "left"))).isOver)
 
