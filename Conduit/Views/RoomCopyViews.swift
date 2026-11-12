@@ -152,8 +152,8 @@ struct HomeRoomLooksReader: ViewModifier {
 }
 
 /// Deleting a room someone else hosts once it's over: asked first, and
-/// a refusal said. On its tile, its row, or the open room's screen (nil
-/// while no copy is open there).
+/// a refusal said. On its tile, its row, or the open room's screen (the copy
+/// its menu's Delete was tapped for, nil while none waits).
 struct RoomCopyDelete: ViewModifier {
     let copy: RoomCopy?
     @Binding var confirming: Bool
@@ -162,9 +162,10 @@ struct RoomCopyDelete: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .confirmationDialog(RoomCopyText.deleteTitle, isPresented: $confirming, titleVisibility: .visible) {
+            // Presenting the copy hands Delete the one it was asked for.
+            .confirmationDialog(RoomCopyText.deleteTitle, isPresented: $confirming, titleVisibility: .visible,
+                                presenting: copy) { copy in
                 Button(AppLocalization.string("Delete"), role: .destructive) {
-                    guard let copy else { return }
                     Task { @MainActor in
                         if case .refused(let message) = await appState.deleteLinkedRoomCopy(copy) {
                             Haptics.error()
@@ -173,7 +174,7 @@ struct RoomCopyDelete: ViewModifier {
                     }
                 }
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
-            } message: {
+            } message: { _ in
                 Text(RoomCopyText.deleteMessage)
             }
             .alert(

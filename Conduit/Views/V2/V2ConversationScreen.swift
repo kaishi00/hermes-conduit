@@ -109,8 +109,9 @@ struct V2ConversationScreen: View {
     @State private var chatTitlePendingRename: SessionSummary?
     @State private var chatTitlePendingDeletion: SessionSummary?
     @State private var confirmsRoomDisband = false
-    /// Delete, from the menu of an ended room someone else hosts.
-    @State private var confirmsRoomCopyDelete = false
+    /// The ended room someone else hosts whose Delete, from the menu,
+    /// waits for its confirmation.
+    @State private var roomCopyPendingDelete: RoomCopy?
     @State private var showsRoomInfo = false
     @State private var choosesRoomPicture: GroupRoomPictureRequest?
     @State private var showsRoomSettings = false
@@ -325,7 +326,7 @@ struct V2ConversationScreen: View {
         .onChange(of: screenTarget != nil || artifactSessionIDs != nil || chatTitlePendingRename != nil
                   || chatTitlePendingDeletion != nil || editedBot != nil
                   || (workPanelOpen && !fitsSidePanel && workProfile != nil)
-                  || showsRoomSettings || showsRoomInfo || confirmsRoomDisband || confirmsRoomCopyDelete
+                  || showsRoomSettings || showsRoomInfo || confirmsRoomDisband || roomCopyPendingDelete != nil
                   || choosesRoomPicture != nil) { _, covered in
             appState.chatCoveredBySheet = covered
             // What came in under the sheet is read once it closes (#1579).
@@ -387,7 +388,7 @@ struct V2ConversationScreen: View {
             chatTitlePendingRename: $chatTitlePendingRename,
             chatTitlePendingDeletion: $chatTitlePendingDeletion,
             confirmsRoomDisband: $confirmsRoomDisband,
-            confirmsRoomCopyDelete: $confirmsRoomCopyDelete,
+            roomCopyPendingDelete: $roomCopyPendingDelete,
             choosesRoomPicture: $choosesRoomPicture,
             showsRoomSettings: $showsRoomSettings,
             showsRoomInfo: $showsRoomInfo
@@ -678,7 +679,7 @@ struct V2ConversationScreen: View {
                     onDelete: { chatTitlePendingDeletion = $0 },
                     onShowRoomInfo: { showsRoomInfo = true },
                     onDisbandRoom: { confirmsRoomDisband = true },
-                    onDeleteRoomCopy: { confirmsRoomCopyDelete = true },
+                    onDeleteRoomCopy: { roomCopyPendingDelete = $0 },
                     onChooseRoomPicture: { choosesRoomPicture = $0 },
                     onRoomSettings: { showsRoomSettings = true },
                     onArtifacts: { openArtifacts(tab: .made) },
@@ -724,7 +725,7 @@ private struct ConversationDialogs: ViewModifier {
     @Binding var chatTitlePendingRename: SessionSummary?
     @Binding var chatTitlePendingDeletion: SessionSummary?
     @Binding var confirmsRoomDisband: Bool
-    @Binding var confirmsRoomCopyDelete: Bool
+    @Binding var roomCopyPendingDelete: RoomCopy?
     @Binding var choosesRoomPicture: GroupRoomPictureRequest?
     @Binding var showsRoomSettings: Bool
     @Binding var showsRoomInfo: Bool
@@ -772,7 +773,10 @@ private struct ConversationDialogs: ViewModifier {
             } message: {
                 Text(GroupRoomDisband.warning(members: appState.activeRoomSurface?.room.members ?? []))
             }
-            .modifier(RoomCopyDelete(copy: appState.activeRoomSurface?.copy, confirming: $confirmsRoomCopyDelete))
+            .modifier(RoomCopyDelete(copy: roomCopyPendingDelete, confirming: Binding(
+                get: { roomCopyPendingDelete != nil },
+                set: { if !$0 { roomCopyPendingDelete = nil } }
+            )))
     }
 }
 
@@ -863,7 +867,7 @@ private struct V2ConversationMenu: View {
     let onDelete: (SessionSummary) -> Void
     let onShowRoomInfo: () -> Void
     let onDisbandRoom: () -> Void
-    let onDeleteRoomCopy: () -> Void
+    let onDeleteRoomCopy: (RoomCopy) -> Void
     let onChooseRoomPicture: (GroupRoomPictureRequest) -> Void
     let onRoomSettings: () -> Void
     let onArtifacts: () -> Void
