@@ -431,6 +431,10 @@ struct GroupChatView: View {
                 members: members,
                 picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) }
             )
+            // The bar's items don't get the looks the screen sets above
+            // `.toolbar`: set here, so other people's agents draw in the
+            // title as in the transcript and on Bots Home.
+            .environment(\.groupRoomLooks, appState.activeRoomLooksShown)
         }
         if !isV2 {
             // V2's conversation menu carries these with the gateway's state.
