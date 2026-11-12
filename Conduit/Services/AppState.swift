@@ -24105,7 +24105,8 @@ final class AppState: ObservableObject {
     /// the list doesn't, one started on another device, reads the catalog
     /// again; so does a list left on screen for 30 s, for renames and
     /// deletions made elsewhere (5 minutes on a gateway that pushes
-    /// `sessions.changed`, which reads them as they come). Reads go through
+    /// `sessions.changed`, which reads them as they come, and 30 s again
+    /// while a change waits on a turn running here). Reads go through
     /// the coalesced read Back uses. Returns the wait before the next tick:
     /// 4 s while a turn runs or something on the list changed, then 8, 15,
     /// 30 and 60 s while nothing moves, and 120 s with change events

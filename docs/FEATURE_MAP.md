@@ -7701,7 +7701,7 @@ and the widget's pickers (no status), and no Settings caption or doc names it
 - Status: `Conduit/Services/AppState.swift` (sessionLiveStatus, refreshLiveSessionStatuses, recordActiveListEvidence, chatListPollTick, chatListCatalogGeneration's wake), `Conduit/Services/SessionLiveStatusIndex.swift`, `Conduit/Services/PowerPolicy.swift` (ChatListPollPacer, PollCadence.chatListSteps and chatListStepsFollowingChanges)
 - Rows: `Conduit/Views/V2/V2SessionRow.swift` (V2SessionStatus, v2RowStatus), `Conduit/Views/V2/V2ChatsView.swift` (the poll's task, showsLiveRows, nestSummary, V2ProjectRow), `Conduit/Views/V2/V2ProjectPage.swift`, `Conduit/Views/SidebarView.swift`
 - What the list column shows: `Conduit/Views/V2/V2Shell.swift` (V2SplitLayout.showsChatRows)
-- Tests: `ConduitTests/AppStateChatResumeTests.swift` (testOpenChatLiveStatusPrecedence, testAnotherProfilesRowInAllFollowsTheRegistry), `ConduitTests/V2SplitLayoutTests.swift` (testV2ListColumnKeepsLiveRowsBesideTheChat), `ConduitTests/PowerPolicyTests.swift` (the Chats list pacer), `ConduitTests/ChatSyncTests.swift` (testAQuietListFollowingChangeEventsWaitsUpToTwoMinutes, testAListChangeWakesTheListPollFromALongWait)
+- Tests: `ConduitTests/AppStateChatResumeTests.swift` (testOpenChatLiveStatusPrecedence, testAnotherProfilesRowInAllFollowsTheRegistry), `ConduitTests/V2SplitLayoutTests.swift` (testV2ListColumnKeepsLiveRowsBesideTheChat), `ConduitTests/PowerPolicyTests.swift` (the Chats list pacer), `ConduitTests/ChatSyncTests.swift` (testAQuietListFollowingChangeEventsWaitsUpToTwoMinutes, testAListChangeWakesTheListPollFromALongWait, testAListChangeWakesTheFirstStepStretchedByLowPower)
 
 **Rulings**
 - The open chat's own turn decides its Running once known; Needs approval from the registry outranks it (#454).
@@ -7714,7 +7714,7 @@ and the widget's pickers (no status), and no Settings caption or doc names it
 - Rows carry no profile, so a running chat in one profile lights a row of another with the same stored id (a profile copied with its chats) while that turn runs.
 - After a send, the registry can read the turn as not started yet, and the next read comes 4 s later: a chat left within those seconds goes without Running until then.
 
-**Checked:** 2026-11-12, #2267 (the poll goes on to 120 s on a gateway that pushes `sessions.changed`, and a catalog read that changed the list wakes it; issue 851); 2026-10-27, #1369.
+**Checked:** 2026-11-12, #2279 (the wake also cuts a first step Low Power or Low Data Mode stretched past 4 s, since #2275); 2026-11-12, #2267 (the poll goes on to 120 s on a gateway that pushes `sessions.changed`, and a catalog read that changed the list wakes it; issue 851); 2026-10-27, #1369.
 
 ## Chats list changes made elsewhere
 
