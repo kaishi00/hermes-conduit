@@ -1494,6 +1494,27 @@ extension VoiceConversationControllerTests {
         XCTAssertNil(supervisor.takePendingChatContext())
     }
 
+    /// A thread turn said while a continued job of the call submits in the
+    /// same chat waits until that submit and its repeated cancel are over,
+    /// so the repeat can't stop it (review of #2310).
+    func testAThreadTurnWaitsForAContinuedJobsSubmitAndItsRepeatedCancel() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        let chat = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        var sentWhileSubmitting = -1
+        fake.duringSubmit = { [weak supervisor, weak fake] in
+            guard let supervisor, let fake, let id = supervisor.jobs.first?.id else { return }
+            _ = supervisor.startThreadTurn(request: "check the build")
+            try? await Task.sleep(for: .milliseconds(100))
+            sentWhileSubmitting = fake.threadSubmissions.count
+            _ = await supervisor.cancel(jobID: id)
+        }
+        _ = await supervisor.continueJob(instructions: "and the logs", in: chat)
+        guard await waitFor({ !fake.threadSubmissions.isEmpty }) else { return }
+        XCTAssertEqual(sentWhileSubmitting, 0, "the thread turn waits while the continued job submits")
+        XCTAssertEqual(fake.cancelled, ["rt-chat", "rt-chat"], "both cancels landed before the thread turn went")
+        XCTAssertEqual(fake.threadSubmissions.count, 1)
+    }
+
     func testAVoiceTurnsReplyIsNotAlsoTypedContext() async {
         let (supervisor, fake) = makeThreadSupervisor()
         _ = supervisor.startThreadTurn(request: "check the build")
