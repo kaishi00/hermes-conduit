@@ -818,7 +818,8 @@ struct WorkspaceFolderView: View {
         guard let root = root?.path else { return nil }
         let base = AppState.normalizedWorkspacePath(root)
         guard path != base, Self.path(path, isIn: base) else { return nil }
-        let rest = String(path.dropFirst(base.count).drop { $0 == "/" || $0 == "\\" })
+        let posix = base.hasPrefix("/") || base.hasPrefix("~")
+        let rest = String(path.dropFirst(base.count).drop { $0 == "/" || (!posix && $0 == "\\") })
         return rest.isEmpty ? nil : rest
     }
 
@@ -1178,6 +1179,8 @@ struct WorkspaceFileSheet: View {
             explorer.keepsOpen = changed
         }
         .onDisappear { explorer.keepsOpen = [] }
+        // The viewed file went after a refresh, with no other tab to show.
+        .onChange(of: explorer.viewedGone) { dismiss() }
         .alert(AppLocalization.string("This file changed on your Hermes host", table: .chat), isPresented: Binding(
             get: { conflicted != nil }, set: { if !$0 { conflicted = nil } }
         )) {
