@@ -37547,12 +37547,44 @@ final class AppState: ObservableObject {
 
     /// A new folder for a project, made in `folder` through the plugin's
     /// workspace routes, which refuse a name that's already there.
-    func makeProjectFolder(named name: String, in folder: String) async throws -> String? {
+    func makeProjectFolder(named name: String, in folder: String, profile: String? = nil) async throws -> String? {
         let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else { return nil }
-        let entry = try await workspaceFilesClient(profile: activeProfile)
+        let entry = try await workspaceFilesClient(profile: profile ?? activeProfile)
             .makeFolder(root: folder, in: folder, name: trimmed)
         return entry?.path
+    }
+
+    /// Folders opened in the Folder with Open Folder… (issue 1438): on this
+    /// device, for each dashboard and profile, the latest first.
+    static let openedWorkspaceFoldersKey = "conduit.workspaceOpenedFolders"
+    static let openedWorkspaceFoldersLimit = 8
+
+    private func openedWorkspaceFoldersBucket(profile: String) -> String {
+        "\(Self.dashboardPreferenceBucket(activeDashboardID))|\(profile)"
+    }
+
+    func openedWorkspaceFolders(profile: String) -> [String] {
+        let all = defaults.dictionary(forKey: Self.openedWorkspaceFoldersKey) as? [String: [String]] ?? [:]
+        return all[openedWorkspaceFoldersBucket(profile: profile)] ?? []
+    }
+
+    func rememberOpenedWorkspaceFolder(_ path: String, profile: String) {
+        let trimmed = path.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+        let kept = openedWorkspaceFolders(profile: profile).filter { $0 != trimmed }
+        setOpenedWorkspaceFolders(Array(([trimmed] + kept).prefix(Self.openedWorkspaceFoldersLimit)), profile: profile)
+    }
+
+    func forgetOpenedWorkspaceFolder(_ path: String, profile: String) {
+        setOpenedWorkspaceFolders(openedWorkspaceFolders(profile: profile).filter { $0 != path }, profile: profile)
+    }
+
+    private func setOpenedWorkspaceFolders(_ paths: [String], profile: String) {
+        var all = defaults.dictionary(forKey: Self.openedWorkspaceFoldersKey) as? [String: [String]] ?? [:]
+        all[openedWorkspaceFoldersBucket(profile: profile)] = paths.isEmpty ? nil : paths
+        objectWillChange.send()
+        defaults.set(all, forKey: Self.openedWorkspaceFoldersKey)
     }
 
     func workspaceDirectoryEntries(at path: String) async throws -> [WorkspaceEntry] {

@@ -71,6 +71,7 @@ struct WorkspaceFolderView: View {
     @State private var deleting: WorkspaceEntry?
     @State private var uploadFolder: String?
     @State private var showsImporter = false
+    @State private var showsFolderPicker = false
     @State private var failure: String?
     /// The latest open; one that lands after another, or after the folder,
     /// profile or server changed, is dropped.
@@ -243,6 +244,16 @@ struct WorkspaceFolderView: View {
         } message: {
             Text(verbatim: failure ?? "")
         }
+        .sheet(isPresented: $showsFolderPicker) {
+            ProjectFolderPickerSheet(rootPath: root?.path ?? appState.projectFolderPickerRoot,
+                                     profile: appState.workspaceProfile) { folder in
+                appState.rememberOpenedWorkspaceFolder(folder, profile: appState.workspaceProfile)
+                rootPath = folder
+            }
+            .presentationDetents([.medium, .large])
+            .presentationDragIndicator(.visible)
+            .environmentObject(appState)
+        }
         .fileImporter(isPresented: $showsImporter, allowedContentTypes: [.item], allowsMultipleSelection: true) { result in
             guard case .success(let urls) = result, let folder = uploadFolder else { return }
             Task { await upload(urls, into: folder) }
@@ -275,6 +286,23 @@ struct WorkspaceFolderView: View {
                         }
                     }
                 }
+                // Any folder on the Hermes host, as far as the host lets
+                // the Folder go (issue 1438).
+                Section {
+                    Button {
+                        showsFolderPicker = true
+                    } label: {
+                        Label(AppLocalization.string("Open Folder…"), systemImage: "folder.badge.plus")
+                    }
+                    if let root, root.kind == .opened {
+                        Button {
+                            appState.forgetOpenedWorkspaceFolder(root.path, profile: appState.workspaceProfile)
+                            rootPath = nil
+                        } label: {
+                            Label(AppLocalization.string("Remove from List"), systemImage: "minus.circle")
+                        }
+                    }
+                }
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "folder.fill")
@@ -292,7 +320,7 @@ struct WorkspaceFolderView: View {
                                 .truncationMode(.head)
                         }
                     }
-                    if roots.count > 1 {
+                    if !roots.isEmpty {
                         Image(systemName: "chevron.up.chevron.down")
                             .scaledFont(.caption2.weight(.bold))
                             .foregroundStyle(.secondary)
@@ -301,7 +329,6 @@ struct WorkspaceFolderView: View {
                 .frame(maxWidth: .infinity, alignment: .leading)
                 .contentShape(Rectangle())
             }
-            .disabled(roots.count < 2)
             .accessibilityLabel(AppLocalization.string("Folder: \(root?.title ?? AppLocalization.string("No folder"))"))
             .modifier(WorkspaceMoveDropTarget(folder: root?.path ?? "", isEnabled: root != nil && explorer.canChange) { dragged in
                 if let root { moveDropped(dragged, into: root.path) }

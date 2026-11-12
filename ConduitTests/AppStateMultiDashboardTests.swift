@@ -2048,6 +2048,26 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(explorer.recent.map(\.name), ["notes.md"])
     }
 
+    /// Open Folder… (issue 1438): a folder opened is listed after the
+    /// chat's and the projects' folders, latest first, for its dashboard
+    /// and profile only, named by its last part (a Windows path's too),
+    /// and Remove from List takes it out.
+    func testAnOpenedFolderIsListedForItsDashboardAndProfile() {
+        let (appState, _, _) = heldSwitchFixture()
+        let profile = appState.workspaceProfile
+        appState.rememberOpenedWorkspaceFolder("/srv/old", profile: profile)
+        appState.rememberOpenedWorkspaceFolder(#"C:\dev\Site"#, profile: profile)
+        appState.rememberOpenedWorkspaceFolder("/srv/old", profile: profile)
+        let opened = appState.workspaceRoots(includingChat: false).filter { $0.kind == .opened }
+        XCTAssertEqual(opened.map(\.path), ["/srv/old", #"C:\dev\Site"#], "latest first, once each")
+        XCTAssertEqual(opened.map(\.title), ["old", "Site"])
+        XCTAssertTrue(appState.openedWorkspaceFolders(profile: "someone-else").isEmpty)
+
+        appState.forgetOpenedWorkspaceFolder("/srv/old", profile: profile)
+        XCTAssertEqual(appState.openedWorkspaceFolders(profile: profile), [#"C:\dev\Site"#])
+
+    }
+
     func testATappedFileNameAsksThePluginAndALaterTapWins() async throws {
         let (appState, held, _) = heldSwitchFixture()
         appState.setNotifierPluginStateForTesting(.reported(

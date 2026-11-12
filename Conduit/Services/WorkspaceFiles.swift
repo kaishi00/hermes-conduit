@@ -267,6 +267,8 @@ struct WorkspaceRoot: Identifiable, Equatable, Hashable {
     enum Kind: Equatable, Hashable {
         case chat
         case project
+        /// Opened with Open Folder… (issue 1438).
+        case opened
     }
 
     let path: String
