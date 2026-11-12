@@ -26,11 +26,11 @@ enum HostedAppsError: Error, Equatable, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notConnected: AppLocalization.string("Connect to Hermes to manage its apps.")
-        case .unsupported: AppLocalization.string("This Hermes can't connect apps yet. Update Hermes to use them.")
+        case .notConnected: AppLocalization.string("Connect to Hermes to manage its apps.", table: .bots)
+        case .unsupported: AppLocalization.string("This Hermes can't connect apps yet. Update Hermes to use them.", table: .bots)
         case .superseded: AppLocalization.string("That was interrupted before it finished. Try again.")
-        case .readOnlyRules: AppLocalization.string("Your organization manages these switches.")
-        case .rulesChanged: AppLocalization.string("The switches changed somewhere else. They show what's set now; try again.")
+        case .readOnlyRules: AppLocalization.string("Your organization manages these switches.", table: .bots)
+        case .rulesChanged: AppLocalization.string("The switches changed somewhere else. They show what's set now; try again.", table: .bots)
         }
     }
 }

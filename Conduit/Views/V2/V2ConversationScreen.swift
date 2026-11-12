@@ -214,7 +214,7 @@ struct V2ConversationScreen: View {
                     width: sidePanelWidth,
                     room: screenWidth - V2SplitLayout.minimumChatWidth - 1,
                     columnEdge: .trailing,
-                    label: AppLocalization.string("Artifacts width"),
+                    label: AppLocalization.string("Artifacts width", table: .chat),
                     stored: $storedSidePanelWidth,
                     live: $draggedSidePanelWidth
                 )
@@ -606,7 +606,7 @@ struct V2ConversationScreen: View {
                 // ignores opacity and hit testing: only the shown tab's.
                 .keyboardShortcut(ConduitKeyboardShortcut.chatList.shortcut)
                 .disabled(!shell.chatTakesKeys)
-                .accessibilityLabel(shell.isSplit ? AppLocalization.string("Hide chat list") : AppLocalization.string("Show chat list"))
+                .accessibilityLabel(shell.isSplit ? AppLocalization.string("Hide chat list", table: .chat) : AppLocalization.string("Show chat list"))
                 .accessibilityIdentifier("conversation.chatListToggle")
             }
         }
@@ -646,7 +646,7 @@ struct V2ConversationScreen: View {
                         .buttonStyle(.plain)
                         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
                         .accessibilityLabel(AppLocalization.string("From \(parent.title)"))
-                        .accessibilityHint(AppLocalization.string("Opens the conversation this one came from"))
+                        .accessibilityHint(AppLocalization.string("Opens the conversation this one came from", table: .chat))
                     }
                     // A Bot Chat's work, or whose work a workstream is.
                     if appState.servesBotWorkstreams {
@@ -710,7 +710,7 @@ struct V2ConversationScreen: View {
                 .keyboardShortcut(ConduitKeyboardShortcut.artifacts.shortcut)
                 // The cover hides the panel: it waits for the coming chat.
                 .disabled(!shell.chatTakesKeys || appState.botChatComingOverAnother != nil)
-                .accessibilityLabel(showsSidePanel ? AppLocalization.string("Hide artifacts") : AppLocalization.string("Show artifacts"))
+                .accessibilityLabel(showsSidePanel ? AppLocalization.string("Hide artifacts", table: .chat) : AppLocalization.string("Show artifacts"))
                 .accessibilityIdentifier("conversation.sidePanelToggle")
             }
         }
@@ -818,7 +818,7 @@ struct ChatSidePanel: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(AppLocalization.string("Hide artifacts"))
+                .accessibilityLabel(AppLocalization.string("Hide artifacts", table: .chat))
             }
             .padding(.leading, 16)
             .padding(.trailing, 8)
@@ -948,7 +948,7 @@ private struct V2ConversationMenu: View {
                                                      ?? appState.profileDisplayName(profile),
                                                  chatSessionIDs: appState.activeSessionId.map { appState.chatOwnSessionIDs(for: $0) } ?? []))
                     } label: {
-                        Label(AppLocalization.string("Bot's Screen"), systemImage: "display")
+                        Label(AppLocalization.string("Bot's Screen", table: .chat), systemImage: "display")
                     }
                     .disabled(!appState.isConnected)
                 }
@@ -997,7 +997,7 @@ private struct V2ConversationMenu: View {
             .modifier(V2PreGlassToolbarControl())
         }
         .menuIndicator(.hidden)
-        .accessibilityLabel(AppLocalization.string("Conversation options"))
+        .accessibilityLabel(AppLocalization.string("Conversation options", table: .chat))
         .accessibilityValue(statusWord)
         .accessibilityIdentifier("conversation.menu")
         // Asks the bot's host once whether it can have a screen, so the

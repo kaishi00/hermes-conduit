@@ -28,6 +28,9 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         XCTAssertEqual(spoken as NSDictionary, ["session_id": "rt-1", "text_sha256": hi, "surface": "carplay", "input": "spoken"])
         XCTAssertEqual(TurnSurface.shortcut.body(runtimeSessionID: "rt-2", text: "hi") as NSDictionary,
                        ["session_id": "rt-2", "text_sha256": hi, "surface": "siri"])
+        // The Pulse widget's Do it is a widget's button, not Siri (#888).
+        XCTAssertEqual(TurnSurface.widget.body(runtimeSessionID: "rt-3", text: "hi") as NSDictionary,
+                       ["session_id": "rt-3", "text_sha256": hi, "surface": "widget"])
     }
 
     func testATypedMessageReadAloudSaysItsReplyIsHeard() {
@@ -81,6 +84,20 @@ final class AppStateTurnSurfaceTests: XCTestCase {
         _ = await harness.appState.submitComposer(text: "Log my water")
 
         XCTAssertEqual(recorder.events.first, "report rt-shortcut siri -")
+    }
+
+    func testAWidgetButtonsSendReportsTheWidget() async throws {
+        // The Pulse widget's Do it goes through the Shortcut's sender, as a
+        // widget's button rather than Siri (#888).
+        let recorder = TurnSurfaceRecorder()
+        let harness = makeHarness(recorder: recorder)
+        openChat("rt-open", in: harness)
+        let backend = harness.appState.makeShortcutSendBackend(surface: .widget)
+        let chat = VoiceThreadTarget(runtimeSessionID: "rt-widget", storedSessionID: nil, title: "Pulse")
+
+        _ = try await backend.submit(chat, "rt-widget", "Book the table")
+
+        XCTAssertEqual(recorder.events.first, "report rt-widget widget -")
     }
 
     func testATypedSendDuringAShortcutsSendKeepsItsOwnSurface() async {

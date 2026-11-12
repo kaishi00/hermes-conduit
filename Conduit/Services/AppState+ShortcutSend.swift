@@ -44,7 +44,8 @@ extension AppState {
     /// With `dashboardID`, every chat it makes and every send stops with
     /// `chatOnAnotherDashboard` once that dashboard is no longer the active
     /// one, checked again after each wait before it picks the chat or sends.
-    func makeShortcutSendBackend(onlyOn dashboardID: UUID? = nil) -> ShortcutSendBackend {
+    /// `surface` is what its sends tell Hermes they came from (#888).
+    func makeShortcutSendBackend(onlyOn dashboardID: UUID? = nil, surface: TurnSurface = .shortcut) -> ShortcutSendBackend {
         // The error a failed composer try left, for the run to clear once
         // its retry lands.
         let failedTry = ShortcutFailedTry()
@@ -135,7 +136,7 @@ extension AppState {
                     if self.isOpenChat(scoped), self.activeSessionId == runtimeID, !self.isBusy {
                         // A turn the composer finds running is never steered or
                         // interrupted from here: it declines and the gateway queues.
-                        self.submissionTurnSurface = (text, .shortcut)
+                        self.submissionTurnSurface = (text, surface)
                         defer { self.submissionTurnSurface = nil }
                         // Whether the composer wrote the error, even one reading
                         // the same as a banner already on screen.
@@ -160,7 +161,7 @@ extension AppState {
                 // A run that has left the dashboard reports no turn surface.
                 try stayOnDashboard()
                 let reportedOn = self.activeDashboardID
-                await self.reportTurnSurface(.shortcut, runtimeSessionID: runtimeID, text: text)?.value
+                await self.reportTurnSurface(surface, runtimeSessionID: runtimeID, text: text)?.value
                 do {
                     try stayOnDashboard()
                     return try await self.sendShortcutPrompt(runtimeID, text: text)

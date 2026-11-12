@@ -157,7 +157,7 @@ enum RoomInviteLimits {
 enum RoomInviteText {
     /// Who invited you: the name the Link shows them, else who they are.
     static func sender(of invite: RoomInvite) -> String {
-        invite.from.isEmpty ? AppLocalization.string("Someone you've linked with") : invite.from
+        invite.from.isEmpty ? AppLocalization.string("Someone you've linked with", table: .rooms) : invite.from
     }
 
     /// Who invited you, where the invite stands, or why it ended.
@@ -165,52 +165,52 @@ enum RoomInviteText {
         let sender = sender(of: invite)
         switch invite.status {
         case "waiting":
-            return AppLocalization.string("\(sender) invited you")
+            return AppLocalization.string("\(sender) invited you", table: .rooms)
         case "joined":
-            return AppLocalization.string("You joined, waiting for the room to start")
+            return AppLocalization.string("You joined, waiting for the room to start", table: .rooms)
         case "started":
-            return AppLocalization.string("Started with your agents in it")
+            return AppLocalization.string("Started with your agents in it", table: .rooms)
         case "lapsed":
-            return AppLocalization.string("The invite ran out")
+            return AppLocalization.string("The invite ran out", table: .rooms)
         case "declined":
             return AppLocalization.string("You declined")
         case "left":
-            return AppLocalization.string("Your agents left")
+            return AppLocalization.string("Your agents left", table: .rooms)
         case "cancelled":
             switch invite.reason {
             case "withdrawn":
-                return AppLocalization.string("\(sender) took it back")
+                return AppLocalization.string("\(sender) took it back", table: .rooms)
             case "lapsed":
-                return AppLocalization.string("It ran out before the room started")
+                return AppLocalization.string("It ran out before the room started", table: .rooms)
             case "too_few":
-                return AppLocalization.string("Too few joined, so it didn't start")
+                return AppLocalization.string("Too few joined, so it didn't start", table: .rooms)
             case "start_failed":
-                return AppLocalization.string("Their Hermes couldn't start it")
+                return AppLocalization.string("Their Hermes couldn't start it", table: .rooms)
             case "refused":
-                return AppLocalization.string("It started, but your agents couldn't be added")
+                return AppLocalization.string("It started, but your agents couldn't be added", table: .rooms)
             case "started_without_you":
-                return AppLocalization.string("It started without you")
+                return AppLocalization.string("It started without you", table: .rooms)
             default:
-                return AppLocalization.string("It was called off")
+                return AppLocalization.string("It was called off", table: .rooms)
             }
         case "ended":
             switch invite.reason {
             case "removed":
-                return AppLocalization.string("\(sender) took your agents out")
+                return AppLocalization.string("\(sender) took your agents out", table: .rooms)
             case "disbanded":
-                return AppLocalization.string("\(sender) ended the room")
+                return AppLocalization.string("\(sender) ended the room", table: .rooms)
             default:
-                return AppLocalization.string("It ended")
+                return AppLocalization.string("It ended", table: .rooms)
             }
         default:
-            return AppLocalization.string("It ended")
+            return AppLocalization.string("It ended", table: .rooms)
         }
     }
 
     /// A row's line: one waiting on you says until when.
     static func rowLine(for invite: RoomInvite) -> String {
         guard invite.status == "waiting", let expiresAt = invite.expiresAt else { return line(for: invite) }
-        return AppLocalization.string("\(sender(of: invite)) invited you, answer by \(RoomDraftText.until(expiresAt))")
+        return AppLocalization.string("\(sender(of: invite)) invited you, answer by \(RoomDraftText.until(expiresAt))", table: .rooms)
     }
 }
 
@@ -311,12 +311,12 @@ struct RoomInvitesClient {
     /// request: the answer is still on its way.
     static func answerRefusal(for error: Error, joining: Bool) -> String {
         if case DashboardTicketBridgeError.http(504, _) = error {
-            return AppLocalization.string("Your Hermes is still sending your answer. The invite shows it once it has.")
+            return AppLocalization.string("Your Hermes is still sending your answer. The invite shows it once it has.", table: .rooms)
         }
         let words = message(for: error)
         return joining
-            ? AppLocalization.string("Could not join: \(words)")
-            : AppLocalization.string("Could not decline: \(words)")
+            ? AppLocalization.string("Could not join: \(words)", table: .rooms)
+            : AppLocalization.string("Could not decline: \(words)", table: .rooms)
     }
 }
 
@@ -604,7 +604,7 @@ extension AppState {
             return .failed
         }
         guard !isVoiceCallInProgress else {
-            showCallRefusal(AppLocalization.string("This invite opens when the call ends."))
+            showCallRefusal(AppLocalization.string("This invite opens when the call ends.", table: .rooms))
             return .afterCall
         }
         if case .switchFirst(let dashboardID) = ownership {
@@ -619,7 +619,7 @@ extension AppState {
         }
         guard isConnected, client != nil, notifierPlugin.state != .unknown else { return .waiting }
         guard canInviteLinkedPeople else {
-            errorMessage = AppLocalization.string("This invite isn't on your Hermes any more.")
+            errorMessage = AppLocalization.string("This invite isn't on your Hermes any more.", table: .rooms)
             return .failed
         }
         let epoch = groupRoomEpoch
@@ -629,7 +629,7 @@ extension AppState {
             invites = try await reader.invites()
         } catch {
             guard !Task.isCancelled else { return .waiting }
-            errorMessage = AppLocalization.string("Could not open the invite: \(RoomInvitesClient.message(for: error))")
+            errorMessage = AppLocalization.string("Could not open the invite: \(RoomInvitesClient.message(for: error))", table: .rooms)
             return .failed
         }
         guard !Task.isCancelled else { return .waiting }
@@ -638,7 +638,7 @@ extension AppState {
             linkedRoomInvites = LinkedRoomInvites(dashboardID: reader.dashboardID, invites: invites)
         }
         guard let invite = invites.first(where: { $0.link == target.link && $0.roomID == target.roomID }) else {
-            errorMessage = AppLocalization.string("This invite isn't on your Hermes any more.")
+            errorMessage = AppLocalization.string("This invite isn't on your Hermes any more.", table: .rooms)
             return .failed
         }
         presentedRoomInvite = invite

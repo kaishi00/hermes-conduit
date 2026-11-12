@@ -218,7 +218,7 @@ extension GroupChatModelsTests {
             linkedRoomMember("furina"), linkedRoomMember("laifu", peer: true),
         ])
         XCTAssertEqual(linked, AppLocalization.string(
-            "The room ends for everyone, and your agents' sessions for it are deleted. Agents on other people's Hermes keep theirs. This cannot be undone."
+            "The room ends for everyone, and your agents' sessions for it are deleted. Agents on other people's Hermes keep theirs. This cannot be undone.", table: .rooms
         ))
         let own = GroupRoomDisband.warning(members: [linkedRoomMember("furina"), linkedRoomMember("nahida")])
         XCTAssertEqual(own, AppLocalization.string(
@@ -360,7 +360,7 @@ extension GroupChatModelsTests {
         none.customTools = []
         XCTAssertEqual(
             RoomAgentChoicesView.toolsDetail(none, freeBusy: true),
-            AppLocalization.string("No tools are picked for it on your Hermes.")
+            AppLocalization.string("No tools are picked for it on your Hermes.", table: .rooms)
         )
     }
 
@@ -373,7 +373,7 @@ extension GroupChatModelsTests {
         // An older plugin's Use my data is only lookups.
         XCTAssertEqual(
             RoomAgentChoicesView.toolsDetail(data, freeBusy: false),
-            AppLocalization.string("It can search the web and X, read web pages and look at images.")
+            AppLocalization.string("It can search the web and X, read web pages and look at images.", table: .rooms)
         )
         XCTAssertEqual(RoomChoicesClient.freeBusyCapability, "room-free-busy")
         XCTAssertTrue(busy.contains("as What it may share allows"), busy)

@@ -30,27 +30,27 @@ enum KanbanServiceError: LocalizedError, Equatable {
     var errorDescription: String? {
         switch self {
         case .invalidResponse(let message): return message
-        case .emptyTaskID: return AppLocalization.string("Hermes returned a Kanban task without an ID.")
+        case .emptyTaskID: return AppLocalization.string("Hermes returned a Kanban task without an ID.", table: .tasks)
         case .invalidManualStatus(let status):
             if status == "running" {
-                return AppLocalization.string("Hermes controls Running; use the dispatcher/claim path instead of setting it manually.")
+                return AppLocalization.string("Hermes controls Running; use the dispatcher/claim path instead of setting it manually.", table: .tasks)
             }
-            return AppLocalization.string("Hermes does not allow \(status) as a manual Kanban destination.")
+            return AppLocalization.string("Hermes does not allow \(status) as a manual Kanban destination.", table: .tasks)
         case .taskCreatedButMoveFailed(let taskID, let targetStatus, let reason):
-            let identifier = taskID.map { AppLocalization.string(" (task \($0))") } ?? ""
-            return AppLocalization.string("The task was created\(identifier), but Hermes could not move it to \(targetStatus). It was not duplicated; close this form and refresh the board. \(reason)")
+            let identifier = taskID.map { AppLocalization.string(" (task \($0))", table: .tasks) } ?? ""
+            return AppLocalization.string("The task was created\(identifier), but Hermes could not move it to \(targetStatus). It was not duplicated; close this form and refresh the board. \(reason)", table: .tasks)
         case .mutationInProgress:
-            return AppLocalization.string("Another Kanban change is still being saved.")
+            return AppLocalization.string("Another Kanban change is still being saved.", table: .tasks)
         case .boardNavigationInProgress:
-            return AppLocalization.string("Still switching boards. Try again once the new board finishes loading.")
+            return AppLocalization.string("Still switching boards. Try again once the new board finishes loading.", table: .tasks)
         case .invalidQueryParameter(let name):
             // Fail closed: a dropped board/id parameter would silently
             // retarget the request at the backend's current board.
-            return AppLocalization.string("Could not build a safe Hermes Kanban request (invalid \(name)). The operation was cancelled before any data changed.")
+            return AppLocalization.string("Could not build a safe Hermes Kanban request (invalid \(name)). The operation was cancelled before any data changed.", table: .tasks)
         case .actionDeclined(let reason):
             // The backend's own reason (e.g. "task is not in triage") is the
             // product semantics; never translate it into a generic failure.
-            return reason.isEmpty ? AppLocalization.string("Hermes declined the action.") : reason
+            return reason.isEmpty ? AppLocalization.string("Hermes declined the action.", table: .tasks) : reason
         }
     }
 }
@@ -286,7 +286,7 @@ final class KanbanService {
         )
         let outcome = try decodeResponse(KanbanSpecifyResponse.self, from: response)
         guard outcome.ok else {
-            throw KanbanServiceError.actionDeclined(reason: outcome.reason ?? AppLocalization.string("Hermes declined to specify this task."))
+            throw KanbanServiceError.actionDeclined(reason: outcome.reason ?? AppLocalization.string("Hermes declined to specify this task.", table: .tasks))
         }
         return outcome
     }
@@ -305,7 +305,7 @@ final class KanbanService {
         )
         let outcome = try decodeResponse(KanbanDecomposeResponse.self, from: response)
         guard outcome.ok else {
-            throw KanbanServiceError.actionDeclined(reason: outcome.reason ?? AppLocalization.string("Hermes declined to decompose this task."))
+            throw KanbanServiceError.actionDeclined(reason: outcome.reason ?? AppLocalization.string("Hermes declined to decompose this task.", table: .tasks))
         }
         return outcome
     }
@@ -504,19 +504,19 @@ final class KanbanService {
 
     private func decodeResponse<T: Decodable>(_ type: T.Type, from response: [String: Any]) throws -> T {
         guard JSONSerialization.isValidJSONObject(response), let data = try? JSONSerialization.data(withJSONObject: response) else {
-            throw KanbanServiceError.invalidResponse(AppLocalization.string("Hermes returned an unreadable Kanban response."))
+            throw KanbanServiceError.invalidResponse(AppLocalization.string("Hermes returned an unreadable Kanban response.", table: .tasks))
         }
         do {
             return try decoder.decode(type, from: data)
         } catch {
-            throw KanbanServiceError.invalidResponse(AppLocalization.string("Hermes sent a Kanban reply Conduit didn't understand. Updating Hermes and Conduit usually fixes this."))
+            throw KanbanServiceError.invalidResponse(AppLocalization.string("Hermes sent a Kanban reply Conduit didn't understand. Updating Hermes and Conduit usually fixes this.", table: .tasks))
         }
     }
 
     private func encodedDictionary<T: Encodable>(_ value: T) throws -> [String: Any] {
         let data = try encoder.encode(value)
         guard let object = try JSONSerialization.jsonObject(with: data) as? [String: Any] else {
-            throw KanbanServiceError.invalidResponse(AppLocalization.string("Could not encode the Kanban request."))
+            throw KanbanServiceError.invalidResponse(AppLocalization.string("Could not encode the Kanban request.", table: .tasks))
         }
         return object
     }

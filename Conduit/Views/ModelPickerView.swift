@@ -51,13 +51,13 @@ enum ReasoningEffortLevel: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .off: return AppLocalization.string("Off")
-        case .minimal: return AppLocalization.string("Minimal")
+        case .minimal: return AppLocalization.string("Minimal", table: .settings)
         case .low: return AppLocalization.string("Low")
         case .medium: return AppLocalization.string("Medium")
         case .high: return AppLocalization.string("High")
         case .xhigh: return AppLocalization.string("Extra High")
-        case .max: return AppLocalization.string("Max")
-        case .ultra: return AppLocalization.string("Ultra")
+        case .max: return AppLocalization.string("Max", table: .settings)
+        case .ultra: return AppLocalization.string("Ultra", table: .settings)
         }
     }
 }
@@ -123,13 +123,13 @@ func runModelPickerSwitch(
         if confirmed {
             return .failed(
                 outcome.confirmMessage.isEmpty
-                    ? AppLocalization.string("Hermes did not accept the model switch.")
+                    ? AppLocalization.string("Hermes did not accept the model switch.", table: .settings)
                     : outcome.confirmMessage
             )
         }
         return .needsConfirmation(
             outcome.confirmMessage.isEmpty
-                ? AppLocalization.string("Hermes asks you to confirm switching to \(model).")
+                ? AppLocalization.string("Hermes asks you to confirm switching to \(model).", table: .settings)
                 : outcome.confirmMessage
         )
     } catch {
@@ -223,8 +223,8 @@ struct RefreshModelsButton: View {
         }
         .disabled(refreshing)
         .tint(.conduitAccent)
-        .macTooltip(AppLocalization.string("Refresh models"))
-        .accessibilityLabel(AppLocalization.string("Refresh models"))
+        .macTooltip(AppLocalization.string("Refresh models", table: .settings))
+        .accessibilityLabel(AppLocalization.string("Refresh models", table: .settings))
     }
 }
 
@@ -613,7 +613,7 @@ struct ModelPickerView: View {
     }
 
     private var modelSection: some View {
-        ModelPickerSection(title: AppLocalization.string("Providers"), symbol: "server.rack", tint: .conduitAccent, flush: true) {
+        ModelPickerSection(title: AppLocalization.string("Providers", table: .settings), symbol: "server.rack", tint: .conduitAccent, flush: true) {
             switch catalog.state {
             case .loading, .failed, .empty:
                 catalogStateRows
@@ -689,7 +689,7 @@ struct ModelPickerView: View {
                 Spacer(minLength: 8)
                 if switchingRow != nil {
                     ProgressView()
-                        .accessibilityLabel(AppLocalization.string("Switching model"))
+                        .accessibilityLabel(AppLocalization.string("Switching model", table: .settings))
                 }
             }
             .padding(16)
@@ -729,11 +729,11 @@ struct ModelPickerView: View {
         let pinned = appState.modelQuickPicks.pinnedRows(in: providers)
         let recent = appState.modelQuickPicks.recentRows(in: providers, excluding: current)
         if catalog.state != .ready {
-            ModelPickerSection(title: AppLocalization.string("Providers"), symbol: "server.rack", tint: .conduitAccent, flush: true) {
+            ModelPickerSection(title: AppLocalization.string("Providers", table: .settings), symbol: "server.rack", tint: .conduitAccent, flush: true) {
                 catalogStateRows
             }
         } else if !pinned.isEmpty || !recent.isEmpty {
-            ModelPickerSection(title: AppLocalization.string("Quick picks"), symbol: "pin", tint: .conduitAccent, flush: true) {
+            ModelPickerSection(title: AppLocalization.string("Quick picks", table: .settings), symbol: "pin", tint: .conduitAccent, flush: true) {
                 if !pinned.isEmpty {
                     quickPicksHeader(AppLocalization.string("Pinned"))
                     quickPickRows(pinned)
@@ -752,7 +752,7 @@ struct ModelPickerView: View {
         } else if catalog.keptRowsFailed {
             // No Quick picks to sit under, but a failed read still says so
             // on the sheet, with Try Again.
-            ModelPickerSection(title: AppLocalization.string("Providers"), symbol: "server.rack", tint: .conduitAccent, flush: true) {
+            ModelPickerSection(title: AppLocalization.string("Providers", table: .settings), symbol: "server.rack", tint: .conduitAccent, flush: true) {
                 catalogFailedRow
             }
         }
@@ -795,8 +795,8 @@ struct ModelPickerView: View {
         .buttonStyle(.plain)
         .padding(.trailing, 4)
         .accessibilityLabel(Text(verbatim: pinned
-            ? AppLocalization.string("Unpin \(name)")
-            : AppLocalization.string("Pin \(name)")))
+            ? AppLocalization.string("Unpin \(name)", table: .settings)
+            : AppLocalization.string("Pin \(name)", table: .settings)))
     }
 
     private func togglePin(_ model: ModelInfo, provider: ProviderInfo) {
@@ -824,7 +824,7 @@ struct ModelPickerView: View {
                     .foregroundStyle(.conduitAccent)
                     .frame(width: 20)
                     .accessibilityHidden(true)
-                Text(AppLocalization.string("All providers"))
+                Text(AppLocalization.string("All providers", table: .settings))
                     .scaledFont(.subheadline.weight(.semibold))
                 Spacer(minLength: 12)
                 if catalog.state == .ready {
@@ -864,7 +864,7 @@ struct ModelPickerView: View {
             .scrollIndicators(.hidden)
             .modifier(V2SoftTopScrollEdge(isOn: true))
         }
-        .navigationTitle(AppLocalization.string("All providers"))
+        .navigationTitle(AppLocalization.string("All providers", table: .settings))
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
@@ -906,7 +906,7 @@ struct ModelPickerView: View {
                 searchFocused = false
                 addingProvider = true
             } label: {
-                Label(AppLocalization.string("Add a provider"), systemImage: "plus")
+                Label(AppLocalization.string("Add a provider", table: .settings), systemImage: "plus")
                     .scaledFont(.subheadline.weight(.semibold))
                     .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                     .padding(.horizontal, 16)
@@ -944,7 +944,7 @@ struct ModelPickerView: View {
 
     private var catalogFailedRow: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(AppLocalization.string("Could not load models."))
+            Text(AppLocalization.string("Could not load models.", table: .settings))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Button(AppLocalization.string("Try Again")) {
@@ -1063,7 +1063,7 @@ struct ModelPickerView: View {
                 Spacer(minLength: 12)
                 if isSwitching {
                     ProgressView()
-                        .accessibilityLabel(AppLocalization.string("Switching model"))
+                        .accessibilityLabel(AppLocalization.string("Switching model", table: .settings))
                 } else if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.conduitAccent)
@@ -1120,7 +1120,7 @@ struct ModelPickerView: View {
     }
 
     private var runSettingsSection: some View {
-        ModelPickerSection(title: AppLocalization.string("Run settings"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+        ModelPickerSection(title: AppLocalization.string("Run settings", table: .settings), symbol: "slider.horizontal.3", tint: .conduitAccent) {
             if ultrafastOffered == true || speed == .ultrafast {
                 // Hermes offers Ultrafast for this model and account, so
                 // the three speeds Desktop's picker has.
@@ -1202,9 +1202,9 @@ struct ModelPickerView: View {
 
     private var yoloHelpText: String {
         if globalYoloFloor {
-            return AppLocalization.string("Profile approval mode is off, so Hermes auto-approves this conversation regardless. This toggle is locked on until you change the profile mode in Workspace & safety.")
+            return AppLocalization.string("Profile approval mode is off, so Hermes auto-approves this conversation regardless. This toggle is locked on until you change the profile mode in Workspace & safety.", table: .settings)
         }
-        return AppLocalization.string("YOLO automatically approves tool actions for this conversation only. Set the profile default in Workspace & safety.")
+        return AppLocalization.string("YOLO automatically approves tool actions for this conversation only. Set the profile default in Workspace & safety.", table: .settings)
     }
 
     private var visibleProviders: [ProviderInfo] {
@@ -1384,7 +1384,7 @@ struct ModelPickerView: View {
                 $0.recordSwitch(to: ModelQuickPick(provider: selection.provider, model: selection.model), from: left)
             }
             if deferred {
-                modelNote = AppLocalization.string("Switches to \(model) when this reply finishes.")
+                modelNote = AppLocalization.string("Switches to \(model) when this reply finishes.", table: .settings)
             }
             if let fallback = modelPickerSpeedAfterSwitch(runtimeSpeed, ultrafastOffered: ultrafastOffered) {
                 await applySpeed(fallback, unlocked: true)

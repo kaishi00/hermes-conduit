@@ -959,7 +959,7 @@ final class RichStepsMemory: ObservableObject {
         timers[id] = end
         saveTimers()
         let content = UNMutableNotificationContent()
-        content.title = title ?? AppLocalization.string("Timer done")
+        content.title = title ?? AppLocalization.string("Timer done", table: .chat)
         content.body = text
         content.sound = .default
         let request = UNNotificationRequest(identifier: id, content: content,

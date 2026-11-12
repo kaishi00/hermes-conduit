@@ -8,7 +8,9 @@
 //    AppLanguage → selected Locale ─┬─ SwiftUI environment locale
 //                                   │  (Text("…") literal keys)
 //                                   └─ AppLocalization.string(…)
-//                                      (explicit String-context copy)
+//                                      (explicit String-context copy,
+//                                      from a feature table or the shared
+//                                      one: LocalizationTable)
 //
 //  The languages are data, not code: `AppLocalizations` reads them from the
 //  built app bundle (one lproj per String Catalog language), so adding a
@@ -149,7 +151,7 @@ enum AppLanguage: Hashable, Identifiable {
     var displayName: String {
         switch self {
         case .system:
-            return AppLocalization.string("System Default")
+            return AppLocalization.string("System Default", table: .settings)
         case .localization(let identifier):
             if localizationIdentifier != nil {
                 // A missing entry resolves to the key itself (the fallback
@@ -264,16 +266,41 @@ enum AppLocalization {
         return same ? .current : Locale(identifier: shown)
     }
 
+    /// `table` names the feature table that holds the key; nil is the shared
+    /// table, Localizable.xcstrings.
     nonisolated static func string(
         _ keyAndValue: String.LocalizationValue,
-        table: String? = nil,
+        table: LocalizationTable? = nil,
         language: AppLanguage? = nil
     ) -> String {
         let selected = language ?? AppLanguage.current
+        let tableName = table?.rawValue
         guard let identifier = selected.localizationIdentifier,
               let bundle = bundle(for: identifier) else {
-            return String(localized: keyAndValue, table: table, locale: .current)
+            return String(localized: keyAndValue, table: tableName, locale: .current)
         }
-        return String(localized: keyAndValue, table: table, bundle: bundle, locale: Locale(identifier: identifier))
+        return String(localized: keyAndValue, table: tableName, bundle: bundle, locale: Locale(identifier: identifier))
     }
+}
+
+/// The app's feature String Catalogs, Conduit/Strings/<rawValue>.xcstrings
+/// (issue 823). A key only one feature's files use lives in that feature's
+/// table, so pull requests in different features add strings to different
+/// files; keys several features share, SwiftUI literal keys
+/// (`Text("…")`) and keys the extensions read stay in the shared table,
+/// Localizable.xcstrings, which a call reaches by passing no table.
+/// scripts/check-l10n-coverage.py holds each call's key to the table it
+/// names, and each file to one feature table (docs/LOCALIZATION.md).
+enum LocalizationTable: String, CaseIterable, Sendable {
+    case bots = "Bots"
+    case chat = "Chat"
+    case connection = "Connection"
+    case notifications = "Notifications"
+    case phone = "Phone"
+    case pulse = "Pulse"
+    case rooms = "Rooms"
+    case settings = "Settings"
+    case tasks = "Tasks"
+    case voice = "Voice"
+    case watchCarPlay = "WatchCarPlay"
 }

@@ -6,6 +6,7 @@ struct LauncherWidgetEntry: TimelineEntry {
     let date: Date
     let model: WidgetEntryModel
     let appLanguage: String
+    let smallAction: LauncherSmallAction
 
     static func make(configuration: LauncherWidgetConfigurationIntent, snapshot: WidgetSnapshot?) -> Self {
         let workspace = configuration.workspace?.workspaceID
@@ -17,7 +18,7 @@ struct LauncherWidgetEntry: TimelineEntry {
             conversationWorkspace: conversation?.workspaceID,
             hideTitle: configuration.shouldHideTitle
         )
-        return Self(date: Date(), model: model, appLanguage: snapshot?.appLanguage ?? "system")
+        return Self(date: Date(), model: model, appLanguage: snapshot?.appLanguage ?? "system", smallAction: configuration.smallTapAction)
     }
 }
 

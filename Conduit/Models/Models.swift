@@ -842,6 +842,11 @@ struct ChatMessage: Identifiable, Equatable {
     /// How long a thinking step took, in seconds, when Conduit watched it
     /// stream (tool calls keep theirs on `tool`). Nil when unknown.
     var stepDuration: TimeInterval? = nil
+    /// What each background agent came back with, on the notice Hermes
+    /// writes when a chat's delegate agents finish (`async_delegation_complete`,
+    /// issue 1553). Nil for every other row, and for a report Conduit can't
+    /// read, which keeps the plain notice.
+    var delegationReport: DelegationReport? = nil
 
     // Non-codable because it contains closures in some uses; serialization
     // is handled by the gateway, not by us. We construct these from RPC results.
@@ -907,6 +912,7 @@ struct ChatMessage: Identifiable, Equatable {
         )
         copy.stepDuration = stepDuration
         copy.connection = connection
+        copy.delegationReport = delegationReport
         return copy
     }
 
@@ -1036,6 +1042,30 @@ struct DelegateAgentActivity: Identifiable, Equatable {
     /// The live session whose events reported this agent.
     var sessionId = ""
     var updatedAt = Date()
+    /// When the agent started running, as Hermes or its first running
+    /// event said; nil for a queued agent and for one whose start nobody
+    /// saw (issue 1553).
+    var startedAt: Date? = nil
+    /// How long it ran, once it ended: Hermes' own figure when its end
+    /// event carries one, else from `startedAt` to the end Conduit saw.
+    var duration: TimeInterval? = nil
+
+    /// How long the agent has run at `now`, or ran; nil when that isn't
+    /// known. A start stamped by Hermes' clock never reads as negative.
+    func elapsed(at now: Date) -> TimeInterval? {
+        if let duration { return max(0, duration) }
+        guard status.isActive, let startedAt else { return nil }
+        return max(0, now.timeIntervalSince(startedAt))
+    }
+
+    /// The card ended `as` a status at `now`, its running time kept.
+    func ended(as status: Status, at now: Date) -> DelegateAgentActivity {
+        var ended = self
+        ended.status = status
+        ended.currentTool = nil
+        if ended.duration == nil, let startedAt { ended.duration = max(0, now.timeIntervalSince(startedAt)) }
+        return ended
+    }
 
     /// Folds a later event for the same agent into the card: blank fields
     /// keep what earlier events said, and a finished agent stays finished
@@ -1051,6 +1081,14 @@ struct DelegateAgentActivity: Identifiable, Equatable {
         // A finished agent is no longer in any tool.
         merged.currentTool = merged.status.isActive ? update.currentTool ?? currentTool : nil
         merged.summary = update.summary ?? summary
+        // The first start an agent reports is its start, and the first end
+        // keeps its time; an end with no time of its own counts from it.
+        merged.startedAt = startedAt ?? update.startedAt
+        if !status.isActive {
+            merged.duration = duration ?? update.duration
+        } else if !merged.status.isActive, merged.duration == nil, let start = merged.startedAt {
+            merged.duration = max(0, update.updatedAt.timeIntervalSince(start))
+        }
         merged.hasGatewayID = hasGatewayID || update.hasGatewayID
         if merged.sessionId.isEmpty { merged.sessionId = sessionId }
         merged.stream = Array((stream + update.stream).suffix(20))
@@ -1073,9 +1111,16 @@ struct DelegateAgentActivity: Identifiable, Equatable {
     ) -> [DelegateAgentActivity] {
         let listedIn = moving
             ? Dictionary(roster.map { ($0.id, $0.sessionId) }, uniquingKeysWith: { first, _ in first }) : [:]
+        // Hermes' own start outranks the first event the chat happened to
+        // see, which can come long after the agent started.
+        let startedIn = Dictionary(roster.compactMap { row in row.startedAt.map { (row.id, $0) } },
+                                   uniquingKeysWith: { first, _ in first })
         let moved = agents.map { agent -> DelegateAgentActivity in
-            guard let session = listedIn[agent.id], !session.isEmpty, session != agent.sessionId else { return agent }
             var moved = agent
+            if moved.status.isActive, let start = startedIn[agent.id], moved.startedAt.map({ start < $0 }) ?? true {
+                moved.startedAt = start
+            }
+            guard let session = listedIn[agent.id], !session.isEmpty, session != agent.sessionId else { return moved }
             moved.sessionId = session
             return moved
         }
@@ -1105,9 +1150,10 @@ struct DelegateAgentActivity: Identifiable, Equatable {
                   agent.sessionId == sessionId,
                   agent.updatedAt < cutoff,
                   !liveIDs.contains(agent.id) else { return agent }
-            var ended = agent
-            ended.status = .completed
-            ended.currentTool = nil
+            // It ended some time after its last news, unseen: how long it
+            // ran isn't known, so the card shows no time.
+            var ended = agent.ended(as: .completed, at: cutoff)
+            ended.duration = nil
             return ended
         }
     }
@@ -1137,6 +1183,10 @@ extension DelegateAgentActivity {
             hasGatewayID: true,
             sessionId: sessionId
         )
+        // Hermes stamps `started_at` in epoch seconds as the agent starts.
+        if status.isActive, let started = row["started_at"]?.doubleValue, started.isFinite, started > 0 {
+            startedAt = Date(timeIntervalSince1970: started)
+        }
     }
 }
 

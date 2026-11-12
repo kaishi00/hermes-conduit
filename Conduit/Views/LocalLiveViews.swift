@@ -35,24 +35,24 @@ struct LocalLiveSettingsSection: View {
 
     var body: some View {
         ConduitSettingsSection(
-            title: agent ? AppLocalization.string("Local") : AppLocalization.string("Your speech server"),
+            title: agent ? AppLocalization.string("Local") : AppLocalization.string("Your speech server", table: .voice),
             symbol: "server.rack",
             tint: .conduitAccent
         ) {
             Text(agent
-                ? AppLocalization.string("Talk through a speech server you run, with a fast model of your choosing answering right away. Real work goes to Hermes as jobs, with their cards in the call's chat, like the other live modes.")
-                : AppLocalization.string("A hands-free call through a speech server you run, such as Hugging Face speech-to-speech. Everything you say goes to Hermes as a turn in the call's chat, and Hermes' reply is spoken as it is written."))
+                ? AppLocalization.string("Talk through a speech server you run, with a fast model of your choosing answering right away. Real work goes to Hermes as jobs, with their cards in the call's chat, like the other live modes.", table: .voice)
+                : AppLocalization.string("A hands-free call through a speech server you run, such as Hugging Face speech-to-speech. Everything you say goes to Hermes as a turn in the call's chat, and Hermes' reply is spoken as it is written.", table: .voice))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
-            Text(AppLocalization.string("1. Your speech server"))
+            Text(AppLocalization.string("1. Your speech server", table: .voice))
                 .scaledFont(.subheadline.weight(.semibold))
             SpeechServerSettingsView(service: service)
-            Text(AppLocalization.string("2. Point the server at Hermes"))
+            Text(AppLocalization.string("2. Point the server at Hermes", table: .voice))
                 .scaledFont(.subheadline.weight(.semibold))
             SpeechServerVoiceSettingsView(service: service, showsIntro: false)
             if agent {
-                Text(AppLocalization.string("3. Your fast model"))
+                Text(AppLocalization.string("3. Your fast model", table: .voice))
                     .scaledFont(.subheadline.weight(.semibold))
                 LocalLiveFrontModelSettingsView(service: service)
                 if let model {
@@ -82,7 +82,7 @@ struct LocalLivePersonalityToggle: View {
                 model.setPersonality(requested)
             }
         ))
-        Text(AppLocalization.string("Your fast model talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to your fast model's server with the conversation, and a long one can slow a small model's first words. Applies to the next call."))
+        Text(AppLocalization.string("Your fast model talks with the personality in this profile's SOUL.md, without reading out actions or emoji. SOUL.md is sent to your fast model's server with the conversation, and a long one can slow a small model's first words. Applies to the next call.", table: .voice))
             .scaledFont(.caption)
             .foregroundStyle(.secondary)
             .onChange(of: model.personality) { _, newValue in personality = newValue }
@@ -118,12 +118,12 @@ struct LocalLiveFrontModelSettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(AppLocalization.string("Any OpenAI-compatible server works, on your network (llama.cpp, Ollama, vLLM, LM Studio) or a hosted one. A small, quick model is best: it only talks and hands the work to Hermes."))
+            Text(AppLocalization.string("Any OpenAI-compatible server works, on your network (llama.cpp, Ollama, vLLM, LM Studio) or a hosted one. A small, quick model is best: it only talks and hands the work to Hermes.", table: .voice))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if loaded && status == nil {
-                Text(pluginOffReason ?? PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to use a fast model.")))
+                Text(pluginOffReason ?? PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to use a fast model.", table: .voice)))
                     .scaledFont(.footnote)
                     .foregroundStyle(.orange)
             } else {
@@ -139,7 +139,7 @@ struct LocalLiveFrontModelSettingsView: View {
                             .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                     }
-                    SecureField(AppLocalization.string("Optional, for a hosted model"), text: $keyDraft)
+                    SecureField(AppLocalization.string("Optional, for a hosted model", table: .voice), text: $keyDraft)
                         .accessibilityLabel(Text("Key"))
                         .textContentType(.password)
                         .autocorrectionDisabled()
@@ -180,13 +180,13 @@ struct LocalLiveFrontModelSettingsView: View {
                 .foregroundStyle(.orange)
         } else if let status {
             if status.available {
-                Label(AppLocalization.string("Calls answer with \(status.model ?? "") and hand the work to Hermes."), systemImage: "checkmark.circle.fill")
+                Label(AppLocalization.string("Calls answer with \(status.model ?? "") and hand the work to Hermes.", table: .voice), systemImage: "checkmark.circle.fill")
                     .scaledFont(.footnote)
                     .foregroundStyle(.green)
                     .accessibilityIdentifier("voice.localLive.frontModel.status")
             } else {
                 // Without one, the call still works: Hermes answers each turn.
-                Label(status.reason ?? AppLocalization.string("No fast model is set, so Hermes answers each turn itself, which is slower to start talking."),
+                Label(status.reason ?? AppLocalization.string("No fast model is set, so Hermes answers each turn itself, which is slower to start talking.", table: .voice),
                       systemImage: status.configured ? "exclamationmark.triangle.fill" : "info.circle")
                     .scaledFont(.footnote)
                     .foregroundStyle(status.configured ? .orange : .secondary)
@@ -306,7 +306,7 @@ struct LocalLiveFrontModelSettingsView: View {
     private func save(_ value: String, for key: String) async -> Bool {
         let saved = await service.save(value: value, for: key)
         if !saved {
-            errorMessage = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.")
+            errorMessage = service.errorMessage ?? AppLocalization.string("Could not load voice settings to save this change.", table: .voice)
         }
         return saved
     }

@@ -82,6 +82,18 @@ extension ChatSyncTests {
         XCTAssertEqual(waits, [4, 8, 15, 30, 60, 60, 60])
     }
 
+    /// A gateway that pushes `sessions.changed` wakes the list when it
+    /// moves, so a quiet list waits one step longer (issue 851).
+    func testPowerWithChangeEventsAnUnchangedListBacksOffToTwoMinutes() {
+        var pacer = ChatListPollPacer()
+        var quiet = observation(["a|rt|idle|4"])
+        quiet.followsChanges = true
+        let waits = (0..<7).map { _ in pacer.next(after: quiet, conditions: DeviceConditions(), random: 0) }
+        XCTAssertEqual(waits, [4, 8, 15, 30, 60, 120, 120])
+        XCTAssertEqual(pacer.interval(followingChanges: false), 60, "A gateway without them stops at a minute")
+        XCTAssertEqual(pacer.next(after: quiet, conditions: lowPower, random: 0), 180)
+    }
+
     func testPowerAChangedRegistryOrCatalogGoesBackToFourSeconds() {
         var pacer = ChatListPollPacer()
         for _ in 0..<5 { _ = pacer.next(after: observation(["a|rt|idle|4"]), conditions: DeviceConditions(), random: 0) }

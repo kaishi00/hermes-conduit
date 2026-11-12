@@ -87,8 +87,8 @@ struct ConnectionSetupForm: View {
                     symbol: methodSymbol,
                     title: flow.draft.methodTitle,
                     detail: flow.draft.usesExistingAddress
-                        ? AppLocalization.string("Review or edit your current dashboard address, including its port and path.")
-                        : AppLocalization.string("Paste the full HTTPS dashboard address Hermes supplied, including any port or path.")
+                        ? AppLocalization.string("Review or edit your current dashboard address, including its port and path.", table: .connection)
+                        : AppLocalization.string("Paste the full HTTPS dashboard address Hermes supplied, including any port or path.", table: .connection)
                 )
                 ConnectionSetupField(title: AppLocalization.string("Dashboard address")) {
                     TextField("Dashboard address", text: fullURLBinding)
@@ -108,11 +108,11 @@ struct ConnectionSetupForm: View {
                     symbol: methodSymbol,
                     title: flow.draft.methodTitle,
                     detail: flow.accessMethod == .lan
-                        ? AppLocalization.string("Enter the local IP address and port Hermes gave you. You don’t need to type http://.")
-                        : AppLocalization.string("Enter the Tailscale hostname or address Hermes gave you. Tailscale Serve hostnames use HTTPS; leave the port blank unless Hermes supplied one.")
+                        ? AppLocalization.string("Enter the local IP address and port Hermes gave you. You don’t need to type http://.", table: .connection)
+                        : AppLocalization.string("Enter the Tailscale hostname or address Hermes gave you. Tailscale Serve hostnames use HTTPS; leave the port blank unless Hermes supplied one.", table: .connection)
                 )
-                ConnectionSetupField(title: flow.accessMethod == .lan ? AppLocalization.string("Private LAN IP address") : AppLocalization.string("Tailscale hostname / address")) {
-                    TextField(flow.accessMethod == .lan ? AppLocalization.string("Local IP address") : AppLocalization.string("Tailscale host or address"), text: hostBinding)
+                ConnectionSetupField(title: flow.accessMethod == .lan ? AppLocalization.string("Private LAN IP address", table: .connection) : AppLocalization.string("Tailscale hostname / address", table: .connection)) {
+                    TextField(flow.accessMethod == .lan ? AppLocalization.string("Local IP address", table: .connection) : AppLocalization.string("Tailscale host or address", table: .connection), text: hostBinding)
                         .keyboardType(.URL)
                         .textInputAutocapitalization(.never)
                         .autocorrectionDisabled()
@@ -120,15 +120,15 @@ struct ConnectionSetupForm: View {
                         .submitLabel(.next)
                         .onSubmit { focusedField = .port }
                         .accessibilityIdentifier("setup.host")
-                        .accessibilityLabel(flow.accessMethod == .lan ? AppLocalization.string("Private LAN IP address") : AppLocalization.string("Tailscale hostname or address"))
+                        .accessibilityLabel(flow.accessMethod == .lan ? AppLocalization.string("Private LAN IP address", table: .connection) : AppLocalization.string("Tailscale hostname or address", table: .connection))
                         .loginFieldChrome(isFocused: focusedField == .host)
                 }.id(Field.host)
-                ConnectionSetupField(title: flow.accessMethod == .lan ? AppLocalization.string("Port") : AppLocalization.string("Port (optional)")) {
+                ConnectionSetupField(title: flow.accessMethod == .lan ? AppLocalization.string("Port", table: .connection) : AppLocalization.string("Port (optional)", table: .connection)) {
                     TextField("Port supplied by Hermes", text: portBinding)
                         .keyboardType(.numberPad)
                         .focused($focusedField, equals: .port)
                         .accessibilityIdentifier("setup.port")
-                        .accessibilityLabel(flow.accessMethod == .lan ? AppLocalization.string("Dashboard port") : AppLocalization.string("Dashboard port (optional)"))
+                        .accessibilityLabel(flow.accessMethod == .lan ? AppLocalization.string("Dashboard port", table: .connection) : AppLocalization.string("Dashboard port (optional)", table: .connection))
                         .loginFieldChrome(isFocused: focusedField == .port)
                 }.id(Field.port)
                 if flow.accessMethod == .tailscale,
@@ -138,7 +138,7 @@ struct ConnectionSetupForm: View {
                             ConduitMenuPicker(
                                 value: flow.draft.tailscaleScheme,
                                 choices: [
-                                    (id: Optional<ConnectionSetupScheme>.none, title: AppLocalization.string("Choose scheme")),
+                                    (id: Optional<ConnectionSetupScheme>.none, title: AppLocalization.string("Choose scheme", table: .connection)),
                                     (id: Optional(ConnectionSetupScheme.http), title: "HTTP"),
                                     (id: Optional(ConnectionSetupScheme.https), title: "HTTPS")
                                 ],
@@ -149,7 +149,7 @@ struct ConnectionSetupForm: View {
                             .padding(.horizontal, 4)
                             .accessibilityIdentifier("setup.scheme")
                         }
-                        ConnectionSetupNote(text: AppLocalization.string("For a direct address, choose the scheme Hermes supplied."))
+                        ConnectionSetupNote(text: AppLocalization.string("For a direct address, choose the scheme Hermes supplied.", table: .connection))
                     }
                 }
             }
@@ -164,8 +164,8 @@ struct ConnectionSetupForm: View {
         VStack(alignment: .leading, spacing: 20) {
             ConnectionSetupHeader(
                 symbol: "person.badge.key",
-                title: AppLocalization.string("Dashboard credentials"),
-                detail: AppLocalization.string("Use your Hermes dashboard username and password. These are not your Tailscale, Cloudflare, or Apple credentials.")
+                title: AppLocalization.string("Dashboard credentials", table: .connection),
+                detail: AppLocalization.string("Use your Hermes dashboard username and password. These are not your Tailscale, Cloudflare, or Apple credentials.", table: .connection)
             )
             ConnectionSetupField(title: AppLocalization.string("Dashboard username")) {
                 TextField("Dashboard username", text: $flow.draft.username)
@@ -203,7 +203,7 @@ struct ConnectionSetupForm: View {
             ConnectionSetupHeader(
                 symbol: "stethoscope",
                 title: AppLocalization.string("Test connection"),
-                detail: AppLocalization.string("Conduit will check the dashboard address and how it signs in, and try a username and password only if you entered them. Nothing is saved, and Conduit won’t connect yet — you’ll confirm everything on the Review screen.")
+                detail: AppLocalization.string("Conduit will check the dashboard address and how it signs in, and try a username and password only if you entered them. Nothing is saved, and Conduit won’t connect yet — you’ll confirm everything on the Review screen.", table: .connection)
             )
             // Entries that skipped the details form (the Settings
             // current-connection and Repair entries) still show what is
@@ -253,7 +253,7 @@ struct ConnectionSetupForm: View {
                 .scaledFont(.subheadline)
                 .fixedSize(horizontal: false, vertical: true)
                 .accessibilityIdentifier("setup.test.credentials-required")
-            Button(AppLocalization.string("Enter Credentials")) {
+            Button(AppLocalization.string("Enter Credentials", table: .connection)) {
                 flow.editAfterFailedTest(.loginCredentials)
             }
             .buttonStyle(.settingsPrimary)
@@ -264,7 +264,7 @@ struct ConnectionSetupForm: View {
     /// The sign-in-choice outcome's password path: test a username and
     /// password now instead of choosing on the login screen.
     private var signInChoiceEnterCredentialsButton: some View {
-        Button(AppLocalization.string("Enter Credentials")) { flow.enterCredentialsForSignInChoice() }
+        Button(AppLocalization.string("Enter Credentials", table: .connection)) { flow.enterCredentialsForSignInChoice() }
             .buttonStyle(.settings)
             .accessibilityIdentifier("setup.test.choice-enter-credentials")
     }
@@ -368,7 +368,7 @@ struct ConnectionSetupForm: View {
             } else {
                 ConnectionSetupNote(text: flow.enteredFromCurrentConnection
                      ? ConnectionSetupSettingsReview.applyNote(connected: settingsReview?.isSessionConnected ?? true)
-                     : AppLocalization.string("These settings will fill the login form. Tap Continue there when you’re ready."))
+                     : AppLocalization.string("These settings will fill the login form. Tap Continue there when you’re ready.", table: .connection))
                     .accessibilityIdentifier("setup.review.apply-note")
                 validationNotice
                 // From Settings with unchanged, successfully tested settings
@@ -408,7 +408,7 @@ struct ConnectionSetupForm: View {
     }
 
     private var useSettingsTitle: String {
-        flow.testedSettingsUnchanged ? AppLocalization.string("Done") : AppLocalization.string("Use these settings")
+        flow.testedSettingsUnchanged ? AppLocalization.string("Done") : AppLocalization.string("Use these settings", table: .connection)
     }
 
     /// Settings' Sign In Again: opens the sign-in the test decided for the
@@ -471,18 +471,18 @@ struct ConnectionSetupForm: View {
                         PrivateSignInPageToggle(identifier: "setup.review.sign-in-reconnect-private")
                     }
                 }
-                LoginPrimaryButton(title: AppLocalization.string("Sign In to Reconnect")) { repair.signInToReconnect() }
+                LoginPrimaryButton(title: AppLocalization.string("Sign In to Reconnect", table: .connection)) { repair.signInToReconnect() }
                     .accessibilityIdentifier("setup.review.sign-in-reconnect")
                 if repair.offersPasswordSignIn {
-                    Button(AppLocalization.string("Enter Credentials")) { repair.enterCredentials() }
+                    Button(AppLocalization.string("Enter Credentials", table: .connection)) { repair.enterCredentials() }
                         .buttonStyle(.settings)
                         .accessibilityIdentifier("setup.review.enter-credentials")
                 }
             } else if repair.isCandidateAvailable {
-                LoginPrimaryButton(title: AppLocalization.string("Reconnect Now")) { repair.reconnectNow() }
+                LoginPrimaryButton(title: AppLocalization.string("Reconnect Now", table: .connection)) { repair.reconnectNow() }
                     .accessibilityIdentifier("setup.review.reconnect-now")
             } else {
-                LoginPrimaryButton(title: AppLocalization.string("Test Connection Again")) { repair.testAgain() }
+                LoginPrimaryButton(title: AppLocalization.string("Test Connection Again", table: .connection)) { repair.testAgain() }
                     .accessibilityIdentifier("setup.review.test-again")
             }
         }
@@ -492,7 +492,7 @@ struct ConnectionSetupForm: View {
         switch flow.reviewState() {
         case .success(let result):
             ConnectionSetupCard {
-                reviewValue(AppLocalization.string("Connection method"), flow.draft.methodTitle, first: true)
+                reviewValue(AppLocalization.string("Connection method", table: .connection), flow.draft.methodTitle, first: true)
                 reviewValue(AppLocalization.string("Dashboard address"), result.serverURL)
                 if !result.username.isEmpty {
                     reviewValue(AppLocalization.string("Username"), result.username)
@@ -505,11 +505,11 @@ struct ConnectionSetupForm: View {
                     reviewValue(
                         AppLocalization.string("Password"),
                         flow.testState.requiresSignInChoice
-                            ? AppLocalization.string("Not entered")
-                            : AppLocalization.string("None — browser sign-in")
+                            ? AppLocalization.string("Not entered", table: .connection)
+                            : AppLocalization.string("None — browser sign-in", table: .connection)
                     )
                 } else {
-                    reviewValue(AppLocalization.string("Password"), AppLocalization.string("Entered"))
+                    reviewValue(AppLocalization.string("Password"), AppLocalization.string("Entered", table: .connection))
                 }
             }
         case .failure(let error):

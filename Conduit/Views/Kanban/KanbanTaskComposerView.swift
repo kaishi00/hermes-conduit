@@ -80,7 +80,7 @@ struct KanbanTaskComposerView: View {
             // Text fields as Settings draws them.
             .textFieldStyle(.roundedBorder)
             .tint(.conduitAccent)
-            .navigationTitle(didCreate ? AppLocalization.string("Task created") : AppLocalization.string("New task"))
+            .navigationTitle(didCreate ? AppLocalization.string("Task created", table: .tasks) : AppLocalization.string("New task", table: .tasks))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -120,7 +120,7 @@ struct KanbanTaskComposerView: View {
     // MARK: - Sections
 
     private var basicsSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Basics"), symbol: "square.and.pencil", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Basics", table: .tasks), symbol: "square.and.pencil", tint: .conduitAccent) {
             TextField("Title", text: $draft.title)
                 .accessibilityLabel("Task title")
             TextEditor(text: $draft.body)
@@ -143,7 +143,7 @@ struct KanbanTaskComposerView: View {
                 choices: [
                     (id: 0, title: AppLocalization.string("Normal")),
                     (id: 1, title: AppLocalization.string("High")),
-                    (id: 2, title: AppLocalization.string("Urgent")),
+                    (id: 2, title: AppLocalization.string("Urgent", table: .tasks)),
                     (id: 3, title: AppLocalization.string("Critical")),
                 ],
                 onSelect: { draft.priority = $0 }
@@ -154,12 +154,12 @@ struct KanbanTaskComposerView: View {
     }
 
     private var assignmentSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Assignment"), symbol: "person.crop.circle", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Assignment", table: .tasks), symbol: "person.crop.circle", tint: .conduitAccent) {
             ConduitMenuPicker(
                 value: assigneeSelectionBinding.wrappedValue,
                 choices: [(id: KanbanAssigneeSelection.inheritDefault, title: AppLocalization.string("Default (\(resolvedDefaultAssignee))"))]
                     + rosterWithoutDefault.map { (id: KanbanAssigneeSelection.profile($0.name), title: $0.name) }
-                    + [(id: KanbanAssigneeSelection.parked, title: AppLocalization.string("Parked (won't run)"))],
+                    + [(id: KanbanAssigneeSelection.parked, title: AppLocalization.string("Parked (won't run)", table: .tasks))],
                 onSelect: { assigneeSelectionBinding.wrappedValue = $0 }
             ) {
                 Text("Assigned to").foregroundStyle(.secondary)
@@ -170,11 +170,11 @@ struct KanbanTaskComposerView: View {
     }
 
     private var executionSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Execution"), symbol: "gearshape.2", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Execution", table: .tasks), symbol: "gearshape.2", tint: .conduitAccent) {
             ConduitMenuPicker(
                 value: draft.workspaceKind,
                 choices: KanbanWorkspaceKind.allCases.map { kind in
-                    (id: kind, title: kind.displayName + (kind == boardDefaultKind ? AppLocalization.string(" · board default") : ""))
+                    (id: kind, title: kind.displayName + (kind == boardDefaultKind ? AppLocalization.string(" · board default", table: .tasks) : ""))
                 },
                 onSelect: { draft.workspaceKind = $0 }
             ) {
@@ -182,7 +182,7 @@ struct KanbanTaskComposerView: View {
             }
             if draft.workspaceKind.allowsPathOverride {
                 TextField(
-                    boardDefaultDir != nil ? AppLocalization.string("Leave empty to inherit \(boardDefaultDir!)") : AppLocalization.string("Optional path override"),
+                    boardDefaultDir != nil ? AppLocalization.string("Leave empty to inherit \(boardDefaultDir!)", table: .tasks) : AppLocalization.string("Optional path override", table: .tasks),
                     text: $draft.workspacePath
                 )
                 .textInputAutocapitalization(.never)
@@ -225,7 +225,7 @@ struct KanbanTaskComposerView: View {
                 Text("Model")
                     .foregroundStyle(.primary)
                 Spacer()
-                Text(draft.modelOverride.label(inheritCopy: AppLocalization.string("Inherit from profile")))
+                Text(draft.modelOverride.label(inheritCopy: AppLocalization.string("Inherit from profile", table: .tasks)))
                     .scaledFont(.callout)
                     .foregroundStyle(draft.modelOverride.isInherited ? .secondary : .primary)
                     .lineLimit(1)
@@ -248,7 +248,7 @@ struct KanbanTaskComposerView: View {
                 Text("Skills")
                     .foregroundStyle(.primary)
                 Spacer()
-                Text(draft.skills.isEmpty ? AppLocalization.string("None") : AppLocalization.string("\(draft.skills.count) selected"))
+                Text(draft.skills.isEmpty ? AppLocalization.string("None") : AppLocalization.string("\(draft.skills.count) selected", table: .tasks))
                     .scaledFont(.callout)
                     .foregroundStyle(draft.skills.isEmpty ? .secondary : .primary)
                 SettingsChevron()
@@ -269,7 +269,7 @@ struct KanbanTaskComposerView: View {
             // Symmetric ladder: Unlimited -> 5 -> 10 -> 15 … and back down to
             // Unlimited; both directions walk the same rungs.
             Stepper(
-                "Max turns: \(draft.goalMaxTurns.map(String.init) ?? AppLocalization.string("Unlimited"))",
+                "Max turns: \(draft.goalMaxTurns.map(String.init) ?? AppLocalization.string("Unlimited", table: .tasks))",
                 onIncrement: {
                     let base = draft.goalMaxTurns ?? 0
                     draft.goalMaxTurns = min(10_000, base + 5)
@@ -286,7 +286,7 @@ struct KanbanTaskComposerView: View {
     }
 
     private var dependenciesSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Dependencies"), symbol: "link", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Dependencies", table: .tasks), symbol: "link", tint: .conduitAccent) {
             if draft.parents.isEmpty {
                 Button {
                     showParentSheet = true
@@ -350,7 +350,7 @@ struct KanbanTaskComposerView: View {
     }
 
     private var laneSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Lands in"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Lands in", table: .tasks), symbol: "slider.horizontal.3", tint: .conduitAccent) {
             Label(statusPresentation.displayName, systemImage: statusPresentation.systemImage)
                 .foregroundStyle(statusPresentation.tint)
             Text("The board selection is local to this device; creating this task will not switch Hermes' global board.")
@@ -481,13 +481,13 @@ struct KanbanModelOverrideSheet: View {
     @State private var customProvider = ""
     @State private var customModel = ""
 
-    private var inheritCopy: String { AppLocalization.string("Inherit from profile") }
+    private var inheritCopy: String { AppLocalization.string("Inherit from profile", table: .tasks) }
 
     var body: some View {
         NavigationStack {
             // The Model page every model setting opens.
             ModelChooserPage(
-                title: AppLocalization.string("Model override"),
+                title: AppLocalization.string("Model override", table: .tasks),
                 catalog: chooserCatalog,
                 retry: {
                     loadFailed = false
@@ -495,13 +495,13 @@ struct KanbanModelOverrideSheet: View {
                 },
                 defaultChoice: ModelChooserDefault(
                     title: inheritCopy,
-                    detail: AppLocalization.string("An unset override runs the task on the assigned profile's own model, provider, and reasoning effort.")
+                    detail: AppLocalization.string("An unset override runs the task on the assigned profile's own model, provider, and reasoning effort.", table: .tasks)
                 ),
                 pick: chooserPick,
                 isPicked: { provider, model in isSelected(provider.name, model.id) },
                 reasoning: ModelChooserReasoning(
                     effort: value.reasoningEffort ?? "",
-                    inheritTitle: AppLocalization.string("Inherit"),
+                    inheritTitle: AppLocalization.string("Inherit", table: .tasks),
                     levels: TaskModelOverride.validReasoningEfforts.compactMap(ReasoningEffortLevel.init(rawValue:)),
                     set: { value.reasoningEffort = $0.isEmpty ? nil : $0 }
                 ),
@@ -568,7 +568,7 @@ struct KanbanModelOverrideSheet: View {
     }
 
     private var customEntrySection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Custom (free text)"), symbol: "pencil", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Custom (free text)", table: .tasks), symbol: "pencil", tint: .conduitAccent) {
             TextField("Provider", text: $customProvider)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -658,7 +658,7 @@ struct KanbanSkillsPickerSheet: View {
         NavigationStack {
             SettingsDetailContainer {
                 if !selected.isEmpty {
-                    ConduitSettingsSection(title: AppLocalization.string("Selected"), symbol: "checkmark.circle", tint: .conduitAccent) {
+                    ConduitSettingsSection(title: AppLocalization.string("Selected", table: .tasks), symbol: "checkmark.circle", tint: .conduitAccent) {
                         ForEach(selected, id: \.self) { name in
                             HStack {
                                 Text(name)
@@ -678,7 +678,7 @@ struct KanbanSkillsPickerSheet: View {
                     }
                 }
 
-                ConduitSettingsSection(title: AppLocalization.string("Available skills"), symbol: "book", tint: .conduitAccent) {
+                ConduitSettingsSection(title: AppLocalization.string("Available skills", table: .tasks), symbol: "book", tint: .conduitAccent) {
                     ForEach(filteredSkills) { skill in
                         Button {
                             toggle(skill.name)
@@ -704,7 +704,7 @@ struct KanbanSkillsPickerSheet: View {
                         }
                         .buttonStyle(.plain)
                         .accessibilityLabel("Skill \(skill.name)")
-                        .accessibilityHint(isSelected(skill.name) ? AppLocalization.string("Selected") : AppLocalization.string("Not selected"))
+                        .accessibilityHint(isSelected(skill.name) ? AppLocalization.string("Selected", table: .tasks) : AppLocalization.string("Not selected", table: .tasks))
                     }
                     if filteredSkills.isEmpty {
                         Text("No skills match.")
@@ -712,7 +712,7 @@ struct KanbanSkillsPickerSheet: View {
                     }
                 }
 
-                ConduitSettingsSection(title: AppLocalization.string("Add manually"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+                ConduitSettingsSection(title: AppLocalization.string("Add manually", table: .tasks), symbol: "slider.horizontal.3", tint: .conduitAccent) {
                     HStack {
                         TextField("skill-name", text: $customName)
                             .textInputAutocapitalization(.never)

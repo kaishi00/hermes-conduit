@@ -43,7 +43,7 @@ struct SavedDashboardsSettingsDetail: View {
                     Haptics.selection()
                     addDashboard()
                 } label: {
-                    Label(AppLocalization.string("Add Dashboard"), systemImage: "plus")
+                    Label(AppLocalization.string("Add Dashboard", table: .connection), systemImage: "plus")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 44)
                 }
@@ -67,14 +67,14 @@ struct SavedDashboardsSettingsDetail: View {
         .onChange(of: appState.isConnected) { _, _ in rebuildRows() }
         .onChange(of: appState.isConnecting) { _, _ in rebuildRows() }
         .confirmationDialog(
-            AppLocalization.string("Remove Dashboard?"),
+            AppLocalization.string("Remove Dashboard?", table: .connection),
             isPresented: Binding(
                 get: { pendingRemoval != nil },
                 set: { if !$0 { pendingRemoval = nil } }
             ),
             titleVisibility: Visibility.visible
         ) {
-            Button(AppLocalization.string("Remove Dashboard"), role: .destructive) {
+            Button(AppLocalization.string("Remove Dashboard", table: .connection), role: .destructive) {
                 if let row = pendingRemoval {
                     removeDashboard(row)
                 }
@@ -120,7 +120,7 @@ struct SavedDashboardsSettingsDetail: View {
             Button(role: .destructive) {
                 pendingRemoval = row
             } label: {
-                Label(AppLocalization.string("Remove Dashboard"), systemImage: "trash")
+                Label(AppLocalization.string("Remove Dashboard", table: .connection), systemImage: "trash")
             }
         }
     }
@@ -216,8 +216,8 @@ struct SavedDashboardRowLabel: View {
                             .scaledFont(.caption2)
                             .foregroundStyle(.secondary)
                             .accessibilityLabel(quantumSafe
-                                ? AppLocalization.string("Notifications end-to-end encrypted and quantum-safe")
-                                : AppLocalization.string("Notifications end-to-end encrypted"))
+                                ? AppLocalization.string("Notifications end-to-end encrypted and quantum-safe", table: .connection)
+                                : AppLocalization.string("Notifications end-to-end encrypted", table: .connection))
                     }
                 }
                 Text(verbatim: row.dashboard.normalizedURL)
@@ -232,7 +232,7 @@ struct SavedDashboardRowLabel: View {
             if row.isActive {
                 Image(systemName: "checkmark.circle.fill")
                     .foregroundStyle(.conduitAccent)
-                    .accessibilityLabel(AppLocalization.string("Active dashboard"))
+                    .accessibilityLabel(AppLocalization.string("Active dashboard", table: .connection))
             } else if isSwitching {
                 ProgressView()
             } else {
@@ -252,7 +252,7 @@ struct SavedDashboardRowLabel: View {
         }
         return row.hasReusableAuth
             ? AppLocalization.string("Saved")
-            : AppLocalization.string("Sign In required")
+            : AppLocalization.string("Sign In required", table: .connection)
     }
 
     /// Nil unless this dashboard's notifications are end-to-end encrypted;

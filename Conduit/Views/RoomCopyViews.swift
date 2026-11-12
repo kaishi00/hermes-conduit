@@ -178,7 +178,7 @@ struct RoomCopyDelete: ViewModifier {
                 Text(RoomCopyText.deleteMessage)
             }
             .alert(
-                AppLocalization.string("Could not delete this room"),
+                AppLocalization.string("Could not delete this room", table: .rooms),
                 isPresented: Binding(get: { refusal != nil }, set: { if !$0 { refusal = nil } })
             ) {
                 Button(AppLocalization.string("OK"), role: .cancel) { refusal = nil }
@@ -320,7 +320,7 @@ struct RoomCopyPostFooter: View {
                 .foregroundStyle(.secondary)
         case .notDelivered:
             Button(action: retry) {
-                Label(AppLocalization.string("Not delivered — retry"), systemImage: "arrow.clockwise")
+                Label(AppLocalization.string("Not delivered — retry", table: .rooms), systemImage: "arrow.clockwise")
                     .scaledFont(.caption.weight(.semibold))
             }
             .buttonStyle(.plain)

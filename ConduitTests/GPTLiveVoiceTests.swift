@@ -364,7 +364,7 @@ extension HermesVoiceGatewayTimeoutTests {
         for _ in 0..<50 where session.state == .ready {
             try await Task.sleep(for: .milliseconds(10))
         }
-        XCTAssertEqual(session.state, .failed(AppLocalization.string("The GPT-Live connection was lost.")))
+        XCTAssertEqual(session.state, .failed(AppLocalization.string("The GPT-Live connection was lost.", table: .voice)))
         XCTAssertTrue(peer.closed)
     }
 

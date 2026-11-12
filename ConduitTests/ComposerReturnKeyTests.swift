@@ -588,11 +588,11 @@ final class ComposerReturnKeyTests: XCTestCase {
     func testSettingsSaysTheDefaultForEachDevice() {
         XCTAssertEqual(
             ComposerReturnKey.defaultFootnote(onMac: true),
-            AppLocalization.string("On by default on a Mac. Turn it off to make Return insert a new line.")
+            AppLocalization.string("On by default on a Mac. Turn it off to make Return insert a new line.", table: .chat)
         )
         XCTAssertEqual(
             ComposerReturnKey.defaultFootnote(onMac: false),
-            AppLocalization.string("Off by default on iPhone and iPad.")
+            AppLocalization.string("Off by default on iPhone and iPad.", table: .chat)
         )
     }
 

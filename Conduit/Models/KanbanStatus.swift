@@ -58,9 +58,9 @@ struct KanbanStatusPresentation: Equatable, Identifiable {
     static func forStatus(_ rawValue: String) -> KanbanStatusPresentation {
         switch rawValue {
         case "triage":
-            return .init(rawValue: rawValue, displayName: AppLocalization.string("Triage"), systemImage: "tray", tint: .secondary, sortOrder: 0, isVisibleOnBoard: true, isManuallySelectable: true, isTaskCreatable: true, isBackendControlled: false)
+            return .init(rawValue: rawValue, displayName: AppLocalization.string("Triage", table: .tasks), systemImage: "tray", tint: .secondary, sortOrder: 0, isVisibleOnBoard: true, isManuallySelectable: true, isTaskCreatable: true, isBackendControlled: false)
         case "todo":
-            return .init(rawValue: rawValue, displayName: AppLocalization.string("To Do"), systemImage: "circle", tint: .secondary, sortOrder: 1, isVisibleOnBoard: true, isManuallySelectable: true, isTaskCreatable: true, isBackendControlled: false)
+            return .init(rawValue: rawValue, displayName: AppLocalization.string("To Do", table: .tasks), systemImage: "circle", tint: .secondary, sortOrder: 1, isVisibleOnBoard: true, isManuallySelectable: true, isTaskCreatable: true, isBackendControlled: false)
         case "scheduled":
             // Locked upstream: needs a wake-up time only an agent/CLI attaches;
             // a bare status set is refused with a 409.
@@ -70,7 +70,7 @@ struct KanbanStatusPresentation: Equatable, Identifiable {
         case "running":
             return .init(rawValue: rawValue, displayName: AppLocalization.string("Running"), systemImage: "arrow.triangle.2.circlepath", tint: .green, sortOrder: 4, isVisibleOnBoard: true, isManuallySelectable: false, isTaskCreatable: false, isBackendControlled: true)
         case "blocked":
-            return .init(rawValue: rawValue, displayName: AppLocalization.string("Blocked"), systemImage: "exclamationmark.octagon", tint: .red, sortOrder: 5, isVisibleOnBoard: true, isManuallySelectable: true, isTaskCreatable: true, isBackendControlled: false)
+            return .init(rawValue: rawValue, displayName: AppLocalization.string("Blocked", table: .tasks), systemImage: "exclamationmark.octagon", tint: .red, sortOrder: 5, isVisibleOnBoard: true, isManuallySelectable: true, isTaskCreatable: true, isBackendControlled: false)
         case "review":
             // Locked upstream: entered/exited through the dispatcher's claim
             // path, not by arbitrary status assignment.

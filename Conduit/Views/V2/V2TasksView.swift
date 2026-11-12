@@ -68,7 +68,7 @@ struct V2TasksView: View {
                 V2SegmentedControl(
                     selection: segment,
                     options: [
-                        (value: Segment.board, title: AppLocalization.string("Board")),
+                        (value: Segment.board, title: AppLocalization.string("Board", table: .tasks)),
                         (value: Segment.scheduled, title: AppLocalization.string("Scheduled"))
                     ]
                 )
@@ -294,14 +294,14 @@ struct V2ScheduledList: View {
                 Haptics.light()
                 editorTarget = .create
             } label: {
-                Label(AppLocalization.string("New job"), systemImage: "plus")
+                Label(AppLocalization.string("New job", table: .tasks), systemImage: "plus")
             }
             .buttonStyle(.settingsPrimary)
             Button {
                 Haptics.light()
                 showingBlueprints = true
             } label: {
-                Label(AppLocalization.string("From a blueprint"), systemImage: "square.grid.2x2")
+                Label(AppLocalization.string("From a blueprint", table: .tasks), systemImage: "square.grid.2x2")
             }
             .buttonStyle(.settings)
         }
@@ -313,14 +313,14 @@ struct V2ScheduledList: View {
     /// there lists them, one tap away.
     private var listFooter: some View {
         VStack(alignment: .leading, spacing: 8) {
-            Text(AppLocalization.string("Each run is saved as its own conversation. Chats lists them under the Scheduled filter. Ask Hermes to add or change a schedule."))
+            Text(AppLocalization.string("Each run is saved as its own conversation. Chats lists them under the Scheduled filter. Ask Hermes to add or change a schedule.", table: .tasks))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Button {
                 Haptics.light()
                 shell.showScheduledRuns()
             } label: {
-                Label(AppLocalization.string("Show runs in Chats"), systemImage: "bubble.left.and.bubble.right")
+                Label(AppLocalization.string("Show runs in Chats", table: .tasks), systemImage: "bubble.left.and.bubble.right")
                     .scaledFont(.footnote.weight(.semibold))
             }
             .buttonStyle(.borderless)
@@ -439,7 +439,7 @@ struct V2ScheduledList: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
-            .accessibilityHint(AppLocalization.string("Opens the job's details and run history. Touch and hold for more actions."))
+            .accessibilityHint(AppLocalization.string("Opens the job's details and run history. Touch and hold for more actions.", table: .tasks))
 
             if !job.isFinished {
                 Toggle(isOn: Binding(
@@ -520,8 +520,8 @@ struct V2ScheduledList: View {
         guard job.isActive else { return job.statusLabel }
         guard let raw = job.nextRunAt, !raw.isEmpty else { return job.statusLabel }
         guard let date = CronScheduleText.parseDate(raw) else {
-            return AppLocalization.string("Next run \(raw)")
+            return AppLocalization.string("Next run \(raw)", table: .tasks)
         }
-        return AppLocalization.string("Next run \(CronScheduleText.runTimeText(date))")
+        return AppLocalization.string("Next run \(CronScheduleText.runTimeText(date))", table: .tasks)
     }
 }

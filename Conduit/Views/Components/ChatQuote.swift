@@ -300,14 +300,14 @@ struct ReplyReferenceQuoteCard: View {
                     Haptics.warning()
                     UIAccessibility.post(
                         notification: .announcement,
-                        argument: AppLocalization.string("Couldn't find the quoted reply in the loaded chat.")
+                        argument: AppLocalization.string("Couldn't find the quoted reply in the loaded chat.", table: .chat)
                     )
                 }
             } label: {
                 card
             }
             .buttonStyle(.plain)
-            .accessibilityHint(Text(AppLocalization.string("Shows the reply it quoted.")))
+            .accessibilityHint(Text(AppLocalization.string("Shows the reply it quoted.", table: .chat)))
         } else {
             card
         }
@@ -320,7 +320,7 @@ struct ReplyReferenceQuoteCard: View {
                 .frame(width: 3)
             VStack(alignment: .leading, spacing: 2) {
                 Label(
-                    authorName.map { AppLocalization.string("Replying to \($0)") } ?? AppLocalization.string("Replying to"),
+                    authorName.map { AppLocalization.string("Replying to \($0)") } ?? AppLocalization.string("Replying to", table: .chat),
                     systemImage: "quote.bubble"
                 )
                     .scaledFont(.caption.weight(.semibold))

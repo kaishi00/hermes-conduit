@@ -27,7 +27,7 @@ struct RoomApprovalRosterRow: View {
         .rosterListRow()
         .accessibilityLabel(Text(AppLocalization.string("Approval needed")))
         .accessibilityValue(Text(verbatim: line))
-        .accessibilityHint(Text(AppLocalization.string("Shows what it asks, to run or reject it.")))
+        .accessibilityHint(Text(AppLocalization.string("Shows what it asks, to run or reject it.", table: .rooms)))
     }
 }
 
@@ -48,7 +48,7 @@ struct RoomApprovalSheet: View {
                     SettingsCard {
                         Text(verbatim: RoomApprovalText.line(for: approval))
                             .scaledFont(.subheadline.weight(.semibold))
-                        Text(AppLocalization.string("This approval isn't waiting any more."))
+                        Text(AppLocalization.string("This approval isn't waiting any more.", table: .rooms))
                             .settingsCaption()
                     }
                 } else {

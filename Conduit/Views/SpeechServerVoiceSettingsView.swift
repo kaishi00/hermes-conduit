@@ -32,36 +32,36 @@ struct SpeechServerVoiceSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             if showsIntro {
-                Label(AppLocalization.string("Your speech server speaks the replies in its own voice, so one server listens and speaks. It uses the address set under Speech to text."), systemImage: "server.rack")
+                Label(AppLocalization.string("Your speech server speaks the replies in its own voice, so one server listens and speaks. It uses the address set under Speech to text.", table: .voice), systemImage: "server.rack")
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             }
 
             if let status {
                 if let address = status.modelAddress, let key = status.apiKey {
-                    Text(AppLocalization.string("On the speech server, set its language model to this address and key, with the model name \(status.modelName). It then reads Hermes' replies aloud instead of writing its own."))
+                    Text(AppLocalization.string("On the speech server, set its language model to this address and key, with the model name \(status.modelName). It then reads Hermes' replies aloud instead of writing its own.", table: .voice))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     if let setup = status.agentSetupText {
                         agentSetupButton(setup)
                     }
-                    copyRow(title: AppLocalization.string("Model address"), value: address, identifier: "voice.speechServerVoice.address")
+                    copyRow(title: AppLocalization.string("Model address", table: .voice), value: address, identifier: "voice.speechServerVoice.address")
                     copyRow(title: AppLocalization.string("Key"), value: key, identifier: "voice.speechServerVoice.key")
                     if let flags = status.serverFlags {
-                        copyRow(title: AppLocalization.string("Flags for speech-to-speech"), value: flags, identifier: "voice.speechServerVoice.flags")
+                        copyRow(title: AppLocalization.string("Flags for speech-to-speech", table: .voice), value: flags, identifier: "voice.speechServerVoice.flags")
                     }
-                    Text(AppLocalization.string("Run it with two pipelines so it can listen and speak at once."))
+                    Text(AppLocalization.string("Run it with two pipelines so it can listen and speak at once.", table: .voice))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                     lastAskedRow(status.lastRequestAt)
                     HStack {
                         Button(role: .destructive) { Task { await rotate() } } label: {
                             if isRotating {
-                                ProgressView().accessibilityLabel(Text(AppLocalization.string("Making a new key…")))
-                            } else { Text(AppLocalization.string("Make a new key")) }
+                                ProgressView().accessibilityLabel(Text(AppLocalization.string("Making a new key…", table: .voice)))
+                            } else { Text(AppLocalization.string("Make a new key", table: .voice)) }
                         }
-                        .accessibilityLabel(Text(AppLocalization.string("Make a new key")))
+                        .accessibilityLabel(Text(AppLocalization.string("Make a new key", table: .voice)))
                         .disabled(isRotating)
                         .accessibilityIdentifier("voice.speechServerVoice.rotate")
                         Spacer()
@@ -70,7 +70,7 @@ struct SpeechServerVoiceSettingsView: View {
                     .scaledFont(.footnote)
                 }
                 if !status.available || status.modelAddress == nil {
-                    Label(status.reason ?? AppLocalization.string("Your Hermes host didn't send a key."), systemImage: "exclamationmark.triangle.fill")
+                    Label(status.reason ?? AppLocalization.string("Your Hermes host didn't send a key.", table: .voice), systemImage: "exclamationmark.triangle.fill")
                         .scaledFont(.footnote)
                         .foregroundStyle(.orange)
                         .fixedSize(horizontal: false, vertical: true)
@@ -110,11 +110,11 @@ struct SpeechServerVoiceSettingsView: View {
                 Self.copy(setup)
                 UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Copied"))
             } label: {
-                Label(AppLocalization.string("Copy setup for your agent"), systemImage: "doc.on.doc")
+                Label(AppLocalization.string("Copy setup for your agent", table: .voice), systemImage: "doc.on.doc")
             }
             .buttonStyle(.settingsPrimary)
             .accessibilityIdentifier("voice.speechServerVoice.copySetup")
-            Text(AppLocalization.string("One block with the address, key and flags, written for whoever sets up the server, such as your Hermes agent."))
+            Text(AppLocalization.string("One block with the address, key and flags, written for whoever sets up the server, such as your Hermes agent.", table: .voice))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -143,7 +143,7 @@ struct SpeechServerVoiceSettingsView: View {
                 }
                 .buttonStyle(.borderless)
                 .scaledFont(.footnote)
-                .accessibilityLabel(Text(AppLocalization.string("Copy \(title)")))
+                .accessibilityLabel(Text(AppLocalization.string("Copy \(title)", table: .voice)))
                 .accessibilityIdentifier(identifier)
             }
             Text(verbatim: value)
@@ -157,11 +157,11 @@ struct SpeechServerVoiceSettingsView: View {
     @ViewBuilder
     private func lastAskedRow(_ date: Date?) -> some View {
         if let date {
-            Label(AppLocalization.string("Your speech server last asked for words \(date.formatted(.relative(presentation: .named))). It's pointed here."), systemImage: "checkmark.circle.fill")
+            Label(AppLocalization.string("Your speech server last asked for words \(date.formatted(.relative(presentation: .named))). It's pointed here.", table: .voice), systemImage: "checkmark.circle.fill")
                 .scaledFont(.caption)
                 .foregroundStyle(.green)
         } else {
-            Label(AppLocalization.string("Your speech server hasn't asked for words yet. Set the address and key on it, then restart it."), systemImage: "clock")
+            Label(AppLocalization.string("Your speech server hasn't asked for words yet. Set the address and key on it, then restart it.", table: .voice), systemImage: "clock")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }

@@ -33,7 +33,7 @@ struct V2BotsView: View {
                         .scaledFont(.title2.weight(.bold))
                         .accessibilityAddTraits(.isHeader)
                     Spacer(minLength: 0)
-                    V2AddButton(title: AppLocalization.string("New Bot")) {
+                    V2AddButton(title: AppLocalization.string("New Bot", table: .bots)) {
                         createRequest = true
                     }
                     .disabled(!canCreate)

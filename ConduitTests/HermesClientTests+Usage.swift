@@ -201,7 +201,7 @@ extension HermesClientTests {
         let sliver = (0.004).formatted(.percent.precision(.fractionLength(0...1)).locale(locale))
         XCTAssertTrue(ProviderQuotaLine.text(ProviderQuotaSummary(left: 1, resetsAt: nil), now: now).contains(whole))
         XCTAssertTrue(ProviderQuotaLine.text(ProviderQuotaSummary(left: 0.004, resetsAt: nil), now: now).contains(sliver))
-        XCTAssertEqual(ProviderQuotaLine.text(ProviderQuotaSummary(left: 0, resetsAt: nil), now: now), AppLocalization.string("Limited"))
+        XCTAssertEqual(ProviderQuotaLine.text(ProviderQuotaSummary(left: 0, resetsAt: nil), now: now), AppLocalization.string("Limited", table: .settings))
     }
 
     /// Every provider Hermes ships gets its logo by slug, a custom

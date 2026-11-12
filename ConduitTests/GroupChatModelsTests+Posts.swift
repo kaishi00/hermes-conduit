@@ -55,15 +55,15 @@ extension GroupChatModelsTests {
         XCTAssertFalse(left.activeRoomCopyTakesPosts)
         let leftCopy = try XCTUnwrap(left.activeRoomSurface?.copy)
         XCTAssertEqual(RoomCopyText.readOnly(for: leftCopy, canPost: true),
-                       AppLocalization.string("Hosted by \("Furina"). You can read it here."))
+                       AppLocalization.string("Hosted by \("Furina"). You can read it here.", table: .rooms))
         XCTAssertEqual(RoomCopyText.readOnly(for: leftCopy, canPost: false),
-                       AppLocalization.string("Hosted by \("Furina"). You can read it here."),
+                       AppLocalization.string("Hosted by \("Furina"). You can read it here.", table: .rooms),
                        "one that's over asks for no plugin update (issue 2063)")
         let unnamed = try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(from: "")))
         XCTAssertEqual(RoomCopyText.readOnly(for: unnamed, canPost: true),
-                       AppLocalization.string("Hosted elsewhere. You can read it here."))
+                       AppLocalization.string("Hosted elsewhere. You can read it here.", table: .rooms))
         XCTAssertEqual(RoomCopyText.readOnly(for: unnamed, canPost: false),
-                       AppLocalization.string("Hosted elsewhere. Update the Conduit plugin on your Hermes to post in it."))
+                       AppLocalization.string("Hosted elsewhere. Update the Conduit plugin on your Hermes to post in it.", table: .rooms))
     }
 
     @MainActor
@@ -133,7 +133,7 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.activeRoomCopyPost?.status, .refused("unavailable"))
         XCTAssertEqual(
             RoomPostText.rowState(post: appState.activeRoomCopyPost, inFlight: false),
-            .refused(AppLocalization.string("Not posted: the host's Hermes couldn't take it. Try again."), retry: true)
+            .refused(AppLocalization.string("Not posted: the host's Hermes couldn't take it. Try again.", table: .rooms), retry: true)
         )
 
         // Retry sends it again under its id.
@@ -157,10 +157,10 @@ extension GroupChatModelsTests {
         }
         let tooMany = RoomPost(eventID: eventID, text: "hello", status: .refused("too_many"))
         XCTAssertEqual(RoomPostText.rowState(post: tooMany, inFlight: false),
-                       .refused(AppLocalization.string("Not posted: too many posts this hour. Try again later."), retry: true))
+                       .refused(AppLocalization.string("Not posted: too many posts this hour. Try again later.", table: .rooms), retry: true))
         let unknown = RoomPost(eventID: eventID, text: "hello", status: .refused("new_reason"))
         XCTAssertEqual(RoomPostText.rowState(post: unknown, inFlight: false),
-                       .refused(AppLocalization.string("Not posted."), retry: true))
+                       .refused(AppLocalization.string("Not posted.", table: .rooms), retry: true))
 
         // A request that failed may not have reached your Hermes: retried
         // under the same id, which the plugin keeps as one post.
@@ -226,7 +226,7 @@ extension GroupChatModelsTests {
         XCTAssertFalse(appState.activeRoomCopyTakesPosts)
         XCTAssertEqual(
             RoomPostText.rowState(post: appState.activeRoomCopyPost, inFlight: false, takesPosts: false, roomOver: true),
-            .closed(AppLocalization.string("Not posted: the room has ended."))
+            .closed(AppLocalization.string("Not posted: the room has ended.", table: .rooms))
         )
         appState.editActiveRoomCopyPost()
         XCTAssertEqual(appState.pendingRoomMessage?.text, "bye all", "Edit leaves the text where it can be copied")
@@ -238,14 +238,14 @@ extension GroupChatModelsTests {
         // One your Hermes never had says the room took no more, or that
         // your agents left; one it's still sending is still sending.
         XCTAssertEqual(RoomPostText.rowState(post: nil, inFlight: false, takesPosts: false, roomOver: true),
-                       .closed(AppLocalization.string("Not posted: the room has ended.")))
+                       .closed(AppLocalization.string("Not posted: the room has ended.", table: .rooms)))
         XCTAssertEqual(RoomPostText.rowState(post: nil, inFlight: false, takesPosts: false),
-                       .closed(AppLocalization.string("Not posted: your agents aren't in this room.")))
+                       .closed(AppLocalization.string("Not posted: your agents aren't in this room.", table: .rooms)))
         let sending = RoomPost(eventID: "conduit-1", text: "hi", status: .sending)
         XCTAssertEqual(RoomPostText.rowState(post: sending, inFlight: false, takesPosts: false, settling: true), .sending)
         XCTAssertEqual(RoomPostText.rowState(post: sending, inFlight: true, takesPosts: false), .sending)
         XCTAssertEqual(RoomPostText.rowState(post: sending, inFlight: false, takesPosts: false, roomOver: true),
-                       .closed(AppLocalization.string("Not posted: the room has ended.")), "waited on long enough")
+                       .closed(AppLocalization.string("Not posted: the room has ended.", table: .rooms)), "waited on long enough")
     }
 
     @MainActor
@@ -289,7 +289,7 @@ extension GroupChatModelsTests {
         XCTAssertEqual(
             RoomPostText.rowState(post: appState.activeRoomCopyPost, inFlight: false, takesPosts: false, roomOver: true,
                                   settling: false, waitedOut: true),
-            .closed(AppLocalization.string("Not confirmed yet: it may still be posted.")),
+            .closed(AppLocalization.string("Not confirmed yet: it may still be posted.", table: .rooms)),
             "not called not posted: your Hermes may still post it"
         )
         appState.dismissActiveRoomCopyPost()
@@ -441,13 +441,13 @@ extension GroupChatModelsTests {
         XCTAssertEqual(
             RoomPostText.rowState(post: appState.activeRoomCopyPost, inFlight: false,
                                   takesPosts: appState.activeRoomCopyTakesPosts, canAsk: appState.canPostInRoomCopies),
-            .closed(AppLocalization.string("Can't check this post: update the Conduit plugin on your Hermes.")),
+            .closed(AppLocalization.string("Can't check this post: update the Conduit plugin on your Hermes.", table: .rooms)),
             "not said to be refused: it can't be asked about"
         )
         // One already refused keeps its reason.
         let refused = RoomPost(eventID: "conduit-1", text: "parked", status: .refused("too_long"))
         XCTAssertEqual(RoomPostText.rowState(post: refused, inFlight: false, takesPosts: false, canAsk: false),
-                       .closed(AppLocalization.string("Not posted: it's too long for this room.")))
+                       .closed(AppLocalization.string("Not posted: it's too long for this room.", table: .rooms)))
         appState.dismissActiveRoomCopyPost()
         XCTAssertNil(appState.pendingRoomMessage)
     }

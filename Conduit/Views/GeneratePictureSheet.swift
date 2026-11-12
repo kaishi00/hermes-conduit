@@ -32,17 +32,17 @@ struct GeneratePictureSheet: View {
         NavigationStack {
             // Settings' own page, as Edit Bot that opens it (Eric 2026-11-05).
             SettingsDetailContainer {
-                ConduitSettingsSection(title: AppLocalization.string("Describe It (Optional)"), symbol: "text.quote", tint: .conduitAccent) {
+                ConduitSettingsSection(title: AppLocalization.string("Describe It (Optional)", table: .chat), symbol: "text.quote", tint: .conduitAccent) {
                     TextField(
-                        AppLocalization.string("A friendly fox with a tiny backpack"),
+                        AppLocalization.string("A friendly fox with a tiny backpack", table: .chat),
                         text: $description,
                         axis: .vertical
                     )
                     .textFieldStyle(.roundedBorder)
                     .lineLimit(1...4)
                     Text(forGroup
-                        ? AppLocalization.string("Leave empty to use the group's name and members.")
-                        : AppLocalization.string("Leave empty to use the bot's name and description."))
+                        ? AppLocalization.string("Leave empty to use the group's name and members.", table: .chat)
+                        : AppLocalization.string("Leave empty to use the bot's name and description.", table: .chat))
                         .settingsCaption()
                     Button(action: generate) {
                         HStack(spacing: 8) {
@@ -53,13 +53,13 @@ struct GeneratePictureSheet: View {
                                     .accessibilityHidden(true)
                             }
                             Text(isGenerating
-                                ? AppLocalization.string("Generating…")
+                                ? AppLocalization.string("Generating…", table: .chat)
                                 : AppLocalization.string("Generate"))
                         }
                     }
                     .buttonStyle(.settingsPrimary)
                     .disabled(isGenerating)
-                    Text(AppLocalization.string("A picture can take a minute or more. Each tap of Generate adds one; pick one, then tap Use."))
+                    Text(AppLocalization.string("A picture can take a minute or more. Each tap of Generate adds one; pick one, then tap Use.", table: .chat))
                         .settingsCaption()
                 }
                 if let error {
@@ -78,7 +78,7 @@ struct GeneratePictureSheet: View {
                     }
                 }
             }
-            .navigationTitle(AppLocalization.string("Generate Picture"))
+            .navigationTitle(AppLocalization.string("Generate Picture", table: .chat))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -115,7 +115,7 @@ struct GeneratePictureSheet: View {
                 }
         }
         .buttonStyle(.plain)
-        .accessibilityLabel(Text(AppLocalization.string("Generated picture \(String(number)) of \(String(pictures.count))")))
+        .accessibilityLabel(Text(AppLocalization.string("Generated picture \(String(number)) of \(String(pictures.count))", table: .chat)))
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 

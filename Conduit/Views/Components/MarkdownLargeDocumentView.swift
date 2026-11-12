@@ -838,10 +838,10 @@ struct LargeMarkdownCallout: View {
 
     private var detail: (title: String, icon: String, color: Color) {
         switch calloutKind.lowercased() {
-        case "tip", "hint": (AppLocalization.string("Tip"), "lightbulb.fill", .green)
+        case "tip", "hint": (AppLocalization.string("Tip", table: .chat), "lightbulb.fill", .green)
         case "warning", "caution": (AppLocalization.string("Warning"), "exclamationmark.triangle.fill", .orange)
-        case "danger", "error": (AppLocalization.string("Important"), "exclamationmark.octagon.fill", .red)
-        case "important": (AppLocalization.string("Important"), "exclamationmark.circle.fill", .purple)
+        case "danger", "error": (AppLocalization.string("Important", table: .chat), "exclamationmark.octagon.fill", .red)
+        case "important": (AppLocalization.string("Important", table: .chat), "exclamationmark.circle.fill", .purple)
         default: (AppLocalization.string("Note"), "info.circle.fill", .blue)
         }
     }
@@ -1041,7 +1041,7 @@ struct LargeCodeBlockView: View {
 
     private var header: some View {
         HStack {
-            Text(normalizedLanguage == "plain" ? AppLocalization.string("Code") : normalizedLanguage)
+            Text(normalizedLanguage == "plain" ? AppLocalization.string("Code", table: .chat) : normalizedLanguage)
                 .scaledFont(.caption2.monospaced().weight(.semibold))
                 .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
             Spacer()

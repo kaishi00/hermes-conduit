@@ -101,18 +101,18 @@ extension GroupChatModelsTests {
         let agent = "Research Buddy"
         let room = "Zoo trip"
         let host = "Furina"
-        XCTAssertEqual(try line(), AppLocalization.string("\(agent) in \(room), hosted by \(host)"))
-        XCTAssertEqual(try line(from: nil), AppLocalization.string("\(agent) in \(room)"))
-        XCTAssertEqual(try line(from: ""), AppLocalization.string("\(agent) in \(room)"))
-        XCTAssertEqual(try line(room: nil), AppLocalization.string("\(agent) in a room hosted by \(host)"))
-        XCTAssertEqual(try line(room: nil, from: nil), AppLocalization.string("\(agent) in a room hosted elsewhere"))
+        XCTAssertEqual(try line(), AppLocalization.string("\(agent) in \(room), hosted by \(host)", table: .rooms))
+        XCTAssertEqual(try line(from: nil), AppLocalization.string("\(agent) in \(room)", table: .rooms))
+        XCTAssertEqual(try line(from: ""), AppLocalization.string("\(agent) in \(room)", table: .rooms))
+        XCTAssertEqual(try line(room: nil), AppLocalization.string("\(agent) in a room hosted by \(host)", table: .rooms))
+        XCTAssertEqual(try line(room: nil, from: nil), AppLocalization.string("\(agent) in a room hosted elsewhere", table: .rooms))
         // The agent by its name there, else its handle, else its profile.
         let handle = "research-buddy"
         XCTAssertEqual(try line(agent: ["profile": "research", "handle": handle]),
-                       AppLocalization.string("\(handle) in \(room), hosted by \(host)"))
+                       AppLocalization.string("\(handle) in \(room), hosted by \(host)", table: .rooms))
         let profile = "research"
         XCTAssertEqual(try line(agent: ["profile": profile, "display_name": ""]),
-                       AppLocalization.string("\(profile) in \(room), hosted by \(host)"))
+                       AppLocalization.string("\(profile) in \(room), hosted by \(host)", table: .rooms))
     }
 
     @MainActor
@@ -197,10 +197,10 @@ extension GroupChatModelsTests {
     func testApprovalRefusalsShowThePluginsWords() {
         let answered = "That approval was answered already, or its turn moved on"
         XCTAssertEqual(RoomApprovalsClient.refusal(for: DashboardTicketBridgeError.http(status: 409, detail: answered)),
-                       AppLocalization.string("Could not answer: \(answered)"))
+                       AppLocalization.string("Could not answer: \(answered)", table: .rooms))
         let down = "This Hermes' API server didn't answer; check that its gateway runs"
         XCTAssertEqual(RoomApprovalsClient.refusal(for: DashboardTicketBridgeError.http(status: 503, detail: down)),
-                       AppLocalization.string("Could not answer: \(down)"))
+                       AppLocalization.string("Could not answer: \(down)", table: .rooms))
     }
 
     // MARK: - When they're read
@@ -293,7 +293,7 @@ extension GroupChatModelsTests {
         routes.refusesAnswers = true
         routes.approvals = []
         let refused = await appState.answerLinkedRoomApproval(appState.linkedRoomApprovalRows[0], choice: "deny")
-        XCTAssertEqual(refused, .failed(AppLocalization.string("Could not answer: \(ApprovalsRoutes.notPending)")))
+        XCTAssertEqual(refused, .failed(AppLocalization.string("Could not answer: \(ApprovalsRoutes.notPending)", table: .rooms)))
         XCTAssertEqual(appState.linkedRoomApprovalRows, [])
 
         // A new one (the one answered here stays gone).

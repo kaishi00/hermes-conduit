@@ -303,7 +303,7 @@ final class NotificationE2ETests: XCTestCase {
 extension NotificationE2ETests {
     func testRelayErrorsSayWhatTheRelayRefused() {
         func message(_ json: String) -> String { PushNotificationService.relayErrorMessage(data: Data(json.utf8)) }
-        let generic = AppLocalization.string("Push relay request failed.")
+        let generic = AppLocalization.string("Push relay request failed.", table: .notifications)
         // The relay answers {"error": "<code>"} (relay/src/server.mjs).
         for code in ["unauthorized", "invalid_topic", "production_only", "invalid_device_token", "token_proof_required",
                      "token_proof_invalid", "installation_limit_reached", "gateway_limit_reached", "rate_limited",

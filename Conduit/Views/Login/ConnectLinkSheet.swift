@@ -145,7 +145,7 @@ struct ConnectLinkSheet: View {
                 .frame(width: 64, height: 64)
                 .background(Color.conduitAccent.opacity(0.14), in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                 .accessibilityHidden(true)
-            Text(AppLocalization.string("Sign in to \(name)?"))
+            Text(AppLocalization.string("Sign in to \(name)?", table: .connection))
                 .scaledFont(.title2.weight(.semibold))
                 .multilineTextAlignment(.center)
                 .accessibilityAddTraits(.isHeader)
@@ -166,8 +166,8 @@ struct ConnectLinkSheet: View {
                 title: name,
                 detail: LoginAddress.displayHost(address),
                 status: savedDashboard == nil
-                    ? LoginRowLabel.Status(text: AppLocalization.string("New dashboard"), icon: "plus.circle", tint: .conduitAccent)
-                    : LoginRowLabel.Status(text: AppLocalization.string("Saved dashboard"), icon: "checkmark.circle", tint: Color.primary.opacity(0.58)),
+                    ? LoginRowLabel.Status(text: AppLocalization.string("New dashboard", table: .connection), icon: "plus.circle", tint: .conduitAccent)
+                    : LoginRowLabel.Status(text: AppLocalization.string("Saved dashboard", table: .connection), icon: "checkmark.circle", tint: Color.primary.opacity(0.58)),
                 accessory: .hidden
             )
             .accessibilityElement(children: .combine)
@@ -177,8 +177,8 @@ struct ConnectLinkSheet: View {
                     icon: "person",
                     title: username,
                     detail: link.password == nil
-                        ? AppLocalization.string("You type the password next.")
-                        : AppLocalization.string("The code includes the password."),
+                        ? AppLocalization.string("You type the password next.", table: .connection)
+                        : AppLocalization.string("The code includes the password.", table: .connection),
                     accessory: .hidden
                 )
                 .accessibilityElement(children: .combine)

@@ -457,14 +457,14 @@ enum GroupMemberStatus: Equatable {
     /// (keys apart from the plain words, which mean other things elsewhere).
     var label: String {
         switch self {
-        case .needsApproval: return AppLocalization.string("· needs approval")
-        case .responding: return AppLocalization.string("· responding…")
-        case .waiting: return AppLocalization.string("· waiting")
-        case .replied: return AppLocalization.string("· replied")
-        case .passed: return AppLocalization.string("· passed")
-        case .failed: return AppLocalization.string("· failed")
-        case .stopped: return AppLocalization.string("· stopped")
-        case .unavailable: return AppLocalization.string("· unavailable")
+        case .needsApproval: return AppLocalization.string("· needs approval", table: .rooms)
+        case .responding: return AppLocalization.string("· responding…", table: .rooms)
+        case .waiting: return AppLocalization.string("· waiting", table: .rooms)
+        case .replied: return AppLocalization.string("· replied", table: .rooms)
+        case .passed: return AppLocalization.string("· passed", table: .rooms)
+        case .failed: return AppLocalization.string("· failed", table: .rooms)
+        case .stopped: return AppLocalization.string("· stopped", table: .rooms)
+        case .unavailable: return AppLocalization.string("· unavailable", table: .rooms)
         }
     }
 
@@ -1428,11 +1428,11 @@ enum GroupRoomTurns {
     static func ownerLine(of member: GroupMember) -> String {
         let whose: String
         if !member.isPeer || member.isYours {
-            whose = AppLocalization.string("Your agent")
+            whose = AppLocalization.string("Your agent", table: .rooms)
         } else if let owner = member.owner?.trimmingCharacters(in: .whitespacesAndNewlines), !owner.isEmpty {
-            whose = AppLocalization.string("\(owner)'s agent")
+            whose = AppLocalization.string("\(owner)'s agent", table: .rooms)
         } else {
-            whose = AppLocalization.string("On another Hermes")
+            whose = AppLocalization.string("On another Hermes", table: .rooms)
         }
         guard let out = member.out else { return whose }
         return AppLocalization.string("\(whose) · \(RoomLeaveText.outLine(out))")
@@ -1445,7 +1445,7 @@ enum GroupRoomTurns {
             if let trimmed = candidate?.trimmingCharacters(in: .whitespacesAndNewlines),
                !trimmed.isEmpty { return trimmed }
         }
-        return AppLocalization.string("A member")
+        return AppLocalization.string("A member", table: .rooms)
     }
 
     /// The member whose turn the driver is running (or will run next) for
@@ -2014,7 +2014,7 @@ enum GroupRoomDisband {
         switch (withPeers, chatsKept) {
         case (true, false):
             return AppLocalization.string(
-                "The room ends for everyone, and your agents' sessions for it are deleted. Agents on other people's Hermes keep theirs. This cannot be undone."
+                "The room ends for everyone, and your agents' sessions for it are deleted. Agents on other people's Hermes keep theirs. This cannot be undone.", table: .rooms
             )
         case (true, true):
             return AppLocalization.string(
@@ -2108,7 +2108,7 @@ enum MentionAutocomplete {
                   !handle.isEmpty, seen.insert(handle.lowercased()).inserted else { continue }
             result.append(Candidate(tag: handle, title: GroupRoomTurns.displayName(of: member)))
         }
-        result.append(Candidate(tag: "all", title: AppLocalization.string("Everyone")))
+        result.append(Candidate(tag: "all", title: AppLocalization.string("Everyone", table: .rooms)))
         return result
     }
 

@@ -76,7 +76,7 @@ final class WatchToolGrantClient {
             body,
             Self.timeoutMilliseconds
         )
-        guard let grant = Self.grant(from: response) else { throw WatchDirectPrepareError(AppLocalization.string("The Watch tool grant couldn't be read.")) }
+        guard let grant = Self.grant(from: response) else { throw WatchDirectPrepareError(AppLocalization.string("The Watch tool grant couldn't be read.", table: .watchCarPlay)) }
         return grant
     }
 

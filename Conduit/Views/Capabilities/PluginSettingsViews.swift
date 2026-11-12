@@ -60,7 +60,7 @@ struct PluginSettingsSection: View {
                         Button {
                             save()
                         } label: {
-                            Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save Settings"), systemImage: "checkmark.circle")
+                            Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save Settings", table: .bots), systemImage: "checkmark.circle")
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 6)
                                 .frame(minHeight: 44)
@@ -78,7 +78,7 @@ struct PluginSettingsSection: View {
                 .settingsCard()
             } else if let loadError {
                 HStack(spacing: 8) {
-                    Text(verbatim: AppLocalization.string("Couldn't read its settings: \(loadError)"))
+                    Text(verbatim: AppLocalization.string("Couldn't read its settings: \(loadError)", table: .bots))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
@@ -204,7 +204,7 @@ struct PluginSettingsSection: View {
                 if let next { fields = next } else { await load() }
                 Haptics.success()
                 saved = true
-                message = AppLocalization.string("Saved. The plugin reads its new settings.")
+                message = AppLocalization.string("Saved. The plugin reads its new settings.", table: .bots)
             } catch {
                 guard !(error is CancellationError) else { return }
                 // After a switch the form shows another owner's fields.
@@ -264,7 +264,7 @@ private struct PluginSettingFieldRow: View {
                     .accessibilityLabel(Text(verbatim: field.label))
             case .secret:
                 title
-                SecureField(field.hasValue ? AppLocalization.string("Saved. Enter a new one to replace it.") : AppLocalization.string("Not set"), text: $raw)
+                SecureField(field.hasValue ? AppLocalization.string("Saved. Enter a new one to replace it.", table: .bots) : AppLocalization.string("Not set"), text: $raw)
                     .textContentType(.password)
                     .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
