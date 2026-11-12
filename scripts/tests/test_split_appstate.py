@@ -164,6 +164,13 @@ class SplitAppStateTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             split.run(self.repo, 1, True, pr=42, today="2026-11-12")
 
+    def test_appending_brings_the_imports_the_code_used(self):
+        (self.repo / "Conduit/Services/AppState+Connection.swift").write_text(
+            "//\n//  AppState+Connection.swift\n//\n\nimport Foundation\n\nextension AppState {\n    func old() {}\n}\n")
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        text = self.read("AppState+Connection.swift")
+        self.assertIn("\nimport Foundation\nimport SwiftUI\n\nextension AppState {\n    func old()", text)
+
     def test_repeated_and_numbered_region_names(self):
         (self.repo / split.APP_STATE).write_text('''import SwiftUI
 
@@ -192,7 +199,7 @@ final class AppState: ObservableObject {
         self.assertIn("    // MARK: - Tools\n\n    func moreTools() {}", moved)
         self.assertNotIn("@2", moved)
         self.assertIn("func tools()", app, "the first Tools region stays")
-        self.assertIn("    // MARK: - Stars (#757)\n\n    var starred", app,
+        self.assertIn("    // MARK: - Stars (#757) (AppState+Stars.swift)\n\n    var starred", app,
                       "a MARK whose code moved keeps its blank line")
 
     def test_a_mutating_call_counts_as_a_write(self):
@@ -252,6 +259,20 @@ final class AppState: ObservableObject {
         with self.assertRaises(SystemExit):
             split.STEPS = [{"AppState+Connection.swift": ["Connection|from nothing"]}]
             split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+
+    def test_cuts_a_slice_between_two_declarations(self):
+        with self.assertRaises(SystemExit, msg="nothing between"):
+            split.STEPS = [{"AppState+Ready.swift": ["Connection|from connect until isReady"]}]
+            split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        split.STEPS = [{"AppState+Ready.swift": ["Connection|from isReady until connect"],
+                        "AppState+Connect.swift": ["Connection|from connect"]}]
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        ready = self.read("AppState+Ready.swift")
+        self.assertIn("var isReady: Bool", ready)
+        self.assertNotIn("func connect()", ready)
+        self.assertIn("func connect()", self.read("AppState+Connect.swift"))
+        self.assertIn("// MARK: - Connection (AppState+Ready.swift, AppState+Connect.swift)\n",
+                      self.read("AppState.swift"), "the MARK left over stored properties names both files")
 
     def test_points_the_map_at_the_new_file(self):
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")

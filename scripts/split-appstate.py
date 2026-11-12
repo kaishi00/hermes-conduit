@@ -96,7 +96,12 @@ STEPS = [
     },
     # 5: voice
     {
-        "AppState+Voice.swift": ["Voice history"],
+        "AppState+Voice.swift": [
+            "Voice history|until openAppLink",
+            "Voice history|from dismissChatCallTranscript until isSessionPinned",
+        ],
+        "AppState+AppLinks.swift": ["Voice history|from openAppLink until dismissChatCallTranscript"],
+        "AppState+PinnedChatOrder.swift": ["Voice history|from isSessionPinned"],
         "AppState+WakePhrase.swift": ["Wake phrase (#174)"],
     },
     # 6: chats, their list and what's kept on the phone
@@ -496,18 +501,27 @@ def assign(src, steps):
                         it.dest = fname
                         moves.setdefault(fname, []).append(it)
                     continue
-                # "Region|from name" / "Region|until name": the part of a long
-                # region from (or before) the declaration of `name`.
+                # "Region|from name", "Region|until name" or "Region|from a until b":
+                # the part of a long region from (or before) a declaration.
                 part, _, cut = part.partition("|")
                 if part not in known:
                     raise SystemExit(f"no region {part!r}; regions: {', '.join(known)}")
                 items = region_items[part]
                 if cut:
-                    side, _, name = cut.partition(" ")
-                    at = [i for i, it in enumerate(items) if name in it.names]
-                    if side not in ("from", "until") or len(at) != 1:
+                    m = re.fullmatch(r"(?:from (\S+))?\s*(?:until (\S+))?", cut)
+                    if not m or not (m.group(1) or m.group(2)):
                         raise SystemExit(f"can't cut {part!r} at {cut!r}")
-                    items = items[at[0]:] if side == "from" else items[:at[0]]
+
+                    def at(name):
+                        found = [i for i, it in enumerate(items) if name in it.names]
+                        if len(found) != 1:
+                            raise SystemExit(f"can't cut {part!r} at {cut!r}")
+                        return found[0]
+                    lo = at(m.group(1)) if m.group(1) else 0
+                    hi = at(m.group(2)) if m.group(2) else len(items)
+                    if lo >= hi:
+                        raise SystemExit(f"can't cut {part!r} at {cut!r}: nothing between")
+                    items = items[lo:hi]
                 for it in items:
                     if it.movable:
                         it.dest = fname
@@ -729,6 +743,21 @@ def render_new_file(src, fname, items, changes, header_note):
     return "\n".join(out)
 
 
+def with_imports(text, imports):
+    """`text` with any of AppState.swift's imports it lacks, after its own:
+    code appended to an existing file needs what it used where it was."""
+    lines = text.split("\n")
+    have = {l.strip() for l in lines if l.startswith("import ")}
+    missing = [i for i in imports if i.strip() not in have]
+    if not missing:
+        return text
+    at = max((k for k, l in enumerate(lines) if l.startswith("import ")), default=None)
+    if at is None:
+        at = next(k for k, l in enumerate(lines) if l.strip() and not l.startswith("//")) - 1
+        missing = missing + [""]
+    return "\n".join(lines[:at + 1] + missing + lines[at + 1:])
+
+
 def render_app_state(src, moved, changes):
     keep = []
     skip = set()
@@ -739,9 +768,21 @@ def render_app_state(src, moved, changes):
     for it in src.body:
         if it.kind != "mark" and it.start not in skip:
             region_left[it.region] = True
+    # a MARK left over stored properties names the files its code went to
+    region_dests = OrderedDict()
+    for it in moved:
+        if it in src.body and it.dest:
+            region_dests.setdefault(it.region, OrderedDict())[it.dest] = True
+    changes = dict(changes)
     for it in src.body:
         if it.kind == "mark" and not region_left.get(it.region):
             skip.update(range(it.start, it.end))
+        elif it.kind == "mark" and it.region in region_dests:
+            for k in range(it.start, it.end):
+                line = changes.get(k, src.lines[k])
+                if "// MARK:" in line:
+                    changes[k] = line.rstrip() + f" ({', '.join(region_dests[it.region])})"
+                    break
     outer = src.outer_before + src.outer_after
     outer_left = {it.region for it in outer if it.kind != "mark" and it.start not in skip}
     for it in outer:
@@ -777,9 +818,16 @@ def render_app_state(src, moved, changes):
 
 # A file made from the cut-off end of a region gets a MARK of its own.
 MARK_TITLES = {"AppState+OpenChat.swift": "Opening chats",
-               "AppState+ProfileSettings.swift": "Profile and connection settings"}
+               "AppState+ProfileSettings.swift": "Profile and connection settings",
+               "AppState+AppLinks.swift": "Opening app links",
+               "AppState+PinnedChatOrder.swift": "Pinning chats, and the saved order of chats, bots and rooms"}
 
 HEADER_NOTES = {
+    "AppState+AppLinks.swift": [
+        "Opening a conduit:// link: a chat, a bot's Bot Chat or a call's",
+        "transcript, on whichever profile it belongs to. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
     "AppState+ProfileSettings.swift": [
         "A dashboard's settings and its profiles' names, pictures, colors and",
         "order, with the server identity a chat resume keys on. Moved out of",
@@ -929,7 +977,8 @@ def run(repo, step, write, pr=None, today=None):
         if target.exists():
             body = render_new_file(src, f, items, changes, ["-"])
             block = body[body.index("extension AppState {"):]
-            target.write_text(target.read_text().rstrip("\n") + "\n\n" + block)
+            target.write_text(with_imports(target.read_text(), src.imports).rstrip("\n")
+                              + "\n\n" + block)
         else:
             target.write_text(render_new_file(src, f, items, changes, HEADER_NOTES.get(f, [])))
     # AppState.swift last: until it's written, its regions are all still there
