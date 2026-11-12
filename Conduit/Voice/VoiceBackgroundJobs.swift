@@ -1721,8 +1721,12 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 $0.submitted = true
                 $0.submitInFlight = true
             }
-            // Holds the chat through the repeated cancel below too.
-            defer { update(jobID) { $0.submitInFlight = false } }
+            // Holds the chat through the repeated cancel below too; the
+            // call's turns waiting on it go in once it lets go.
+            defer {
+                update(jobID) { $0.submitInFlight = false }
+                pumpThreadTurns()
+            }
             do {
                 try await backend.submit(sessionID, prompt)
             } catch {
@@ -2265,7 +2269,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             let chatHasSentTurn = jobs.contains { job in
                 job.isThreadTurn && job.threadTurnSubmitted && job.status.isActive && !job.isDetachedThreadTurn
                     && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
-            } || callChatJobRuns(in: thread)
+            } || callChatJobRuns(in: thread) || continuedSubmitInFlight(in: thread)
             if chatHasSentTurn { return }
             if await backend.threadIsBusy(thread) {
                 guard generation == self.generation else { return }
@@ -2354,6 +2358,16 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// Whether the job whose chat the call took (#1250) still runs there:
     /// the call's turns wait for it, as for a turn of their own.
+    /// A continued job of the call is submitting in `thread`: a cancel it
+    /// repeats when the submit returns must not stop a turn sent meanwhile
+    /// (review of #2310).
+    private func continuedSubmitInFlight(in thread: VoiceThreadTarget) -> Bool {
+        jobs.contains { job in
+            job.submitInFlight
+                && [job.runtimeSessionID, job.storedSessionID].compactMap { $0 }.contains { thread.owns(sessionID: $0) }
+        }
+    }
+
     private func callChatJobRuns(in thread: VoiceThreadTarget) -> Bool {
         guard let id = callChatJobID, let job = job(id), job.status.isActive else { return false }
         return [job.runtimeSessionID, job.storedSessionID].compactMap { $0 }.contains { thread.owns(sessionID: $0) }
