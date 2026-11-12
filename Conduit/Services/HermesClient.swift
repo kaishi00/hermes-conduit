@@ -1138,6 +1138,15 @@ final class HermesClient: ObservableObject {
     /// expects.
     private var executionGenerations: [String: Int] = [:]
     private var sessionRevisions: [String: Int] = [:]
+    /// The profile a chat in another profile (a Bot Chat) was opened or
+    /// made under, by session id. A gateway that serves several profiles
+    /// on one socket finds a session only under the profile its request
+    /// names, so every later request about that chat (the send, the
+    /// reasoning, Fast and YOLO switches, a model pick, a stop) names it
+    /// too, not just the resume: unnamed, it went to the client's own
+    /// profile and came back `not_found`. Kept across reconnects, like
+    /// the chat itself.
+    private var sessionProfiles: [String: String] = [:]
     /// An open approval or clarify prompt's id → its session and the turn
     /// that asked, which the authority's answers name.
     private var authorityPrompts: [String: (sessionId: String, generation: Int)] = [:]
@@ -1465,6 +1474,7 @@ final class HermesClient: ObservableObject {
         speaksSessionAuthority = predecessor.speaksSessionAuthority
         executionGenerations.merge(predecessor.executionGenerations) { mine, _ in mine }
         sessionRevisions.merge(predecessor.sessionRevisions) { mine, _ in mine }
+        sessionProfiles.merge(predecessor.sessionProfiles) { mine, _ in mine }
         authorityPrompts.merge(predecessor.authorityPrompts) { mine, _ in mine }
         authorityPromptSessions.merge(predecessor.authorityPromptSessions) { mine, _ in mine }
         // A confirm token belongs to the socket, which stays the same.
@@ -2304,11 +2314,41 @@ final class HermesClient: ObservableObject {
         var params = params ?? [:]
         // The client's profile is the DEFAULT scope; a caller-supplied
         // `profile` is explicit intent (Bot Mode addresses another profile's
-        // registry) and always wins.
-        if params["profile"] == nil, let profile, profile != "default" {
+        // registry) and always wins. A request about a chat opened under
+        // another profile (a Bot Chat) names that one.
+        if params["profile"] == nil,
+           let sessionId = params["session_id"] as? String,
+           let owner = sessionProfiles[sessionId] {
+            params["profile"] = owner
+        } else if params["profile"] == nil, let profile, profile != "default" {
             params["profile"] = profile
         }
         return params.isEmpty ? nil : params
+    }
+
+    /// Records the profile `ids` were opened or made under, when it is
+    /// another than the client's own; the client's own (or none) forgets
+    /// them, so they take the client's scope again. A resume that names no
+    /// profile keeps the one it was sent to.
+    func noteSessionProfile(_ profile: String?, for ids: [String?]) {
+        let named = profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let own = (self.profile ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let isOwn = named.isEmpty
+            || named.caseInsensitiveCompare(own.isEmpty ? "default" : own) == .orderedSame
+        for case let id? in ids {
+            let id = id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty else { continue }
+            if isOwn {
+                sessionProfiles.removeValue(forKey: id)
+            } else {
+                sessionProfiles[id] = named
+            }
+        }
+    }
+
+    /// The profile a request about `sessionId` names when it names none.
+    func sessionProfile(for sessionId: String) -> String? {
+        sessionProfiles[sessionId]
     }
 
     // MARK: - The session authority's shapes (#1618)
@@ -2604,6 +2644,7 @@ final class HermesClient: ObservableObject {
         let stored = ["stored_session_id", "storedSessionId", "session_key"]
             .compactMap { object[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
+        noteSessionProfile(profile, for: [sessionId, stored])
         return (sessionId, stored)
     }
 
@@ -3010,6 +3051,13 @@ final class HermesClient: ObservableObject {
         }
         let object = result.objectValue ?? [:]
         noteAuthorityFences(fromSnapshot: object, sessionId: sessionId)
+        // The profile the resume went to: the one named, else the one
+        // `scopeParams` named for this chat. Only a named profile changes it.
+        noteSessionProfile(profile ?? sessionProfiles[sessionId], for: [
+            sessionId, object["session_id"]?.stringValue,
+            object["stored_session_id"]?.stringValue, object["storedSessionId"]?.stringValue,
+            object["session_key"]?.stringValue
+        ])
         if speaksSessionAuthority {
             // The authority's open questions come back in `prompts`, in the
             // live event's shape: shown again like the live event.
@@ -3231,6 +3279,7 @@ final class HermesClient: ObservableObject {
         noteAuthorityFences(fromSnapshot: object, sessionId: sid)
         let stored = object["stored_session_id"]?.stringValue
         let profile = object["profile"]?.stringValue ?? object["profile_id"]?.stringValue
+        if let inProfile { noteSessionProfile(inProfile, for: [sid, stored]) }
         return (sid, stored, profile)
     }
 
@@ -3291,6 +3340,8 @@ final class HermesClient: ObservableObject {
         guard let sessionId = object["branched_session_id"]?.stringValue, !sessionId.isEmpty else {
             throw HermesError.invalidResponse
         }
+        // The branch is kept in its parent's profile.
+        if let owner = sessionProfiles[parentSessionId] { noteSessionProfile(owner, for: [sessionId]) }
         return (sessionId, sessionId, nil)
     }
 
@@ -6063,7 +6114,7 @@ enum MessageNormalizer {
             let review = role == .system && displayKind == nil
                 ? reviewActivity(from: obj, eventSessionId: nil)
                 : nil
-            let base = ChatMessage(
+            var base = ChatMessage(
                 id: id,
                 role: role,
                 content: content,
@@ -6078,6 +6129,12 @@ enum MessageNormalizer {
                 rowId: rowId,
                 reactions: messageReactions(fromMetadata: obj["display_metadata"])
             )
+            // A finished-agents notice opens to each agent's result, read
+            // from the report Hermes wrote for the model, and only when no
+            // `display_content` projection replaced it (issue 1553).
+            if displayKind == .asyncDelegationComplete, projectedContent == nil, !isToolResult {
+                base.delegationReport = DelegationReport.parse(extractedContent)
+            }
 
             // External session history occasionally includes a role-less
             // metadata envelope after the last real message. It normalizes to

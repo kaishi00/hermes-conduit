@@ -1475,6 +1475,10 @@ struct MessageBubble: View, Equatable {
                 VoiceCallMarkerCard(link: link, origin: true) {
                     appState.openVoiceCallChat(markerID: link.originMarkerID)
                 }
+            } else if let report = message.delegationReport {
+                // Background agents finished: each one's result a tap away
+                // (issue 1553).
+                DelegationReportCard(message: message, report: report)
             } else if let report = CronBotChatReport.parse(message.content) {
                 // A cron job's report the bot wasn't asked to act on: the
                 // report itself, not a system line (cron_bot_chat).
@@ -3464,12 +3468,12 @@ struct ThinkingCard: View {
     }
 }
 
-private enum MessageTimestampTone {
+enum MessageTimestampTone {
     case subtle
     case supporting
 }
 
-private struct MessageTimestampLabel: View {
+struct MessageTimestampLabel: View {
     let timestamp: String
     var tone: MessageTimestampTone = .subtle
 

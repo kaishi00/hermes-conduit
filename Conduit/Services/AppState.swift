@@ -40445,9 +40445,9 @@ final class AppState: ObservableObject {
     private func endDelegateAgent(_ agent: DelegateAgentActivity, as status: DelegateAgentActivity.Status = .completed) {
         guard let index = delegateAgents.firstIndex(where: { $0.id == agent.id && $0.sessionId == agent.sessionId }),
               delegateAgents[index].status.isActive else { return }
-        delegateAgents[index].status = status
-        delegateAgents[index].currentTool = nil
-        delegateAgents[index].updatedAt = Date()
+        let now = Date()
+        delegateAgents[index] = delegateAgents[index].ended(as: status, at: now)
+        delegateAgents[index].updatedAt = now
         activeAgents = delegateAgents.filter { $0.status.isActive }.count
     }
 

@@ -2005,6 +2005,49 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(asking.rows().map { $0.entry.name }, ["src"], "The kept listing stays while it asks")
     }
 
+    /// A profile with the plugin turned off (issue 1438): Hermes answers
+    /// the workspace routes "Plugin not found" though the dashboard's own
+    /// profile reports them. The folder browses through Hermes' own listing,
+    /// offers no changes, says how to turn the plugin on, and asks again on
+    /// a refresh.
+    func testAFolderOnAProfileWithThePluginOffBrowsesThroughHermes() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.164.0", capabilities: [WorkspaceFilesClient.capability]))
+        let refused: [String: Any] = ["detail": "Plugin not found"]
+        let explorer = WorkspaceExplorer()
+        explorer.attach(appState)
+        let open = Task { await explorer.open(root: "/w/atlas", profile: "atlas") }
+        try await held.waitForRequests(2)
+        try await held.answer(refused, toPathEnding: "/workspace/list", status: 404)
+        try await held.answer(refused, toPathEnding: "/workspace/recent", status: 404)
+        try await held.answer(["entries": [["name": "src", "path": "/w/atlas/src", "isDirectory": true]]], toPathEnding: "/api/fs/list")
+        await open.value
+
+        XCTAssertNil(explorer.error, "the folder still opens")
+        XCTAssertEqual(explorer.rows().map { $0.entry.name }, ["src"])
+        XCTAssertFalse(explorer.canChange, "no search, Add menu or changes")
+        let remedy = try XCTUnwrap(explorer.pluginOff)
+        XCTAssertTrue(remedy.contains("atlas") && remedy.contains("plugins.enabled"), remedy)
+        XCTAssertEqual(held.sent.last(where: { $0.path == "/api/fs/list" })?.query?.contains("profile=atlas"), true)
+
+        // A folder in the tree reads Hermes' listing straight away.
+        let opened = Task { await explorer.toggle(WorkspaceEntry(name: "src", path: "/w/atlas/src", isDirectory: true)) }
+        try await held.answer(["entries": [["name": "main.py", "path": "/w/atlas/src/main.py"]]], toPathEnding: "/api/fs/list")
+        _ = await opened.value
+        XCTAssertEqual(explorer.rows().map { $0.entry.name }, ["src", "main.py"])
+        XCTAssertEqual(held.sent.filter { $0.path.hasSuffix("/workspace/list") }.count, 1)
+
+        // Turned on, a refresh finds the plugin answering again.
+        let refresh = Task { await explorer.refresh() }
+        try await held.answer(["ok": true, "entries": [["name": "src", "path": "/w/atlas/src", "isDirectory": true]]], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [["name": "main.py", "path": "/w/atlas/src/main.py"]]], toPathEnding: "/workspace/list")
+        try await held.answer(["ok": true, "entries": [["name": "notes.md", "path": "/w/atlas/notes.md"]]], toPathEnding: "/workspace/recent")
+        await refresh.value
+        XCTAssertNil(explorer.pluginOff)
+        XCTAssertTrue(explorer.canChange)
+        XCTAssertEqual(explorer.recent.map(\.name), ["notes.md"])
+    }
+
     func testATappedFileNameAsksThePluginAndALaterTapWins() async throws {
         let (appState, held, _) = heldSwitchFixture()
         appState.setNotifierPluginStateForTesting(.reported(
