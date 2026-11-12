@@ -900,6 +900,7 @@ final class MessageReadAloudControllerTests: XCTestCase {
 
         controller.setSpeed(.double)
 
+        XCTAssertEqual(LiveCallTrace.readAloud.steps.last.map { $0.hasSuffix("Speed set to 2x") }, true)
         XCTAssertEqual(playback.changedRates, [2])
         XCTAssertEqual(stored, [.double])
         XCTAssertEqual(controller.speed, .double)
@@ -916,9 +917,11 @@ final class MessageReadAloudControllerTests: XCTestCase {
             beginBackgroundActivity: { _ in {} },
             nowPlaying: MockReadAloudNowPlaying()
         )
+        let stepsBefore = LiveCallTrace.readAloud.steps
 
         controller.setSpeed(.faster)
 
+        XCTAssertEqual(LiveCallTrace.readAloud.steps, stepsBefore, "a speed picked with nothing playing isn't a step of any reading")
         XCTAssertTrue(playback.changedRates.isEmpty)
         XCTAssertEqual(stored, [.faster])
     }
