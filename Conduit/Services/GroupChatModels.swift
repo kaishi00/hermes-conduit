@@ -2006,17 +2006,29 @@ enum GroupRoomTurns {
 /// installation the room ends for everyone, the plugin deletes your agents'
 /// hidden sessions for it, and agents on other people's Hermes keep theirs
 /// (notifier 0.81, Eric 2026-10-26). A room of only your own agents ends
-/// whole.
+/// whole. A host set to keep a disbanded room's sessions (`chatsKept`, the
+/// plugin's `room_chats_kept`, notifier #443) keeps them in either room.
 enum GroupRoomDisband {
-    static func warning(members: [GroupMember]) -> String {
-        if members.contains(where: \.isPeer) {
+    static func warning(members: [GroupMember], chatsKept: Bool = false) -> String {
+        let withPeers = members.contains(where: \.isPeer)
+        switch (withPeers, chatsKept) {
+        case (true, false):
             return AppLocalization.string(
                 "The room ends for everyone, and your agents' sessions for it are deleted. Agents on other people's Hermes keep theirs. This cannot be undone."
             )
+        case (true, true):
+            return AppLocalization.string(
+                "The room ends for everyone. Your Hermes is set to keep your agents' sessions for it, and agents on other people's Hermes keep theirs. This cannot be undone."
+            )
+        case (false, false):
+            return AppLocalization.string(
+                "The room, its history, and every member's session end permanently. This cannot be undone."
+            )
+        case (false, true):
+            return AppLocalization.string(
+                "The room and its history end permanently. Your Hermes is set to keep its members' sessions. This cannot be undone."
+            )
         }
-        return AppLocalization.string(
-            "The room, its history, and every member's session end permanently. This cannot be undone."
-        )
     }
 }
 
