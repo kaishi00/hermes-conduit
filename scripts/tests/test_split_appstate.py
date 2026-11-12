@@ -128,8 +128,9 @@ class SplitAppStateTests(unittest.TestCase):
         self.assertIn("\nlet lifecycleLog", app)
         self.assertIn("\n    var lastError: String?", app, "fileprivate is widened too")
         self.assertIn("\n    var claims: [Claim]", app)
-        self.assertIn("\n    struct Claim {", app, "the widened property's type")
-        self.assertIn("\n    enum ClaimKind {", app, "and the types that type shows")
+        moved = self.read("AppState+Connection.swift")
+        self.assertIn("\n    struct Claim {", moved, "the widened property's type")
+        self.assertIn("\n    enum ClaimKind {", moved, "and the types that type shows")
 
     def test_widens_a_moved_extensions_members(self):
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")
