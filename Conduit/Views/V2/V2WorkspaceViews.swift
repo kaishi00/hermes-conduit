@@ -1148,7 +1148,12 @@ struct WorkspaceFileSheet: View {
 
     private var draft: Binding<String> {
         Binding(get: { drafts[shown.path]?.text ?? "" },
-                set: { drafts[shown.path]?.text = $0 })
+                set: {
+                    drafts[shown.path]?.text = $0
+                    // Kept in step as typed: a refresh landing before the
+                    // view updates never takes a tab with changes.
+                    explorer.keepsOpen = Set(drafts.filter { $0.value.changed }.keys)
+                })
     }
 
     private var canEdit: Bool {
