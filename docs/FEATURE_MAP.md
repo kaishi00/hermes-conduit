@@ -564,24 +564,29 @@ briefing; the host's audio bridge starts the session through the same route) ·
 the notifier's session route, on its own Codex exchange and on Hermes' ·
 GPT-Live on the API key (not changed: gpt-live-1 reads its instructions) ·
 the fallback when a host doesn't take it (context appends after the start) ·
+Codex's GA endpoint (the event set, the briefing as instructions after the
+start, on the phone and the Watch alike) ·
 the call trace (Live call trace) · text: docs/VOICE_SETTINGS.md (Diagnostics),
 the notifier README's session route and CHANGELOG.md
 
 **Code**
 - The briefing: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefing, maxBriefingCharacters, the late-briefing fallback where `briefingApplied` is false)
-- The answer: `Conduit/Voice/GPTLive/GPTLiveClient.swift` (briefingApplied, briefingClipped), `Conduit/Voice/GPTLive/GPTLiveSession.swift` (answerStep)
-- The Watch: `Shared/WatchVoice/WatchAudioBridgeWire.swift` (briefingApplied), `notifier/dashboard/api/watch_audio.py`
+- The answer: `Conduit/Voice/GPTLive/GPTLiveClient.swift` (briefingApplied, briefingClipped, gaEvents), `Conduit/Voice/GPTLive/GPTLiveSession.swift` (answerStep, dialect, dropsRequestBriefing)
+- The event sets: `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` (Dialect, contextAppendMessages and its `.instructions` channel, TurnAssembler)
+- The Watch: `Shared/WatchVoice/WatchAudioBridgeWire.swift` (briefingApplied, gaEvents, gptLiveDialect), `ConduitWatch/WatchBridgeCallModel.swift` (the GA briefing sent on `.started` outside the backlog count, turns, endQuietTurnIfDue), `notifier/dashboard/api/watch_audio.py`
+- Tests: `ConduitTests/GPTLiveVoiceTests.swift` (testGPTLiveSubscriptionOnTheGAEndpointSpeaksGAEventsAndSendsTheBriefingAfterTheStart, testGPTLiveInstructionsAppendOnTheGAEventsAndGoAsCommentaryOnTheFramelessOnes), `ConduitTests/WatchAudioBridgeTests.swift`
 - Host: `notifier/dashboard/api/gpt_live.py` (CODEX_ITEMS_MAX_TOKENS, _seeded_items, _clip_block, create_gpt_live_session), `notifier/tests/test_gpt_live.py` (test_seeded_items_never_exceed_the_codex_budget)
 
 **Rulings**
 - On a ChatGPT plan the briefing is the session's first seeded item, a developer message ahead of the history: gpt-live-1-codex doesn't read the session's instructions, so a briefing put there never reached the model while the host reported it applied (notifier #719, found by vesper-de-clerck with real Codex calls). On the API key it stays in the instructions, which gpt-live-1 reads.
 - Codex allows the seeded items 8,192 estimated tokens in all. That budget is kept in one place, the plugin's `_seeded_items`, which builds every subscription session's items (the plugin's exchange and Hermes' alike) for whatever any Conduit sends: the history keeps its newest turns within 2,048 tokens (the whole budget without a briefing), then what Hermes remembers is cut, then the persona, each marked as cut, and Conduit's rules, the call's own blocks and the language rule always go whole. Every earlier size bug was a limit guessed in another unit (Conduit issue 1077's 32 K characters, a context append's 500 tokens), so no other layer keeps a model budget of its own: the app's `maxBriefingCharacters` is only the request's limit for older plugins (2026-11-11, notifier #719).
+- ChatGPT is moving accounts to Codex's GA endpoint (`/backend-api/codex/live/sessions`) one at a time, so a ChatGPT-plan call speaks whichever event set the host reports: `events: "ga"` for the GA endpoint, the frameless events otherwise (an older plugin, or an account still on the old endpoint). On GA, `session.started` brings instructions of its own and the request's are dropped, so the briefing never counts as applied there, whatever the host says: the phone and the Watch send it as `session.instructions.append` as each session starts (a Watch rejoin's too), their appends are `session.commentary.append` and `session.thinking.append`, and turns are made from the deltas, as on the API key. On the frameless events nothing changes (2026-11-11, #2240, issue 2236, found by lbueso with live sessions against the endpoint).
 - `briefing_applied` is true only when the briefing is in the session the host sends; when even its rules don't fit, it's false and Conduit sends the briefing as context after the start, as for any host that doesn't take one. `briefing_clipped` says the memory or persona was cut, and the trace shows it as "cut to fit" (notifier #719).
 
 **Open gaps**
-- None known.
+- On the GA endpoint the briefing goes whole, in 500-byte instruction appends, outside `_seeded_items`' budget: whether GA takes seeded items, and how much instruction text it allows, is unverified.
 
-**Checked:** 2026-11-11, #2232 (added: the briefing as a seeded item within one Codex token budget, notifier #719).
+**Checked:** 2026-11-11, #2240 (Codex's GA endpoint: its events, and the briefing as instructions after the start, issue 2236); 2026-11-11, #2232 (added: the briefing as a seeded item within one Codex token budget, notifier #719).
 
 ## Starting a call
 

@@ -2,25 +2,32 @@
 //  GPTLiveProtocol.swift
 //  Conduit
 //
-//  Wire format for GPT-Live on a ChatGPT subscription: the Codex
-//  "frameless" realtime events, carried over the WebRTC `oai-events` data
+//  Wire format for GPT-Live, carried over the WebRTC `oai-events` data
 //  channel. Audio travels as WebRTC media tracks, not as events. Pure
 //  encode/decode, so every message shape is unit-testable.
 //
-//  The subscription session has no function tools and its instructions are
-//  set by the Hermes host. The model hands work to the client with a
-//  delegation; the client answers on that delegation with
-//  `delegation.context.append` ("speakable" to be said aloud, "commentary"
-//  for quiet progress) and adds context of its own with
-//  `session.context.append`. Each appended text is at most 500 UTF-8 bytes.
+//  A call speaks one of two event sets (`Dialect`):
 //
-//  GPT-Live on an API key speaks the public GPT-Live API's events instead
-//  (`Dialect.api`, the same ones Hermes desktop's voice mode uses):
-//  `session.input_transcript.delta` / `session.output_transcript.delta`,
-//  `session.delegation.created` (which carries no text), and appends as
-//  `session.commentary.append` (said aloud) or `session.thinking.append`
-//  (quiet). It has no `turn.done`: `TurnAssembler` makes one when the other
-//  speaker starts, a delegation comes, or the talk goes quiet.
+//  - `.ga`: the GA Live events. The public GPT-Live API (an API-key call,
+//    the same events Hermes desktop's voice mode uses) speaks them, and so
+//    does a ChatGPT-plan call on Codex's `/backend-api/codex/live/sessions`,
+//    which the host reports with `events: "ga"` (issue 2236).
+//    `session.input_transcript.delta` / `session.output_transcript.delta`,
+//    `session.delegation.created` (which carries no text), and appends as
+//    `session.commentary.append` (said aloud), `session.thinking.append`
+//    (quiet) or `session.instructions.append` (the briefing, which a Codex
+//    session otherwise never gets: its `session.started` brings
+//    instructions of its own). It has no `turn.done`: `TurnAssembler` makes
+//    one when the other speaker starts, a delegation comes, or the talk goes
+//    quiet.
+//  - `.frameless`: Codex's earlier "frameless" events, which a ChatGPT plan
+//    still speaks on accounts the GA endpoint hasn't reached. The model
+//    hands work to the client with a delegation; the client answers on it
+//    with `delegation.context.append` ("speakable" to be said aloud,
+//    "commentary" for quiet progress) and adds context of its own with
+//    `session.context.append`. It sends its own `turn.done`.
+//
+//  Each appended text is at most 500 UTF-8 bytes.
 //
 
 import Foundation
@@ -41,15 +48,18 @@ enum GPTLiveProtocol {
     /// The most UTF-8 bytes one context append may carry.
     static let contextAppendMaxBytes = 500
 
-    /// Which event set a call speaks, from the path the host billed.
+    /// Which event set a call speaks, from the path the host billed and the
+    /// events it reported.
     enum Dialect: Equatable {
-        /// The ChatGPT subscription's Codex "frameless" events.
-        case codex
-        /// The public GPT-Live API (an API-key call).
-        case api
+        /// Codex's earlier "frameless" events (a ChatGPT plan the GA
+        /// endpoint hasn't reached).
+        case frameless
+        /// The GA Live events: an API-key call, or a ChatGPT-plan call the
+        /// host started on Codex's GA endpoint.
+        case ga
 
-        init(_ billing: GPTLiveBilling) {
-            self = billing == .api ? .api : .codex
+        init(_ billing: GPTLiveBilling, gaEvents: Bool = false) {
+            self = billing == .api || gaEvents ? .ga : .frameless
         }
     }
 
@@ -84,8 +94,8 @@ enum GPTLiveProtocol {
             return transcriptText(object).map(ServerEvent.inputTranscript)
         case "output_transcript.added":
             return transcriptText(object).map(ServerEvent.outputTranscript)
-        // The public API's names: no event shares a name with the Codex
-        // set, so one decoder reads both.
+        // The GA names: no event shares a name with the frameless set, so
+        // one decoder reads both.
         case "session.input_transcript.delta":
             return (object["delta"] as? String).map(ServerEvent.inputTranscript)
         case "session.output_transcript.delta":
@@ -133,30 +143,42 @@ enum GPTLiveProtocol {
         case speakable
         /// Quiet context: progress, state the model may use.
         case commentary
+        /// Added to the model's instructions: the briefing. The frameless
+        /// events have no such append, so there it goes as commentary.
+        case instructions
     }
 
-    /// Context appends for `text`, one message per 500-byte chunk. With a
+    /// Appends for `text`, one message per 500-byte chunk. With a
     /// delegation id they answer that delegation; without, they add to the
-    /// session.
-    static func contextAppendMessages(_ text: String, channel: Channel, delegationID: String? = nil, dialect: Dialect = .codex) -> [[String: Any]] {
-        if dialect == .api {
+    /// session. Instructions always add to the session.
+    static func contextAppendMessages(_ text: String, channel: Channel, delegationID: String? = nil, dialect: Dialect) -> [[String: Any]] {
+        switch dialect {
+        case .ga:
             return chunks(text).map { chunk -> [String: Any] in
-                [
-                    "type": channel == .speakable ? "session.commentary.append" : "session.thinking.append",
-                    "content": chunk,
-                    // Null adds to the session rather than a delegation.
-                    "delegation_id": delegationID.map { $0 as Any } ?? NSNull(),
-                ]
+                switch channel {
+                case .instructions:
+                    return ["type": "session.instructions.append", "content": chunk]
+                case .speakable, .commentary:
+                    return [
+                        "type": channel == .speakable ? "session.commentary.append" : "session.thinking.append",
+                        "content": chunk,
+                        // Null adds to the session rather than a delegation.
+                        "delegation_id": delegationID.map { $0 as Any } ?? NSNull(),
+                    ]
+                }
             }
-        }
-        return chunks(text).map { chunk in
-            var message: [String: Any] = [
-                "type": delegationID == nil ? "session.context.append" : "delegation.context.append",
-                "channel": channel.rawValue,
-                "content": [["type": "input_text", "text": chunk]],
-            ]
-            if let delegationID { message["delegation_item_id"] = delegationID }
-            return message
+        case .frameless:
+            let delegationID = channel == .instructions ? nil : delegationID
+            let wireChannel: Channel = channel == .instructions ? .commentary : channel
+            return chunks(text).map { chunk in
+                var message: [String: Any] = [
+                    "type": delegationID == nil ? "session.context.append" : "delegation.context.append",
+                    "channel": wireChannel.rawValue,
+                    "content": [["type": "input_text", "text": chunk]],
+                ]
+                if let delegationID { message["delegation_item_id"] = delegationID }
+                return message
+            }
         }
     }
 
@@ -199,9 +221,9 @@ enum GPTLiveProtocol {
         return String(decoding: data, as: UTF8.self)
     }
 
-    // MARK: Turns (public API)
+    // MARK: Turns (GA events)
 
-    /// Makes the `turn.done` the public API doesn't send: a turn ends when
+    /// Makes the `turn.done` the GA events don't send: a turn ends when
     /// the other speaker starts, when the model delegates (the user's
     /// request is over), or after `quietInterval` without new words
     /// (`flush`, which the session calls on a timer). Pure, so testable.
@@ -236,7 +258,7 @@ enum GPTLiveProtocol {
                 guard let done = flush() else { return [event] }
                 return [done, event]
             case .turnDone:
-                // A real one (should the API ever send it) ends the turn,
+                // A real one (should GA ever send it) ends the turn,
                 // so the quiet timer never ends it a second time.
                 role = nil
                 text = ""

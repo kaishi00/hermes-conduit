@@ -77,9 +77,14 @@ struct GPTLiveSessionAnswer: Equatable {
     /// plugin keeps it silent and the opening is asked for after the call
     /// starts.
     var greetingApplied: Bool = false
-    /// The path the host confirmed it billed. The call speaks that path's
-    /// protocol (the subscription's Codex events or the public API's).
+    /// The path the host confirmed it billed.
     var billing: GPTLiveBilling = .subscription
+    /// True when the host started a ChatGPT-plan call on Codex's GA
+    /// endpoint (`events: "ga"`), which speaks the GA Live events like an
+    /// API-key call and drops the instructions the request carried. An
+    /// older plugin, or an account the GA endpoint hasn't reached, speaks
+    /// the frameless events (issue 2236).
+    var gaEvents: Bool = false
     /// Who built the session: "hermes" (Hermes' own GPT-Live code) or
     /// "plugin" (the plugin's). Nil from a host that doesn't say. Read
     /// only for the call trace (#1611).
@@ -274,6 +279,7 @@ final class GPTLiveClient: GPTLiveSessionProviding {
             briefingClipped: response["briefing_clipped"] as? Bool == true,
             greetingApplied: response["greeting_applied"] as? Bool == true,
             billing: billing,
+            gaEvents: response["events"] as? String == "ga",
             // Only the two names the plugin sends: nothing else the host
             // says reaches the trace.
             source: (response["source"] as? String).flatMap { ["hermes", "plugin"].contains($0) ? $0 : nil }
