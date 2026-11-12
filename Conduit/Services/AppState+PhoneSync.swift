@@ -42,6 +42,9 @@ extension AppState {
     static let phoneContactEditsCapability = "phone-contact-edits"
     /// Plugin 0.161.0: photo descriptions Hermes searches, and a photo sent on a yes.
     static let phonePhotosCapability = "phone-photos"
+    /// Plugin 0.166.0: the phone's state goes with each message sent from
+    /// Conduit, when the user lets it (issue 888).
+    static let phoneTurnStatusCapability = "phone-turn-status"
     static let phoneSyncTaskIdentifier = "com.milim.relay.phone-sync"
     static let phoneChangesPushType = "phone.changes"
     static let phoneSyncLog = Logger(subsystem: "com.milim.relay", category: "phone-sync")
@@ -270,6 +273,9 @@ extension AppState {
         // The same wake carries confirmations Hermes asks to present,
         // exchanged alongside the phone sync rather than ahead of it.
         async let presented: Void = syncPresentedScreens()
+        // Every wake sends the status, so the host's conduit_phone `fresh`
+        // sees a new reading even when nothing changed (issue 888).
+        phoneSync.sendStatusOnNextPass()
         let outcome = await runPhoneSync(reason: .push)
         await presented
         return outcome

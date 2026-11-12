@@ -289,6 +289,44 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(one.first.map { NSDictionary(dictionary: $0) }, NSDictionary(dictionary: small))
     }
 
+    func testAWakeForTheStatusSendsItEvenUnchangedAndTurnStatusFollowsWhatsShared() async throws {
+        let host = FakePhoneHost()
+        var now = Date(timeIntervalSince1970: 1_760_400_000)
+        let folder = FileManager.default.temporaryDirectory.appendingPathComponent("phone-sync-\(UUID().uuidString)", isDirectory: true)
+        let defaults = UserDefaults(suiteName: "phone-sync-\(UUID().uuidString)")!
+        let engine = makePhoneEngine(source: FakePhoneCalendarSource(), folder: folder, defaults: defaults,
+                                     keys: PhoneKeyBox(), now: { now })
+        engine.savePreferences(phonePreferences())
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertNotNil(host.batches.last?["status"])
+        let sent = host.batches.count
+        // Unchanged a minute later: not sent again.
+        now += 60
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, sent)
+        let quiet = sent
+        // The host woke the phone for it (conduit_phone's fresh, issue 888): it goes, once.
+        engine.sendStatusOnNextPass()
+        now += 60
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, quiet + 1)
+        XCTAssertNotNil(host.batches.last?["status"])
+        now += 60
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(host.batches.count, quiet + 1)
+
+        // With each message: only while the status or Focus is shared.
+        var choices = PhoneSyncPreferences(calendar: .off, reminders: false, status: true, focus: false)
+        XCTAssertEqual(choices.sharingJSON["turn_status"] as? Bool, false)
+        choices.turnStatus = true
+        XCTAssertEqual(choices.sharingJSON["turn_status"] as? Bool, true)
+        choices.status = false
+        XCTAssertFalse(choices.turnStatus)
+        XCTAssertEqual(choices.sharingJSON["turn_status"] as? Bool, false)
+        choices.focus = true
+        XCTAssertTrue(choices.turnStatus, "The choice is kept while neither is shared")
+    }
+
     func testPhoneSyncPostsNothingNewOnlyAsAKeepalive() async throws {
         let source = FakePhoneCalendarSource()
         source.events = [phoneEvent("e_1", "Dentist")]

@@ -229,6 +229,10 @@ final class PhoneSyncEngine: ObservableObject {
     /// a tap from an earlier sharing applies nothing.
     var sharingSession: Int { turnOffs }
     private var stateUnread = false
+    /// A wake from the host asked for the status (conduit_phone's `fresh`,
+    /// issue 888): the next pass that sends goes with it even when it
+    /// hasn't changed, so the host sees a new reading.
+    private var statusAsked = false
     /// What the state file holds (or is about to): a pass that changed
     /// nothing writes nothing.
     private var saved: PhoneSyncState?
@@ -626,7 +630,7 @@ final class PhoneSyncEngine: ObservableObject {
             var status = await statusSource.snapshot()
             let hash = Self.hash(Self.comparableStatus(status))
             let stale = state.statusSentAt.map { currentNow.timeIntervalSince($0) > PhoneSyncLimits.statusRefresh } ?? true
-            if full || hash != state.statusHash || stale {
+            if full || statusAsked || hash != state.statusHash || stale {
                 status["at"] = PhoneDates.format(currentNow)
                 batch["status"] = status
                 newStatusHash = hash
@@ -769,7 +773,10 @@ final class PhoneSyncEngine: ObservableObject {
         state.contactsHash = newContactsHash
         state.shortcutsHash = newShortcutsHash
         state.photoHashes = newPhotoHashes
-        if statusSent { state.statusSentAt = currentNow }
+        if statusSent {
+            state.statusSentAt = currentNow
+            statusAsked = false
+        }
         state.fingerprint = preferences.fingerprint
         if full { state.lastFullSync = currentNow }
         persist()
@@ -807,6 +814,12 @@ final class PhoneSyncEngine: ObservableObject {
     /// narrows it, so the host drops what it can no longer have. Attendee
     /// emails go with full calendar access; "details" with full access or
     /// reminders (it also covers reminder notes).
+    /// The next pass sends the status even when it hasn't changed: the
+    /// host woke the phone for a new reading.
+    func sendStatusOnNextPass() {
+        statusAsked = true
+    }
+
     nonisolated static func effectiveSharing(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
                                              remindersAuthorized: Bool, alarmsAuthorized: Bool = false,
                                              photosAuthorized: Bool = false) -> [String: Any] {

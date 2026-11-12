@@ -107,6 +107,9 @@ struct PhoneSyncPreferences: Codable, Equatable {
     /// Hermes may search what the phone says about each photo (made on
     /// the phone) and ask for one, always on a card. Read `photos`.
     var photosChoice: Bool?
+    /// Battery, Low Power Mode, CarPlay and Focus go with each message sent
+    /// from Conduit (issue 888). Read `turnStatus`.
+    var turnStatusChoice: Bool?
 
     /// Hermes may set alarms and timers on this phone (iOS 26's AlarmKit).
     /// They ring through Silent and Focus, so it's its own choice.
@@ -138,6 +141,13 @@ struct PhoneSyncPreferences: Codable, Equatable {
     var photos: Bool {
         get { photosChoice ?? false }
         set { photosChoice = newValue ? true : nil }
+    }
+
+    /// Part of sharing the status or Focus: only what they share goes, and
+    /// it's off with both.
+    var turnStatus: Bool {
+        get { (status || focus) && (turnStatusChoice ?? false) }
+        set { turnStatusChoice = newValue ? true : nil }
     }
 
     /// Hermes may ask to run the Shortcuts in `shortcutList`.
@@ -232,6 +242,7 @@ struct PhoneSyncPreferences: Codable, Equatable {
             "shortcuts_auto": shortcutsRunWithoutAsking,
             "contacts_edit": contactsEdit,
             "photos": photos,
+            "turn_status": turnStatus,
             "past_days": PhoneCalendarWindow.pastDays,
             "future_days": window.rawValue,
         ]

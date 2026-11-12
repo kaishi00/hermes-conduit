@@ -18050,6 +18050,182 @@
           }
         }
       }
+    },
+    "With each message" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mit jeder Nachricht"
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "With each message"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Con cada mensaje"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Avec chaque message"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bersama setiap pesan"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Con ogni messaggio"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メッセージごとに送る"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "메시지마다 함께 보내기"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Z każdą wiadomością"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Com cada mensagem"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "С каждым сообщением"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Her mesajla"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "随每条消息发送"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "隨每則訊息傳送"
+          }
+        }
+      }
+    },
+    "Each message you send from Conduit tells Hermes your battery, Low Power Mode, CarPlay and Focus, as shared above, so it can answer to fit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jede Nachricht, die du aus Conduit sendest, teilt Hermes deinen Akkustand, den Stromsparmodus, CarPlay und deinen Fokus mit, so wie oben freigegeben, damit Hermes passend antworten kann."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Each message you send from Conduit tells Hermes your battery, Low Power Mode, CarPlay and Focus, as shared above, so it can answer to fit."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada mensaje que envías desde Conduit le indica a Hermes tu batería, el modo de bajo consumo, CarPlay y tu modo de concentración, según lo compartido arriba, para que responda de forma adecuada."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Chaque message envoyé depuis Conduit indique à Hermes votre batterie, le mode Économie d'énergie, CarPlay et votre Concentration, selon ce qui est partagé ci-dessus, pour qu'il réponde en conséquence."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Setiap pesan yang kamu kirim dari Conduit memberi tahu Hermes baterai, Mode Daya Rendah, CarPlay, dan Fokusmu, sesuai yang dibagikan di atas, agar jawabannya pas."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ogni messaggio che invii da Conduit comunica a Hermes la batteria, la modalità Risparmio energetico, CarPlay e la Full immersion, come condiviso sopra, così può rispondere di conseguenza."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduitから送るメッセージごとに、上で共有しているバッテリー残量、低電力モード、CarPlay、集中モードをHermesに伝え、状況に合った返答ができるようにします。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit에서 보내는 메시지마다 위에서 공유한 배터리, 저전력 모드, CarPlay, 집중 모드를 Hermes에 알려 상황에 맞게 답할 수 있게 합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Każda wiadomość wysłana z Conduit przekazuje Hermesowi stan baterii, tryb niskiego zużycia energii, CarPlay i tryb skupienia, zgodnie z udostępnionymi powyżej danymi, aby mógł odpowiedzieć odpowiednio."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cada mensagem que você envia pelo Conduit informa ao Hermes sua bateria, o Modo de Pouca Energia, o CarPlay e o Foco, conforme compartilhado acima, para que ele responda de forma adequada."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Каждое сообщение из Conduit сообщает Hermes заряд батареи, режим энергосбережения, CarPlay и фокусирование (в пределах того, чем вы поделились выше), чтобы ответ подходил к ситуации."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit'ten gönderdiğin her mesaj, yukarıda paylaştığın kadarıyla pil durumunu, Düşük Güç Modu'nu, CarPlay'i ve Odak'ını Hermes'e bildirir; böylece duruma uygun yanıt verebilir."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你从 Conduit 发送的每条消息都会按上方的共享设置告诉 Hermes 你的电量、低电量模式、CarPlay 和专注模式，让它的回答更贴合情况。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "你從 Conduit 傳送的每則訊息都會依上方的分享設定告訴 Hermes 你的電量、低耗電模式、CarPlay 和專注模式，讓它的回答更貼合情況。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
