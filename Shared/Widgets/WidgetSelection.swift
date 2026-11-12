@@ -16,6 +16,14 @@ enum WidgetTitleCopy: Equatable {
     }
 }
 
+/// One of the workspace's other saved chats, listed by the large launcher
+/// widget (issue 1532).
+struct WidgetChatLink: Equatable {
+    let title: String
+    let isPinned: Bool
+    let link: WidgetLaunchLink
+}
+
 struct WidgetEntryModel {
     let titleCopy: WidgetTitleCopy
     let dashboardLabel: String
@@ -23,12 +31,36 @@ struct WidgetEntryModel {
     let resumeLink: WidgetLaunchLink
     let newChatLink: WidgetLaunchLink?
     let talkLink: WidgetLaunchLink?
+    /// The workspace's other saved chats (last used, pinned, recent), for the large
+    /// size. Empty while the title is hidden or the widget needs a refresh.
+    var moreChats: [WidgetChatLink] = []
 
     /// Kept for source compatibility in selection tests and nonlocalized diagnostics.
     var title: String { titleCopy.sourceValue }
+
+    /// What the small size's single tap does: the configured action when
+    /// its link exists, otherwise the conversation (or its recovery).
+    func smallAction(_ wanted: LauncherSmallAction) -> LauncherSmallAction {
+        switch wanted {
+        case .conversation: .conversation
+        case .newChat: newChatLink == nil ? .conversation : .newChat
+        case .talk: talkLink == nil ? .conversation : .talk
+        }
+    }
+
+    func smallLink(_ wanted: LauncherSmallAction) -> WidgetLaunchLink {
+        switch smallAction(wanted) {
+        case .conversation: resumeLink
+        case .newChat: newChatLink ?? resumeLink
+        case .talk: talkLink ?? resumeLink
+        }
+    }
 }
 
 enum WidgetSelection {
+    /// How many other chats the large size lists under the shown one.
+    static let moreChatsLimit = 4
+
     static func resolve(
         snapshot: WidgetSnapshot?,
         workspace: WidgetWorkspaceID?,
@@ -90,8 +122,22 @@ enum WidgetSelection {
             profileLabel: selected?.profileLabel ?? "",
             resumeLink: resumeCandidate ?? scopedRecovery(workspace: selectedID),
             newChatLink: selectedID.flatMap { WidgetLaunchLink(action: .newChat, workspace: $0, reference: nil) },
-            talkLink: selectedID.flatMap { WidgetLaunchLink(action: .talk, workspace: $0, reference: nil) }
+            talkLink: selectedID.flatMap { WidgetLaunchLink(action: .talk, workspace: $0, reference: nil) },
+            moreChats: hideTitle || title == .openConduitToRefresh ? [] : moreChats(in: selected, excluding: reference)
         )
+    }
+
+    /// The workspace's saved chats other than the shown one, in the
+    /// snapshot's order (the last chat used, then pinned, then recent).
+    private static func moreChats(in workspace: WidgetWorkspaceSnapshot?, excluding shown: WidgetConversationReference?) -> [WidgetChatLink] {
+        guard let workspace else { return [] }
+        let links = workspace.choices.lazy
+            .filter { $0.reference != shown }
+            .compactMap { choice in
+                WidgetLaunchLink(action: .resume, workspace: workspace.id, reference: choice.reference)
+                    .map { WidgetChatLink(title: choice.title, isPinned: choice.isPinned, link: $0) }
+            }
+        return Array(links.prefix(moreChatsLimit))
     }
 
     private static func scopedRecovery(workspace: WidgetWorkspaceID?) -> WidgetLaunchLink {

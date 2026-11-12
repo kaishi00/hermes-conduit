@@ -2034,6 +2034,41 @@ pulse where`, `pulse spots` and `pulse status` commands (`pulse status` shows Wh
 
 **Checked:** 2026-11-10, #2136 with notifier #684 (a held pick's card stays on what it's about; the app draws it as given and needed no change); 2026-11-05, #1793 (the place editor built from Settings' cards, see Sheets in Settings' look); 2026-11-03, #1683 (the saved places' monitor reopens when its events end, as walking past's did; the saved-place monitor added to Code); 2026-10-31, #1555 (Settings > Pulse opens on its kept state, which never stops this iPhone's watches: only Pulse's answer does; the stores needed no change); 2026-10-30, #1542 (All history stays after the host's 2000 limit and stops at the oldest reading; the stores needed no change); 2026-10-29, #1517 (the `pulse` branch merged into main: the app paths it lists are on main now; nothing else changed); 2026-10-28, #1462 (the notifier code it lists moved from dashboard/plugin_api.py to dashboard/api/, one module per feature, notifier #449); 2026-10-28, at #1427, carrying #1426 from the `pulse` branch (the Walking past switch and its caption in Settings > Pulse, closing that gap, with the plugin version that shows it and the Location settings its lines follow; the shops' deletion cites the walking-past decision); at #1423, carrying the `pulse` branch's entry: #1414 (walking past, from notifier #435 and the app's spot watcher; the rest as at #1379).
 
+## Launcher widgets
+
+The Native and Conduit-chan Home Screen widgets, in small, medium and large
+(issue 1532). Each instance picks a workspace (or follows the one in use) and
+a conversation. Medium opens or resumes that conversation, starts a new chat
+or starts Talk; large adds the workspace's other saved chats under it; small
+takes one tap, so it opens what its Small size opens picks.
+
+**Siblings:** the widget tap's route (`conduit://widget/`, the same three
+actions for every size) · the app's widget snapshot (the chats the picker and
+the large list offer) · the Pulse widget (same bundle, App Group and app
+language; not needed) · Which dashboard a launch signs in to (a widget tap
+switches as before; not needed) · the Share extension's chat picker and the
+chats in Spotlight and Siri (read the same snapshot; not needed) · a Lock
+Screen size (gap) · the Mac (gap) · the Watch's widgets (their own app; not
+needed) · docs/WIDGETS.md · README.md
+
+**Code**
+- Widget: `ConduitWidgets/LauncherWidgets.swift` (the three sizes), `ConduitWidgets/LauncherTimelineProvider.swift`
+- Shared: `Shared/Widgets/WidgetConfiguration.swift` (the configuration intent, its pickers and Small size opens, asked only in the small size), `Shared/Widgets/WidgetSelection.swift` (what an entry shows, its links, the large list and the small tap), `Shared/Widgets/WidgetSnapshot.swift`, `Shared/Widgets/WidgetLaunchLink.swift`, `Shared/Widgets/WidgetLocalization.swift`
+- App: `Conduit/Services/WidgetSnapshotPublisher.swift` and `Conduit/Services/AppState+Widgets.swift` (the snapshot), `Conduit/Services/AppState+WidgetLaunch.swift` (the tap's route)
+- Tests: `ConduitTests/WidgetSnapshotTests.swift` (selection, the large list, the small tap), `ConduitTests/WidgetConfigurationTests.swift`, `ConduitTests/WidgetLaunchLinkTests.swift`, `ConduitTests/WidgetLaunchCoordinatorTests.swift`
+
+**Rulings**
+- The small size is one tap target (WidgetKit takes no links there). It opens the conversation by default; New Chat or Talk when picked, falling back to the conversation (or its Open Conduit recovery) while that action has no link (#2264).
+- The large size lists up to four of the workspace's other saved chats, in the snapshot's order (the last used, pinned, then recent), never the one shown above them; two at accessibility text sizes, so the last row still fits. With Hide conversation title on, or while the widget says Open Conduit to refresh, it lists none: titles stay off a widget that hides them (#2264).
+- Titles and workspace labels are privacy-sensitive, so a locked StandBy redacts them (#550).
+
+**Open gaps**
+- No Lock Screen (accessory) size, which issue 1532 called optional.
+- Whether the launcher widgets load on macOS 14 is untried (see Live Activity for a running turn).
+- Not tried on a device: the small and large layouts on the smallest and largest phones and iPad.
+
+**Checked:** 2026-11-12, #2264.
+
 ## Pulse widget
 
 A Home Screen widget with Pulse's newest open cards (small, medium and
