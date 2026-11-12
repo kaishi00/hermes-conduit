@@ -7678,7 +7678,7 @@ and the widget's pickers (no status), and no Settings caption or doc names it
 - Rows carry no profile, so a running chat in one profile lights a row of another with the same stored id (a profile copied with its chats) while that turn runs.
 - After a send, the registry can read the turn as not started yet, and the next read comes 4 s later: a chat left within those seconds goes without Running until then.
 
-**Checked:** 2026-11-12, #PRNUM (the wake also cuts a first step Low Power or Low Data Mode stretched past 4 s, since #2275); 2026-11-12, #2267 (the poll goes on to 120 s on a gateway that pushes `sessions.changed`, and a catalog read that changed the list wakes it; issue 851); 2026-10-27, #1369.
+**Checked:** 2026-11-12, #2279 (the wake also cuts a first step Low Power or Low Data Mode stretched past 4 s, since #2275); 2026-11-12, #2267 (the poll goes on to 120 s on a gateway that pushes `sessions.changed`, and a catalog read that changed the list wakes it; issue 851); 2026-10-27, #1369.
 
 ## Chats list changes made elsewhere
 
