@@ -73,7 +73,7 @@ private struct LauncherWidgetView: View {
 
     /// The medium layout with the workspace's other saved chats under it.
     private var largeBody: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             heading
             actionLinks
             if !entry.model.moreChats.isEmpty {
@@ -126,7 +126,13 @@ private struct LauncherWidgetView: View {
                     titleLink
                 }
                 Spacer(minLength: 0)
-                characterArtwork(width: 84, height: 94)
+                // Smaller in the large size, so four chat rows fit under it
+                // on the smallest iPhone.
+                if family == .systemLarge {
+                    characterArtwork(width: 64, height: 72)
+                } else {
+                    characterArtwork(width: 84, height: 94)
+                }
             }
         }
     }
@@ -230,7 +236,7 @@ private struct LauncherWidgetView: View {
     }
 
     private var moreChatsList: some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: 2) {
             Text(verbatim: WidgetLocalization.string("Chats", language: entry.appLanguage))
                 .font(.caption.weight(.semibold))
                 .foregroundStyle(.secondary)
@@ -248,7 +254,7 @@ private struct LauncherWidgetView: View {
                             .privacySensitive()
                         Spacer(minLength: 0)
                     }
-                    .padding(.vertical, 6)
+                    .padding(.vertical, 4)
                 }
                 .accessibilityLabel(Text(verbatim: chat.title))
             }

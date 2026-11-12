@@ -1,6 +1,6 @@
 # Home Screen widgets
 
-Conduit provides two Home Screen launcher widgets, **Native** and **Conduit-chan**, in small, medium and large. Medium offers three actions: open or resume the selected conversation, start a new chat, and start Talk. Large adds up to four of the workspace's other saved chats, pinned first, each opening in one tap. Small is one tap: it opens the conversation, or a new chat or Talk if you pick that in **Small size opens**. Each widget instance has its own configuration.
+Conduit provides two Home Screen launcher widgets, **Native** and **Conduit-chan**, in small, medium and large. Medium offers three actions: open or resume the selected conversation, start a new chat, and start Talk. Large adds up to four of the workspace's other saved chats (the last one used, then pinned, then recent), each opening in one tap. Small is one tap: it opens the conversation, or a new chat or Talk if you pick that in **Small size opens**. Each widget instance has its own configuration.
 
 The **Pulse** widget (small, medium and large) lists Pulse's newest open cards. **Done** and **Not now** (until later today) work in place, and **Do it** sends the card's message to Hermes with Conduit in the background: to the chat the card came from, or for a card from no chat, to a new chat or to the Bot Chat of the bot picked in Settings > Pulse > Do it. A tap on a card opens it on the Pulse screen. It needs no configuration: it shows the workspace in use, on a dashboard whose plugin serves Pulse.
 
