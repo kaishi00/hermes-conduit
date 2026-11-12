@@ -465,14 +465,16 @@ final class WorkspaceExplorer: ObservableObject {
     /// A path a reply named, or a search match: its folders expand in the
     /// tree when it's in the open folder, and the file opens.
     func reveal(_ path: String) async -> WorkspaceEntry {
-        let name = (path as NSString).lastPathComponent
+        // Split as the rest of the Folder splits: a POSIX name may hold a
+        // backslash (issue 2303).
+        let name = AppState.workspaceName(path)
         var entry = WorkspaceEntry(name: name.isEmpty ? path : name, path: path, isDirectory: false)
         guard let root, contains(path), path != AppState.normalizedWorkspacePath(root) else { return entry }
         var folders: [String] = []
-        var folder = (path as NSString).deletingLastPathComponent
-        while contains(folder), folder != AppState.normalizedWorkspacePath(root), !folder.isEmpty {
-            folders.insert(folder, at: 0)
-            folder = (folder as NSString).deletingLastPathComponent
+        var folder = AppState.parentWorkspacePath(path)
+        while let current = folder, contains(current), current != AppState.normalizedWorkspacePath(root) {
+            folders.insert(current, at: 0)
+            folder = AppState.parentWorkspacePath(current)
         }
         // Every unlisted folder on the way is read at once, not one after
         // another (issue 1964). A folder that fails stays closed, and so do
@@ -499,7 +501,7 @@ final class WorkspaceExplorer: ObservableObject {
     /// `path` as its folder's listing has it, with its modified date.
     func listed(_ path: String) -> WorkspaceEntry? {
         guard let root else { return nil }
-        let parent = (path as NSString).deletingLastPathComponent
+        guard let parent = AppState.parentWorkspacePath(path) else { return nil }
         return entries[parent == AppState.normalizedWorkspacePath(root) ? root : parent]?.first(where: { $0.path == path })
     }
 

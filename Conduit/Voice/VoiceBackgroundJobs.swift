@@ -1718,9 +1718,22 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 try await backend.submit(sessionID, prompt)
             } catch {
                 dropTurnSurface(error)
+                // Cancelled meanwhile: Hermes may have taken it before the
+                // answer was lost, so the cancel is repeated (issue 2295).
+                if generation == self.generation, job(jobID)?.status == .cancelled {
+                    if !sessionID.isEmpty { try? await backend.cancel(sessionID) }
+                    return
+                }
                 throw error
             }
             guard generation == self.generation else { return }
+            // A cancel that landed mid-submit reached Hermes before the turn
+            // existed, so it is repeated now that there is one to stop, as a
+            // first job's start does (issue 2295).
+            if job(jobID)?.status == .cancelled {
+                if !sessionID.isEmpty { try? await backend.cancel(sessionID) }
+                return
+            }
             if job(jobID)?.status == .starting { update(jobID) { $0.status = .running } }
             armCallback(jobID)
             startPollingIfNeeded()

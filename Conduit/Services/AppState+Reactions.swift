@@ -204,6 +204,9 @@ extension AppState {
         defer { isBranchingChat = false }
         let previousTurnState = turnState
         let profile = activeProfile
+        // A branch is made in its parent's profile: a Bot Chat's is the
+        // bot's (issue 2281).
+        let branchProfile = client.sessionProfile(for: parentSessionId) ?? presentationProfile(for: parentSessionId)
         turnState = .synchronizing
         let title = AppLocalization.string("Branch of \(activeSessionTitle)")
         let transitionGeneration = acceptChatResumeConversationReplacement(.branch)
@@ -233,9 +236,9 @@ extension AppState {
                   profile == activeProfile,
                   self.client === client else { return }
             if let returnedProfile = branched.profile,
-               !profilesMatch(returnedProfile, profile) {
+               !profilesMatch(returnedProfile, branchProfile) {
                 turnState = previousTurnState
-                errorMessage = AppLocalization.string("Hermes created this branch in \(profileDisplayName(returnedProfile)), not \(profileDisplayName(profile)). It was not opened.")
+                errorMessage = AppLocalization.string("Hermes created this branch in \(profileDisplayName(returnedProfile)), not \(profileDisplayName(branchProfile)). It was not opened.")
                 guard await loadSessions(
                     forceRefresh: true,
                     requiredViewportTransitionGeneration: transitionGeneration
@@ -268,7 +271,7 @@ extension AppState {
                 // Fresh activity, like the create path: a branch is the
                 // newest conversation the moment it exists.
                 lastActivityAt: Date().timeIntervalSince1970,
-                profile: activeProfile,
+                profile: branchProfile,
                 source: .chat,
                 isActive: true,
                 isArchived: false,
@@ -284,7 +287,7 @@ extension AppState {
                 conversationIdentityIndex.recordAuthoritative(
                     runtimeID: runtime,
                     durableID: durable,
-                    profile: activeProfile,
+                    profile: branchProfile,
                     source: .branch
                 )
             }

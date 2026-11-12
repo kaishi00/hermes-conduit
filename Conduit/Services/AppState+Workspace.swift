@@ -55,8 +55,8 @@ extension AppState {
         }
         for path in openedWorkspaceFolders(profile: workspaceProfile)
         where seen.insert(Self.normalizedWorkspacePath(path)).inserted {
-            // A Windows host's paths use backslashes.
-            let name = Self.normalizedWorkspacePath(path).split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? ""
+            // A Windows host's paths use backslashes; a POSIX name may hold one.
+            let name = Self.workspaceName(path)
             roots.append(WorkspaceRoot(path: path, title: name.isEmpty ? path : name, kind: .opened))
         }
         return roots
@@ -175,7 +175,7 @@ extension AppState {
         case .success(let found?):
             workspaceReveal = WorkspaceReveal(path: found, line: line)
         case .success(nil):
-            let name = (path as NSString).lastPathComponent
+            let name = Self.workspaceName(path)
             let notice = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.", table: .chat)
             // A notice already up (a message that came back) waits under
             // this one and comes back when it goes.
