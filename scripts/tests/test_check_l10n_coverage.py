@@ -1218,6 +1218,15 @@ class FeatureTableTests(unittest.TestCase):
         _checked, _missing, key_problems, _plan = self.check()
         self.assertIn("Conduit/Strings/Voice.xcstrings: Voice replies", key_problems)
 
+    def test_extension_sources_keep_their_keys_in_localizable(self):
+        self.write_repo({
+            "Shared/Widgets/Copy.swift": 'static let note = "Voice replies"\n',
+            "ConduitWidgets/Widget.swift": 'string("Cancel", language: x)\n'})
+        _checked, _missing, key_problems, _plan = self.check()
+        problems = key_problems[os.path.join("Shared", "Widgets", "Copy.swift") + ":1"]
+        self.assertIn('spells "Voice replies", which lives in Voice.xcstrings', problems[0])
+        self.assertEqual(len(key_problems), 1)
+
     def test_table_arguments_are_read(self):
         source = ('AppLocalization.string("A", table: .voice, language: .source)\n'
                   'AppLocalization.string(\n    "B \\(count) items",\n    table: .rooms\n)\n'

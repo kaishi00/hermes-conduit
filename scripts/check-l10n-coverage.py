@@ -85,7 +85,11 @@ Localizable. On top of them:
   * a Swift file names at most one feature table, its feature's;
   * only the app's own sources under Conduit/ name a table: Shared/ and
     the extensions' and the Watch's sources are compiled into targets that
-    carry only Localizable.
+    carry only Localizable;
+  * no feature-table key is spelled as a string literal in those sources:
+    they look keys up through their own helpers (WidgetLocalization,
+    NotificationLocalization) the call-site scan can't follow, so a key
+    they spell stays in Localizable.
 
 Any violation is reported with file:line (call sites) or by key and
 language (catalog) and fails the run.
@@ -1570,7 +1574,71 @@ def check(repo_root: str):
             key_problems.setdefault(f"{plist_name}: {key}", []).append(
                 f"permission prompt missing from {catalog_name}, so iOS "
                 f"shows it in English in every language")
+    # Keys Shared/ and the extensions spell stay in Localizable.
+    for rel, line, key, name in localizable_only_literals(repo_root, tables):
+        key_problems.setdefault(f"{rel}:{line}", []).append(
+            f"spells \"{key}\", which lives in {name}.xcstrings, but this file is "
+            f"compiled into a target that carries only Localizable: move the key "
+            f"back (l10n.py move) and drop table: from its calls")
     return checked, missing, key_problems, plan
+
+
+# Sources compiled into a target that carries only Localizable (project.yml):
+# Shared/ and the extensions. The Watch's own sources have their own catalog.
+LOCALIZABLE_ONLY_ROOTS = ("Shared", "ConduitWidgets", SHARE_EXTENSION_DIRECTORY,
+                          NOTIFICATION_SERVICE_DIRECTORY, "ConduitLocationPush")
+
+
+def _string_literals(source: str):
+    """Yield (skeleton, offset) for every string literal in `source`
+    outside whole-line comments, interpolations' own literals included."""
+    source = strip_comment_lines(source)
+    i = 0
+    while i < len(source):
+        if source.startswith("//", i):
+            end = source.find("\n", i)
+            i = len(source) if end < 0 else end
+            continue
+        if source.startswith('"""', i):
+            end = source.find('"""', i + 3)
+            i = len(source) if end < 0 else end + 3
+            continue
+        if source[i] == '"':
+            parsed = parse_swift_literal_parts(source, i)
+            if parsed is None:
+                return
+            if parsed[0]:
+                yield typed_skeleton(parsed[0], parsed[2]), i
+            for expression in parsed[2]:
+                for skeleton, _offset in _string_literals(expression):
+                    yield skeleton, i
+            i = parsed[1]
+            continue
+        i += 1
+
+
+def localizable_only_literals(repo_root: str, tables: dict):
+    """(file, line, key, table) for each feature-table key spelled as a
+    literal in a source that reaches only Localizable."""
+    if not tables:
+        return
+    home = {key: name for name, keys in tables.items() for key in keys}
+    paths = [os.path.join(repo_root, source) for source in WATCH_SHARED_SOURCES
+             if source.startswith("Conduit/")]
+    for root in LOCALIZABLE_ONLY_ROOTS:
+        for dirpath, _dirnames, filenames in os.walk(os.path.join(repo_root, root)):
+            paths.extend(os.path.join(dirpath, name) for name in sorted(filenames)
+                         if name.endswith(".swift"))
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                source = strip_comment_lines(handle.read())
+        except (OSError, ValueError):
+            continue  # an unreadable file is reported by the site scan
+        for skeleton, offset in _string_literals(source):
+            if skeleton in home:
+                yield (os.path.relpath(path, repo_root),
+                       source.count("\n", 0, offset) + 1, skeleton, home[skeleton])
 
 
 def scan_sites(root: str, catalog_keys, repo_root: str, missing: dict, key_problems: dict,

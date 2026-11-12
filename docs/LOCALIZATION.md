@@ -206,8 +206,10 @@ writes it to `HermesApprovalText` and translate it in both catalogs.
   `%lld`) match what the code passes;
 - each `LocalizationTable` case has its catalog in `Conduit/Strings/` and
   each catalog there its case; a key lives in one of the app's tables; a
-  Swift file names at most one feature table; and only the app's own
-  sources under `Conduit/` name one;
+  Swift file names at most one feature table; only the app's own
+  sources under `Conduit/` name one; and no feature-table key is spelled
+  as a literal in `Shared/` or an extension, whose own lookup helpers
+  (`WidgetLocalization`) read only Localizable;
 - every shipped language translates every key in every catalog, with
   state `translated` and a non-empty value;
 - every integer placeholder is a count with English plural forms, one per
