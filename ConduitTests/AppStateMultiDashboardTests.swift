@@ -130,6 +130,16 @@ final class AppStateMultiDashboardTests: XCTestCase {
 
         XCTAssertEqual(appState.busyInputMode, .steer, "the read for the profile that went shows nothing")
         XCTAssertEqual(defaults.string(forKey: workKey), BusyInputMode.queue.rawValue, "nor caches under the new profile's key")
+
+        // A client that names no profile addresses the default one, so it
+        // too is not the work profile's read.
+        let defaultClient = HermesClient(
+            connection: HermesConnection(baseUrl: "https://hermes.example", ticket: "ticket"),
+            profile: nil
+        )
+        await appState.loadBusyInputMode(using: defaultClient)
+        XCTAssertEqual(appState.busyInputMode, .steer, "a profile-less read is the default profile's")
+        XCTAssertEqual(defaults.string(forKey: workKey), BusyInputMode.queue.rawValue)
     }
 
     // MARK: - Agent settings scope

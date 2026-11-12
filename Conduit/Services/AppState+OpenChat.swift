@@ -406,11 +406,13 @@ extension AppState {
                 return .gone
             }
         }
-        let outcome = await openNotificationTargetOutcome(
-            ConduitNotificationTarget(
-                profile: profile, sessionId: chatID, dashboardID: activeDashboardID, type: nil, isChatLink: true
-            )
+        let target = ConduitNotificationTarget(
+            profile: profile, sessionId: chatID, dashboardID: activeDashboardID, type: nil, isChatLink: true
         )
+        let outcome = await openNotificationTargetOutcome(target)
+        // One attempt, never retried: a failure the route held back for a
+        // retry is this open's last word.
+        if outcome == .retry { publishNotificationRouteFailure(for: target) }
         switch outcome {
         case .opened: return .opened
         case .failed:
@@ -1191,7 +1193,14 @@ extension AppState {
     /// it never gets `.afterCall`, which needs the route's wait (ConduitApp).
     func openNotificationTarget(_ target: ConduitNotificationTarget) async -> Bool {
         let outcome = await openNotificationTargetOutcome(target)
-        if case .unverified(let message) = outcome { errorMessage = message }
+        if case .unverified(let message) = outcome {
+            errorMessage = message
+            discardNotificationRouteFailure(for: target)
+        } else if outcome == .retry {
+            // One attempt, never retried: a failure the route held back for
+            // a retry is this open's last word.
+            publishNotificationRouteFailure(for: target)
+        }
         return outcome == .opened
     }
 
@@ -1375,6 +1384,7 @@ extension AppState {
         activeNotificationOpenAttemptID = notificationAttemptID
         isOpeningNotificationSession = true
         let transitionGeneration = beginExplicitChatViewportTransition()
+        noteNotificationRouteAttempt(for: target, transition: transitionGeneration)
         defer {
             // Ends with no transcript of its own laid out (a profile switch
             // it lent the transition to marks a replacement but replaces no
@@ -1680,6 +1690,10 @@ extension AppState {
             )
         }
         traceStage = "session open"
+        // A failure that isn't a refusal is retried with backoff, so the
+        // error it sets is not the last word: it is put back below and
+        // shown only if the window runs out with no chat opened.
+        let routeErrorBeforeOpen = notificationRouteErrorSnapshot()
         let (outcome, refused, _) = await performSessionOpenNotingRefusal(
             route.resumeTargetID,
             reusing: transitionGeneration,
@@ -1730,10 +1744,79 @@ extension AppState {
             id: notificationAttemptID,
             transitionGeneration: transitionGeneration
         ) else { return .retry }
-        if opened { return .opened }
+        if opened {
+            discardNotificationRouteFailure(for: target)
+            return .opened
+        }
         // Hermes answered that the conversation is gone, or is another one:
         // the same open would get the same answer.
-        return refused ? .failed : .retry
+        if refused {
+            discardNotificationRouteFailure(for: target)
+            return .failed
+        }
+        holdNotificationRouteFailure(for: target, restoring: routeErrorBeforeOpen)
+        return .retry
+    }
+
+    /// The error lines a notification route's open may write, taken before
+    /// it starts: the chat's own and the one behind a room. The open can
+    /// close a room on screen, so the line put back is the one showing then.
+    struct NotificationRouteErrorSnapshot {
+        let chatError: String?
+        let errorBehindRoom: String?
+        var roomWasShowing = false
+    }
+
+    func notificationRouteErrorSnapshot() -> NotificationRouteErrorSnapshot {
+        NotificationRouteErrorSnapshot(
+            chatError: errorMessage,
+            errorBehindRoom: chatErrorBehindRoom,
+            roomWasShowing: activeRoomSurface != nil
+        )
+    }
+
+    /// A failure held for a route's end: the tap's route that said it, and
+    /// the viewport transition of that route's latest attempt.
+    struct NotificationRouteFailure {
+        let target: ConduitNotificationTarget
+        let message: String
+        var transition: UInt64
+    }
+
+    /// Another attempt is due: keep this attempt's words for the window's
+    /// end, and put back whatever the line showing had said before, so a
+    /// retry that opens the chat never leaves it wearing an error. An attempt
+    /// that lost its answer without a message of its own leaves the earlier
+    /// one standing, since that is still the last thing known.
+    func holdNotificationRouteFailure(
+        for target: ConduitNotificationTarget,
+        restoring before: NotificationRouteErrorSnapshot
+    ) {
+        // A room still showing kept the chat's line behind it. One the open
+        // closed took both lines with it (`closeRoomSurface`), so the chat
+        // now showing had said nothing: the room's banner isn't its to wear.
+        let earlier: String?
+        if activeRoomSurface != nil {
+            earlier = before.errorBehindRoom
+        } else {
+            earlier = before.roomWasShowing ? nil : before.chatError
+        }
+        if let failure = chatSyncErrorMessage, failure != earlier {
+            notificationRouteFailure = NotificationRouteFailure(
+                target: target,
+                message: failure,
+                transition: chatViewportTransitionGeneration
+            )
+        }
+        chatSyncErrorMessage = earlier
+    }
+
+    /// A route's attempt for `target` began transition `generation`: the
+    /// failure an earlier attempt held now belongs to this one's screen, so
+    /// a chat opened over it later makes it no longer this route's to say.
+    func noteNotificationRouteAttempt(for target: ConduitNotificationTarget, transition generation: UInt64) {
+        guard notificationRouteFailure?.target == target else { return }
+        notificationRouteFailure?.transition = generation
     }
 
     /// The stable decision key a push-delivered card was recorded under
@@ -1871,7 +1954,7 @@ extension AppState {
         }
     }
 
-    private func notificationOpenAttemptIsCurrent(
+    func notificationOpenAttemptIsCurrent(
         id: UUID,
         transitionGeneration: UInt64
     ) -> Bool {
@@ -1883,6 +1966,33 @@ extension AppState {
             )
         }
         return current
+    }
+
+    /// A new tap's route starts: a failure an earlier tap's route held is
+    /// not this one's, even when both name the same chat.
+    func forgetNotificationRouteFailure() {
+        notificationRouteFailure = nil
+    }
+
+    /// The route has no attempt left: say why the last one failed, if it had
+    /// anything to say. A retry that opened the chat cleared it already, and
+    /// a failure another tap's route left behind is not this route's to say.
+    /// A chat the user opened since the route's latest attempt (a newer
+    /// viewport transition) is not the route's: the words would read as
+    /// that chat's failure, so they go unsaid.
+    func publishNotificationRouteFailure(for target: ConduitNotificationTarget) {
+        guard let failure = notificationRouteFailure, failure.target == target else { return }
+        notificationRouteFailure = nil
+        guard chatViewportTransitionIsCurrent(generation: failure.transition) else { return }
+        chatSyncErrorMessage = failure.message
+    }
+
+    /// The route ended somewhere that explained itself (`unverified`'s own
+    /// message): an earlier attempt's failure is older news than that, and
+    /// saying both would leave the newer explanation under an older one.
+    func discardNotificationRouteFailure(for target: ConduitNotificationTarget) {
+        guard let failure = notificationRouteFailure, failure.target == target else { return }
+        notificationRouteFailure = nil
     }
 
     private func finishNotificationOpenAttempt(id: UUID) {

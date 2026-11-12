@@ -1674,14 +1674,18 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     private func sendContinuedJob(
         _ jobID: UUID, in chat: VoiceThreadTarget, generation: UInt64, onRuntime: (@MainActor (String) -> Void)? = nil
     ) async {
+        // However it ends, the call's thread turns it held go in.
+        defer { pumpThreadTurns() }
         while generation == self.generation, job(jobID)?.status == .starting {
             // One request at a time in the chat: an earlier job of the call
-            // still running there, or a turn typed in it, goes first. A job
+            // still running there, a thread turn of the call sent there, or a
+            // turn typed in it, goes first. A job
             // claims the chat before it asks whether a turn runs there, so
             // two of the call's requests never both pass during that wait
             // (issue 2283).
             let earlier = jobs.contains { other in
-                other.id != jobID && (other.submitInFlight || other.status.isActive && (other.requestSent || other.claimsChat))
+                other.id != jobID && (other.submitInFlight || other.status.isActive
+                    && (other.requestSent || other.claimsChat || other.isThreadTurn && other.threadTurnSubmitted))
                     && [other.runtimeSessionID, other.storedSessionID].compactMap { $0 }.contains { chat.owns(sessionID: $0) }
             }
             if !earlier {
@@ -2265,7 +2269,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             let chatHasSentTurn = jobs.contains { job in
                 job.isThreadTurn && job.threadTurnSubmitted && job.status.isActive && !job.isDetachedThreadTurn
                     && threadTargets[job.id].map { Self.sameChat($0, thread) } == true
-            } || callChatJobRuns(in: thread)
+            } || callChatJobRuns(in: thread) || continuedJobHoldsChat(thread)
             if chatHasSentTurn { return }
             if await backend.threadIsBusy(thread) {
                 guard generation == self.generation else { return }
@@ -2291,6 +2295,10 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     continue
                 }
                 guard generation == self.generation, job(next.id)?.status == .starting else { continue }
+                // Checked again with nothing awaited before the send: a
+                // continued job that claimed the chat while this resolved
+                // holds it, and pumps this again when it lets go.
+                if continuedJobHoldsChat(thread) || continuedJobHoldsChat(resolved) { return }
                 // Only now does the turn own the chat's events. A follow-up
                 // said while it waited joined the request (#451).
                 let request = job(next.id)?.instructions ?? next.instructions
@@ -2354,6 +2362,18 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
 
     /// Whether the job whose chat the call took (#1250) still runs there:
     /// the call's turns wait for it, as for a turn of their own.
+    /// A continued job of the call holds `thread`, from claiming it through
+    /// its submit's return: a cancel it repeats then must not stop a turn
+    /// sent meanwhile (review of #2310). Once its turn runs, the chat is
+    /// busy and that holds it.
+    private func continuedJobHoldsChat(_ thread: VoiceThreadTarget) -> Bool {
+        jobs.contains { job in
+            job.continuesChat
+                && (job.submitInFlight || job.status == .starting && (job.claimsChat || job.requestSent))
+                && [job.runtimeSessionID, job.storedSessionID].compactMap { $0 }.contains { thread.owns(sessionID: $0) }
+        }
+    }
+
     private func callChatJobRuns(in thread: VoiceThreadTarget) -> Bool {
         guard let id = callChatJobID, let job = job(id), job.status.isActive else { return false }
         return [job.runtimeSessionID, job.storedSessionID].compactMap { $0 }.contains { thread.owns(sessionID: $0) }

@@ -2547,6 +2547,14 @@ final class AppState: ObservableObject {
     var openChatCatalogCheck: Task<Void, Never>?
     var latestActiveList: (rows: [LiveSessionStatus], profile: String, client: ObjectIdentifier, at: Date)?
     var openChatSyncRead: Task<Void, Never>?
+    /// Why the notification route's last attempt failed, and which tap's
+    /// route said it, kept while another attempt is still due: the chat that
+    /// opens on the retry should not have been told, in the meantime, that it
+    /// is gone or that it could not be restored (#1919). The tap is kept so a
+    /// route that was replaced meanwhile never wears this one's words, and
+    /// the viewport transition of its latest attempt, so a chat the user
+    /// opened since never wears them either.
+    var notificationRouteFailure: NotificationRouteFailure?
     var openChatSyncReadID: UUID?
     /// Another device is getting the reply of a turn in the open chat; its
     /// working line says so.

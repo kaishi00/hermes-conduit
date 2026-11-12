@@ -157,6 +157,9 @@ extension AppState {
             )
             migrationIDs = [requestedID]
         }
+        // A failed open is retried like the workspace route's: its error is
+        // held for the window's end rather than shown over the retry.
+        let routeErrorBeforeOpen = notificationRouteErrorSnapshot()
         guard await openBotChat(
             for: bot,
             presentationMigrationSessionIDs: migrationIDs,
@@ -172,8 +175,15 @@ extension AppState {
                     sessionIDs: [requestedID]
                 )
             }
+            // A superseded open (another tap, or a chat the user opened
+            // meanwhile) neither holds nor restores: the line is the newer
+            // open's.
+            if notificationOpenAttemptIsCurrent(id: attemptID, transitionGeneration: transitionGeneration) {
+                holdNotificationRouteFailure(for: target, restoring: routeErrorBeforeOpen)
+            }
             return .retry
         }
+        discardNotificationRouteFailure(for: target)
         // The resume restores cards only from the chat's tip ids, and the
         // card may sit under the durable id the push named. Once the chat is
         // on screen, a relay clarify still missing is recorded under the open

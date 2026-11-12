@@ -9,10 +9,10 @@ on:
     inputs:
       devices:
         description: "Simulator names, comma-separated"
-        default: "iPhone 17 Pro Max,iPad Pro 13-inch"
+        default: "iPhone 18 Pro Max,iPad Pro 13-inch"
       watch:
         description: "Watch simulator name"
-        default: "Apple Watch Ultra 3"
+        default: "Apple Watch Ultra 4"
 
 # The capture jobs run the demo Hermes, its plugins and Homebrew packages, so
 # they only read; the publish job, which runs none of them, pushes the refs.
@@ -25,10 +25,10 @@ concurrency:
 
 jobs:
   capture:
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 120
     env:
-      DEVICES: ${{ inputs.devices || 'iPhone 17 Pro Max,iPad Pro 13-inch' }}
+      DEVICES: ${{ inputs.devices || 'iPhone 18 Pro Max,iPad Pro 13-inch' }}
       DEMO_HOST: hermes.tail-demo.ts.net
       DEMO_PORT: "9119"
       DEMO_USER: demo
@@ -42,7 +42,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+        run: sudo bash scripts/ci-select-xcode.sh
 
       - name: Install xcodegen
         run: brew install xcodegen
@@ -238,10 +238,10 @@ jobs:
   watch:
     # The Watch app needs no dashboard: its screens come from the
     # -conduitScreenshotCall fixture (ConduitWatch/WatchVoiceCall.swift).
-    runs-on: macos-26
+    runs-on: xcode-27
     timeout-minutes: 45
     env:
-      WATCH_DEVICE: ${{ inputs.watch || 'Apple Watch Ultra 3' }}
+      WATCH_DEVICE: ${{ inputs.watch || 'Apple Watch Ultra 4' }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -249,7 +249,7 @@ jobs:
           persist-credentials: false
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+        run: sudo bash scripts/ci-select-xcode.sh
 
       - name: Install xcodegen
         run: brew install xcodegen

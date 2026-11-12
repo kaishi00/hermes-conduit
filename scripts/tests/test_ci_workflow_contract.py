@@ -148,13 +148,51 @@ class WorkflowContractTests(unittest.TestCase):
         bottleneck: a PR or push run gets exactly one macOS job."""
         jobs = _job_keys(WORKFLOW)
         self.assertEqual(jobs, ["plan", "self-test", "smoke", "ci-gate"], jobs)
-        self.assertEqual(self._workflow_text().count("runs-on: macos-"), 1)
-        self.assertIn("runs-on: macos-26", self._job_text("smoke"))
+        self.assertEqual(len(re.findall(r"runs-on: (?:macos|xcode)-", self._workflow_text())), 1)
+        self.assertIn("runs-on: xcode-27", self._job_text("smoke"))
         self.assertIn("check-weak-imports.py binaries", self._job_text("smoke"))
         self.assertNotIn("matrix", self._job_text("smoke"),
                          "the smoke job must not fan out into several macOS jobs")
         self.assertNotIn("unit-shards", self._workflow_text(),
                          "the unit shards run in nightly.yml, not on every PR")
+
+    def test_every_macos_job_runs_on_the_same_image(self):
+        """Smoke, the Nightly jobs and the screenshot jobs share one runner
+        image, so an image move is one label everywhere and none is left on
+        the old Xcode (the iOS 27 SDK, issue 826)."""
+        screenshots = os.path.join(REPO_ROOT, ".github", "workflows",
+                                   "app-store-screenshots.yml")
+        labels = {}
+        for path in (WORKFLOW, NIGHTLY, screenshots):
+            for label in re.findall(r"runs-on: ((?:macos|xcode)-\S+)", _read(path)):
+                labels.setdefault(label, []).append(os.path.basename(path))
+        self.assertEqual(list(labels), ["xcode-27"], labels)
+        for path in (WORKFLOW, NIGHTLY, screenshots):
+            text = _read(path)
+            self.assertEqual(text.count("run: sudo bash scripts/ci-select-xcode.sh"),
+                             len(re.findall(r"runs-on: xcode-", text)), path)
+            self.assertNotIn("xcode-select -s /Applications/Xcode.app", text, path)
+
+    def test_select_xcode_takes_the_newest_release(self):
+        """The image's default Xcode.app lagged its newest release (27.1
+        beside 27.2 and the iOS 27.2 runtime the device lookup picks); betas
+        and release candidates never count."""
+        def pick(names):
+            with tempfile.TemporaryDirectory() as apps:
+                for name in names:
+                    os.mkdir(os.path.join(apps, name))
+                out = subprocess.run(
+                    ["bash", os.path.join(SCRIPTS_DIR, "ci-select-xcode.sh")],
+                    env=dict(os.environ, APPLICATIONS_DIR=apps),
+                    capture_output=True, text=True, check=True).stdout
+                return out.strip().rsplit("/", 1)[-1]
+        self.assertEqual(pick(["Xcode.app", "Xcode_27.app", "Xcode_27.1.app",
+                               "Xcode_27.2.app", "Xcode_27.2_Release_Candidate.app",
+                               "Xcode_27.3_beta.app", "Xcode_27.10_beta.app"]),
+                         "Xcode_27.2.app")
+        self.assertEqual(pick(["Xcode.app", "Xcode_27.9.app", "Xcode_27.10.app"]),
+                         "Xcode_27.10.app")
+        self.assertEqual(pick(["Xcode.app", "Xcode_27.3_beta.app"]), "Xcode.app")
 
     def test_a_pr_run_never_waits_for_its_superseded_run(self):
         """A PR from this repository gets a concurrency group of its own run,

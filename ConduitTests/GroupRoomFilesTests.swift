@@ -33,6 +33,15 @@ extension GroupChatModelsTests {
 
         let preferred = GroupRoomFilesClient.tooLargeMessage(names: ["clip.mov"], preference: 16)
         XCTAssertEqual(preferred, AttachmentSizeLimit.tooLargeMessage(names: ["clip.mov"], megabytes: 16))
+
+        // With other people's agents in the room, a file has to reach their
+        // hosts, which take up to 16 MB: past it, the message says why.
+        let linked = GroupRoomFilesClient.linkedMaximumMegabytes
+        XCTAssertEqual(GroupRoomFilesClient.stagingLimit(preference: 256, roomCap: linked), 16)
+        XCTAssertEqual(GroupRoomFilesClient.tooLargeMessage(names: ["clip.mov"], preference: 256, roomCap: linked),
+                       AppLocalization.string("\("clip.mov") is larger than the \("16") MB a room with other people's agents can share with them.", table: .rooms))
+        XCTAssertEqual(GroupRoomFilesClient.tooLargeMessage(names: ["a.mov", "b.mov"], preference: 256, roomCap: linked),
+                       AppLocalization.string("These files are larger than the \("16") MB a room with other people's agents can share with them: \("a.mov, b.mov").", table: .rooms))
     }
 
     func testRoomFileReferenceTakesTheHostsRefText() throws {
