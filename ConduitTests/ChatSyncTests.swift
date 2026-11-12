@@ -755,6 +755,97 @@ final class ChatSyncTests: XCTestCase {
         XCTAssertEqual(box.loads, 1, "No catalog read after the poll was stopped")
     }
 
+    // MARK: - A gateway that pushes sessions.changed (issue 851)
+
+    private func followChanges(_ appState: AppState) {
+        appState.client?.sendsChangeEvents = true
+    }
+
+    /// Each change is read as it comes, so the list's own catalog read is a
+    /// 5-minute backstop instead of 30 s.
+    func testAListFollowingChangeEventsReadsTheCatalogEveryFiveMinutes() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        followChanges(appState)
+        box.catalog = [row("listed", profile: appState.activeProfile)]
+        await appState.loadSessions()
+        XCTAssertEqual(box.loads, 1)
+
+        for _ in 0..<74 { // 0 … 292 s
+            await poll(appState)
+            box.now += 4
+        }
+        XCTAssertEqual(box.loads, 1, "No timed read within 5 minutes")
+        await poll(appState) // 296 s
+        box.now += 4
+        await poll(appState) // 300 s
+        XCTAssertEqual(box.loads, 2, "The backstop still reads once")
+    }
+
+    func testAQuietListFollowingChangeEventsWaitsUpToTwoMinutes() async {
+        let box = Box()
+        let appState = makeAppState(box)
+        appState.pollJitter = { 0 }
+        box.live = []
+        var waits: [TimeInterval] = []
+        for _ in 0..<7 {
+            let wait = await pollWait(appState)
+            waits.append(wait)
+            box.now += wait
+        }
+        XCTAssertEqual(waits, [4, 8, 15, 30, 60, 60, 60], "Without change events the poll stops at 60 s")
+
+        followChanges(appState)
+        let wait = await pollWait(appState)
+        XCTAssertEqual(wait, 120)
+        appState.deviceConditions = { DeviceConditions(lowPowerMode: true) }
+        let stretched = await pollWait(appState)
+        XCTAssertEqual(stretched, PollCadence.longestPoll, "Low Power Mode stretches it no further than 180 s")
+    }
+
+    /// A turn started on another device moves the stored rows: Hermes says
+    /// so, the catalog read that follows changes the list, and that wakes
+    /// the poll from its long wait, so the registry shows Running now.
+    func testAListChangeWakesTheListPollFromALongWait() async throws {
+        let box = Box()
+        let appState = makeAppState(box)
+        appState.pollJitter = { 0 }
+        followChanges(appState)
+        let profile = appState.activeProfile
+        appState.sessions = [row("listed", profile: profile)]
+        box.catalog = [row("listed", profile: profile)]
+        box.live = []
+        for _ in 0..<3 {
+            box.now += await pollWait(appState)
+        }
+        XCTAssertEqual(appState.chatListPollPacer.interval(followingChanges: true), 15)
+
+        let sleep = Task { await appState.chatListPollSleep.sleep(seconds: 600) }
+        var moved = row("listed", profile: profile, minutesAgo: 0)
+        moved.messageCount = 3
+        box.catalog = [moved]
+        box.now += 10
+        appState.handleStreamEvent(.sessionsChanged)
+        await appState.leaveCatalogRefreshTask?.value
+        XCTAssertEqual(appState.sessions.first?.messageCount, 3)
+        let woke = Task {
+            await sleep.value
+            return true
+        }
+        let timeout = Task {
+            try? await Task.sleep(for: .seconds(5))
+            woke.cancel()
+            sleep.cancel()
+        }
+        let result = await woke.value
+        timeout.cancel()
+        XCTAssertTrue(result && !woke.isCancelled, "The list's change cut the poll's wait short")
+
+        box.live = [LiveSessionStatus(runtimeSessionId: "rt-listed", storedSessionId: "listed", status: "working", messageCount: 3)]
+        let wait = await pollWait(appState)
+        XCTAssertEqual(wait, 4, "The moved list and the running turn bring the poll back to 4 s")
+    }
+
     func testLowPowerModeStretchesTheListPoll() async {
         let box = Box()
         let appState = makeAppState(box)

@@ -1132,6 +1132,13 @@ final class HermesClient: ObservableObject {
     /// shapes for the same verbs, so each request is built for the one
     /// this socket reached (#1618).
     private(set) var speaksSessionAuthority = false
+    /// The gateway pushes `sessions.changed` when a stored chat moves, from
+    /// any process, and says so in its `gateway.ready` (`change_events:
+    /// true`, every Hermes since July 2026). The Chats list then reads the
+    /// catalog on that signal and keeps its own timed reads as a slow
+    /// backstop (issue 851); without it, the timed reads are all it has.
+    /// Set from `gateway.ready`; tests set it.
+    var sendsChangeEvents = false
     /// The authority's fences per session id, from snapshots, events and
     /// refusals: `execution_generation` names the running turn a steer,
     /// interrupt or answer is for; `revision` is what a `session.mutate`
@@ -1390,6 +1397,7 @@ final class HermesClient: ObservableObject {
         capabilityReplyPending = false
         deferredWindowOwnedDeclines = []
         speaksSessionAuthority = false
+        sendsChangeEvents = false
         executionGenerations = [:]
         sessionRevisions = [:]
         authorityPrompts = [:]
@@ -1472,6 +1480,7 @@ final class HermesClient: ObservableObject {
         backendCountsDeclines = predecessor.backendCountsDeclines
         // The same socket, so the same server and the same fences.
         speaksSessionAuthority = predecessor.speaksSessionAuthority
+        sendsChangeEvents = predecessor.sendsChangeEvents
         executionGenerations.merge(predecessor.executionGenerations) { mine, _ in mine }
         sessionRevisions.merge(predecessor.sessionRevisions) { mine, _ in mine }
         sessionProfiles.merge(predecessor.sessionProfiles) { mine, _ in mine }
@@ -1888,7 +1897,9 @@ final class HermesClient: ObservableObject {
             noteAuthorityFences(fromEvent: eventObject)
             switch eventObject?["type"]?.stringValue {
             case "gateway.ready":
-                speaksSessionAuthority = eventObject?["payload"]?.objectValue?["session_authority"]?.boolValue == true
+                let ready = eventObject?["payload"]?.objectValue
+                speaksSessionAuthority = ready?["session_authority"]?.boolValue == true
+                sendsChangeEvents = ready?["change_events"]?.boolValue == true
                 advertiseClientCapabilities()
             case "request.cancel":
                 // Bookkeeping only: the request is closed whatever the

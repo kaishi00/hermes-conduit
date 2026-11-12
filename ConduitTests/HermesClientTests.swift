@@ -3385,6 +3385,7 @@ final class HermesClientTests: XCTestCase {
             "params": ["type": "gateway.ready", "payload": ["change_events": true]]
         ], to: socket)
         try await sent.wait("client.capabilities to be sent after gateway.ready")
+        XCTAssertTrue(client.sendsChangeEvents, "change_events: the Chats list follows sessions.changed (issue 851)")
 
         let request = try sentFrame(socket)
         XCTAssertEqual(request["method"] as? String, "client.capabilities")
@@ -3398,6 +3399,7 @@ final class HermesClientTests: XCTestCase {
             "params": ["type": "gateway.ready", "payload": [String: Any]()]
         ], to: socket)
         XCTAssertEqual(socket.sentTexts.count, 1, "client.capabilities is sent once per connection")
+        XCTAssertFalse(client.sendsChangeEvents, "A ready without change_events goes back to the timed reads")
         client.disconnect()
     }
 
