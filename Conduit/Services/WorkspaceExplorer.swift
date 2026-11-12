@@ -56,6 +56,10 @@ final class WorkspaceExplorer: ObservableObject {
     private var showsKeptRoot = false
     /// Bumped by every change of scope: an answer asked before it is stale.
     private var generation = 0
+    /// Bumped by each read that asks the plugin: only the latest one says
+    /// whether it's on for the profile, so an older read's refusal landing
+    /// after a newer answer doesn't turn it off again.
+    private var pluginAsk = 0
     private var previewRequest: UUID?
     private var searchRequest: UUID?
 
@@ -237,10 +241,13 @@ final class WorkspaceExplorer: ObservableObject {
             // its answer for the open folder, or its refusal for any folder.
             var askedPlugin = false
             var remedy: String?
+            var ask = 0
             // With the plugin off for this profile, a folder in the tree
             // reads Hermes' listing straight away; the open folder asks the
             // plugin again each time, so turning it on shows on a refresh.
             if appState.supportsWorkspaceFiles, pluginOff == nil || folder == scope.root {
+                pluginAsk &+= 1
+                ask = pluginAsk
                 do {
                     let listing = try await appState.workspaceFilesClient(profile: scope.profile)
                         .list(root: scope.root, path: folder, keptIn: answers)
@@ -253,7 +260,7 @@ final class WorkspaceExplorer: ObservableObject {
                     remedy = DashboardTicketBridgeError.pluginOffDetail(of: refused)
                     // Said even when Hermes' own listing then fails too, so
                     // no change is offered on a profile that refuses them.
-                    markPluginOff(remedy)
+                    if ask == pluginAsk { markPluginOff(remedy) }
                     listed = try await appState.workspaceDirectoryEntries(at: folder, profile: scope.profile)
                 }
             } else if folder == scope.root, showsKeptRoot,
@@ -270,7 +277,7 @@ final class WorkspaceExplorer: ObservableObject {
             // re-check also covers a switch landing between that answer and
             // this resumption, so no other dashboard's listing merges in.
             guard isCurrent(ticket, owner, scope.profile) else { return false }
-            if askedPlugin { markPluginOff(remedy) }
+            if askedPlugin, ask == pluginAsk { markPluginOff(remedy) }
             entries[folder] = listed
             if cut { truncated.insert(folder) } else { truncated.remove(folder) }
             if folder == scope.root { showsKeptRoot = false }
