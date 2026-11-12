@@ -8,6 +8,7 @@
 //  launch Hermes couldn't take keeps it parked until Hermes connects.
 //
 
+import UIKit
 import XCTest
 @testable import Conduit
 
@@ -1361,6 +1362,110 @@ final class AppStateScreenQuestionTests: XCTestCase {
             supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.screenshotRemovedPrompt,
             "A note already heard is answered"
         )
+    }
+
+    // MARK: - A photo from a voice screen's Camera
+
+    func testAPhotoWaitsOnTheCallsChatAndIsNamedAsAPhoto() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        let thread = VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat")
+        harness.appState.voiceBackgroundJobSupervisor.attachLiveThread(thread)
+        let photo = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(photo, forSession: "composer-origin", kind: .photo)
+
+        XCTAssertEqual(harness.appState.pendingScreenshotEntry(forThread: thread)?.kind, .photo)
+        // A new connection's instructions: it was never sent the photo.
+        let tools = harness.appState.liveVoiceThreadInstructions(delegation: false)
+        XCTAssertTrue(tools.contains("took a photo"))
+        XCTAssertTrue(tools.contains("You can't see it, but Hermes can"))
+        XCTAssertFalse(tools.contains("screenshot"))
+        XCTAssertTrue(harness.appState.liveVoiceThreadInstructions(delegation: true).contains("delegate their question about it"))
+
+        // A newer screenshot on the chat replaces it, and is a screenshot.
+        let shot = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(shot, forSession: "composer-origin")
+        XCTAssertEqual(harness.appState.pendingScreenshotEntry(forThread: thread)?.kind, .screenshot)
+    }
+
+    func testTheCallHearsWhetherItsModelSawThePhoto() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        let supervisor = harness.appState.voiceBackgroundJobSupervisor
+        let photo = try stagedScreenshot()
+        supervisor.notePhotoShared(attachmentURI: photo.uri, seenByModel: false)
+        XCTAssertNil(supervisor.takePendingChatContext(), "No call is attached to a chat")
+
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat"))
+        // GPT-Live, Grok, Local Live: Hermes has it.
+        supervisor.notePhotoShared(attachmentURI: photo.uri, seenByModel: false)
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.photoSharedPrompt)
+
+        // Gemini, Qwen: it was sent the photo, and the send failed before
+        // the note went out, so the note says what's true.
+        let second = try stagedScreenshot()
+        supervisor.notePhotoShared(attachmentURI: second.uri, seenByModel: true)
+        supervisor.notePhotoMissedModel(attachmentURI: second.uri)
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.photoSharedPrompt)
+        XCTAssertNil(supervisor.takePendingChatContext())
+
+        // It failed after the model heard it could see it: corrected.
+        let third = try stagedScreenshot()
+        supervisor.notePhotoShared(attachmentURI: third.uri, seenByModel: true)
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.photoSeenPrompt)
+        supervisor.notePhotoMissedModel(attachmentURI: third.uri)
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.photoMissedPrompt)
+        for note in [VoiceBackgroundJobSupervisor.photoSharedPrompt, VoiceBackgroundJobSupervisor.photoSeenPrompt, VoiceBackgroundJobSupervisor.photoMissedPrompt] {
+            XCTAssertTrue(note.hasPrefix("[Background only."))
+        }
+    }
+
+    func testRemovingAPhotoTellsTheCallThePhotoIsGone() throws {
+        let harness = makeHarness(recorder: ScreenQuestionCallRecorder())
+        openChat("composer-origin", in: harness)
+        let supervisor = harness.appState.voiceBackgroundJobSupervisor
+        supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "composer-origin", storedSessionID: nil, title: "Chat"))
+        let photo = try stagedScreenshot()
+        harness.appState.setPendingScreenshot(photo, forSession: "composer-origin", kind: .photo)
+        supervisor.notePhotoShared(attachmentURI: photo.uri, seenByModel: false)
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.photoSharedPrompt)
+
+        harness.appState.discardPendingScreenshot(forSession: "composer-origin")
+        XCTAssertEqual(supervisor.takePendingChatContext(), VoiceBackgroundJobSupervisor.photoRemovedPrompt)
+    }
+
+    func testClassicVoicesCameraPutsThePhotoOnTheOpenChat() async throws {
+        let recorder = ScreenQuestionCallRecorder()
+        let harness = makeHarness(recorder: recorder)
+        openChat("composer-origin", in: harness)
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 8, height: 8)).image { context in
+            UIColor.blue.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 8, height: 8))
+        }
+
+        let refused = await harness.appState.addVoicePhoto(image, for: harness.appState.voicePhotoTarget)
+        XCTAssertNotNil(refused, "No voice conversation is running")
+        XCTAssertNil(harness.appState.pendingScreenshot(forSession: "composer-origin"))
+
+        harness.appState.showVoiceSheet = true
+        // Opened for another chat: this one doesn't take it.
+        let elsewhere = VoicePhotoTarget(chat: "other-chat", dashboard: harness.appState.activeDashboardID, callThread: nil)
+        let moved = await harness.appState.addVoicePhoto(image, for: elsewhere)
+        XCTAssertNotNil(moved)
+        XCTAssertNil(harness.appState.pendingScreenshot(forSession: "composer-origin"))
+
+        let failure = await harness.appState.addVoicePhoto(image, for: harness.appState.voicePhotoTarget)
+        XCTAssertNil(failure)
+        let photo = try XCTUnwrap(harness.appState.pendingScreenshot(forSession: "composer-origin"))
+        addTeardownBlock { AppState.deleteStagedScreenshot(photo) }
+        XCTAssertEqual(photo.mimeType, "image/jpeg")
+        XCTAssertEqual(harness.appState.voiceScreenshotKind, .photo, "The banner over the conversation calls it a photo")
+
+        // Classic voice's next turn carries it to Hermes.
+        harness.appState.showVoiceSheet = false
+        let sent = await harness.appState.submitComposer(text: "What is this plant?")
+        XCTAssertTrue(sent)
+        XCTAssertEqual(recorder.uploads.map { $0.attachment.uri }, [photo.uri])
     }
 
     func testRetakenScreenshotLeavesTheCallOneNote() throws {

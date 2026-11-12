@@ -10834,10 +10834,18 @@ final class AppState: ObservableObject {
         block += " The user may also type in the chat during the call. Notes starting \"[Background only.\" tell you what they typed and what Hermes replied: stay quiet about them until the user brings them up, then use them to follow on."
         // Ask Hermes About Screen: the live model can't see the image, and
         // must not guess at it. The next chat turn carries it to Hermes.
-        if pendingScreenshot(forThread: thread) != nil {
-            block += delegation
-                ? " The user just shared a screenshot to that chat. You can't see it, but Hermes can: delegate their question about their screen as they asked it, and the screenshot goes with it. Don't guess what the screen shows."
-                : " The user just shared a screenshot to that chat. You can't see it, but Hermes can: send their question about their screen to the chat with ask_thread as they asked it, and the screenshot goes with it. Don't use start_job or a lookup for it, and don't guess what the screen shows."
+        // A photo from the call screen's Camera reads the same way: these
+        // instructions start a connection, which hasn't been sent it.
+        if let picture = pendingScreenshotEntry(forThread: thread) {
+            if picture.kind == .photo {
+                block += delegation
+                    ? " The user just took a photo and added it to that chat. You can't see it, but Hermes can: delegate their question about it as they asked it, and the photo goes with it. Don't guess what the photo shows."
+                    : " The user just took a photo and added it to that chat. You can't see it, but Hermes can: send their question about it to the chat with ask_thread as they asked it, and the photo goes with it. Don't use start_job or a lookup for it, and don't guess what the photo shows."
+            } else {
+                block += delegation
+                    ? " The user just shared a screenshot to that chat. You can't see it, but Hermes can: delegate their question about their screen as they asked it, and the screenshot goes with it. Don't guess what the screen shows."
+                    : " The user just shared a screenshot to that chat. You can't see it, but Hermes can: send their question about their screen to the chat with ask_thread as they asked it, and the screenshot goes with it. Don't use start_job or a lookup for it, and don't guess what the screen shows."
+            }
         }
         // A call Hermes made carries the reply in its own brief (#449), and
         // a call seeded with the chat's turns has it there (issue 1983).
@@ -29084,7 +29092,7 @@ final class AppState: ObservableObject {
         if pendingScreenshots.contains(where: { lost.contains($0.sessionID) }) {
             pendingScreenshots = pendingScreenshots.map { entry in
                 guard lost.contains(entry.sessionID) else { return entry }
-                return PendingScreenshot(sessionID: fresh, attachment: entry.attachment, dashboardID: entry.dashboardID)
+                return PendingScreenshot(sessionID: fresh, attachment: entry.attachment, dashboardID: entry.dashboardID, kind: entry.kind)
             }
         }
         if let key = composerPrefillDraftKey,

@@ -1424,6 +1424,24 @@ final class GeminiLiveConversationController: ObservableObject {
         return true
     }
 
+    /// Whether a photo can go to the model now: a connection is up and the
+    /// call isn't ending.
+    var canShowPhoto: Bool {
+        isActive && endRequestedAt == nil && session?.isReady == true
+    }
+
+    /// A photo the user showed the call (the call screen's Camera), sent at
+    /// once: a picture never interrupts a reply, and the model sees it with
+    /// the user's next words. Only for a session that takes one (Gemini,
+    /// Qwen). `onFailure` runs when it never reached the socket.
+    func showPhoto(_ jpeg: Data, onFailure: @escaping @MainActor () -> Void) {
+        guard canShowPhoto, let session else {
+            onFailure()
+            return
+        }
+        session.send(.image(jpeg: jpeg), onFailure: onFailure)
+    }
+
     /// Sends at most one queued update, and only while idle; the model's
     /// reply to it ends a turn, which schedules the next check.
     func flushPendingTextIfIdle() {

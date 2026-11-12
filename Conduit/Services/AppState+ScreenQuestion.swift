@@ -11,13 +11,24 @@
 
 import Foundation
 
-/// One screenshot waiting on a chat for the next question sent there.
+/// Where a picture waiting on a chat came from, for what a call hears
+/// and what the voice banner says.
+enum SharedPictureKind: Equatable {
+    /// Ask Hermes About Screen's screenshot.
+    case screenshot
+    /// A photo taken with a voice screen's Camera.
+    case photo
+}
+
+/// One screenshot waiting on a chat for the next question sent there. A
+/// photo taken during a voice conversation waits the same way.
 struct PendingScreenshot: Equatable {
     let sessionID: String
     let attachment: Attachment
     /// The dashboard the chat belongs to; a screenshot never joins
     /// another dashboard's chat, however their session ids line up.
     let dashboardID: UUID?
+    var kind: SharedPictureKind = .screenshot
 }
 
 /// Asks the composer of one chat to take focus. Another chat's composer
@@ -92,8 +103,8 @@ extension AppState {
         pendingScreenshotIndex(forSession: sessionID).map { pendingScreenshots[$0].attachment }
     }
 
-    /// A newer screenshot for the same chat replaces the older one.
-    func setPendingScreenshot(_ attachment: Attachment, forSession sessionID: String) {
+    /// A newer screenshot (or photo) for the same chat replaces the older one.
+    func setPendingScreenshot(_ attachment: Attachment, forSession sessionID: String, kind: SharedPictureKind = .screenshot) {
         if let index = pendingScreenshotIndex(forSession: sessionID) {
             let onCallsChat = isOnLiveCallsChat(pendingScreenshots[index].attachment)
             let replaced = pendingScreenshots.remove(at: index)
@@ -105,7 +116,7 @@ extension AppState {
             }
         }
         pendingScreenshots.append(
-            PendingScreenshot(sessionID: sessionID, attachment: attachment, dashboardID: activeDashboardID)
+            PendingScreenshot(sessionID: sessionID, attachment: attachment, dashboardID: activeDashboardID, kind: kind)
         )
         trimPendingScreenshots()
     }
@@ -114,11 +125,12 @@ extension AppState {
     func discardPendingScreenshot(forSession sessionID: String?) {
         guard let index = pendingScreenshotIndex(forSession: sessionID) else { return }
         let removed = pendingScreenshots[index].attachment
+        let kind = pendingScreenshots[index].kind
         let onCallsChat = isOnLiveCallsChat(removed)
         pendingScreenshots.remove(at: index)
         Self.deleteStagedScreenshot(removed)
         // A live call told about it hears that it's gone.
-        voiceBackgroundJobSupervisor.retractScreenshotNote(attachmentURI: removed.uri, inInstructions: onCallsChat)
+        voiceBackgroundJobSupervisor.retractScreenshotNote(attachmentURI: removed.uri, inInstructions: onCallsChat, kind: kind)
     }
 
     /// Waiting on a live call's chat, a screenshot was named in the call's
@@ -158,11 +170,12 @@ extension AppState {
     private func trimPendingScreenshots() {
         while pendingScreenshots.count > ScreenQuestionPolicy.maximumPendingScreenshots {
             let dropped = pendingScreenshots[0].attachment
+            let kind = pendingScreenshots[0].kind
             let onCallsChat = isOnLiveCallsChat(dropped)
             pendingScreenshots.removeFirst()
             Self.deleteStagedScreenshot(dropped)
             // A live call told about it hears that it's gone, as if removed.
-            voiceBackgroundJobSupervisor.retractScreenshotNote(attachmentURI: dropped.uri, inInstructions: onCallsChat)
+            voiceBackgroundJobSupervisor.retractScreenshotNote(attachmentURI: dropped.uri, inInstructions: onCallsChat, kind: kind)
         }
     }
 
@@ -194,8 +207,13 @@ extension AppState {
 
     /// The screenshot waiting on a live call's chat.
     func pendingScreenshot(forThread thread: VoiceThreadTarget) -> Attachment? {
+        pendingScreenshotEntry(forThread: thread)?.attachment
+    }
+
+    /// The same, with where it came from.
+    func pendingScreenshotEntry(forThread thread: VoiceThreadTarget) -> PendingScreenshot? {
         for id in [thread.runtimeSessionID, thread.storedSessionID].compactMap({ $0 }) {
-            if let screenshot = pendingScreenshot(forSession: id) { return screenshot }
+            if let index = pendingScreenshotIndex(forSession: id) { return pendingScreenshots[index] }
         }
         return nil
     }
@@ -207,6 +225,18 @@ extension AppState {
             return voiceBackgroundJobSupervisor.liveThread.flatMap { pendingScreenshot(forThread: $0) }
         }
         return pendingScreenshot(forSession: activeSessionId)
+    }
+
+    /// Whether the picture the voice will ask about is a screenshot or a
+    /// photo, for the banner over the call.
+    var voiceScreenshotKind: SharedPictureKind {
+        let entry: PendingScreenshot?
+        if isLiveVoiceCallActive {
+            entry = voiceBackgroundJobSupervisor.liveThread.flatMap { pendingScreenshotEntry(forThread: $0) }
+        } else {
+            entry = pendingScreenshotIndex(forSession: activeSessionId).map { pendingScreenshots[$0] }
+        }
+        return entry?.kind ?? .screenshot
     }
 
     /// The voice sheet's remove button.
@@ -320,7 +350,7 @@ extension AppState {
                 .joined(separator: " ")
             return nil
         }
-        setPendingScreenshot(entry.attachment, forSession: created)
+        setPendingScreenshot(entry.attachment, forSession: created, kind: entry.kind)
         return created
     }
 

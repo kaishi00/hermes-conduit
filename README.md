@@ -55,6 +55,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 
 - Live voice calls with Gemini Live, Qwen Live, GPT-Live (ChatGPT subscription or API key), Grok Live, or Local Live on your own speech server, with echo cancellation and talking over Hermes
 - Start, check and cancel Hermes jobs by voice; results come back into the call
+- Show a call what you're looking at: take a photo mid-call and it joins the call's chat for Hermes; Gemini Live and Qwen Live see it themselves, and the other modes pass your questions about it to Hermes
 - Calls stay with their chat, keep going with the screen locked, shrink to a bar while you read, and are saved as chats you can resume
 - Hermes calls you: a CallKit call when a job is done, Hermes needs you, or a check you scheduled is due, on the phone or the Watch
 - Classic voice and dictation with on-device, Apple, Hermes or your own speech-to-text, spoken Stop and End, wake phrases, and Read Aloud for any reply, or for every reply as it arrives

@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import UIKit
 
 /// What the call is doing, as the sheet draws it.
 enum LiveVoiceCallPhase: Equatable {
@@ -53,6 +54,9 @@ struct LiveVoiceCallSheet: View {
     /// Nil for an engine that is only interrupted by speaking over it: the
     /// sheet then has no Interrupt button.
     var onInterrupt: (() -> Void)?
+    /// Shows the Camera, which puts a photo on the call's chat
+    /// (`AppState.addVoicePhoto`).
+    var showsCamera = false
     let onEnd: () -> Void
     let onRetry: () -> Void
     /// The voice mode menu under the title, and Switch voice on a failed
@@ -503,6 +507,10 @@ struct LiveVoiceCallSheet: View {
                     )
                     .disabled(!canInterrupt)
                 }
+                if showsPhoto {
+                    LiveVoiceCallPhotoButton(appState: appState)
+                        .disabled(!canMute)
+                }
             }
             LiveVoiceCallButton(
                 symbol: "text.bubble.fill",
@@ -531,7 +539,12 @@ struct LiveVoiceCallSheet: View {
     private var controlSlots: Int {
         let shared = 2 // Transcript, End
         if phase == .failed { return shared + 1 + (modeSwitch == nil ? 0 : 1) }
-        return shared + 2 + (onInterrupt == nil ? 0 : 1) + (callSpeaker.isShown ? 1 : 0)
+        return shared + 2 + (onInterrupt == nil ? 0 : 1) + (callSpeaker.isShown ? 1 : 0) + (showsPhoto ? 1 : 0)
+    }
+
+    /// The Camera, on a device that has one.
+    private var showsPhoto: Bool {
+        showsCamera && CameraCapture.isAvailable
     }
 }
 
@@ -796,8 +809,8 @@ struct LiveVoiceCallButtonIcon: View {
     @ScaledMetric(relativeTo: .title3) private var scaledDiameter: CGFloat = 62
     @Environment(\.liveVoiceCallButtonSlotWidth) private var slotWidth
     /// Capped so five buttons still fit across a phone at the largest
-    /// text sizes, and narrower when a row holds six (Speaker in a call
-    /// from Hermes); the glyph inside keeps scaling.
+    /// text sizes, and narrower when a row holds six or seven (Camera, and
+    /// Speaker in a call from Hermes); the glyph inside keeps scaling.
     private var diameter: CGFloat {
         let fits = slotWidth.map { max(44, $0 - 6) } ?? .infinity
         return min(scaledDiameter, 66, fits)
@@ -1208,7 +1221,7 @@ private struct LiveVoiceCallButtonSlotWidthKey: EnvironmentKey {
 }
 
 extension EnvironmentValues {
-    /// The width each button of a call's control row has, so a row of six
+    /// The width each button of a call's control row has, so a row of seven
     /// shrinks its circles to fit instead of running off the screen.
     var liveVoiceCallButtonSlotWidth: CGFloat? {
         get { self[LiveVoiceCallButtonSlotWidthKey.self] }
