@@ -560,7 +560,7 @@ final class HermesClientTests: XCTestCase {
     /// only under the profile a request names, so the requests after the
     /// resume (the reasoning switch, the send) name the bot's profile too;
     /// unnamed, Hermes answered `config.set` with `not_found`. A resume
-    /// under the client's own profile forgets it.
+    /// that names no profile keeps it; one under the client's own forgets it.
     func testRequestsAfterABotChatResumeNameTheBotsProfile() async throws {
         let transport = FakeTransport()
         let socket = FakeSocket()
@@ -619,14 +619,35 @@ final class HermesClientTests: XCTestCase {
         try answer(other, ["key": "reasoning", "value": "low"])
         try await otherTask.value
 
-        // Opened again under the client's own profile, it takes that scope.
+        // Opened again naming no profile (a branch's reconcile), the resume
+        // goes to the bot's profile and keeps it.
         sent = expectSend()
         let reopenTask = Task<SessionResumeResult, Error> {
             try await client.openSession("runtime-1", profile: nil)
         }
-        try await sent.wait("the plain session.resume to be sent")
+        try await sent.wait("the unnamed session.resume to be sent")
+        let reopen = try lastRequest()
+        XCTAssertEqual((reopen["params"] as? [String: Any])?["profile"] as? String, "atlas")
+        try answer(reopen, ["session_id": "runtime-1", "messages": [Any]()])
+        _ = try await awaitResult(of: reopenTask, "the unnamed resume response")
+        XCTAssertEqual(client.sessionProfile(for: "runtime-1"), "atlas")
+
+        sent = expectSend()
+        let afterTask = Task { try await client.setReasoning("runtime-1", effort: "low") }
+        try await sent.wait("the config.set after the unnamed resume to be sent")
+        let after = try lastRequest()
+        XCTAssertEqual((after["params"] as? [String: Any])?["profile"] as? String, "atlas")
+        try answer(after, ["key": "reasoning", "value": "low"])
+        try await afterTask.value
+
+        // Opened again under the client's own profile, it takes that scope.
+        sent = expectSend()
+        let ownTask = Task<SessionResumeResult, Error> {
+            try await client.openSession("runtime-1", profile: "analyst")
+        }
+        try await sent.wait("the client-profile session.resume to be sent")
         try answer(try lastRequest(), ["session_id": "runtime-1", "messages": [Any]()])
-        _ = try await awaitResult(of: reopenTask, "the plain resume response")
+        _ = try await awaitResult(of: ownTask, "the client-profile resume response")
         XCTAssertNil(client.sessionProfile(for: "runtime-1"))
         client.disconnect()
     }

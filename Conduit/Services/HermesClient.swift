@@ -2327,7 +2327,8 @@ final class HermesClient: ObservableObject {
 
     /// Records the profile `ids` were opened or made under, when it is
     /// another than the client's own; the client's own (or none) forgets
-    /// them, so they take the client's scope again.
+    /// them, so they take the client's scope again. A resume that names no
+    /// profile keeps the one it was sent to.
     func noteSessionProfile(_ profile: String?, for ids: [String?]) {
         let named = profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let own = (self.profile ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -3049,7 +3050,9 @@ final class HermesClient: ObservableObject {
         }
         let object = result.objectValue ?? [:]
         noteAuthorityFences(fromSnapshot: object, sessionId: sessionId)
-        noteSessionProfile(profile, for: [
+        // The profile the resume went to: the one named, else the one
+        // `scopeParams` named for this chat. Only a named profile changes it.
+        noteSessionProfile(profile ?? sessionProfiles[sessionId], for: [
             sessionId, object["session_id"]?.stringValue, object["stored_session_id"]?.stringValue
         ])
         if speaksSessionAuthority {
