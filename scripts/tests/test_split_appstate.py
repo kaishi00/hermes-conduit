@@ -35,6 +35,9 @@ final class AppState: ObservableObject {
     private(set) var attempts = 0
     private(set) var readOnly = 0
     fileprivate var lastError: String?
+    private struct Claim { var kind: ClaimKind }
+    private enum ClaimKind { case server }
+    private var claims: [Claim] = []
     var isReady: Bool {
         isConnected && token != nil
     }
@@ -43,6 +46,7 @@ final class AppState: ObservableObject {
     func connect() {
         attempts += 1
         lastError = nil
+        _ = claims
         lifecycleLog.info("connect \\(readOnly)")
         let text = """
         a { brace in a string
@@ -123,6 +127,9 @@ class SplitAppStateTests(unittest.TestCase):
         self.assertIn("private func note(", app, "only AppState.swift calls it")
         self.assertIn("\nlet lifecycleLog", app)
         self.assertIn("\n    var lastError: String?", app, "fileprivate is widened too")
+        self.assertIn("\n    var claims: [Claim]", app)
+        self.assertIn("\n    struct Claim {", app, "the widened property's type")
+        self.assertIn("\n    enum ClaimKind {", app, "and the types that type shows")
 
     def test_widens_a_moved_extensions_members(self):
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")

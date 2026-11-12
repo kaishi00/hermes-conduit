@@ -599,7 +599,49 @@ def plan_access(src, file_items):
                         break
                 if line != src.lines[d.decl_line]:
                     changes[d.decl_line] = line
+    # An internal declaration can't show a private type in its signature, or
+    # use a private name in a default argument: widen those names too.
+    hidden_decls = {}
+    for items in file_items.values():
+        for it in items:
+            for d in decl_lines_of(it):
+                mods = getattr(d, "mods", None)
+                if mods is None:
+                    _, mods, _ = parse_decl(src.masked[d.decl_line])
+                hidden = [m for m in ("private", "fileprivate") if m in mods]
+                if hidden and d.decl_line not in changes:
+                    for n in d.names:
+                        hidden_decls.setdefault(n, []).append((d, hidden[0]))
+    queue = [d for d, which, _ in widened if which in ("private", "fileprivate")]
+    while queue:
+        d = queue.pop()
+        for n in set(IDENT.findall(signature(src, d))) - set(d.names):
+            for e, which in hidden_decls.pop(n, []):
+                if e.decl_line in changes:
+                    continue
+                changes[e.decl_line] = widen(src.lines[e.decl_line], which)
+                widened.append((e, which, f"the signature of {d.names[0]}"))
+                queue.append(e)
     return changes, widened
+
+
+def signature(src, d):
+    """A declaration's text up to its body or initial value: what an internal
+    declaration shows of the types and names it uses."""
+    text = "\n".join(src.masked[d.decl_line:d.end])
+    if d.kind in ("enum", "struct", "class", "actor", "typealias"):
+        return text  # a type shows its members' types too
+    depth = 0
+    for k, ch in enumerate(text):
+        if ch in "([<" and not (ch == "<" and text[k - 1:k] == " "):
+            depth += 1
+        elif ch in ")]>" and not (ch == ">" and text[k - 1:k] in ("-", " ")):
+            depth -= 1
+        elif depth <= 0 and ch == "{":
+            return text[:k]
+        elif depth <= 0 and ch == "=" and d.kind in ("var", "let") and text[k + 1:k + 2] != "=":
+            return text[:k]
+    return text
 
 
 # ---------------------------------------------------------------- writing

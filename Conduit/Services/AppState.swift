@@ -702,7 +702,7 @@ final class AppState: ObservableObject {
     /// - `expiresAt` bounds the claim to one full compression budget: a lost
     ///   terminal edge must not keep "Compressing…" alive for the whole
     ///   connection.
-    private struct ServerCompactionClaim {
+    struct ServerCompactionClaim {
         let generation: Int
         let expiresAt: Date
     }
@@ -827,7 +827,7 @@ final class AppState: ObservableObject {
     /// row ids never enter `durablePersistedRowIDs`; the two identities stay
     /// distinct — the marker only asserts that ONE new persisted user turn
     /// is expected while our turn is in flight.
-    private struct LocallyOwnedInFlightTurn {
+    struct LocallyOwnedInFlightTurn {
         var sessionIDs: Set<String>
         var optimisticUserRowID: String
         var preSubmitOrderingBaseline: PersistedOrderingBaseline
@@ -19970,7 +19970,7 @@ final class AppState: ObservableObject {
     // MARK: - Cross-surface transcript freshness
 
     /// Ordering baseline a locally-owned turn captured at submit time.
-    private enum PersistedOrderingBaseline {
+    enum PersistedOrderingBaseline {
         /// The newest durable row positively observed at submit time.
         case anchored(String)
         /// A validated read positively proved the persisted transcript EMPTY.
