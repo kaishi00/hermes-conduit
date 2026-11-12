@@ -552,7 +552,12 @@ final class WorkspaceExplorer: ObservableObject {
         if let copied, gone(copied.path) { self.copied = nil }
         if let viewed, !openFiles.contains(where: { $0.path == viewed.path }) {
             if let next = openFiles.last {
-                Task { await view(next) }
+                // Dropped if another folder opened, or the tab went, first.
+                let ticket = generation
+                Task {
+                    guard ticket == generation, openFiles.contains(where: { $0.path == next.path }) else { return }
+                    await view(next)
+                }
             } else {
                 viewedGone += 1
             }
