@@ -132,6 +132,17 @@ class WorkflowContractTests(unittest.TestCase):
         self.assertIn("CI Gate", text)
         self.assertNotIn("Build & Test", text)
 
+    def test_ci_runs_for_main_and_linked_rooms(self):
+        """linked-rooms' copy runs on that branch's pushes and the PRs into
+        it as on main's, as pulse's copy does for pulse (docs/CI.md). Only
+        this branch has the test: main's copy runs for main alone and never
+        gets it, so neither does pulse."""
+        text = self._workflow_text()
+        triggers = text[text.index("\non:\n"):text.index("\nconcurrency:")]
+        self.assertIn("\n  push:\n    branches: [main, linked-rooms]\n  pull_request:\n", triggers)
+        self.assertRegex(triggers.split("\n  pull_request:\n", 1)[1],
+                         r"\A(    #.*\n)*    branches: \[main, linked-rooms\]\n")
+
     def test_one_macos_job_per_run(self):
         """Runner queueing (5 concurrent macOS jobs per account) was CI v4's
         bottleneck: a PR or push run gets exactly one macOS job."""
@@ -608,9 +619,25 @@ class NightlyWorkflowTests(unittest.TestCase):
         self.assertIn("bash scripts/ci-hosted-build.sh", unit)
         self.assertIn("xcodegen generate --spec project-tests.yml", unit)
 
+    def test_timing_repeats_build_slim_and_only_restore_the_cache(self):
+        """The timing families are ConduitTests classes: they build the
+        app-only project from the slim cache the unit shards save, and never
+        save it themselves. A clean full build outran the 1200 s budget
+        beside the unit shards (2026-11-09 and 11-11)."""
+        timing = _job_text(NIGHTLY, "timing")
+        self.assertIn("xcodegen generate --spec project-tests.yml", timing)
+        self.assertIn("SPEC: project-tests.yml", timing)
+        self.assertIn("uses: actions/cache/restore@v5", timing)
+        self.assertNotIn("actions/cache/save", timing)
+        self.assertLess(timing.index("actions/cache/restore@v5"),
+                        timing.index("bash scripts/ci-hosted-build.sh"),
+                        "the cache is restored before the build")
+        self.assertIn("            ${{ steps.cache-key.outputs.prefix }}-\n"
+                      "            ${{ steps.cache-key.outputs.xcode-prefix }}-\n", timing)
+
     def test_unit_shard_one_saves_the_slim_build_cache_on_main(self):
-        """Only the nightly unit shards build project-tests.yml and restore
-        the slim cache; shard 1 saves it on main. Smoke builds the full app."""
+        """The nightly unit shards build project-tests.yml and restore the
+        slim cache; shard 1 saves it on main. Smoke builds the full app."""
         unit = _job_text(NIGHTLY, "unit")
         _assert_cache_round_trip(self, unit, "matrix.shard == 1", "nightly unit")
         self.assertIn("SPEC: project-tests.yml", unit)

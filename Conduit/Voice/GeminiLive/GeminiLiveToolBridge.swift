@@ -87,6 +87,12 @@ protocol GeminiLiveJobSupervising: AnyObject {
     func takePendingCallPrompt() -> String?
     /// The call's own request still open in its attached chat (#451).
     func threadFollowUpTarget() -> UUID?
+    /// A request for the attached chat when it's a bot workstream's: sent
+    /// to the workstream through its plugin, as start_job's are (Eric
+    /// 2026-11-02), so it answers the question the workstream waits on
+    /// (notifier #618). What to tell the call, or nil when the chat isn't
+    /// a workstream's.
+    func sendToWorkstream(_ request: String) async -> String?
     /// The background job with this number in spoken job lists.
     func backgroundJob(numbered number: Int) -> VoiceBackgroundJob?
     /// Puts the user's follow-up into a request Hermes is working on.
@@ -125,6 +131,7 @@ protocol GeminiLiveJobSupervising: AnyObject {
 /// as new work, as before #451.
 extension GeminiLiveJobSupervising {
     func threadFollowUpTarget() -> UUID? { nil }
+    func sendToWorkstream(_ request: String) async -> String? { nil }
     func backgroundJob(numbered number: Int) -> VoiceBackgroundJob? { nil }
     func followUp(jobID: UUID, words: String, kind: String?) async -> VoiceFollowUpOutcome { .finished(title: "") }
     var asksBeforeSending: Bool { false }
@@ -627,6 +634,16 @@ final class GeminiLiveToolBridge {
         // The call's chat was deleted (issue 1797): the request makes the
         // call a new chat, as an unattached call's first request does.
         if supervisor.liveThread == nil { return await startBackgroundJob(call, instructions: request, profile: "") }
+        // A workstream's chat: once asking first lets it go, its session
+        // takes the request, never a chat turn queued behind the question
+        // it waits on.
+        let said = await supervisor.sendToWorkstream(request)
+        guard !isEnding else { return [] }
+        if let said {
+            // What the workstream's plugin did with it, said as is: it may
+            // also say the request couldn't go in.
+            return [.toolResponse(id: call.id, name: call.name, result: ["status": "workstream", "message": said], scheduling: .whenIdle)]
+        }
         let sent = supervisor.startThreadTurn(request: request)
         guard let jobID = sent.jobID else {
             return [.toolResponse(id: call.id, name: call.name, result: ["status": "not_sent", "message": sent.refusal ?? "Hermes couldn't take the request."], scheduling: .whenIdle)]
@@ -842,7 +859,7 @@ final class GeminiLiveToolBridge {
                 if let id = UUID(uuidString: rawID), let message = await supervisor.cancel(jobID: id) {
                     reply = message
                 } else {
-                    reply = AppLocalization.string("There are no background jobs to cancel.")
+                    reply = AppLocalization.string("There are no background jobs to cancel.", table: .voice)
                 }
             } else {
                 reply = await supervisor.cancelAll()

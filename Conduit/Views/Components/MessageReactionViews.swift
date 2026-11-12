@@ -79,8 +79,8 @@ struct MessageReactionChips: View {
                 .accessibilityLabel(accessibilityLabel(for: group))
                 .accessibilityHint(
                     group.includesUser
-                        ? AppLocalization.string("Change your reaction")
-                        : AppLocalization.string("React to this response")
+                        ? AppLocalization.string("Change your reaction", table: .chat)
+                        : AppLocalization.string("React to this response", table: .chat)
                 )
         } else {
             label
@@ -92,12 +92,12 @@ struct MessageReactionChips: View {
     private func accessibilityLabel(for group: ChipGroup) -> String {
         let emoji = group.emoji
         if group.includesUser && group.includesOthers {
-            return AppLocalization.string("You and \(agentName) reacted \(emoji)")
+            return AppLocalization.string("You and \(agentName) reacted \(emoji)", table: .chat)
         }
         if group.includesUser {
-            return AppLocalization.string("You reacted \(emoji)")
+            return AppLocalization.string("You reacted \(emoji)", table: .chat)
         }
-        return AppLocalization.string("\(agentName) reacted \(emoji)")
+        return AppLocalization.string("\(agentName) reacted \(emoji)", table: .chat)
     }
 }
 
@@ -125,8 +125,8 @@ struct TapbackPicker: View {
                 .buttonStyle(.plain)
                 .accessibilityLabel(
                     emoji == selected
-                        ? AppLocalization.string("Remove reaction \(emoji)")
-                        : AppLocalization.string("React with \(emoji)")
+                        ? AppLocalization.string("Remove reaction \(emoji)", table: .chat)
+                        : AppLocalization.string("React with \(emoji)", table: .chat)
                 )
                 .accessibilityAddTraits(emoji == selected ? .isSelected : [])
             }
@@ -169,8 +169,8 @@ struct MessageReactButton: View {
         .opacity(enabled ? 1 : 0.45)
         .accessibilityLabel(
             mine == nil
-                ? AppLocalization.string("React to this response")
-                : AppLocalization.string("Change your reaction")
+                ? AppLocalization.string("React to this response", table: .chat)
+                : AppLocalization.string("Change your reaction", table: .chat)
         )
         .accessibilityAddTraits(mine == nil ? [] : .isSelected)
         // A turn starting while the bar is open makes a live reply

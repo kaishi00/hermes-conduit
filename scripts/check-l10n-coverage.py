@@ -17,7 +17,9 @@ Catalogs and Conduit/Info.plist, so adding a language is a catalog change:
 Scans Conduit Swift sources for sites that look up String Catalog keys -
 
   1. AppLocalization.string("...") / String(localized: "...") - the
-     skeleton must exist in Localizable.xcstrings with the SAME placeholder
+     skeleton must exist in Localizable.xcstrings (or, for
+     AppLocalization.string("...", table: .voice), in the feature table it
+     names, Conduit/Strings/Voice.xcstrings) with the SAME placeholder
      types the runtime will request: `\\(String(x))`-style interpolations
      request %@, integer-shaped expressions (Int casts, .count/.index/
      .total, count-like identifiers, digit arithmetic) request %lld.
@@ -71,6 +73,23 @@ InfoPlist):
   * no value may contain malformed literal Unicode escape sequences (e.g.
     the text "\\u4e00") - those are double-escaped authoring bugs, not
     legitimate backslash content.
+
+Feature tables (issue 823): LocalizationTable in Conduit/Services/
+AppLanguage.swift lists the app's feature String Catalogs, one
+Conduit/Strings/<Name>.xcstrings each, held to every rule above like
+Localizable. On top of them:
+
+  * each case has its catalog and each catalog its case;
+  * a key lives in one of the app's tables only (Localizable or a feature
+    table), so its translations never drift apart;
+  * a Swift file names at most one feature table, its feature's;
+  * only the app's own sources under Conduit/ name a table: Shared/ and
+    the extensions' and the Watch's sources are compiled into targets that
+    carry only Localizable;
+  * no feature-table key is spelled as a string literal in those sources:
+    they look keys up through their own helpers (WidgetLocalization,
+    NotificationLocalization) the call-site scan can't follow, so a key
+    they spell stays in Localizable.
 
 Any violation is reported with file:line (call sites) or by key and
 language (catalog) and fails the run.
@@ -248,6 +267,9 @@ REGRESSION_KEYS = (
     # key exists only at the ternary.
     "Hide sessions",
 )
+
+# `table: .voice` in an AppLocalization.string call.
+_TABLE_CASE_ARGUMENT_RE = re.compile(r"^\s*\.\s*([A-Za-z_]\w*)\s*$")
 
 CALL_RE = re.compile(
     r"\b(?:String\s*\(\s*localized\s*:|AppLocalization\s*\.\s*string\s*\()")
@@ -769,9 +791,22 @@ def raw_interpolated_literals(source: str):
                     yield skeleton, offset
 
 
-def _localized_literals(source: str):
-    """Yield (key_skeleton, interpolated_expressions, offset) for every
-    checkable call site."""
+def _call_table(source: str, literal_start: int):
+    """The LocalizationTable case an AppLocalization.string call names
+    (`table: .voice` gives "voice"), None when it names none, or the
+    argument's text when it isn't a plain case."""
+    for argument in _arguments(source, literal_start)[1:]:
+        label, colon, value = argument.partition(":")
+        if colon and label.strip() == "table":
+            match = _TABLE_CASE_ARGUMENT_RE.match(value)
+            return match.group(1) if match else value.strip()
+    return None
+
+
+def _localized_sites(source: str):
+    """Yield (key_skeleton, interpolated_expressions, offset, table) for
+    every checkable call site; `table` is the LocalizationTable case an
+    AppLocalization.string call names, else None."""
     source = strip_comment_lines(source)
     for regex in (CALL_RE, SWIFTUI_RE, MODIFIER_RE):
         for match in regex.finditer(source):
@@ -782,7 +817,10 @@ def _localized_literals(source: str):
                 parsed = parse_swift_literal_parts(source, i)
                 if parsed is not None and parsed[0]:
                     skeleton = typed_skeleton(parsed[0], parsed[2])
-                    yield skeleton, parsed[2], match.start()
+                    table = None
+                    if regex is CALL_RE and match.group(0).startswith("AppLocalization"):
+                        table = _call_table(source, i)
+                    yield skeleton, parsed[2], match.start(), table
     for match in RAW_STRING_ASSIGNMENT_RE.finditer(source):
         i = match.end() - 1  # position of the opening quote
         if source[i] != '"':
@@ -790,7 +828,21 @@ def _localized_literals(source: str):
         parsed = parse_swift_literal_parts(source, i)
         if parsed is not None and parsed[0]:
             skeleton = typed_skeleton(parsed[0], parsed[2])
-            yield skeleton, parsed[2], match.start()
+            yield skeleton, parsed[2], match.start(), None
+
+
+def _localized_literals(source: str):
+    """Yield (key_skeleton, interpolated_expressions, offset) for every
+    checkable call site."""
+    for skeleton, expressions, offset, _table in _localized_sites(source):
+        yield skeleton, expressions, offset
+
+
+def extract_table_sites(source: str):
+    """Yield (key_skeleton, table, offset) for every checkable call site,
+    `table` being the LocalizationTable case it names or None."""
+    for skeleton, _expressions, offset, table in _localized_sites(source):
+        yield skeleton, table, offset
 
 
 def catalog_has(catalog_keys: set, skeleton: str) -> bool:
@@ -1150,7 +1202,42 @@ WATCH_SHARED_SOURCES = (
     "Shared/WatchVoice",
     "Shared/Approvals",
     "Conduit/Voice/GPTLive/GPTLiveProtocol.swift",
+    "Conduit/Views/Components/GatewayMediaTags.swift",
+    "Conduit/Views/Components/TranscriptDirectives.swift",
 )
+
+
+# The app's feature String Catalogs (issue 823): LocalizationTable's cases
+# in this Swift file, one Conduit/Strings/<rawValue>.xcstrings each.
+TABLES_DIRECTORY = os.path.join("Conduit", "Strings")
+TABLE_ENUM_SOURCE = os.path.join("Conduit", "Services", "AppLanguage.swift")
+_TABLE_ENUM_RE = re.compile(r"\benum\s+LocalizationTable\b[^{]*\{(.*?)\n\}", re.S)
+_TABLE_CASE_RE = re.compile(r'^\s*case\s+(\w+)\s*=\s*"([^"]+)"', re.M)
+
+
+def read_table_cases(repo_root: str) -> dict:
+    """{case: table name} from LocalizationTable, empty when the app
+    declares no feature tables."""
+    try:
+        with open(os.path.join(repo_root, TABLE_ENUM_SOURCE), encoding="utf-8") as handle:
+            source = handle.read()
+    except OSError:
+        return {}
+    match = _TABLE_ENUM_RE.search(source)
+    return dict(_TABLE_CASE_RE.findall(match.group(1))) if match else {}
+
+
+def table_catalog_path(name: str) -> str:
+    """The repo-relative catalog of a feature table."""
+    return os.path.join(TABLES_DIRECTORY, f"{name}.xcstrings")
+
+
+def may_name_a_table(rel: str) -> bool:
+    """Only the app's own sources reach the feature tables: everything
+    else under Conduit/ besides what the Watch compiles too. Shared/ and
+    the extensions are compiled into targets that carry only Localizable."""
+    return (rel.startswith("Conduit" + os.sep)
+            and rel.replace(os.sep, "/") not in WATCH_SHARED_SOURCES)
 
 
 class _JSONObject(dict):
@@ -1362,6 +1449,44 @@ def check(repo_root: str):
     catalog_keys = set(catalog["strings"])
 
     key_problems = {}
+    # Feature tables: each LocalizationTable case and its catalog.
+    table_cases = read_table_cases(repo_root)
+    table_names = set(table_cases.values())
+    tables_directory = os.path.join(repo_root, TABLES_DIRECTORY)
+    on_disk = set()
+    if os.path.isdir(tables_directory):
+        on_disk = {name[:-len(".xcstrings")] for name in os.listdir(tables_directory)
+                   if name.endswith(".xcstrings")}
+    for name in sorted(on_disk - table_names):
+        key_problems.setdefault(table_catalog_path(name), []).append(
+            f"no LocalizationTable case names it ({TABLE_ENUM_SOURCE}), so "
+            f"no call can reach its keys")
+    tables = {}
+    for name in sorted(table_names):
+        relative = table_catalog_path(name)
+        if name not in on_disk:
+            key_problems.setdefault(relative, []).append(
+                f"LocalizationTable names it, but the catalog doesn't exist")
+            continue
+        try:
+            catalogs[relative], duplicates[relative] = load_catalog(
+                os.path.join(repo_root, relative))
+        except (OSError, ValueError) as error:
+            raise CatalogError(f"{relative}: {error}") from error
+        tables[name] = set(catalogs[relative]["strings"])
+    # A key lives in one of the app's tables only.
+    homes = {}
+    for key in catalog_keys:
+        homes.setdefault(key, []).append(SOURCE_CATALOG)
+    for name, keys in tables.items():
+        for key in keys:
+            homes.setdefault(key, []).append(f"{name}.xcstrings")
+    for key, found in homes.items():
+        if len(found) > 1:
+            key_problems.setdefault(key, []).append(
+                f"is in {' and '.join(found)}: a key lives in one table, the "
+                f"shared Localizable when more than one feature uses it")
+    lookup = {"cases": table_cases, "tables": tables}
     try:
         drafts = read_draft_languages(os.path.join(repo_root, INFO_PLIST))
     except ValueError as error:
@@ -1372,16 +1497,16 @@ def check(repo_root: str):
         key_problems.setdefault("languages", []).extend(plan.problems)
 
     missing = {}
-    checked = scan_sites(conduit, catalog_keys, repo_root, missing, key_problems)
+    checked = scan_sites(conduit, catalog_keys, repo_root, missing, key_problems, lookup)
     # The iPhone app compiles Shared/ too (project.yml).
-    checked += scan_sites(os.path.join(repo_root, "Shared"), catalog_keys, repo_root, missing, key_problems)
+    checked += scan_sites(os.path.join(repo_root, "Shared"), catalog_keys, repo_root, missing, key_problems, lookup)
     # The share extension carries the app's catalog (project.yml).
     share_extension = os.path.join(repo_root, SHARE_EXTENSION_DIRECTORY)
     if os.path.exists(share_extension):
-        checked += scan_sites(share_extension, catalog_keys, repo_root, missing, key_problems)
+        checked += scan_sites(share_extension, catalog_keys, repo_root, missing, key_problems, lookup)
     notification_service = os.path.join(repo_root, NOTIFICATION_SERVICE_DIRECTORY)
     if os.path.exists(notification_service):
-        checked += scan_sites(notification_service, catalog_keys, repo_root, missing, key_problems)
+        checked += scan_sites(notification_service, catalog_keys, repo_root, missing, key_problems, lookup)
 
     # The Apple Watch app has its own catalog, in the same languages.
     watch = os.path.join(repo_root, WATCH_DIRECTORY)
@@ -1398,7 +1523,7 @@ def check(repo_root: str):
                 key_problems.setdefault(os.path.relpath(root, repo_root), []).append(
                     "the Watch compiles this path (WATCH_SHARED_SOURCES), but it doesn't exist")
                 continue
-            checked += scan_sites(root, watch_keys, repo_root, missing, key_problems)
+            checked += scan_sites(root, watch_keys, repo_root, missing, key_problems, lookup)
         prefix = f"{WATCH_DIRECTORY}/{SOURCE_CATALOG}: "
         for key, problems in watch_duplicates.items():
             key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
@@ -1407,7 +1532,7 @@ def check(repo_root: str):
             key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
 
     for name, current in catalogs.items():
-        prefix = "" if name == SOURCE_CATALOG else f"{name}: "
+        prefix = "" if name == SOURCE_CATALOG else f"{name.replace(os.sep, '/')}: "
         for key, problems in duplicates[name].items():
             key_problems.setdefault(f"{prefix}{key}", []).extend(problems)
         for key, problems in catalog_problems(
@@ -1449,13 +1574,81 @@ def check(repo_root: str):
             key_problems.setdefault(f"{plist_name}: {key}", []).append(
                 f"permission prompt missing from {catalog_name}, so iOS "
                 f"shows it in English in every language")
+    # Keys Shared/ and the extensions spell stay in Localizable.
+    for rel, line, key, name in localizable_only_literals(repo_root, tables):
+        key_problems.setdefault(f"{rel}:{line}", []).append(
+            f"spells \"{key}\", which lives in {name}.xcstrings, but this file is "
+            f"compiled into a target that carries only Localizable: move the key "
+            f"back (l10n.py move) and drop table: from its calls")
     return checked, missing, key_problems, plan
 
 
-def scan_sites(root: str, catalog_keys, repo_root: str, missing: dict, key_problems: dict) -> int:
+# Sources compiled into a target that carries only Localizable (project.yml):
+# Shared/ and the extensions. The Watch's own sources have their own catalog.
+LOCALIZABLE_ONLY_ROOTS = ("Shared", "ConduitWidgets", SHARE_EXTENSION_DIRECTORY,
+                          NOTIFICATION_SERVICE_DIRECTORY, "ConduitLocationPush")
+
+
+def _string_literals(source: str):
+    """Yield (skeleton, offset) for every string literal in `source`
+    outside whole-line comments, interpolations' own literals included."""
+    source = strip_comment_lines(source)
+    i = 0
+    while i < len(source):
+        if source.startswith("//", i):
+            end = source.find("\n", i)
+            i = len(source) if end < 0 else end
+            continue
+        if source.startswith('"""', i):
+            end = source.find('"""', i + 3)
+            i = len(source) if end < 0 else end + 3
+            continue
+        if source[i] == '"':
+            parsed = parse_swift_literal_parts(source, i)
+            if parsed is None:
+                return
+            if parsed[0]:
+                yield typed_skeleton(parsed[0], parsed[2]), i
+            for expression in parsed[2]:
+                for skeleton, _offset in _string_literals(expression):
+                    yield skeleton, i
+            i = parsed[1]
+            continue
+        i += 1
+
+
+def localizable_only_literals(repo_root: str, tables: dict):
+    """(file, line, key, table) for each feature-table key spelled as a
+    literal in a source that reaches only Localizable."""
+    if not tables:
+        return
+    home = {key: name for name, keys in tables.items() for key in keys}
+    paths = [os.path.join(repo_root, source) for source in WATCH_SHARED_SOURCES
+             if source.startswith("Conduit/")]
+    for root in LOCALIZABLE_ONLY_ROOTS:
+        for dirpath, _dirnames, filenames in os.walk(os.path.join(repo_root, root)):
+            paths.extend(os.path.join(dirpath, name) for name in sorted(filenames)
+                         if name.endswith(".swift"))
+    for path in paths:
+        try:
+            with open(path, encoding="utf-8") as handle:
+                source = strip_comment_lines(handle.read())
+        except (OSError, ValueError):
+            continue  # an unreadable file is reported by the site scan
+        for skeleton, offset in _string_literals(source):
+            if skeleton in home:
+                yield (os.path.relpath(path, repo_root),
+                       source.count("\n", 0, offset) + 1, skeleton, home[skeleton])
+
+
+def scan_sites(root: str, catalog_keys, repo_root: str, missing: dict, key_problems: dict,
+               lookup=None) -> int:
     """Checks every localizable call site in the Swift files under `root`
     (or in `root`, a single file) against `catalog_keys`, adding what's missing to `missing`. Returns the
-    number of sites checked."""
+    number of sites checked. `lookup` ({"cases": {case: name}, "tables":
+    {name: keys}}) holds a call naming a feature table to that table."""
+    cases = (lookup or {}).get("cases", {})
+    tables = (lookup or {}).get("tables", {})
     checked = 0
     if os.path.isfile(root):
         walk = [(os.path.dirname(root), [], [os.path.basename(root)])]
@@ -1505,15 +1698,47 @@ def scan_sites(root: str, catalog_keys, repo_root: str, missing: dict, key_probl
                     f"interpolates \"{skeleton}\" into a localized string, where "
                     f"it is an argument and never localizes: wrap it in "
                     f"AppLocalization.string")
-            for skeleton, offset in extract_sites(source):
+            named = set()
+            for skeleton, table, offset in extract_table_sites(source):
                 checked += 1
+                line = source.count("\n", 0, offset) + 1
+                keys = catalog_keys
+                if table is not None:
+                    name = cases.get(table)
+                    if name is None:
+                        key_problems.setdefault(f"{rel}:{line}", []).append(
+                            f"names table {table}, which isn't a LocalizationTable "
+                            f"case: pass one as .case")
+                        continue
+                    if not may_name_a_table(rel):
+                        key_problems.setdefault(f"{rel}:{line}", []).append(
+                            f"names table .{table}, but this file is compiled into a "
+                            f"target that carries only Localizable: drop table: and "
+                            f"keep the key in Localizable.xcstrings")
+                        continue
+                    named.add(table)
+                    keys = tables.get(name, set())
                 if skeleton in EXEMPT_KEYS:
                     continue
-                if catalog_has(catalog_keys, skeleton):
+                if catalog_has(keys, skeleton):
                     continue
-                line = source.count("\n", 0, offset) + 1
-                rel = os.path.relpath(path, repo_root)
-                missing.setdefault(skeleton, []).append(f"{rel}:{line}")
+                location = f"{rel}:{line}"
+                # Name the table that has the key, when this file may use it.
+                elsewhere = []
+                if may_name_a_table(rel):
+                    elsewhere = [f".{case}" for case, name in sorted(cases.items())
+                                 if case != table and skeleton in tables.get(name, ())]
+                if table is not None and skeleton in catalog_keys:
+                    elsewhere.append("no table (Localizable)")
+                if elsewhere:
+                    location += f" (the key is in {', '.join(elsewhere)}: pass that table)"
+                missing.setdefault(skeleton, []).append(location)
+            if len(named) > 1:
+                key_problems.setdefault(rel, []).append(
+                    f"names {len(named)} feature tables ("
+                    f"{', '.join('.' + case for case in sorted(named))}): a file "
+                    f"belongs to one feature, and keys more than one feature uses "
+                    f"go in Localizable (no table)")
     return checked
 
 

@@ -12,6 +12,8 @@ import SwiftUI
 /// remove button throws it away, so it never leaves the phone.
 struct ScreenQuestionVoiceBanner: View {
     let screenshot: Attachment?
+    /// A photo from the voice screen's Camera waits the same way.
+    var kind: SharedPictureKind = .screenshot
     let onDiscard: () -> Void
     /// Set when the screenshot joined a chat already in use.
     var onNewChat: (() -> Void)? = nil
@@ -19,7 +21,9 @@ struct ScreenQuestionVoiceBanner: View {
     var body: some View {
         if let screenshot {
             VStack(alignment: .leading, spacing: 6) {
-                Text("Asking about this screenshot")
+                Text(kind == .photo
+                    ? AppLocalization.string("Asking about this photo", table: .phone)
+                    : AppLocalization.string("Asking about this screenshot", table: .phone))
                     .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 HStack(spacing: 8) {
@@ -68,7 +72,7 @@ struct ScreenshotNewChatButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityHint(AppLocalization.string("Moves the screenshot to a new chat."))
+        .accessibilityHint(AppLocalization.string("Moves the screenshot to a new chat.", table: .phone))
         .accessibilityIdentifier("screenQuestion.newChat.\(placement.rawValue)")
     }
 }
@@ -138,7 +142,7 @@ struct ScreenQuestionSettingsSection: View {
         VStack(alignment: .leading, spacing: 6) {
             Button(action: openShortcut) {
                 Label(
-                    isOpeningShortcut ? AppLocalization.string("Opening…") : AppLocalization.string("Add the shortcut"),
+                    isOpeningShortcut ? AppLocalization.string("Opening…", table: .phone) : AppLocalization.string("Add the shortcut", table: .phone),
                     systemImage: "plus.square.on.square"
                 )
             }

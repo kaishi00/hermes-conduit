@@ -33,7 +33,7 @@ struct VoiceCapabilitySnapshot: Equatable {
             isGatewayConnected: false,
             supportsTranscription: false,
             supportsSpeech: false,
-            unavailableReason: AppLocalization.string("Your Hermes server doesn't offer voice. Update Hermes to use Voice.")
+            unavailableReason: AppLocalization.string("Your Hermes server doesn't offer voice. Update Hermes to use Voice.", table: .voice)
         )
     }
 }
@@ -431,6 +431,18 @@ enum ReadAloudSpeed: Double, CaseIterable, Identifiable {
     }
 }
 
+/// Read replies aloud (notifier issue 674): the open chat's replies are read
+/// as they stream, whatever way the message was sent, and a group room's
+/// new messages one after another. A device-wide choice like the speed;
+/// off by default, when only the speaker button under a reply reads it.
+enum ReadRepliesAloud {
+    static let preferenceKey = "conduit.voice.readRepliesAloud"
+
+    static func isOn(_ defaults: UserDefaults = .standard) -> Bool {
+        defaults.bool(forKey: preferenceKey)
+    }
+}
+
 /// A prebuilt Gemini Live voice: its API name and Google's one-word
 /// description of how it sounds.
 struct GeminiLiveVoice: Equatable, Identifiable {
@@ -443,36 +455,36 @@ struct GeminiLiveVoice: Equatable, Identifiable {
     /// Computed so the descriptions follow the current app language.
     static var all: [GeminiLiveVoice] {
         [
-            GeminiLiveVoice(name: "Zephyr", style: AppLocalization.string("Bright")),
-            GeminiLiveVoice(name: "Puck", style: AppLocalization.string("Upbeat")),
-            GeminiLiveVoice(name: "Charon", style: AppLocalization.string("Informative")),
-            GeminiLiveVoice(name: "Kore", style: AppLocalization.string("Firm")),
-            GeminiLiveVoice(name: "Fenrir", style: AppLocalization.string("Excitable")),
-            GeminiLiveVoice(name: "Leda", style: AppLocalization.string("Youthful")),
-            GeminiLiveVoice(name: "Orus", style: AppLocalization.string("Firm")),
-            GeminiLiveVoice(name: "Aoede", style: AppLocalization.string("Breezy")),
-            GeminiLiveVoice(name: "Callirrhoe", style: AppLocalization.string("Easy-going")),
-            GeminiLiveVoice(name: "Autonoe", style: AppLocalization.string("Bright")),
-            GeminiLiveVoice(name: "Enceladus", style: AppLocalization.string("Breathy")),
+            GeminiLiveVoice(name: "Zephyr", style: AppLocalization.string("Bright", table: .voice)),
+            GeminiLiveVoice(name: "Puck", style: AppLocalization.string("Upbeat", table: .voice)),
+            GeminiLiveVoice(name: "Charon", style: AppLocalization.string("Informative", table: .voice)),
+            GeminiLiveVoice(name: "Kore", style: AppLocalization.string("Firm", table: .voice)),
+            GeminiLiveVoice(name: "Fenrir", style: AppLocalization.string("Excitable", table: .voice)),
+            GeminiLiveVoice(name: "Leda", style: AppLocalization.string("Youthful", table: .voice)),
+            GeminiLiveVoice(name: "Orus", style: AppLocalization.string("Firm", table: .voice)),
+            GeminiLiveVoice(name: "Aoede", style: AppLocalization.string("Breezy", table: .voice)),
+            GeminiLiveVoice(name: "Callirrhoe", style: AppLocalization.string("Easy-going", table: .voice)),
+            GeminiLiveVoice(name: "Autonoe", style: AppLocalization.string("Bright", table: .voice)),
+            GeminiLiveVoice(name: "Enceladus", style: AppLocalization.string("Breathy", table: .voice)),
             GeminiLiveVoice(name: "Iapetus", style: AppLocalization.string("Clear")),
-            GeminiLiveVoice(name: "Umbriel", style: AppLocalization.string("Easy-going")),
-            GeminiLiveVoice(name: "Algieba", style: AppLocalization.string("Smooth")),
-            GeminiLiveVoice(name: "Despina", style: AppLocalization.string("Smooth")),
+            GeminiLiveVoice(name: "Umbriel", style: AppLocalization.string("Easy-going", table: .voice)),
+            GeminiLiveVoice(name: "Algieba", style: AppLocalization.string("Smooth", table: .voice)),
+            GeminiLiveVoice(name: "Despina", style: AppLocalization.string("Smooth", table: .voice)),
             GeminiLiveVoice(name: "Erinome", style: AppLocalization.string("Clear")),
-            GeminiLiveVoice(name: "Algenib", style: AppLocalization.string("Gravelly")),
-            GeminiLiveVoice(name: "Rasalgethi", style: AppLocalization.string("Informative")),
-            GeminiLiveVoice(name: "Laomedeia", style: AppLocalization.string("Upbeat")),
-            GeminiLiveVoice(name: "Achernar", style: AppLocalization.string("Soft")),
-            GeminiLiveVoice(name: "Alnilam", style: AppLocalization.string("Firm")),
-            GeminiLiveVoice(name: "Schedar", style: AppLocalization.string("Even")),
-            GeminiLiveVoice(name: "Gacrux", style: AppLocalization.string("Mature")),
-            GeminiLiveVoice(name: "Pulcherrima", style: AppLocalization.string("Forward")),
-            GeminiLiveVoice(name: "Achird", style: AppLocalization.string("Friendly")),
-            GeminiLiveVoice(name: "Zubenelgenubi", style: AppLocalization.string("Casual")),
+            GeminiLiveVoice(name: "Algenib", style: AppLocalization.string("Gravelly", table: .voice)),
+            GeminiLiveVoice(name: "Rasalgethi", style: AppLocalization.string("Informative", table: .voice)),
+            GeminiLiveVoice(name: "Laomedeia", style: AppLocalization.string("Upbeat", table: .voice)),
+            GeminiLiveVoice(name: "Achernar", style: AppLocalization.string("Soft", table: .voice)),
+            GeminiLiveVoice(name: "Alnilam", style: AppLocalization.string("Firm", table: .voice)),
+            GeminiLiveVoice(name: "Schedar", style: AppLocalization.string("Even", table: .voice)),
+            GeminiLiveVoice(name: "Gacrux", style: AppLocalization.string("Mature", table: .voice)),
+            GeminiLiveVoice(name: "Pulcherrima", style: AppLocalization.string("Forward", table: .voice)),
+            GeminiLiveVoice(name: "Achird", style: AppLocalization.string("Friendly", table: .voice)),
+            GeminiLiveVoice(name: "Zubenelgenubi", style: AppLocalization.string("Casual", table: .voice)),
             GeminiLiveVoice(name: "Vindemiatrix", style: AppLocalization.string("Gentle")),
-            GeminiLiveVoice(name: "Sadachbia", style: AppLocalization.string("Lively")),
-            GeminiLiveVoice(name: "Sadaltager", style: AppLocalization.string("Knowledgeable")),
-            GeminiLiveVoice(name: "Sulafat", style: AppLocalization.string("Warm")),
+            GeminiLiveVoice(name: "Sadachbia", style: AppLocalization.string("Lively", table: .voice)),
+            GeminiLiveVoice(name: "Sadaltager", style: AppLocalization.string("Knowledgeable", table: .voice)),
+            GeminiLiveVoice(name: "Sulafat", style: AppLocalization.string("Warm", table: .voice)),
         ]
     }
 }
@@ -509,15 +521,15 @@ struct GPTLiveVoice: Equatable, Identifiable {
     /// Computed so the descriptions follow the current app language.
     static var all: [GPTLiveVoice] {
         [
-            GPTLiveVoice(name: "arbor", style: AppLocalization.string("Easy-going")),
-            GPTLiveVoice(name: "breeze", style: AppLocalization.string("Animated")),
-            GPTLiveVoice(name: "cove", style: AppLocalization.string("Composed")),
-            GPTLiveVoice(name: "ember", style: AppLocalization.string("Confident")),
-            GPTLiveVoice(name: "juniper", style: AppLocalization.string("Upbeat")),
-            GPTLiveVoice(name: "maple", style: AppLocalization.string("Cheerful")),
-            GPTLiveVoice(name: "sol", style: AppLocalization.string("Savvy")),
-            GPTLiveVoice(name: "spruce", style: AppLocalization.string("Calm")),
-            GPTLiveVoice(name: "vale", style: AppLocalization.string("Bright")),
+            GPTLiveVoice(name: "arbor", style: AppLocalization.string("Easy-going", table: .voice)),
+            GPTLiveVoice(name: "breeze", style: AppLocalization.string("Animated", table: .voice)),
+            GPTLiveVoice(name: "cove", style: AppLocalization.string("Composed", table: .voice)),
+            GPTLiveVoice(name: "ember", style: AppLocalization.string("Confident", table: .voice)),
+            GPTLiveVoice(name: "juniper", style: AppLocalization.string("Upbeat", table: .voice)),
+            GPTLiveVoice(name: "maple", style: AppLocalization.string("Cheerful", table: .voice)),
+            GPTLiveVoice(name: "sol", style: AppLocalization.string("Savvy", table: .voice)),
+            GPTLiveVoice(name: "spruce", style: AppLocalization.string("Calm", table: .voice)),
+            GPTLiveVoice(name: "vale", style: AppLocalization.string("Bright", table: .voice)),
         ]
     }
 
@@ -571,8 +583,8 @@ enum AppleSpeechRecognitionAvailability: Equatable {
     var title: String {
         switch self {
         case .ready: return AppLocalization.string("Ready")
-        case .permissionRequired: return AppLocalization.string("Permission required")
-        case .permissionDenied: return AppLocalization.string("Permission denied")
+        case .permissionRequired: return AppLocalization.string("Permission required", table: .voice)
+        case .permissionDenied: return AppLocalization.string("Permission denied", table: .voice)
         case .unsupported: return AppLocalization.string("Unavailable")
         }
     }
@@ -713,7 +725,11 @@ enum VoiceAudioError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .microphonePermissionDenied: return AppLocalization.string("Conduit needs the microphone for voice. Allow it in iPhone Settings > Conduit.")
+        case .microphonePermissionDenied: return SystemSettings.worded(
+            iPhone: AppLocalization.string("Conduit needs the microphone for voice. Allow it in iPhone Settings > Conduit.", table: .voice),
+            iPad: AppLocalization.string("Conduit needs the microphone for voice. Allow it in iPad Settings > Conduit.", table: .voice),
+            mac: AppLocalization.string("Conduit needs the microphone for voice. Allow it in System Settings → Privacy & Security → Microphone.", table: .voice)
+        )
         case .noAudioCaptured: return AppLocalization.string("No speech was captured.")
         case .unavailable(let detail): return detail
         }
@@ -829,6 +845,12 @@ protocol SpeechPlaybackService: AnyObject {
     var keepsRateAdjustable: Bool { get set }
     /// Retimes the audio already playing as well as the next stream.
     func changeRate(_ rate: Float)
+    /// Holds the audio session as this service's `ownershipIntent` while
+    /// nothing plays, so the gap between one stream's end and the next's
+    /// start doesn't deactivate it (other audio coming back up, Now Playing
+    /// lost; issue 2148). Returns the release, safe to call more than once;
+    /// nil when the session can't be held.
+    func holdSession(onTakenOver: (@MainActor () -> Void)?) -> (@MainActor () -> Void)?
 }
 
 extension SpeechPlaybackService {
@@ -856,6 +878,9 @@ extension SpeechPlaybackService {
     }
 
     func changeRate(_ rate: Float) { playbackRate = rate }
+
+    /// Services that don't own an audio session hold nothing.
+    func holdSession(onTakenOver: (@MainActor () -> Void)?) -> (@MainActor () -> Void)? { nil }
 }
 
 @MainActor

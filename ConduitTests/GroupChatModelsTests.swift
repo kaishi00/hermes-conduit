@@ -425,6 +425,28 @@ final class GroupChatModelsTests: XCTestCase {
         XCTAssertEqual(replay.lastChatMessage?.messageText, "b")
     }
 
+    func testTheBotsMessagesAReplayGainedAreTheOnesReadAloud() {
+        func bot(_ seq: Int) -> [String: Any] {
+            eventJSON(seq: seq, kind: "message.member", actor: ["kind": "member", "id": "researcher"],
+                      payload: ["text": "b\(seq)", "thread_id": "main"])
+        }
+        var old = GroupRoomReplay(roomID: "room-1")
+        old.adopt(page: logPage([bot(5), eventJSON(seq: 8, kind: "message.user", payload: ["text": "mine"])]))
+        // A resync fills in 6 and 7 below the user's own send, and 9 after it.
+        var new = GroupRoomReplay(roomID: "room-1")
+        new.adoptInitialTail(page: logPage([bot(3), bot(5), bot(6), bot(7),
+                                            eventJSON(seq: 8, kind: "message.user", payload: ["text": "mine"]), bot(9)]))
+        XCTAssertEqual(new.memberMessages(since: old).map(\.seq), [6, 7, 9], "history below the old window isn't new")
+        // A fill below the last bot message, which stays the last, is new too.
+        var gapped = GroupRoomReplay(roomID: "room-1")
+        gapped.adopt(page: logPage([bot(5), bot(8)]))
+        var filled = GroupRoomReplay(roomID: "room-1")
+        filled.adoptInitialTail(page: logPage([bot(5), bot(6), bot(8)]))
+        XCTAssertEqual(filled.memberMessages(since: gapped).map(\.seq), [6])
+        // An empty room's first bot message is new.
+        XCTAssertEqual(old.memberMessages(since: GroupRoomReplay(roomID: "room-1")).map(\.seq), [5])
+    }
+
     func testReplayIncrementalPageAppendsWithoutDuplicates() {
         var replay = GroupRoomReplay(roomID: "room-1")
         replay.adopt(page: logPage([eventJSON(seq: 1, kind: "message.user", payload: ["text": "a"])]))
@@ -595,11 +617,20 @@ final class GroupChatModelsTests: XCTestCase {
             ["user:d1", "dmessage:2", "dmessage:3", "dmessage:4", landedID, GroupRoomTranscript.respondingID]
         )
         // A member's run shows its picture and name once.
-        guard case .room(.event(_, _, let runContinues, _)) = rows[2].kind,
-              case .room(.event(_, _, let otherContinues, _)) = rows[3].kind else { return XCTFail("\(rows)") }
+        guard case .room(.event(_, _, let runContinues, _, _)) = rows[2].kind,
+              case .room(.event(_, _, let otherContinues, _, _)) = rows[3].kind else { return XCTFail("\(rows)") }
         XCTAssertTrue(runContinues)
         XCTAssertFalse(otherContinues)
         XCTAssertEqual(rows[4].kind, .room(.pending(text: "Plan the trip", members: members, isSending: true)))
+        // A message with files carries them on its row, in its room.
+        let picture = GroupRoomAttachment(attachmentID: "a1", kind: "image", name: "cat.png", size: 12, mime: "image/png")
+        let withFiles = GroupRoomTranscript.rows(
+            events: [], roomID: "room-1", members: members,
+            pending: GroupRoomOutbox.Pending(text: "", eventID: "conduit-f", attachments: [picture]),
+            isSending: true, responder: nil
+        )
+        guard case .room(.pending(_, _, _, _, let files)) = withFiles.last?.kind else { return XCTFail("\(withFiles)") }
+        XCTAssertEqual(files, [picture.attachment(roomID: "room-1")])
 
         // The send landed while its row still shows: the event's row, once.
         let landed = GroupRoomTranscript.rows(
@@ -607,7 +638,7 @@ final class GroupChatModelsTests: XCTestCase {
             members: members, pending: pending, isSending: false, responder: nil
         )
         XCTAssertEqual(landed.map(\.id), ["user:d1", "dmessage:2", "dmessage:3", "dmessage:4", landedID])
-        guard case .room(.event(_, _, _, _)) = landed[4].kind else { return XCTFail("the event's row, not the pending one") }
+        guard case .room(.event(_, _, _, _, _)) = landed[4].kind else { return XCTFail("the event's row, not the pending one") }
 
         // Nothing in the room yet: its welcome.
         let empty = GroupRoomTranscript.rows(
@@ -986,6 +1017,28 @@ final class GroupChatModelsTests: XCTestCase {
                 "member_id": "zhongli", "profile": "zhongli", "handle": "zhongli", "display_name": "Zhongli",
             ]))!,
         ]
+    }
+
+    /// A scheduled job's post is never the user's own message, and a bot's
+    /// work update posted back into its room shows only its lines.
+    func testAScheduledPostIsNotTheUsersAndAWorkUpdateShowsItsLines() {
+        let work = turnEvent(eventJSON(
+            seq: 4, kind: "message.user",
+            actor: ["kind": "user", "id": "cron:conduit-work-default-W1-ab12", "display_name": "Furina's work"],
+            payload: ["text": "@Furina Work update from your workstreams, for this room.\n- W1 “Wallpaper” finished.\nTell the room in a line or two.",
+                      "thread_id": "cron-1"]))
+        XCTAssertTrue(work.isScheduledPost)
+        XCTAssertEqual(work.workUpdateText, "W1 “Wallpaper” finished.")
+        let nightly = turnEvent(eventJSON(
+            seq: 5, kind: "message.user", actor: ["kind": "user", "id": "cron:job42", "display_name": "Nightly"],
+            payload: ["text": "All backups OK", "thread_id": "cron-2"]))
+        XCTAssertTrue(nightly.isScheduledPost)
+        XCTAssertNil(nightly.workUpdateText)
+        let mine = userMessage(seq: 6, text: "- not a work update")
+        XCTAssertFalse(mine.isScheduledPost)
+        XCTAssertNil(mine.workUpdateText)
+        XCTAssertFalse(GroupEventRow.sameSpeaker(mine, work))
+        XCTAssertFalse(GroupEventRow.sameSpeaker(work, nightly))
     }
 
     private func turnEvent(_ json: [String: Any]) -> GroupEvent {

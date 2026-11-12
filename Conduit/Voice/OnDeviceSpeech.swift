@@ -59,6 +59,8 @@ protocol OnDeviceSpeechSynthesizing: AnyObject {
 @MainActor
 final class OnDeviceSpeechStream: VoiceSpeechStream {
     private let synthesizer: OnDeviceSpeechSynthesizing
+    /// The Read Aloud reading this stream belongs to (LiveCallTrace.run).
+    private let traceRun: Int
     private let fallbackLanguage: String?
     private let onStart: @MainActor (Double) throws -> Void
     private let onPCM16: @MainActor (Data, Double) throws -> Void
@@ -81,6 +83,7 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void
     ) {
         self.synthesizer = synthesizer ?? SystemSpeechSynthesizer()
+        traceRun = LiveCallTrace.readAloud.run
         self.fallbackLanguage = fallbackLanguage
         self.onStart = onStart
         self.onPCM16 = onPCM16
@@ -89,8 +92,14 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     func append(_ text: String) async throws {
         if terminal { throw terminalError ?? CancellationError() }
         pending += text
-        // Whole sentences start speaking while the rest of the reply streams in.
-        if let sentences = Self.takeCompleteSentences(from: &pending) { queue.append(sentences) }
+        // Whole sentences start speaking while the rest of the reply streams in,
+        // each its own utterance: a Premium voice given a long run of them can
+        // go quiet past the watchdog partway and lose the rest (issue 2191).
+        let sentences = Self.takeCompleteSentences(from: &pending)
+        if !sentences.isEmpty {
+            LiveCallTrace.readAloud.note("Queued \(sentences.count) \(sentences.count == 1 ? "sentence" : "sentences") (\(sentences.map { String($0.count) }.joined(separator: ", ")) characters)", run: traceRun)
+        }
+        queue.append(contentsOf: sentences)
         speakNext()
     }
 
@@ -101,7 +110,10 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         }
         let rest = pending.trimmingCharacters(in: .whitespacesAndNewlines)
         pending = ""
-        if !rest.isEmpty { queue.append(rest) }
+        if !rest.isEmpty {
+            LiveCallTrace.readAloud.note("Queued the rest (\(rest.count) characters)", run: traceRun)
+            queue.append(rest)
+        }
         finishRequested = true
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -177,29 +189,150 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         continuation?.resume(with: result)
     }
 
-    /// Moves every finished sentence out of `text`, leaving the unfinished
-    /// tail. A sentence ends at . ! ? … followed by whitespace (so "3.5"
-    /// isn't split), or right after a line break or a CJK full stop.
-    static func takeCompleteSentences(from text: inout String) -> String? {
-        var boundary: String.Index?
+    /// Moves every finished sentence out of `text`, one string each, leaving
+    /// the unfinished tail. A sentence ends at . ! ? … followed by whitespace
+    /// (so "3.5" isn't split), with any closing quotes or brackets in
+    /// between kept on it, or right after a line break or a CJK full stop.
+    /// A period after a list number, a title or an abbreviation ("1.",
+    /// "Dr.", "e.g.") doesn't end one, so it's said with what follows, and
+    /// nothing inside a Markdown link does, so the link reaches PreviewText
+    /// whole and its address isn't read. A malformed link gives up its hold:
+    /// an address at its first space not opening a title or at a line
+    /// break, and an address or title still open a link's length after its
+    /// "](".
+    static func takeCompleteSentences(from text: inout String) -> [String] {
+        var sentences: [String] = []
+        var start = text.startIndex
         var index = text.startIndex
+        var inLinkText = false
+        var addressDepth = 0
+        var titleCloser: Character?
+        var holdEnd = text.endIndex
         while index < text.endIndex {
             let character = text[index]
-            let next = text.index(after: index)
-            if "。！？".contains(character) {
-                boundary = next
-            } else if character == "\n" {
-                boundary = next
-            } else if ".!?…".contains(character), next < text.endIndex, text[next].isWhitespace {
-                boundary = next
+            var next = text.index(after: index)
+            var ends = false
+            if addressDepth > 0, index >= holdEnd {
+                // An address or title still open a link's length after its
+                // "](" never closed: give up the hold, and read this
+                // character as plain text.
+                titleCloser = nil
+                addressDepth = 0
+            }
+            if inLinkText {
+                if character == "]" {
+                    inLinkText = false
+                    if next < text.endIndex, text[next] == "(" {
+                        addressDepth = 1
+                        holdEnd = text.index(index, offsetBy: Self.linkHoldLimit, limitedBy: text.endIndex) ?? text.endIndex
+                        next = text.index(after: next)
+                    }
+                }
+            } else if addressDepth > 0 {
+                // An address can hold parentheses of its own ("a_(b)"); an
+                // escaped one ("a\\(b") is just a character. It has no
+                // spaces, so one not opening a title ends a malformed
+                // address ("a(b next."), which would otherwise hold every
+                // sentence after it until the reply ends.
+                if let closer = titleCloser {
+                    // Inside a title ("a "One. Two")") a space, a stop or a
+                    // line break is just text.
+                    if character == "\\", next < text.endIndex {
+                        next = text.index(after: next)
+                    } else if character == closer {
+                        titleCloser = nil
+                    }
+                } else if character == "\\", next < text.endIndex {
+                    next = text.index(after: next)
+                } else if "\"'(".contains(character), index > start,
+                          text[text.index(before: index)].isWhitespace {
+                    titleCloser = character == "(" ? ")" : character
+                } else if character.isNewline || (character.isWhitespace && addressDepth > 1) {
+                    // A title follows the address itself, never an unclosed
+                    // "(" inside it, and a line break ends its sentence too.
+                    addressDepth = 0
+                    ends = character.isNewline
+                } else if character.isWhitespace {
+                    // Nothing after it yet: a title may still be streaming in.
+                    if let after = text[next...].first(where: { !$0.isWhitespace }),
+                       !"\"'(".contains(after) {
+                        addressDepth = 0
+                    }
+                } else if character == "(" {
+                    addressDepth += 1
+                } else if character == ")" {
+                    addressDepth -= 1
+                }
+            } else if character == "[", opensLink(text[next...]) {
+                inLinkText = true
+            } else if "。！？".contains(character) || character.isNewline {
+                ends = true
+                // 「你好。」 keeps its closing quote.
+                if !character.isNewline {
+                    while next < text.endIndex, sentenceClosers.contains(text[next]) { next = text.index(after: next) }
+                }
+            } else if ".!?…".contains(character) {
+                var end = next
+                while end < text.endIndex, sentenceClosers.contains(text[end]) { end = text.index(after: end) }
+                if end < text.endIndex, text[end].isWhitespace,
+                   character != "." || !endsAbbreviation(text[start..<index]) {
+                    ends = true
+                    next = end
+                }
+            }
+            if ends {
+                let sentence = text[start..<next].trimmingCharacters(in: .whitespacesAndNewlines)
+                if !sentence.isEmpty { sentences.append(sentence) }
+                start = next
             }
             index = next
         }
-        guard let boundary else { return nil }
-        let sentences = String(text[..<boundary]).trimmingCharacters(in: .whitespacesAndNewlines)
-        text = String(text[boundary...])
-        return sentences.isEmpty ? nil : sentences
+        if start > text.startIndex { text = String(text[start...]) }
+        return sentences
     }
+
+    /// How long, in characters, an unfinished link may hold sentences back.
+    private static let linkHoldLimit = 200
+
+    /// Quotes and brackets that close a sentence after its last mark.
+    private static let sentenceClosers: Set<Character> = ["\"", "'", "\u{201D}", "\u{2019}", "\u{00BB}", ")", "]", "\u{300D}", "\u{300F}"]
+
+    /// Whether the "[" just before `rest` opens a link: its "](" comes
+    /// before any other "[". A link still streaming in (no "]" yet, or one
+    /// with its "(" still to come) holds too, so it isn't cut before its
+    /// address arrives, but only for a link's length: a stray bracket
+    /// ("[sic") doesn't hold sentences for long.
+    private static func opensLink(_ rest: Substring) -> Bool {
+        if let close = rest.range(of: "](") {
+            return !rest[..<close.lowerBound].contains("[")
+        }
+        guard rest.count < linkHoldLimit, !rest.contains("[") else { return false }
+        return !rest.dropLast().contains("]") && (rest.last == "]" || !rest.contains("]"))
+    }
+
+    /// Whether the word just before a period is a list number (a short
+    /// number opening its sentence: "1."), a title ("Dr", "Mrs"), an initial
+    /// ("J"), or short letter groups each followed by a period ("e.g", "U.S",
+    /// "Ph.D"). Any other
+    /// word ends its sentence: short ones ("do it."), a number closing one
+    /// ("costs 42."), domains, file names and decimals.
+    private static func endsAbbreviation(_ before: Substring) -> Bool {
+        let words = before.split(whereSeparator: { $0.isWhitespace })
+        let word = (words.last ?? "").drop(while: { !$0.isLetter && !$0.isNumber })
+        guard !word.isEmpty else { return false }
+        if word.allSatisfy(\.isNumber) { return words.count == 1 && word.count <= 3 }
+        if word.contains(".") {
+            // "e.g", "U.S", and degrees like "Ph.D" and "M.Sc".
+            let parts = word.split(separator: ".", omittingEmptySubsequences: false)
+            guard parts.allSatisfy({ (1...2).contains($0.count) && $0.allSatisfy(\.isLetter) }) else { return false }
+            // A degree's parts each start with a capital; "My.md" is a file.
+            return parts.allSatisfy { $0.count == 1 } || parts.allSatisfy { $0.first?.isUppercase == true }
+        }
+        if word.count == 1, let letter = word.first, letter.isUppercase { return true }
+        return titles.contains(word.lowercased())
+    }
+
+    private static let titles: Set<String> = ["mr", "mrs", "ms", "dr", "prof", "st", "jr", "sr", "vs"]
 
     /// The reply's language, so a German answer gets a German voice even
     /// with the app in English. Nil when the text is too short to tell.
@@ -216,8 +349,8 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
     }
 
     /// The tag a detected language is spoken by. Cantonese ("yue") goes to
-    /// zh-HK, the tag iOS gives its Cantonese voices, so it reaches them and
-    /// a Traditional Chinese pick.
+    /// zh-HK, so it reaches Cantonese voices (iOS tags them zh-HK or yue, both
+    /// under Traditional Chinese's key) and a Traditional Chinese pick.
     nonisolated static func detectedTag(_ raw: String) -> String {
         raw.lowercased() == "yue" ? "zh-HK" : raw
     }
@@ -254,8 +387,17 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
     private var watchdog: Task<Void, Never>?
     /// When the current utterance last produced audio (or started).
     private var lastAudio = ContinuousClock.now
+    /// Read Aloud's trace (issue 1641): the sentence speaking, counted
+    /// from 1 per stream, and the audio it has produced.
+    private var sentence = 0
+    private var sentenceAudio: TimeInterval = 0
+    /// Sentences already noted as producing audio after their end.
+    private var lateAudioNoted: Set<Int> = []
+    /// The Read Aloud reading this voice speaks for (LiveCallTrace.run).
+    private let traceRun: Int
 
     override init() {
+        traceRun = LiveCallTrace.readAloud.run
         super.init()
         synthesizer.delegate = self
     }
@@ -268,10 +410,14 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
     ) {
         utterance += 1
         let id = utterance
+        sentence += 1
+        let number = sentence
+        sentenceAudio = 0
         self.onDone = onDone
         let request = AVSpeechUtterance(string: text)
         request.voice = voice(for: language)
         self.request = request
+        LiveCallTrace.readAloud.note("Sentence \(number): \(text.count) characters, \(Self.traceName(of: request.voice))", run: traceRun)
         armWatchdog(id)
         synthesizer.write(request) { [weak self] buffer in
             // Called off the main thread, in order; the main queue keeps it.
@@ -281,11 +427,21 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
             let isEnd = pcm.frameLength == 0
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    guard let self, self.utterance == id else { return }
+                    guard let self else { return }
+                    guard self.utterance == id else {
+                        // Audio for a sentence already ended is dropped:
+                        // the trace says so once (issue 1641).
+                        if !data.isEmpty, !self.lateAudioNoted.contains(number) {
+                            self.lateAudioNoted.insert(number)
+                            LiveCallTrace.readAloud.note("Sentence \(number): audio after its end, dropped", run: self.traceRun)
+                        }
+                        return
+                    }
                     if isEnd {
-                        self.finish(id)
+                        self.finish(id, how: "end of speech")
                     } else {
                         self.lastAudio = .now
+                        if rate > 0 { self.sentenceAudio += Double(data.count / 2) / rate }
                         if !data.isEmpty { onAudio(data, rate) }
                     }
                 }
@@ -302,8 +458,9 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
         synthesizer.stopSpeaking(at: .immediate)
     }
 
-    private func finish(_ id: Int) {
+    private func finish(_ id: Int, how: String) {
         guard utterance == id, let onDone else { return }
+        LiveCallTrace.readAloud.note("Sentence \(sentence) ended (\(how)) after \(String(format: "%.1f", sentenceAudio)) s of audio", run: traceRun)
         // Late buffers of a finished utterance are dropped.
         utterance += 1
         self.onDone = nil
@@ -324,7 +481,7 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
                 do { try await Task.sleep(until: self.lastAudio + quiet, clock: .continuous) } catch { return }
                 if ContinuousClock.now - self.lastAudio >= quiet {
                     onDeviceSpeechLog.notice("iPhone speech went quiet without ending; moving on")
-                    self.finish(id)
+                    self.finish(id, how: "quiet for 8 s")
                     return
                 }
             }
@@ -339,9 +496,21 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, let request = self.request, ObjectIdentifier(request) == finished else { return }
-                self.finish(self.utterance)
+                self.finish(self.utterance, how: "finished without an end buffer")
             }
         }
+    }
+
+    /// A voice as the trace names it: its quality and identifier, which
+    /// say which voice it was without any text.
+    private static func traceName(of voice: AVSpeechSynthesisVoice?) -> String {
+        guard let voice else { return "no voice found" }
+        let quality = switch voice.quality {
+        case .premium: "Premium"
+        case .enhanced: "Enhanced"
+        default: "Default"
+        }
+        return "\(quality) voice \(voice.identifier)"
     }
 
     /// The voice picked for `language` in Settings, or else the best one
@@ -389,6 +558,9 @@ final class FallbackSpeechStream: VoiceSpeechStream {
     ) -> VoiceSpeechStream
 
     private let openOnDevice: OpenOnDevice
+    /// Who speaks until a failure, as Read Aloud's trace names it.
+    let primaryName: String
+    private let traceRun: Int
     private let onFallback: @MainActor (Error) -> Void
     private let onStart: @MainActor (Double) throws -> Void
     private let onPCM16: @MainActor (Data, Double) throws -> Void
@@ -401,11 +573,14 @@ final class FallbackSpeechStream: VoiceSpeechStream {
 
     private init(
         openOnDevice: @escaping OpenOnDevice,
+        primaryName: String,
         onFallback: @escaping @MainActor (Error) -> Void,
         onStart: @escaping @MainActor (Double) throws -> Void,
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void
     ) {
         self.openOnDevice = openOnDevice
+        self.primaryName = primaryName
+        traceRun = LiveCallTrace.readAloud.run
         self.onFallback = onFallback
         self.onStart = onStart
         self.onPCM16 = onPCM16
@@ -414,12 +589,13 @@ final class FallbackSpeechStream: VoiceSpeechStream {
     static func open(
         hermes: OpenHermes,
         onDevice: @escaping OpenOnDevice,
+        primaryName: String = "Hermes speech",
         onFallback: @escaping @MainActor (Error) -> Void,
         onStart: @escaping @MainActor (Double) throws -> Void,
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void,
         onEncodedAudio: @escaping @MainActor (Data) throws -> Void
     ) async throws -> VoiceSpeechStream {
-        let stream = FallbackSpeechStream(openOnDevice: onDevice, onFallback: onFallback, onStart: onStart, onPCM16: onPCM16)
+        let stream = FallbackSpeechStream(openOnDevice: onDevice, primaryName: primaryName, onFallback: onFallback, onStart: onStart, onPCM16: onPCM16)
         do {
             stream.current = try await hermes(
                 { rate in try onStart(rate) },
@@ -492,6 +668,7 @@ final class FallbackSpeechStream: VoiceSpeechStream {
         guard let hermesError else { return }
         current?.cancel()
         usingFallback = true
+        LiveCallTrace.readAloud.note("\(primaryName.prefix(1).uppercased() + primaryName.dropFirst()) failed before any audio (\(String(describing: type(of: hermesError)))), the iPhone voice reads it", run: traceRun)
         onFallback(hermesError)
         let fallback = openOnDevice(onStart, onPCM16)
         current = fallback

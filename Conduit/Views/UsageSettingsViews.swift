@@ -55,7 +55,7 @@ struct UsageSettingsDetail: View {
     var body: some View {
         SettingsDetailContainer {
             // The new period's kept numbers in the same frame, never the old one's.
-            Picker(AppLocalization.string("Period"), selection: Binding(get: { days }, set: { days = $0; showKept() })) {
+            Picker(AppLocalization.string("Period", table: .settings), selection: Binding(get: { days }, set: { days = $0; showKept() })) {
                 ForEach(UsageReport.periods, id: \.self) { period in
                     Text(periodLabel(period)).tag(period)
                 }
@@ -67,7 +67,7 @@ struct UsageSettingsDetail: View {
                 // A failed refresh says so over the numbers it couldn't renew,
                 // the kept ones too.
                 let text = failure == .notConnected
-                    ? AppLocalization.string("Connect to Hermes to update these numbers.") : failureText(failure)
+                    ? AppLocalization.string("Connect to Hermes to update these numbers.", table: .settings) : failureText(failure)
                 Label(text, systemImage: "exclamationmark.triangle")
                     .scaledFont(.footnote)
                     .foregroundStyle(.orange)
@@ -82,7 +82,7 @@ struct UsageSettingsDetail: View {
                     modelsSection(report)
                 }
             } else if let failure {
-                ConduitSettingsSection(title: AppLocalization.string("Usage"), symbol: "chart.bar", tint: .conduitAccent) {
+                ConduitSettingsSection(title: AppLocalization.string("Usage", table: .settings), symbol: "chart.bar", tint: .conduitAccent) {
                     Text(failureText(failure))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
@@ -96,7 +96,7 @@ struct UsageSettingsDetail: View {
                 quotaSection(quotas)
             }
         }
-        .navigationTitle(AppLocalization.string("Usage"))
+        .navigationTitle(AppLocalization.string("Usage", table: .settings))
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Button {
@@ -175,27 +175,27 @@ struct UsageSettingsDetail: View {
     // MARK: Totals
 
     private func totalsSection(_ report: UsageReport) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Totals"), symbol: "sum", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Totals", table: .settings), symbol: "sum", tint: .conduitAccent) {
             if report.totals.sessions == 0 && report.totals.allTokens == 0 {
                 Text("No usage in this period.")
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             } else {
                 SettingsMetricRow(
-                    label: report.costIsEstimate ? AppLocalization.string("Estimated cost") : AppLocalization.string("Cost"),
+                    label: report.costIsEstimate ? AppLocalization.string("Estimated cost", table: .settings) : AppLocalization.string("Cost", table: .settings),
                     value: money(report.cost)
                 )
-                SettingsMetricRow(label: AppLocalization.string("Total tokens"), value: tokens(report.totals.allTokens))
+                SettingsMetricRow(label: AppLocalization.string("Total tokens", table: .settings), value: tokens(report.totals.allTokens))
                 SettingsMetricRow(label: AppLocalization.string("Input"), value: tokens(report.totals.input))
                 SettingsMetricRow(label: AppLocalization.string("Output"), value: tokens(report.totals.output))
                 if report.totals.cacheRead > 0 {
-                    SettingsMetricRow(label: AppLocalization.string("Cache reads"), value: tokens(report.totals.cacheRead))
+                    SettingsMetricRow(label: AppLocalization.string("Cache reads", table: .settings), value: tokens(report.totals.cacheRead))
                 }
                 if report.totals.reasoning > 0 {
                     SettingsMetricRow(label: AppLocalization.string("Reasoning"), value: tokens(report.totals.reasoning))
                 }
                 SettingsMetricRow(label: AppLocalization.string("Chats"), value: count(report.totals.sessions))
-                SettingsMetricRow(label: AppLocalization.string("API calls"), value: count(report.totals.apiCalls))
+                SettingsMetricRow(label: AppLocalization.string("API calls", table: .settings), value: count(report.totals.apiCalls))
                 if report.costIsEstimate {
                     Text("Costs are Hermes' estimates from each model's prices, unless the provider reports what it billed.")
                         .scaledFont(.footnote)
@@ -208,7 +208,7 @@ struct UsageSettingsDetail: View {
     // MARK: Per day
 
     private func dailySection(_ report: UsageReport) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Tokens per day"), symbol: "chart.bar", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Tokens per day", table: .settings), symbol: "chart.bar", tint: .conduitAura) {
             Chart(report.daily) { day in
                 BarMark(
                     x: .value(Self.dayName, day.date, unit: .day),
@@ -230,7 +230,7 @@ struct UsageSettingsDetail: View {
             .environment(\.locale, AppLocalization.formattingLocale)
             .frame(height: 180)
             .accessibilityElement(children: .ignore)
-            .accessibilityLabel(AppLocalization.string("Tokens per day"))
+            .accessibilityLabel(AppLocalization.string("Tokens per day", table: .settings))
             .accessibilityValue(dailySummary(report))
         }
     }
@@ -240,13 +240,13 @@ struct UsageSettingsDetail: View {
         guard let busiest = report.daily.max(by: { $0.usage.total < $1.usage.total }) else { return "" }
         let day = busiest.date.formatted(.dateTime.month().day().locale(AppLocalization.formattingLocale))
         let amount = tokens(busiest.usage.total)
-        return AppLocalization.string("Busiest day \(day), \(amount) tokens")
+        return AppLocalization.string("Busiest day \(day), \(amount) tokens", table: .settings)
     }
 
     // MARK: By model
 
     private func modelsSection(_ report: UsageReport) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("By model"), symbol: "cpu", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("By model", table: .settings), symbol: "cpu", tint: .conduitAccent) {
             ForEach(report.models) { entry in
                 HStack(alignment: .firstTextBaseline, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
@@ -271,18 +271,21 @@ struct UsageSettingsDetail: View {
     }
 
     private func modelDetail(_ entry: ModelUsage) -> String {
-        let flow = AppLocalization.string("\(tokens(entry.usage.input)) in · \(tokens(entry.usage.output)) out")
+        let flow = AppLocalization.string("\(tokens(entry.usage.input)) in · \(tokens(entry.usage.output)) out", table: .settings)
         return entry.provider.isEmpty ? flow : "\(entry.provider) · \(flow)"
     }
 
     // MARK: Quota
 
     private func quotaSection(_ quotas: [ProviderQuota]) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Provider quota"), symbol: "gauge.with.dots.needle.50percent", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Provider quota", table: .settings), symbol: "gauge.with.dots.needle.50percent", tint: .conduitAura) {
             ForEach(quotas) { quota in
                 VStack(alignment: .leading, spacing: 10) {
-                    Text(verbatim: quota.title)
-                        .scaledFont(.subheadline.weight(.semibold))
+                    HStack(spacing: 8) {
+                        ProviderLogoView(slug: quota.slug, title: quota.title)
+                        Text(verbatim: quota.title)
+                            .scaledFont(.subheadline.weight(.semibold))
+                    }
                     if let limit = quota.limit {
                         limitView(limit)
                     }
@@ -306,14 +309,14 @@ struct UsageSettingsDetail: View {
                 Text(verbatim: window.label)
                     .scaledFont(.footnote)
                 Spacer(minLength: 8)
-                Text(AppLocalization.string("\(percent(window.usedPercent / 100)) used"))
+                Text(AppLocalization.string("\(percent(window.usedPercent / 100)) used", table: .settings))
                     .scaledFont(.footnote.monospacedDigit())
                     .foregroundStyle(.secondary)
             }
             ProgressView(value: window.fraction)
                 .tint(window.fraction >= 1 ? .red : (window.fraction >= 0.8 ? .orange : .conduitAccent))
             if let resetsAt = window.resetsAt {
-                Text(AppLocalization.string("Resets \(relative(resetsAt))"))
+                Text(AppLocalization.string("Resets \(relative(resetsAt))", table: .settings))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -324,7 +327,7 @@ struct UsageSettingsDetail: View {
     private func accountView(_ account: QuotaAccount, number: Int) -> some View {
         VStack(alignment: .leading, spacing: 8) {
             HStack {
-                Text(verbatim: account.label.isEmpty ? AppLocalization.string("Account \(String(number))") : account.label)
+                Text(verbatim: account.label.isEmpty ? AppLocalization.string("Account \(String(number))", table: .settings) : account.label)
                     .scaledFont(.footnote.weight(.medium))
                 Spacer(minLength: 8)
                 if let state = accountState(account) {
@@ -345,12 +348,12 @@ struct UsageSettingsDetail: View {
         case .ready:
             return nil
         case .limited:
-            guard let resetsAt = account.resetsAt else { return AppLocalization.string("Limited") }
-            return AppLocalization.string("Limited until \(absolute(resetsAt))")
+            guard let resetsAt = account.resetsAt else { return AppLocalization.string("Limited", table: .settings) }
+            return AppLocalization.string("Limited until \(absolute(resetsAt))", table: .settings)
         case .unknown:
-            return account.windows.isEmpty ? AppLocalization.string("Not reported yet") : nil
+            return account.windows.isEmpty ? AppLocalization.string("Not reported yet", table: .settings) : nil
         case .unavailable:
-            return AppLocalization.string("Signed out")
+            return AppLocalization.string("Signed out", table: .settings)
         }
     }
 
@@ -359,7 +362,7 @@ struct UsageSettingsDetail: View {
         switch limit {
         case .account(let resetsAt):
             Label(
-                resetsAt.map { AppLocalization.string("Rate limited until \(absolute($0))") } ?? AppLocalization.string("Rate limited"),
+                resetsAt.map { AppLocalization.string("Rate limited until \(absolute($0))", table: .settings) } ?? AppLocalization.string("Rate limited", table: .settings),
                 systemImage: "exclamationmark.triangle"
             )
             .scaledFont(.footnote)
@@ -367,8 +370,8 @@ struct UsageSettingsDetail: View {
         case .models(let models):
             ForEach(models) { model in
                 Label(
-                    model.resetsAt.map { AppLocalization.string("\(model.model) limited until \(absolute($0))") }
-                        ?? AppLocalization.string("\(model.model) limited"),
+                    model.resetsAt.map { AppLocalization.string("\(model.model) limited until \(absolute($0))", table: .settings) }
+                        ?? AppLocalization.string("\(model.model) limited", table: .settings),
                     systemImage: "exclamationmark.triangle"
                 )
                 .scaledFont(.footnote)
@@ -389,10 +392,10 @@ struct UsageSettingsDetail: View {
 
     private func failureText(_ failure: UsageLoadError) -> String {
         switch failure {
-        case .notConnected: return AppLocalization.string("Connect to Hermes to see usage.")
-        case .unsupported: return AppLocalization.string("This Hermes doesn't report usage. Update Hermes to see it here.")
-        case .signInRequired: return AppLocalization.string("Sign in to this dashboard again to see usage.")
-        case .failed: return AppLocalization.string("Couldn't load usage. Pull down to try again.")
+        case .notConnected: return AppLocalization.string("Connect to Hermes to see usage.", table: .settings)
+        case .unsupported: return AppLocalization.string("This Hermes doesn't report usage. Update Hermes to see it here.", table: .settings)
+        case .signInRequired: return AppLocalization.string("Sign in to this dashboard again to see usage.", table: .settings)
+        case .failed: return AppLocalization.string("Couldn't load usage. Pull down to try again.", table: .settings)
         }
     }
 

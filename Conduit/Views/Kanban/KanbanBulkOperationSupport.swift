@@ -142,13 +142,13 @@ enum KanbanBulkResultPolicy {
         var failures: [KanbanBulkFailure] = []
         for id in requestedIDs where !id.isEmpty {
             guard let result = byID[id] else {
-                failures.append(KanbanBulkFailure(id: id, reason: AppLocalization.string("Hermes returned no result for this task.")))
+                failures.append(KanbanBulkFailure(id: id, reason: AppLocalization.string("Hermes returned no result for this task.", table: .tasks)))
                 continue
             }
             if result.ok {
                 succeeded.append(id)
             } else {
-                failures.append(KanbanBulkFailure(id: id, reason: result.error ?? AppLocalization.string("Hermes refused the change.")))
+                failures.append(KanbanBulkFailure(id: id, reason: result.error ?? AppLocalization.string("Hermes refused the change.", table: .tasks)))
             }
         }
         return KanbanBulkOperationOutcome(succeededIDs: succeeded, failures: failures)
@@ -159,18 +159,18 @@ enum KanbanBulkResultPolicy {
         let failedCount = outcome.failures.count
         switch (updatedCount, failedCount) {
         case (0, 0):
-            return AppLocalization.string("No tasks updated")
+            return AppLocalization.string("No tasks updated", table: .tasks)
         case (0, _):
-            return AppLocalization.string("\(failedCount) tasks failed")
+            return AppLocalization.string("\(failedCount) tasks failed", table: .tasks)
         case (_, 0):
-            return AppLocalization.string("\(updatedCount) tasks updated")
+            return AppLocalization.string("\(updatedCount) tasks updated", table: .tasks)
         default:
             // Each count agrees with its own words, so the two halves are
             // separate plurals joined the way the language lists things
             // ("2 updated, 1 failed").
             return [
-                AppLocalization.string("\(updatedCount) updated"),
-                AppLocalization.string("\(failedCount) failed"),
+                AppLocalization.string("\(updatedCount) updated", table: .tasks),
+                AppLocalization.string("\(failedCount) failed", table: .tasks),
             ].formatted(.list(type: .and, width: .narrow).locale(locale))
         }
     }

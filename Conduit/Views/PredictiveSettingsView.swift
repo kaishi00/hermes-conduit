@@ -17,7 +17,7 @@ struct PredictiveSettingsSection: View {
 
     private var summary: String {
         let on = [replies, pause, followUp].filter { $0 }.count
-        return on == 0 ? AppLocalization.string("Off") : AppLocalization.string("\(String(on)) of 3 on")
+        return on == 0 ? AppLocalization.string("Off") : AppLocalization.string("\(String(on)) of 3 on", table: .settings)
     }
 
     var body: some View {
@@ -33,14 +33,9 @@ struct PredictiveSettingsSection: View {
                 PredictiveSettingsPage()
                     .v2TabBarClearance()
             } label: {
-                HStack {
-                    Text("Predictive")
-                    Spacer(minLength: 8)
-                    Text(summary).foregroundStyle(.secondary)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(minHeight: 44)
+                SettingsLinkRow(title: AppLocalization.string("Predictive"), value: summary)
             }
+            .buttonStyle(.plain)
             .accessibilityIdentifier("settings.chat.predictive")
         }
     }
@@ -64,29 +59,28 @@ struct PredictiveSettingsPage: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 24) {
-                Text("Each guess is a short extra request to your agent's model, on a copy of the chat that can't use tools. Nothing is saved to the chat, and only this device sees the guesses.")
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                if !appState.predictiveIsServed {
-                    Label {
-                        Text("Needs a newer Conduit plugin on your Hermes host (\(Predictive.minimumPlugin) or later).")
-                    } icon: {
-                        Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
-                    }
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+        SettingsDetailContainer {
+            Text("Each guess is a short extra request to your agent's model, on a copy of the chat that can't use tools. Nothing is saved to the chat, and only this device sees the guesses.")
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
+            if !appState.predictiveIsServed {
+                Label {
+                    Text(PluginUpdateAsk.text(
+                        AppLocalization.string("Needs a newer Conduit plugin on your Hermes host (\(Predictive.minimumPlugin) or later).", table: .settings),
+                        lead: AppLocalization.string("Needs Conduit plugin \(Predictive.minimumPlugin) or later.")
+                    ))
+                } icon: {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(.orange)
                 }
-                repliesSection
-                pauseSection
-                followUpSection
-                modelSection
+                .scaledFont(.footnote)
+                .foregroundStyle(.secondary)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 20)
+            repliesSection
+            pauseSection
+            followUpSection
+            modelSection
         }
         // Each switch's pickers slide in on the page-wide ease (Settings rows
         // a toggle reveals).
@@ -107,7 +101,7 @@ struct PredictiveSettingsPage: View {
     }
 
     private var repliesSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Suggested replies"), symbol: "text.bubble", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Suggested replies", table: .settings), symbol: "text.bubble", tint: .conduitAura) {
             Text("After a reply, the messages you'll most likely send next, best first. Tap one to send it; touch and hold to edit it first.")
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
@@ -126,7 +120,7 @@ struct PredictiveSettingsPage: View {
     }
 
     private var pauseSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("While I pause"), symbol: "text.cursor", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("While I pause", table: .settings), symbol: "text.cursor", tint: .conduitAura) {
             Text("When you stop typing for a moment, words to finish your message and whole messages you might mean. Your unsent draft goes to your agent's model to make them.")
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
@@ -145,7 +139,7 @@ struct PredictiveSettingsPage: View {
     }
 
     private var followUpSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Hermes follows up"), symbol: "sparkle", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Hermes follows up", table: .settings), symbol: "sparkle", tint: .conduitAura) {
             Text("While a chat is on screen and you aren't writing, Hermes is asked now and then whether it has something useful to add. At most one follow-up per message you send, marked \"Hermes followed up\".")
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
@@ -168,8 +162,8 @@ struct PredictiveSettingsPage: View {
             ConduitMenuPicker(
                 value: model,
                 choices: [
-                    (id: Predictive.Model.fast.rawValue, title: AppLocalization.string("Fast model")),
-                    (id: Predictive.Model.chat.rawValue, title: AppLocalization.string("Same as chat")),
+                    (id: Predictive.Model.fast.rawValue, title: AppLocalization.string("Fast model", table: .settings)),
+                    (id: Predictive.Model.chat.rawValue, title: AppLocalization.string("Same as chat", table: .settings)),
                 ],
                 onSelect: { model = $0 }
             ) {
@@ -182,17 +176,19 @@ struct PredictiveSettingsPage: View {
                         if predictionsSlotListed {
                             Text("Fast model on your host: \(fast). Change it in Models & providers under Helper models.")
                         } else {
-                            Text("Fast model on your host: \(fast). Update the Conduit plugin to change it here.")
+                            Text(PluginUpdateAsk.text(AppLocalization.string("Fast model on your host: \(fast). Update the Conduit plugin to change it here.", table: .settings),
+                                                      lead: AppLocalization.string("Fast model on your host: \(fast).", table: .settings)))
                         }
                     } else if predictionsSlotListed {
                         Text("Your host has no fast model set, so the chat's own model answers. Pick one in Models & providers under Helper models, as Conduit predictions.")
                     } else {
-                        Text("Your host has no fast model set, so the chat's own model answers. Update the Conduit plugin to pick one here.")
+                        Text(PluginUpdateAsk.text(AppLocalization.string("Your host has no fast model set, so the chat's own model answers. Update the Conduit plugin to pick one here.", table: .settings),
+                                                      lead: AppLocalization.string("Your host has no fast model set, so the chat's own model answers.", table: .settings)))
                     }
                 }
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary) }
-                SettingsMetricRow(label: AppLocalization.string("Predictions today"), value: String(status.today))
+                SettingsMetricRow(label: AppLocalization.string("Predictions today", table: .settings), value: String(status.today))
             }
         }
     }
@@ -202,12 +198,12 @@ struct PredictiveSettingsPage: View {
         formatter.locale = AppLocalization.formattingLocale
         formatter.maximumFractionDigits = 1
         let number = formatter.string(from: NSNumber(value: value)) ?? "\(value)"
-        return AppLocalization.string("\(number) s")
+        return AppLocalization.string("\(number) s", table: .settings)
     }
 
     private static func wait(_ seconds: Int) -> String {
         seconds < 60
-            ? AppLocalization.string("\(String(seconds)) s")
+            ? AppLocalization.string("\(String(seconds)) s", table: .settings)
             : AppLocalization.string("\(String(seconds / 60)) min")
     }
 }

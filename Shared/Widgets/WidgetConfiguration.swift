@@ -1,5 +1,6 @@
 import AppIntents
 import Foundation
+import WidgetKit
 
 /// A versioned, lossless identity used by WidgetKit to persist picker choices.
 /// Display labels and conversation titles are deliberately excluded.
@@ -205,6 +206,21 @@ struct WidgetConversationEntityQuery: EntityQuery {
     }
 }
 
+/// What a small launcher widget opens: the small size takes one tap, so it
+/// offers one of the medium size's three actions (issue 1532).
+enum LauncherSmallAction: String, AppEnum {
+    case conversation
+    case newChat
+    case talk
+
+    static let typeDisplayRepresentation = TypeDisplayRepresentation(name: "Small size opens")
+    static let caseDisplayRepresentations: [LauncherSmallAction: DisplayRepresentation] = [
+        .conversation: "Conversation",
+        .newChat: "New Chat",
+        .talk: "Talk"
+    ]
+}
+
 struct LauncherWidgetConfigurationIntent: WidgetConfigurationIntent {
     static let title: LocalizedStringResource = "Conduit Widget"
     static let description = IntentDescription("Choose a workspace and conversation for this widget.")
@@ -212,12 +228,34 @@ struct LauncherWidgetConfigurationIntent: WidgetConfigurationIntent {
     @Parameter(title: "Workspace") var workspace: WidgetWorkspaceEntity?
     @Parameter(title: "Conversation") var conversation: WidgetConversationEntity?
     @Parameter(title: "Hide conversation title") var hideTitle: Bool?
+    @Parameter(title: "Small size opens") var smallAction: LauncherSmallAction?
 
     var shouldHideTitle: Bool { hideTitle ?? false }
+    var smallTapAction: LauncherSmallAction { smallAction ?? .conversation }
+
+    /// Only the small size asks what its tap opens: the other sizes show all
+    /// three actions.
+    static var parameterSummary: some ParameterSummary {
+        When(widgetFamily: .equalTo, .systemSmall) {
+            Summary {
+                \.$workspace
+                \.$conversation
+                \.$smallAction
+                \.$hideTitle
+            }
+        } otherwise: {
+            Summary {
+                \.$workspace
+                \.$conversation
+                \.$hideTitle
+            }
+        }
+    }
 
     init() {
         workspace = nil
         conversation = nil
         hideTitle = nil
+        smallAction = nil
     }
 }

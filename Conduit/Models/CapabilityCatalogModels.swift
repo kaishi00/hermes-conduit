@@ -46,6 +46,12 @@ struct OfficialSkill: Identifiable, Equatable {
     }
 }
 
+struct OfficialSkillGroup: Identifiable, Equatable {
+    var id: String { category }
+    let category: String
+    let skills: [OfficialSkill]
+}
+
 enum CapabilitySkillOrdering {
     /// Hermes Desktop's order: the most used first (or least, flipped), then
     /// by name.
@@ -82,15 +88,45 @@ enum CapabilitySkillOrdering {
             .sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    /// `software_development` reads "Software Development".
+    /// The categories the skills to install fall in, by their shown name,
+    /// and `keeping` while it's picked even if none of them is in it.
+    static func categories(_ skills: [OfficialSkill], keeping: String? = nil) -> [String] {
+        Array(Set(skills.map(\.category) + [keeping].compactMap { $0 }))
+            .sorted { lhs, rhs in
+                // Two spellings can share a shown name: the raw one breaks the tie.
+                switch prettyCategory(lhs).localizedCaseInsensitiveCompare(prettyCategory(rhs)) {
+                case .orderedAscending: return true
+                case .orderedDescending: return false
+                case .orderedSame: return lhs < rhs
+                }
+            }
+    }
+
+    /// The skills to install by category, the categories A-Z by their shown
+    /// name and each one's skills in the order given; only `category`'s
+    /// when one is picked.
+    static func grouped(_ skills: [OfficialSkill], category: String?) -> [OfficialSkillGroup] {
+        categories(skills)
+            .filter { category == nil || $0 == category }
+            .map { name in OfficialSkillGroup(category: name, skills: skills.filter { $0.category == name }) }
+    }
+
+    /// `software_development` reads "Software Development", and
+    /// `autonomous-ai-agents` "Autonomous AI Agents".
     static func prettyCategory(_ category: String?) -> String {
         let raw = (category ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
         let words = (raw.isEmpty ? "general" : raw)
             .replacingOccurrences(of: "_", with: " ")
             .replacingOccurrences(of: "-", with: " ")
             .split(separator: " ")
-        return words.map { $0.prefix(1).uppercased() + $0.dropFirst() }.joined(separator: " ")
+        return words.map { word in
+            if acronyms.contains(word.lowercased()) { return word.uppercased() }
+            return word.prefix(1).uppercased() + word.dropFirst()
+        }.joined(separator: " ")
     }
+
+    /// Words a category name spells in capitals.
+    private static let acronyms: Set<String> = ["ai", "api", "cli", "llm", "mcp", "ml", "seo", "sql", "ui", "ux"]
 }
 
 /// A SKILL.md split into its frontmatter fields and its body.
@@ -740,17 +776,37 @@ struct PluginCatalogEntry: Equatable, Identifiable {
     let name: String
     var title: String?
     var description: String
-    /// official or community.
+    /// official (bundled reads as it), verified or community.
     var tier: String
     var capabilitySummary: String
     var installed: Bool
     var updateAvailable: Bool
+    var maintainer: String = ""
+    var category: String = ""
+    var version: String = ""
+    var repo: String = ""
+    var docsURL: URL?
+    /// The card's picture and the page's gallery: GitHub-hosted https
+    /// addresses only, as Hermes' catalog allows.
+    var imageURL: URL?
+    var screenshotURLs: [URL] = []
+    var tools: [String] = []
+    var hooks: [String] = []
+    var middleware: [String] = []
+    /// Keys it needs set before it works.
+    var requiresEnv: [String] = []
+    var platforms: [String] = []
+    var knownIssues: [String] = []
 
     var displayName: String { title ?? name }
+
+    /// The source repository, a web address only.
+    var repoURL: URL? { PluginCatalogEntry.webURL(repo) }
 
     static func list(from response: [String: Any]) -> [PluginCatalogEntry] {
         (response["entries"] as? [Any] ?? []).compactMap { value in
             guard let row = value as? [String: Any], let name = row["name"] as? String else { return nil }
+            let caps = row["capabilities"] as? [String: Any] ?? [:]
             return PluginCatalogEntry(
                 name: name,
                 title: (row["title"] as? String).flatMap { $0.isEmpty ? nil : $0 },
@@ -758,8 +814,50 @@ struct PluginCatalogEntry: Equatable, Identifiable {
                 tier: row["tier"] as? String ?? "community",
                 capabilitySummary: row["capability_summary"] as? String ?? "",
                 installed: row["installed"] as? Bool ?? false,
-                updateAvailable: row["update_available"] as? Bool ?? false
+                updateAvailable: row["update_available"] as? Bool ?? false,
+                maintainer: row["maintainer"] as? String ?? "",
+                category: row["category"] as? String ?? "",
+                version: row["version"] as? String ?? "",
+                repo: row["repo"] as? String ?? "",
+                docsURL: webURL(row["docs_url"] as? String ?? ""),
+                imageURL: imageURL(row["image"] as? String ?? ""),
+                screenshotURLs: strings(row["screenshots"]).compactMap(imageURL),
+                tools: strings(caps["provides_tools"]),
+                hooks: strings(caps["provides_hooks"]),
+                middleware: strings(caps["provides_middleware"]),
+                requiresEnv: strings(caps["requires_env"]),
+                platforms: strings(row["platforms"]),
+                knownIssues: strings(row["known_issues"])
             )
+        }
+    }
+
+    private static func strings(_ value: Any?) -> [String] {
+        (value as? [Any] ?? []).compactMap { $0 as? String }.filter { !$0.isEmpty }
+    }
+
+    /// An https address on GitHub's hosts, as Hermes' catalog check and
+    /// Desktop's browser allow, else nothing.
+    static func imageURL(_ text: String) -> URL? {
+        guard let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              url.scheme?.lowercased() == "https",
+              let host = url.host?.lowercased() else { return nil }
+        return host == "raw.githubusercontent.com" || host == "github.com" || host.hasSuffix(".githubusercontent.com") ? url : nil
+    }
+
+    static func webURL(_ text: String) -> URL? {
+        guard let url = URL(string: text.trimmingCharacters(in: .whitespacesAndNewlines)),
+              let scheme = url.scheme?.lowercased(), scheme == "https" || scheme == "http",
+              url.host != nil else { return nil }
+        return url
+    }
+
+    /// The tier as the catalog's trust order reads it.
+    var normalizedTier: String {
+        switch tier {
+        case "official", "bundled": return "official"
+        case "verified": return "verified"
+        default: return "community"
         }
     }
 
@@ -798,9 +896,72 @@ enum CapabilityPluginFilter {
                     || entry.description.localizedCaseInsensitiveContains(query)
             }
             .sorted { lhs, rhs in
-                if (lhs.tier == "official") != (rhs.tier == "official") { return lhs.tier == "official" }
+                let left = tierRank(lhs), right = tierRank(rhs)
+                if left != right { return left < right }
                 return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
             }
+    }
+
+    /// The catalog's trust order: official, verified, community.
+    static func tierRank(_ entry: PluginCatalogEntry) -> Int {
+        switch entry.normalizedTier {
+        case "official": return 0
+        case "verified": return 1
+        default: return 2
+        }
+    }
+
+    /// The tiers present, in trust order. A selected tier stays listed
+    /// when a refresh takes it away, so it can still be cleared.
+    static func tiers(in catalog: [PluginCatalogEntry], keeping selected: String? = nil) -> [String] {
+        var present = Set(catalog.map(\.normalizedTier))
+        if let selected { present.insert(selected) }
+        return ["official", "verified", "community"].filter(present.contains)
+    }
+
+    /// The categories present, A-Z, a selected one kept as tiers are.
+    static func categories(in catalog: [PluginCatalogEntry], keeping selected: String? = nil) -> [String] {
+        var present = Set(catalog.map(\.category).filter { !$0.isEmpty })
+        if let selected { present.insert(selected) }
+        return Array(present).sorted {
+            $0.localizedCaseInsensitiveCompare($1) == .orderedAscending
+        }
+    }
+
+    /// The Browse page's list: a tier and a category narrow it, and a
+    /// search reads the name, what it does, the maintainer, the category
+    /// and the tools it adds. Installed entries stay, marked.
+    static func browse(_ catalog: [PluginCatalogEntry], query: String, tier: String?, category: String?) -> [PluginCatalogEntry] {
+        let text = query.trimmingCharacters(in: .whitespacesAndNewlines)
+        return catalog
+            .filter { tier == nil || $0.normalizedTier == tier }
+            .filter { category == nil || $0.category == category }
+            .filter { entry in
+                text.isEmpty
+                    || entry.displayName.localizedCaseInsensitiveContains(text)
+                    || entry.name.localizedCaseInsensitiveContains(text)
+                    || entry.description.localizedCaseInsensitiveContains(text)
+                    || entry.maintainer.localizedCaseInsensitiveContains(text)
+                    || entry.category.localizedCaseInsensitiveContains(text)
+                    || entry.tools.contains { $0.localizedCaseInsensitiveContains(text) }
+            }
+            .sorted { lhs, rhs in
+                let left = tierRank(lhs), right = tierRank(rhs)
+                if left != right { return left < right }
+                return lhs.displayName.localizedCaseInsensitiveCompare(rhs.displayName) == .orderedAscending
+            }
+    }
+
+    /// Desktop's curated hero picks (catalog-curation.json), first; then
+    /// official entries with a picture. A few, for the shelf.
+    static let curatedFeatured = ["claude-subscription-directsdk", "hermes-memory-wiki", "blender", "touchdesigner", "hermes-telegram-business"]
+
+    static func featured(_ catalog: [PluginCatalogEntry], limit: Int = 8) -> [PluginCatalogEntry] {
+        var picks: [PluginCatalogEntry] = curatedFeatured.compactMap { name in catalog.first { $0.name == name } }
+        for entry in catalog where entry.normalizedTier == "official" && entry.imageURL != nil && !picks.contains(where: { $0.name == entry.name }) {
+            picks.append(entry)
+        }
+        return Array(picks.prefix(limit))
     }
 }
 
@@ -892,13 +1053,13 @@ struct ConnectorServerEdit {
 
         var message: String {
             switch self {
-            case .noName: return AppLocalization.string("Give the server a name.")
-            case .nameTaken(let name): return AppLocalization.string("Another server is already called \(name).")
-            case .noTarget: return AppLocalization.string("Give the server an address or a command.")
-            case .notAnObject: return AppLocalization.string("Write the server as one JSON object, such as {\"url\": \"https://…\"}.")
-            case .invalidJSON: return AppLocalization.string("That isn't valid JSON.")
-            case .gone(let name): return AppLocalization.string("\(name) isn't in this profile's config anymore.")
-            case .changedOnHost(let name): return AppLocalization.string("\(name) changed on your host while you were editing. Close this and edit it again.")
+            case .noName: return AppLocalization.string("Give the server a name.", table: .bots)
+            case .nameTaken(let name): return AppLocalization.string("Another server is already called \(name).", table: .bots)
+            case .noTarget: return AppLocalization.string("Give the server an address or a command.", table: .bots)
+            case .notAnObject: return AppLocalization.string("Write the server as one JSON object, such as {\"url\": \"https://…\"}.", table: .bots)
+            case .invalidJSON: return AppLocalization.string("That isn't valid JSON.", table: .bots)
+            case .gone(let name): return AppLocalization.string("\(name) isn't in this profile's config anymore.", table: .bots)
+            case .changedOnHost(let name): return AppLocalization.string("\(name) changed on your host while you were editing. Close this and edit it again.", table: .bots)
             }
         }
 

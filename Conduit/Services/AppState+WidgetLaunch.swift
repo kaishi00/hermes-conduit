@@ -8,6 +8,11 @@ extension AppState {
         guard let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
               components.scheme?.lowercased() == "conduit",
               components.host?.lowercased() == "widget" else { return false }
+        // The Pulse widget's tap (issue 2190).
+        if let pulse = PulseWidgetLink(url: url) {
+            openPulseFromWidget(pulse)
+            return true
+        }
         guard let link = WidgetLaunchLink(url: url) else { return true }
         cancelChatResumeRestoration()
         newChatLaunchStartedInApp = false

@@ -3,9 +3,10 @@
 //  Conduit
 //
 //  Settings > Capabilities > Connectors, as Hermes Desktop's Connectors
-//  tab for the MCP servers on the host: the ones that are on (tested live,
-//  broken ones first), the catalog's servers to install, and the ones that
-//  are off. Each server's page tests it, signs it in, lists its tools and
+//  tab: the apps signed in through Nous Portal at the top
+//  (HostedAppsViews.swift), then the MCP servers on the host: the ones
+//  that are on (tested live, broken ones first), the catalog's servers to
+//  install, and the ones that are off. Each server's page tests it, signs it in, lists its tools and
 //  removes it.
 //
 
@@ -15,8 +16,10 @@ struct CapabilityConnectorsTab: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     let store: CapabilitiesStore
     let query: String
+    @EnvironmentObject private var appState: AppState
     @State private var installing: ConnectorCatalogEntry?
     @State private var actionError: String?
+    @State private var hostedApps = HostedAppsModel()
 
     private var states: [String: ConnectorState] {
         Dictionary(store.servers.map { server in
@@ -33,13 +36,14 @@ struct CapabilityConnectorsTab: View {
             query: query
         )
         CapabilityTabScroll(refresh: { await reload(force: true) }) {
+            HostedAppsSection(model: hostedApps, query: query)
             if !store.connectorsLoaded && !store.showsKept.contains(.connectors) {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 40)
             } else if let error = store.connectorsError, store.servers.isEmpty {
                 CapabilityEmptyState(
-                    title: AppLocalization.string("Couldn't read the MCP servers"),
+                    title: AppLocalization.string("Couldn't read the MCP servers", table: .bots),
                     symbol: "exclamationmark.triangle",
                     message: error
                 ) {
@@ -47,10 +51,10 @@ struct CapabilityConnectorsTab: View {
                 }
             } else if groups.connected.isEmpty && groups.available.isEmpty && groups.off.isEmpty {
                 CapabilityEmptyState(
-                    title: query.isEmpty ? AppLocalization.string("No connectors yet") : AppLocalization.string("No matching connectors"),
+                    title: query.isEmpty ? AppLocalization.string("No connectors yet", table: .bots) : AppLocalization.string("No matching connectors", table: .bots),
                     symbol: "point.3.connected.trianglepath.dotted",
                     message: query.isEmpty
-                        ? AppLocalization.string("Ask Hermes to add an MCP server, or install one from the catalog when it lists some.")
+                        ? AppLocalization.string("Ask Hermes to add an MCP server, or install one from the catalog when it lists some.", table: .bots)
                         : AppLocalization.string("Nothing matches “\(query)”.")
                 )
             } else {
@@ -67,17 +71,17 @@ struct CapabilityConnectorsTab: View {
                     CapabilitySection(
                         title: AppLocalization.string("Connected"),
                         symbol: "bolt.horizontal.circle",
-                        footer: AppLocalization.string("Each server is tested when this page opens. Changes apply to new sessions.")
+                        footer: AppLocalization.string("Each server is tested when this page opens. Changes apply to new sessions.", table: .bots)
                     ) {
                         serverRows(groups.connected, states: states)
                     }
                 }
                 if !groups.available.isEmpty {
                     CapabilitySection(
-                        title: AppLocalization.string("Available"),
+                        title: AppLocalization.string("Available", table: .bots),
                         symbol: "square.grid.2x2",
                         tint: .conduitAura,
-                        footer: AppLocalization.string("From Hermes' MCP catalog.")
+                        footer: AppLocalization.string("From Hermes' MCP catalog.", table: .bots)
                     ) {
                         ForEach(Array(groups.available.enumerated()), id: \.element.id) { index, entry in
                             CapabilityCardRow(divided: index > 0) {
@@ -90,15 +94,20 @@ struct CapabilityConnectorsTab: View {
                 }
                 if !groups.off.isEmpty {
                     CapabilitySection(
-                        title: AppLocalization.string("Turned off"),
+                        title: AppLocalization.string("Turned off", table: .bots),
                         symbol: "moon",
                         tint: .secondary,
-                        footer: AppLocalization.string("Sign-ins and keys are kept.")
+                        footer: AppLocalization.string("Sign-ins and keys are kept.", table: .bots)
                     ) {
                         serverRows(groups.off, states: states)
                     }
                 }
             }
+        }
+        .task(id: appState.hostedAppsScope) {
+            hostedApps.show(appState)
+            guard appState.isConnected else { return }
+            await hostedApps.reload(appState)
         }
         .task(id: store.profile) {
             if !store.connectorsLoaded || !store.showsKept.isDisjoint(with: [.connectors, .connectorCatalog]) { await store.loadConnectors() }
@@ -129,7 +138,9 @@ struct CapabilityConnectorsTab: View {
     /// Reads the servers again, then tests them: all of them on a pull to
     /// refresh, the ones not tested lately otherwise.
     private func reload(force: Bool) async {
+        async let apps: Void = hostedApps.reload(appState)
         await store.loadConnectors()
+        await apps
         await store.probeServers(force: force)
     }
 
@@ -159,9 +170,9 @@ enum ConnectorStyle {
     /// MCP · Plugin x, MCP · Catalog or MCP · Custom, as Desktop says it.
     static func kind(_ server: ConnectorServer, inCatalog: Bool) -> String {
         if let plugin = server.plugin {
-            return plugin.isEmpty ? AppLocalization.string("MCP · Plugin") : AppLocalization.string("MCP · Plugin \(plugin)")
+            return plugin.isEmpty ? AppLocalization.string("MCP · Plugin", table: .bots) : AppLocalization.string("MCP · Plugin \(plugin)", table: .bots)
         }
-        return inCatalog ? AppLocalization.string("MCP · Catalog") : AppLocalization.string("MCP · Custom")
+        return inCatalog ? AppLocalization.string("MCP · Catalog", table: .bots) : AppLocalization.string("MCP · Custom", table: .bots)
     }
 
     static func word(_ state: ConnectorState) -> String? {
@@ -171,7 +182,7 @@ enum ConnectorStyle {
         case .unknown: return nil
         case .on(let toolCount): return toolCount > 0 ? AppLocalization.string("\(toolCount) tools") : AppLocalization.string("On")
         case .needsSignIn: return AppLocalization.string("Needs sign-in")
-        case .failed: return AppLocalization.string("Error")
+        case .failed: return AppLocalization.string("Error", table: .bots)
         }
     }
 
@@ -191,7 +202,7 @@ enum ConnectorStyle {
         case .failed(let error) where !error.isEmpty:
             return error
         case .needsSignIn:
-            return AppLocalization.string("Sign in to let this server answer.")
+            return AppLocalization.string("Sign in to let this server answer.", table: .bots)
         default:
             if let description = catalogEntry?.description, !description.isEmpty { return description }
             return server.url ?? server.command
@@ -260,8 +271,8 @@ private struct ConnectorCatalogRow: View {
                     symbol: entry.transport == "http" ? "globe" : "terminal",
                     active: false,
                     title: entry.name,
-                    subtitle: AppLocalization.string("MCP · Catalog"),
-                    pills: entry.authType == "oauth" ? [CapabilityPillModel(text: AppLocalization.string("Sign-in"))] : [],
+                    subtitle: AppLocalization.string("MCP · Catalog", table: .bots),
+                    pills: entry.authType == "oauth" ? [CapabilityPillModel(text: AppLocalization.string("Sign-in", table: .bots))] : [],
                     detail: entry.description
                 )
                 CapabilityRowButton(title: AppLocalization.string("Install"), busy: state == .running, action: install)
@@ -309,7 +320,7 @@ struct ConnectorKeysSection: View {
 
     var body: some View {
         ConduitSettingsSection(title: AppLocalization.string("API key"), symbol: "key", tint: .conduitAura) {
-            Text(AppLocalization.string("A key saved here replaces the one Hermes keeps for this connector. Conduit never shows it."))
+            Text(AppLocalization.string("A key saved here replaces the one Hermes keeps for this connector. Conduit never shows it.", table: .bots))
                 .scaledFont(.caption).foregroundStyle(.secondary)
             ForEach(fields) { field in
                 SecureField(
@@ -461,7 +472,7 @@ struct ConnectorDetailPage: View {
                     Button(role: .destructive) {
                         confirmingRemove = true
                     } label: {
-                        Label(AppLocalization.string("Remove Server"), systemImage: "trash")
+                        Label(AppLocalization.string("Remove Server", table: .bots), systemImage: "trash")
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
                             .frame(minHeight: 44)
@@ -516,7 +527,7 @@ struct ConnectorDetailPage: View {
                 store: store
             ) { saved in
                 name = saved
-                message = AppLocalization.string("Saved. Changes apply to new sessions.")
+                message = AppLocalization.string("Saved. Changes apply to new sessions.", table: .bots)
             }
         }
         .confirmationDialog(
@@ -560,8 +571,8 @@ struct ConnectorDetailPage: View {
             }
             if let plugin = server.plugin {
                 Text(verbatim: plugin.isEmpty
-                    ? AppLocalization.string("A plugin provides this server. Change it from Plugins.")
-                    : AppLocalization.string("The \(plugin) plugin provides this server. Change it from Plugins."))
+                    ? AppLocalization.string("A plugin provides this server. Change it from Plugins.", table: .bots)
+                    : AppLocalization.string("The \(plugin) plugin provides this server. Change it from Plugins.", table: .bots))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             } else {
@@ -597,7 +608,7 @@ struct ConnectorDetailPage: View {
             Task { await store.probe(server.name) }
         } label: {
             Label(
-                state == .checking ? AppLocalization.string("Testing…") : AppLocalization.string("Test Connection"),
+                state == .checking ? AppLocalization.string("Testing…", table: .bots) : AppLocalization.string("Test Connection"),
                 systemImage: "arrow.clockwise"
             )
             .frame(maxWidth: .infinity)
@@ -611,7 +622,7 @@ struct ConnectorDetailPage: View {
                 Button {
                     cancelSignIn()
                 } label: {
-                    Label(AppLocalization.string("Stop Waiting"), systemImage: "xmark.circle")
+                    Label(AppLocalization.string("Stop Waiting", table: .bots), systemImage: "xmark.circle")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6)
                         .frame(minHeight: 44)
@@ -636,7 +647,7 @@ struct ConnectorDetailPage: View {
     private func toolsSection(_ server: ConnectorServer, state: ConnectorState) -> some View {
         ConduitSettingsSection(title: AppLocalization.string("Tools"), symbol: "wrench.and.screwdriver", tint: .conduitAccent) {
             if !server.enabled {
-                Text(verbatim: AppLocalization.string("\(server.name) is off. Turn it on to read the tools it brings."))
+                Text(verbatim: AppLocalization.string("\(server.name) is off. Turn it on to read the tools it brings.", table: .bots))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             } else if state == .checking || (probe == nil && state == .unknown && !firstTestAsked && !keptListFailed) {
@@ -672,7 +683,7 @@ struct ConnectorDetailPage: View {
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             } else if state == .needsSignIn {
-                Text(verbatim: AppLocalization.string("Sign in to \(server.name) to read its tools."))
+                Text(verbatim: AppLocalization.string("Sign in to \(server.name) to read its tools.", table: .bots))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
             } else {
@@ -722,7 +733,7 @@ struct ConnectorDetailPage: View {
             browser = nil
             switch outcome {
             case .signedIn:
-                message = AppLocalization.string("Signed in.")
+                message = AppLocalization.string("Signed in.", table: .bots)
                 Haptics.success()
                 await store.probe(name)
             case .cancelled: break
@@ -781,7 +792,7 @@ struct ConnectorInstallSheet: View {
                         .scaledFont(.subheadline)
                         .padding(.horizontal, 16)
                 }
-                ConduitSettingsSection(title: AppLocalization.string("Runs"), symbol: "terminal", tint: .orange) {
+                ConduitSettingsSection(title: AppLocalization.string("Runs", table: .bots), symbol: "terminal", tint: .orange) {
                     if let url = entry.url {
                         Text(verbatim: url)
                             .scaledFont(.caption.monospaced())
@@ -795,10 +806,10 @@ struct ConnectorInstallSheet: View {
                     Text("Check what it runs before you install it.")
                         .settingsCaption()
                 }
-                ConduitSettingsSection(title: AppLocalization.string("Keys"), symbol: "key", tint: .conduitAccent) {
+                ConduitSettingsSection(title: AppLocalization.string("Keys", table: .bots), symbol: "key", tint: .conduitAccent) {
                     ForEach(entry.requiredEnv) { field in
                         SecureField(
-                            field.required ? field.prompt : AppLocalization.string("\(field.prompt) (optional)"),
+                            field.required ? field.prompt : AppLocalization.string("\(field.prompt) (optional)", table: .bots),
                             text: Binding(
                                 get: { values[field.name] ?? "" },
                                 set: { values[field.name] = $0 }
@@ -923,7 +934,7 @@ struct ConnectorEditSheet: View {
                 .textFieldStyle(.roundedBorder)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
-            Text(verbatim: AppLocalization.string("Saved to \(profileName)'s config on your host. Changes apply to new sessions."))
+            Text(verbatim: AppLocalization.string("Saved to \(profileName)'s config on your host. Changes apply to new sessions.", table: .bots))
                 .settingsCaption()
             if edit.wrappedValue.renameSignsOut(auth: auth) {
                 Text("A new name signs it out. Sign in again after saving.")
@@ -939,7 +950,7 @@ struct ConnectorEditSheet: View {
                     .frame(minHeight: 240)
                     .settingsEditorBox()
                     .accessibilityLabel(Text(verbatim: "JSON"))
-                Button(AppLocalization.string("Format")) {
+                Button(AppLocalization.string("Format", table: .bots)) {
                     do {
                         try edit.wrappedValue.formatJSON()
                         problem = nil

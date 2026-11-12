@@ -49,7 +49,7 @@ enum LiveVoiceModeName: Equatable {
         case .gptLive: return "OpenAI"
         case .grokLive: return "xAI"
         // Whichever model the user set their Hermes host to run for it.
-        case .localLive: return AppLocalization.string("your Hermes host's model")
+        case .localLive: return AppLocalization.string("your Hermes host's model", table: .voice)
         }
     }
 
@@ -128,26 +128,30 @@ enum VoiceSetupIssue: Equatable {
     var message: String {
         switch self {
         case .notConnected:
-            return AppLocalization.string("Connect to Hermes before starting voice.")
+            return AppLocalization.string("Connect to Hermes before starting voice.", table: .voice)
         case .voiceOff:
-            return AppLocalization.string("Voice is off for this profile. Turn on \"Enable voice on this device\" in Settings > Voice.")
+            return AppLocalization.string("Voice is off for this profile. Turn on \"Enable voice on this device\" in Settings > Voice.", table: .voice)
         case .microphoneDenied:
             return VoiceAudioError.microphonePermissionDenied.localizedDescription
         case .speechRecognitionDenied:
-            return AppLocalization.string("Allow Speech Recognition for Conduit in iPhone Settings > Conduit, or choose another speech-to-text option in Settings > Voice.")
+            return SystemSettings.worded(
+                iPhone: AppLocalization.string("Allow Speech Recognition for Conduit in iPhone Settings > Conduit, or choose another speech-to-text option in Settings > Voice.", table: .voice),
+                iPad: AppLocalization.string("Allow Speech Recognition for Conduit in iPad Settings > Conduit, or choose another speech-to-text option in Settings > Voice.", table: .voice),
+                mac: AppLocalization.string("Allow Speech Recognition for Conduit in System Settings → Privacy & Security → Speech Recognition, or choose another speech-to-text option in Settings > Voice.", table: .voice)
+            )
         case .speechRecognitionUnsupported(let locale):
-            return AppLocalization.string("On-device Apple speech recognition doesn't support \(locale). Choose another speech-to-text option in Settings > Voice.")
+            return AppLocalization.string("On-device Apple speech recognition doesn't support \(locale). Choose another speech-to-text option in Settings > Voice.", table: .voice)
         case .noSpeechToText(let detail):
             if let detail, !detail.isEmpty { return detail }
-            return AppLocalization.string("This Hermes profile has no ready speech-to-text provider. Set one up in Settings > Voice.")
+            return AppLocalization.string("This Hermes profile has no ready speech-to-text provider. Set one up in Settings > Voice.", table: .voice)
         case .noTextToSpeech:
-            return AppLocalization.string("This Hermes profile has no ready text-to-speech provider. Set one up in Settings > Voice.")
+            return AppLocalization.string("This Hermes profile has no ready text-to-speech provider. Set one up in Settings > Voice.", table: .voice)
         case .liveModeNotSetUp(let mode):
-            return AppLocalization.string("\(mode.displayName) isn't set up on your Hermes server. Settings > Voice shows what it needs.")
+            return AppLocalization.string("\(mode.displayName) isn't set up on your Hermes server. Settings > Voice shows what it needs.", table: .voice)
         case .notifierPluginMissing:
-            return AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server.")
+            return PluginUpdateAsk.text(AppLocalization.string("Install or update the Hermes notifier plugin on your Hermes server."))
         case .providerConsentNeeded(let mode):
-            return AppLocalization.string("\(mode.displayName) sends your voice to \(mode.company). Allow it in Conduit on your iPhone to start the call.")
+            return AppLocalization.string("\(mode.displayName) sends your voice to \(mode.company). Allow it in Conduit on your iPhone to start the call.", table: .voice)
         }
     }
 
@@ -158,54 +162,54 @@ enum VoiceSetupIssue: Equatable {
         switch self {
         case .notConnected:
             return [
-                AppLocalization.string("Can't reach Hermes. Check your iPhone."),
+                AppLocalization.string("Can't reach Hermes. Check your iPhone.", table: .voice),
                 AppLocalization.string("Can't reach Hermes"),
             ]
         case .voiceOff:
             return [
-                AppLocalization.string("Voice is off: Conduit Settings > Voice"),
-                AppLocalization.string("Turn on Voice in Conduit"),
-                AppLocalization.string("Voice is off"),
+                AppLocalization.string("Voice is off: Conduit Settings > Voice", table: .voice),
+                AppLocalization.string("Turn on Voice in Conduit", table: .voice),
+                AppLocalization.string("Voice is off", table: .voice),
             ]
         case .microphoneDenied:
             return [
-                AppLocalization.string("Allow the mic in iPhone Settings"),
-                AppLocalization.string("Microphone not allowed"),
+                AppLocalization.string("Allow the mic in iPhone Settings", table: .voice),
+                AppLocalization.string("Microphone not allowed", table: .voice),
             ]
         case .speechRecognitionDenied:
             return [
-                AppLocalization.string("Allow Speech Recognition for Conduit"),
-                AppLocalization.string("Speech Recognition is off"),
+                AppLocalization.string("Allow Speech Recognition for Conduit", table: .voice),
+                AppLocalization.string("Speech Recognition is off", table: .voice),
             ]
         case .speechRecognitionUnsupported:
             return [
-                AppLocalization.string("Change speech to text in Conduit"),
-                AppLocalization.string("Speech to text unavailable"),
+                AppLocalization.string("Change speech to text in Conduit", table: .voice),
+                AppLocalization.string("Speech to text unavailable", table: .voice),
             ]
         case .noSpeechToText:
             return [
-                AppLocalization.string("Set up speech to text in Conduit"),
-                AppLocalization.string("No speech to text"),
+                AppLocalization.string("Set up speech to text in Conduit", table: .voice),
+                AppLocalization.string("No speech to text", table: .voice),
             ]
         case .noTextToSpeech:
             return [
-                AppLocalization.string("Set up assistant voice in Conduit"),
-                AppLocalization.string("No assistant voice"),
+                AppLocalization.string("Set up assistant voice in Conduit", table: .voice),
+                AppLocalization.string("No assistant voice", table: .voice),
             ]
         case .liveModeNotSetUp(let mode):
             return [
-                AppLocalization.string("\(mode.displayName) isn't set up on Hermes"),
-                AppLocalization.string("\(mode.displayName) not set up"),
+                AppLocalization.string("\(mode.displayName) isn't set up on Hermes", table: .voice),
+                AppLocalization.string("\(mode.displayName) not set up", table: .voice),
             ]
         case .notifierPluginMissing:
             return [
-                AppLocalization.string("Update the Hermes notifier plugin"),
-                AppLocalization.string("Plugin update needed"),
+                PluginUpdateAsk.title(AppLocalization.string("Update the Hermes notifier plugin", table: .voice)),
+                PluginUpdateAsk.title(AppLocalization.string("Plugin update needed", table: .voice)),
             ]
         case .providerConsentNeeded(let mode):
             return [
-                AppLocalization.string("Allow \(mode.displayName) on your iPhone"),
-                AppLocalization.string("Allow on your iPhone"),
+                AppLocalization.string("Allow \(mode.displayName) on your iPhone", table: .voice),
+                AppLocalization.string("Allow on your iPhone", table: .voice),
             ]
         }
     }

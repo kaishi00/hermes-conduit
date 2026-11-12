@@ -88,7 +88,7 @@ struct GrokLiveSettingsSection: View {
                 Button {
                     Task { await check() }
                 } label: {
-                    Label(isChecking ? AppLocalization.string("Checking…") : AppLocalization.string("Check Grok Live"), systemImage: "arrow.clockwise")
+                    Label(isChecking ? AppLocalization.string("Checking…") : AppLocalization.string("Check Grok Live", table: .voice), systemImage: "arrow.clockwise")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 44)
                 }
@@ -124,7 +124,7 @@ struct GrokLiveSettingsSection: View {
                         model.setSpeakerBargeIn(requested)
                     }
                 ))
-                Text(AppLocalization.string("Experimental. Keeps the microphone open while Grok talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Grok keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation.") + " " + AppLocalization.string("Calls from Hermes don't use it, so their voice starts right away."))
+                Text(AppLocalization.string("Experimental. Keeps the microphone open while Grok talks on the phone's speaker or in the car, with iOS echo cancellation, so you can cut in by speaking. Headphones and AirPods always allow this. Turn it off if Grok keeps cutting itself off. Shared by Qwen Live, Gemini Live, Grok Live and Classic voice. Applies to the next conversation.", table: .voice) + " " + AppLocalization.string("Calls from Hermes don't use it, so their voice starts right away.", table: .voice))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
                 Toggle("Save calls to Sessions", isOn: Binding(
@@ -159,12 +159,12 @@ struct GrokLiveSettingsSection: View {
                 // Credential names, not prose: never translated.
                 let via = auth == "api_key" ? "XAI_API_KEY" : "SuperGrok"
                 if let voice {
-                    line = AppLocalization.string("Available (\(modelName), voice \(voice), via \(via))")
+                    line = AppLocalization.string("Available (\(modelName), voice \(voice), via \(via))", table: .voice)
                 } else {
-                    line = AppLocalization.string("Available (\(modelName), via \(via))")
+                    line = AppLocalization.string("Available (\(modelName), via \(via))", table: .voice)
                 }
             default:
-                line = availability.userFacingReason
+                line = PluginUpdateAsk.reason(availability.userFacingReason)
             }
             status = line
             isAvailable = availability.isAvailable

@@ -300,6 +300,111 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
+    /// A typed send refused in a chat Desktop holds, with Take over
+    /// automatically on: what the composer does with a send that didn't go,
+    /// handing its words back to AppState.
+    private func refuseTypedSendInDesktopChat(
+        _ text: String,
+        sends: @escaping (String) -> Void,
+        takenOver: @escaping () -> Bool,
+        takeover: @escaping () -> [String: Any]
+    ) async -> (harness: (
+        appState: AppState,
+        coordinator: ChatResumeCoordinator,
+        store: ChatResumeStore,
+        recoverySequence: ChatResumeRecoverySequence
+    ), box: ConnectedClientBox) {
+        let harness = makeHarness(lifecycleOperations: desktopHeldChatOperations(sends: sends, takenOver: takenOver))
+        harness.appState.chatTakeoverClient = ChatTakeoverClient(request: { _, _, _ in takeover() })
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [session("stored-a", alternateIDs: ["runtime-a"])]
+        let opened = await harness.appState.openSession("stored-a")
+        XCTAssertTrue(opened)
+        let key = harness.appState.durableComposerDraftKeyOnScreen
+
+        let submitted = await harness.appState.submitComposer(text: text)
+
+        XCTAssertFalse(submitted)
+        XCTAssertEqual(harness.appState.chatTakeover?.phase, .waiting, "Take over automatically started")
+        harness.appState.returnFailedComposerSubmission(
+            ComposerDraft(text: text, attachments: []),
+            key: key, dashboardID: harness.appState.activeDashboardID ?? UUID(), title: "Trip plans", stoppedQuietly: false
+        )
+        return (harness, box)
+    }
+
+    func testTypedSendRefusedByDesktopIsSentByConduitAfterTheAutomaticTakeover() async {
+        // Issue 2140: the takeover worked, but the composer only resent when
+        // its field still held the refused message. Its words came back
+        // somewhere else, so the field was empty under "This chat is yours
+        // now. Send your message again." Conduit now keeps them and sends
+        // them itself, as a call does its request (#1061).
+        let defaults = UserDefaults.standard
+        let savedAutomatic = defaults.object(forKey: ChatTakeoverPreference.automaticKey)
+        defaults.set(true, forKey: ChatTakeoverPreference.automaticKey)
+        defer { defaults.set(savedAutomatic, forKey: ChatTakeoverPreference.automaticKey) }
+        var sent: [String] = []
+        var takenOver = false
+        let (harness, box) = await refuseTypedSendInDesktopChat(
+            "From my phone", sends: { sent.append($0) }, takenOver: { takenOver },
+            takeover: {
+                takenOver = true
+                return ["ok": true, "status": "taken_over"]
+            }
+        )
+
+        XCTAssertTrue(harness.appState.composerRestoreRequests.isEmpty, "Conduit keeps the words while it takes the chat over")
+        for _ in 0..<300 where sent.count < 2 { try? await Task.sleep(for: .milliseconds(10)) }
+
+        XCTAssertEqual(sent, ["From my phone", "From my phone"], "Sent again once the chat is Conduit's")
+        XCTAssertNil(harness.appState.chatTakeover, "No notice asks to send again")
+        XCTAssertTrue(harness.appState.composerRestoreRequests.isEmpty, "Nothing comes back to send twice")
+        box.client.disconnect()
+    }
+
+    func testKeptTypedMessageComesBackWhenTheTakeoverDoesNotHappen() async {
+        // Conduit on another device holds the chat, so the host never hands
+        // it over: the kept words go back to the composer, never lost.
+        let defaults = UserDefaults.standard
+        let savedAutomatic = defaults.object(forKey: ChatTakeoverPreference.automaticKey)
+        defaults.set(true, forKey: ChatTakeoverPreference.automaticKey)
+        defer { defaults.set(savedAutomatic, forKey: ChatTakeoverPreference.automaticKey) }
+        var sent: [String] = []
+        let (harness, box) = await refuseTypedSendInDesktopChat(
+            "From my phone", sends: { sent.append($0) }, takenOver: { false },
+            takeover: { ["ok": true, "status": "same_host"] }
+        )
+        for _ in 0..<300 where harness.appState.chatTakeover?.phase == .waiting {
+            try? await Task.sleep(for: .milliseconds(10))
+        }
+
+        XCTAssertEqual(harness.appState.chatTakeover?.phase, .heldHere)
+        XCTAssertEqual(harness.appState.composerRestoreRequests.map(\.draft.text), ["From my phone"])
+        XCTAssertEqual(sent, ["From my phone"])
+        box.client.disconnect()
+    }
+
+    func testKeptTypedMessageComesBackWhenTheTakeoverIsDismissed() async {
+        // Desktop is still replying, so Conduit waits; closing the notice
+        // stops the takeover and the words go back to the composer.
+        let defaults = UserDefaults.standard
+        let savedAutomatic = defaults.object(forKey: ChatTakeoverPreference.automaticKey)
+        defaults.set(true, forKey: ChatTakeoverPreference.automaticKey)
+        defer { defaults.set(savedAutomatic, forKey: ChatTakeoverPreference.automaticKey) }
+        var sent: [String] = []
+        let (harness, box) = await refuseTypedSendInDesktopChat(
+            "From my phone", sends: { sent.append($0) }, takenOver: { false },
+            takeover: { ["ok": true, "status": "busy", "surface": "desktop"] }
+        )
+        XCTAssertTrue(harness.appState.composerRestoreRequests.isEmpty)
+
+        harness.appState.dismissChatTakeover()
+
+        XCTAssertEqual(harness.appState.composerRestoreRequests.map(\.draft.text), ["From my phone"])
+        XCTAssertEqual(sent, ["From my phone"])
+        box.client.disconnect()
+    }
+
     func testCallRequestRefusedAgainAfterTakeoverStopsAndALaterOneTriesAgain() async {
         // Desktop took the chat straight back: one resend, no third send,
         // and the call says the chat is open there. The next request takes
@@ -325,7 +430,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertEqual(takeovers, 1)
         XCTAssertEqual(
             harness.appState.callRefusalMessageForOpenChat(),
-            AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.")
+            AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.", table: .chat)
         )
 
         let second = await harness.appState.submitComposerForCall(text: "Any new email")
@@ -378,7 +483,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
             XCTFail("A second refusal fails the request")
         } catch {
             XCTAssertEqual(error as? VoiceAudioError, .unavailable(
-                AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.")
+                AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.", table: .chat)
             ))
         }
         XCTAssertEqual(sends, 2)
@@ -608,6 +713,70 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         XCTAssertFalse(
             harness.appState.activeChatScrollSessionIdentity.isReconciling
         )
+        box.client.disconnect()
+    }
+
+    /// Issue 1727: the registry probe goes out beside the health ping
+    /// instead of after it, and its rows count only once the ping passed.
+    func testForegroundProbeOverlapsTheHealthPing() async {
+        let active = session("stored-a")
+        let healthGate = LifecycleSuspension()
+        var probeCount = 0
+        var probesBeforeHealthAnswered: Int?
+        var resumeCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _, _ in
+                    .payload([
+                        "messages": [
+                            ["id": "user", "role": "user", "content": "Question", "timestamp": "1"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 1]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                verifyTransportHealth: { _ in
+                    await healthGate.suspend()
+                    probesBeforeHealthAnswered = probeCount
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        probeCount = 0
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        let resumesBeforeForeground = resumeCount
+
+        harness.appState.handleScenePhase(.background)
+        let activation = harness.appState.handleScenePhase(.active)
+        await healthGate.waitUntilSuspended()
+        for _ in 0..<50 where probeCount == 0 { await Task.yield() }
+        healthGate.resume()
+        if let activation { await activation.value }
+
+        XCTAssertEqual(probesBeforeHealthAnswered, 1, "The probe must go out while the ping is still out")
+        XCTAssertEqual(probeCount, 1, "One registry read serves the foreground")
+        XCTAssertEqual(resumeCount, resumesBeforeForeground, "A healthy foreground must never issue session.resume")
+        XCTAssertEqual(harness.appState.turnState, .running)
         box.client.disconnect()
     }
 
@@ -3594,6 +3763,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
 
     private func runStaleIdleSteer(
         seeded: [ChatMessage],
+        beforeSend: @MainActor (AppState) -> Void = { _ in },
         duringSteer: @escaping @MainActor (AppState) -> Void = { _ in }
     ) async -> AppState {
         let active = session("stored-a")
@@ -3619,10 +3789,39 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         harness.appState.activeSessionId = active.id
         harness.appState.messages = seeded
         harness.appState.handleScenePhase(.background)
+        beforeSend(harness.appState)
 
         let submitted = await harness.appState.submitComposer(text: "Follow-up")
         XCTAssertTrue(submitted)
         return harness.appState
+    }
+
+    /// A steer that goes through ends the failed send's line shown when it
+    /// set out (issue 2095, #2110).
+    func testASteerThatGoesThroughClearsTheFailedSendsLine() async {
+        let appState = await runStaleIdleSteer(seeded: [], beforeSend: { appState in
+            appState.errorMessage = "Failed to send"
+            appState.sendFailureShown = "Failed to send"
+        })
+
+        XCTAssertEqual(appState.messages.last?.isSteer, true)
+        XCTAssertNil(appState.sendFailureShown)
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    /// Only the line shown when the steer set out is its to clear: a newer
+    /// send's failure, shown while the steer was on its way, stays.
+    func testASteerLeavesANewerFailedSendsLine() async {
+        let appState = await runStaleIdleSteer(seeded: [], beforeSend: { appState in
+            appState.errorMessage = "Failed to send"
+            appState.sendFailureShown = "Failed to send"
+        }, duringSteer: { appState in
+            appState.errorMessage = "Failed to send the photo"
+            appState.sendFailureShown = "Failed to send the photo"
+        })
+
+        XCTAssertEqual(appState.sendFailureShown, "Failed to send the photo")
+        XCTAssertEqual(appState.errorMessage, "Failed to send the photo")
     }
 
     private func persistedSteer(_ id: String, _ text: String) -> ChatMessage {
@@ -3638,9 +3837,9 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
     }
 
     func testSteerPersistedDuringTheRPCIsNotConfirmedTwice() async {
-        let appState = await runStaleIdleSteer(seeded: []) { appState in
+        let appState = await runStaleIdleSteer(seeded: [], duringSteer: { appState in
             appState.messages.append(self.persistedSteer("91", "Follow-up"))
-        }
+        })
 
         XCTAssertEqual(appState.messages.map(\.id), ["91"])
     }
@@ -4108,7 +4307,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         )
         XCTAssertEqual(
             harness.appState.composerNotice,
-            AppLocalization.string("Your message to “\("Trip plans")” wasn't sent. It's back in that chat's draft."),
+            AppLocalization.string("Your message to “\("Trip plans")” wasn't sent. It's back in that chat's draft.", table: .chat),
             "Nothing else said the send stopped"
         )
     }
@@ -9250,6 +9449,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let savedOlder = session("stored-b")
         let healthGate = LifecycleSuspension()
         var mintCount = 0
+        var probeReads = 0
         var openedSessionIDs: [String] = []
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
@@ -9280,7 +9480,18 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                     await healthGate.suspend()
                     throw URLError(.networkConnectionLost)
                 },
-                probeActiveSessions: { _ in [] },
+                // The probe goes out beside the ping (issue 1727): the busy
+                // row it reads from the socket that then fails must be
+                // thrown away. Reads after the reconnect see nothing running.
+                probeActiveSessions: { _ in
+                    probeReads += 1
+                    guard probeReads == 1 else { return [] }
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                },
                 loadProfiles: {},
                 loadBusyInputMode: { _ in },
                 loadProfileDisplayPreferences: {},
@@ -9296,6 +9507,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let seeded = await harness.appState.openSession(visible.id)
         XCTAssertTrue(seeded, file: file, line: line)
         openedSessionIDs.removeAll()
+        probeReads = 0
         harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: savedOlder.id), for: "default")
 
         harness.appState.handleScenePhase(.background)

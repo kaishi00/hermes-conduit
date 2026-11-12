@@ -9,10 +9,10 @@ struct LiveVoiceSetupSheet: View {
 
         var checkTitle: String {
             switch self {
-            case .gemini: AppLocalization.string("Check Gemini Live")
-            case .qwen: AppLocalization.string("Check Qwen Live")
-            case .gpt: AppLocalization.string("Check GPT-Live")
-            case .grok: AppLocalization.string("Check Grok Live")
+            case .gemini: AppLocalization.string("Check Gemini Live", table: .voice)
+            case .qwen: AppLocalization.string("Check Qwen Live", table: .voice)
+            case .gpt: AppLocalization.string("Check GPT-Live", table: .voice)
+            case .grok: AppLocalization.string("Check Grok Live", table: .voice)
             }
         }
     }
@@ -24,7 +24,7 @@ struct LiveVoiceSetupSheet: View {
     var body: some View {
         NavigationStack {
             SettingsDetailContainer {
-                Text(AppLocalization.string("Install the notifier if it is missing, or update your existing installation. Both commands target the Hermes gateway used by this profile."))
+                Text(AppLocalization.string("Install the notifier if it is missing, or update your existing installation. Both commands target the Hermes gateway used by this profile.", table: .voice))
                     .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
 
@@ -48,20 +48,20 @@ struct LiveVoiceSetupSheet: View {
                 )
 
                 Link(destination: URL(string: "https://github.com/kaishi00/hermes-conduit-notifier")!) {
-                    Label(AppLocalization.string("Hermes notifier repository"), systemImage: "arrow.up.right.square")
+                    Label(AppLocalization.string("Hermes notifier repository", table: .voice), systemImage: "arrow.up.right.square")
                         .scaledFont(.subheadline.weight(.medium))
                 }
-                .accessibilityHint(AppLocalization.string("Opens the notifier project on GitHub"))
+                .accessibilityHint(AppLocalization.string("Opens the notifier project on GitHub", table: .voice))
 
                 Label(
-                    AppLocalization.string("Return to Voice settings, enable this mode if it is off, and tap \(mode.checkTitle) to check availability."),
+                    AppLocalization.string("Return to Voice settings, enable this mode if it is off, and tap \(mode.checkTitle) to check availability.", table: .voice),
                     systemImage: "arrow.uturn.backward"
                 )
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             }
-            .navigationTitle(AppLocalization.string("Live voice setup"))
+            .navigationTitle(AppLocalization.string("Live voice setup", table: .voice))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
@@ -86,10 +86,10 @@ struct LiveVoiceSetupSheet: View {
                         // The sent-bubble fill: the dark-mode accent is
                         // too light under white text.
                         .background(Color.conduitUserBubble, in: Circle())
-                    Text(AppLocalization.string("Add a Gemini API key"))
+                    Text(AppLocalization.string("Add a Gemini API key", table: .voice))
                         .scaledFont(.subheadline.weight(.semibold))
                 }
-                Text(AppLocalization.string("Add it in Voice settings under API key, or set GEMINI_API_KEY in the active Hermes profile’s .env file. The key stays on your Hermes server."))
+                Text(AppLocalization.string("Add it in Voice settings under API key, or set GEMINI_API_KEY in the active Hermes profile’s .env file. The key stays on your Hermes server.", table: .voice))
                     .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -104,10 +104,10 @@ struct LiveVoiceSetupSheet: View {
                         .frame(width: 22, height: 22)
                         // As the Gemini step: white on the sent-bubble fill.
                         .background(Color.conduitUserBubble, in: Circle())
-                    Text(AppLocalization.string("Add a Qwen API key"))
+                    Text(AppLocalization.string("Add a Qwen API key", table: .voice))
                         .scaledFont(.subheadline.weight(.semibold))
                 }
-                Text(AppLocalization.string("Set DASHSCOPE_API_KEY and CONDUIT_QWEN_LIVE_WORKSPACE on your Hermes profile. The permanent key stays on your server."))
+                Text(AppLocalization.string("Set DASHSCOPE_API_KEY and CONDUIT_QWEN_LIVE_WORKSPACE on your Hermes profile. The permanent key stays on your server.", table: .voice))
                     .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -116,10 +116,10 @@ struct LiveVoiceSetupSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 NotificationSetupCommand(
                     step: 2,
-                    title: AppLocalization.string("Sign in to OpenAI Codex"),
+                    title: AppLocalization.string("Sign in to OpenAI Codex", table: .voice),
                     command: "hermes auth"
                 )
-                Text(AppLocalization.string("Choose OpenAI Codex when prompted. The sign-in stays on your Hermes server."))
+                Text(AppLocalization.string("Choose OpenAI Codex when prompted. The sign-in stays on your Hermes server.", table: .voice))
                     .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -128,10 +128,10 @@ struct LiveVoiceSetupSheet: View {
             VStack(alignment: .leading, spacing: 6) {
                 NotificationSetupCommand(
                     step: 2,
-                    title: AppLocalization.string("Sign in to SuperGrok"),
+                    title: AppLocalization.string("Sign in to SuperGrok", table: .voice),
                     command: "hermes auth add xai-oauth"
                 )
-                Text(AppLocalization.string("Sign in with your SuperGrok or X Premium+ account, or add an xAI key in Voice settings under API key instead. The sign-in and the key stay on your Hermes server."))
+                Text(AppLocalization.string("Sign in with your SuperGrok or X Premium+ account, or add an xAI key in Voice settings under API key instead. The sign-in and the key stay on your Hermes server.", table: .voice))
                     .scaledFont(.subheadline)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -147,17 +147,17 @@ struct LiveVoiceSetupLink: View {
 
     private var accessibilityTitle: String {
         switch mode {
-        case .gemini: AppLocalization.string("Set up Gemini Live")
-        case .qwen: AppLocalization.string("Set up Qwen Live")
-        case .gpt: AppLocalization.string("Set up GPT-Live")
-        case .grok: AppLocalization.string("Set up Grok Live")
+        case .gemini: AppLocalization.string("Set up Gemini Live", table: .voice)
+        case .qwen: AppLocalization.string("Set up Qwen Live", table: .voice)
+        case .gpt: AppLocalization.string("Set up GPT-Live", table: .voice)
+        case .grok: AppLocalization.string("Set up Grok Live", table: .voice)
         }
     }
 
     var body: some View {
         Button { showingSetup = true } label: {
             HStack(alignment: .firstTextBaseline, spacing: 4) {
-                Text(AppLocalization.string("Requires Hermes notifier ·"))
+                Text(AppLocalization.string("Requires Hermes notifier ·", table: .voice))
                     .foregroundStyle(.secondary)
                 Text(AppLocalization.string("Setup"))
                     .fontWeight(.semibold)
@@ -169,7 +169,7 @@ struct LiveVoiceSetupLink: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(accessibilityTitle)
-        .accessibilityHint(AppLocalization.string("Opens live voice setup instructions"))
+        .accessibilityHint(AppLocalization.string("Opens live voice setup instructions", table: .voice))
         .sheet(isPresented: $showingSetup) {
             LiveVoiceSetupSheet(mode: mode)
         }

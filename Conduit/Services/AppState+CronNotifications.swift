@@ -29,8 +29,14 @@ extension AppState {
     }
 
     func refreshCronNotifications() async {
-        // A save in flight owns the list until the host answers it.
-        guard supportsCronNotifications, cronNotificationsChangingJobID == nil else { return }
+        guard supportsCronNotifications else { return }
+        // A save in flight owns the list until the host answers it; a read
+        // asked for meanwhile runs once it ends, so one triggered by the
+        // capability landing is not lost.
+        guard cronNotificationsChangingJobID == nil else {
+            cronNotificationsReadDeferred = true
+            return
+        }
         let profile = activeProfile
         let key = cronNotificationsKey(profile: profile)
         let generation = cronNotificationsGeneration
@@ -63,6 +69,7 @@ extension AppState {
         defer {
             cronNotificationsChangingJobID = nil
             cronNotificationsGeneration += 1
+            if cronNotificationsReadDeferred { refreshCronNotificationsAfterSave() }
         }
         // The switch moves at once; the host's answer settles it. Not read
         // yet: start from nothing muted, as the switch showed.
@@ -105,7 +112,7 @@ extension AppState {
             if error is CancellationError { return false }
             cronNotificationsLogger.notice("Cron notifications not saved: \(LogRedaction.message(error), privacy: .public)")
             if stillHere {
-                errorMessage = AppLocalization.string("Could not change this job's notifications: \(UserFacingError.message(for: error))")
+                errorMessage = AppLocalization.string("Could not change this job's notifications: \(UserFacingError.message(for: error))", table: .tasks)
             }
             return false
         }
@@ -149,6 +156,7 @@ extension AppState {
 
     /// A refresh skipped while the save ran, once it has ended.
     private func refreshCronNotificationsAfterSave() {
+        cronNotificationsReadDeferred = false
         Task { @MainActor [weak self] in
             await Task.yield()
             await self?.refreshCronNotifications()

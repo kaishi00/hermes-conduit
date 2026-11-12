@@ -599,15 +599,18 @@ final class ConnectionSetupTestTests: XCTestCase {
             XCTAssertEqual(plan.remediationStep, .connectionDetails, "\(failure) is fixed at the details step")
             XCTAssertTrue(plan.offersRetry)
         }
-        let plan = ConnectionSetupTestRecoveryPlan.plan(for: .dashboard, failure: .dashboardUnavailable)
-        XCTAssertEqual(plan.remediationStep, .connectionDetails)
+        for failure: ConnectionFailure in [.dashboardUnavailable, .accessDenied] {
+            let plan = ConnectionSetupTestRecoveryPlan.plan(for: .dashboard, failure: failure)
+            XCTAssertEqual(plan.remediationStep, .connectionDetails, "\(failure)")
+            XCTAssertTrue(plan.offersRetry, "\(failure)")
+        }
     }
 
     func testOnlyCertificateFailuresOfferTheHTTPSPage() {
         for failure: ConnectionFailure in [.tlsUntrusted, .tlsBadDate, .tlsFailure, .tlsHostnameMismatch, .tlsNotStandardsCompliant] {
             XCTAssertTrue(ConnectionSetupTestRecoveryPlan.plan(for: .server, failure: failure).offersCertificateHelp, "\(failure)")
         }
-        for failure: ConnectionFailure in [.hostNotFound, .timedOut, .insecureTransport, .dashboardUnavailable] {
+        for failure: ConnectionFailure in [.hostNotFound, .timedOut, .insecureTransport, .dashboardUnavailable, .accessDenied] {
             XCTAssertFalse(ConnectionSetupTestRecoveryPlan.plan(for: .server, failure: failure).offersCertificateHelp, "\(failure)")
         }
         XCTAssertFalse(ConnectionSetupTestRecoveryPlan.plan(for: .authentication, failure: .authenticationRejected).offersCertificateHelp)

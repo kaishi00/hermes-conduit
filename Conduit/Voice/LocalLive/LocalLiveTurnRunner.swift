@@ -113,6 +113,8 @@ final class LocalLiveTurnRunner {
     private var showedCard = false
     /// What the open turn said so far ends a line (or nothing was said).
     private var endedLine = true
+    /// Connect cards the call already said wait in the chat.
+    private var saidConnections: Set<String> = []
     private var task: Task<Void, Never>?
     /// Bumped by every new turn and reset, so older work stops at its next step.
     private var generation = 0
@@ -361,6 +363,12 @@ final class LocalLiveTurnRunner {
             // Hermes waits on the user: the call says where to answer, and
             // the reply is still followed for the turn after.
             say(Self.needsInputLine, to: turn.id, generation: generation)
+        case .connection(let id, let card):
+            // A connect card: said once, when it opens (its updates come
+            // every few seconds).
+            guard id == current.runtimeID, card.isOpen, let turn,
+                  saidConnections.insert(card.opID).inserted else { return }
+            say(Self.needsInputLine, to: turn.id, generation: generation)
         default:
             return
         }
@@ -451,7 +459,7 @@ final class LocalLiveTurnRunner {
 
     // Spoken to the user by their speech server.
     static var busyLine: String {
-        AppLocalization.string("Hermes is still busy in this chat. Try again in a moment.")
+        AppLocalization.string("Hermes is still busy in this chat. Try again in a moment.", table: .voice)
     }
 
     /// What the call says when a turn couldn't go to Hermes: the reason,
@@ -463,15 +471,15 @@ final class LocalLiveTurnRunner {
     }
 
     static var failureLine: String {
-        AppLocalization.string("Hermes couldn't take that just now.")
+        AppLocalization.string("Hermes couldn't take that just now.", table: .voice)
     }
 
     static var errorLine: String {
-        AppLocalization.string("Hermes ran into a problem with that.")
+        AppLocalization.string("Hermes ran into a problem with that.", table: .voice)
     }
 
     static var onScreenLine: String {
-        AppLocalization.string("The rest is on your screen.")
+        AppLocalization.string("The rest is on your screen.", table: .voice)
     }
 
     /// The command Hermes asks to run, which a yes or no answers here.
@@ -479,10 +487,10 @@ final class LocalLiveTurnRunner {
         let asked = HermesApprovalText.description(approval.description).trimmingCharacters(in: .whitespacesAndNewlines)
         let what = asked.isEmpty ? HermesApprovalText.command(approval.command) : asked
         let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
-        return AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.")
+        return AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.", table: .voice)
     }
 
     static var needsInputLine: String {
-        AppLocalization.string("Hermes needs your answer in the chat before it can go on.")
+        AppLocalization.string("Hermes needs your answer in the chat before it can go on.", table: .voice)
     }
 }

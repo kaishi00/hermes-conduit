@@ -56,6 +56,14 @@ enum ConnectionFailure: Equatable {
     case signInPageFailed
 
     // Server-side responses.
+    /// A 401 or 403 at provider discovery, which sends no credentials, or
+    /// a 403 from the native sign-in's token requests (Hermes refuses a
+    /// code or refresh token with 400/401): something in front of the
+    /// dashboard (an IP allowlist, a firewall, an access policy) refused
+    /// this device. Never bad credentials, and
+    /// not a wrong address either: the same request answers from an
+    /// allowed network (issue #2092).
+    case accessDenied
     case dashboardUnavailable
     case unexpectedServerResponse
 
@@ -74,6 +82,13 @@ enum ConnectionFailureClassifier {
         /// Dashboard-ticket bridge requests (WebKit-side ticket minting):
         /// like provider discovery, a 401/403 here is never bad credentials.
         case ticketMint
+        /// The native sign-in's token exchange and refresh. They carry a
+        /// code or refresh token, so a 401 is Hermes refusing it (a
+        /// refresh's 400/401 never gets here: it turns into sign-in
+        /// required). A 403 is the edge refusing this device: a launch
+        /// with saved tokens refreshes before any discovery, so an
+        /// allowlist refuses the refresh first. Never bad credentials.
+        case nativeToken
     }
 
     static func classify(_ error: Error) -> ConnectionFailure {
@@ -149,14 +164,14 @@ enum ConnectionFailureClassifier {
     }
 
     /// Native (PKCE) sign-in failures, so Repair's Sign In to Reconnect and
-    /// Settings' Sign In Again name them as the login screen does. Its
-    /// requests are discovery-like: a 401/403 is never bad credentials.
+    /// Settings' Sign In Again name them as the login screen does. A
+    /// 401/403 from its token requests is never bad credentials.
     static func classify(_ nativeError: NativeOAuthError) -> ConnectionFailure {
         switch nativeError {
         case .browserFailed:
             return .signInPageFailed
         case .requestFailed(let status):
-            return classifyHTTPStatus(status, stage: .providerDiscovery)
+            return classifyHTTPStatus(status, stage: .nativeToken)
         case .invalidURL, .callbackMalformed, .stateMismatch, .tokenResponseMalformed:
             return .unexpectedServerResponse
         case .randomGenerationFailed, .listenerFailed, .callbackRejected, .tokenStorageFailed, .timedOut:
@@ -222,6 +237,16 @@ enum ConnectionFailureClassifier {
             if status == 401 || status == 403 {
                 return .authenticationRejected
             }
+        }
+        // Discovery asks for no credentials, so a refusal there came from
+        // whatever guards the address (an IP allowlist, a firewall, an
+        // access policy). A ticket mint's 401/403 is Hermes refusing a
+        // spent or stale session, which stays an unexpected response.
+        if stage == .providerDiscovery, status == 401 || status == 403 {
+            return .accessDenied
+        }
+        if stage == .nativeToken, status == 403 {
+            return .accessDenied
         }
         if (500...599).contains(status) {
             return .dashboardUnavailable
@@ -341,8 +366,8 @@ struct ConnectionFailurePresentation: Equatable {
     /// Sign In Again, which opens the dashboard's own sign-in.
     static var signInExpired: ConnectionFailurePresentation {
         ConnectionFailurePresentation(
-            title: AppLocalization.string("Your dashboard sign-in expired"),
-            message: AppLocalization.string("Conduit was signed out of this dashboard, so it can’t reach Hermes. Sign in again to reconnect."),
+            title: AppLocalization.string("Your dashboard sign-in expired", table: .connection),
+            message: AppLocalization.string("Conduit was signed out of this dashboard, so it can’t reach Hermes. Sign in again to reconnect.", table: .connection),
             helpDestination: ConnectionFailure.loginRequired.helpDestination,
             offersRecoveryActions: true,
             classifiedFailure: .loginRequired
@@ -372,71 +397,74 @@ struct ConnectionFailurePresentation: Equatable {
 extension ConnectionFailure {
     var userTitle: String {
         switch self {
-        case .invalidAddress: return AppLocalization.string("Check the dashboard address")
-        case .insecureTransport: return AppLocalization.string("Insecure dashboard address")
-        case .hostNotFound: return AppLocalization.string("Dashboard not found")
-        case .unreachable, .connectionRefused: return AppLocalization.string("Couldn’t reach Hermes")
-        case .timedOut: return AppLocalization.string("Connection timed out")
-        case .offline: return AppLocalization.string("No network connection")
-        case .tlsUntrusted: return AppLocalization.string("Secure connection failed")
-        case .tlsBadDate: return AppLocalization.string("Certificate date problem")
-        case .tlsFailure: return AppLocalization.string("Secure connection failed")
-        case .tlsHostnameMismatch: return AppLocalization.string("Certificate doesn’t match the address")
-        case .tlsNotStandardsCompliant: return AppLocalization.string("Certificate not accepted by iOS")
-        case .authenticationRejected: return AppLocalization.string("Login failed")
-        case .rateLimited: return AppLocalization.string("Too many login attempts")
-        case .loginRequired: return AppLocalization.string("Sign-in required")
-        case .cloudflareTokenRejected: return AppLocalization.string("Cloudflare rejected the service token")
-        case .sessionTicketFailure: return AppLocalization.string("Could not start the session")
-        case .signInPageFailed: return AppLocalization.string("Sign-in page didn’t open")
-        case .dashboardUnavailable: return AppLocalization.string("Dashboard unavailable")
-        case .unexpectedServerResponse: return AppLocalization.string("Unexpected response")
-        case .unknown: return AppLocalization.string("Couldn’t connect")
+        case .invalidAddress: return AppLocalization.string("Check the dashboard address", table: .connection)
+        case .insecureTransport: return AppLocalization.string("Insecure dashboard address", table: .connection)
+        case .hostNotFound: return AppLocalization.string("Dashboard not found", table: .connection)
+        case .unreachable, .connectionRefused: return AppLocalization.string("Couldn’t reach Hermes", table: .connection)
+        case .timedOut: return AppLocalization.string("Connection timed out", table: .connection)
+        case .offline: return AppLocalization.string("No network connection", table: .connection)
+        case .tlsUntrusted: return AppLocalization.string("Secure connection failed", table: .connection)
+        case .tlsBadDate: return AppLocalization.string("Certificate date problem", table: .connection)
+        case .tlsFailure: return AppLocalization.string("Secure connection failed", table: .connection)
+        case .tlsHostnameMismatch: return AppLocalization.string("Certificate doesn’t match the address", table: .connection)
+        case .tlsNotStandardsCompliant: return AppLocalization.string("Certificate not accepted by iOS", table: .connection)
+        case .authenticationRejected: return AppLocalization.string("Login failed", table: .connection)
+        case .rateLimited: return AppLocalization.string("Too many login attempts", table: .connection)
+        case .loginRequired: return AppLocalization.string("Sign-in required", table: .connection)
+        case .cloudflareTokenRejected: return AppLocalization.string("Cloudflare rejected the service token", table: .connection)
+        case .sessionTicketFailure: return AppLocalization.string("Could not start the session", table: .connection)
+        case .signInPageFailed: return AppLocalization.string("Sign-in page didn’t open", table: .connection)
+        case .accessDenied: return AppLocalization.string("Server refused access", table: .connection)
+        case .dashboardUnavailable: return AppLocalization.string("Dashboard unavailable", table: .connection)
+        case .unexpectedServerResponse: return AppLocalization.string("Unexpected response", table: .connection)
+        case .unknown: return AppLocalization.string("Couldn’t connect", table: .connection)
         }
     }
 
     var userMessage: String {
         switch self {
         case .invalidAddress:
-            return AppLocalization.string("That doesn’t look like a dashboard URL Conduit can use. Check it for typos — it should look like https://hermes.example.")
+            return AppLocalization.string("That doesn’t look like a dashboard URL Conduit can use. Check it for typos — it should look like https://hermes.example.", table: .connection)
         case .insecureTransport:
-            return AppLocalization.string("Remote dashboards must use HTTPS. Plain HTTP is only accepted for local addresses like localhost, private LAN IPs, and Tailscale.")
+            return AppLocalization.string("Remote dashboards must use HTTPS. Plain HTTP is only accepted for local addresses like localhost, private LAN IPs, and Tailscale.", table: .connection)
         case .hostNotFound:
-            return AppLocalization.string("Conduit could not find that host. Check the dashboard address and try again.")
+            return AppLocalization.string("Conduit could not find that host. Check the dashboard address and try again.", table: .connection)
         case .unreachable, .connectionRefused:
-            return AppLocalization.string("Conduit could not connect to the dashboard at this address. Make sure the dashboard is running and that this device can reach it.")
+            return AppLocalization.string("Conduit could not connect to the dashboard at this address. Make sure the dashboard is running and that this device can reach it.", table: .connection)
         case .timedOut:
-            return AppLocalization.string("The dashboard did not respond in time. Check the address, the network connection, and whether the Hermes dashboard is running.")
+            return AppLocalization.string("The dashboard did not respond in time. Check the address, the network connection, and whether the Hermes dashboard is running.", table: .connection)
         case .offline:
-            return AppLocalization.string("This device doesn’t appear to have a network connection. Reconnect to Wi-Fi or cellular and try again.")
+            return AppLocalization.string("This device doesn’t appear to have a network connection. Reconnect to Wi-Fi or cellular and try again.", table: .connection)
         case .tlsUntrusted:
-            return AppLocalization.string("Conduit reached the server, but iOS does not trust its TLS certificate. If you use your own certificate authority, make sure its root certificate is installed and trusted on this device.")
+            return AppLocalization.string("Conduit reached the server, but iOS does not trust its TLS certificate. If you use your own certificate authority, make sure its root certificate is installed and trusted on this device.", table: .connection)
         case .tlsBadDate:
-            return AppLocalization.string("The dashboard certificate is expired or not yet valid. Check the certificate dates and this device’s date and time.")
+            return AppLocalization.string("The dashboard certificate is expired or not yet valid. Check the certificate dates and this device’s date and time.", table: .connection)
         case .tlsFailure:
-            return AppLocalization.string("Conduit could not establish a secure connection to the dashboard. The server’s TLS certificate may be misconfigured.")
+            return AppLocalization.string("Conduit could not establish a secure connection to the dashboard. The server’s TLS certificate may be misconfigured.", table: .connection)
         case .tlsHostnameMismatch:
-            return AppLocalization.string("Conduit reached the server, but its TLS certificate isn’t issued for this address. Connect with a name or IP address the certificate lists, or add this address to the certificate.")
+            return AppLocalization.string("Conduit reached the server, but its TLS certificate isn’t issued for this address. Connect with a name or IP address the certificate lists, or add this address to the certificate.", table: .connection)
         case .tlsNotStandardsCompliant:
-            return AppLocalization.string("iOS refuses this server certificate, whichever authority issued it. Apple requires a validity of 825 days or less, the serverAuth extended key usage, an RSA key of at least 2048 bits (or ECC 256 bits) and a SHA-2 signature.")
+            return AppLocalization.string("iOS refuses this server certificate, whichever authority issued it. Apple requires a validity of 825 days or less, the serverAuth extended key usage, an RSA key of at least 2048 bits (or ECC 256 bits) and a SHA-2 signature.", table: .connection)
         case .authenticationRejected:
-            return AppLocalization.string("Hermes rejected that username or password. Check your dashboard credentials and try again.")
+            return AppLocalization.string("Hermes rejected that username or password. Check your dashboard credentials and try again.", table: .connection)
         case .rateLimited:
-            return AppLocalization.string("Hermes temporarily blocked additional login attempts. Wait about a minute before trying again.")
+            return AppLocalization.string("Hermes temporarily blocked additional login attempts. Wait about a minute before trying again.", table: .connection)
         case .loginRequired:
-            return AppLocalization.string("Conduit needs you to sign in to the dashboard to reconnect.")
+            return AppLocalization.string("Conduit needs you to sign in to the dashboard to reconnect.", table: .connection)
         case .cloudflareTokenRejected:
-            return AppLocalization.string("Cloudflare Access did not accept the configured service token. Verify the Client ID / Secret and that the token is allowed by a Service Auth policy for this Access application, or turn off \"Use Cloudflare Access service token\" to sign in interactively.")
+            return AppLocalization.string("Cloudflare Access did not accept the configured service token. Verify the Client ID / Secret and that the token is allowed by a Service Auth policy for this Access application, or turn off \"Use Cloudflare Access service token\" to sign in interactively.", table: .connection)
         case .sessionTicketFailure:
-            return AppLocalization.string("Signing in succeeded, but Conduit could not start a Hermes session. The dashboard may be busy, restarting, or it did not accept the new session — try again.")
+            return AppLocalization.string("Signing in succeeded, but Conduit could not start a Hermes session. The dashboard may be busy, restarting, or it did not accept the new session — try again.", table: .connection)
         case .signInPageFailed:
-            return AppLocalization.string("The sign-in page couldn’t open. Please try again.")
+            return AppLocalization.string("The sign-in page couldn’t open. Please try again.", table: .connection)
+        case .accessDenied:
+            return AppLocalization.string("Conduit reached the server, but it refused this device. If a proxy, firewall or access list only lets in some networks, connect from one it allows, such as your VPN, Tailscale or home Wi-Fi.", table: .connection)
         case .dashboardUnavailable:
-            return AppLocalization.string("The dashboard is reachable but reported a server error. It may be restarting or unhealthy — try again in a moment.")
+            return AppLocalization.string("The dashboard is reachable but reported a server error. It may be restarting or unhealthy — try again in a moment.", table: .connection)
         case .unexpectedServerResponse:
-            return AppLocalization.string("The dashboard responded in a way Conduit didn’t expect. Make sure the address points at a Hermes dashboard.")
+            return AppLocalization.string("The dashboard responded in a way Conduit didn’t expect. Make sure the address points at a Hermes dashboard.", table: .connection)
         case .unknown:
-            return AppLocalization.string("Something went wrong while connecting to the dashboard. Try again.")
+            return AppLocalization.string("Something went wrong while connecting to the dashboard. Try again.", table: .connection)
         }
     }
 
@@ -446,7 +474,7 @@ extension ConnectionFailure {
         switch self {
         case .invalidAddress: return .start
         case .insecureTransport: return .dashboard
-        case .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline: return .network
+        case .hostNotFound, .unreachable, .connectionRefused, .timedOut, .offline, .accessDenied: return .network
         case .tlsUntrusted, .tlsBadDate, .tlsFailure, .tlsHostnameMismatch, .tlsNotStandardsCompliant: return .tls
         case .authenticationRejected: return .credentials
         case .rateLimited: return nil

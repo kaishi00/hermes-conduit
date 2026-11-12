@@ -73,6 +73,7 @@ struct PulseSettingsPage: View {
                 if state.enabled {
                     let budgets = appState.notifierPlugin.reports(PulseClient.nudgeCapability)
                     speakUpSection(state, budgets: budgets)
+                    if !appState.pulseDoItBotChoices.isEmpty || appState.pulseDoItBotSaved { doItSection }
                     let quiet = appState.notifierPlugin.reports(PulseClient.quietCapability)
                     let hours = appState.notifierPlugin.reports(PulseClient.hoursCapability)
                     if quiet || hours { quietSection(state, quiet: quiet, hours: hours) }
@@ -157,7 +158,7 @@ struct PulseSettingsPage: View {
             .accessibilityIdentifier("settings.pulse.enabled")
             if state.enabled {
                 if state.running {
-                    Label(AppLocalization.string("Pulse is running on the dashboard."), systemImage: "checkmark.circle")
+                    Label(AppLocalization.string("Pulse is running on the dashboard.", table: .pulse), systemImage: "checkmark.circle")
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 } else if state.hermesTooOld {
@@ -185,7 +186,7 @@ struct PulseSettingsPage: View {
             if let chat = state.homeChat, !chat.pinned {
                 // The chats list doesn't show it, so it's pinned from here,
                 // whether or not the plugin names it as a problem.
-                Button(AppLocalization.string("Pin it")) {
+                Button(AppLocalization.string("Pin it", table: .pulse)) {
                     run { _ in
                         try await appState.pinPulseHomeChat(id: chat.id, profile: state.profile)
                         return nil
@@ -217,11 +218,11 @@ struct PulseSettingsPage: View {
     }
 
     private func homeChatSection(_ state: PulseState) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Set up Pulse"), symbol: "pin", tint: .conduitAccent) {
-            Text(AppLocalization.string("Pulse keeps its reports in a chat of its own in the profile it runs in, \(appState.profileDisplayName(state.profile ?? AppState.pulseDefaultProfile)). It stays out of your chats."))
+        ConduitSettingsSection(title: AppLocalization.string("Set up Pulse", table: .pulse), symbol: "pin", tint: .conduitAccent) {
+            Text(AppLocalization.string("Pulse keeps its reports in a chat of its own in the profile it runs in, \(appState.profileDisplayName(state.profile ?? AppState.pulseDefaultProfile)). It stays out of your chats.", table: .pulse))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
-            Button(AppLocalization.string("Set up Pulse")) {
+            Button(AppLocalization.string("Set up Pulse", table: .pulse)) {
                 let title = state.homeTitle
                 let profile = state.profile
                 run { _ in
@@ -245,9 +246,9 @@ struct PulseSettingsPage: View {
     /// morning brief's time, and whether private reminders hide their words
     /// on the Lock Screen.
     private func speakUpSection(_ state: PulseState, budgets: Bool) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("When Pulse speaks up"), symbol: "bell.badge", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("When Pulse speaks up", table: .pulse), symbol: "bell.badge", tint: .conduitAccent) {
             if budgets {
-                Picker(AppLocalization.string("How often"), selection: Binding(
+                Picker(AppLocalization.string("How often", table: .pulse), selection: Binding(
                     get: { PulseNudge.levels.contains(state.nudge) ? state.nudge : PulseNudge.defaultLevel },
                     set: { picked in
                         guard picked != state.nudge else { return }
@@ -304,12 +305,47 @@ struct PulseSettingsPage: View {
         }
     }
 
+    /// Where Do it (and a pick's Ask) goes for a card from no chat (0.164.0): a new chat,
+    /// or a bot's Bot Chat. Kept on this phone, per dashboard; the widget's
+    /// Do it follows it too.
+    private var doItSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Do it"), symbol: "arrow.right.circle", tint: .conduitAccent) {
+            ConduitMenuPicker(
+                value: appState.pulseDoItBot?.name ?? appState.pulseDoItBotSavedName ?? "",
+                choices: doItChoices,
+                onSelect: { picked in
+                    Haptics.selection()
+                    appState.setPulseDoItBot(picked.isEmpty ? nil : picked)
+                }
+            ) {
+                Text("Cards from no chat").foregroundStyle(.secondary)
+            }
+            .accessibilityIdentifier("settings.pulse.do-it-bot")
+            Text("Where Do it opens for a card that came from no chat, such as one from your calendar: a new chat, or a bot's Bot Chat. The widget's Do it goes there too. Long-press Do it to pick another for one card.")
+                .scaledFont(.caption)
+                .foregroundStyle(.secondary)
+        }
+    }
+
+    /// New chat and the bots Do it can open; a saved bot that isn't one now
+    /// (hidden, gone, or the list not read yet) stays listed by its name, so
+    /// the row never says New chat while Do it would go back to that bot.
+    private var doItChoices: [(id: String, title: String)] {
+        let bots = appState.pulseDoItBotChoices.map { (id: $0.name, title: $0.displayLabel) }
+        var choices = [(id: "", title: AppLocalization.string("New chat"))] + bots
+        if let saved = appState.pulseDoItBotSavedName, !bots.contains(where: { $0.id == saved }) {
+            let known = appState.botRoster.first { $0.name == saved }
+            choices.append((id: saved, title: known?.displayLabel ?? saved))
+        }
+        return choices
+    }
+
     /// Quiet times (0.80.2, `quiet`): the days of the week Pulse keeps to
     /// itself, and a vacation until a day. Quiet for today is on the Pulse
     /// screen and on a Pulse notification; it shows here as a vacation back
     /// tomorrow. From 0.86.0 (`hours`), the night.
     private func quietSection(_ state: PulseState, quiet: Bool, hours: Bool) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Quiet times"), symbol: "moon.zzz", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Quiet times", table: .pulse), symbol: "moon.zzz", tint: .conduitAccent) {
             if quiet { quietRows(state) }
             if hours { nightRows(state) }
         }
@@ -341,7 +377,7 @@ struct PulseSettingsPage: View {
         .accessibilityIdentifier("settings.pulse.vacation")
         if let back = state.quietUntil {
             DatePicker(
-                AppLocalization.string("Back on"),
+                AppLocalization.string("Back on", table: .pulse),
                 selection: Binding(
                     get: { back },
                     set: { day in
@@ -379,11 +415,11 @@ struct PulseSettingsPage: View {
         .disabled(working)
         .accessibilityIdentifier("settings.pulse.night")
         if let night = state.night {
-            nightTime(AppLocalization.string("Night starts"), minutes: night.start, other: night.end) {
+            nightTime(AppLocalization.string("Night starts", table: .pulse), minutes: night.start, other: night.end) {
                 PulseNight(start: $0, end: night.end)
             }
             .accessibilityIdentifier("settings.pulse.night-start")
-            nightTime(AppLocalization.string("Night ends"), minutes: night.end, other: night.start) {
+            nightTime(AppLocalization.string("Night ends", table: .pulse), minutes: night.end, other: night.start) {
                 PulseNight(start: night.start, end: $0)
             }
             .accessibilityIdentifier("settings.pulse.night-end")
@@ -428,9 +464,9 @@ struct PulseSettingsPage: View {
         // Counted as the plugin counts it (code points), so what fits here fits there.
         let tooLong = trimmed.unicodeScalars.count > PulseNote.limit
         let changed = noteDraft != nil && trimmed != state.note
-        let limit = AppLocalization.string("At most \(PulseNote.limit.formatted(.number)) characters.")
-        return ConduitSettingsSection(title: AppLocalization.string("What you want from Pulse"), symbol: "text.quote", tint: .conduitAccent) {
-            TextField(AppLocalization.string("What to always bring up, what to leave out"), text: Binding(
+        let limit = AppLocalization.string("At most \(PulseNote.limit.formatted(.number)) characters.", table: .pulse)
+        return ConduitSettingsSection(title: AppLocalization.string("What you want from Pulse", table: .pulse), symbol: "text.quote", tint: .conduitAccent) {
+            TextField(AppLocalization.string("What to always bring up, what to leave out", table: .pulse), text: Binding(
                 get: { shown },
                 set: { noteDraft = $0 }
             ), axis: .vertical)
@@ -438,7 +474,7 @@ struct PulseSettingsPage: View {
             .lineLimit(2...8)
             .focused($noteFocused)
             .disabled(waiting)
-            .accessibilityLabel(Text(AppLocalization.string("Note to Pulse")))
+            .accessibilityLabel(Text(AppLocalization.string("Note to Pulse", table: .pulse)))
             .accessibilityHint(Text(limit))
             .accessibilityIdentifier("settings.pulse.note")
             if tooLong {
@@ -471,13 +507,13 @@ struct PulseSettingsPage: View {
     }
 
     private func readsSection(_ state: PulseState) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("What Pulse reads"), symbol: "brain.head.profile", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("What Pulse reads", table: .pulse), symbol: "brain.head.profile", tint: .conduitAccent) {
             if state.offersProfileChoice {
                 ConduitMenuPicker(
                     value: state.reportProfiles,
                     choices: [
-                        (id: "all", title: AppLocalization.string("Every profile")),
-                        (id: "this", title: AppLocalization.string("This profile only")),
+                        (id: "all", title: AppLocalization.string("Every profile", table: .pulse)),
+                        (id: "this", title: AppLocalization.string("This profile only", table: .pulse)),
                     ],
                     onSelect: { picked in
                         Haptics.selection()
@@ -498,17 +534,12 @@ struct PulseSettingsPage: View {
                 PulseMemoryList()
                     .v2TabBarClearance()
             } label: {
-                HStack {
-                    Label(AppLocalization.string("What Pulse remembers"), systemImage: "list.bullet.rectangle")
-                    Spacer(minLength: 8)
-                    if state.memory {
-                        Text(verbatim: state.memoryCounts.values.reduce(0, +).formatted())
-                            .foregroundStyle(.secondary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .frame(minHeight: 44)
+                SettingsLinkRow(
+                    title: AppLocalization.string("What Pulse remembers", table: .pulse),
+                    value: state.memory ? state.memoryCounts.values.reduce(0, +).formatted() : nil
+                )
             }
+            .buttonStyle(.plain)
             .accessibilityIdentifier("settings.pulse.remembers")
             Text("Pulse keeps short notes on promises, plans and dates, so it can bring them up later. You can remove any of them.")
                 .scaledFont(.caption)
@@ -526,11 +557,11 @@ struct PulseSettingsPage: View {
                 ))
                 // Read with memory: off with it, there's nothing to switch.
                 .disabled(working || !state.memory)
-                .accessibilityHint(state.memory ? Text(verbatim: "") : Text(AppLocalization.string("Turn on Pulse's memory first.")))
+                .accessibilityHint(state.memory ? Text(verbatim: "") : Text(AppLocalization.string("Turn on Pulse's memory first.", table: .pulse)))
                 .accessibilityIdentifier("settings.pulse.inbox-deadlines")
-                .confirmationDialog(AppLocalization.string("Turn off deadlines from Shortcuts?"),
+                .confirmationDialog(AppLocalization.string("Turn off deadlines from Shortcuts?", table: .pulse),
                                     isPresented: $confirmsInboxOff, titleVisibility: .visible) {
-                    Button(AppLocalization.string("Turn off"), role: .destructive) {
+                    Button(AppLocalization.string("Turn off", table: .pulse), role: .destructive) {
                         change(["inbox_deadlines": false]) { $0.inboxDeadlines = false }
                     }
                     Button(AppLocalization.string("Cancel"), role: .cancel) {}
@@ -549,8 +580,8 @@ struct PulseSettingsPage: View {
                 .disabled(working)
                 .accessibilityIdentifier("settings.pulse.look-first")
                 Text(verbatim: appState.pulseSuggests
-                    ? AppLocalization.string("Before Pulse writes to you, it can check your calendar, reminders, contacts and alarms, look up places in Maps, and search the web when it follows up on a promise. It never changes anything itself: an event or reminder worth adding comes as a suggestion you add with a tap.")
-                    : AppLocalization.string("Before Pulse writes to you, it can check your calendar, reminders, contacts and alarms, look up places in Maps, and search the web when it follows up on a promise. It never changes anything on your phone."))
+                    ? AppLocalization.string("Before Pulse writes to you, it can check your calendar, reminders, contacts and alarms, look up places in Maps, and search the web when it follows up on a promise. It never changes anything itself: an event or reminder worth adding comes as a suggestion you add with a tap.", table: .pulse)
+                    : AppLocalization.string("Before Pulse writes to you, it can check your calendar, reminders, contacts and alarms, look up places in Maps, and search the web when it follows up on a promise. It never changes anything on your phone.", table: .pulse))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -596,10 +627,10 @@ struct PulseSettingsPage: View {
     /// The rest, folded: the time zone, a look through the chats now, token
     /// budgets, Pulse's chat and its latest checks.
     private func behindTheScenesSection(_ state: PulseState, budgets: Bool) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Behind the scenes"), symbol: "gearshape.2", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Behind the scenes", table: .pulse), symbol: "gearshape.2", tint: .conduitAura) {
             DisclosureGroup(isExpanded: $showsRecent) {
                 VStack(alignment: .leading, spacing: 12) {
-                    SettingsMetricRow(label: AppLocalization.string("Time zone"), value: state.timeZone, lineLimit: 1)
+                    SettingsMetricRow(label: AppLocalization.string("Time zone", table: .pulse), value: state.timeZone, lineLimit: 1)
                     let phoneZone = TimeZone.current.identifier
                     if phoneZone != state.timeZone {
                         Button(AppLocalization.string("Use this iPhone's time zone (\(phoneZone))")) {
@@ -615,11 +646,11 @@ struct PulseSettingsPage: View {
                             value: next.formatted(date: .abbreviated, time: .shortened)
                         )
                     }
-                    Button(AppLocalization.string("Look through my chats now")) {
+                    Button(AppLocalization.string("Look through my chats now", table: .pulse)) {
                         run { client in
                             try await client.sendReport()
                             if isShown(client) {
-                                notice = AppLocalization.string("Pulse will report shortly. Anything it notices shows up as cards.")
+                                notice = AppLocalization.string("Pulse will report shortly. Anything it notices shows up as cards.", table: .pulse)
                             }
                             return nil
                         }
@@ -655,7 +686,7 @@ struct PulseSettingsPage: View {
             }
             let used = state.tokensToday.formatted()
             let cap = state.dailyTokens.formatted()
-            SettingsMetricRow(label: AppLocalization.string("Tokens today"), value: AppLocalization.string("\(used) of \(cap)"))
+            SettingsMetricRow(label: AppLocalization.string("Tokens today", table: .pulse), value: AppLocalization.string("\(used) of \(cap)"))
             if budgets {
                 ConduitMenuPicker(
                     value: state.dailyTokens,
@@ -687,7 +718,7 @@ struct PulseSettingsPage: View {
             .accessibilityIdentifier("settings.pulse.followup-budget")
             let used = state.followupTokensToday.formatted()
             let cap = state.followupDailyTokens.formatted()
-            SettingsMetricRow(label: AppLocalization.string("Follow-up tokens today"),
+            SettingsMetricRow(label: AppLocalization.string("Follow-up tokens today", table: .pulse),
                               value: AppLocalization.string("\(used) of \(cap)"))
         }
     }
@@ -719,7 +750,7 @@ struct PulseSettingsPage: View {
         ForEach(Array(times.enumerated()), id: \.offset) { index, time in
             HStack(spacing: 10) {
                 DatePicker(
-                    AppLocalization.string("Report time"),
+                    AppLocalization.string("Report time", table: .pulse),
                     selection: Binding(
                         get: { PulseReportTime.date(time) },
                         set: { date in
@@ -734,7 +765,7 @@ struct PulseSettingsPage: View {
                 .labelsHidden()
                 // A save writes the whole list.
                 .disabled(!answered)
-                .accessibilityLabel(Text(AppLocalization.string("Report time")))
+                .accessibilityLabel(Text(AppLocalization.string("Report time", table: .pulse)))
                 Spacer(minLength: 8)
                 Button {
                     var next = times
@@ -752,7 +783,7 @@ struct PulseSettingsPage: View {
                 .accessibilityLabel(Text(AppLocalization.string("Remove \(time)")))
             }
         }
-        Button(AppLocalization.string("Add a time")) {
+        Button(AppLocalization.string("Add a time", table: .pulse)) {
             editTimes(times + [PulseReportTime.next(after: times)])
         }
         .buttonStyle(.settings)
@@ -769,7 +800,7 @@ struct PulseSettingsPage: View {
         let wanted = state.defaultModel?.provider ?? ""
         let dropped = !wanted.isEmpty && !providers.isEmpty && !providers.contains { $0.matches(wanted) }
         guard let model = state.defaultModel, !dropped else {
-            return AppLocalization.string("Default (Hermes' main model)")
+            return AppLocalization.string("Default (Hermes' main model)", table: .pulse)
         }
         return AppLocalization.string("Default (\(model.model))")
     }
@@ -777,24 +808,20 @@ struct PulseSettingsPage: View {
     private func modelSection(_ state: PulseState) -> some View {
         let selection = state.model.map { VoiceJobModelSettingsSection.tag(provider: $0.provider, model: $0.model) } ?? ""
         return ConduitSettingsSection(title: AppLocalization.string("Model"), symbol: "cpu", tint: .conduitAccent) {
-            ConduitMenuPicker(
-                value: selection,
-                groups: VoiceJobModelSettingsSection.modelMenuGroups(
-                    defaultTitle: Self.defaultModelTitle(state, providers: providers),
-                    defaultTag: "",
-                    selection: selection,
-                    providers: providers
-                ),
+            TaggedModelChooserLink(
+                pageTitle: AppLocalization.string("Pulse model", table: .pulse),
+                defaultTitle: Self.defaultModelTitle(state, providers: providers),
+                choice: TaggedModelChoice(defaultTag: "", selection: selection),
+                catalog: ModelChooserCatalog(providers: providers, loaded: !providers.isEmpty || modelsAnswered, answered: modelsAnswered, failed: modelsFailed),
+                disabled: waiting || !modelsAnswered,
+                retry: { Task { await loadModels(profile: state.profile) } },
                 onSelect: { tag in
                     guard tag != selection else { return }
                     let pick = tag.isEmpty ? nil : VoiceJobModelSettingsSection.parse(tag)
                     setModel(pick.map { PulseModel(provider: $0.provider ?? "", model: $0.model) })
-                }
-            ) {
-                Text("Model").foregroundStyle(.secondary)
-            }
-            .disabled(waiting || !modelsAnswered)
-            .accessibilityIdentifier("settings.pulse.model")
+                },
+                identifier: "settings.pulse.model"
+            )
             if modelsFailed {
                 // The models listed stay up; Hermes didn't answer.
                 ModelCatalogPlaceholder(state: .failed) { Task { await loadModels(profile: state.profile) } }
@@ -860,15 +887,15 @@ struct PulseSettingsPage: View {
     /// 0 is the nudge level's budget, named with its amount while it's in use.
     private static func followupBudgetChoices(_ state: PulseState) -> [(id: Int, title: String)] {
         let set = state.followupDailyTokensSet
-        let byLevel = set ? AppLocalization.string("With nudging")
-            : AppLocalization.string("With nudging (\(state.followupDailyTokens.formatted()))")
+        let byLevel = set ? AppLocalization.string("With nudging", table: .pulse)
+            : AppLocalization.string("With nudging (\(state.followupDailyTokens.formatted()))", table: .pulse)
         let budgets = PulseNudge.budgets(PulseNudge.followupBudgets, current: set ? state.followupDailyTokens : 0)
         return [(id: 0, title: byLevel)] + budgets.map { (id: $0, title: $0.formatted()) }
     }
 
     private func backfillSection(_ state: PulseState) -> some View {
         let backfill = state.backfill
-        return ConduitSettingsSection(title: AppLocalization.string("Older chats"), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
+        return ConduitSettingsSection(title: AppLocalization.string("Older chats", table: .pulse), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
             Text("Pulse's memory can read back through older chats, a day's token budget at a time.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
@@ -882,7 +909,7 @@ struct PulseSettingsPage: View {
                     .foregroundStyle(.secondary)
             }
             if !backfill.unreadable.isEmpty {
-                Text(AppLocalization.string("Couldn't read: \(Self.list(backfill.unreadable))"))
+                Text(AppLocalization.string("Couldn't read: \(Self.list(backfill.unreadable))", table: .pulse))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
             }
@@ -899,7 +926,7 @@ struct PulseSettingsPage: View {
                 .disabled(waiting)
             case .paused:
                 HStack(spacing: 10) {
-                    Button(AppLocalization.string("Carry on")) { backfillStep(.start) }
+                    Button(AppLocalization.string("Carry on", table: .pulse)) { backfillStep(.start) }
                         .buttonStyle(.settingsPrimary)
                         .accessibilityIdentifier("settings.pulse.backfill-carry-on")
                     Button(AppLocalization.string("Cancel")) { backfillStep(.cancel) }
@@ -923,9 +950,9 @@ struct PulseSettingsPage: View {
                 if let estimate, estimate.days == dayCount {
                     SettingsMetricRow(label: AppLocalization.string("Chats"), value: estimate.chats.formatted())
                     SettingsMetricRow(label: AppLocalization.string("Tokens"), value: estimate.tokens.formatted())
-                    SettingsMetricRow(label: AppLocalization.string("Days needed"), value: estimate.daysNeeded.formatted())
+                    SettingsMetricRow(label: AppLocalization.string("Days needed", table: .pulse), value: estimate.daysNeeded.formatted())
                     if !estimate.unreadable.isEmpty {
-                        Text(AppLocalization.string("Couldn't read: \(Self.list(estimate.unreadable))"))
+                        Text(AppLocalization.string("Couldn't read: \(Self.list(estimate.unreadable))", table: .pulse))
                             .scaledFont(.caption)
                             .foregroundStyle(.orange)
                     }
@@ -934,7 +961,7 @@ struct PulseSettingsPage: View {
                         .disabled(waiting)
                         .accessibilityIdentifier("settings.pulse.backfill-start")
                 } else {
-                    Button(AppLocalization.string("Estimate")) {
+                    Button(AppLocalization.string("Estimate", table: .pulse)) {
                         let days = dayCount
                         run { client in
                             let next = try await client.estimate(days: days)
@@ -980,27 +1007,27 @@ struct PulseSettingsPage: View {
 
     private func backfillStatus(_ backfill: PulseBackfill) -> String? {
         if backfill.phase == .cancelled {
-            return AppLocalization.string("Cancelled. What Pulse read stays in its memory.")
+            return AppLocalization.string("Cancelled. What Pulse read stays in its memory.", table: .pulse)
         }
         guard let from = backfill.from, let to = backfill.to else { return nil }
         let start = from.formatted(date: .abbreviated, time: .omitted)
         let end = to.formatted(date: .abbreviated, time: .omitted)
         switch backfill.phase {
-        case .reading: return AppLocalization.string("Reading chats from \(start) to \(end).")
-        case .paused: return AppLocalization.string("Paused while reading chats from \(start) to \(end).")
-        case .done: return AppLocalization.string("Read chats from \(start) to \(end).")
+        case .reading: return AppLocalization.string("Reading chats from \(start) to \(end).", table: .pulse)
+        case .paused: return AppLocalization.string("Paused while reading chats from \(start) to \(end).", table: .pulse)
+        case .done: return AppLocalization.string("Read chats from \(start) to \(end).", table: .pulse)
         case .none, .cancelled: return nil
         }
     }
 
     private static func kindTitle(_ kind: String) -> String {
         switch kind {
-        case "report": return AppLocalization.string("Report")
-        case "probe": return AppLocalization.string("Chat check")
+        case "report": return AppLocalization.string("Report", table: .pulse)
+        case "probe": return AppLocalization.string("Chat check", table: .pulse)
         case "followup": return AppLocalization.string("Follow-up")
         case "brief": return AppLocalization.string("Morning brief")
         // A pick the look ahead held for a place, brought up there (0.103.0).
-        case "moment": return AppLocalization.string("At a place")
+        case "moment": return AppLocalization.string("At a place", table: .pulse)
         default: return kind
         }
     }
@@ -1291,7 +1318,7 @@ struct PulseMemoryList: View {
         .overlay {
             if !loaded { ProgressView() }
         }
-        .navigationTitle(Text(AppLocalization.string("What Pulse remembers")))
+        .navigationTitle(Text(AppLocalization.string("What Pulse remembers", table: .pulse)))
         .navigationBarTitleDisplayMode(.inline)
         .refreshable { await load() }
         // What it listed last time, before the first frame; Pulse's answer
@@ -1325,7 +1352,7 @@ struct PulseMemoryList: View {
                     .lineLimit(2)
             }
             if !item.due.isEmpty {
-                Text(AppLocalization.string("Due: \(item.due)"))
+                Text(AppLocalization.string("Due: \(item.due)", table: .pulse))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -1351,7 +1378,7 @@ struct PulseMemoryList: View {
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             } else if let mentioned = item.mentionedAt {
-                Text(AppLocalization.string("Last mentioned \(mentioned.formatted(.relative(presentation: .named)))"))
+                Text(AppLocalization.string("Last mentioned \(mentioned.formatted(.relative(presentation: .named)))", table: .pulse))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }

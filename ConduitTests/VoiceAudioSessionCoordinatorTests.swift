@@ -103,6 +103,65 @@ final class VoiceAudioSessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(session.activationCount, 1)
     }
 
+    func testCardMediaPausesOtherMediaAndHandsItBack() throws {
+        // A card's audio or video plays like a player: not mixable, so
+        // music pauses, and its end resumes it (issue 826).
+        let lease = try coordinator.acquire(.mediaPlayback)
+
+        XCTAssertEqual(session.categoryCalls.last?.category, .playback)
+        XCTAssertEqual(session.categoryCalls.last?.mode, .default)
+        XCTAssertEqual(session.categoryCalls.last?.options, [])
+        XCTAssertEqual(coordinator.appliedPolicy, .mediaPlayback)
+
+        coordinator.release(lease)
+        XCTAssertEqual(session.lastDeactivationOptions, .notifyOthersOnDeactivation)
+        XCTAssertNil(coordinator.appliedPolicy)
+    }
+
+    func testCardMediaPlaysWithinAConversationAndReadAloud() throws {
+        let conversation = try coordinator.acquire(.conversationCapture)
+        let readAloud = try coordinator.acquire(.standalonePlayback)
+        session.resetRecordings()
+
+        let card = try coordinator.acquire(.mediaPlayback)
+        XCTAssertEqual(session.categoryCalls.count, 0, "a card never reconfigures a session someone else holds")
+        coordinator.release(conversation)
+        XCTAssertEqual(coordinator.appliedPolicy, .standalonePlayback)
+        session.resetRecordings()
+
+        coordinator.release(readAloud)
+        XCTAssertEqual(coordinator.appliedPolicy, .mediaPlayback, "the card still playing keeps the session")
+        XCTAssertEqual(session.deactivationCount, 0)
+        coordinator.release(card)
+        XCTAssertEqual(session.deactivationCount, 1)
+    }
+
+    func testCardMediaInACallFromHermesLeavesCallKitsSession() throws {
+        coordinator.configureForIncomingCall()
+        coordinator.nativeCallAudioActivated()
+        session.resetRecordings()
+
+        let card = try coordinator.acquire(.mediaPlayback)
+        coordinator.release(card)
+
+        XCTAssertEqual(session.categoryCalls.count, 0)
+        XCTAssertEqual(session.activationCount, 0)
+        XCTAssertEqual(session.deactivationCount, 0)
+    }
+
+    func testCardMediaGivesWayToTheMicrophone() async throws {
+        var stopped = 0
+        let card = try coordinator.acquire(.mediaPlayback) { stopped += 1 }
+
+        let dictation = try coordinator.acquire(.conversationCapture)
+        await Task.yield()
+        await Task.yield()
+
+        XCTAssertEqual(stopped, 1)
+        coordinator.release(card)
+        coordinator.release(dictation)
+    }
+
     func testStandalonePlaybackCannotDowngradeActiveConversation() throws {
         _ = try coordinator.acquire(.conversationCapture)
         session.resetRecordings()

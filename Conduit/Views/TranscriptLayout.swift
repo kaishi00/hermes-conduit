@@ -431,7 +431,7 @@ final class TranscriptLayout: UICollectionViewLayout {
     static func estimatedHeight(of row: TranscriptRow, width: CGFloat) -> CGFloat {
         TranscriptPerf.note(.rowHeightEstimate)
         switch row.kind {
-        case .loadEarlier, .savedCopyStatus, .thinking, .working, .streaming:
+        case .loadEarlier, .savedCopyStatus, .thinking, .working, .awaitingAgents, .streaming:
             return rowGap + 44
         case .empty:
             return rowGap + 320
@@ -440,6 +440,10 @@ final class TranscriptLayout: UICollectionViewLayout {
         case .message(let target):
             if target.isStep || target.isReview { return rowGap + 44 }
             let message = target.message
+            if let report = message.delegationReport {
+                // Folded: the notice and a line per agent shown.
+                return rowGap + 72 + CGFloat(min(report.entries.count, DelegationReportCard.foldedLimit)) * 24
+            }
             let attachments = CGFloat(message.attachments?.count ?? 0) * 200
             let width = message.role == .user ? width * 0.8 : width
             return rowGap + textHeight(message.content, width: width) + attachments
@@ -452,13 +456,20 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// its name and buttons around it; a caption is a line.
     private static func estimatedHeight(of row: GroupRoomRow, width: CGFloat) -> CGFloat {
         switch row {
-        case .event(let event, _, _, let boards):
+        case .event(let event, _, _, let boards, let byline):
             let boardsHeight = CGFloat(boards.count) * 280
-            guard let text = event.messageText else { return 24 + boardsHeight }
-            if event.isUserMessage { return textHeight(text, width: width * 0.8) }
-            return textHeight(text, width: width - 70) + 44 + boardsHeight
-        case .pending(let text, _, _):
-            return textHeight(text, width: width * 0.8)
+            // A person's message's Hermes attachments, a picture or a chip each.
+            let files = event.isScheduledPost ? 0 : CGFloat(event.attachments.count) * 200
+            // A scheduled job's post draws on the members' side, under its name, text or not.
+            guard let text = event.workUpdateText ?? event.messageText ?? (event.isScheduledPost ? "" : nil)
+            else { return 24 + boardsHeight }
+            // A person's message in a room over Links draws on the members' side.
+            if event.isUserMessage && !event.isScheduledPost && byline.host == nil && byline.attribution == .none {
+                return textHeight(text, width: width * 0.8) + files
+            }
+            return textHeight(text, width: width - 70) + 44 + boardsHeight + files
+        case .pending(let text, _, _, _, let files):
+            return textHeight(text, width: width * 0.8) + CGFloat(files.count) * 200
         case .responding:
             return 60
         case .empty:

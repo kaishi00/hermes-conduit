@@ -2,6 +2,56 @@ import XCTest
 @testable import Conduit
 
 final class WidgetConfigurationTests: XCTestCase {
+    // MARK: - Siri and Spotlight's chats (ConduitChatEntity)
+
+    private func chatSnapshot() -> (WidgetSnapshot, WidgetWorkspaceID, WidgetWorkspaceID) {
+        let home = WidgetWorkspaceID(dashboardID: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!, profile: "default")
+        let work = WidgetWorkspaceID(dashboardID: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!, profile: "work")
+        func chat(_ profile: String, _ id: String, _ title: String, recency: Double) -> WidgetConversationChoice {
+            WidgetConversationChoice(reference: WidgetConversationReference(kind: .dashboard, scopeProfile: profile, botName: nil, botLabel: nil, sessionID: id, isUnverified: false),
+                                     title: title, isPinned: false, recency: recency)
+        }
+        let bot = WidgetConversationChoice(reference: WidgetConversationReference(kind: .bot, scopeProfile: "furina", botName: "furina", botLabel: "Furina", sessionID: "bot-1", isUnverified: false),
+                                           title: "Furina", isPinned: true, recency: 1)
+        let homeRecord = WidgetWorkspaceSnapshot(id: home, dashboardLabel: "Home", profileLabel: "Default", lastConversation: nil,
+                                                 choices: [chat("default", "a", "Trip planning", recency: 5), bot], recency: 1)
+        let workRecord = WidgetWorkspaceSnapshot(id: work, dashboardLabel: "Office", profileLabel: "Work", lastConversation: nil,
+                                                 choices: [chat("work", "b", "Quarterly trip report", recency: 9)], recency: 9)
+        return (WidgetSnapshot(appLanguage: "en", currentWorkspaceID: home, workspaces: [workRecord, homeRecord]), home, work)
+    }
+
+    func testChatEntitiesListTheWorkspaceInUseFirstWithWhereEachLives() {
+        let (snapshot, home, work) = chatSnapshot()
+        let chats = ConduitChatCatalog.entities(in: snapshot)
+
+        XCTAssertEqual(chats.map(\.title), ["Furina", "Trip planning", "Quarterly trip report"])
+        XCTAssertEqual(chats.map(\.workspace), [home, home, work])
+        XCTAssertEqual(chats.first?.place, "Home — Default")
+        XCTAssertEqual(chats.first?.reference.kind, .bot)
+        XCTAssertTrue(ConduitChatCatalog.entities(in: nil).isEmpty)
+    }
+
+    func testChatEntitiesMatchEveryWordOfTheTitleInAnyCase() {
+        let (snapshot, _, _) = chatSnapshot()
+
+        XCTAssertEqual(ConduitChatCatalog.matching("TRIP", in: snapshot).map(\.title), ["Trip planning", "Quarterly trip report"])
+        XCTAssertEqual(ConduitChatCatalog.matching("trip report", in: snapshot).map(\.title), ["Quarterly trip report"])
+        XCTAssertTrue(ConduitChatCatalog.matching("  ", in: snapshot).isEmpty)
+    }
+
+    func testASavedChatPickKeepsItsIdentityOnceTheSnapshotDropsIt() throws {
+        let (snapshot, home, _) = chatSnapshot()
+        let listed = try XCTUnwrap(ConduitChatCatalog.entities(in: snapshot).first { $0.title == "Trip planning" })
+        let gone = WidgetConversationReference(kind: .dashboard, scopeProfile: "default", botName: nil, botLabel: nil, sessionID: "old", isUnverified: false)
+        let goneID = WidgetEntityIdentifier.conversation(workspace: home, reference: gone)
+
+        XCTAssertEqual(ConduitChatCatalog.entity(id: listed.id, in: snapshot), listed)
+        let kept = try XCTUnwrap(ConduitChatCatalog.entity(id: goneID, in: snapshot))
+        XCTAssertEqual(kept.reference, gone)
+        XCTAssertNil(kept.title)
+        XCTAssertNil(ConduitChatCatalog.entity(id: "not-an-id", in: snapshot))
+    }
+
     func testWorkspaceEntityIdentifierContainsVersionAndFullIdentity() throws {
         let identity = WidgetWorkspaceID(dashboardID: UUID(uuidString: "00000000-0000-0000-0000-000000000042")!, profile: "CaseSensitive/Profile")
         let identifier = WidgetEntityIdentifier.workspace(identity)

@@ -716,7 +716,7 @@ struct RichStepsCard: View {
                     RichStepRow(number: index + 1, step: step, key: key, title: card.title)
                 }
                 if memory.notificationsOff, card.steps.contains(where: { $0.timer != nil }) {
-                    Text("Notifications are off for Conduit in iPhone Settings.")
+                    Text(verbatim: SystemSettings.notificationsOffText)
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }
@@ -725,6 +725,9 @@ struct RichStepsCard: View {
     }
 
     @ObservedObject private var memory = RichStepsMemory.shared
+    /// The notifications-off line is looked up, so it follows the App
+    /// Language here rather than through SwiftUI's locale.
+    @ObservedObject private var appLanguage = AppLanguageStore.shared
 
     private var key: String { RichStepsMemory.key(for: card) }
 }
@@ -956,7 +959,7 @@ final class RichStepsMemory: ObservableObject {
         timers[id] = end
         saveTimers()
         let content = UNMutableNotificationContent()
-        content.title = title ?? AppLocalization.string("Timer done")
+        content.title = title ?? AppLocalization.string("Timer done", table: .chat)
         content.body = text
         content.sound = .default
         let request = UNNotificationRequest(identifier: id, content: content,

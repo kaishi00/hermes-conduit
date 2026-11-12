@@ -44,6 +44,21 @@ extension AppState {
         controller.requestProvider = { [weak self] binding in
             await self?.locationRequest(for: binding)
         }
+        // A native sign-in's refresh rotates its access token, and the host
+        // pass carries a copy: saved again at once, or the push extension
+        // goes on sending the old token until the next connect (issue 2028).
+        // Registered once, behind the request provider's guard, and kept for
+        // the app's life (one AppState).
+        _ = NotificationCenter.default.addObserver(
+            forName: .nativeOAuthTokensRotated, object: nil, queue: .main
+        ) { [weak self] note in
+            guard let dashboardID = note.userInfo?["dashboardID"] as? UUID else { return }
+            Task { @MainActor in
+                await self?.locationHostTokensRotated(dashboardID: dashboardID)
+                // The Pulse widget's pass carries the same token.
+                if self?.activeDashboardID == dashboardID { await self?.savePulseWidgetAccess() }
+            }
+        }
         controller.activateAtLaunch()
     }
 
@@ -97,9 +112,45 @@ extension AppState {
         // Bound, on or not: turning sharing off or pausing it must still
         // reach the host, and that may need the pass.
         guard let binding = controller.binding,
-              activeDashboardID == binding.dashboardID, let bridge = dashboardTicketBridge else { return }
+              activeDashboardID == binding.dashboardID, dashboardTicketBridge != nil else { return }
+        await saveLocationHostPass(dashboardID: binding.dashboardID)
+        controller.hostConnected()
+    }
+
+    /// A native sign-in rotated its tokens: the pass is built again for the
+    /// dashboard in use, or, for another dashboard sharing is bound to, its
+    /// bearer token is swapped for the rotated one (the rest of the pass,
+    /// address and proxy headers, didn't change).
+    func locationHostTokensRotated(dashboardID: UUID) async {
+        guard LocationSharingController.shared.binding?.dashboardID == dashboardID else { return }
+        if activeDashboardID == dashboardID, dashboardTicketBridge != nil {
+            await saveLocationHostPass(dashboardID: dashboardID)
+            return
+        }
+        guard var pass = LocationKeychain.loadHostPass(), pass.dashboardID == dashboardID,
+              // A native sign-in's pass: its bearer token and no cookies. A
+              // cookie pass may carry a proxy's own Authorization header,
+              // which is left alone.
+              pass.headers["Cookie"] == nil, pass.headers["Authorization"]?.hasPrefix("Bearer ") == true,
+              let tokens = KeychainHelper.loadNativeOAuthTokens(dashboardID: dashboardID), !tokens.accessToken.isEmpty
+        else { return }
+        pass.headers["Authorization"] = "Bearer \(tokens.accessToken)"
+        pass.expiresAt = tokens.expiresAt > 0 ? Date(timeIntervalSince1970: tokens.expiresAt) : nil
+        pass.savedAt = Date()
+        if !LocationKeychain.saveHostPass(pass) {
+            LocationSyncEngine.log.error("Couldn't store the location host pass; background sends use the previous one")
+        }
+    }
+
+    /// Saves the host pass for the dashboard in use, when location sharing
+    /// is bound to it: at each connect, and when a native sign-in rotates
+    /// its tokens.
+    func saveLocationHostPass(dashboardID: UUID) async {
+        let controller = LocationSharingController.shared
+        guard controller.binding?.dashboardID == dashboardID,
+              activeDashboardID == dashboardID, let bridge = dashboardTicketBridge else { return }
         // Removed or unbound while the pass was read: it isn't kept.
-        if let pass = await locationHostPass(bridge: bridge, dashboardID: binding.dashboardID),
+        if let pass = await dashboardHostPass(bridge: bridge, dashboardID: dashboardID),
            controller.binding?.dashboardID == pass.dashboardID,
            !LocationKeychain.saveHostPass(pass) {
             // Logged by LocationKeychain. The previous pass (if any) stays;
@@ -108,13 +159,13 @@ extension AppState {
             // next connect saves it.
             LocationSyncEngine.log.error("Couldn't store the location host pass; background sends use the previous one")
         }
-        controller.hostConnected()
     }
 
     /// The headers this dashboard's requests carry, for sending without the
     /// app: a native sign-in's access token, else the session cookies, and
-    /// the proxy headers.
-    private func locationHostPass(bridge: DashboardTicketBridge, dashboardID: UUID) async -> LocationHostPass? {
+    /// the proxy headers. Location sharing's pass, and the Pulse widget's
+    /// (AppState+PulseWidget).
+    func dashboardHostPass(bridge: DashboardTicketBridge, dashboardID: UUID) async -> LocationHostPass? {
         let path = "\(LocationHostClient.base)/ingest"
         // The dashboard page's fetch resolves an absolute path against its
         // origin, so the pass keeps the origin.

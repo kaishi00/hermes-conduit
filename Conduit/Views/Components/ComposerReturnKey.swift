@@ -29,8 +29,8 @@ enum ComposerReturnKey {
     /// tell why it's already on.
     static func defaultFootnote(onMac: Bool) -> String {
         sendsByDefault(onMac: onMac)
-            ? AppLocalization.string("On by default on a Mac. Turn it off to make Return insert a new line.")
-            : AppLocalization.string("Off by default on iPhone and iPad.")
+            ? AppLocalization.string("On by default on a Mac. Turn it off to make Return insert a new line.", table: .chat)
+            : AppLocalization.string("Off by default on iPhone and iPad.", table: .chat)
     }
 
     /// What the text view should do with one hardware Return press.
@@ -55,6 +55,13 @@ enum ComposerReturnKey {
     ) -> Decision {
         guard returnKeySends, !shiftPressed, !hasMarkedText, canSubmit else { return .insertNewline }
         return .submit
+    }
+
+    /// ⌘Return sends whatever the setting says (issue 2219), with the same
+    /// limits: never while an IME composes, never when the composer can't
+    /// send a typed message.
+    static func commandReturnSends(hasMarkedText: Bool, canSubmit: Bool) -> Bool {
+        !hasMarkedText && canSubmit
     }
 
     /// Whether the composer's currently valid action may be triggered from

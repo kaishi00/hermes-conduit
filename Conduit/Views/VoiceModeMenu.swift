@@ -36,7 +36,7 @@ struct VoiceModeMenu<Face: View>: View {
         }
         .menuStyle(.button)
         .buttonStyle(.plain)
-        .accessibilityHint(Text(verbatim: AppLocalization.string("Ends this call and starts again in the mode you pick, in the same chat. Voice settings keep the new mode.")))
+        .accessibilityHint(Text(verbatim: AppLocalization.string("Ends this call and starts again in the mode you pick, in the same chat. Voice settings keep the new mode.", table: .voice)))
     }
 }
 

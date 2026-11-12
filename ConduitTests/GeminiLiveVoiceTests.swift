@@ -1278,6 +1278,39 @@ extension VoiceConversationControllerTests {
         }
     }
 
+    /// Issue 1983: a call started from the open chat is seeded with the
+    /// chat's turns, and then leaves out the latest-reply block they carry.
+    func testACallFromTheOpenChatIsSeededWithItsTurns() throws {
+        let suite = "ChatCallSeed.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let appState = AppState(defaults: defaults, loadSavedConnection: false, clearSessionPresentationCache: {})
+        appState.activeSessionId = "rt-chat"
+        appState.messages = [
+            ChatMessage(id: "1", role: .user, content: "Plan the trip to Kyoto", timestamp: "2026-11-08T00:00:00Z"),
+            ChatMessage(id: "2", role: .assistant, content: "Three days, starting Friday.", timestamp: "2026-11-08T00:00:01Z"),
+        ]
+        let thread = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: nil, title: "Kyoto")
+
+        // Unattached: no seed, as before.
+        appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+        XCTAssertNil(appState.liveVoiceResumeContext)
+
+        appState.voiceBackgroundJobSupervisor.liveThread = thread
+        appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+        let context = try XCTUnwrap(appState.liveVoiceResumeContext)
+        XCTAssertTrue(context.fromChat)
+        XCTAssertEqual(context.gptLiveHistory.count, 2)
+        for delegation in [false, true] {
+            XCTAssertFalse(appState.liveVoiceThreadInstructions(delegation: delegation).contains("Hermes' latest reply"), "the seed carries it")
+        }
+
+        // Another chat on screen: the call isn't seeded with it.
+        appState.activeSessionId = "rt-other"
+        appState.beginVoiceCallRecordingForTesting(engine: .gptLive, turns: [])
+        XCTAssertNil(appState.liveVoiceResumeContext)
+    }
+
     func testLiveAnswerLengthPicksTheOneRuleEveryEngineGets() throws {
         for length in LiveVoiceAnswerLength.allCases {
             let gemini = GeminiLiveConversationController.instructions(search: .google, answerLength: length)
@@ -1345,6 +1378,28 @@ extension VoiceConversationControllerTests {
         XCTAssertEqual(controller.phase, .failed(GeminiLiveAvailability.pluginMissing.userFacingReason!))
         XCTAssertEqual(session.started, 0)
         XCTAssertFalse(input.running)
+    }
+
+    /// On a host that manages the plugin, a missing plugin feature says who
+    /// keeps it up to date, at the start and when a session's route is gone
+    /// (Grok and Local Live ride this controller too).
+    func testAManagedHostsMissingPluginSaysWhoKeepsItUpToDate() async {
+        PluginUpdateAsk.setActive(managedBy: "Family farm")
+        defer { PluginUpdateAsk.setActive(managedBy: nil) }
+        let managed = "The Conduit plugin on this host doesn't have this yet. Family farm keeps the plugin up to date."
+        let tokens = FakeGeminiLiveTokens()
+        tokens.availabilityResult = .success(.pluginMissing)
+        let (refused, _, _, _, _) = makeGeminiController(tokens: tokens, clock: Date.init)
+        await refused.start()
+        XCTAssertEqual(refused.phase, .failed(managed))
+
+        let (controller, session, _, _, _) = makeGeminiController(clock: Date.init)
+        await controller.start()
+        session.becomeReady()
+        session.onStateChange?(.failed(LocalLiveProtocol.pluginMissingReason))
+        XCTAssertEqual(controller.phase, .failed(managed))
+        XCTAssertEqual(LocalLiveClientError.unavailable(LocalLiveProtocol.pluginMissingReason).errorDescription, managed)
+        XCTAssertEqual(LocalLiveClientError.unavailable("Set a speech server first.").errorDescription, "Set a speech server first.")
     }
 
     func testGeminiLivePublishesSpeakingOncePerTurnNotOnEveryAudioChunk() async {
@@ -3678,6 +3733,25 @@ extension VoiceConversationControllerTests {
 
 // MARK: - Microphone sends on a slow connection (#999)
 
+/// A socket that encodes microphone chunks off the main actor, as the
+/// network socket does (issue 1959).
+@MainActor
+final class OffMainEncodingLiveSocket: GeminiLiveSocket {
+    private(set) var sent: [String] = []
+    private(set) var encodedOnMainThread: [Bool] = []
+
+    func send(_ text: String) async throws { sent.append(text) }
+
+    func sendAudio(_ pcm16: Data, encode: @escaping @Sendable (Data) throws -> String) async throws {
+        let (text, onMain) = try await LiveVoiceWireCoding.throwingOffMainActor { (try encode(pcm16), Thread.isMainThread) }
+        encodedOnMainThread.append(onMain)
+        sent.append(text)
+    }
+
+    func receive() async throws -> Data { throw URLError(.cancelled) }
+    func close() {}
+}
+
 /// A socket whose first send stalls until released, as a connection that
 /// stopped taking frames.
 @MainActor
@@ -3731,6 +3805,28 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(writer.enqueue(["a4"], isAudio: true, done: note("a4")))
         await settle(until: { outcomes["a4"] != nil })
         XCTAssertEqual(socket.sent.last, "a4")
+    }
+
+    /// Issue 1959: a network socket encodes a microphone chunk off the
+    /// main actor as it sends it, and the writer still sends one frame at
+    /// a time, in the order they were queued.
+    func testLiveVoiceSocketWriterEncodesAudioOffTheMainActorInOrder() async {
+        let socket = OffMainEncodingLiveSocket()
+        let writer = LiveVoiceSocketWriter(socket: socket)
+        var outcomes = 0
+        for index in 0..<6 {
+            if index == 3 {
+                XCTAssertTrue(writer.enqueue(["turn"], isAudio: false) { _ in outcomes += 1 })
+            }
+            let queued = writer.enqueue(.audio(Data([UInt8(index)]), encode: { chunk in
+                guard let byte = chunk.first else { throw URLError(.cannotDecodeRawData) }
+                return "a\(byte)"
+            }), isAudio: false) { _ in outcomes += 1 }
+            XCTAssertTrue(queued)
+        }
+        await settle(until: { outcomes == 7 })
+        XCTAssertEqual(socket.sent, ["a0", "a1", "a2", "turn", "a3", "a4", "a5"])
+        XCTAssertEqual(socket.encodedOnMainThread, [false, false, false, false, false, false])
     }
 
     func testLiveVoiceSocketWriterCountsTheAudioFrameOnTheSocket() async {

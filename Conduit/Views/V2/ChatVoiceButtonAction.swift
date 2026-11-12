@@ -6,7 +6,9 @@
 //  call (as it always has), record a voice message, or dictate into the
 //  draft. One app-wide choice (Settings > Appearance), which a profile can
 //  override (Settings > Voice). A live call stays one tap away in the
-//  chat's top bar and in the button's touch-and-hold menu.
+//  chat's top bar and in the button's touch-and-hold menu. On a Mac the
+//  call is always in the top bar, and the round button shows only for a
+//  voice message or dictation (issue 1534).
 //
 
 import Foundation
@@ -52,9 +54,9 @@ enum ChatVoiceButtonAction: String, CaseIterable, Equatable {
 
     var title: String {
         switch self {
-        case .liveCall: return AppLocalization.string("Live call")
+        case .liveCall: return AppLocalization.string("Live call", table: .voice)
         case .voiceMessage: return AppLocalization.string("Voice message")
-        case .dictation: return AppLocalization.string("Dictation")
+        case .dictation: return AppLocalization.string("Dictation", table: .voice)
         }
     }
 
@@ -64,6 +66,25 @@ enum ChatVoiceButtonAction: String, CaseIterable, Equatable {
         case .voiceMessage: return "mic.fill"
         case .dictation: return "character.cursor.ibeam"
         }
+    }
+
+    /// On a Mac a live call starts from the chat's header, as a desktop
+    /// client's call button does, rather than from a round button over the
+    /// corner of the transcript (issue 1534).
+    static func liveCallInHeader(onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac) -> Bool {
+        onMac
+    }
+
+    /// Whether the round button stands beside the chat's composer: always,
+    /// but on a Mac when all it would do is the call the header has.
+    static func roundButtonBeside(_ action: ChatVoiceButtonAction, onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac) -> Bool {
+        !(liveCallInHeader(onMac: onMac) && action == .liveCall)
+    }
+
+    /// Whether the chat's header has the call button: when the round
+    /// button does something else, and always on a Mac.
+    static func headerCallButton(_ action: ChatVoiceButtonAction, onMac: Bool = ProcessInfo.processInfo.isiOSAppOnMac) -> Bool {
+        action != .liveCall || liveCallInHeader(onMac: onMac)
     }
 }
 

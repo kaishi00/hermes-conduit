@@ -1481,10 +1481,10 @@ private struct MarkdownCallout: View {
 
     private var detail: (title: String, icon: String, color: Color) {
         switch kind.lowercased() {
-        case "tip", "hint": (AppLocalization.string("Tip"), "lightbulb.fill", .green)
+        case "tip", "hint": (AppLocalization.string("Tip", table: .chat), "lightbulb.fill", .green)
         case "warning", "caution": (AppLocalization.string("Warning"), "exclamationmark.triangle.fill", .orange)
-        case "danger", "error": (AppLocalization.string("Important"), "exclamationmark.octagon.fill", .red)
-        case "important": (AppLocalization.string("Important"), "exclamationmark.circle.fill", .purple)
+        case "danger", "error": (AppLocalization.string("Important", table: .chat), "exclamationmark.octagon.fill", .red)
+        case "important": (AppLocalization.string("Important", table: .chat), "exclamationmark.circle.fill", .purple)
         default: (AppLocalization.string("Note"), "info.circle.fill", .blue)
         }
     }
@@ -2312,8 +2312,8 @@ struct LargeMarkdownTable: View {
                     renderedRowCount = min(renderedRowCount + Self.rowBatch, rows.count)
                 } label: {
                     // The count drives its own plural; the progress is a separate string.
-                    Label(AppLocalization.string("Show \(min(Self.rowBatch, rows.count - renderedRowCount)) more rows")
-                        + " " + AppLocalization.string("(\(String(rows.count - renderedRowCount)) of \(String(rows.count)) left)"),
+                    Label(AppLocalization.string("Show \(min(Self.rowBatch, rows.count - renderedRowCount)) more rows", table: .chat)
+                        + " " + AppLocalization.string("(\(String(rows.count - renderedRowCount)) of \(String(rows.count)) left)", table: .chat),
                         systemImage: "chevron.down")
                         .scaledFont(.caption.weight(.semibold))
                 }
@@ -2364,7 +2364,7 @@ struct GuardedSourceCard: View {
                     copied = false
                 }
             } label: {
-                Label(copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy full source"), systemImage: copied ? "checkmark" : "doc.on.doc")
+                Label(copied ? AppLocalization.string("Copied") : AppLocalization.string("Copy full source", table: .chat), systemImage: copied ? "checkmark" : "doc.on.doc")
                     .scaledFont(.caption.weight(.semibold))
             }
             .tint(.conduitAccent)
@@ -2663,7 +2663,7 @@ private struct RemoteMarkdownImage: View {
         } else {
             let failed = isGatewayMedia ? gatewayLoadFailed : shownRemoteOutcome != nil
             let label = failed
-                ? (alt.isEmpty ? AppLocalization.string("Image unavailable") : AppLocalization.string("\(alt) unavailable"))
+                ? (alt.isEmpty ? AppLocalization.string("Image unavailable", table: .chat) : AppLocalization.string("\(alt) unavailable", table: .chat))
                 : (alt.isEmpty ? AppLocalization.string("Loading image…") : alt)
             if failed, !isGatewayMedia, !opensViewerWhenUnavailable, let webURL = URL(string: url) {
                 PictureTilePlaceholder(state: .unavailable)
@@ -2723,7 +2723,7 @@ private struct RemoteMarkdownImage: View {
                 .opensMediaPreview { openImage(showing: gatewayImage) }
                 .accessibilityLabel(alt.isEmpty ? Text("Image") : Text(verbatim: alt))
         } else if gatewayLoadFailed {
-            Label(alt.isEmpty ? AppLocalization.string("Image unavailable") : AppLocalization.string("\(alt) unavailable"), systemImage: "photo.badge.exclamationmark")
+            Label(alt.isEmpty ? AppLocalization.string("Image unavailable", table: .chat) : AppLocalization.string("\(alt) unavailable", table: .chat), systemImage: "photo.badge.exclamationmark")
                 .scaledFont(.footnote.weight(.semibold))
                 .foregroundStyle(.secondary)
                 .padding(12)
@@ -3112,9 +3112,9 @@ enum WebFallbackImageDestination {
 enum WebFallbackImageLabel {
     static func title(alt: String, destinationAvailable: Bool) -> String {
         if destinationAvailable {
-            return alt.isEmpty ? AppLocalization.string("Open image") : AppLocalization.string("\(alt) — image unavailable; open source")
+            return alt.isEmpty ? AppLocalization.string("Open image", table: .chat) : AppLocalization.string("\(alt) — image unavailable; open source", table: .chat)
         }
-        return alt.isEmpty ? AppLocalization.string("Image unavailable") : AppLocalization.string("\(alt) unavailable")
+        return alt.isEmpty ? AppLocalization.string("Image unavailable", table: .chat) : AppLocalization.string("\(alt) unavailable", table: .chat)
     }
 }
 
@@ -3279,7 +3279,7 @@ struct ChatCodeBlock: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack {
-                Text(normalizedLanguage == "plain" ? AppLocalization.string("Code") : normalizedLanguage)
+                Text(normalizedLanguage == "plain" ? AppLocalization.string("Code", table: .chat) : normalizedLanguage)
                     .scaledFont(.caption2.monospaced().weight(.semibold))
                     .foregroundStyle(usesAccentSurface ? Color.white.opacity(0.86) : .secondary)
                 Spacer()

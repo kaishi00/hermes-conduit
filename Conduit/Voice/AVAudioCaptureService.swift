@@ -33,7 +33,9 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         standardFormatWithSampleRate: AVAudioCaptureService.outputSampleRate,
         channels: AVAudioCaptureService.outputChannelCount
     )!
-    private var converter: AVAudioConverter?
+    /// Converts frames `consume` is handed directly (tests). The tap
+    /// converts on its own thread with a converter of its own.
+    private lazy var converter = VoiceCaptureFrameConverter(outputFormat: outputFormat)
     // Capture state below is internal rather than private so ConduitTests
     // can drive the frame-admission seam directly with synthetic PCM
     // buffers instead of audio hardware. Production code must mutate these
@@ -247,7 +249,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
             if let lastCaptureFailure {
                 // The conversion detail is for the log; the person gets what to try.
                 voiceAudioLogger.error("capture conversion failed: \(lastCaptureFailure, privacy: .public)")
-                throw VoiceAudioError.unavailable(AppLocalization.string("Conduit couldn't read audio from this microphone. Try again, or switch to another microphone or headset."))
+                throw VoiceAudioError.unavailable(AppLocalization.string("Conduit couldn't read audio from this microphone. Try again, or switch to another microphone or headset.", table: .voice))
             }
             throw VoiceAudioError.noAudioCaptured
         }
@@ -333,7 +335,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
             nodeOutput: engine.inputNodeOutputFormat,
             hardware: hardwareFormat
         )
-        converter = nil
+        converter = VoiceCaptureFrameConverter(outputFormat: outputFormat)
         // Defensive: a recovery restart (e.g. after a route change stops the
         // engine) can reach startEngine while a stale tap still hangs on bus
         // 0 even though the engine is not running. Removing first keeps the
@@ -347,25 +349,15 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         captureGeneration &+= 1
         publishGenerationForInterruptionObservers()
         let frameGeneration = captureGeneration
+        // Each tap converts and encodes on its own thread, with a converter
+        // only it uses, and crosses onto the MainActor with the finished
+        // PCM16: ~50 frames a second no longer convert, allocate and encode
+        // between SwiftUI's commits (issue 1959). The tap buffer is read
+        // before the block returns, so no copy is needed either.
+        let tapConverter = VoiceCaptureFrameConverter(outputFormat: outputFormat)
         engine.installInputTap(bufferSize: 1_024, format: tapFormat) { [weak self] buffer, _ in
             let frameHoldEpoch = self?.holdEpochForTap ?? 0
-            // AVAudioEngine owns and reuses tap buffers as soon as this block
-            // returns. Copy the frame bytes before crossing onto MainActor so
-            // conversion never reads a recycled hardware buffer.
-            guard let copy = AVAudioPCMBuffer(
-                pcmFormat: buffer.format,
-                frameCapacity: buffer.frameLength
-            ) else { return }
-            copy.frameLength = buffer.frameLength
-            let source = UnsafeMutableAudioBufferListPointer(buffer.mutableAudioBufferList)
-            let destination = UnsafeMutableAudioBufferListPointer(copy.mutableAudioBufferList)
-            for index in 0..<min(source.count, destination.count) {
-                guard let sourceData = source[index].mData,
-                      let destinationData = destination[index].mData else { continue }
-                let byteCount = Int(source[index].mDataByteSize)
-                destinationData.copyMemory(from: sourceData, byteCount: byteCount)
-                destination[index].mDataByteSize = source[index].mDataByteSize
-            }
+            let frame = tapConverter.convert(buffer)
             Task { @MainActor [weak self] in
                 // Capture-generation fence: pause()/stop() tear the tap
                 // down, but a frame already in flight across this hop
@@ -374,10 +366,10 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
                 // followed by a restart that re-armed the live flags. The
                 // admission seam checks the frame's own generation against
                 // the currently installed tap before anything downstream
-                // (including consume's own defense-in-depth guard) runs.
+                // (including admit's own defense-in-depth guard) runs.
                 guard let self, self.acceptsFrame(generation: frameGeneration),
                       frameHoldEpoch == self.holdEpoch else { return }
-                self.consume(copy, generation: frameGeneration)
+                self.admit(frame, generation: frameGeneration)
             }
         }
         observeEngineConfiguration()
@@ -390,7 +382,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         stopObservingEngineConfiguration()
         engine.removeInputTap()
         engine.stop()
-        converter = nil
+        converter = VoiceCaptureFrameConverter(outputFormat: outputFormat)
     }
 
     private func releaseLease() {
@@ -417,53 +409,24 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         // Defense-in-depth: the hop already admitted this frame, but any
         // future caller path must equally fail closed before PCM admission.
         guard acceptsFrame(generation: generation) else { return }
-        if converter == nil || !Self.converter(converter, accepts: buffer.format) {
-            converter = AVAudioConverter(from: buffer.format, to: outputFormat)
+        admit(converter.convert(buffer), generation: generation)
+    }
+
+    /// A converted frame into pre-roll, the recording, the chunk handler
+    /// and the level stream, or its failure noted.
+    private func admit(_ frame: Result<VoiceCaptureFrameConverter.Frame, VoiceCaptureFrameConverter.Failure>, generation: UInt64) {
+        guard acceptsFrame(generation: generation) else { return }
+        switch frame {
+        case .failure(let failure):
+            lastCaptureFailure = failure.message
+        case .success(let encoded):
+            let pcm = encoded.pcm
+            lastCaptureFailure = nil
+            appendPreRoll(pcm)
+            if activelyRecording { capturedPCM.append(pcm) }
+            onPCM16Chunk?(pcm)
+            continuation?.yield(.level(encoded.peak, date: Date(), generation: generation))
         }
-        guard let converter else {
-            lastCaptureFailure = "The microphone audio format could not be converted."
-            return
-        }
-        let ratio = outputFormat.sampleRate / buffer.format.sampleRate
-        let capacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio) + 32)
-        guard let converted = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity) else {
-            lastCaptureFailure = "Conduit could not allocate a microphone conversion buffer."
-            return
-        }
-        var conversionError: NSError?
-        var suppliedInput = false
-        let status = converter.convert(to: converted, error: &conversionError) { _, outStatus in
-            guard !suppliedInput else {
-                outStatus.pointee = .noDataNow
-                return nil
-            }
-            suppliedInput = true
-            outStatus.pointee = .haveData
-            return buffer
-        }
-        if let conversionError {
-            lastCaptureFailure = "Microphone conversion failed: \(conversionError.localizedDescription)"
-            return
-        }
-        guard status != .error else {
-            lastCaptureFailure = "Microphone conversion failed."
-            return
-        }
-        guard converted.frameLength > 0 else {
-            lastCaptureFailure = "The microphone converter produced no audio frames."
-            return
-        }
-        guard let channel = converted.floatChannelData?[0] else {
-            lastCaptureFailure = "The microphone converter returned an unsupported sample layout."
-            return
-        }
-        let encoded = VoicePCMEncoding.encode(channel, count: Int(converted.frameLength))
-        let pcm = encoded.data
-        lastCaptureFailure = nil
-        appendPreRoll(pcm)
-        if activelyRecording { capturedPCM.append(pcm) }
-        onPCM16Chunk?(pcm)
-        continuation?.yield(.level(encoded.peak, date: Date(), generation: generation))
     }
 
     private func appendPreRoll(_ pcm: Data) {
@@ -522,7 +485,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     private func handleRouteChangeOnMain() {
         // A nil-format tap follows the input node's actual route format. Rebuild
         // the converter lazily without churning an already-running engine.
-        converter = nil
+        converter = VoiceCaptureFrameConverter(outputFormat: outputFormat)
         if shouldKeepEngineRunning, !engine.isRunning {
             guard restartStoppedEngine(stage: "routeChange") else { return }
         }
@@ -601,14 +564,6 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         self.engineObserver = nil
     }
 
-    private static func converter(_ converter: AVAudioConverter?, accepts format: AVAudioFormat) -> Bool {
-        guard let input = converter?.inputFormat else { return false }
-        return input.commonFormat == format.commonFormat
-            && abs(input.sampleRate - format.sampleRate) < 0.5
-            && input.channelCount == format.channelCount
-            && input.isInterleaved == format.isInterleaved
-    }
-
     static func wavWrapping(pcm16: Data, sampleRate: Int) -> Data {
         let byteRate = sampleRate * outputBytesPerFrame
         let fileSize = 36 + pcm16.count
@@ -627,6 +582,75 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         header.append(UInt32(pcm16.count).littleEndianData)
         header.append(pcm16)
         return header
+    }
+}
+
+/// Resamples one capture frame to the call's format and encodes it as
+/// PCM16, off the main actor. One converter serves one tap, whose block
+/// runs serially on the engine's tap thread; `consume` (tests) uses its
+/// own on the MainActor. Not shared between threads, so unchecked.
+final class VoiceCaptureFrameConverter: @unchecked Sendable {
+    struct Frame {
+        let pcm: Data
+        let peak: Float
+    }
+
+    struct Failure: Error, Equatable {
+        let message: String
+    }
+
+    private let outputFormat: AVAudioFormat
+    private var converter: AVAudioConverter?
+
+    init(outputFormat: AVAudioFormat) {
+        self.outputFormat = outputFormat
+    }
+
+    func convert(_ buffer: AVAudioPCMBuffer) -> Result<Frame, Failure> {
+        if converter == nil || !Self.converter(converter, accepts: buffer.format) {
+            converter = AVAudioConverter(from: buffer.format, to: outputFormat)
+        }
+        guard let converter else {
+            return .failure(Failure(message: "The microphone audio format could not be converted."))
+        }
+        let ratio = outputFormat.sampleRate / buffer.format.sampleRate
+        let capacity = AVAudioFrameCount(ceil(Double(buffer.frameLength) * ratio) + 32)
+        guard let converted = AVAudioPCMBuffer(pcmFormat: outputFormat, frameCapacity: capacity) else {
+            return .failure(Failure(message: "Conduit could not allocate a microphone conversion buffer."))
+        }
+        var conversionError: NSError?
+        var suppliedInput = false
+        let status = converter.convert(to: converted, error: &conversionError) { _, outStatus in
+            guard !suppliedInput else {
+                outStatus.pointee = .noDataNow
+                return nil
+            }
+            suppliedInput = true
+            outStatus.pointee = .haveData
+            return buffer
+        }
+        if let conversionError {
+            return .failure(Failure(message: "Microphone conversion failed: \(conversionError.localizedDescription)"))
+        }
+        guard status != .error else {
+            return .failure(Failure(message: "Microphone conversion failed."))
+        }
+        guard converted.frameLength > 0 else {
+            return .failure(Failure(message: "The microphone converter produced no audio frames."))
+        }
+        guard let channel = converted.floatChannelData?[0] else {
+            return .failure(Failure(message: "The microphone converter returned an unsupported sample layout."))
+        }
+        let encoded = VoicePCMEncoding.encode(channel, count: Int(converted.frameLength))
+        return .success(Frame(pcm: encoded.data, peak: encoded.peak))
+    }
+
+    private static func converter(_ converter: AVAudioConverter?, accepts format: AVAudioFormat) -> Bool {
+        guard let input = converter?.inputFormat else { return false }
+        return input.commonFormat == format.commonFormat
+            && abs(input.sampleRate - format.sampleRate) < 0.5
+            && input.channelCount == format.channelCount
+            && input.isInterleaved == format.isInterleaved
     }
 }
 

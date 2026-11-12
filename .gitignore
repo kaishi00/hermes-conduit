@@ -45,3 +45,7 @@ AGENTS.md
 .zcode/
 /workflows/
 .test-runs/
+
+# Claude Code: personal settings and local worktrees
+.claude/settings.local.json
+.claude/worktrees/

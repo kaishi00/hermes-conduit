@@ -8,6 +8,12 @@ import SwiftUI
 
 struct ProfilePickerSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
+    /// The V2 bar's sheet carries the way into All while Current only leaves
+    /// it one chip. The classic sidebar presents this same sheet, so it passes
+    /// false: its chips are always drawn, the All view doesn't exist there, and
+    /// a synced Current only from another device shouldn't offer a row that
+    /// would change nothing this list shows.
+    var offersAllChatsRow = false
     @EnvironmentObject private var appState: AppState
     @Environment(\.dismiss) private var dismiss
     @State private var isReordering = false
@@ -15,6 +21,10 @@ struct ProfilePickerSheet: View {
     /// (Keychain reads stay off the render path).
     @State private var dashboardRows: [SavedDashboardRowModel] = []
     @State private var switchingToDashboard: UUID?
+    /// The bar's Profiles preference: Current only leaves one chip, so the All
+    /// chip is out of the bar whenever All chats is off, and this sheet is
+    /// where the bar sends a tap.
+    @AppStorage(V2SessionsBarPreferences.Profiles.key) private var profilesPreference = V2SessionsBarPreferences.Profiles.defaultValue
 
     private var visibleProfiles: [String] {
         appState.profiles.isEmpty ? [appState.activeProfile] : appState.profiles
@@ -22,8 +32,8 @@ struct ProfilePickerSheet: View {
 
     private var photosFootnote: String {
         appState.profilePhotosLiveOnHermes
-            ? AppLocalization.string("Sessions and settings follow the active profile. Photos are saved to Hermes, so bots and Hermes Desktop show them too.")
-            : AppLocalization.string("Sessions and settings follow the active profile. Photos stay only on this device.")
+            ? AppLocalization.string("Sessions and settings follow the active profile. Photos are saved to Hermes, so bots and Hermes Desktop show them too.", table: .settings)
+            : AppLocalization.string("Sessions and settings follow the active profile. Photos stay only on this device.", table: .settings)
     }
 
     var body: some View {
@@ -43,12 +53,12 @@ struct ProfilePickerSheet: View {
                         }
                         HStack(alignment: .top, spacing: 12) {
                             Text(isReordering
-                                 ? AppLocalization.string("Use the arrows to choose the order profiles appear throughout Conduit.")
+                                 ? AppLocalization.string("Use the arrows to choose the order profiles appear throughout Conduit.", table: .settings)
                                  : photosFootnote)
                                 .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                             Spacer(minLength: 0)
-                            Button(isReordering ? AppLocalization.string("Done") : AppLocalization.string("Reorder")) {
+                            Button(isReordering ? AppLocalization.string("Done") : AppLocalization.string("Reorder", table: .settings)) {
                                 Haptics.selection()
                                 withAnimation(ConduitMotion.response) { isReordering.toggle() }
                             }
@@ -59,6 +69,10 @@ struct ProfilePickerSheet: View {
                             .conduitGlassControl(cornerRadius: 12, tint: .conduitAccent.opacity(0.08))
                         }
                         .padding(.horizontal, 4)
+
+                        if showsAllChatsRow {
+                            allChatsRow
+                        }
 
                         ForEach(Array(visibleProfiles.enumerated()), id: \.element) { index, profile in
                             ProfilePickerRow(
@@ -84,9 +98,9 @@ struct ProfilePickerSheet: View {
                     .padding(16)
                 }
             }
-            // Photos are Hermes pictures: re-read them, since Desktop or
-            // another device may have changed one.
-            .task { await appState.reloadBotRoster() }
+            // Photos are Hermes pictures: re-read them once they're a while
+            // old, since Desktop or another device may have changed one.
+            .task { await appState.refreshBotRosterAndStalePictures() }
             .task { dashboardRows = SavedDashboardRowModel.rows(appState) }
             .onChange(of: appState.savedDashboardRegistry) { _, _ in dashboardRows = SavedDashboardRowModel.rows(appState) }
             .toolbar(.hidden, for: .navigationBar)
@@ -94,6 +108,51 @@ struct ProfilePickerSheet: View {
                 ConduitSheetHeader(title: AppLocalization.string("Profiles"), close: { dismiss() })
             }
         }
+    }
+
+    /// Current only and All chats off: the bar draws no All chip, and the one
+    /// chip it does draw opens this sheet, so All is reachable from here or
+    /// from Settings alone. The All-profiles sheet carries the way out in the
+    /// other direction.
+    private var showsAllChatsRow: Bool {
+        offersAllChatsRow && V2SessionsBarControls.showsAllChatsRow(
+            profiles: profilesPreference,
+            allProfilesChatsOn: appState.isAllProfilesChatsOn,
+            allProfilesAvailable: AllProfilesChats.isAvailable(profiles: appState.profiles)
+        )
+    }
+
+    private var allChatsRow: some View {
+        Button {
+            Haptics.selection()
+            appState.setAllProfilesChatsOn(true)
+            dismiss()
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "person.2")
+                    .font(.system(size: 22))
+                    .conduitFixedGlyph()
+                    .foregroundStyle(Color.conduitAccent)
+                    .frame(width: 30, height: 30)
+                Text(AppLocalization.string("All profiles"))
+                    .scaledFont(.body)
+                    .lineLimit(1)
+                Spacer(minLength: 0)
+            }
+            .padding(.horizontal, 14)
+            .frame(minHeight: 52)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(PressableButtonStyle())
+        // The profile rows are disabled during a switch, a dashboard's row
+        // while another dashboard is coming in, and every row while the order
+        // is being changed. This row writes the same preference, so it waits
+        // for the same switch to end rather than applying it to a dashboard
+        // already on its way out, and sits out a reorder rather than closing
+        // the sheet mid-drag.
+        .disabled(isReordering || appState.isProfileSwitching || switchingToDashboard != nil)
+        .accessibilityHint(AppLocalization.string("Shows the chats of several profiles in one list"))
+        .settingsCard()
     }
 }
 
@@ -250,15 +309,15 @@ private struct ProfilePickerRow: View {
                 UIAccessibility.post(notification: .announcement, argument: saveError)
             }
         )
-        .alert(AppLocalization.string("Rename profile"), isPresented: $isRenaming) {
+        .alert(AppLocalization.string("Rename profile", table: .settings), isPresented: $isRenaming) {
             TextField(AppLocalization.string("Name"), text: $draftName)
                 .textInputAutocapitalization(.words)
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
             Button(AppLocalization.string("Save")) { saveName(draftName) }
         } message: {
             Text(BotManagement.isDefaultProfile(profile) || !appState.profilePhotosLiveOnHermes
-                 ? AppLocalization.string("This only changes how the profile is named in Conduit.")
-                 : AppLocalization.string("Chats and settings stay with the profile. Bots and Hermes Desktop show the new name too."))
+                 ? AppLocalization.string("This only changes how the profile is named in Conduit.", table: .settings)
+                 : AppLocalization.string("Chats and settings stay with the profile. Bots and Hermes Desktop show the new name too.", table: .settings))
         }
     }
 
@@ -294,7 +353,7 @@ private struct ProfilePickerRow: View {
             Button(action: select) {
                 VStack(alignment: .leading, spacing: 3) {
                     Text(appState.profileDisplayName(profile)).scaledFont(.headline).foregroundStyle(.primary)
-                    Text(BotManagement.isDefaultProfile(profile) ? AppLocalization.string("Primary Hermes profile") : AppLocalization.string("Hermes profile")).scaledFont(.caption).foregroundStyle(.secondary)
+                    Text(BotManagement.isDefaultProfile(profile) ? AppLocalization.string("Primary Hermes profile", table: .settings) : AppLocalization.string("Hermes profile", table: .settings)).scaledFont(.caption).foregroundStyle(.secondary)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).contentShape(Rectangle())
             }
@@ -397,7 +456,7 @@ private struct ProfilePickerRow: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            Text(AppLocalization.string("Background glow"))
+            Text(AppLocalization.string("Background glow", table: .settings))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
@@ -415,7 +474,7 @@ private struct ProfilePickerRow: View {
                 .accessibilityLabel("Automatic background glow for \(appState.profileDisplayName(profile))")
             }
             ColorPicker(selection: glowColor, supportsOpacity: false) {
-                Text(AppLocalization.string("Background glow"))
+                Text(AppLocalization.string("Background glow", table: .settings))
             }
             .labelsHidden()
             .frame(minWidth: 44, minHeight: 44)

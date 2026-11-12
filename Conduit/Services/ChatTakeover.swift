@@ -19,7 +19,9 @@ struct ChatTakeoverState: Equatable {
         case offered
         /// The other app is running a turn; Conduit asks again shortly.
         case waiting
-        /// The chat is Conduit's now; the composer sends its draft again.
+        /// The chat is Conduit's now. A typed message an automatic takeover
+        /// kept was sent by Conduit; otherwise the composer sends its draft
+        /// again.
         case ready
         /// Taking over failed; the message says why. Tapping again retries.
         case failed(String)
@@ -40,7 +42,8 @@ struct ChatTakeoverState: Equatable {
     var surface: String?
     /// The text whose send was refused. The composer only resends after a
     /// takeover when its draft is this message, so a refused voice or other
-    /// non-composer turn never sends an unrelated draft.
+    /// non-composer turn never sends an unrelated draft. An automatic
+    /// takeover keeps the composer's words for it and sends this itself.
     var refusedText = ""
     var phase: Phase
     /// Changes every time a takeover finishes, so the composer resends once.
@@ -77,37 +80,37 @@ struct ChatTakeoverState: Equatable {
     /// The offer, while another app holds the chat.
     var openElsewhereMessage: String {
         switch owner {
-        case .desktop: return AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.")
-        case .terminal: return AppLocalization.string("This chat is open in a Hermes terminal. Take it over to send from here.")
-        case .otherBot: return AppLocalization.string("This bot is answering a message from another bot. Take the chat over, and Conduit sends yours when it finishes.")
-        case .otherWindow: return AppLocalization.string("This chat is open in another Hermes window. Take it over to send from here.")
+        case .desktop: return AppLocalization.string("This chat is open in Hermes Desktop. Take it over to send from here.", table: .chat)
+        case .terminal: return AppLocalization.string("This chat is open in a Hermes terminal. Take it over to send from here.", table: .chat)
+        case .otherBot: return AppLocalization.string("This bot is answering a message from another bot. Take the chat over, and Conduit sends yours when it finishes.", table: .chat)
+        case .otherWindow: return AppLocalization.string("This chat is open in another Hermes window. Take it over to send from here.", table: .chat)
         }
     }
 
     /// Progress, while Conduit waits for the other app to let go.
     var takingOverMessage: String {
         switch owner {
-        case .desktop: return AppLocalization.string("Taking this chat over from Hermes Desktop. If it's replying, Conduit waits for the reply to finish.")
-        case .terminal: return AppLocalization.string("Taking this chat over from a Hermes terminal. If it's replying, Conduit waits for the reply to finish.")
-        case .otherBot: return AppLocalization.string("This bot is answering a message from another bot. Conduit sends yours when it finishes.")
-        case .otherWindow: return AppLocalization.string("Taking this chat over from another Hermes window. If it's replying, Conduit waits for the reply to finish.")
+        case .desktop: return AppLocalization.string("Taking this chat over from Hermes Desktop. If it's replying, Conduit waits for the reply to finish.", table: .chat)
+        case .terminal: return AppLocalization.string("Taking this chat over from a Hermes terminal. If it's replying, Conduit waits for the reply to finish.", table: .chat)
+        case .otherBot: return AppLocalization.string("This bot is answering a message from another bot. Conduit sends yours when it finishes.", table: .chat)
+        case .otherWindow: return AppLocalization.string("Taking this chat over from another Hermes window. If it's replying, Conduit waits for the reply to finish.", table: .chat)
         }
     }
 
     /// The failure when the other app is still running a turn at the deadline.
     var stillReplyingMessage: String {
         switch owner {
-        case .desktop: return AppLocalization.string("Hermes Desktop is still replying in this chat. Try again when it finishes.")
-        case .terminal: return AppLocalization.string("A Hermes terminal is still replying in this chat. Try again when it finishes.")
-        case .otherBot: return AppLocalization.string("This bot is still answering a message from another bot. Try again when it finishes.")
-        case .otherWindow: return AppLocalization.string("Another Hermes window is still replying in this chat. Try again when it finishes.")
+        case .desktop: return AppLocalization.string("Hermes Desktop is still replying in this chat. Try again when it finishes.", table: .chat)
+        case .terminal: return AppLocalization.string("A Hermes terminal is still replying in this chat. Try again when it finishes.", table: .chat)
+        case .otherBot: return AppLocalization.string("This bot is still answering a message from another bot. Try again when it finishes.", table: .chat)
+        case .otherWindow: return AppLocalization.string("Another Hermes window is still replying in this chat. Try again when it finishes.", table: .chat)
         }
     }
 
     /// The notice while Conduit on another device or the web chat holds it.
     static var heldHereMessage: String {
         AppLocalization.string(
-            "This chat is open in Conduit on another device or in the Hermes web chat. Send from there, or close it there and try again."
+            "This chat is open in Conduit on another device or in the Hermes web chat. Send from there, or close it there and try again.", table: .chat
         )
     }
 
@@ -116,7 +119,7 @@ struct ChatTakeoverState: Equatable {
     var callRefusalMessage: String {
         switch phase {
         case .offered: return openElsewhereMessage
-        case .ready: return AppLocalization.string("This chat is yours now. Send your message again.")
+        case .ready: return AppLocalization.string("This chat is yours now. Send your message again.", table: .chat)
         case .waiting: return takingOverMessage
         case .failed(let message), .unavailable(let message): return message
         case .heldHere: return Self.heldHereMessage
@@ -222,6 +225,22 @@ final class ChatTakeoverClient {
         default: throw ChatTakeoverError.malformed
         }
     }
+}
+
+/// A typed message refused while another app held its chat, kept by an
+/// automatic takeover and sent by Conduit once the chat is its own (issue
+/// 2140). If the takeover doesn't happen, its words go back to the
+/// composer.
+struct ChatTakeoverHeldMessage: Equatable {
+    /// The takeover it waits for.
+    let sessionID: String
+    /// Every id the chat goes by: it's sent only while that chat is open.
+    let sessionIDs: [String]
+    /// Exactly what Hermes refused, sent again as it was.
+    let text: String
+    /// Its words, attachments and quoted reply as they go back into the
+    /// composer, and the draft they belong to.
+    let restore: ComposerRestoreRequest
 }
 
 extension ChatTakeoverState {

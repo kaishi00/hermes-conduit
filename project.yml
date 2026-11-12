@@ -27,6 +27,11 @@ settings:
     # Conduit Dev (scripts/mac-dev) registers its own, so conduit:// links
     # keep opening the installed Conduit.
     CONDUIT_URL_SCHEME: conduit
+    # Xcode's string extraction can't see which feature table an
+    # AppLocalization.string call names (docs/LOCALIZATION.md), so it would
+    # copy every feature key back into Localizable.xcstrings. Keys go in
+    # through scripts/l10n.py instead.
+    SWIFT_EMIT_LOC_STRINGS: NO
 packages:
   # GPT-Live voice runs over WebRTC; Apple ships no WebRTC stack. Prebuilt
   # Google WebRTC as a binary xcframework, pinned to an exact release.
@@ -289,6 +294,9 @@ targets:
       - path: ConduitWidgets/Resources/Assets.xcassets
         buildPhase: resources
       - path: Shared/Widgets
+      # The Pulse widget reads Pulse with a host pass, as the Location Push
+      # extension sends with one (issue 2190).
+      - path: Shared/Location/LocationHostClient.swift
       - path: Shared/DateOrder
       - path: Conduit/Localizable.xcstrings
         buildPhase: resources

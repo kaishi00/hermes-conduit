@@ -89,7 +89,7 @@ struct VoiceConversationSheet: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
-                ConduitSheetHeader(title: AppLocalization.string("Voice conversation"), close: close)
+                ConduitSheetHeader(title: AppLocalization.string("Voice conversation", table: .voice), close: close)
             }
         }
     }
@@ -123,11 +123,14 @@ struct VoiceConversationSheet: View {
                 Text("Mic input")
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
-                VoiceInputLevelMeter(level: inputMeterLevel, isActive: isInputMeterActive)
+                let meterActive = isInputMeterActive
+                VoiceMicrophoneLevelReader(meter: controller.microphoneMeter) { level in
+                    VoiceInputLevelMeter(level: meterActive ? level : 0, isActive: meterActive)
+                }
                     .frame(height: 20)
                     .accessibilityHint(Text(isInputMeterActive
-                        ? AppLocalization.string("Shows audio reaching Conduit while the microphone is live.")
-                        : AppLocalization.string("The microphone is not capturing right now.")))
+                        ? AppLocalization.string("Shows audio reaching Conduit while the microphone is live.", table: .voice)
+                        : AppLocalization.string("The microphone is not capturing right now.", table: .voice)))
                 Spacer(minLength: 0)
             }
         }
@@ -161,7 +164,7 @@ struct VoiceConversationSheet: View {
     }
 
     private var backgroundJobsCard: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Background jobs"), symbol: "square.stack.3d.up", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Background jobs", table: .voice), symbol: "square.stack.3d.up", tint: .conduitAccent) {
             if backgroundJobs.backgroundJobs.isEmpty {
                 Text("Say “background job” and then a task to run it as its own chat while you keep talking.")
                     .scaledFont(.footnote)
@@ -219,7 +222,7 @@ struct VoiceConversationSheet: View {
         switch status {
         case .starting: return AppLocalization.string("Starting")
         case .running: return AppLocalization.string("Running")
-        case .needsInput: return AppLocalization.string("Waiting for your input")
+        case .needsInput: return AppLocalization.string("Waiting for your input", table: .voice)
         case .finished: return AppLocalization.string("Finished")
         case .failed: return AppLocalization.string("Failed")
         case .cancelled: return AppLocalization.string("Cancelled")
@@ -227,7 +230,7 @@ struct VoiceConversationSheet: View {
     }
 
     private var controlsCard: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Microphone and audio"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Microphone and audio", table: .voice), symbol: "slider.horizontal.3", tint: .conduitAccent) {
             AdaptiveStack(spacing: 10) {
                 if controller.isPushToTalkActive {
                     VoicePushToTalkControl(controller: controller) { cancelling in
@@ -255,6 +258,19 @@ struct VoiceConversationSheet: View {
                 .conduitGlassControl(cornerRadius: 17, tint: controller.isOutputMuted ? .orange.opacity(0.18) : .conduitAura.opacity(0.14))
                 .accessibilityHint("Mutes assistant audio without changing chat messages")
 
+                if let appState, showsPhoto {
+                    VoicePhotoButton(appState: appState) { open in
+                        Button(action: open) {
+                            Label(AppLocalization.string("Camera"), systemImage: "camera.fill")
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 6).frame(minHeight: 48)
+                        }
+                        .conduitGlassControl(cornerRadius: 17, tint: .conduitAura.opacity(0.14))
+                        .accessibilityLabel(AppLocalization.string("Take a photo", table: .voice))
+                        .accessibilityHint(AppLocalization.string("Adds a photo to the chat for your next question", table: .voice))
+                    }
+                }
+
                 if callSpeaker.isShown {
                     Button { VoiceAudioSessionCoordinator.shared.setNativeCallSpeaker(!callSpeaker.isOn) } label: {
                         Label(AppLocalization.string("Speaker"), systemImage: "speaker.wave.3.fill")
@@ -267,16 +283,20 @@ struct VoiceConversationSheet: View {
                 }
             }
             Text(controller.isPushToTalkActive
-                ? AppLocalization.string("Hold to talk, let go to send. Close ends the voice session.")
-                : AppLocalization.string("Pause only affects the microphone. Close ends the voice session."))
+                ? AppLocalization.string("Hold to talk, let go to send. Close ends the voice session.", table: .voice)
+                : AppLocalization.string("Pause only affects the microphone. Close ends the voice session.", table: .voice))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
     }
 
+    /// The Camera, on a device that has one: the photo waits on the chat
+    /// for the next turn (`AppState.addVoicePhoto`).
+    private var showsPhoto: Bool { appState != nil && CameraCapture.isAvailable }
+
     private var profileDisplayName: String {
         if let appState { return appState.profileDisplayName(profile) }
-        return profile == "default" ? AppLocalization.string("Default profile") : profile.replacingOccurrences(of: "_", with: " ").capitalized
+        return profile == "default" ? AppLocalization.string("Default profile", table: .voice) : profile.replacingOccurrences(of: "_", with: " ").capitalized
     }
 
     /// Automatic speaker-safe suspension while Hermes audibly speaks on an
@@ -304,14 +324,10 @@ struct VoiceConversationSheet: View {
         }
     }
 
-    private var inputMeterLevel: Float {
-        isInputMeterActive ? controller.microphoneLevel : 0
-    }
-
     private var microphoneLabel: String {
         if controller.state == .transcribing { return AppLocalization.string("Transcribing") }
         if isInterruptAvailable { return AppLocalization.string("Interrupt") }
-        return microphoneIsActive ? AppLocalization.string("Pause mic") : AppLocalization.string("Listen")
+        return microphoneIsActive ? AppLocalization.string("Pause mic", table: .voice) : AppLocalization.string("Listen")
     }
 
     private var microphoneSymbol: String {
@@ -321,8 +337,8 @@ struct VoiceConversationSheet: View {
     }
 
     private var microphoneHint: String {
-        if isInterruptAvailable { return AppLocalization.string("Stops Hermes' speech and starts listening right away") }
-        return microphoneIsActive ? AppLocalization.string("Pauses microphone capture while keeping the voice session open") : AppLocalization.string("Starts or resumes microphone capture")
+        if isInterruptAvailable { return AppLocalization.string("Stops Hermes' speech and starts listening right away", table: .voice) }
+        return microphoneIsActive ? AppLocalization.string("Pauses microphone capture while keeping the voice session open", table: .voice) : AppLocalization.string("Starts or resumes microphone capture", table: .voice)
     }
 
     private var microphoneIsActive: Bool {
@@ -335,36 +351,36 @@ struct VoiceConversationSheet: View {
 
     private var statusTitle: String {
         if let title = pushToTalkStatusTitle { return title }
-        if isInterruptAvailable { return AppLocalization.string("Hermes is speaking") }
-        if controller.isMicrophonePaused { return AppLocalization.string("Microphone paused") }
+        if isInterruptAvailable { return AppLocalization.string("Hermes is speaking", table: .voice) }
+        if controller.isMicrophonePaused { return AppLocalization.string("Microphone paused", table: .voice) }
         if controller.isSteeringTurn, controller.state == .listening || controller.state == .transcribing {
-            return AppLocalization.string("Steering Hermes")
+            return AppLocalization.string("Steering Hermes", table: .voice)
         }
         switch controller.state {
-        case .idle: return AppLocalization.string("Ready to listen")
+        case .idle: return AppLocalization.string("Ready to listen", table: .voice)
         case .listening: return AppLocalization.string("Listening")
         case .transcribing: return AppLocalization.string("Transcribing")
-        case .thinking: return AppLocalization.string("Hermes is thinking")
-        case .speaking: return AppLocalization.string("Hermes is speaking")
-        case .muted: return AppLocalization.string("Assistant audio muted")
-        case .failed: return AppLocalization.string("Voice needs attention")
+        case .thinking: return AppLocalization.string("Hermes is thinking", table: .voice)
+        case .speaking: return AppLocalization.string("Hermes is speaking", table: .voice)
+        case .muted: return AppLocalization.string("Assistant audio muted", table: .voice)
+        case .failed: return AppLocalization.string("Voice needs attention", table: .voice)
         }
     }
 
     private var statusDetail: String {
         if let detail = pushToTalkStatusDetail { return detail }
-        if isInterruptAvailable { return AppLocalization.string("Tap Interrupt to speak.") }
-        if controller.isMicrophonePaused { return AppLocalization.string("Tap Listen when you are ready to resume.") }
+        if isInterruptAvailable { return AppLocalization.string("Tap Interrupt to speak.", table: .voice) }
+        if controller.isMicrophonePaused { return AppLocalization.string("Tap Listen when you are ready to resume.", table: .voice) }
         if controller.isSteeringTurn, controller.state == .listening || controller.state == .transcribing {
-            return AppLocalization.string("Hermes keeps working with your words added.")
+            return AppLocalization.string("Hermes keeps working with your words added.", table: .voice)
         }
         switch controller.state {
-        case .idle: return AppLocalization.string("Tap Listen when you are ready.")
-        case .listening: return AppLocalization.string("Pause the microphone whenever you need a break.")
-        case .transcribing: return AppLocalization.string("Sending your speech to Hermes.")
-        case .thinking: return AppLocalization.string("Speak to steer Hermes while it works.")
-        case .speaking: return AppLocalization.string("Speak over Hermes to start a new turn.")
-        case .muted: return AppLocalization.string("Assistant text is still continuing in chat.")
+        case .idle: return AppLocalization.string("Tap Listen when you are ready.", table: .voice)
+        case .listening: return AppLocalization.string("Pause the microphone whenever you need a break.", table: .voice)
+        case .transcribing: return AppLocalization.string("Sending your speech to Hermes.", table: .voice)
+        case .thinking: return AppLocalization.string("Speak to steer Hermes while it works.", table: .voice)
+        case .speaking: return AppLocalization.string("Speak over Hermes to start a new turn.", table: .voice)
+        case .muted: return AppLocalization.string("Assistant text is still continuing in chat.", table: .voice)
         case .failed(let detail): return detail
         }
     }
@@ -396,8 +412,8 @@ struct VoiceConversationSheet: View {
 
     private func pushToTalkTitle(cancelling: Bool) -> String {
         if controller.state == .transcribing { return AppLocalization.string("Transcribing") }
-        guard controller.isPushToTalkHeld else { return AppLocalization.string("Hold to talk") }
-        return cancelling ? AppLocalization.string("Let go to cancel") : AppLocalization.string("Let go to send")
+        guard controller.isPushToTalkHeld else { return AppLocalization.string("Hold to talk", table: .voice) }
+        return cancelling ? AppLocalization.string("Let go to cancel", table: .voice) : AppLocalization.string("Let go to send", table: .voice)
     }
 
     private func pushToTalkSymbol(cancelling: Bool) -> String {
@@ -411,27 +427,27 @@ struct VoiceConversationSheet: View {
         guard controller.isPushToTalkActive else { return nil }
         if controller.isPushToTalkHeld, controller.state == .listening {
             return controller.isSteeringTurn
-                ? AppLocalization.string("Steering Hermes")
-                : AppLocalization.string("Listening… let go to send")
+                ? AppLocalization.string("Steering Hermes", table: .voice)
+                : AppLocalization.string("Listening… let go to send", table: .voice)
         }
-        if controller.state == .idle { return AppLocalization.string("Hold to talk") }
+        if controller.state == .idle { return AppLocalization.string("Hold to talk", table: .voice) }
         return nil
     }
 
     private var pushToTalkStatusDetail: String? {
         guard controller.isPushToTalkActive else { return nil }
         if controller.isPushToTalkHeld, controller.state == .listening {
-            return AppLocalization.string("Slide away before letting go to cancel.")
+            return AppLocalization.string("Slide away before letting go to cancel.", table: .voice)
         }
         if isInterruptAvailable || controller.state == .speaking {
-            return AppLocalization.string("Hold to talk over Hermes.")
+            return AppLocalization.string("Hold to talk over Hermes.", table: .voice)
         }
         switch controller.state {
-        case .idle: return AppLocalization.string("Hold the button while you speak, then let go to send.")
+        case .idle: return AppLocalization.string("Hold the button while you speak, then let go to send.", table: .voice)
         case .thinking, .muted:
             return controller.canPushToTalkNow
-                ? AppLocalization.string("Hold to talk to steer Hermes while it works.")
-                : AppLocalization.string("Hold to talk once Hermes answers.")
+                ? AppLocalization.string("Hold to talk to steer Hermes while it works.", table: .voice)
+                : AppLocalization.string("Hold to talk once Hermes answers.", table: .voice)
         default: return nil
         }
     }
@@ -522,7 +538,7 @@ extension VoiceConversationSheet {
 
     private var v2Title: String {
         let title = chatTitle?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        return title.isEmpty ? AppLocalization.string("Voice conversation") : title
+        return title.isEmpty ? AppLocalization.string("Voice conversation", table: .voice) : title
     }
 
     private func v2Subtitle(at now: Date) -> String {
@@ -588,7 +604,7 @@ extension VoiceConversationSheet {
 
     private func v2Label(for entry: VoiceConversationTranscriptEntry) -> String {
         entry.speaker == .user
-            ? AppLocalization.string("You: \(entry.text)")
+            ? AppLocalization.string("You: \(entry.text)", table: .voice)
             : "\(AppLocalization.string("Hermes")): \(entry.text)"
     }
 
@@ -602,10 +618,13 @@ extension VoiceConversationSheet {
             .padding(.horizontal, 24)
             .padding(.top, 20)
             Spacer(minLength: 16)
-            V2CallLevelBars(
-                phase: callPhase,
-                inputFraction: isInputMeterActive ? VoiceLevelMeterMath.displayFraction(forLevel: controller.microphoneLevel) : nil
-            )
+            let meterActive = isInputMeterActive
+            VoiceMicrophoneLevelReader(meter: controller.microphoneMeter) { level in
+                V2CallLevelBars(
+                    phase: callPhase,
+                    inputFraction: meterActive ? VoiceLevelMeterMath.displayFraction(forLevel: level) : nil
+                )
+            }
             .frame(height: 96)
             .padding(.horizontal, 28)
             .accessibilityHidden(true)
@@ -713,16 +732,19 @@ extension VoiceConversationSheet {
             }
             LiveVoiceCallButton(
                 symbol: controller.isOutputMuted ? LiveVoiceCallButton.silencedSymbol : LiveVoiceCallButton.silenceSymbol,
-                title: controller.isOutputMuted ? AppLocalization.string("Sound on") : AppLocalization.string("Silence"),
+                title: controller.isOutputMuted ? AppLocalization.string("Sound on", table: .voice) : AppLocalization.string("Silence", table: .voice),
                 style: controller.isOutputMuted ? .selected : .normal,
                 voiceOverLabel: controller.isOutputMuted
-                    ? AppLocalization.string("Turn the assistant's sound back on")
-                    : AppLocalization.string("Silence the assistant"),
+                    ? AppLocalization.string("Turn the assistant's sound back on", table: .voice)
+                    : AppLocalization.string("Silence the assistant", table: .voice),
                 action: { controller.setOutputMuted(!controller.isOutputMuted) }
             )
+            if let appState, showsPhoto {
+                LiveVoiceCallPhotoButton(appState: appState)
+            }
             LiveVoiceCallButton(
                 symbol: "text.bubble.fill",
-                title: AppLocalization.string("Transcript"),
+                title: AppLocalization.string("Transcript", table: .voice),
                 style: showsTranscript ? .selected : .normal,
                 action: { showsTranscript.toggle() }
             )
@@ -732,13 +754,13 @@ extension VoiceConversationSheet {
                 title: AppLocalization.string("End"),
                 style: .destructive,
                 voiceOverLabel: AppLocalization.string("End call"),
-                voiceOverHint: AppLocalization.string("Hangs up the call"),
+                voiceOverHint: AppLocalization.string("Hangs up the call", table: .voice),
                 action: close
             )
         }
         .frame(maxWidth: .infinity)
-        // Microphone, Silence, Transcript, End, and Speaker in a call.
-        .modifier(LiveVoiceCallButtonRowFit(slots: callSpeaker.isShown ? 5 : 4))
+        // Microphone, Silence, Transcript, End, the Camera, and Speaker in a call.
+        .modifier(LiveVoiceCallButtonRowFit(slots: 4 + (callSpeaker.isShown ? 1 : 0) + (showsPhoto ? 1 : 0)))
         .padding(.horizontal, 12)
         .padding(.top, 14)
         .padding(.bottom, 12)
@@ -797,8 +819,8 @@ struct VoicePushToTalkControl<Face: View>: View {
                             isCancelling = cancelling
                             Haptics.selection()
                             AccessibilityNotification.Announcement(cancelling
-                                ? AppLocalization.string("Let go to cancel")
-                                : AppLocalization.string("Let go to send")).post()
+                                ? AppLocalization.string("Let go to cancel", table: .voice)
+                                : AppLocalization.string("Let go to send", table: .voice)).post()
                         }
                     }
                     .onEnded { _ in
@@ -831,8 +853,8 @@ struct VoicePushToTalkControl<Face: View>: View {
             .accessibilityAddTraits(.isButton)
             .accessibilityLabel(Text(verbatim: accessibilityTitle))
             .accessibilityHint(Text(verbatim: controller.isPushToTalkHeld
-                ? AppLocalization.string("Sends what you said to Hermes")
-                : AppLocalization.string("Listens until you double-tap again to send")))
+                ? AppLocalization.string("Sends what you said to Hermes", table: .voice)
+                : AppLocalization.string("Listens until you double-tap again to send", table: .voice)))
             .accessibilityAction {
                 if controller.isPushToTalkHeld {
                     controller.endPushToTalk(send: true, minimumHold: false)
@@ -851,8 +873,8 @@ struct VoicePushToTalkControl<Face: View>: View {
 
     private var accessibilityTitle: String {
         if controller.state == .transcribing { return AppLocalization.string("Transcribing") }
-        guard controller.isPushToTalkHeld else { return AppLocalization.string("Start talking") }
-        return isCancelling ? AppLocalization.string("Let go to cancel") : AppLocalization.string("Send")
+        guard controller.isPushToTalkHeld else { return AppLocalization.string("Start talking", table: .voice) }
+        return isCancelling ? AppLocalization.string("Let go to cancel", table: .voice) : AppLocalization.string("Send")
     }
 
     private func announceListening() {
@@ -917,6 +939,8 @@ struct VoiceApprovalPanel: View {
                         ClarifyCard(message: message)
                     } else if message.inputPrompt != nil {
                         InputPromptCard(message: message)
+                    } else if message.connection != nil {
+                        ConnectionCard(message: message)
                     } else {
                         ApprovalCard(message: message)
                     }
@@ -928,4 +952,13 @@ struct VoiceApprovalPanel: View {
         }
         .animation(ConduitMotion.ease(reduceMotion: reduceMotion), value: approvals.first?.id)
     }
+}
+
+/// Draws `content` with the classic voice meter's level, so a tick
+/// re-renders only it, not the sheet around it (issue 1970).
+struct VoiceMicrophoneLevelReader<Content: View>: View {
+    @ObservedObject var meter: VoiceMicrophoneMeter
+    @ViewBuilder let content: (Float) -> Content
+
+    var body: some View { content(meter.level) }
 }

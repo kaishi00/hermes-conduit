@@ -110,7 +110,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
         }
         guard Self.isSpeechAuthorized, Self.isMicrophoneAuthorized else {
             throw WakeWordServiceError.unavailable(
-                AppLocalization.string("Wake phrases need microphone and speech recognition access.")
+                AppLocalization.string("Wake phrases need microphone and speech recognition access.", table: .voice)
             )
         }
         makeRecognizers()
@@ -124,7 +124,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
         } catch {
             stopEverything()
             wakeLogger.error("wake audio start failed: \(LogRedaction.message(error), privacy: .public)")
-            throw WakeWordServiceError.unavailable(AppLocalization.string("Wake listening couldn't use the microphone. Close other apps using it, then try again."))
+            throw WakeWordServiceError.unavailable(AppLocalization.string("Wake listening couldn't use the microphone. Close other apps using it, then try again.", table: .voice))
         }
         observeAudioDisruptions()
         startRecognitionCycle()
@@ -232,7 +232,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
         let session = AVAudioSession.sharedInstance()
         guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else {
             throw WakeWordServiceError.unavailable(
-                AppLocalization.string("Wake listening on CarPlay needs the iPhone's microphone, which is not available right now.")
+                AppLocalization.string("Wake listening on CarPlay needs the iPhone's microphone, which is not available right now.", table: .voice)
             )
         }
         try session.setPreferredInput(builtIn)
@@ -367,7 +367,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
                 self.startRecognitionCycle()
             } catch {
                 wakeLogger.error("wake audio restart failed: \(LogRedaction.message(error), privacy: .public)")
-                self.recordFailure(AppLocalization.string("Wake listening couldn't use the microphone. Close other apps using it, then try again."))
+                self.recordFailure(AppLocalization.string("Wake listening couldn't use the microphone. Close other apps using it, then try again.", table: .voice))
             }
         }
     }
@@ -400,7 +400,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
             return note.text
         }
         let locale = Locale.current
-        return AppLocalization.string("On-device Apple speech recognition is unavailable for \(locale.identifier).")
+        return AppLocalization.string("On-device Apple speech recognition is unavailable for \(locale.identifier).", table: .voice)
     }
 
     private func cancelRecognition() {
@@ -453,7 +453,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
         if failed {
             consecutiveFailures += 1
             guard consecutiveFailures < Self.maximumConsecutiveFailures else {
-                recordFailure(AppLocalization.string("Apple speech recognition is temporarily unavailable."))
+                recordFailure(AppLocalization.string("Apple speech recognition is temporarily unavailable.", table: .voice))
                 return
             }
             cycleTask?.cancel()

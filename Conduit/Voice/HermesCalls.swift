@@ -104,8 +104,8 @@ enum HermesCallCopy {
     static var missedCallTitle: String { missedCallTitle(from: HermesCallerName.fallback) }
     /// Names the profile that called (HermesCallerName), as the call did.
     static func missedCallTitle(from name: String) -> String {
-        guard name != HermesCallerName.fallback else { return AppLocalization.string("Missed call from Hermes") }
-        return AppLocalization.string("Missed call from \(name)")
+        guard name != HermesCallerName.fallback else { return AppLocalization.string("Missed call from Hermes", table: .voice) }
+        return AppLocalization.string("Missed call from \(name)", table: .voice)
     }
 
     /// The name a ringing call shows, the only text CallKit gives it: the
@@ -118,7 +118,7 @@ enum HermesCallCopy {
         )
     }
     static var talkAction: String { AppLocalization.string("Talk") }
-    static var jobCardNote: String { AppLocalization.string("Calls you when done") }
+    static var jobCardNote: String { AppLocalization.string("Calls you when done", table: .voice) }
 
     /// How the job ended, as one sentence: "“Check the server” finished."
     static func outcome(kind: HermesCallRequest.Kind?, title: String?) -> String {
@@ -336,7 +336,7 @@ struct HermesCallOpening: Equatable {
     /// With what the chat's card says: a question's choices, which Hermes'
     /// short reason leaves out, or the approval's ask for a yes or no.
     func spokenBrief(waiting: HermesCallWaiting?) -> String {
-        let hello = AppLocalization.string("Hi, it's Hermes.")
+        let hello = AppLocalization.string("Hi, it's Hermes.", table: .voice)
         if let question = waiting?.openQuestion {
             return hello + " " + HermesCallCopy.outcome(kind: .question, title: nil) + "\n" + HermesCallWaiting.spokenQuestion(question)
         }
@@ -345,7 +345,7 @@ struct HermesCallOpening: Equatable {
             // (#1589); the model's brief (`block`) keeps Hermes' words.
             let what = description.isEmpty ? HermesApprovalText.command(command) : HermesApprovalText.description(description)
             let clipped = what.count > 200 ? String(what.prefix(200)) + "…" : what
-            return hello + " " + AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.")
+            return hello + " " + AppLocalization.string("Hermes needs your OK to go on: \(clipped). Say yes to allow it once, or no.", table: .voice)
         }
         let intro = hello + " " + HermesCallCopy.summary(kind: kind, title: title, reason: reason)
         guard let result, !waitsOnUser else { return intro }
@@ -544,6 +544,11 @@ extension VoiceCallbackAvailability {
         case .notPaired:
             return "Hermes can't call the user: this Hermes profile isn't set up for Conduit notifications. They can turn them on in Conduit's Settings, under Notifications."
         case .unsupported:
+            // A host that manages the plugin updates it; the user can't.
+            if let managedBy = PluginUpdateAsk.managedBy {
+                let keeper = managedBy.isEmpty ? "the host" : managedBy
+                return "Hermes can't call the user yet: the Conduit plugin on their Hermes host doesn't have this, and \(keeper) keeps the plugin up to date, so there's nothing for them to update."
+            }
             return "Hermes can't call the user yet: the Conduit plugin on their Hermes host needs an update."
         case .pluginOff(let remedy):
             return "Hermes can't call the user: " + remedy

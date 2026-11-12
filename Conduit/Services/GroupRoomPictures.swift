@@ -245,7 +245,7 @@ extension AppState {
     /// `errorMessage`.
     func setGroupRoomPicture(_ image: UIImage?, roomID: String) async {
         guard let bridge = dashboardTicketBridge, let path = GroupRoomPictures.path(for: roomID) else {
-            errorMessage = AppLocalization.string("Connect to Hermes to change the group picture.")
+            errorMessage = AppLocalization.string("Connect to Hermes to change the group picture.", table: .rooms)
             return
         }
         let dashboard = activeDashboardID
@@ -283,7 +283,8 @@ extension AppState {
                 )
                 guard !superseded else { return }
                 guard let revision = GroupRoomPictures.storedRevision(from: answer) else {
-                    errorMessage = AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again.")
+                    errorMessage = PluginUpdateAsk.text(AppLocalization.string("The host's answer couldn't be read. Update the Conduit plugin and try again."),
+                                    instead: AppLocalization.string("The host's answer couldn't be read. Try again in a moment."))
                     return
                 }
                 groupRoomPictureData[roomID] = upload.jpeg
@@ -300,7 +301,7 @@ extension AppState {
             return
         } catch {
             if superseded { return }
-            errorMessage = AppLocalization.string("Could not change the group picture: \(UserFacingError.message(for: error))")
+            errorMessage = AppLocalization.string("Could not change the group picture: \(UserFacingError.message(for: error))", table: .rooms)
         }
     }
 }

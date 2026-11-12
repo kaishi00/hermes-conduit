@@ -28,6 +28,21 @@ struct ShortcutSendRequest: Equatable {
     /// The profile the chat lives in. Nil: the profile in use.
     var profile: String?
     var waitsForAnswer: Bool
+    /// A chat picked by name (Siri, Spotlight's chats, the action's Chat
+    /// picker). It wins over `chatName` and `profile`, and a run never makes
+    /// a new chat for it.
+    var chat: ShortcutPickedChat? = nil
+    /// The title a new chat gets in place of "Shortcut: …" (a Pulse
+    /// widget's Do it names its card).
+    var newChatTitle: String? = nil
+}
+
+/// A chat the action was given, as the widget snapshot names it.
+struct ShortcutPickedChat: Equatable {
+    var dashboardID: UUID
+    var reference: WidgetConversationReference
+    /// The title the picker showed; nil for a pick the snapshot no longer lists.
+    var title: String?
 }
 
 enum ShortcutSendOutcome: Equatable {
@@ -49,10 +64,10 @@ enum ShortcutSendOutcome: Equatable {
         switch self {
         case .answered(let reply): return reply
         case .sent: return AppLocalization.string("Sent to Hermes.")
-        case .stillWorking: return AppLocalization.string("Hermes is still working on it. The answer will be in the chat in Conduit.")
-        case .needsInput: return AppLocalization.string("Hermes needs your answer. Open the chat in Conduit.")
-        case .queued: return AppLocalization.string("Hermes is busy in that chat, so it will read this when its current reply finishes.")
-        case .joinedRunningReply: return AppLocalization.string("Hermes added this to the reply already running in that chat.")
+        case .stillWorking: return AppLocalization.string("Hermes is still working on it. The answer will be in the chat in Conduit.", table: .phone)
+        case .needsInput: return AppLocalization.string("Hermes needs your answer. Open the chat in Conduit.", table: .phone)
+        case .queued: return AppLocalization.string("Hermes is busy in that chat, so it will read this when its current reply finishes.", table: .phone)
+        case .joinedRunningReply: return AppLocalization.string("Hermes added this to the reply already running in that chat.", table: .phone)
         }
     }
 }
@@ -62,21 +77,36 @@ struct ShortcutSendError: LocalizedError, Equatable {
     var errorDescription: String? { message }
 
     static var empty: ShortcutSendError {
-        ShortcutSendError(message: AppLocalization.string("There's no text to send. Give Send to Hermes a message."))
+        ShortcutSendError(message: AppLocalization.string("There's no text to send. Give Send to Hermes a message.", table: .phone))
     }
 
     static var outOfTime: ShortcutSendError {
-        ShortcutSendError(message: AppLocalization.string("Conduit ran out of time before it could send this. Nothing was sent; try again."))
+        ShortcutSendError(message: AppLocalization.string("Conduit ran out of time before it could send this. Nothing was sent; try again.", table: .phone))
     }
 
     static var notConnected: ShortcutSendError {
         ShortcutSendError(message: AppLocalization.string("Conduit couldn't reach Hermes. Open Conduit and check the connection."))
     }
 
+    /// The picked chat isn't on Hermes any more (deleted, or a bot removed).
+    static var chatUnavailable: ShortcutSendError {
+        ShortcutSendError(message: AppLocalization.string("Conduit couldn't find that chat on Hermes, so nothing was sent. Pick another chat.", table: .phone))
+    }
+
+    /// Hermes didn't confirm the picked bot's chat either way: worth a retry.
+    static var chatUnconfirmed: ShortcutSendError {
+        ShortcutSendError(message: AppLocalization.string("Conduit couldn't confirm that chat on Hermes, so nothing was sent. Try again.", table: .phone))
+    }
+
+    /// The picked chat is on a dashboard Conduit isn't connected to.
+    static var chatOnAnotherDashboard: ShortcutSendError {
+        ShortcutSendError(message: AppLocalization.string("That chat is on another Hermes dashboard. Switch to it in Conduit first, then run this again.", table: .phone))
+    }
+
     /// The chat's runtime was gone and reopening it failed too: Hermes's
     /// own error ("session not found") would mean nothing to the listener.
     static var reopenFailed: ShortcutSendError {
-        ShortcutSendError(message: AppLocalization.string("Conduit couldn't reopen that chat, so nothing was sent. Open it in Conduit and try again."))
+        ShortcutSendError(message: AppLocalization.string("Conduit couldn't reopen that chat, so nothing was sent. Open it in Conduit and try again.", table: .phone))
     }
 }
 
@@ -86,6 +116,11 @@ struct ShortcutSendBackend {
     /// Waits for the connection; false when Hermes can't be reached in time.
     var connect: @MainActor (_ deadline: Date) async -> Bool
     var activeProfile: @MainActor () -> String
+    /// The picked chat as a chat to send to: a Bot Chat is its bot's chat
+    /// now, found as its Bots row finds it.
+    var pickedChat: @MainActor (_ chat: ShortcutPickedChat) async throws -> VoiceThreadTarget = { _ in
+        throw ShortcutSendError.chatUnavailable
+    }
     /// A new chat titled `title` in `profile`.
     var createChat: @MainActor (_ profile: String, _ title: String) async throws -> VoiceThreadTarget
     /// The runtime the chat's next turn runs on, resuming it when it isn't live.
@@ -197,19 +232,40 @@ struct ShortcutSender {
         guard !text.isEmpty else { throw ShortcutSendError.empty }
         guard await backend.connect(deadline) else { throw ShortcutSendError.notConnected }
         let profile = Self.cleaned(request.profile) ?? backend.activeProfile()
-        let name = Self.cleaned(request.chatName).map { String($0.prefix(80)) }
+        // A picked chat names itself: no name is kept for it.
+        let name = request.chat == nil ? Self.cleaned(request.chatName).map { String($0.prefix(80)) } : nil
 
         var chat: VoiceThreadTarget
         var runtimeID: String
         var reused = false
-        if let name, var saved = chats.chat(named: name, profile: profile), let resumed = try await resume(saved),
+        if let picked = request.chat {
+            var target = try await backend.pickedChat(picked)
+            // Never a new chat in its place: the run says the chat is gone,
+            // or that Hermes couldn't be reached, which isn't the same.
+            let resumed: String
+            do {
+                resumed = try await backend.resumeChat(target)
+            } catch is CancellationError {
+                throw CancellationError()
+            } catch HermesError.notConnected, HermesError.connectionClosed, HermesError.timeout {
+                throw ShortcutSendError.notConnected
+            } catch {
+                throw ShortcutSendError.chatUnavailable
+            }
+            guard !resumed.isEmpty else { throw ShortcutSendError.chatUnavailable }
+            target.runtimeSessionID = resumed
+            chat = target
+            runtimeID = resumed
+            reused = true
+        } else if let name, var saved = chats.chat(named: name, profile: profile), let resumed = try await resume(saved),
            !resumed.isEmpty {
             saved.runtimeSessionID = resumed
             chat = saved
             runtimeID = resumed
             reused = true
         } else {
-            chat = try await backend.createChat(profile, name ?? Self.title(for: text))
+            chat = try await backend.createChat(profile, name ?? Self.cleaned(request.newChatTitle)
+                .map { String($0.prefix(80)) } ?? Self.title(for: text))
             runtimeID = chat.runtimeSessionID
         }
         if let name { chats.save(chat, named: name, profile: profile, at: backend.now()) }
@@ -345,7 +401,7 @@ struct ShortcutSender {
         let line = text.split(whereSeparator: \.isNewline).first.map(String.init) ?? text
         let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
         let short = trimmed.count > 60 ? String(trimmed.prefix(59)) + "…" : trimmed
-        return AppLocalization.string("Shortcut: \(short)")
+        return AppLocalization.string("Shortcut: \(short)", table: .phone)
     }
 
     private static func cleaned(_ value: String?) -> String? {
@@ -388,9 +444,15 @@ struct SendToHermesIntent: AppIntent {
     @Parameter(title: "Profile")
     var profile: ConduitProfileEntity?
 
+    /// A chat to send to, picked from Conduit's chats. Wins over Chat Name
+    /// and Profile.
+    @Parameter(title: "Chat")
+    var chat: ConduitChatEntity?
+
     static var parameterSummary: some ParameterSummary {
         Summary("Send \(\.$message) to Hermes") {
             \.$waitForAnswer
+            \.$chat
             \.$chatName
             \.$profile
         }
@@ -402,7 +464,9 @@ struct SendToHermesIntent: AppIntent {
     static let runTime: TimeInterval = 25
 
     func perform() async throws -> some IntentResult & ReturnsValue<String> & ProvidesDialog {
-        let request = ShortcutSendRequest(text: message, chatName: chatName, profile: profile?.id, waitsForAnswer: waitForAnswer)
+        let picked = chat.map { ShortcutPickedChat(dashboardID: $0.workspace.dashboardID, reference: $0.reference, title: $0.title) }
+        let request = ShortcutSendRequest(text: message, chatName: chatName, profile: profile?.id,
+                                          waitsForAnswer: waitForAnswer, chat: picked)
         let deadline = Date().addingTimeInterval(Self.runTime)
         let text = try await Self.run(request, deadline: deadline).text
         return .result(value: text, dialog: "\(Self.spoken(text))")

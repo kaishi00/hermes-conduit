@@ -36,7 +36,7 @@ struct HealthSettingsPage: View {
 
     var body: some View {
         SettingsDetailContainer {
-            ConduitSettingsSection(title: AppLocalization.string("Health data for Hermes"), symbol: "heart.text.square", tint: .pink) {
+            ConduitSettingsSection(title: AppLocalization.string("Health data for Hermes", table: .phone), symbol: "heart.text.square", tint: .pink) {
                 Text("Share Apple Health data with Hermes so your agent can answer questions about your activity, sleep and workouts. It goes straight from this iPhone to your Hermes host, sealed end to end, and never through Conduit's notification relay.")
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
@@ -47,7 +47,7 @@ struct HealthSettingsPage: View {
                 } else if preferences.isOn {
                     statusRows
                 } else if !pluginServesHealth {
-                    Text("Update the Conduit plugin on your Hermes host to share health data.")
+                    Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to share health data.", table: .phone)))
                         .scaledFont(.caption)
                         .foregroundStyle(.orange)
                 }
@@ -73,7 +73,7 @@ struct HealthSettingsPage: View {
             voiceReads = HealthVoiceReadLog.load()
         }
         .confirmationDialog(
-            askingVoiceMode.map { Text(AppLocalization.string("Let \($0.displayName) read your health data?")) } ?? Text(verbatim: ""),
+            askingVoiceMode.map { Text(AppLocalization.string("Let \($0.displayName) read your health data?", table: .phone)) } ?? Text(verbatim: ""),
             isPresented: Binding(get: { askingVoiceMode != nil }, set: { if !$0 { askingVoiceMode = nil } }),
             titleVisibility: .visible,
             presenting: askingVoiceMode
@@ -81,7 +81,7 @@ struct HealthSettingsPage: View {
             Button("Allow") { setVoiceRead(mode, allowed: true) }
             Button("Cancel", role: .cancel) {}
         } message: { mode in
-            Text(AppLocalization.string("On a call, what it reads goes to \(mode.company) under its terms. You can turn this off at any time."))
+            Text(AppLocalization.string("On a call, what it reads goes to \(mode.company) under its terms. You can turn this off at any time.", table: .phone))
         }
         .sheet(isPresented: $showsConsent, onDismiss: {
             guard turnsOnAfterConsent else { return }
@@ -114,7 +114,7 @@ struct HealthSettingsPage: View {
     @ViewBuilder
     private var statusRows: some View {
         if let destination = preferences.destination {
-            Label(AppLocalization.string("Sharing with \(destination.profile) on \(destination.host)"), systemImage: "checkmark.shield")
+            Label(AppLocalization.string("Sharing with \(destination.profile) on \(destination.host)", table: .phone), systemImage: "checkmark.shield")
                 .scaledFont(.subheadline)
         }
         if engine.isSyncing {
@@ -122,11 +122,11 @@ struct HealthSettingsPage: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         } else if let pause = engine.state.pause {
-            Text(pause.message)
+            Text(pause.message(managedBy: appState.pluginManagedBy(forDashboard: preferences.destination?.dashboardID)))
                 .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else if let last = engine.state.lastSync {
-            Text(AppLocalization.string("Last synced \(last.formatted(.relative(presentation: .named)))"))
+            Text(AppLocalization.string("Last synced \(last.formatted(.relative(presentation: .named)))", table: .phone))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         } else {
@@ -136,7 +136,7 @@ struct HealthSettingsPage: View {
         }
         if let cursor = engine.state.backfillCursor, let start = engine.state.historyStart,
            cursor > max(start, engine.state.backfillFloor ?? start) {
-            Text(AppLocalization.string("Bringing in history: back to \(cursor.formatted(date: .abbreviated, time: .omitted)) so far."))
+            Text(AppLocalization.string("Bringing in history: back to \(cursor.formatted(date: .abbreviated, time: .omitted)) so far.", table: .phone))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -152,7 +152,7 @@ struct HealthSettingsPage: View {
     /// Which live voice modes may read the shared data on a call. Each is
     /// its own yes: what it reads goes to that mode's company.
     private var voiceSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Live voice calls"), symbol: "waveform", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Live voice calls", table: .phone), symbol: "waveform", tint: .conduitAccent) {
             ForEach(LiveVoiceModeName.all, id: \.storageID) { mode in
                 Toggle(isOn: voiceReadBinding(mode)) {
                     Text(verbatim: "\(mode.displayName) (\(mode.company))")
@@ -200,7 +200,7 @@ struct HealthSettingsPage: View {
     // MARK: Choices
 
     private var categorySection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("What to share"), symbol: "checklist", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("What to share", table: .phone), symbol: "checklist", tint: .conduitAccent) {
             ForEach(HealthCategory.allCases) { category in
                 VStack(alignment: .leading, spacing: 6) {
                     Toggle(isOn: categoryBinding(category)) {
@@ -217,7 +217,7 @@ struct HealthSettingsPage: View {
                         Toggle("Include detailed readings", isOn: detailedBinding(category))
                             .scaledFont(.subheadline)
                             .padding(.leading, 28)
-                            .accessibilityLabel(AppLocalization.string("Include detailed readings for \(category.title)"))
+                            .accessibilityLabel(AppLocalization.string("Include detailed readings for \(category.title)", table: .phone))
                     }
                 }
             }
@@ -238,7 +238,7 @@ struct HealthSettingsPage: View {
     }
 
     private var historySection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("History"), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("History", table: .phone), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
             ConduitMenuPicker(
                 value: historyBinding.wrappedValue,
                 choices: HealthHistoryDepth.allCases.map { (id: $0, title: $0.title) },
@@ -286,7 +286,7 @@ struct HealthSettingsPage: View {
                     Haptics.selection()
                     showsConsent = true
                 } label: {
-                    Label(isWorking ? AppLocalization.string("Turning on…") : AppLocalization.string("Turn on sharing"), systemImage: "heart.text.square")
+                    Label(isWorking ? AppLocalization.string("Turning on…") : AppLocalization.string("Turn on sharing", table: .phone), systemImage: "heart.text.square")
                         .frame(maxWidth: .infinity)
                         .padding(.vertical, 6).frame(minHeight: 48)
                         .foregroundStyle(Color.white)
@@ -387,8 +387,8 @@ struct HealthSettingsPage: View {
                 // A profile that turned the plugin off was reached and refused:
                 // say how to turn it on (issue 1671).
                 errorMessage = appState.healthSync.deleteRefusedPluginOff.map {
-                    AppLocalization.string("Sharing is off. \($0) Conduit deletes the data there once it's on.")
-                } ?? AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.")
+                    AppLocalization.string("Sharing is off. \($0) Conduit deletes the data there once it's on.", table: .phone)
+                } ?? AppLocalization.string("Sharing is off. The host couldn't be reached, so Conduit deletes the data there the next time it connects.", table: .phone)
             }
             isWorking = false
         }
@@ -413,7 +413,7 @@ struct HealthSharingConsentSheet: View {
                         .accessibilityHidden(true)
                     Text("Share health data with Hermes?")
                         .scaledFont(.title2.weight(.semibold))
-                    Label(AppLocalization.string("Conduit sends the health data you chose to the \(profile) profile on \(host), sealed end to end. It never goes through Conduit's notification relay, and Conduit's developer can't see it."), systemImage: "lock.shield")
+                    Label(AppLocalization.string("Conduit sends the health data you chose to the \(profile) profile on \(host), sealed end to end. It never goes through Conduit's notification relay, and Conduit's developer can't see it.", table: .phone), systemImage: "lock.shield")
                     Label("Your agent reads it when you ask, or when a task needs it. Whatever it reads goes to the AI model provider your Hermes uses, under that provider's terms. If your Hermes is hosted by someone else, such as Hermes Cloud, they can read it too.", systemImage: "sparkles")
                     Label("Health data is never used for advertising and is not stored in iCloud by Conduit.", systemImage: "hand.raised")
                     Label("You can turn sharing off at any time in Settings > Health and delete what was sent from the host.", systemImage: "heart.slash")

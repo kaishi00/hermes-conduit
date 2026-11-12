@@ -31,25 +31,25 @@ enum HealthCategory: String, CaseIterable, Identifiable, Codable {
 
     var title: String {
         switch self {
-        case .activity: return AppLocalization.string("Activity")
-        case .heart: return AppLocalization.string("Heart")
-        case .sleep: return AppLocalization.string("Sleep")
-        case .workouts: return AppLocalization.string("Workouts")
-        case .body: return AppLocalization.string("Body measurements")
-        case .vitals: return AppLocalization.string("Vitals")
-        case .fitness: return AppLocalization.string("Fitness")
+        case .activity: return AppLocalization.string("Activity", table: .phone)
+        case .heart: return AppLocalization.string("Heart", table: .phone)
+        case .sleep: return AppLocalization.string("Sleep", table: .phone)
+        case .workouts: return AppLocalization.string("Workouts", table: .phone)
+        case .body: return AppLocalization.string("Body measurements", table: .phone)
+        case .vitals: return AppLocalization.string("Vitals", table: .phone)
+        case .fitness: return AppLocalization.string("Fitness", table: .phone)
         }
     }
 
     var summary: String {
         switch self {
-        case .activity: return AppLocalization.string("Steps, distance, active energy, exercise and stand time, flights climbed")
-        case .heart: return AppLocalization.string("Heart rate, resting and walking heart rate, heart rate variability")
-        case .sleep: return AppLocalization.string("Time asleep and in bed, sleep stages")
-        case .workouts: return AppLocalization.string("Each workout: type, time, duration, energy, distance, heart rate")
-        case .body: return AppLocalization.string("Weight, body fat, height")
-        case .vitals: return AppLocalization.string("Blood oxygen, respiratory rate, blood pressure, sleeping wrist temperature")
-        case .fitness: return AppLocalization.string("Cardio fitness (VO2 max), walking speed, six-minute walk")
+        case .activity: return AppLocalization.string("Steps, distance, active energy, exercise and stand time, flights climbed", table: .phone)
+        case .heart: return AppLocalization.string("Heart rate, resting and walking heart rate, heart rate variability", table: .phone)
+        case .sleep: return AppLocalization.string("Time asleep and in bed, sleep stages", table: .phone)
+        case .workouts: return AppLocalization.string("Each workout: type, time, duration, energy, distance, heart rate", table: .phone)
+        case .body: return AppLocalization.string("Weight, body fat, height", table: .phone)
+        case .vitals: return AppLocalization.string("Blood oxygen, respiratory rate, blood pressure, sleeping wrist temperature", table: .phone)
+        case .fitness: return AppLocalization.string("Cardio fitness (VO2 max), walking speed, six-minute walk", table: .phone)
         }
     }
 
@@ -176,8 +176,8 @@ enum HealthHistoryDepth: String, CaseIterable, Identifiable, Codable {
         switch self {
         case .days30: return AppLocalization.string("30 days")
         case .days90: return AppLocalization.string("90 days")
-        case .year: return AppLocalization.string("1 year")
-        case .all: return AppLocalization.string("All history")
+        case .year: return AppLocalization.string("1 year", table: .phone)
+        case .all: return AppLocalization.string("All history", table: .phone)
         }
     }
 
@@ -320,18 +320,24 @@ enum HealthSyncPause: Codable, Equatable {
     /// The host refused a batch for a reason a retry won't fix.
     case refused(String)
 
-    var message: String {
+    var message: String { message(managedBy: PluginUpdateAsk.managedBy) }
+
+    /// The words for a destination whose host's plugin is kept up to date
+    /// by `managedBy` (nil when the host doesn't manage it), which may not
+    /// be the active dashboard's.
+    func message(managedBy: String?) -> String {
         switch self {
         case .signInRequired:
-            return AppLocalization.string("Paused: sign in to this dashboard again. Sharing catches up when you open Conduit.")
+            return AppLocalization.string("Paused: sign in to this dashboard again. Sharing catches up when you open Conduit.", table: .phone)
         case .pluginMissing:
-            return AppLocalization.string("Paused: update the Conduit plugin on this host to share health data.")
+            return PluginUpdateAsk.text(AppLocalization.string("Paused: update the Conduit plugin on this host to share health data.", table: .phone),
+                                        lead: AppLocalization.string("Sharing is paused.", table: .phone), managedBy: managedBy)
         case .otherDashboard:
-            return AppLocalization.string("Waiting: health data goes only to the dashboard it was turned on for. Switch back to it to sync.")
+            return AppLocalization.string("Waiting: health data goes only to the dashboard it was turned on for. Switch back to it to sync.", table: .phone)
         case .pluginOff(let remedy):
-            return AppLocalization.string("Paused: \(remedy)")
+            return AppLocalization.string("Paused: \(remedy)", table: .phone)
         case .refused(let detail):
-            return AppLocalization.string("Paused: the host refused health data (\(detail)).")
+            return AppLocalization.string("Paused: the host refused health data (\(detail)).", table: .phone)
         }
     }
 }

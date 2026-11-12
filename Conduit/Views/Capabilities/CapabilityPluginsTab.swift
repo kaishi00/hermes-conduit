@@ -5,7 +5,7 @@
 //  Settings > Capabilities > Plugins, the agent half of Hermes Desktop's
 //  Plugins tab: the plugins installed for the profile with their switches,
 //  each with a page to update or uninstall it, then Hermes' plugin catalog
-//  to install from. A change Hermes applies on the gateway's next start
+//  to install from (its featured shelf and Browse All, PluginCatalogViews). A change Hermes applies on the gateway's next start
 //  offers Restart Gateway.
 //
 
@@ -51,6 +51,23 @@ struct CapabilityPluginsTab: View {
         }
     }
 
+    /// The catalog is being read, or its read failed, with none shown.
+    private var catalogUnread: Bool { store.pluginCatalogLoading || store.pluginCatalogFailed }
+
+    private var catalogStatusSection: some View {
+        CapabilitySection(
+            title: AppLocalization.string("Plugin catalog"),
+            symbol: "shippingbox",
+            tint: .conduitAura
+        ) {
+            if store.pluginCatalogLoading {
+                CapabilityLoadingRow()
+            } else {
+                CapabilityLoadFailedRow { await store.loadPlugins() }
+            }
+        }
+    }
+
     var body: some View {
         let rows = currentRows
         let installed = rows.installed
@@ -62,7 +79,7 @@ struct CapabilityPluginsTab: View {
                     .padding(.vertical, 40)
             } else if let error = store.pluginsError, store.plugins.isEmpty {
                 CapabilityEmptyState(
-                    title: AppLocalization.string("Couldn't load agent plugins"),
+                    title: AppLocalization.string("Couldn't load agent plugins", table: .bots),
                     symbol: "exclamationmark.triangle",
                     message: error
                 ) {
@@ -91,13 +108,20 @@ struct CapabilityPluginsTab: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 16)
                 }
+                // The catalog leads, as Apps does on Connectors: it would
+                // otherwise wait below every installed plugin.
+                if query.isEmpty, !store.pluginCatalog.isEmpty {
+                    PluginCatalogShelf(store: store)
+                } else if query.isEmpty, catalogUnread {
+                    catalogStatusSection
+                }
                 CapabilitySection(
                     title: AppLocalization.string("Installed"),
                     symbol: "puzzlepiece.extension",
-                    footer: AppLocalization.string("Plugins extend the agent with tools, hooks and providers.")
+                    footer: AppLocalization.string("Plugins extend the agent with tools, hooks and providers.", table: .bots)
                 ) {
                     if installed.isEmpty {
-                        Text(verbatim: query.isEmpty ? AppLocalization.string("No agent plugins installed for this profile.") : AppLocalization.string("Nothing matches “\(query)”."))
+                        Text(verbatim: query.isEmpty ? AppLocalization.string("No agent plugins installed for this profile.", table: .bots) : AppLocalization.string("Nothing matches “\(query)”."))
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                             .padding(.vertical, 12)
@@ -116,23 +140,33 @@ struct CapabilityPluginsTab: View {
                         }
                     }
                 }
-                if !catalog.isEmpty {
+                if !query.isEmpty, store.pluginCatalog.isEmpty, catalogUnread {
+                    // A search says the catalog isn't read yet, after Installed.
+                    catalogStatusSection
+                }
+                if !query.isEmpty, !catalog.isEmpty {
                     CapabilitySection(
                         title: AppLocalization.string("Plugin catalog"),
                         symbol: "shippingbox",
                         tint: .conduitAura,
-                        footer: AppLocalization.string("Reviewed plugins from Hermes' catalog.")
+                        footer: AppLocalization.string("Reviewed plugins from Hermes' catalog.", table: .bots)
                     ) {
                         ForEach(Array(catalog.enumerated()), id: \.element.id) { index, entry in
                             CapabilityCardRow(divided: index > 0) {
                                 HStack(spacing: 10) {
-                                    CapabilityRowLabel(
-                                        symbol: "shippingbox",
-                                        active: false,
-                                        title: entry.displayName,
-                                        pills: [PluginStyle.tierPill(entry.tier)],
-                                        detail: entry.description
-                                    )
+                                    NavigationLink {
+                                        PluginCatalogDetailPage(name: entry.name, store: store)
+                                            .v2TabBarClearance()
+                                    } label: {
+                                        CapabilityRowLabel(
+                                            symbol: "shippingbox",
+                                            active: false,
+                                            title: entry.displayName,
+                                            pills: [PluginStyle.tierPill(entry.tier)],
+                                            detail: entry.description
+                                        )
+                                    }
+                                    .buttonStyle(.plain)
                                     if canManage {
                                         CapabilityRowButton(
                                             title: AppLocalization.string("Install"),
@@ -172,12 +206,12 @@ struct CapabilityPluginsTab: View {
             do {
                 let outcome = try await store.installPlugin(entry)
                 if !outcome.missingEnv.isEmpty {
-                    message = AppLocalization.string("\(outcome.name) is installed but needs a key before it works: \(outcome.missingEnv.joined(separator: ", ")).")
+                    message = AppLocalization.string("\(outcome.name) is installed but needs a key before it works: \(outcome.missingEnv.joined(separator: ", ")).", table: .bots)
                 } else if outcome.restartRequired {
-                    message = AppLocalization.string("\(outcome.name) is installed. Restart the gateway to load it.")
+                    message = AppLocalization.string("\(outcome.name) is installed. Restart the gateway to load it.", table: .bots)
                 } else {
                     Haptics.success()
-                    message = AppLocalization.string("\(outcome.name) is installed and loaded.")
+                    message = AppLocalization.string("\(outcome.name) is installed and loaded.", table: .bots)
                 }
             } catch {
                 message = UserFacingError.message(for: error)
@@ -188,9 +222,11 @@ struct CapabilityPluginsTab: View {
 
 enum PluginStyle {
     static func tierPill(_ tier: String) -> CapabilityPillModel {
-        tier == "official"
-            ? CapabilityPillModel(text: AppLocalization.string("Official"), tint: .conduitAura)
-            : CapabilityPillModel(text: AppLocalization.string("Community"))
+        switch tier {
+        case "official", "bundled": return PluginCatalogStyle.tierPill(tier: "official")
+        case "verified": return PluginCatalogStyle.tierPill(tier: "verified")
+        default: return PluginCatalogStyle.tierPill(tier: "community")
+        }
     }
 
     /// Where an installed plugin came from: its catalog tier when it came
@@ -198,8 +234,8 @@ enum PluginStyle {
     static func sourcePill(_ plugin: AgentPluginRow, catalogEntry: PluginCatalogEntry?) -> CapabilityPillModel? {
         if let catalogEntry { return tierPill(catalogEntry.tier) }
         switch plugin.source {
-        case "bundled": return CapabilityPillModel(text: AppLocalization.string("Built-in"))
-        case "git": return CapabilityPillModel(text: AppLocalization.string("Git"))
+        case "bundled": return CapabilityPillModel(text: AppLocalization.string("Built-in", table: .bots))
+        case "git": return CapabilityPillModel(text: AppLocalization.string("Git", table: .bots))
         case "user": return CapabilityPillModel(text: AppLocalization.string("Local"))
         default: return nil
         }
@@ -220,7 +256,7 @@ private struct AgentPluginListRow: View {
     private var pills: [CapabilityPillModel] {
         var pills = [PluginStyle.sourcePill(plugin, catalogEntry: catalogEntry)].compactMap { $0 }
         if catalogEntry?.updateAvailable == true {
-            pills.append(CapabilityPillModel(text: AppLocalization.string("Update available"), tint: .conduitAccent))
+            pills.append(CapabilityPillModel(text: AppLocalization.string("Update available", table: .bots), tint: .conduitAccent))
         }
         if plugin.authRequired {
             pills.append(CapabilityPillModel(text: AppLocalization.string("Needs sign-in"), tint: .orange))
@@ -231,7 +267,7 @@ private struct AgentPluginListRow: View {
     var body: some View {
         HStack(spacing: 10) {
             NavigationLink {
-                AgentPluginDetailPage(name: plugin.name, canManage: canManage, store: store)
+                AgentPluginDetailPage(name: plugin.name, store: store)
                     .v2TabBarClearance()
             } label: {
                 CapabilityRowLabel(
@@ -281,7 +317,7 @@ struct PluginRestartCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label(AppLocalization.string("Restart the gateway to apply plugin changes."), systemImage: "arrow.triangle.2.circlepath")
+            Label(AppLocalization.string("Restart the gateway to apply plugin changes.", table: .bots), systemImage: "arrow.triangle.2.circlepath")
                 .scaledFont(.subheadline.weight(.semibold))
             Button {
                 confirmingRestart = true
@@ -316,10 +352,13 @@ struct AgentPluginDetailPage: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @Environment(\.dismiss) private var dismiss
     let name: String
-    let canManage: Bool
     let store: CapabilitiesStore
     @State private var message: String?
     @State private var confirmingRemove = false
+
+    /// Read live: a page pushed on another profile opens up once the store
+    /// switches to the default one, as its settings section does.
+    private var canManage: Bool { store.canManagePlugins }
     @State private var consent: PluginConsent?
 
     private var plugin: AgentPluginRow? { store.plugins.first { $0.name == name } }
@@ -348,8 +387,8 @@ struct AgentPluginDetailPage: View {
                         CapabilityPill(text: pill.text, tint: pill.tint)
                     }
                     if plugin.authRequired {
-                        Text(verbatim: plugin.authCommand.map { AppLocalization.string("It needs a sign-in on your host: \($0)") }
-                            ?? AppLocalization.string("It needs a sign-in on your host."))
+                        Text(verbatim: plugin.authCommand.map { AppLocalization.string("It needs a sign-in on your host: \($0)", table: .bots) }
+                            ?? AppLocalization.string("It needs a sign-in on your host.", table: .bots))
                             .scaledFont(.footnote)
                             .foregroundStyle(.orange)
                             .textSelection(.enabled)
@@ -387,13 +426,14 @@ struct AgentPluginDetailPage: View {
                         .foregroundStyle(.secondary)
                         .padding(.horizontal, 16)
                 }
+                PluginSettingsSection(pluginName: plugin.name, store: store)
                 if canManage, plugin.canUpdate {
                     Button {
                         update(plugin, accept: false)
                     } label: {
                         Label(
                             busy ? AppLocalization.string("Updating…")
-                                : catalogEntry?.updateAvailable == true ? AppLocalization.string("Update") : AppLocalization.string("Check for Update"),
+                                : catalogEntry?.updateAvailable == true ? AppLocalization.string("Update") : AppLocalization.string("Check for Update", table: .bots),
                             systemImage: "arrow.down.circle"
                         )
                         .frame(maxWidth: .infinity)
@@ -407,7 +447,7 @@ struct AgentPluginDetailPage: View {
                     Button(role: .destructive) {
                         confirmingRemove = true
                     } label: {
-                        Label(AppLocalization.string("Uninstall"), systemImage: "trash")
+                        Label(AppLocalization.string("Uninstall", table: .bots), systemImage: "trash")
                             .frame(maxWidth: .infinity)
                             .padding(.vertical, 6)
                             .frame(minHeight: 44)
@@ -434,7 +474,7 @@ struct AgentPluginDetailPage: View {
             isPresented: $confirmingRemove,
             titleVisibility: .visible
         ) {
-            Button(AppLocalization.string("Uninstall"), role: .destructive) { remove() }
+            Button(AppLocalization.string("Uninstall", table: .bots), role: .destructive) { remove() }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: {
             Text("This deletes the plugin's files from your host. Restart the gateway to unload it. You can install it again from the catalog.")
@@ -444,14 +484,14 @@ struct AgentPluginDetailPage: View {
             isPresented: Binding(get: { consent != nil }, set: { if !$0 { consent = nil } }),
             presenting: consent
         ) { consent in
-            Button(AppLocalization.string("Apply Update")) { update(consent.plugin, accept: true) }
+            Button(AppLocalization.string("Apply Update", table: .bots)) { update(consent.plugin, accept: true) }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: { consent in
             let added = consent.lines.joined(separator: "\n")
             if added.isEmpty {
-                Text(verbatim: AppLocalization.string("The new version adds what the installed one doesn't have. Apply it only if you trust it."))
+                Text(verbatim: AppLocalization.string("The new version adds what the installed one doesn't have. Apply it only if you trust it.", table: .bots))
             } else {
-                Text(verbatim: AppLocalization.string("The new version adds what the installed one doesn't have. Apply it only if you trust it:\n\n\(added)"))
+                Text(verbatim: AppLocalization.string("The new version adds what the installed one doesn't have. Apply it only if you trust it:\n\n\(added)", table: .bots))
             }
         }
     }
@@ -463,12 +503,12 @@ struct AgentPluginDetailPage: View {
             do {
                 switch try await store.updatePlugin(plugin, acceptCapabilities: accept) {
                 case .upToDate:
-                    message = AppLocalization.string("\(plugin.name) is up to date.")
+                    message = AppLocalization.string("\(plugin.name) is up to date.", table: .bots)
                 case .updated(let restartRequired):
                     Haptics.success()
                     message = restartRequired
-                        ? AppLocalization.string("\(plugin.name) is updated. Restart the gateway to apply it.")
-                        : AppLocalization.string("\(plugin.name) is updated.")
+                        ? AppLocalization.string("\(plugin.name) is updated. Restart the gateway to apply it.", table: .bots)
+                        : AppLocalization.string("\(plugin.name) is updated.", table: .bots)
                 case .needsConsent(let lines):
                     consent = PluginConsent(plugin: plugin, lines: lines)
                 }

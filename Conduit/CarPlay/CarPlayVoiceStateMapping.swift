@@ -30,12 +30,12 @@ enum CarPlayVoiceState: String, CaseIterable, Equatable {
     var titleVariants: [String] {
         switch self {
         case .ready: return [AppLocalization.string("Ready")]
-        case .listening: return [AppLocalization.string("Listening…")]
-        case .processing: return [AppLocalization.string("Thinking…")]
+        case .listening: return [AppLocalization.string("Listening…", table: .watchCarPlay)]
+        case .processing: return [AppLocalization.string("Thinking…", table: .watchCarPlay)]
         case .responding: return [AppLocalization.string("Responding…")]
         case .error: return [
-            AppLocalization.string("Something went wrong. See your iPhone."),
-            AppLocalization.string("Something went wrong"),
+            AppLocalization.string("Something went wrong. See your iPhone.", table: .watchCarPlay),
+            AppLocalization.string("Something went wrong", table: .watchCarPlay),
         ]
         }
     }
@@ -56,7 +56,7 @@ enum CarPlayVoiceState: String, CaseIterable, Equatable {
             return titleVariants(errorIssue: controls.errorIssue)
         }
         let shortened = Self.shortenedChatTitle(chatTitle)
-        return [AppLocalization.string("Ready · \(shortened)")] + titleVariants
+        return [AppLocalization.string("Ready · \(shortened)", table: .watchCarPlay)] + titleVariants
     }
 
     /// Chat titles are any length; Ready keeps them to a glance.

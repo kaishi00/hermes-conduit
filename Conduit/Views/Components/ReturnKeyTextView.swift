@@ -23,12 +23,14 @@ class ReturnKeyTextView: UITextView {
         super.init(frame: frame, textContainer: textContainer)
         inlinePredictionType = Self.inlinePredictionType(onMac: ProcessInfo.processInfo.isiOSAppOnMac)
         installFieldDrop()
+        observeOtherFields()
     }
 
     required init?(coder: NSCoder) {
         super.init(coder: coder)
         inlinePredictionType = Self.inlinePredictionType(onMac: ProcessInfo.processInfo.isiOSAppOnMac)
         installFieldDrop()
+        observeOtherFields()
     }
 
     // MARK: Drops on the field
@@ -57,6 +59,11 @@ class ReturnKeyTextView: UITextView {
         isEditable: Bool,
         takesFiles: Bool
     ) -> FieldDrop {
+        // A Folder row: the chat around the field puts its path in the
+        // draft; a room, whose agents may be on other hosts, turns it down.
+        if registeredTypeIdentifiers.contains(where: { $0.contains(WorkspaceDrag.typeIdentifier) }) {
+            return .declined
+        }
         let items = zip(registeredTypeIdentifiers, suggestedNames)
         if items.contains(where: { AttachmentDrop.takes(registeredTypeIdentifiers: $0, suggestedName: $1) }) {
             // A locked field takes no files, as its Attach menu is off.
@@ -134,8 +141,9 @@ class ReturnKeyTextView: UITextView {
         scheduleFocusIntent()
     }
 
+    /// A field that's off (`setTyping`) waits to take focus until it's on.
     private var focusMatchesIntent: Bool {
-        focusesInWindow ? (isFirstResponder || window == nil) : !isFirstResponder
+        focusesInWindow ? (isFirstResponder || window == nil || !isEditable) : !isFirstResponder
     }
 
     private func scheduleFocusIntent() {
@@ -149,8 +157,108 @@ class ReturnKeyTextView: UITextView {
     }
 
     private func applyFocusIntent() {
-        if focusesInWindow, !isFirstResponder, window != nil { _ = becomeFirstResponder() }
+        if focusesInWindow, !isFirstResponder, window != nil, isEditable { _ = becomeFirstResponder() }
         if !focusesInWindow, isFirstResponder { _ = resignFirstResponder() }
+    }
+
+    // MARK: Typing off and on
+
+    /// Typing is off while the chat can't take a message: a sync or a
+    /// reconnect after a reply, a saved copy on screen. Turning it off
+    /// under focus ends the editing, and the field used to hand the
+    /// composer that as its focus going for good, so on a Mac the field a
+    /// send kept focused was let go once the reply came and a sync ran
+    /// (issue 2208). Now the composer's wish for focus stays, and the field
+    /// takes focus back once typing is on again, unless another field took
+    /// focus meanwhile or the keyboard was put away (`putAwayFocus`, a tap
+    /// on the transcript; `onFocusTakenWhileOff`).
+    private var typingAllowed = true
+    private var typingChangeScheduled = false
+    /// Set while the field turns typing off itself, so the editing that
+    /// ends with it isn't read as the user leaving the field.
+    private var isTurningTypingOff = false
+
+    /// Called when another text field or view starts editing while this
+    /// one is off and wants focus: the composer lets go of its wish.
+    var onFocusTakenWhileOff: (() -> Void)?
+
+    /// Turns typing on or off as the composer asks. Off under focus, the
+    /// change waits until just after the SwiftUI update that asked, as a
+    /// focus change does (issue 1781): it ends the editing.
+    func setTyping(_ allowed: Bool) {
+        typingAllowed = allowed
+        if allowed || !isFirstResponder {
+            applyTyping()
+            return
+        }
+        guard !typingChangeScheduled else { return }
+        typingChangeScheduled = true
+        DispatchQueue.main.async { [weak self] in
+            guard let self else { return }
+            self.typingChangeScheduled = false
+            self.applyTyping()
+        }
+    }
+
+    private func applyTyping() {
+        guard isEditable != typingAllowed else { return }
+        isTurningTypingOff = !typingAllowed
+        isEditable = typingAllowed
+        isTurningTypingOff = false
+        setNeedsLayout()
+        if typingAllowed { scheduleFocusIntent() }
+    }
+
+    /// Whether the editing that just ended is the user leaving the field,
+    /// which the composer takes as its focus going; not when typing was
+    /// turned off under it.
+    var endedEditingLeavesField: Bool {
+        !isTurningTypingOff && isEditable
+    }
+
+    @objc private func otherFieldBeganEditing(_ note: Notification) {
+        guard (note.object as AnyObject?) !== self else { return }
+        dropFocusWishWhileOff()
+    }
+
+    @objc private func focusPutAway(_ note: Notification) {
+        dropFocusWishWhileOff()
+    }
+
+    /// A wish still waiting, with typing off or its restore queued just
+    /// after typing came back on, is let go; a field that holds focus
+    /// keeps it, since another field taking focus resigns it anyway.
+    private func dropFocusWishWhileOff() {
+        guard focusesInWindow, !isFirstResponder else { return }
+        focusesInWindow = false
+        onFocusTakenWhileOff?()
+    }
+
+    /// Posted by `putAwayFocus`.
+    static let focusPutAwayNotification = Notification.Name("ReturnKeyTextView.focusPutAway")
+
+    /// Puts the keyboard away, as a tap on the transcript does: whoever has
+    /// focus gives it up, and a field waiting with typing off lets go of
+    /// its wish, so it doesn't take focus back once typing is on.
+    @MainActor
+    static func putAwayFocus() {
+        UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        NotificationCenter.default.post(name: focusPutAwayNotification, object: nil)
+    }
+
+    private func observeOtherFields() {
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(otherFieldBeganEditing(_:)),
+            name: UITextView.textDidBeginEditingNotification, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(otherFieldBeganEditing(_:)),
+            name: UITextField.textDidBeginEditingNotification, object: nil
+        )
+        NotificationCenter.default.addObserver(
+            self, selector: #selector(focusPutAway(_:)),
+            name: Self.focusPutAwayNotification, object: nil
+        )
     }
 
     /// Takes a drop the field accepted: files to the composer, words and
@@ -269,8 +377,48 @@ class ReturnKeyTextView: UITextView {
         return command
     }()
 
+    /// ⌘Return sends whatever the Return key setting says, as in Mail,
+    /// Slack and Messages, so a hardware keyboard on an iPad (where Return
+    /// keeps its newline by default) can send too (issue 2219).
+    static let commandReturnKeyCommand: UIKeyCommand = {
+        let command = UIKeyCommand(input: "\r", modifierFlags: .command, action: #selector(commandReturnKeyCommandPressed))
+        command.wantsPriorityOverSystemBehavior = true
+        return command
+    }()
+
     override var keyCommands: [UIKeyCommand]? {
-        (super.keyCommands ?? []) + [Self.returnKeyCommand]
+        (super.keyCommands ?? []) + [Self.returnKeyCommand, Self.commandReturnKeyCommand] + Self.suggestionKeyCommands
+    }
+
+    /// The suggestion list over the field, while one shows: the arrows,
+    /// Tab and Escape are its, and Return picks a highlighted row
+    /// (ComposerSuggestionKeys). Nil gives the keys back to the text.
+    var suggestionKeys: ComposerSuggestionKeys?
+
+    private static let suggestionKeyCommands: [UIKeyCommand] = {
+        let keys: [(input: String, action: Selector)] = [
+            (UIKeyCommand.inputUpArrow, #selector(suggestionUpPressed)),
+            (UIKeyCommand.inputDownArrow, #selector(suggestionDownPressed)),
+            ("\t", #selector(suggestionTabPressed)),
+            (UIKeyCommand.inputEscape, #selector(suggestionEscapePressed))
+        ]
+        return keys.map { key in
+            let command = UIKeyCommand(input: key.input, modifierFlags: [], action: key.action)
+            command.wantsPriorityOverSystemBehavior = true
+            return command
+        }
+    }()
+
+    @objc func suggestionUpPressed() { suggestionKeys?.handle(.up) }
+    @objc func suggestionDownPressed() { suggestionKeys?.handle(.down) }
+    @objc func suggestionTabPressed() {
+        suggestionKeys?.handle(suggestionKeys?.hasHighlight == true ? .choose : .chooseFirst)
+    }
+    @objc func suggestionEscapePressed() { suggestionKeys?.handle(.dismiss) }
+
+    /// Whether Return picks a suggestion row instead of sending.
+    var returnPicksSuggestion: Bool {
+        suggestionKeys?.hasHighlight == true && markedTextRange == nil
     }
 
     /// A paste too long for the field (`PastedText.becomesAttachment`),
@@ -315,8 +463,71 @@ class ReturnKeyTextView: UITextView {
         return pasted
     }
 
+    // MARK: ⌘V from the transcript
+
+    /// ⌘V in the open conversation's transcript, handed to its composer
+    /// (issue 1692): the paste as if ⌘V had come to this field, a long
+    /// paste offered as an attachment and a picture attached as ever.
+    @objc func pasteFromTranscript(_ sender: Any?) {
+        paste(sender)
+    }
+
+    /// After the composer on screen asked its field for focus: pastes into
+    /// it once it has it. Focus moves just after the update that asked
+    /// (`setFocusIntent`), so this tries for a moment; a field that never
+    /// takes focus (typing off, a sheet in front) gets nothing. A chat or
+    /// room switch in those moments cancels it (`cancelPendingPaste`), so
+    /// the words never land in the next conversation's field.
+    @MainActor
+    static func pasteOnceFocused() {
+        pendingPaste?.cancel()
+        pendingPaste = Task { @MainActor in
+            for _ in 0..<12 {
+                if Task.isCancelled { return }
+                if UIApplication.shared.sendAction(#selector(ReturnKeyTextView.pasteFromTranscript(_:)), to: nil, from: nil, for: nil) { return }
+                try? await Task.sleep(for: .milliseconds(25))
+            }
+        }
+    }
+
+    @MainActor private static var pendingPaste: Task<Void, Never>?
+
+    /// A transcript paste is still waiting for its field's focus.
+    @MainActor static var hasPendingPaste: Bool { pendingPaste != nil }
+
+    /// Drops a transcript paste still waiting for its field's focus.
+    @MainActor
+    static func cancelPendingPaste() {
+        pendingPaste?.cancel()
+        pendingPaste = nil
+    }
+
+    /// Another text field has focus: one that isn't a composer's (the
+    /// list's search, a rename field).
+    @MainActor static var anotherFieldHasFocus: Bool {
+        guard let responder = FirstResponderProbe.current else { return false }
+        return (responder is UITextField || responder is UITextView) && !(responder is ReturnKeyTextView)
+    }
+
     override func canPerformAction(_ action: Selector, withSender sender: Any?) -> Bool {
+        if action == #selector(pasteFromTranscript(_:)) {
+            return isEditable
+        }
+        if action == #selector(suggestionUpPressed) || action == #selector(suggestionDownPressed)
+            || action == #selector(suggestionTabPressed) || action == #selector(suggestionEscapePressed) {
+            // Declining keeps the key's own job: the cursor moves, Tab
+            // types, Escape does what it did. An IME's candidates come first.
+            return suggestionKeys != nil && markedTextRange == nil
+                && (sender as? UIKeyCommand)?.modifierFlags.isEmpty != false
+        }
+        if action == #selector(commandReturnKeyCommandPressed) {
+            // Declining leaves the press to the text system, as before.
+            return commandReturnKeyCommandApplies
+        }
         if action == #selector(returnKeyCommandPressed) {
+            if returnPicksSuggestion, (sender as? UIKeyCommand)?.modifierFlags.contains(.shift) != true {
+                return true
+            }
             // Declining hands Return back to the text system: a newline,
             // or the IME confirming its candidate. A Shift the key command
             // carries counts even when no Shift press reached this view.
@@ -344,9 +555,31 @@ class ReturnKeyTextView: UITextView {
             ) == .submit
     }
 
+    /// Whether ⌘Return sends now: the composer can send, and no IME is
+    /// composing (its Return is the composition's).
+    var commandReturnKeyCommandApplies: Bool {
+        commandReturnKeyCommandApplies(hasMarkedText: markedTextRange != nil)
+    }
+
+    func commandReturnKeyCommandApplies(hasMarkedText: Bool) -> Bool {
+        onSubmitFromReturn != nil
+            && ComposerReturnKey.commandReturnSends(hasMarkedText: hasMarkedText, canSubmit: canSubmitFromReturn)
+    }
+
+    @objc func commandReturnKeyCommandPressed() {
+        // The same press reaching pressesBegan doesn't send again.
+        returnTakenByKeyCommand = true
+        DispatchQueue.main.async { [weak self] in self?.returnTakenByKeyCommand = false }
+        _ = onSubmitFromReturn?()
+    }
+
     @objc func returnKeyCommandPressed() {
         returnTakenByKeyCommand = true
         DispatchQueue.main.async { [weak self] in self?.returnTakenByKeyCommand = false }
+        if returnPicksSuggestion {
+            suggestionKeys?.handle(.choose)
+            return
+        }
         // The composer turned it down after all: the press is still a
         // newline, as it would have been without the shortcut.
         if !(onSubmitFromReturn?() ?? false) {
@@ -359,6 +592,9 @@ class ReturnKeyTextView: UITextView {
         var forwarding = presses
         if let returnPress = presses.first(where: { Self.isReturnKeyPress($0) }) {
             if returnTakenByKeyCommand {
+                forwarding.remove(returnPress)
+            } else if returnPicksSuggestion, !hardwareShiftHeld {
+                suggestionKeys?.handle(.choose)
                 forwarding.remove(returnPress)
             } else {
                 let shiftPressed = hardwareShiftHeld
@@ -509,6 +745,8 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
     var onSubmitFromReturn: () -> Bool
     /// A long paste, offered as an attachment (`ReturnKeyTextView`).
     var onLongTextPaste: ((String) -> Bool)? = nil
+    /// The suggestion list over the field, while one shows.
+    var suggestionKeys: ComposerSuggestionKeys? = nil
 
     func makeCoordinator() -> Coordinator { Coordinator(self) }
 
@@ -541,6 +779,8 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         uiView.onSubmitFromReturn = nil
         uiView.canSubmitFromReturn = false
         uiView.onLongTextPaste = nil
+        uiView.suggestionKeys = nil
+        uiView.onFocusTakenWhileOff = nil
     }
 
     private func configure(_ view: ReturnKeyTextView, context: Context) {
@@ -553,13 +793,18 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
             view.fontColumnText = columnText
             view.font = .preferredFont(forTextStyle: .body, in: sizeCategory, from: columnText)
         }
-        if view.isEditable != enabled { view.isEditable = enabled }
+        view.setTyping(enabled)
         view.accessibilityLabel = accessibilityLabel
         view.accessibilityIdentifier = accessibilityIdentifier
         view.returnKeySends = returnKeySends
         view.canSubmitFromReturn = canSubmitFromReturn
         view.onSubmitFromReturn = onSubmitFromReturn
         view.onLongTextPaste = onLongTextPaste
+        view.suggestionKeys = suggestionKeys
+        view.onFocusTakenWhileOff = { [weak coordinator = context.coordinator] in
+            guard let coordinator, coordinator.parent.isFocused else { return }
+            coordinator.parent.isFocused = false
+        }
     }
 
     func sizeThatFits(_ proposal: ProposedViewSize, uiView: ReturnKeyTextView, context: Context) -> CGSize? {
@@ -635,6 +880,8 @@ struct ReturnKeyTextEditor: UIViewRepresentable {
         }
 
         func textViewDidEndEditing(_ textView: UITextView) {
+            // Typing turned off under focus keeps the wish (issue 2208).
+            if let field = textView as? ReturnKeyTextView, !field.endedEditingLeavesField { return }
             if parent.isFocused { parent.isFocused = false }
         }
     }
@@ -717,5 +964,26 @@ final class FieldDropHandler: NSObject, UIDropInteractionDelegate, UITextDragDel
             return
         }
         field.takeDrop(providers, at: point)
+    }
+}
+
+/// Finds the first responder: the action goes to whoever has it, which
+/// says so.
+@MainActor
+enum FirstResponderProbe {
+    fileprivate static weak var found: UIResponder?
+
+    static var current: UIResponder? {
+        found = nil
+        UIApplication.shared.sendAction(#selector(UIResponder.conduitReportFirstResponder(_:)), to: nil, from: nil, for: nil)
+        let responder = found
+        found = nil
+        return responder
+    }
+}
+
+extension UIResponder {
+    @objc fileprivate func conduitReportFirstResponder(_ sender: Any?) {
+        FirstResponderProbe.found = self
     }
 }

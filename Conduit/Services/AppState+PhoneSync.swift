@@ -36,6 +36,12 @@ extension AppState {
     /// Plugin 0.30.0: alarms and timers, and picked people.
     static let phoneAlarmsCapability = "phone-alarms"
     static let phoneContactsCapability = "phone-contacts"
+    /// Plugin 0.159.0: Shortcuts Hermes can run.
+    static let phoneShortcutsCapability = "phone-shortcuts"
+    /// Plugin 0.160.0: contacts Hermes asks to add, change or delete.
+    static let phoneContactEditsCapability = "phone-contact-edits"
+    /// Plugin 0.161.0: photo descriptions Hermes searches, and a photo sent on a yes.
+    static let phonePhotosCapability = "phone-photos"
     static let phoneSyncTaskIdentifier = "com.milim.relay.phone-sync"
     static let phoneChangesPushType = "phone.changes"
     static let phoneSyncLog = Logger(subsystem: "com.milim.relay", category: "phone-sync")
@@ -112,6 +118,12 @@ extension AppState {
             // A no to alarms (or no AlarmKit) still turns on the rest the user agreed to.
             do { try await phoneSync.alarmSource.requestAccess() } catch is PhoneAlarmError { choices.alarms = false }
         }
+        // Changing contacts writes to them: ask for Contacts access once, as a change of choices does.
+        if choices.contactsEdit, phoneSync.contactsAccess == .notAsked {
+            await phoneSync.requestContactsAccess()
+        }
+        // A no to Photos still turns on the rest.
+        if choices.photos, !(await phoneSync.photoSource.requestAccess()).canRead { choices.photos = false }
         guard activeDashboardID == dashboardID, connection?.baseUrl == baseURL else {
             throw DashboardTicketBridgeError.notReady
         }
@@ -141,7 +153,15 @@ extension AppState {
         }
         if choices.status, !current.status { await phoneSync.statusSource.requestMotionAccess() }
         if choices.alarms, !current.alarms { try await phoneSync.alarmSource.requestAccess() }
-        // A newer change, or turning sharing off, came in while iOS asked.
+        // Changing contacts writes to them: ask for Contacts access once.
+        if choices.contactsEdit, !current.contactsEdit, phoneSync.contactsAccess == .notAsked {
+            await phoneSync.requestContactsAccess()
+        }
+        if choices.photos, !current.photos, !(await phoneSync.photoSource.requestAccess()).canRead {
+            throw PhoneSyncEngine.PhotosNotAllowed()
+        }
+        // A newer change, or turning sharing off, came in while iOS asked:
+        // this one does nothing, its Photos off included.
         guard mine == Self.phoneUpdateGeneration, phoneSync.preferences.destination == destination else { return }
         var preferences = choices
         preferences.destination = destination
@@ -153,6 +173,9 @@ extension AppState {
             await turnOffPhoneSync(deleteFromHost: true)
             return
         }
+        // Their descriptions stay on the phone only while Photos is on:
+        // forgotten as Photos off is saved, with nothing awaited between.
+        if !preferences.photos, phoneSync.preferences.photos { phoneSync.photoSource.forget() }
         phoneSync.savePreferences(preferences)
         Task { await runPhoneSync(reason: .manual) }
     }
@@ -225,9 +248,12 @@ extension AppState {
     /// answered one, and says how it went right away. On another device,
     /// or after 15 minutes, the phone asks as usual. Returns how the last
     /// pass went, so the card can say when this phone didn't get it yet.
+    /// `kind` is what the card showed: a change of another kind under the
+    /// same id gets the phone's own card.
     @discardableResult
-    func applyPulseApproval(_ changeID: String) async -> PhoneSyncEngine.Outcome {
-        await phoneSync.approveFromCard(changeID)
+    /// `sharing` is phoneSync.sharingSession when the user tapped.
+    func applyPulseApproval(_ changeID: String, kind: PhoneChange.Kind, sharing: Int) async -> PhoneSyncEngine.Outcome {
+        await phoneSync.approveFromCard(changeID, kind: kind, sharing: sharing)
         let outcome = await runPhoneSync(reason: .answered)
         // Applied when that pass took it from the host: the next one says so.
         if phoneSync.state.unreported.contains(where: { $0.id == changeID }) {

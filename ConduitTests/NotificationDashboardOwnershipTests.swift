@@ -589,7 +589,7 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertFalse(quieted)
         XCTAssertEqual(appState.activeDashboardID, dashboardA)
         XCTAssertEqual(appState.pinSyncNotice?.message,
-                       AppLocalization.string("Pulse goes quiet in the other workspace when the call ends."))
+                       AppLocalization.string("Pulse goes quiet in the other workspace when the call ends.", table: .pulse))
         XCTAssertNil(appState.errorMessage, "nothing stale for the composer to show later")
         XCTAssertTrue(appState.isVoiceCallInProgress)
         XCTAssertEqual(notifications.pendingPulseQuiet, target)
@@ -646,11 +646,14 @@ extension NotificationDashboardOwnershipTests {
         moving.pendingURL = "https://other.tailnet.ts.net"
         let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [moving]))
         appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
+        NotifierPluginStatus.Remembered.remember("Family farm", for: dashboardA, in: defaults)
 
         appState.settlePendingDashboardMove(dashboardA)
 
         XCTAssertEqual(appState.savedDashboardRegistry.dashboard(with: dashboardA)?.normalizedURL, "https://other.tailnet.ts.net")
         XCTAssertTrue(appState.relayGatewayIDs(of: dashboardA).isEmpty)
+        // So is who managed the old host's plugin.
+        XCTAssertNil(NotifierPluginStatus.Remembered.managedBy(for: dashboardA, in: defaults))
     }
 }
 
@@ -661,11 +664,14 @@ extension NotificationDashboardOwnershipTests {
         let appState = makeAppState(registry: SavedDashboardRegistry(activeDashboardID: dashboardA, dashboards: [savedA, savedB]))
         appState.recordRelayGatewayID("gw-1", for: dashboardA, profile: "default")
         appState.recordRelayGatewayID("gw-2", for: dashboardB, profile: "default")
+        NotifierPluginStatus.Remembered.remember("Family farm", for: dashboardB, in: defaults)
 
         appState.signOutDashboard(dashboardB)
 
         XCTAssertTrue(appState.relayGatewayIDs(of: dashboardB).isEmpty)
         XCTAssertEqual(appState.relayGatewayIDs(of: dashboardA), ["gw-1"])
+        // Signing out leaves the host as it was: who manages its plugin stays.
+        XCTAssertEqual(NotifierPluginStatus.Remembered.managedBy(for: dashboardB, in: defaults), "Family farm")
     }
 }
 

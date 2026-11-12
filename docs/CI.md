@@ -85,7 +85,8 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   2026-10-22 to 10-29 its build finished after 682 s (median), against 537 s
   for a PR building the full app from the latest merge's cache, Watch app
   included. A full build also catches a Watch or extension compile error
-  before merge. The nightly unit shards still build `project-tests.yml`.
+  before merge. The nightly unit shards and timing repeats still build
+  `project-tests.yml`.
 - **Incremental builds from an earlier build.** Builds on `main` save their
   DerivedData to the Actions cache after the tests, keyed by project kind,
   Xcode build and runner image (`dd-v1-<kind>-<xcode>-<image>-<sha>`): the
@@ -105,7 +106,12 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   (`ci-normalize-mtimes.py`) and sets XCBuild's
   `IgnoreFileSystemDeviceInodeChanges`. An incremental build that fails with
   no error in a source file is retried once from scratch. A new Xcode build
-  misses the cache and builds clean; the nightly timing and UI jobs never
+  misses the cache and builds clean. The nightly timing repeats build
+  `project-tests.yml` too and restore the slim cache without saving it
+  (since 2026-11-11: their clean full builds ran 1162-1590 s beside the unit
+  shards and outran the 1200 s budget on 11-09 and 11-11). A night with a
+  new Xcode build has no slim cache yet, so its timing repeats still build
+  clean, now without the Watch app and extensions; the nightly UI jobs never
   restore one.
 - **Packages from the restored checkout.** When the restored DerivedData
   holds the WebRTC checkout (the only package), the build passes
@@ -261,7 +267,7 @@ The CI v5 shape of `.github/workflows/ci.yml` (every PR, and every push to
 `.github/workflows/nightly.yml` runs its own plan job (`plan-tests.py hosted`)
 and fans out into `unit` (one job per unit shard, sequential batches; shard 1
 saves the slim build cache on `main`), `timing` (three repeats of the
-nightly-only families) and `ui` (one job per UI shard).
+nightly-only families, on the slim build and cache) and `ui` (one job per UI shard).
 
 ### Jobs
 

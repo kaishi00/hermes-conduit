@@ -48,27 +48,27 @@ enum ConnectionSetupTestStage: Equatable, CaseIterable, Identifiable {
     /// never depends on icon or color alone.
     var objectiveLabel: String {
         switch self {
-        case .server: return AppLocalization.string("Dashboard reachable")
-        case .dashboard: return AppLocalization.string("Hermes dashboard found")
-        case .authentication: return AppLocalization.string("Authentication")
+        case .server: return AppLocalization.string("Dashboard reachable", table: .connection)
+        case .dashboard: return AppLocalization.string("Hermes dashboard found", table: .connection)
+        case .authentication: return AppLocalization.string("Authentication", table: .connection)
         }
     }
 
     /// The in-progress phrase for the row currently being checked.
     var runningLabel: String {
         switch self {
-        case .server: return AppLocalization.string("Checking server…")
-        case .dashboard: return AppLocalization.string("Checking dashboard…")
-        case .authentication: return AppLocalization.string("Authenticating…")
+        case .server: return AppLocalization.string("Checking server…", table: .connection)
+        case .dashboard: return AppLocalization.string("Checking dashboard…", table: .connection)
+        case .authentication: return AppLocalization.string("Authenticating…", table: .connection)
         }
     }
 
     /// The confirmation phrase for a passed stage.
     var successLabel: String {
         switch self {
-        case .server: return AppLocalization.string("Dashboard reachable")
-        case .dashboard: return AppLocalization.string("Hermes dashboard found")
-        case .authentication: return AppLocalization.string("Login successful")
+        case .server: return AppLocalization.string("Dashboard reachable", table: .connection)
+        case .dashboard: return AppLocalization.string("Hermes dashboard found", table: .connection)
+        case .authentication: return AppLocalization.string("Login successful", table: .connection)
         }
     }
 
@@ -115,11 +115,11 @@ enum ConnectionSetupStageState: Equatable {
     var accessibilityState: String {
         switch self {
         case .pending: return AppLocalization.string("waiting")
-        case .running: return AppLocalization.string("checking")
+        case .running: return AppLocalization.string("checking", table: .connection)
         case .succeeded: return AppLocalization.string("passed")
-        case .requiresInteractiveSignIn: return AppLocalization.string("browser sign-in required")
-        case .requiresCredentials: return AppLocalization.string("credentials required")
-        case .requiresSignInChoice: return AppLocalization.string("choice of sign-in method")
+        case .requiresInteractiveSignIn: return AppLocalization.string("browser sign-in required", table: .connection)
+        case .requiresCredentials: return AppLocalization.string("credentials required", table: .connection)
+        case .requiresSignInChoice: return AppLocalization.string("choice of sign-in method", table: .connection)
         case .failed: return AppLocalization.string("failed")
         }
     }
@@ -160,14 +160,14 @@ struct ConnectionSetupTestState: Equatable {
     var authentication = ConnectionSetupStageState.pending
 
     /// The completion announcement (one per run, not per stage transition).
-    static var readyMessage: String { AppLocalization.string("This connection is ready to use.") }
+    static var readyMessage: String { AppLocalization.string("This connection is ready to use.", table: .connection) }
 
     /// The interactive-auth completion announcement and Review copy. The
     /// user has NOT authenticated: the message says what happens next
     /// instead of claiming success. Never may this state render "Login
     /// successful".
     static var interactiveReadyMessage: String {
-        AppLocalization.string("This dashboard uses browser-based sign-in. Conduit will open the sign-in page after you return to the login screen.")
+        AppLocalization.string("This dashboard uses browser-based sign-in. Conduit will open the sign-in page after you return to the login screen.", table: .connection)
     }
 
     /// The credentials-required partial outcome's copy: server and dashboard
@@ -176,25 +176,25 @@ struct ConnectionSetupTestState: Equatable {
     /// asks for the missing secret — never a success, failure, or
     /// "connection ready" claim.
     static var credentialsRequiredMessage: String {
-        AppLocalization.string("This dashboard uses username and password sign-in. Enter your credentials to finish testing the connection.")
+        AppLocalization.string("This dashboard uses username and password sign-in. Enter your credentials to finish testing the connection.", table: .connection)
     }
 
     /// Round 6 (Repair): the interactive-auth message in the Repair context,
     /// where the next step is signing in over the existing AuthWebView —
     /// not returning to the login screen.
     static var repairInteractiveMessage: String {
-        AppLocalization.string("This dashboard uses browser-based sign-in. Sign in now to reconnect to it.")
+        AppLocalization.string("This dashboard uses browser-based sign-in. Sign in now to reconnect to it.", table: .connection)
     }
 
     /// The sign-in-choice outcome's copy: both methods work, neither has
     /// been tried. Never a success claim.
     static var signInChoiceMessage: String {
-        AppLocalization.string("This dashboard offers more than one way to sign in. Choose one on the login screen, or enter your username and password to test them now.")
+        AppLocalization.string("This dashboard offers more than one way to sign in. Choose one on the login screen, or enter your username and password to test them now.", table: .connection)
     }
 
     /// The sign-in-choice message in the Repair context.
     static var repairSignInChoiceMessage: String {
-        AppLocalization.string("This dashboard offers more than one way to sign in. Sign in now to reconnect, or enter your username and password to test them first.")
+        AppLocalization.string("This dashboard offers more than one way to sign in. Sign in now to reconnect, or enter your username and password to test them first.", table: .connection)
     }
 
     /// The one VoiceOver announcement for a run's terminal event, in the
@@ -329,9 +329,9 @@ struct ConnectionSetupTestState: Equatable {
         switch self[stage] {
         case .running: return stage.runningLabel
         case .succeeded: return stage.successLabel
-        case .requiresInteractiveSignIn: return AppLocalization.string("Browser sign-in required")
-        case .requiresCredentials: return AppLocalization.string("Credentials required")
-        case .requiresSignInChoice: return AppLocalization.string("Choose how to sign in")
+        case .requiresInteractiveSignIn: return AppLocalization.string("Browser sign-in required", table: .connection)
+        case .requiresCredentials: return AppLocalization.string("Credentials required", table: .connection)
+        case .requiresSignInChoice: return AppLocalization.string("Choose how to sign in", table: .connection)
         case .pending, .failed: return stage.objectiveLabel
         }
     }
@@ -362,7 +362,7 @@ struct ConnectionSetupTestRecoveryPlan: Equatable {
         case .server, .dashboard:
             return ConnectionSetupTestRecoveryPlan(
                 remediationStep: .connectionDetails,
-                remediationLabel: AppLocalization.string("Edit Connection Details"),
+                remediationLabel: AppLocalization.string("Edit Connection Details", table: .connection),
                 offersRetry: failure != .rateLimited,
                 offersCertificateHelp: failure.helpDestination == .tls
             )
@@ -371,7 +371,7 @@ struct ConnectionSetupTestRecoveryPlan: Equatable {
             // blind retries feed the rate limiter. Edit comes first.
             return ConnectionSetupTestRecoveryPlan(
                 remediationStep: .loginCredentials,
-                remediationLabel: AppLocalization.string("Edit Credentials"),
+                remediationLabel: AppLocalization.string("Edit Credentials", table: .connection),
                 offersRetry: failure != .rateLimited,
                 offersCertificateHelp: failure.helpDestination == .tls
             )

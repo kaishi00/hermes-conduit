@@ -17,51 +17,51 @@ import SwiftUI
 enum LocationSettingsText {
     static func precisionTitle(_ precision: LocationPrecision) -> String {
         switch precision {
-        case .places: return AppLocalization.string("Places only")
-        case .area: return AppLocalization.string("Area")
-        case .precise: return AppLocalization.string("Precise")
+        case .places: return AppLocalization.string("Places only", table: .phone)
+        case .area: return AppLocalization.string("Area", table: .phone)
+        case .precise: return AppLocalization.string("Precise", table: .phone)
         }
     }
 
     static func precisionSummary(_ precision: LocationPrecision) -> String {
         switch precision {
-        case .places: return AppLocalization.string("Hermes hears only which of your saved places you're at, and your iPhone's time zone.")
-        case .area: return AppLocalization.string("Your neighbourhood and city, a position to about 1 km, and distances to your saved places.")
-        case .precise: return AppLocalization.string("Your position as your iPhone measures it, and distances to your saved places.")
+        case .places: return AppLocalization.string("Hermes hears only which of your saved places you're at, and your iPhone's time zone.", table: .phone)
+        case .area: return AppLocalization.string("Your neighbourhood and city, a position to about 1 km, and distances to your saved places.", table: .phone)
+        case .precise: return AppLocalization.string("Your position as your iPhone measures it, and distances to your saved places.", table: .phone)
         }
     }
 
     static func kindTitle(_ kind: LocationPlaceKind) -> String {
         switch kind {
-        case .home: return AppLocalization.string("Home")
+        case .home: return AppLocalization.string("Home", table: .phone)
         case .work: return AppLocalization.string("Work")
-        case .gym: return AppLocalization.string("Gym")
-        case .school: return AppLocalization.string("School")
+        case .gym: return AppLocalization.string("Gym", table: .phone)
+        case .school: return AppLocalization.string("School", table: .phone)
         case .other: return AppLocalization.string("Other")
         }
     }
 
     static func retentionTitle(_ days: Int) -> String {
         switch days {
-        case 0: return AppLocalization.string("Latest only")
-        case 1: return AppLocalization.string("24 hours")
+        case 0: return AppLocalization.string("Latest only", table: .phone)
+        case 1: return AppLocalization.string("24 hours", table: .phone)
         case 7: return AppLocalization.string("7 days")
         case 30: return AppLocalization.string("30 days")
-        default: return AppLocalization.string("1 year")
+        default: return AppLocalization.string("1 year", table: .phone)
         }
     }
 
     static func readAction(_ action: String) -> String {
         // "maps search", "maps directions": the host's conduit_maps and a
         // live voice call's maps lookups alike.
-        if action == "maps" || action.hasPrefix("maps ") { return AppLocalization.string("Looked something up in Apple Maps") }
+        if action == "maps" || action.hasPrefix("maps ") { return AppLocalization.string("Looked something up in Apple Maps", table: .phone) }
         switch action {
-        case "now": return AppLocalization.string("Checked where you are")
-        case "places": return AppLocalization.string("Listed your places")
-        case "history": return AppLocalization.string("Looked at where you've been")
-        case "distance_to": return AppLocalization.string("Worked out a distance")
-        case "locate": return AppLocalization.string("Asked your iPhone where you are")
-        case "rules": return AppLocalization.string("Looked at place rules")
+        case "now": return AppLocalization.string("Checked where you are", table: .phone)
+        case "places": return AppLocalization.string("Listed your places", table: .phone)
+        case "history": return AppLocalization.string("Looked at where you've been", table: .phone)
+        case "distance_to": return AppLocalization.string("Worked out a distance", table: .phone)
+        case "locate": return AppLocalization.string("Asked your iPhone where you are", table: .phone)
+        case "rules": return AppLocalization.string("Looked at place rules", table: .phone)
         default: return action
         }
     }
@@ -187,7 +187,7 @@ struct LocationSettingsPage: View {
             }
         }
         .confirmationDialog(
-            askingVoiceMode.map { Text(AppLocalization.string("Let \($0.displayName) read your location?")) } ?? Text(verbatim: ""),
+            askingVoiceMode.map { Text(AppLocalization.string("Let \($0.displayName) read your location?", table: .phone)) } ?? Text(verbatim: ""),
             isPresented: Binding(get: { askingVoiceMode != nil }, set: { if !$0 { askingVoiceMode = nil } }),
             titleVisibility: .visible,
             presenting: askingVoiceMode
@@ -195,7 +195,7 @@ struct LocationSettingsPage: View {
             Button("Allow") { setVoiceRead(mode, allowed: true) }
             Button("Cancel", role: .cancel) {}
         } message: { mode in
-            Text(AppLocalization.string("On a call, what it reads goes to \(mode.company) under its terms. You can turn this off at any time."))
+            Text(AppLocalization.string("On a call, what it reads goes to \(mode.company) under its terms. You can turn this off at any time.", table: .phone))
         }
         .confirmationDialog("Delete location data on the host?", isPresented: $showsWipe, titleVisibility: .visible) {
             Button("Delete this iPhone's location data", role: .destructive) { wipe(everything: false) }
@@ -216,7 +216,7 @@ struct LocationSettingsPage: View {
     // MARK: Intro and status
 
     private var introSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Location for Hermes"), symbol: "location", tint: .blue) {
+        ConduitSettingsSection(title: AppLocalization.string("Location for Hermes", table: .phone), symbol: "location", tint: .blue) {
             Text("Let Hermes know where you are, so it can answer “what's near me”, work out travel times and remind you at places. Your location goes straight from this iPhone to your Hermes host, sealed end to end, and never through Conduit's notification relay.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
@@ -224,7 +224,7 @@ struct LocationSettingsPage: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             if !pluginServesLocation, !settings.isOn {
-                Text("Update the Conduit plugin on your Hermes host to share your location.")
+                Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to share your location.", table: .phone)))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
             }
@@ -250,21 +250,21 @@ struct LocationSettingsPage: View {
     @ViewBuilder
     private var statusRows: some View {
         if let binding = controller.binding {
-            Label(AppLocalization.string("Sharing with \(binding.profile) on \(binding.host)"), systemImage: "checkmark.shield")
+            Label(AppLocalization.string("Sharing with \(binding.profile) on \(binding.host)", table: .phone), systemImage: "checkmark.shield")
                 .scaledFont(.subheadline)
         }
         if let until = settings.pausedUntil, settings.isPaused(at: Date()) {
             Text(until == .distantFuture
-                ? AppLocalization.string("Paused until you turn it back on.")
-                : AppLocalization.string("Paused until \(until.formatted(date: .abbreviated, time: .shortened))."))
+                ? AppLocalization.string("Paused until you turn it back on.", table: .phone)
+                : AppLocalization.string("Paused until \(until.formatted(date: .abbreviated, time: .shortened)).", table: .phone))
                 .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else if let pause = engine.state.pause {
-            Text(pause.message)
+            Text(pause.message(managedBy: appState.pluginManagedBy(forDashboard: controller.binding?.dashboardID)))
                 .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else if let last = engine.state.lastFixSent {
-            Text(AppLocalization.string("Last sent \(last.formatted(.relative(presentation: .named)))"))
+            Text(AppLocalization.string("Last sent \(last.formatted(.relative(presentation: .named)))", table: .phone))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         } else {
@@ -305,8 +305,7 @@ struct LocationSettingsPage: View {
 
     private var openSettingsButton: some View {
         Button(AppLocalization.string("Open Settings")) {
-            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
-            UIApplication.shared.open(url)
+            SystemSettings.open(.location)
         }
         .scaledFont(.subheadline)
     }
@@ -314,7 +313,7 @@ struct LocationSettingsPage: View {
     // MARK: Layers
 
     private var talkingSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("While I'm talking to Hermes"), symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("While I'm talking to Hermes", table: .phone), symbol: "bubble.left.and.bubble.right", tint: .conduitAccent) {
             Toggle("Share while I'm talking to Hermes", isOn: layerBinding(.talking))
                 .disabled(isWorking || (!settings.talking && !canTurnOn))
                 .accessibilityIdentifier("settings.location.talking")
@@ -329,7 +328,7 @@ struct LocationSettingsPage: View {
     }
 
     private var backgroundSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("In the background"), symbol: "location.circle", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("In the background", table: .phone), symbol: "location.circle", tint: .conduitAccent) {
             Toggle("Share in the background", isOn: layerBinding(.background))
                 .disabled(isWorking || (!settings.background && !canTurnOn))
                 .accessibilityIdentifier("settings.location.background")
@@ -387,7 +386,7 @@ struct LocationSettingsPage: View {
     // MARK: Places
 
     private var placesSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Saved places"), symbol: "mappin.and.ellipse", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Saved places", table: .phone), symbol: "mappin.and.ellipse", tint: .conduitAccent) {
             ForEach(controller.places) { place in
                 Button {
                     editingPlace = LocationPlaceDraft(place)
@@ -473,7 +472,7 @@ struct LocationSettingsPage: View {
     }
 
     private var retentionSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("History on the host"), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("History on the host", table: .phone), symbol: "clock.arrow.circlepath", tint: .conduitAccent) {
             ConduitMenuPicker(
                 value: settings.retentionDays,
                 choices: LocationSharingSettings.retentionChoices.map { (id: $0, title: LocationSettingsText.retentionTitle($0)) },
@@ -507,7 +506,7 @@ struct LocationSettingsPage: View {
     }
 
     private var profilesSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Other profiles"), symbol: "person.2", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Other profiles", table: .phone), symbol: "person.2", tint: .conduitAccent) {
             Toggle("Share with this host's other profiles", isOn: Binding(
                 get: { settings.otherProfiles },
                 set: { on in
@@ -517,7 +516,7 @@ struct LocationSettingsPage: View {
             ))
             .disabled(isWorking)
             .accessibilityIdentifier("settings.location.other-profiles")
-            Text(AppLocalization.string("When this is on, other Hermes profiles on \(hostLabel) that are paired with this iPhone can read your location and ask for a fresh one. Place rules stay with \(controller.binding?.profile ?? appState.activeProfile)."))
+            Text(AppLocalization.string("When this is on, other Hermes profiles on \(hostLabel) that are paired with this iPhone can read your location and ask for a fresh one. Place rules stay with \(controller.binding?.profile ?? appState.activeProfile).", table: .phone))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -528,7 +527,7 @@ struct LocationSettingsPage: View {
     /// Which live voice modes may read the shared location on a call. Each
     /// is its own yes: what it reads goes to that mode's company.
     private var voiceSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Live voice calls"), symbol: "waveform", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Live voice calls", table: .phone), symbol: "waveform", tint: .conduitAccent) {
             ForEach(LiveVoiceModeName.all, id: \.storageID) { mode in
                 Toggle(isOn: voiceReadBinding(mode)) {
                     Text(verbatim: "\(mode.displayName) (\(mode.company))")
@@ -567,14 +566,14 @@ struct LocationSettingsPage: View {
     // MARK: From the host
 
     private var readsSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("When Hermes read your location"), symbol: "eye", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("When Hermes read your location", table: .phone), symbol: "eye", tint: .conduitAccent) {
             if let hostStatus, !hostUnreachable {
-                Text(AppLocalization.string("Reads in the last 24 hours: \(String(hostStatus.readsToday))"))
+                Text(AppLocalization.string("Reads in the last 24 hours: \(String(hostStatus.readsToday))", table: .phone))
                     .scaledFont(.subheadline)
             }
             if hostUnreachable {
                 // Shown over older rows too, so they don't pass as current.
-                Text(AppLocalization.string("Couldn't reach the host."))
+                Text(AppLocalization.string("Couldn't reach the host.", table: .phone))
                     .scaledFont(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -629,7 +628,7 @@ struct LocationSettingsPage: View {
     }
 
     private var rulesSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Place rules"), symbol: "list.bullet.rectangle", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Place rules", table: .phone), symbol: "list.bullet.rectangle", tint: .conduitAccent) {
             if rules.isEmpty {
                 Text("No place rules. Teach Hermes what to do at your places, for example: “When I get to the gym, remind me to log my workout.”")
                     .scaledFont(.caption)
@@ -650,7 +649,7 @@ struct LocationSettingsPage: View {
                         } label: {
                             Image(systemName: "trash")
                         }
-                        .accessibilityLabel(Text(AppLocalization.string("Delete rule")))
+                        .accessibilityLabel(Text(AppLocalization.string("Delete rule", table: .phone)))
                         .disabled(deletingRules.contains(rule.id))
                     }
                 }
@@ -662,26 +661,26 @@ struct LocationSettingsPage: View {
     private func ruleDetail(_ rule: LocationRule) -> String {
         var parts: [String] = []
         if rule.isAnySavedPlace {
-            parts.append(AppLocalization.string("Any saved place"))
+            parts.append(AppLocalization.string("Any saved place", table: .phone))
         } else if let name = rule.placeName, !name.isEmpty {
             parts.append(name)
         } else {
-            parts.append(AppLocalization.string("A saved place"))
+            parts.append(AppLocalization.string("A saved place", table: .phone))
         }
         switch rule.event {
         case "arrive": parts.append(AppLocalization.string("arrive"))
         case "leave": parts.append(AppLocalization.string("leave"))
-        case "either": parts.append(AppLocalization.string("arrive or leave"))
+        case "either": parts.append(AppLocalization.string("arrive or leave", table: .phone))
         default: if !rule.event.isEmpty { parts.append(rule.event) }
         }
         switch rule.repeatMode {
-        case "daily": parts.append(AppLocalization.string("once a day"))
-        case "every": parts.append(AppLocalization.string("every time"))
+        case "daily": parts.append(AppLocalization.string("once a day", table: .phone))
+        case "every": parts.append(AppLocalization.string("every time", table: .phone))
         default: break
         }
         if let days = rule.days { parts.append(days) }
         if let hours = rule.hours { parts.append(hours) }
-        if rule.calls { parts.append(AppLocalization.string("Calls you")) }
+        if rule.calls { parts.append(AppLocalization.string("Calls you", table: .phone)) }
         return parts.joined(separator: " · ")
     }
 
@@ -690,7 +689,7 @@ struct LocationSettingsPage: View {
             Button {
                 showsWipe = true
             } label: {
-                Label(AppLocalization.string("Delete location data on \(controller.binding?.host ?? hostLabel)"), systemImage: "trash")
+                Label(AppLocalization.string("Delete location data on \(controller.binding?.host ?? hostLabel)", table: .phone), systemImage: "trash")
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 6).frame(minHeight: 48)
             }
@@ -818,9 +817,9 @@ struct LocationSharingConsentSheet: View {
                         .accessibilityHidden(true)
                     Text("Share your location with Hermes?")
                         .scaledFont(.title2.weight(.semibold))
-                    Label(AppLocalization.string("Conduit sends your location, at the detail you choose, to the \(profile) profile on \(host), sealed end to end. It never goes through Conduit's notification relay, and Conduit's developer can't see it."), systemImage: "lock.shield")
+                    Label(AppLocalization.string("Conduit sends your location, at the detail you choose, to the \(profile) profile on \(host), sealed end to end. It never goes through Conduit's notification relay, and Conduit's developer can't see it.", table: .phone), systemImage: "lock.shield")
                     if otherProfiles {
-                        Label(AppLocalization.string("Other Hermes profiles on \(host) that are paired with this iPhone can read it too. You can turn this off in Settings > Location."), systemImage: "person.2")
+                        Label(AppLocalization.string("Other Hermes profiles on \(host) that are paired with this iPhone can read it too. You can turn this off in Settings > Location.", table: .phone), systemImage: "person.2")
                     }
                     Label("Your iPhone's time zone is always sent too, at every level of detail, so Hermes knows your local time. At Area and Precise, so are distances to your saved places, except private ones.", systemImage: "clock")
                     Label("Your agent reads it when you ask, or when a task or place rule needs it. Whatever it reads goes to the AI model provider your Hermes uses, under that provider's terms.", systemImage: "sparkles")
@@ -947,7 +946,7 @@ struct LocationPlaceEditor: View {
                     Text("At a private place Hermes hears only “at a private place”, never its name or where it is, and your visits there aren't kept.")
                         .settingsCaption()
                 }
-                ConduitSettingsSection(title: AppLocalization.string("Where"), symbol: "map", tint: .blue) {
+                ConduitSettingsSection(title: AppLocalization.string("Where", table: .phone), symbol: "map", tint: .blue) {
                     if let coordinate = draft.coordinate.map(MapDatum.toMap) {
                         // The draft is WGS-84 like the fixes; the map draws it where Apple Maps puts it.
                         Map(position: $camera) {
@@ -965,7 +964,7 @@ struct LocationPlaceEditor: View {
                         Button {
                             useCurrentLocation()
                         } label: {
-                            Label(isLocating ? AppLocalization.string("Finding you…") : AppLocalization.string("Use my current location"), systemImage: "location.fill")
+                            Label(isLocating ? AppLocalization.string("Finding you…", table: .phone) : AppLocalization.string("Use my current location", table: .phone), systemImage: "location.fill")
                         }
                         .buttonStyle(.settings)
                         .disabled(isLocating)
@@ -998,7 +997,7 @@ struct LocationPlaceEditor: View {
                     Slider(value: $draft.radius, in: LocationSavedPlace.minRadius...LocationSavedPlace.maxRadius, step: 25)
                         .accessibilityLabel(Text("Radius"))
                         .accessibilityValue(Text(verbatim: LocationSettingsText.radius(draft.radius)))
-                    Text(AppLocalization.string("Radius: \(LocationSettingsText.radius(draft.radius))"))
+                    Text(AppLocalization.string("Radius: \(LocationSettingsText.radius(draft.radius))", table: .phone))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                     Text("Arriving and leaving count once you cross this circle. A larger circle notices you sooner but can miss short visits.")
@@ -1012,7 +1011,7 @@ struct LocationPlaceEditor: View {
                         .settingsCard()
                 }
             }
-            .navigationTitle(draft.isNew ? AppLocalization.string("Add a place") : AppLocalization.string("Edit place"))
+            .navigationTitle(draft.isNew ? AppLocalization.string("Add a place") : AppLocalization.string("Edit place", table: .phone))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1040,7 +1039,7 @@ struct LocationPlaceEditor: View {
             if let location = await locate() {
                 setCoordinate(location.coordinate)
             } else {
-                message = AppLocalization.string("Couldn't find your position. Try searching for the address.")
+                message = AppLocalization.string("Couldn't find your position. Try searching for the address.", table: .phone)
             }
             isLocating = false
         }
@@ -1056,10 +1055,10 @@ struct LocationPlaceEditor: View {
             request.naturalLanguageQuery = text
             do {
                 results = Array(try await MKLocalSearch(request: request).start().mapItems.prefix(8))
-                if results.isEmpty { message = AppLocalization.string("No matches.") }
+                if results.isEmpty { message = AppLocalization.string("No matches.", table: .phone) }
             } catch {
                 results = []
-                message = AppLocalization.string("Couldn't search Apple Maps. Try again.")
+                message = AppLocalization.string("Couldn't search Apple Maps. Try again.", table: .phone)
             }
             isSearching = false
         }

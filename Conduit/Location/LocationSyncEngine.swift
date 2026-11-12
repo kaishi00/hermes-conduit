@@ -36,16 +36,22 @@ enum LocationSyncPause: Codable, Equatable {
     case pluginOff(String)
     case refused(String)
 
-    var message: String {
+    var message: String { message(managedBy: PluginUpdateAsk.managedBy) }
+
+    /// The words for a destination whose host's plugin is kept up to date
+    /// by `managedBy` (nil when the host doesn't manage it), which may not
+    /// be the active dashboard's.
+    func message(managedBy: String?) -> String {
         switch self {
         case .signInRequired:
-            return AppLocalization.string("Paused: sign in to this dashboard again. Location is sent again once you open Conduit.")
+            return AppLocalization.string("Paused: sign in to this dashboard again. Location is sent again once you open Conduit.", table: .phone)
         case .pluginMissing:
-            return AppLocalization.string("Paused: update the Conduit plugin on this host to share your location.")
+            return PluginUpdateAsk.text(AppLocalization.string("Paused: update the Conduit plugin on this host to share your location.", table: .phone),
+                                        lead: AppLocalization.string("Sharing is paused.", table: .phone), managedBy: managedBy)
         case .pluginOff(let remedy):
-            return AppLocalization.string("Paused: \(remedy)")
+            return AppLocalization.string("Paused: \(remedy)", table: .phone)
         case .refused(let detail):
-            return AppLocalization.string("Paused: the host refused location data (\(detail)).")
+            return AppLocalization.string("Paused: the host refused location data (\(detail)).", table: .phone)
         }
     }
 }
@@ -438,7 +444,7 @@ final class LocationSyncEngine: ObservableObject {
             throw LocationSyncEngineError.keyRouteMissing
         }
         guard let hostPublic = answer["host_public_key"] as? String, let kid = answer["kid"] as? String else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The host didn't return a location key."))
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The host didn't return a location key.", table: .phone))
         }
         let key = try LocationCrypto.agree(devicePrivate: devicePrivate, deviceID: deviceID, hostPublicKey: hostPublic, kid: kid)
         try Task.checkCancellation()

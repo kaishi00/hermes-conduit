@@ -44,12 +44,12 @@ enum WakePhraseValidationError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .emptyPhrase: return AppLocalization.string("Enter a wake phrase.")
-        case .missingGatewayOrProfile: return AppLocalization.string("Wake phrases must belong to a gateway and profile.")
-        case .duplicatePhrase(let phrase): return AppLocalization.string("The wake phrase ‘\(phrase)’ is already enabled.")
-        case .unsupportedEnglishWord(let word): return AppLocalization.string("‘\(word)’ is not available in the English pronunciation lexicon.")
-        case .unsupportedCharacter(let character): return AppLocalization.string("‘\(character)’ is not supported by the bundled wake model.")
-        case .missingChinesePronunciation(let character): return AppLocalization.string("No pinyin token is available for ‘\(character)’.")
+        case .emptyPhrase: return AppLocalization.string("Enter a wake phrase.", table: .voice)
+        case .missingGatewayOrProfile: return AppLocalization.string("Wake phrases must belong to a gateway and profile.", table: .voice)
+        case .duplicatePhrase(let phrase): return AppLocalization.string("The wake phrase ‘\(phrase)’ is already enabled.", table: .voice)
+        case .unsupportedEnglishWord(let word): return AppLocalization.string("‘\(word)’ is not available in the English pronunciation lexicon.", table: .voice)
+        case .unsupportedCharacter(let character): return AppLocalization.string("‘\(character)’ is not supported by the bundled wake model.", table: .voice)
+        case .missingChinesePronunciation(let character): return AppLocalization.string("No pinyin token is available for ‘\(character)’.", table: .voice)
         }
     }
 }

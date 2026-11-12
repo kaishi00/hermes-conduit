@@ -30,9 +30,9 @@ enum ConnectionAccessMethod: Equatable, CaseIterable {
     /// copy-safety tests cover the shipped strings, not local literals.
     var displayTitle: String {
         switch self {
-        case .lan: return AppLocalization.string("I’m on the same network as Hermes")
+        case .lan: return AppLocalization.string("I’m on the same network as Hermes", table: .connection)
         case .tailscale: return "Tailscale"
-        case .reverseProxy: return AppLocalization.string("I already have a domain or reverse proxy")
+        case .reverseProxy: return AppLocalization.string("I already have a domain or reverse proxy", table: .connection)
         }
     }
 }
@@ -82,43 +82,43 @@ enum ConnectionSetupPrompt: CaseIterable {
 
     var title: String {
         switch self {
-        case .dashboardNotRunning: return AppLocalization.string("Ask Hermes to set up the dashboard")
-        case .dashboardUnknown: return AppLocalization.string("Ask Hermes to check the dashboard")
-        case .credentialsMissing: return AppLocalization.string("Ask Hermes to set up dashboard credentials")
-        case .credentialsUnknown: return AppLocalization.string("Ask Hermes to check your dashboard sign-in")
-        case .lanDetails: return AppLocalization.string("Ask Hermes for your connection details")
-        case .tailscaleServe: return AppLocalization.string("Ask Hermes to configure Tailscale Serve")
-        case .reverseProxyDetails: return AppLocalization.string("Ask Hermes to confirm your HTTPS address")
-        case .signInCode: return AppLocalization.string("Ask Hermes for a sign-in code")
-        case .certificateFingerprint: return AppLocalization.string("Ask Hermes for the certificate’s fingerprint")
+        case .dashboardNotRunning: return AppLocalization.string("Ask Hermes to set up the dashboard", table: .connection)
+        case .dashboardUnknown: return AppLocalization.string("Ask Hermes to check the dashboard", table: .connection)
+        case .credentialsMissing: return AppLocalization.string("Ask Hermes to set up dashboard credentials", table: .connection)
+        case .credentialsUnknown: return AppLocalization.string("Ask Hermes to check your dashboard sign-in", table: .connection)
+        case .lanDetails: return AppLocalization.string("Ask Hermes for your connection details", table: .connection)
+        case .tailscaleServe: return AppLocalization.string("Ask Hermes to configure Tailscale Serve", table: .connection)
+        case .reverseProxyDetails: return AppLocalization.string("Ask Hermes to confirm your HTTPS address", table: .connection)
+        case .signInCode: return AppLocalization.string("Ask Hermes for a sign-in code", table: .connection)
+        case .certificateFingerprint: return AppLocalization.string("Ask Hermes for the certificate’s fingerprint", table: .connection)
         }
     }
 
     var text: String {
         switch self {
         case .dashboardNotRunning:
-            return AppLocalization.string("Please set up or start the Hermes dashboard for me. Make sure it requires authentication, and tell me which port it is using when it is ready. Do not disable authentication.")
+            return AppLocalization.string("Please set up or start the Hermes dashboard for me. Make sure it requires authentication, and tell me which port it is using when it is ready. Do not disable authentication.", table: .connection)
         case .dashboardUnknown:
-            return AppLocalization.string("Please check whether the Hermes dashboard is currently running. If it is, tell me which port it uses. If it is not running, set it up or start it. Make sure dashboard authentication remains enabled.")
+            return AppLocalization.string("Please check whether the Hermes dashboard is currently running. If it is, tell me which port it uses. If it is not running, set it up or start it. Make sure dashboard authentication remains enabled.", table: .connection)
         case .credentialsMissing:
-            return AppLocalization.string("Please check the authentication configuration for my Hermes dashboard. If dashboard login credentials have not been configured yet, set them up securely and tell me what username and password I should use with Hermes Conduit. Do not disable authentication.")
+            return AppLocalization.string("Please check the authentication configuration for my Hermes dashboard. If dashboard login credentials have not been configured yet, set them up securely and tell me what username and password I should use with Hermes Conduit. Do not disable authentication.", table: .connection)
         case .credentialsUnknown:
-            return AppLocalization.string("Does my Hermes dashboard require authentication? If so, tell me what username and password I should use with Hermes Conduit. If authentication is not configured, set it up securely. Do not disable authentication.")
+            return AppLocalization.string("Does my Hermes dashboard require authentication? If so, tell me what username and password I should use with Hermes Conduit. If authentication is not configured, set it up securely. Do not disable authentication.", table: .connection)
         case .lanDetails:
             // LAN entry is IP-address-only today: canonical transport policy
             // admits localhost, literal private LAN addresses, and Tailscale —
             // not local hostnames. The prompt must not promise them.
-            return AppLocalization.string("Please make sure the Hermes dashboard is reachable from other devices on my local network, then tell me the machine's local IP address and the dashboard port I should use with Hermes Conduit. Keep dashboard authentication enabled.")
+            return AppLocalization.string("Please make sure the Hermes dashboard is reachable from other devices on my local network, then tell me the machine's local IP address and the dashboard port I should use with Hermes Conduit. Keep dashboard authentication enabled.", table: .connection)
         case .tailscaleServe:
-            return AppLocalization.string("Please check whether the Hermes dashboard is running. Make sure Tailscale is available on this machine, then configure Tailscale Serve so I can securely access the dashboard from my iPhone or iPad. Keep dashboard authentication enabled. When it is ready, tell me the hostname/address and port I should use with Hermes Conduit.")
+            return AppLocalization.string("Please check whether the Hermes dashboard is running. Make sure Tailscale is available on this machine, then configure Tailscale Serve so I can securely access the dashboard from my iPhone or iPad. Keep dashboard authentication enabled. When it is ready, tell me the hostname/address and port I should use with Hermes Conduit.", table: .connection)
         case .reverseProxyDetails:
-            return AppLocalization.string("Please confirm the HTTPS URL I should use to access the Hermes dashboard through my existing reverse proxy, including any custom port or path prefix. Also confirm that dashboard authentication remains enabled.")
+            return AppLocalization.string("Please confirm the HTTPS URL I should use to access the Hermes dashboard through my existing reverse proxy, including any custom port or path prefix. Also confirm that dashboard authentication remains enabled.", table: .connection)
         case .signInCode:
             // The code carries the password: a terminal QR code keeps it out
             // of a chat's history, which a link sent in a chat can't.
-            return AppLocalization.string("Please make me a sign-in code for Hermes Conduit. It is this link, with each value percent-encoded: conduit://connect?url=ADDRESS&username=USERNAME&password=PASSWORD. For ADDRESS, use the full dashboard address my iPhone reaches, with http:// or https://, such as its Tailscale or local network address, never localhost. Leave out the password if you don't know it. If we are talking in a terminal, show the link there as a QR code so the password stays out of chat history; otherwise send me the link. Keep dashboard authentication enabled.")
+            return AppLocalization.string("Please make me a sign-in code for Hermes Conduit. It is this link, with each value percent-encoded: conduit://connect?url=ADDRESS&username=USERNAME&password=PASSWORD. For ADDRESS, use the full dashboard address my iPhone reaches, with http:// or https://, such as its Tailscale or local network address, never localhost. Leave out the password if you don't know it. If we are talking in a terminal, show the link there as a QR code so the password stays out of chat history; otherwise send me the link. Keep dashboard authentication enabled.", table: .connection)
         case .certificateFingerprint:
-            return AppLocalization.string("Please tell me the SHA-256 fingerprint of the TLS certificate my Hermes dashboard serves, and of the root certificate that issued it if there is one, so I can check it before I trust it on my iPhone. Only read the certificates; don't change them. Keep dashboard authentication enabled.")
+            return AppLocalization.string("Please tell me the SHA-256 fingerprint of the TLS certificate my Hermes dashboard serves, and of the root certificate that issued it if there is one, so I can check it before I trust it on my iPhone. Only read the certificates; don't change them. Keep dashboard authentication enabled.", table: .connection)
         }
     }
 }
@@ -174,8 +174,8 @@ struct ConnectionSetupFlow: Equatable {
     /// troubleshooting screens, which sit outside the numbered sequence.
     var progressLabel: String? {
         switch progressStep {
-        case 1: return AppLocalization.string("Step 1 of 2")
-        case 2: return AppLocalization.string("Step 2 of 2")
+        case 1: return AppLocalization.string("Step 1 of 2", table: .connection)
+        case 2: return AppLocalization.string("Step 2 of 2", table: .connection)
         default: return nil
         }
     }
@@ -243,7 +243,7 @@ struct ConnectionSetupFlow: Equatable {
         // all start at the address editor. A throttled login in particular
         // must never route toward another login.
         case .invalidAddress, .insecureTransport, .hostNotFound, .unreachable,
-             .connectionRefused, .timedOut, .offline, .rateLimited,
+             .connectionRefused, .timedOut, .offline, .rateLimited, .accessDenied,
              .dashboardUnavailable, .unexpectedServerResponse:
             return details
         // No strong diagnosis (or none retained): the seeded staged test is

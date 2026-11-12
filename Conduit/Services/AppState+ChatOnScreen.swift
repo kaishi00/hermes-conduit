@@ -25,23 +25,38 @@ extension AppState {
     }
 
     /// The open chat's id while it's on screen: Conduit active, the chat
-    /// live, and neither the list nor a group room covering it.
+    /// live, and neither the list, a group room nor another bot's chat on
+    /// its way (`botChatCoversOpenChat`) covering it.
     var chatShownOnScreen: String? {
-        guard isSceneActive, !showSidebar, activeRoomSurface == nil,
+        guard isSceneActive, !showSidebar, activeRoomSurface == nil, !botChatCoversOpenChat,
               let sessionID = activeSessionId, !sessionID.isEmpty,
               composerChatOnScreen == .live(sessionID) else { return nil }
         return sessionID
     }
 
-    /// A chat on screen has been read: its notifications leave this
-    /// device's Notification Center, and the Watch's with the iPhone's
-    /// (#1579). Other devices keep theirs.
+    /// The open group room's id while it's on screen: Conduit active, the
+    /// list (or a Bot Chat on its way) not covering it, a screen of it showing (not a hidden tab or a
+    /// page pushed over it), and its messages read from Hermes since it
+    /// opened (a failed read leaves an old or empty transcript). Its bots'
+    /// replies and failed turns name the room (issue 2064), so reading it
+    /// clears them.
+    var roomShownOnScreen: String? {
+        guard isSceneActive, !showSidebar, roomSurfaceShows, !botChatCoversOpenChat, let roomID = activeRoomSurface?.room.roomID,
+              activeRoomSurface?.copy == nil, activeRoomLogRead == roomID else { return nil }
+        return roomID
+    }
+
+    /// A chat or a group room on screen has been read: its notifications
+    /// leave this device's Notification Center, and the Watch's with the
+    /// iPhone's (#1579; a room's, issue 2064). Other devices keep theirs.
     func clearShownChatNotifications() {
         // A sheet over the chat (Settings, a voice sheet, the chat's own
         // Artifacts or Rename, the bot's screen) hides it: what arrives meanwhile hasn't been
         // read. Closing it clears (V2Shell, V2ConversationScreen, RootView).
+        let sessionID = chatShownOnScreen
+        let roomID = roomShownOnScreen
         guard !isModalSheetPresented, !chatCoveredBySheet, botScreenSheetsOpen == 0,
-              let sessionID = chatShownOnScreen else { return }
+              sessionID != nil || roomID != nil else { return }
         // A launch in the background counts the scene active until its
         // first phase change: nobody has read anything then.
         #if canImport(UIKit) && !os(watchOS)
@@ -64,7 +79,7 @@ extension AppState {
             return
         }
         #endif
-        let sessionIDs = chatOwnSessionIDs(for: sessionID)
+        let sessionIDs = sessionID.map { chatOwnSessionIDs(for: $0) } ?? []
         let activeDashboardID = activeDashboardID
         let savedDashboardIDs = savedDashboardRegistry.dashboards.map(\.id)
         let gatewayIDs = activeDashboardRelayGatewayIDs
@@ -80,6 +95,7 @@ extension AppState {
                      target: PushNotificationService.readChatTarget(from: $0.request.content.userInfo, records: records))
                 },
                 sessionIDs: sessionIDs,
+                roomID: roomID,
                 activeDashboardID: activeDashboardID,
                 savedDashboardIDs: savedDashboardIDs,
                 activeDashboardGatewayIDs: gatewayIDs

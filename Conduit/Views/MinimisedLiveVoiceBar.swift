@@ -10,6 +10,20 @@
 
 import SwiftUI
 
+/// The call bar under a list column: the Chats list, a project's page,
+/// Bots Home, Pulse and Artifacts. Split beside a chat or a room, that
+/// conversation shows the bar by its composer, so the list leaves it to
+/// it and the call shows once, not over both columns (issue 1534).
+struct V2ListCallBar: View {
+    @Environment(\.v2Shell) private var shell
+
+    var body: some View {
+        if !shell.hasChatBeside {
+            MinimisedLiveVoiceBar()
+        }
+    }
+}
+
 struct MinimisedLiveVoiceBar: View {
     @EnvironmentObject var appState: AppState
 
@@ -72,11 +86,11 @@ private struct GeminiLiveBarContent: View {
         case .idle: return AppLocalization.string("Not connected")
         case .connecting: return AppLocalization.string("Connecting…")
         case .reconnecting: return AppLocalization.string("Reconnecting…")
-        case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
+        case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted", table: .voice) : AppLocalization.string("Listening")
         case .speaking: return AppLocalization.string("Speaking")
         case .paused: return AppLocalization.string("Paused")
-        case .ending: return AppLocalization.string("Ending conversation…")
-        case .failed: return AppLocalization.string("Call stopped. Tap to see why.")
+        case .ending: return AppLocalization.string("Ending conversation…", table: .voice)
+        case .failed: return AppLocalization.string("Call stopped. Tap to see why.", table: .voice)
         }
     }
 
@@ -117,7 +131,7 @@ private struct GPTLiveBarContent: View {
     var body: some View {
         LiveVoiceBarRow(
             // The bar says an API-key call is one, like the call screen.
-            name: controller.billing == .api ? AppLocalization.string("GPT-Live · API key") : "GPT-Live",
+            name: controller.billing == .api ? AppLocalization.string("GPT-Live · API key", table: .voice) : "GPT-Live",
             status: status,
             symbol: symbol,
             thread: jobs.liveThread?.title,
@@ -136,11 +150,11 @@ private struct GPTLiveBarContent: View {
         switch controller.phase {
         case .idle: return AppLocalization.string("Not connected")
         case .connecting: return AppLocalization.string("Connecting…")
-        case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted") : AppLocalization.string("Listening")
+        case .listening: return controller.isMicrophoneMuted ? AppLocalization.string("Microphone muted", table: .voice) : AppLocalization.string("Listening")
         case .speaking: return AppLocalization.string("Speaking")
         case .paused: return AppLocalization.string("Paused")
-        case .ending: return AppLocalization.string("Ending conversation…")
-        case .failed: return AppLocalization.string("Call stopped. Tap to see why.")
+        case .ending: return AppLocalization.string("Ending conversation…", table: .voice)
+        case .failed: return AppLocalization.string("Call stopped. Tap to see why.", table: .voice)
         }
     }
 

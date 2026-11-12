@@ -906,7 +906,7 @@ struct SelectableTextView: UIViewRepresentable {
             var added: [UIMenuElement] = []
             if let quoteAction, quoteAction.isAvailable {
                 added.append(UIAction(
-                    title: AppLocalization.string("Quote"),
+                    title: AppLocalization.string("Quote", table: .chat),
                     image: UIImage(systemName: "text.quote")
                 ) { [weak textView] _ in
                     guard let textView else { return }
@@ -1021,6 +1021,7 @@ struct SelectableTextView: UIViewRepresentable {
         }
 
         func textViewDidChangeSelection(_ textView: UITextView) {
+            ChatTextSelection.note(textView)
             guard
                 let selectionCoordinator,
                 let selectionSegment,
@@ -1061,6 +1062,39 @@ struct SelectableTextView: UIViewRepresentable {
                 ?? textView.window.map { textView.convert(caretPoint, to: $0) }
                 ?? .zero
         }
+    }
+}
+
+/// Whether text in a chat is selected right now, so a swipe that would
+/// leave the chat waits while one is showing: dragging a selection's handle
+/// toward the trailing edge read as the swipe home from anywhere, and the
+/// Bot Chat closed under the finger (issue 1948). A selection inside one
+/// text view shows while that view is first responder; one across blocks,
+/// which the coordinator draws itself, while its coordinator holds it.
+/// Only the key window's count, the one being swiped: a selection left in
+/// another of an iPad's windows doesn't hold this one's swipe.
+@MainActor
+enum ChatTextSelection {
+    /// The text views whose last selection change left text selected,
+    /// held weakly; each is checked again when asked, since a range set in
+    /// code doesn't tell the delegate.
+    private static let selecting = NSHashTable<UITextView>.weakObjects()
+
+    static func note(_ textView: UITextView) {
+        if textView.selectedRange.length > 0 {
+            selecting.add(textView)
+        } else {
+            selecting.remove(textView)
+        }
+    }
+
+    static var isShowing: Bool {
+        if MarkdownSelectionCoordinator.activeCoordinator?.showsSelectionInKeyWindow == true { return true }
+        return selecting.allObjects.contains(where: showsSelection)
+    }
+
+    static func showsSelection(_ textView: UITextView) -> Bool {
+        textView.window?.isKeyWindow == true && textView.isFirstResponder && textView.selectedRange.length > 0
     }
 }
 

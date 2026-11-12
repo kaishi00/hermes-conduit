@@ -49,9 +49,7 @@ struct ChatPlanDock: View {
                         // A tap on the line asks for the card: the
                         // keyboard goes, and the card opens.
                         if isCompact {
-                            UIApplication.shared.sendAction(
-                                #selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil
-                            )
+                            ReturnKeyTextView.putAwayFocus()
                         }
                     }
                         .transition(popTransition)
@@ -387,7 +385,7 @@ private struct PlanSheet: View {
 enum PlanText {
     /// "3 of 5 done".
     static func count(_ plan: AgentPlan) -> String {
-        AppLocalization.string("\(String(plan.completedCount)) of \(String(plan.countedTotal)) done")
+        AppLocalization.string("\(String(plan.completedCount)) of \(String(plan.countedTotal)) done", table: .chat)
     }
 
     /// "3/5", for the line.
@@ -396,20 +394,20 @@ enum PlanText {
     }
 
     static func doneAbove(_ count: Int) -> String {
-        AppLocalization.string("\(count) done")
+        AppLocalization.string("\(count) done", table: .chat)
     }
 
     static func earlier(_ count: Int) -> String {
-        AppLocalization.string("\(count) earlier")
+        AppLocalization.string("\(count) earlier", table: .chat)
     }
 
     static func more(_ count: Int) -> String {
-        AppLocalization.string("\(count) more")
+        AppLocalization.string("\(count) more", table: .chat)
     }
 
     static func status(_ status: AgentPlanItem.Status) -> String {
         switch status {
-        case .pending: return AppLocalization.string("To do")
+        case .pending: return AppLocalization.string("To do", table: .chat)
         case .inProgress: return AppLocalization.string("In progress")
         case .completed: return AppLocalization.string("Done")
         case .cancelled: return AppLocalization.string("Cancelled")
@@ -420,7 +418,7 @@ enum PlanText {
     static func spoken(_ plan: AgentPlan) -> String {
         var parts = [AppLocalization.string("Tasks"), count(plan)]
         if let current = plan.current {
-            parts.append(AppLocalization.string("Now: \(current.content)"))
+            parts.append(AppLocalization.string("Now: \(current.content)", table: .chat))
         }
         return parts.joined(separator: ", ")
     }
