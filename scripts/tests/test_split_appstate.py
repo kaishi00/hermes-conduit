@@ -164,6 +164,19 @@ class SplitAppStateTests(unittest.TestCase):
         with self.assertRaises(SystemExit):
             split.run(self.repo, 1, True, pr=42, today="2026-11-12")
 
+    def test_appending_under_a_title_the_file_has_keeps_one_mark(self):
+        (self.repo / "Conduit/Services/AppState+Connection.swift").write_text(
+            "import SwiftUI\n\nextension AppState {\n    // MARK: - Connecting\n\n    func old() {}\n}\n")
+        saved, split.MARK_TITLES = split.MARK_TITLES, {"AppState+Connection.swift": "Connecting"}
+        try:
+            split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        finally:
+            split.MARK_TITLES = saved
+        text = self.read("AppState+Connection.swift")
+        self.assertEqual(text.count("// MARK: - Connecting"), 1, text)
+        self.assertIn("    func old() {}\n}\n\nextension AppState {\n", text)
+        self.assertIn("func connect()", text)
+
     def test_appending_brings_the_imports_the_code_used(self):
         (self.repo / "Conduit/Services/AppState+Connection.swift").write_text(
             "//\n//  AppState+Connection.swift\n//\n\nimport Foundation\n\nextension AppState {\n    func old() {}\n}\n")
@@ -258,6 +271,7 @@ final class AppState: ObservableObject {
         _ = projection.count
         projection.load.reset()
         swap(&projection.n, &projection.m)
+        bump(&rows[0].k)
     }
 }
 
@@ -268,6 +282,7 @@ final class Projection {
     fileprivate(set) var load = Load()
     fileprivate(set) var n = 0
     fileprivate(set) var m = 0
+    fileprivate(set) var k = 0
 }
 ''')
         (self.repo / "Shared/Load.swift").write_text(
@@ -280,6 +295,7 @@ final class Projection {
         self.assertIn("fileprivate var hidden = 0", app, "not used")
         self.assertIn("\n    var load = Load()", app, "a mutating call writes it")
         self.assertIn("\n    var n = 0", app, "passed inout")
+        self.assertIn("\n    var k = 0", app, "passed inout through a subscript")
 
     def test_one_mark_for_two_regions_under_one_title(self):
         split.STEPS = [{"AppState+Both.swift": ["Connection|from connect", "Chats|from openChat"]}]
@@ -307,6 +323,30 @@ final class Projection {
         with self.assertRaises(SystemExit):
             split.STEPS = [{"AppState+Connection.swift": ["Connection|from nothing"]}]
             split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+
+    def test_cuts_at_one_of_a_names_overloads(self):
+        (self.repo / split.APP_STATE).write_text('''import SwiftUI
+
+@MainActor
+final class AppState: ObservableObject {
+    // MARK: - Picking
+
+    func pick(_ n: Int) {}
+
+    func pick(_ s: String) {}
+
+    func last() {}
+}
+''')
+        with self.assertRaises(SystemExit, msg="pick is two declarations"):
+            split.STEPS = [{"AppState+Pick.swift": ["Picking|from pick"]}]
+            split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        split.STEPS = [{"AppState+Pick.swift": ["Picking|from pick#2"]}]
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        self.assertIn("func pick(_ n: Int)", self.read("AppState.swift"))
+        pick = self.read("AppState+Pick.swift")
+        self.assertIn("func pick(_ s: String)", pick)
+        self.assertIn("func last()", pick)
 
     def test_cuts_a_slice_between_two_declarations(self):
         with self.assertRaises(SystemExit, msg="nothing between"):

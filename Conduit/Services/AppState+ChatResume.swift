@@ -510,8 +510,6 @@ extension AppState {
 }
 
 extension AppState {
-    // MARK: - Resuming a chat: return surface, viewport and transport
-
     /// Whether any automatic-return work is outstanding that could still
     /// replace the active session. `activeAutomaticChatResumeWork` alone is
     /// not evidence: a completed foreground refresh leaves its token behind,

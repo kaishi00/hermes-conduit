@@ -1570,3 +1570,35 @@ extension AppState {
         followReplyAloud(heard)
     }
 }
+
+extension AppState {
+    func consumeVoiceSheetAutoListen() -> Bool {
+        guard voiceSheetShouldAutoListen else { return false }
+        voiceSheetShouldAutoListen = false
+        return true
+    }
+
+    /// The sheet's auto-listen. A sheet that appears while no Voice surface
+    /// is presenting — Conduit opened in the background by an answered
+    /// Hermes call (#558) — leaves the intent armed instead of spending it on
+    /// a listen the capture gate would refuse; the `.active` scene edge
+    /// starts it (`startDeferredVoiceSheetAutoListen`).
+    func consumeVoiceSheetAutoListenIfPresenting() -> Bool {
+        guard hasActiveVoiceSurface else { return false }
+        return consumeVoiceSheetAutoListen()
+    }
+
+    /// Starts the auto-listen a sheet left armed because it appeared before
+    /// Conduit was on screen. Every boundary that must not hot-start the
+    /// microphone (Close, background suspension, a CallKit mute) disarms the
+    /// intent first, and it is consumed on the main actor right before the
+    /// listen, so a Close in between wins.
+    func startDeferredVoiceSheetAutoListen() {
+        // Early out only: the consume inside the task is the decision.
+        guard showVoiceSheet, voiceSheetShouldAutoListen else { return }
+        Task { [weak self] in
+            guard let self, self.showVoiceSheet, self.consumeVoiceSheetAutoListenIfPresenting() else { return }
+            await self.voiceConversationController.startListening()
+        }
+    }
+}

@@ -1089,3 +1089,309 @@ extension AppState {
         cacheMessagePresentation()
     }
 }
+
+extension AppState {
+    /// Hermes blocks a clarify/approval prompt for only ~5 minutes server-side
+    /// (JSON-RPC error 4009, "no pending … request"), while a restored or
+    /// push-delivered card can legitimately outlive it — a notification opened
+    /// an hour later is the feature's ordinary case, not an error. Treat that
+    /// outcome as "the decision is no longer active" instead of a generic
+    /// failure the user can retry forever.
+    static func isExpiredPromptError(_ error: Error) -> Bool {
+        if let rpcError = error as? RpcError {
+            if rpcError.code == 4009 { return true }
+            return rpcError.message.lowercased().contains("no pending")
+        }
+        return error.localizedDescription.lowercased().contains("no pending")
+    }
+
+    /// Where an answer to a card without a request id goes.
+    enum LegacyApprovalTarget: Equatable {
+        /// The gateway names no request ids: it answers the session's queue.
+        case sessionQueue
+        /// The queued request that asks what the card shows.
+        case request(String)
+        /// Nothing queued asks what the card shows any more.
+        case noLongerPending
+        /// A card without its command matches queued requests that run
+        /// different commands: the queue's own cards are shown instead.
+        case ambiguous
+        /// The queue could not be read; nothing is sent. Carries why, for
+        /// the card.
+        case unknown(String)
+    }
+
+    /// A card without a request id (one a push restored, or one from a
+    /// gateway before request ids) is answered by session, and Hermes then
+    /// settles the oldest queued approval, which need not be the command
+    /// the card shows. So read the queue first: a gateway that names its
+    /// requests is answered on the one whose command and explanation the
+    /// card shows (a push card carries no command, so only the
+    /// explanation is compared, as the notifier sends it: collapsed, cut,
+    /// or redacted), and nothing is sent when none does. Only
+    /// a gateway that names no requests, or has no `approval.pending`,
+    /// keeps the session-wide answer.
+    private func legacyApprovalTarget(
+        for card: ApprovalActivity,
+        using client: HermesClient,
+        profile: String?
+    ) async -> LegacyApprovalTarget {
+        let queued: [ApprovalActivity]
+        do {
+            if let pendingApprovalsWithProfile = chatResumeLifecycleOperations.pendingApprovalsWithProfile {
+                queued = try await pendingApprovalsWithProfile(client, card.sessionId, profile)
+            } else if let pendingApprovals = chatResumeLifecycleOperations.pendingApprovals {
+                queued = try await pendingApprovals(client, card.sessionId)
+            } else {
+                queued = try await client.pendingApprovals(sessionId: card.sessionId, profile: profile)
+            }
+        } catch {
+            if HermesClient.isMissingRPCMethod(error) { return .sessionQueue }
+            // The card's runtime is gone, and with it the wait.
+            if HermesClient.isSessionNotFoundError(error) { return .noLongerPending }
+            return .unknown(UserFacingError.message(for: error))
+        }
+        return Self.legacyApprovalTarget(for: card, in: queued)
+    }
+
+    /// The explanation a redacted push carries in place of the real one
+    /// (conduit-push-notifier `events.py`, `REDACTED_APPROVAL_TEXT`, used by
+    /// `redact_event` for profiles with `hermes conduit-push redact on`).
+    /// Keep it in step with the notifier.
+    static let redactedApprovalPushDescription = "Hermes needs your approval. Open Conduit for details."
+
+    /// How long a push's explanation can be: the notifier collapses its
+    /// whitespace and cuts it at 500 code points, with no ellipsis
+    /// (`sanitize_decision` / `_clean` in its `events.py`).
+    static let approvalPushDescriptionLimit = 500
+
+    static func legacyApprovalTarget(
+        for card: ApprovalActivity,
+        in queued: [ApprovalActivity]
+    ) -> LegacyApprovalTarget {
+        if queued.isEmpty { return .noLongerPending }
+        let identified = queued.filter { $0.requestId != nil }
+        if identified.isEmpty { return .sessionQueue }
+        let description = collapsedWhitespace(card.description)
+        if card.command.isEmpty, description == redactedApprovalPushDescription {
+            // A redacted push names nothing to match: answerable only when
+            // one request is queued; with more, the queue's own cards show.
+            guard identified.count == 1, let requestId = identified[0].requestId else { return .ambiguous }
+            return .request(requestId)
+        }
+        let command = card.command.trimmingCharacters(in: .whitespacesAndNewlines)
+        // The parser trims the push text, so a cut that ended on a space
+        // arrives one shorter than the limit.
+        let clipped = card.command.isEmpty
+            && description.unicodeScalars.count >= approvalPushDescriptionLimit - 1
+        let matches = identified.filter { entry in
+            let queuedDescription = collapsedWhitespace(entry.description)
+            let sameDescription = queuedDescription == description
+                || (clipped && queuedDescription.unicodeScalars.starts(with: description.unicodeScalars))
+            return sameDescription
+                && (command.isEmpty
+                    || entry.command.trimmingCharacters(in: .whitespacesAndNewlines) == command)
+        }
+        guard let requestId = matches.first?.requestId else { return .noLongerPending }
+        if Set(matches.map(\.command)).count > 1 { return .ambiguous }
+        return .request(requestId)
+    }
+
+    /// Text as the notifier sends it: whitespace runs collapsed to one
+    /// space, ends trimmed.
+    private static func collapsedWhitespace(_ text: String) -> String {
+        text.split(whereSeparator: \.isWhitespace).joined(separator: " ")
+    }
+
+    /// `shown` is the approval as the card drew it when the person tapped.
+    /// When the card has since changed to ask something else (a legacy card
+    /// is updated in place by the next command), nothing is sent: the card
+    /// on screen already shows the new question to answer.
+    func respondToApproval(messageId: String, choice: String, shown: ApprovalActivity? = nil) async {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }),
+              let current = messages[index].approval,
+              current.status == .pending || current.status == .error else { return }
+        if let shown, !current.asksSameAs(shown) { return }
+        let decisionKey = SessionPresentationCache.decisionKey(for: messages[index])
+
+        let submissionIdentity = current.requestId.map { ApprovalSubmissionIdentity.identified($0) }
+            ?? ApprovalSubmissionIdentity.legacy(current.sessionId)
+        liveApprovalSubmissions.insert(submissionIdentity)
+        defer {
+            liveApprovalSubmissions.remove(submissionIdentity)
+        }
+
+        messages[index].approval?.status = .submitting
+        messages[index].approval?.choice = choice
+        messages[index].approval?.error = nil
+        setRunning(true)
+        cacheMessagePresentation()
+
+        guard let client else {
+            messages[index].approval?.status = .error
+            messages[index].approval?.choice = nil
+            messages[index].approval?.error = AppLocalization.string("Gateway connection is unavailable.")
+            cacheMessagePresentation()
+            return
+        }
+        // Ownership snapshot: the completion below may only land while this
+        // exact client (and profile) still owns AppState. A client/server
+        // replacement while the RPC is suspended must turn the stale
+        // continuation inert — success and failure alike — even when profile,
+        // session, and message ids collide across the two connections. This
+        // is the same fence `loadProjects`/`synchronizeTransportContinuation`
+        // use; only client ownership changed here, so no epoch beyond the
+        // pointer identity is needed.
+        let profile = activeProfile
+        let conversationProfile = presentationProfile(for: current.sessionId)
+        var answeredRequestId = current.requestId
+        if current.requestId == nil {
+            let target = await legacyApprovalTarget(for: current, using: client, profile: conversationProfile)
+            guard profile == activeProfile, self.client === client,
+                  let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
+                  SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
+            // The next command replaced the card while the queue was read:
+            // a session-queue answer would go to it. Nothing is sent.
+            if rearmIfReplaced(at: updatedIndex, asking: current) { return }
+            switch target {
+            case .sessionQueue:
+                break
+            case .request(let requestId):
+                answeredRequestId = requestId
+            case .noLongerPending:
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active.")
+                cacheMessagePresentation()
+                schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
+                return
+            case .ambiguous:
+                // Back to pending, so the queue's identified cards, each
+                // with its command, replace this one.
+                messages[updatedIndex].approval?.status = .pending
+                messages[updatedIndex].approval?.choice = nil
+                cacheMessagePresentation()
+                schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
+                return
+            case .unknown(let reason):
+                // Nothing was sent, so not "Hermes did not accept": why
+                // the queue couldn't be read, and another read to recover.
+                messages[updatedIndex].approval?.status = .error
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = reason
+                cacheMessagePresentation()
+                schedulePendingApprovalsRefresh(
+                    sessionId: current.sessionId,
+                    using: client,
+                    replacingLegacyErrorMessageID: messageId
+                )
+                return
+            }
+        }
+        do {
+            let outcome: HermesClient.ApprovalResponseOutcome
+            if let respondToApproval = chatResumeLifecycleOperations.respondToApproval {
+                outcome = try await respondToApproval(
+                    client,
+                    current.sessionId,
+                    answeredRequestId,
+                    choice,
+                    conversationProfile
+                ) ? .accepted : .noLongerWaiting
+            } else {
+                outcome = try await client.respondToApprovalOutcome(
+                    sessionId: current.sessionId,
+                    requestId: answeredRequestId,
+                    choice: choice,
+                    profile: conversationProfile
+                )
+            }
+            guard profile == activeProfile, self.client === client else { return }
+            guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
+                  SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
+            // A legacy card the next command replaced in flight asks
+            // something this answer never saw.
+            if rearmIfReplaced(at: updatedIndex, asking: current) {
+                schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
+                return
+            }
+            switch outcome {
+            case .accepted:
+                messages[updatedIndex].approval?.status = choice == "deny" ? .rejected : .approved
+            case .noLongerWaiting:
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
+            case .ended:
+                // Its turn ended (stopped, or the chat moved on): not a timeout.
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active.")
+            case .answeredElsewhere:
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.choice = nil
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval was answered elsewhere.")
+            }
+            cacheMessagePresentation()
+            schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
+        } catch {
+            guard profile == activeProfile, self.client === client else { return }
+            guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
+                  SessionPresentationCache.decisionKey(for: messages[updatedIndex]) == decisionKey else { return }
+            if rearmIfReplaced(at: updatedIndex, asking: current) { return }
+            messages[updatedIndex].approval?.status = .error
+            messages[updatedIndex].approval?.choice = nil
+            if Self.isExpiredPromptError(error) {
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
+            } else if HermesClient.isSessionNotFoundError(error) {
+                // The card's runtime is gone (reaped, or re-opened
+                // elsewhere), so nothing waits on this answer any more.
+                messages[updatedIndex].approval?.status = .expired
+                messages[updatedIndex].approval?.error = AppLocalization.string("This approval is no longer active.")
+            } else if let unsent = error as? HermesClient.AnswerNotSent {
+                // Never sent: why Hermes couldn't be reached, and the card
+                // can be answered again.
+                messages[updatedIndex].approval?.error = UserFacingError.message(for: unsent.underlying)
+            } else {
+                messages[updatedIndex].approval?.error = AppLocalization.string("Hermes did not accept that decision.")
+                errorMessage = UserFacingError.message(for: error)
+            }
+            cacheMessagePresentation()
+            if current.requestId == nil {
+                switch messages[updatedIndex].approval?.status {
+                case .error:
+                    schedulePendingApprovalsRefresh(
+                        sessionId: current.sessionId,
+                        using: client,
+                        replacingLegacyErrorMessageID: messageId
+                    )
+                case .expired:
+                    // The legacy request is definitively terminal, so fresh
+                    // identified queued rows can be added without replacing
+                    // or re-arming its expired presentation.
+                    schedulePendingApprovalsRefresh(
+                        sessionId: current.sessionId,
+                        using: client
+                    )
+                default:
+                    break
+                }
+            }
+        }
+    }
+
+    /// When the legacy card at `index` no longer asks what `answered`
+    /// asked (it is updated in place by the next command), it goes back to
+    /// pending for the new question, and true is returned. An identified
+    /// card is the same request whatever its text says now.
+    private func rearmIfReplaced(at index: Int, asking answered: ApprovalActivity) -> Bool {
+        guard answered.requestId == nil,
+              let approval = messages[index].approval, !approval.asksSameAs(answered) else { return false }
+        messages[index].approval?.status = .pending
+        messages[index].approval?.choice = nil
+        messages[index].approval?.error = nil
+        cacheMessagePresentation()
+        return true
+    }
+}
