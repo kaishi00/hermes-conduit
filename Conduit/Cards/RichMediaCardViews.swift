@@ -194,6 +194,7 @@ private struct RichMediaViewer: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.openURL) private var openURL
     @State private var player: AVPlayer?
+    @State private var resumes: AnyCancellable?
 
     var body: some View {
         NavigationStack {
@@ -241,9 +242,27 @@ private struct RichMediaViewer: View {
             RichAudioPlayer.preparePlayback()
             let player = AVPlayer(url: item.url)
             self.player = player
+            // The lease follows the video: playing (again, after a pause or
+            // an interruption) takes it, and a pause, the end of the video
+            // or a failed load hands the audio back while the sheet stays
+            // up, so wake listening only steps aside while it plays.
+            resumes = player.publisher(for: \.timeControlStatus)
+                .dropFirst()
+                .removeDuplicates()
+                .receive(on: DispatchQueue.main)
+                .sink { status in
+                    MainActor.assumeIsolated {
+                        switch status {
+                        case .playing: RichAudioPlayer.preparePlayback()
+                        case .paused: RichAudioPlayer.endPlayback()
+                        default: break
+                        }
+                    }
+                }
             player.play()
         }
         .onDisappear {
+            resumes = nil
             guard let player else { return }
             player.pause()
             RichAudioPlayer.endPlayback()
