@@ -7703,18 +7703,18 @@ none (no Settings caption or doc gives the cadence)
 **Code**
 - Signal: `Conduit/Services/HermesClient.swift` (sendsChangeEvents from `gateway.ready`'s `change_events`, carried over a socket handoff; the `sessions.changed` event), `Conduit/Services/StreamEventParser.swift` (sessionsChanged)
 - Reads: `Conduit/Services/ChatSync.swift` (CatalogChangeSignal, ChatListCatalogFreshness: fallbackInterval and fallbackIntervalFollowingChanges), `Conduit/Services/AppState.swift` (noteCatalogChanged, readPendingCatalogChange, chatListPollTick, refreshCatalogAfterLeavingChat, chatListBecameActive, noteActiveListForChatList)
-- Tests: `ConduitTests/ChatSyncTests.swift` (testSessionsChangedReadsTheCatalog, testAListLeftOnScreenReadsAgainEveryThirtySeconds, testAListFollowingChangeEventsReadsTheCatalogEveryFiveMinutes), `ConduitTests/HermesClientTests.swift` (testGatewayReadyAdvertisesServerRequestsCapability)
+- Tests: `ConduitTests/ChatSyncTests.swift` (testSessionsChangedReadsTheCatalog, testAListLeftOnScreenReadsAgainEveryThirtySeconds, testAListFollowingChangeEventsReadsTheCatalogEveryFiveMinutes, testAChangeHeldByATurnHereKeepsTheThirtySecondRead, testAListChangeWakesTheFirstStepStretchedByLowPower), `ConduitTests/HermesClientTests.swift` (testGatewayReadyAdvertisesServerRequestsCapability, testAModelConfirmTokenSurvivesASocketHandOff)
 
 **Rulings**
 - Each `sessions.changed` reads the catalog, at most every 5 s and never while a turn runs here (its own rows move it the whole time); one held back is read once the wait or the turn ends (#1026).
-- The list's own timed catalog read is a backstop: every 30 s on a gateway without change events, every 5 minutes on one with them. A Hermes from before 0.21.1 watches only its launch profile's chats, so another profile there leans on that backstop for renames and deletions; a chat started elsewhere still shows at once through the registry (2026-11-12, #2267, issue 851).
+- The list's own timed catalog read is a backstop: every 30 s on a gateway without change events, every 5 minutes on one with them, and 30 s again while a change waits on a turn running here. A Hermes from before 0.21.1 watches only its launch profile's chats, so another profile there leans on that backstop for renames and deletions; a chat started elsewhere still shows at once through the registry (2026-11-12, #2267, issue 851).
 - A chat the registry lists and the catalog doesn't reads the catalog at most every 10 s, twice for one state of that chat.
 - Coming back to the app reads a list older than 10 s.
 
 **Open gaps**
 - Hermes broadcasts every served profile's changes to every socket, so a busy bot in another profile reads this profile's catalog every 5 s while it works; the signal carries no profile to tell them apart.
 
-**Checked:** 2026-11-12, #2267 (issue 851).
+**Checked:** 2026-11-12, #2275 (a change held by a turn here keeps the 30 s read; the wake follows Low Power's stretched first step); 2026-11-12, #2267 (issue 851).
 
 ## Reads while a screen shows
 
