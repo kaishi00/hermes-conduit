@@ -1144,8 +1144,8 @@ final class HermesClient: ObservableObject {
     /// names, so every later request about that chat (the send, the
     /// reasoning, Fast and YOLO switches, a model pick, a stop) names it
     /// too, not just the resume: unnamed, it went to the client's own
-    /// profile and came back `not_found`. Kept across reconnects, like
-    /// the chat itself.
+    /// profile and came back `not_found`. A socket handoff and a fresh
+    /// client on the same dashboard (`inheritSessionProfiles`) keep it.
     private var sessionProfiles: [String: String] = [:]
     /// An open approval or clarify prompt's id → its session and the turn
     /// that asked, which the authority's answers name.
@@ -2329,7 +2329,7 @@ final class HermesClient: ObservableObject {
     /// Records the profile `ids` were opened or made under, when it is
     /// another than the client's own; the client's own (or none) forgets
     /// them, so they take the client's scope again. A resume that names no
-    /// profile keeps the one it was sent to.
+    /// profile (nil or blank) keeps the one it was sent to.
     func noteSessionProfile(_ profile: String?, for ids: [String?]) {
         let named = profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         let own = (self.profile ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
@@ -2349,6 +2349,13 @@ final class HermesClient: ObservableObject {
     /// The profile a request about `sessionId` names when it names none.
     func sessionProfile(for sessionId: String) -> String? {
         sessionProfiles[sessionId]
+    }
+
+    /// A fresh client on the same dashboard (a reconnect, a profile
+    /// switch) takes the chats its predecessor knew were another
+    /// profile's, so a Bot Chat not yet opened again still names its own.
+    func inheritSessionProfiles(from predecessor: HermesClient) {
+        sessionProfiles.merge(predecessor.sessionProfiles) { mine, _ in mine }
     }
 
     // MARK: - The session authority's shapes (#1618)
@@ -3053,7 +3060,8 @@ final class HermesClient: ObservableObject {
         noteAuthorityFences(fromSnapshot: object, sessionId: sessionId)
         // The profile the resume went to: the one named, else the one
         // `scopeParams` named for this chat. Only a named profile changes it.
-        noteSessionProfile(profile ?? sessionProfiles[sessionId], for: [
+        let named = profile?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? profile : nil
+        noteSessionProfile(named ?? sessionProfiles[sessionId], for: [
             sessionId, object["session_id"]?.stringValue,
             object["stored_session_id"]?.stringValue, object["storedSessionId"]?.stringValue,
             object["session_key"]?.stringValue

@@ -22414,6 +22414,9 @@ final class AppState: ObservableObject {
         guard refreshTransportContinuation() else { return }
         let profile = activeProfile
         let client = makeClient(connection: connection, profile: profile)
+        // The same dashboard: a Bot Chat this client hasn't opened again
+        // still names the bot's profile.
+        if let previousClient { client.inheritSessionProfiles(from: previousClient) }
         self.client = client
         previousClient?.disconnect()
 
@@ -36388,6 +36391,7 @@ final class AppState: ObservableObject {
             let freshConnection = HermesConnection(baseUrl: savedConnection.baseUrl, ticket: ticket)
             previousClient = client
             let nextClient = makeClient(connection: freshConnection, profile: target)
+            if let previousClient { nextClient.inheritSessionProfiles(from: previousClient) }
             previousMessages = messages
             previousOfflineChatPresentation = offlineChatPresentation
             previousTranscriptDashboardID = activeDashboardID
