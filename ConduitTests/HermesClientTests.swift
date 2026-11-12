@@ -556,6 +556,81 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    /// A gateway serving several profiles on one socket finds a Bot Chat
+    /// only under the profile a request names, so the requests after the
+    /// resume (the reasoning switch, the send) name the bot's profile too;
+    /// unnamed, Hermes answered `config.set` with `not_found`. A resume
+    /// under the client's own profile forgets it.
+    func testRequestsAfterABotChatResumeNameTheBotsProfile() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport, profile: "analyst")
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        func lastRequest() throws -> [String: Any] {
+            try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+            )
+        }
+        func answer(_ request: [String: Any], _ result: [String: Any]) throws {
+            let id = try XCTUnwrap(request["id"] as? Int)
+            let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": result]
+            socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+        }
+
+        func expectSend() -> Gate {
+            let gate = Gate()
+            socket.onSend = { gate.signal() }
+            return gate
+        }
+
+        var sent = expectSend()
+        let openTask = Task<SessionResumeResult, Error> {
+            try await client.openSession("runtime-1", profile: "atlas")
+        }
+        try await sent.wait("the bot chat's session.resume to be sent")
+        try answer(try lastRequest(), ["session_id": "runtime-1", "stored_session_id": "stored-1", "messages": [Any]()])
+        _ = try await awaitResult(of: openTask, "the bot chat's resume response")
+        XCTAssertEqual(client.sessionProfile(for: "runtime-1"), "atlas")
+        XCTAssertEqual(client.sessionProfile(for: "stored-1"), "atlas")
+
+        sent = expectSend()
+        let reasoningTask = Task { try await client.setReasoning("runtime-1", effort: "high") }
+        try await sent.wait("the reasoning config.set to be sent")
+        let reasoning = try lastRequest()
+        XCTAssertEqual(reasoning["method"] as? String, "config.set")
+        let reasoningParams = try XCTUnwrap(reasoning["params"] as? [String: Any])
+        XCTAssertEqual(
+            reasoningParams["profile"] as? String, "atlas",
+            "the bot chat's reasoning switch names the bot's profile, not the client's"
+        )
+        try answer(reasoning, ["key": "reasoning", "value": "high"])
+        try await reasoningTask.value
+
+        // Another chat keeps the client's own scope.
+        sent = expectSend()
+        let otherTask = Task { try await client.setReasoning("runtime-2", effort: "low") }
+        try await sent.wait("another chat's config.set to be sent")
+        let other = try lastRequest()
+        XCTAssertEqual((other["params"] as? [String: Any])?["profile"] as? String, "analyst")
+        try answer(other, ["key": "reasoning", "value": "low"])
+        try await otherTask.value
+
+        // Opened again under the client's own profile, it takes that scope.
+        sent = expectSend()
+        let reopenTask = Task<SessionResumeResult, Error> {
+            try await client.openSession("runtime-1", profile: nil)
+        }
+        try await sent.wait("the plain session.resume to be sent")
+        try answer(try lastRequest(), ["session_id": "runtime-1", "messages": [Any]()])
+        _ = try await awaitResult(of: reopenTask, "the plain resume response")
+        XCTAssertNil(client.sessionProfile(for: "runtime-1"))
+        client.disconnect()
+    }
+
     func testExplicitProfileInParamsWinsOverClientScope() async throws {
         let transport = FakeTransport()
         let socket = FakeSocket()
