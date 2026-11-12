@@ -648,6 +648,18 @@ final class HermesClientTests: XCTestCase {
         try answer(after, ["key": "reasoning", "value": "low"])
         try await afterTask.value
 
+        // A blank profile is no profile: the resume still goes to the bot's.
+        sent = expectSend()
+        let blankTask = Task<SessionResumeResult, Error> {
+            try await client.openSession("runtime-1", profile: "  ")
+        }
+        try await sent.wait("the blank-profile session.resume to be sent")
+        let blank = try lastRequest()
+        XCTAssertEqual((blank["params"] as? [String: Any])?["profile"] as? String, "atlas")
+        try answer(blank, ["session_id": "runtime-1", "messages": [Any]()])
+        _ = try await awaitResult(of: blankTask, "the blank-profile resume response")
+        XCTAssertEqual(client.sessionProfile(for: "runtime-1"), "atlas")
+
         // Opened again under the client's own profile, it takes that scope.
         sent = expectSend()
         let ownTask = Task<SessionResumeResult, Error> {
