@@ -425,7 +425,7 @@ class Source:
                                 if re.match(r"final class AppState\b", l))
         # the class's closing brace: first line after the start back at depth 0
         k = self.class_start + 1
-        while self.depths[k + 1] != 0 or not self.lines[k].startswith("}"):
+        while k + 1 < len(self.lines) and (self.depths[k + 1] != 0 or not self.lines[k].startswith("}")):
             k += 1
         self.class_end = k
         self.header_end = next(k for k, l in enumerate(self.lines) if l.startswith("import "))
@@ -443,6 +443,13 @@ class Source:
         self.outer_after, _ = segment(self.lines, self.masked, self.depths,
                                       self.class_end + 1, len(self.lines), 0, 0, [])
         self.class_attr_start = cs
+        for it in self.outer_before + self.outer_after:
+            if it.kind == "extension":
+                close = it.end - 1
+                while not self.lines[close].startswith("}"):
+                    close -= 1
+                it.inner, _ = segment(self.lines, self.masked, self.depths,
+                                      it.decl_line + 1, close, 1, 4, [])
 
 
 def steps_upto(n):
@@ -563,7 +570,7 @@ def plan_access(src, file_items):
     widened = []
     for f, items in file_items.items():
         for it in items:
-            member = it in src.body
+            member = it in src.body or it.kind == "extension"
             for d in decl_lines_of(it):
                 line = src.lines[d.decl_line]
                 mods = getattr(d, "mods", None)
@@ -663,16 +670,29 @@ def render_app_state(src, moved, changes):
     for it in outer:
         if it.kind == "mark" and it.region not in outer_left:
             skip.update(range(it.start, it.end))
-    for k, line in enumerate(src.lines):
-        if k in skip:
+    k = 0
+    n = len(src.lines)
+    while k < n:
+        if k not in skip:
+            keep.append(changes.get(k, src.lines[k]))
+            k += 1
             continue
-        keep.append(changes.get(k, line))
-    text = "\n".join(keep)
-    # collapse runs of blank lines a move left behind
-    text = re.sub(r"\n{3,}", "\n\n", text)
-    text = re.sub(r"\{\n\n+", "{\n", text)
-    text = re.sub(r"\n\n+(\s*\})", r"\n\1", text)
-    return text
+        while k < n and k in skip:
+            k += 1
+        # at the edge of a removed run: one blank line at most between what
+        # stays, none after an opening brace or before a closing one
+        while k < n and k not in skip and not src.lines[k].strip() and \
+                (not keep or not keep[-1].strip() or keep[-1].rstrip().endswith("{")):
+            k += 1
+        if k < n and src.lines[k].strip().startswith("}"):
+            while keep and not keep[-1].strip():
+                keep.pop()
+        if keep and keep[-1].rstrip().endswith("{"):
+            while k < n and k not in skip and not src.lines[k].strip():
+                k += 1
+    while keep and not keep[-1].strip():
+        keep.pop()
+    return "\n".join(keep) + "\n"
 
 
 HEADER_NOTES = {
@@ -784,26 +804,33 @@ def run(repo, step, write, pr=None, today=None):
         raise SystemExit("\n".join(report))
     for f, items in moves.items():
         target = repo / SERVICES / f
+        if target.exists() and (not f.startswith("AppState+") or any(it not in src.body for it in items)
+                                or "extension AppState" not in target.read_text()):
+            raise SystemExit(f"{target} already exists; nothing written")
+        if target.exists() and any(f"// MARK: - {it.region.split('#')[0]}\n" in target.read_text()
+                                   for it in items):
+            raise SystemExit(f"{target} already has this step's moves; nothing written")
+    for f, items in moves.items():
+        target = repo / SERVICES / f
         if target.exists():
-            raise SystemExit(f"{target} already exists")
-        target.write_text(render_new_file(src, f, items, changes, HEADER_NOTES.get(f, [])))
+            body = render_new_file(src, f, items, changes, ["-"])
+            block = body[body.index("extension AppState {"):]
+            target.write_text(target.read_text().rstrip("\n") + "\n\n" + block)
+        else:
+            target.write_text(render_new_file(src, f, items, changes, HEADER_NOTES.get(f, [])))
     path.write_text(render_app_state(src, moved, changes))
     where = {}
     for it in src.outer_before + src.body + src.outer_after:
-        if it.kind in ("mark", "tail", "extension"):
+        if it.kind in ("mark", "tail"):
             continue
         dest = f"{SERVICES}/{it.dest}" if it.dest else APP_STATE
-        for n in it.names:
-            if where.get(n, dest) != dest:
-                where[n] = None  # overloads in two files: left to a person
-            else:
-                where[n] = dest
-    for it in src.outer_before + src.outer_after:
-        if it.kind == "extension" and it.dest:
-            for k in range(it.start, it.end):
-                m = re.match(r"    (?:[@\w()]+\s+)*?(?:func|var|let)\s+`?(\w+)", src.masked[k])
-                if m and src.depths[k] == 1:
-                    where[m.group(1)] = f"{SERVICES}/{it.dest}"
+        named = decl_lines_of(it) if it.kind == "extension" else [it]
+        for d in named:
+            for n in d.names:
+                if where.get(n, dest) != dest:
+                    where[n] = None  # overloads in two files: left to a person
+                else:
+                    where[n] = dest
     import datetime
     manual = update_map(repo, {n: d for n, d in where.items() if d},
                         pr, today or datetime.date.today().isoformat())

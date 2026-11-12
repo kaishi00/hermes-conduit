@@ -54,13 +54,28 @@ final class AppState: ObservableObject {
 
     func openChat() {
         note("open")
+        hideRoom()
+        let kept = """
+        first
+
+
+        after two blank lines
+        """
+        _ = kept
     }
 
     init() {}
 }
+
+// MARK: - Rooms
+
+extension AppState {
+    private func hideRoom() {}
+}
 '''
 
-STEPS = [{"AppState+Connection.swift": ["Connection"], "HelperType.swift": ["file:HelperType"]}]
+STEPS = [{"AppState+Connection.swift": ["Connection"], "HelperType.swift": ["file:HelperType"],
+          "AppState+Rooms.swift": ["outer:Rooms"]}]
 
 
 class SplitAppStateTests(unittest.TestCase):
@@ -105,6 +120,31 @@ class SplitAppStateTests(unittest.TestCase):
         self.assertIn("private(set) var readOnly = 0", app, "only read elsewhere")
         self.assertIn("private func note(", app, "only AppState.swift calls it")
         self.assertIn("\nlet lifecycleLog", app)
+
+    def test_widens_a_moved_extensions_members(self):
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        self.assertIn("\n    func hideRoom()", self.read("AppState+Rooms.swift"), "openChat calls it")
+
+    def test_leaves_blank_lines_in_strings_alone(self):
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        self.assertIn("first\n\n\n        after two blank lines", self.read("AppState.swift"))
+
+    def test_refuses_before_writing_anything(self):
+        (self.repo / "Conduit/Services/HelperType.swift").write_text("// already here\n")
+        with self.assertRaises(SystemExit):
+            split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        self.assertFalse((self.repo / "Conduit/Services/AppState+Connection.swift").exists())
+        self.assertEqual((self.repo / split.APP_STATE).read_text(), SOURCE)
+
+    def test_appends_to_an_existing_extension_file(self):
+        (self.repo / "Conduit/Services/AppState+Connection.swift").write_text(
+            "import SwiftUI\n\nextension AppState {\n    func old() {}\n}\n")
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        text = self.read("AppState+Connection.swift")
+        self.assertTrue(text.startswith("import SwiftUI\n\nextension AppState {\n    func old() {}\n}\n\n"
+                                        "extension AppState {\n    // MARK: - Connection"), text)
+        with self.assertRaises(SystemExit):
+            split.run(self.repo, 1, True, pr=42, today="2026-11-12")
 
     def test_points_the_map_at_the_new_file(self):
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")

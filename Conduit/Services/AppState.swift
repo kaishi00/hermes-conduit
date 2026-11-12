@@ -28,6 +28,7 @@ private let speechOwnershipLog = Logger(subsystem: "com.milim.relay", category: 
 
 @MainActor
 final class AppState: ObservableObject {
+
     // MARK: - Connection
 
     @Published var connection: HermesConnection? {
@@ -11049,6 +11050,7 @@ final class AppState: ObservableObject {
         return result
     }
 
+
     /// A live turn's resume rows, read with Hermes' stored rows of the same
     /// chat (`stored`): the ones Hermes has stored take those rows' ids, so
     /// the turn's end, when the stored rows take over, doesn't re-key the
@@ -14830,6 +14832,7 @@ final class AppState: ObservableObject {
             return false
         }
     }
+
 
     /// Runtime-only speech retirement at the server-replacement boundary.
     ///
@@ -19935,6 +19938,7 @@ final class AppState: ObservableObject {
                 )
             }
             return settled
+
         } catch {
             guard automaticChatResumeWorkIsCurrent(
                     automaticWorkToken,
@@ -39162,6 +39166,7 @@ final class AppState: ObservableObject {
             serverCompactingSessionIDs.subtract(stale)
         }
     }
+
 
     /// The `compacted` edge means the gateway just rewrote that
     /// conversation's persisted history — the same server-side rewrite PR

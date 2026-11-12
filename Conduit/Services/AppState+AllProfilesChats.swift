@@ -176,7 +176,7 @@ extension AppState {
         if next != allProfilesCatalog { allProfilesCatalog = next }
     }
 
-    private func updateAllProfilesCatalogRow(_ session: SessionSummary, _ change: (inout SessionSummary) -> Void) {
+    func updateAllProfilesCatalogRow(_ session: SessionSummary, _ change: (inout SessionSummary) -> Void) {
         guard let index = allProfilesCatalog.sessions.firstIndex(where: {
             $0.id == session.id && Self.profilesMatch($0.profile ?? "", session.profile ?? "")
         }) else { return }
@@ -249,7 +249,7 @@ extension AppState {
     // and its result lands in All's list. Nothing here touches the profile
     // in use's catalog or open chat.
 
-    private func archiveOtherProfileSession(_ session: SessionSummary) async -> Bool {
+    func archiveOtherProfileSession(_ session: SessionSummary) async -> Bool {
         let profile = rowProfile(session)
         guard sessionMutationCanStart(hasTransport: dashboardTicketBridge != nil),
               let owner = currentDashboardRuntimeOwner() else { return false }
@@ -269,7 +269,7 @@ extension AppState {
         }
     }
 
-    private func deleteOtherProfileSession(_ session: SessionSummary) async -> Bool {
+    func deleteOtherProfileSession(_ session: SessionSummary) async -> Bool {
         let profile = rowProfile(session)
         let dashboardID = activeDashboardID
         guard sessionMutationCanStart(hasTransport: dashboardTicketBridge != nil),
@@ -310,7 +310,7 @@ extension AppState {
     /// Hermes deleted the chats `sessionIDs` name: their saved copies leave
     /// the phone (#1040), and their rows the profile's kept Artifacts page,
     /// as their own kept lists do (#1533).
-    private func removeSavedCopies(ofDeleted sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
+    func removeSavedCopies(ofDeleted sessionIDs: Set<String>, dashboardID: UUID, profile: String) {
         offlineChatCache.removeTranscripts(sessionIDs: sessionIDs, dashboardID: dashboardID, profile: profile)
         forgetLeftBackfilledTranscripts(dashboardID: dashboardID, sessionIDs: sessionIDs)
         for showMissing in [true, false] {
@@ -322,7 +322,7 @@ extension AppState {
         }
     }
 
-    private func renameOtherProfileSession(_ session: SessionSummary, to title: String) async -> Bool {
+    func renameOtherProfileSession(_ session: SessionSummary, to title: String) async -> Bool {
         let profile = rowProfile(session)
         guard SessionRenameOperation.normalizedTitle(title, currentTitle: session.title) != nil,
               sessionMutationCanStart(hasTransport: dashboardTicketBridge != nil),
