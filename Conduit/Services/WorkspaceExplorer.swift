@@ -28,6 +28,11 @@ final class WorkspaceExplorer: ObservableObject {
     /// Why the latest search failed; a folder's failure is `error`.
     @Published private(set) var searchError: String?
     @Published private(set) var searching = false
+    /// What to do when the open folder's profile has the plugin turned off
+    /// (Hermes answers its routes "Plugin not found", issue 1438): the
+    /// folder browses through Hermes' own listing meanwhile, with no search
+    /// or changes, though the dashboard's own profile reports the routes.
+    @Published private(set) var pluginOff: String?
 
     // The file being viewed.
     @Published private(set) var viewed: WorkspaceEntry?
@@ -50,8 +55,9 @@ final class WorkspaceExplorer: ObservableObject {
 
     var root: String? { scope?.root }
 
-    /// Whether the plugin serves search, recent files and file actions.
-    var canChange: Bool { appState?.supportsWorkspaceFiles ?? false }
+    /// Whether the plugin serves search, recent files and file actions for
+    /// the open folder's profile.
+    var canChange: Bool { (appState?.supportsWorkspaceFiles ?? false) && pluginOff == nil }
 
     func attach(_ appState: AppState) {
         self.appState = appState
@@ -74,6 +80,7 @@ final class WorkspaceExplorer: ObservableObject {
         search = nil
         searchError = nil
         searching = false
+        pluginOff = nil
         closeFile()
         let answers = appState.screenAnswers(profile: profile)
         self.answers = answers
@@ -109,6 +116,7 @@ final class WorkspaceExplorer: ObservableObject {
         recent = []
         search = nil
         searchError = nil
+        pluginOff = nil
         closeFile()
     }
 
@@ -203,11 +211,26 @@ final class WorkspaceExplorer: ObservableObject {
         do {
             let listed: [WorkspaceEntry]
             var cut = false
-            if appState.supportsWorkspaceFiles {
-                let listing = try await appState.workspaceFilesClient(profile: scope.profile)
-                    .list(root: scope.root, path: folder, keptIn: answers)
-                listed = listing.entries
-                cut = listing.truncated
+            // Whether this read says if the plugin is on for the profile:
+            // its answer for the open folder, or its refusal for any folder.
+            var askedPlugin = false
+            var remedy: String?
+            // With the plugin off for this profile, a folder in the tree
+            // reads Hermes' listing straight away; the open folder asks the
+            // plugin again each time, so turning it on shows on a refresh.
+            if appState.supportsWorkspaceFiles, pluginOff == nil || folder == scope.root {
+                do {
+                    let listing = try await appState.workspaceFilesClient(profile: scope.profile)
+                        .list(root: scope.root, path: folder, keptIn: answers)
+                    listed = listing.entries
+                    cut = listing.truncated
+                    askedPlugin = folder == scope.root
+                } catch let refused where DashboardTicketBridgeError.pluginOffDetail(of: refused) != nil {
+                    guard isCurrent(ticket, owner, scope.profile) else { return false }
+                    askedPlugin = true
+                    remedy = DashboardTicketBridgeError.pluginOffDetail(of: refused)
+                    listed = try await appState.workspaceDirectoryEntries(at: folder, profile: scope.profile)
+                }
             } else if folder == scope.root, showsKeptRoot,
                       appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
                 // The kept listing waits for the plugin's word, as kept
@@ -222,6 +245,15 @@ final class WorkspaceExplorer: ObservableObject {
             // re-check also covers a switch landing between that answer and
             // this resumption, so no other dashboard's listing merges in.
             guard isCurrent(ticket, owner, scope.profile) else { return false }
+            if askedPlugin, remedy != pluginOff {
+                pluginOff = remedy
+                if remedy != nil {
+                    // Nothing the plugin gave for this profile still shows.
+                    recent = []
+                    search = nil
+                    searchError = nil
+                }
+            }
             entries[folder] = listed
             if cut { truncated.insert(folder) } else { truncated.remove(folder) }
             if folder == scope.root { showsKeptRoot = false }
@@ -242,12 +274,12 @@ final class WorkspaceExplorer: ObservableObject {
     }
 
     private func loadRecent() async {
-        guard let appState, let scope, appState.supportsWorkspaceFiles else { return }
+        guard let appState, let scope, canChange else { return }
         let ticket = generation
         let owner = appState.currentDashboardRuntimeOwner()
         guard let found = try? await appState.workspaceFilesClient(profile: scope.profile)
                 .recent(root: scope.root, keptIn: answers),
-              isCurrent(ticket, owner, scope.profile) else { return }
+              isCurrent(ticket, owner, scope.profile), pluginOff == nil else { return }
         recent = found
     }
 
@@ -255,7 +287,7 @@ final class WorkspaceExplorer: ObservableObject {
     /// the search. Only the latest search's answer shows.
     func runSearch(_ query: String) async {
         let words = query.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard let appState, let scope, appState.supportsWorkspaceFiles, !words.isEmpty else {
+        guard let appState, let scope, canChange, !words.isEmpty else {
             searchRequest = nil
             search = nil
             searchError = nil
