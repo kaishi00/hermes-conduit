@@ -1641,6 +1641,10 @@ private struct ProjectSessionsSheet: View {
     /// sheet is open (CarPlay, a widget) doesn't rename them.
     @State private var detailProfile: String?
     @State private var isLoading = true
+    /// A read that failed with nothing to keep: the sheet says so and offers a
+    /// retry, rather than drawing an empty list. A failed re-read keeps what
+    /// the sheet already lists and leaves this alone.
+    @State private var loadFailed = false
     @State private var sessionPendingDeletion: SessionSummary?
     @State private var sessionPendingRename: SessionSummary?
 
@@ -1664,6 +1668,18 @@ private struct ProjectSessionsSheet: View {
                             .frame(maxWidth: .infinity, minHeight: 140)
                             .listRowBackground(Color.clear)
                             .listRowSeparator(.hidden)
+                    } else if loadFailed, detail == nil {
+                        ContentUnavailableView {
+                            Label(AppLocalization.string("Couldn’t Load Projects", table: .chat), systemImage: "exclamationmark.triangle")
+                        } description: {
+                            Text(AppLocalization.string("Couldn't load this project's conversations."))
+                        } actions: {
+                            Button(AppLocalization.string("Try Again")) {
+                                Task { await load() }
+                            }
+                        }
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
                     } else if let detail, detail.lanes.isEmpty {
                         ContentUnavailableView {
                             Label(AppLocalization.string("No Conversations"), systemImage: "tray")
@@ -1803,7 +1819,12 @@ private struct ProjectSessionsSheet: View {
     private func load() async {
         guard appState.isConnected else { return }
         isLoading = true
+        loadFailed = false
         await loadDetail()
+        // Nothing listed and nothing read: say so, and offer the retry. A read
+        // that failed after an earlier one listed the project keeps those rows
+        // (loadDetail leaves them) and isn't a failure to show.
+        loadFailed = detail == nil
         isLoading = false
     }
 
