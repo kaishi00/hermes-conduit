@@ -7662,14 +7662,14 @@ and the widget's pickers (no status), and no Settings caption or doc names it
 - The open chat's own turn decides its Running once known; Needs approval from the registry outranks it (#454).
 - The dashboard's registry lists every profile's live chats (checked on Hermes 0.22.5, with or without a `profile` param), so another profile's row in All reads it too. A chat left running for one in another profile keeps Running, as one in the same profile does (2026-10-27, #1369, issue #1353).
 - The registry is read while the list or a project's page is on screen. Beside the open chat on a wide window both stay on screen, so the poll keeps running there; one column, a chat pushed over them stops it (2026-10-27, #1369, issue #1353).
-- The poll reads every 4 s while a listed chat's turn runs or the list moved, then 8, 15, 30 and 60 s while nothing does, stretched in Low Power and Low Data Mode up to 180 s. On a gateway that pushes `sessions.changed` (`change_events` in its `gateway.ready`) it goes on to 120 s, since a catalog read that changes the list (as one for that signal does when a turn starts or ends elsewhere) wakes it from a wait past 4 s. Hermes pushes no liveness of its own (its signal leaves out `last_activity_at`, "liveness comes from session.active_list"), so the registry poll stays (2026-11-12, #PRNUM, issue 851).
+- The poll reads every 4 s while a listed chat's turn runs or the list moved, then 8, 15, 30 and 60 s while nothing does, stretched in Low Power and Low Data Mode up to 180 s. On a gateway that pushes `sessions.changed` (`change_events` in its `gateway.ready`) it goes on to 120 s, since a catalog read that changes the list (as one for that signal does when a turn starts or ends elsewhere) wakes it from a wait past 4 s. Hermes pushes no liveness of its own (its signal leaves out `last_activity_at`, "liveness comes from session.active_list"), so the registry poll stays (2026-11-12, #2267, issue 851).
 
 **Open gaps**
 - An approval asked in a chat elsewhere moves no stored row, so on a gateway with change events a quiet list can show it up to 120 s late (its push still comes at once).
 - Rows carry no profile, so a running chat in one profile lights a row of another with the same stored id (a profile copied with its chats) while that turn runs.
 - After a send, the registry can read the turn as not started yet, and the next read comes 4 s later: a chat left within those seconds goes without Running until then.
 
-**Checked:** 2026-11-12, #PRNUM (the poll goes on to 120 s on a gateway that pushes `sessions.changed`, and a catalog read that changed the list wakes it; issue 851); 2026-10-27, #1369.
+**Checked:** 2026-11-12, #2267 (the poll goes on to 120 s on a gateway that pushes `sessions.changed`, and a catalog read that changed the list wakes it; issue 851); 2026-10-27, #1369.
 
 ## Chats list changes made elsewhere
 
@@ -7698,14 +7698,14 @@ none (no Settings caption or doc gives the cadence)
 
 **Rulings**
 - Each `sessions.changed` reads the catalog, at most every 5 s and never while a turn runs here (its own rows move it the whole time); one held back is read once the wait or the turn ends (#1026).
-- The list's own timed catalog read is a backstop: every 30 s on a gateway without change events, every 5 minutes on one with them. A Hermes from before 0.21.1 watches only its launch profile's chats, so another profile there leans on that backstop for renames and deletions; a chat started elsewhere still shows at once through the registry (2026-11-12, #PRNUM, issue 851).
+- The list's own timed catalog read is a backstop: every 30 s on a gateway without change events, every 5 minutes on one with them. A Hermes from before 0.21.1 watches only its launch profile's chats, so another profile there leans on that backstop for renames and deletions; a chat started elsewhere still shows at once through the registry (2026-11-12, #2267, issue 851).
 - A chat the registry lists and the catalog doesn't reads the catalog at most every 10 s, twice for one state of that chat.
 - Coming back to the app reads a list older than 10 s.
 
 **Open gaps**
 - Hermes broadcasts every served profile's changes to every socket, so a busy bot in another profile reads this profile's catalog every 5 s while it works; the signal carries no profile to tell them apart.
 
-**Checked:** 2026-11-12, #PRNUM (issue 851).
+**Checked:** 2026-11-12, #2267 (issue 851).
 
 ## Reads while a screen shows
 
