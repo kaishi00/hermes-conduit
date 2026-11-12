@@ -21,6 +21,31 @@ extension AppState {
         _ = await switchProfile(to: profile, reusing: nil)
     }
 
+    func endProfileSwitch() {
+        isProfileSwitching = false
+        let delay = profileSwitchFollowUpDelay
+        profileSwitchSlideIn = Task { try? await Task.sleep(for: delay) }
+        let waiters = profileSwitchEndWaiters
+        profileSwitchEndWaiters = []
+        for waiter in waiters { waiter.resume() }
+    }
+
+    /// What a follow-up read started now awaits before its request: during
+    /// a profile switch, the switch's end and its slide-in, so its publishes
+    /// land after the animation; nil (start at once) for a chat open, a
+    /// reconnect or a poll. Its own guards still run when it starts.
+    func profileSwitchFollowUpStart() -> (@MainActor () async -> Void)? {
+        guard isProfileSwitching else { return nil }
+        return { [weak self] in await self?.waitOutProfileSwitchSlideIn() }
+    }
+
+    func waitOutProfileSwitchSlideIn() async {
+        if isProfileSwitching {
+            await withCheckedContinuation { profileSwitchEndWaiters.append($0) }
+        }
+        await profileSwitchSlideIn?.value
+    }
+
     func switchProfileForWidget(to profile: String, lease: WidgetLaunchLease) async -> Bool {
         await switchProfile(to: profile, reusing: nil, widgetLease: lease)
     }
@@ -140,7 +165,7 @@ extension AppState {
         let previousSupportsProjects = supportsProjects
         let previousTurnState = turnState
         isProfileSwitching = true
-        defer { isProfileSwitching = false }
+        defer { endProfileSwitch() }
         invalidateReconciliation()
         turnState = .synchronizing
         // The next profile's approval mode is unknown until its first session
@@ -316,8 +341,11 @@ extension AppState {
             // (restoreDisplayPreferences, the busy mode's cache), and the
             // display read alone took over two seconds on a real dashboard,
             // which the switch and a chat opened in the other profile waited
-            // on (#1442).
+            // on (#1442). They start after the slide-in, as the switch's
+            // other reads do: the time zone lands as a publish of its own.
             Task {
+                await waitOutProfileSwitchSlideIn()
+                guard self.client === nextClient else { return }
                 await loadChatResumeBusyInputMode(using: nextClient)
                 guard self.client === nextClient else { return }
                 await loadChatResumeProfileDisplayPreferences()
@@ -346,7 +374,10 @@ extension AppState {
             }
             // The chat it landed on is its own again, not a followed one.
             releaseFollowedChatOnScreen()
-            Task { await loadChatResumeSlashCommands() }
+            Task {
+                await waitOutProfileSwitchSlideIn()
+                await loadChatResumeSlashCommands()
+            }
             return true
         } catch {
             let ownsChat = chatViewportTransitionIsCurrent(generation: transitionGeneration)

@@ -206,6 +206,15 @@ final class AppState: ObservableObject {
     /// (a color drag sets one per tick) never samples the photos again.
     var profileGlowPalettes: (avatarRevision: Int, byURL: [URL: [ProfileGlowRGB]]) = (0, [:])
     @Published var isProfileSwitching = false
+    /// How long a profile switch's follow-up reads wait after it ends: the
+    /// profile strip's slide-in (`ConduitMotion.easeSpring`, response
+    /// 0.5 s), which each publish they make would cost frames. Tests
+    /// shorten it.
+    var profileSwitchFollowUpDelay: Duration = .milliseconds(500)
+    /// The slide-in after the last switch ended, and the follow-ups waiting
+    /// for the running one to end (`waitOutProfileSwitchSlideIn`).
+    var profileSwitchSlideIn: Task<Void, Never>?
+    var profileSwitchEndWaiters: [CheckedContinuation<Void, Never>] = []
     @Published var appIconChoice: AppIconChoice
     @Published var dashboardTicketBridge: DashboardTicketBridge?
     /// Combined dashboards left while connected, each still holding its

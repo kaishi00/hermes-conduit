@@ -393,7 +393,11 @@ struct KanbanView: View {
         _store = State(initialValue: store)
     }
 
-    @EnvironmentObject private var appState: AppState
+    /// AppState's changes as the board's screen passes them on
+    /// (`V2ShownUpdates`): V2's Tasks holds them back while another tab is
+    /// up; the drawer's board takes each (`SidebarKanbanView`).
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @State private var store: KanbanStore
     /// The dashboard (`serverIdentityKey`) the store was last pointed at.
     /// The board shows only once it matches, so nothing the store held

@@ -146,6 +146,7 @@ final class KanbanColumnBoardTests: XCTestCase {
         let host = UIHostingController(
             rootView: KanbanView(columnsLayout: true, store: store)
                 .padding(.horizontal, 14)
+                .environmentObject(V2ShownUpdates(appState))
                 .environmentObject(appState)
         )
         let window = UIWindow(frame: CGRect(x: 0, y: 0, width: 402, height: 874))

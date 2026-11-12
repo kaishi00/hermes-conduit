@@ -150,7 +150,7 @@ struct SidebarView: View {
                         case .cron:
                             CronList()
                         case .kanban:
-                            KanbanView()
+                            SidebarKanbanView(appState: appState)
                         }
                     }
                     .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -173,6 +173,21 @@ struct SidebarView: View {
             // Explicitly migrate removed raw values such as Capabilities.
             selectedTabRaw = SidebarTab.migrated(rawValue: selectedTabRaw).rawValue
         }
+    }
+}
+
+/// The drawer's board takes each AppState change as it comes: it shows only
+/// while its tab is picked, so nothing holds the changes back.
+private struct SidebarKanbanView: View {
+    @StateObject private var updates: V2ShownUpdates
+
+    init(appState: AppState) {
+        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+    }
+
+    var body: some View {
+        KanbanView()
+            .environmentObject(updates)
     }
 }
 

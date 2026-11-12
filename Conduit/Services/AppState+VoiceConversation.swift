@@ -473,8 +473,12 @@ extension AppState {
         // touched starts with it on, and with defaults that need nothing
         // installed (below). A switch the user turned off stays off.
         let isFirstVoiceSetup = defaults.object(forKey: enabledKey) == nil
-        isVoiceEnabled = persistedVoiceEnabled(profile: profile)
-        appleSpeechAvailability = AppleOnDeviceSpeechTranscriber.currentAvailability()
+        // Only what changed is written: a refresh is mostly a no-op, and
+        // each write is a full SwiftUI pass.
+        let enabled = persistedVoiceEnabled(profile: profile)
+        if isVoiceEnabled != enabled { isVoiceEnabled = enabled }
+        let availability = AppleOnDeviceSpeechTranscriber.currentAvailability()
+        if appleSpeechAvailability != availability { appleSpeechAvailability = availability }
         let service = HermesVoiceConfigurationService(
             requester: voiceCapabilityRequesterForTesting ?? bridge,
             profile: profile,
@@ -487,7 +491,8 @@ extension AppState {
             await applyFirstVoiceSetupDefaults(profile: profile, service: service)
             guard profile == activeProfile, bridge === dashboardTicketBridge else { return }
         }
-        voiceCapabilitySnapshot = service.snapshot.capability
+        let capability = service.snapshot.capability
+        if voiceCapabilitySnapshot != capability { voiceCapabilitySnapshot = capability }
         var preferences = loadVoiceProfilePreferences(profile: profile)
         // PR #159 authority, enforced centrally: while the controller owns a
         // live Voice session for THIS profile, its live mute is
@@ -498,12 +503,20 @@ extension AppState {
            voiceControllerSessionProfile == profile {
             preferences.outputMuted = voiceConversationController.isOutputMuted
         }
-        voiceTranscriptionMode = preferences.resolvedTranscriptionMode
-        voiceSpeechOutputChoice = preferences.speechOutput
-        continuousConversationEnabled = preferences.continuousConversation
-        keepVoiceListeningWhenLocked = preferences.keepListeningWhenLocked ?? false
-        voicePushToTalkEnabled = preferences.pushToTalk ?? false
-        chatVoiceButtonOverride = preferences.chatVoiceButton
+        if voiceTranscriptionMode != preferences.resolvedTranscriptionMode {
+            voiceTranscriptionMode = preferences.resolvedTranscriptionMode
+        }
+        if voiceSpeechOutputChoice != preferences.speechOutput { voiceSpeechOutputChoice = preferences.speechOutput }
+        if continuousConversationEnabled != preferences.continuousConversation {
+            continuousConversationEnabled = preferences.continuousConversation
+        }
+        if keepVoiceListeningWhenLocked != (preferences.keepListeningWhenLocked ?? false) {
+            keepVoiceListeningWhenLocked = preferences.keepListeningWhenLocked ?? false
+        }
+        if voicePushToTalkEnabled != (preferences.pushToTalk ?? false) {
+            voicePushToTalkEnabled = preferences.pushToTalk ?? false
+        }
+        if chatVoiceButtonOverride != preferences.chatVoiceButton { chatVoiceButtonOverride = preferences.chatVoiceButton }
         voiceConversationController.setProfilePreferences(preferences)
         // Voice settings shows this profile's unsaved calls, not the last one's.
         publishVoiceCallSaveStatus()

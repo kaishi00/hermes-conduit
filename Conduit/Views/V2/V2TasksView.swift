@@ -10,9 +10,13 @@
 
 import SwiftUI
 
-struct V2TasksView: View {
+struct V2TasksView: View, Equatable {
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @EnvironmentObject private var appState: AppState
+    /// Followed through `updates`, which holds AppState's changes back
+    /// while another tab is up: a hidden board redrew on every publish, a
+    /// profile switch's dozens included.
+    private let appState: AppState
+    @StateObject private var updates: V2ShownUpdates
     @Environment(\.v2Shell) private var shell
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection
@@ -23,6 +27,16 @@ struct V2TasksView: View {
     enum Segment: String, Hashable {
         case board
         case scheduled
+    }
+
+    init(appState: AppState) {
+        self.appState = appState
+        _updates = StateObject(wrappedValue: V2ShownUpdates(appState))
+    }
+
+    /// Redrawn by its own changes only; the shell redraws on every publish.
+    nonisolated static func == (lhs: V2TasksView, rhs: V2TasksView) -> Bool {
+        lhs.appState === rhs.appState
     }
 
     private var segment: Binding<Segment> {
@@ -58,6 +72,10 @@ struct V2TasksView: View {
                 if abs(width - pageWidth) > 0.5 { pageWidth = width }
             }
             .v2ProfileSwitchContent()
+            .environmentObject(updates)
+        }
+        .onChange(of: shell.isTabActive, initial: true) { _, shown in
+            updates.isShown = shown
         }
         // The control rides in the header, so the pages scroll under one
         // soft edge, as a chat does under its header, instead of stopping
@@ -118,7 +136,10 @@ struct V2ScheduledList: View {
     // chat's own row does: a name cut to one line is no use at that size.
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @ObservedObject var appLanguage = AppLanguageStore.shared
-    @EnvironmentObject private var appState: AppState
+    /// The tab's updates (`V2ShownUpdates`): the list waits while another
+    /// tab is up.
+    @EnvironmentObject private var updates: V2ShownUpdates
+    private var appState: AppState { updates.appState }
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.v2Shell) private var shell
     @State private var selectedJob: CronJob?
