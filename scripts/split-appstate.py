@@ -519,8 +519,23 @@ MUTATION = (r"(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\s*(=(?!=)|\+=|-=|\*=|/=|\|=|&=|\
             r"swapAt|replaceSubrange|reserveCapacity|shuffle)\b")
 
 
+# `mutating func` names the app declares (set by run): calling one through a
+# `private(set)` property writes it, like `sessionCatalogLoadState.reset()`.
+APP_MUTATING = set()
+
+
+def mutating_names(repo):
+    names = set()
+    for p in sorted((repo / "Conduit").rglob("*.swift")) + sorted((repo / "Shared").rglob("*.swift")):
+        names.update(re.findall(r"\bmutating\s+func\s+(\w+)", p.read_text(errors="replace")))
+    return names
+
+
 def writes(masked_lines, name):
-    pat = re.compile(r"(?<![\w.])(self\.)?" + re.escape(name) + r"\b(?=" + MUTATION + r")"
+    mutation = MUTATION
+    if APP_MUTATING:
+        mutation += r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(" + "|".join(sorted(APP_MUTATING)) + r")\b(?!\s*:)"
+    pat = re.compile(r"(?<![\w.])(self\.)?" + re.escape(name) + r"\b(?=" + mutation + r")"
                      r"|&(self\.)?" + re.escape(name) + r"\b")
     return any(pat.search(l) for l in masked_lines)
 
@@ -839,6 +854,8 @@ def run(repo, step, write, pr=None, today=None):
         file_items[f] = items
     # files that already exist and aren't written by this run can't see
     # AppState.swift's private names, so they need nothing.
+    APP_MUTATING.clear()
+    APP_MUTATING.update(mutating_names(repo))
     changes, widened = plan_access(src, file_items)
     report = []
     for f, items in moves.items():

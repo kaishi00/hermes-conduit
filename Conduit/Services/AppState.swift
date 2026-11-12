@@ -473,7 +473,7 @@ final class AppState: ObservableObject {
     @Published private(set) var isRefreshingSessionCatalog = false
     /// Whether `sessions` is the catalog Hermes answered for the dashboard
     /// profile on screen (see SessionCatalogLoad.swift).
-    @Published private(set) var sessionCatalogLoadState = SessionCatalogLoadState()
+    @Published var sessionCatalogLoadState = SessionCatalogLoadState()
 
     var sessionCatalogOwner: SessionCatalogOwner {
         SessionCatalogOwner(dashboardID: activeDashboardID, profile: activeProfile)

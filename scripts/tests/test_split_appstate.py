@@ -195,6 +195,30 @@ final class AppState: ObservableObject {
         self.assertIn("    // MARK: - Stars (#757)\n\n    var starred", app,
                       "a MARK whose code moved keeps its blank line")
 
+    def test_a_mutating_call_counts_as_a_write(self):
+        (self.repo / "Shared/LoadState.swift").write_text(
+            "struct LoadState {\n    var n = 0\n    mutating func reset() { n = 0 }\n}\n")
+        (self.repo / split.APP_STATE).write_text('''import SwiftUI
+
+@MainActor
+final class AppState: ObservableObject {
+    // MARK: - Connection
+
+    private(set) var loadState = LoadState()
+    private(set) var other = LoadState()
+
+    func connect() {
+        loadState.reset()
+        _ = other.n
+    }
+}
+''')
+        split.STEPS = [{"AppState+Connection.swift": ["Connection"]}]
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        app = self.read("AppState.swift")
+        self.assertIn("\n    var loadState = LoadState()", app)
+        self.assertIn("private(set) var other = LoadState()", app)
+
     def test_points_the_map_at_the_new_file(self):
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")
         text = (self.repo / split.MAP).read_text()
