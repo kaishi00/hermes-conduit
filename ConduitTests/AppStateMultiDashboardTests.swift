@@ -2052,8 +2052,9 @@ extension AppStateMultiDashboardTests {
     /// chat's and the projects' folders, latest first, for its dashboard
     /// and profile only, named by its last part (a Windows path's too),
     /// and Remove from List takes it out.
-    func testAnOpenedFolderIsListedForItsDashboardAndProfile() {
-        let (appState, _, _) = heldSwitchFixture()
+    func testAnOpenedFolderIsListedForItsDashboardAndProfile() async {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = appState.activeDashboardID
         let profile = appState.workspaceProfile
         appState.rememberOpenedWorkspaceFolder("/srv/old", profile: profile)
         appState.rememberOpenedWorkspaceFolder(#"C:\dev\Site"#, profile: profile)
@@ -2066,6 +2067,11 @@ extension AppStateMultiDashboardTests {
         appState.forgetOpenedWorkspaceFolder("/srv/old", profile: profile)
         XCTAssertEqual(appState.openedWorkspaceFolders(profile: profile), [#"C:\dev\Site"#])
 
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertTrue(appState.openedWorkspaceFolders(profile: profile).isEmpty, "another server lists its own")
+        appState.rememberOpenedWorkspaceFolder("/home/vps", profile: profile)
+        if let mac { await appState.switchDashboard(to: mac) }
+        XCTAssertEqual(appState.openedWorkspaceFolders(profile: profile), [#"C:\dev\Site"#])
     }
 
     /// Each file opened gets a tab (issue 1438), kept while the sheet

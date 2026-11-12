@@ -147,6 +147,14 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertFalse(WorkspaceExplorer.canMove("/w/docs/a.md", into: "/w/docs"), "already there")
         XCTAssertFalse(WorkspaceExplorer.canMove("/w/docs", into: "/w/docs"))
         XCTAssertFalse(WorkspaceExplorer.canMove("/w/docs", into: "/w/docs/sub"), "into itself")
+        // A Windows host's paths, with backslashes.
+        XCTAssertTrue(WorkspaceExplorer.canMove(#"C:\dev\Site\a.md"#, into: #"C:\dev\Site\out"#))
+        XCTAssertFalse(WorkspaceExplorer.canMove(#"C:\dev\Site\docs"#, into: #"C:\dev\Site\docs\sub"#), "into itself")
+        XCTAssertTrue(AppState.workspacePath(#"C:\dev\Site\a.md"#, isIn: #"C:\dev\Site"#))
+        XCTAssertFalse(AppState.workspacePath(#"C:\dev\Site2\a.md"#, isIn: #"C:\dev\Site"#))
+        XCTAssertFalse(AppState.workspacePath(#"/w/odd\name"#, isIn: "/w/odd"), "a POSIX name may hold a backslash")
+        XCTAssertEqual(AppState.workspaceName(#"C:\dev\Site\a.md"#), "a.md")
+        XCTAssertEqual(AppState.workspaceName(#"/w/odd\name"#), #"odd\name"#)
 
         XCTAssertEqual(WorkspaceDrag.reference(to: ["/w/a.md", "/w/My Notes/b.md"]), "/w/a.md `/w/My Notes/b.md`")
         XCTAssertEqual(WorkspaceDrag.appending("/w/a.md", to: "Read"), "Read /w/a.md")

@@ -79,7 +79,7 @@ final class WorkspaceExplorer: ObservableObject {
     static func canMove(_ source: String, into folder: String) -> Bool {
         let from = AppState.normalizedWorkspacePath(source)
         let to = AppState.normalizedWorkspacePath(folder)
-        guard to != from, !to.hasPrefix(from.hasSuffix("/") ? from : from + "/") else { return false }
+        guard to != from, !AppState.workspacePath(to, isIn: from) else { return false }
         return AppState.parentWorkspacePath(from).map(AppState.normalizedWorkspacePath) != to
     }
 
@@ -215,8 +215,7 @@ final class WorkspaceExplorer: ObservableObject {
     /// Whether `path` is in the open folder.
     func contains(_ path: String) -> Bool {
         guard let root else { return false }
-        let base = AppState.normalizedWorkspacePath(root)
-        return path == base || path.hasPrefix(base.hasSuffix("/") ? base : base + "/")
+        return AppState.workspacePath(path, isIn: root)
     }
 
     // MARK: - Reading
@@ -513,6 +512,7 @@ final class WorkspaceExplorer: ObservableObject {
             guard isCurrent(ticket, owner, scope.profile) else { return nil }
             Haptics.success()
             await refresh()
+            dropGoneTabs()
             return nil
         } catch {
             guard isCurrent(ticket, owner, scope.profile) else { return nil }
@@ -521,12 +521,29 @@ final class WorkspaceExplorer: ObservableObject {
         }
     }
 
-    /// The viewed file after a save, its new date the next save checks.
+    /// After a rename, move or delete: a tab, or the copied entry, whose
+    /// folder was just read and no longer lists it goes, so it never opens
+    /// a file that isn't there. A tab with unsaved changes stays.
+    private func dropGoneTabs() {
+        guard let root else { return }
+        let base = AppState.normalizedWorkspacePath(root)
+        let read = Set([root] + expanded)
+        func gone(_ path: String) -> Bool {
+            let parent = (path as NSString).deletingLastPathComponent
+            let folder = parent == base ? root : parent
+            guard read.contains(folder), let listed = entries[folder] else { return false }
+            return !listed.contains { $0.path == path }
+        }
+        openFiles.removeAll { gone($0.path) && !keepsOpen.contains($0.path) }
+        if let copied, gone(copied.path) { self.copied = nil }
+    }
+
     /// Takes `path`'s tab away; the sheet shows another or closes.
     func closeTab(_ path: String) {
         openFiles.removeAll { $0.path == path }
     }
 
+    /// The viewed file after a save, its new date the next save checks.
     func saved(_ entry: WorkspaceEntry, text: String) {
         if let index = openFiles.firstIndex(where: { $0.path == entry.path }) { openFiles[index] = entry }
         guard viewed?.path == entry.path else { return }
