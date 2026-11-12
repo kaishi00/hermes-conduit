@@ -716,6 +716,70 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         box.client.disconnect()
     }
 
+    /// Issue 1727: the registry probe goes out beside the health ping
+    /// instead of after it, and its rows count only once the ping passed.
+    func testForegroundProbeOverlapsTheHealthPing() async {
+        let active = session("stored-a")
+        let healthGate = LifecycleSuspension()
+        var probeCount = 0
+        var probesBeforeHealthAnswered: Int?
+        var resumeCount = 0
+        let harness = makeHarness(
+            lifecycleOperations: ChatResumeLifecycleOperations(
+                openSession: { _, sessionID, _ in
+                    resumeCount += 1
+                    return SessionResumeResult(
+                        sessionId: sessionID,
+                        messages: [],
+                        snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                    )
+                },
+                persistedTranscript: { _, _, _ in
+                    .payload([
+                        "messages": [
+                            ["id": "user", "role": "user", "content": "Question", "timestamp": "1"]
+                        ],
+                        "pagination": ["limit": 120, "offset": 0, "order": "latest", "returned": 1]
+                    ])
+                },
+                refreshContext: { _, _ in },
+                verifyTransportHealth: { _ in
+                    await healthGate.suspend()
+                    probesBeforeHealthAnswered = probeCount
+                },
+                probeActiveSessions: { _ in
+                    probeCount += 1
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                }
+            )
+        )
+        let box = await installConnectedClient(into: harness)
+        harness.appState.sessions = [active]
+        harness.appState.activeSessionId = active.id
+        let opened = await harness.appState.openSession(active.id)
+        XCTAssertTrue(opened)
+        probeCount = 0
+        harness.appState.handleStreamEvent(.sessionBusy(sessionId: active.id, busy: true))
+        let resumesBeforeForeground = resumeCount
+
+        harness.appState.handleScenePhase(.background)
+        let activation = harness.appState.handleScenePhase(.active)
+        await healthGate.waitUntilSuspended()
+        for _ in 0..<50 where probeCount == 0 { await Task.yield() }
+        healthGate.resume()
+        if let activation { await activation.value }
+
+        XCTAssertEqual(probesBeforeHealthAnswered, 1, "The probe must go out while the ping is still out")
+        XCTAssertEqual(probeCount, 1, "One registry read serves the foreground")
+        XCTAssertEqual(resumeCount, resumesBeforeForeground, "A healthy foreground must never issue session.resume")
+        XCTAssertEqual(harness.appState.turnState, .running)
+        box.client.disconnect()
+    }
+
     // MARK: - One chat on two devices (ChatSync.swift)
 
     /// What the server holds for "stored-a", and the clock the open chat's
@@ -9355,6 +9419,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let savedOlder = session("stored-b")
         let healthGate = LifecycleSuspension()
         var mintCount = 0
+        var probeReads = 0
         var openedSessionIDs: [String] = []
         let harness = makeHarness(
             lifecycleOperations: ChatResumeLifecycleOperations(
@@ -9385,7 +9450,18 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
                     await healthGate.suspend()
                     throw URLError(.networkConnectionLost)
                 },
-                probeActiveSessions: { _ in [] },
+                // The probe goes out beside the ping (issue 1727): the busy
+                // row it reads from the socket that then fails must be
+                // thrown away. Reads after the reconnect see nothing running.
+                probeActiveSessions: { _ in
+                    probeReads += 1
+                    guard probeReads == 1 else { return [] }
+                    return [LiveSessionStatus(
+                        runtimeSessionId: "runtime-a",
+                        storedSessionId: "stored-a",
+                        status: "working"
+                    )]
+                },
                 loadProfiles: {},
                 loadBusyInputMode: { _ in },
                 loadProfileDisplayPreferences: {},
@@ -9401,6 +9477,7 @@ final class AppStateForegroundLifecycleTests: XCTestCase {
         let seeded = await harness.appState.openSession(visible.id)
         XCTAssertTrue(seeded, file: file, line: line)
         openedSessionIDs.removeAll()
+        probeReads = 0
         harness.coordinator.rememberSession(.dashboard(profile: "default", sessionID: savedOlder.id), for: "default")
 
         harness.appState.handleScenePhase(.background)

@@ -110,10 +110,8 @@ final class VoiceAudioSessionQueueTests: XCTestCase {
     }
 
     func testCardPlaybackRightAfterReadAloudEndsKeepsTheSessionActive() throws {
-        // Read Aloud stopping queues the deactivation and leaves the
-        // `.playback` category, so the card doesn't see the session as owned
-        // elsewhere and activates it: the queued deactivation must not land
-        // on the card's playback.
+        // Read Aloud stopping queues the deactivation: the card's lease,
+        // taken right after, must not have it land on the card's playback.
         let coordinator = VoiceAudioSessionCoordinator(session: session)
         let lease = try coordinator.acquire(.standalonePlayback)
         drainQueue()
@@ -122,19 +120,20 @@ final class VoiceAudioSessionQueueTests: XCTestCase {
 
         coordinator.release(lease)
         releaseLater(gate)
-        coordinator.activateForCardPlayback()
+        _ = try coordinator.acquire(.mediaPlayback)
         drainQueue()
 
         XCTAssertEqual(backend.ops, [.category(.playback), .activate])
+        XCTAssertEqual(coordinator.appliedPolicy, .mediaPlayback)
     }
 
-    func testCardPlaybackEndDeactivatesOffTheMainThread() {
+    func testCardPlaybackEndDeactivatesOffTheMainThread() throws {
         let coordinator = VoiceAudioSessionCoordinator(session: session)
-        coordinator.activateForCardPlayback()
+        let lease = try coordinator.acquire(.mediaPlayback)
         drainQueue()
         backend.resetOps()
 
-        coordinator.deactivateAfterCardPlayback()
+        coordinator.release(lease)
         drainQueue()
 
         XCTAssertEqual(backend.ops, [.deactivate(.notifyOthersOnDeactivation)])
