@@ -6063,7 +6063,7 @@ enum MessageNormalizer {
             let review = role == .system && displayKind == nil
                 ? reviewActivity(from: obj, eventSessionId: nil)
                 : nil
-            let base = ChatMessage(
+            var base = ChatMessage(
                 id: id,
                 role: role,
                 content: content,
@@ -6078,6 +6078,12 @@ enum MessageNormalizer {
                 rowId: rowId,
                 reactions: messageReactions(fromMetadata: obj["display_metadata"])
             )
+            // A finished-agents notice opens to each agent's result, read
+            // from the report Hermes wrote for the model, and only when no
+            // `display_content` projection replaced it (issue 1553).
+            if displayKind == .asyncDelegationComplete, projectedContent == nil, !isToolResult {
+                base.delegationReport = DelegationReport.parse(extractedContent)
+            }
 
             // External session history occasionally includes a role-less
             // metadata envelope after the last real message. It normalizes to
