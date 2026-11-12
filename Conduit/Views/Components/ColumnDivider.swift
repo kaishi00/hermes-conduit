@@ -118,7 +118,7 @@ struct ColumnDivider: View {
                     .onHover { isHovering = $0 }
                     .onTapGesture(count: 2) { reset() }
                     .gesture(drag)
-                    .macTooltip(AppLocalization.string("Drag to resize. Double-click to reset."))
+                    .macTooltip(AppLocalization.string("Drag to resize. Double-click to reset.", table: .chat))
                     // On the grip, so VoiceOver's frame is as wide as what
                     // a finger finds, not the 1 pt line.
                     .accessibilityElement()

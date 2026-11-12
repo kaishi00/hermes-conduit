@@ -302,7 +302,7 @@ struct ComposerBar: View, Equatable {
     }
 
     static func pastedImageErrorMessage(_ message: String) -> String {
-        AppLocalization.string("Could not paste image: \(message)")
+        AppLocalization.string("Could not paste image: \(message)", table: .chat)
     }
 
     private var hasText: Bool {
@@ -1149,11 +1149,11 @@ struct ComposerBar: View, Equatable {
                 .buttonStyle(.plain)
                 .accessibilityShowsLargeContentViewer {
                     Label(
-                        AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active"),
+                        AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active", table: .chat),
                         systemImage: "person.2"
                     )
                 }
-                .accessibilityLabel(AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active"))
+                .accessibilityLabel(AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active", table: .chat))
             }
 
             if Self.controlsRowShowsDictate(
@@ -1209,8 +1209,8 @@ struct ComposerBar: View, Equatable {
                         .foregroundStyle(.orange)
                 }
                 Text(appState.turnState == .unsupportedGateway
-                     ? AppLocalization.string("Update this Hermes gateway to recover active turns safely.")
-                     : AppLocalization.string("Synchronizing with Hermes before enabling chat controls"))
+                     ? AppLocalization.string("Update this Hermes gateway to recover active turns safely.", table: .chat)
+                     : AppLocalization.string("Synchronizing with Hermes before enabling chat controls", table: .chat))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
@@ -1283,7 +1283,7 @@ struct ComposerBar: View, Equatable {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(takeover.phase == .waiting
-                    ? AppLocalization.string("Stop waiting")
+                    ? AppLocalization.string("Stop waiting", table: .chat)
                     : AppLocalization.string("Dismiss"))
             }
 
@@ -1318,7 +1318,7 @@ struct ComposerBar: View, Equatable {
         case .waiting:
             return takeover.takingOverMessage
         case .ready:
-            return AppLocalization.string("This chat is yours now. Send your message again.")
+            return AppLocalization.string("This chat is yours now. Send your message again.", table: .chat)
         case .failed(let message), .unavailable(let message):
             return message
         case .heldHere:
@@ -1356,7 +1356,7 @@ struct ComposerBar: View, Equatable {
         HStack(spacing: 8) {
             ProgressView()
                 .controlSize(.small)
-            Text(AppLocalization.string("Compressing…"))
+            Text(AppLocalization.string("Compressing…", table: .chat))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
@@ -1487,7 +1487,7 @@ struct ComposerBar: View, Equatable {
                         }
                     }
                 } label: {
-                    Label(AppLocalization.string("Mention a Bot"), systemImage: "at")
+                    Label(AppLocalization.string("Mention a Bot", table: .chat), systemImage: "at")
                 }
             }
         } label: {
@@ -1599,7 +1599,7 @@ struct ComposerBar: View, Equatable {
             .menuIndicator(.hidden)
             .modifier(composerActionChrome)
             .accessibilityLabel(accessibilityLabel)
-            .accessibilityHint(AppLocalization.string("Touch and hold for other ways to send"))
+            .accessibilityHint(AppLocalization.string("Touch and hold for other ways to send", table: .chat))
             .accessibilityAction(named: Text(accessibilityLabel)) {
                 performComposerAction()
             }
@@ -1998,7 +1998,7 @@ struct ComposerBar: View, Equatable {
             Label(AppLocalization.string("Resume call"), systemImage: "phone.arrow.up.right")
         }
         .accessibilityLabel(AppLocalization.string("Resume call"))
-        .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one"))
+        .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one", table: .chat))
     }
 
     /// Opens Voice. A waveform, so it reads as "talk live", apart from the
@@ -2026,7 +2026,7 @@ struct ComposerBar: View, Equatable {
         }
         .accessibilityLabel(Text("Start voice conversation"))
         .accessibilityHint(appState.phoneVoiceUnavailableReason
-            ?? AppLocalization.string("Starts a voice call; in a chat with messages, the call works in that chat"))
+            ?? AppLocalization.string("Starts a voice call; in a chat with messages, the call works in that chat", table: .chat))
     }
 
     /// Tap to dictate into the draft, tap again to stop; the words are
@@ -2081,8 +2081,8 @@ struct ComposerBar: View, Equatable {
         .accessibilityHint(isCapturing
             ? AppLocalization.string("Stops dictating; the words stay in the message")
             : (dictation.isStarting || dictation.isTranscribing ? "" : (appState.isVoiceInUse
-                ? AppLocalization.string("Dictation is unavailable while a voice conversation has the microphone")
-                : AppLocalization.string("Types what you say into the message"))))
+                ? AppLocalization.string("Dictation is unavailable while a voice conversation has the microphone", table: .chat)
+                : AppLocalization.string("Types what you say into the message", table: .chat))))
     }
 
     private func dictateTitle(isCapturing: Bool) -> Text {
@@ -2509,7 +2509,7 @@ struct ComposerBar: View, Equatable {
     }
 
     static var cameraAccessMessage: String {
-        AppLocalization.string("Taking a photo needs camera access. You can allow it in Settings.")
+        AppLocalization.string("Taking a photo needs camera access. You can allow it in Settings.", table: .chat)
     }
 
     /// Asks for camera access first when it hasn't been decided, so a "Don't
@@ -3041,21 +3041,21 @@ struct ComposerBar: View, Equatable {
 
     private var accessibilityLabel: String {
         switch action {
-        case .stop: return AppLocalization.string("Stop response")
-        case .steer: return AppLocalization.string("Steer with message")
-        case .interrupt: return AppLocalization.string("Interrupt and correct response")
-        case .queue: return AppLocalization.string("Queue message")
-        case .send: return AppLocalization.string("Send message")
+        case .stop: return AppLocalization.string("Stop response", table: .chat)
+        case .steer: return AppLocalization.string("Steer with message", table: .chat)
+        case .interrupt: return AppLocalization.string("Interrupt and correct response", table: .chat)
+        case .queue: return AppLocalization.string("Queue message", table: .chat)
+        case .send: return AppLocalization.string("Send message", table: .chat)
         case .unavailable:
-            return showsEmptyDraftSend ? AppLocalization.string("Send message") : AppLocalization.string("Composer unavailable")
+            return showsEmptyDraftSend ? AppLocalization.string("Send message", table: .chat) : AppLocalization.string("Composer unavailable", table: .chat)
         }
     }
 
     private var modelAccessibilityLabel: String {
         let model = appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model
         // Reasoning has its own control beside the model name.
-        let approvals = appState.runtime.yolo ? AppLocalization.string(", auto-approve enabled") : ""
-        let activity = appState.turnState == .running ? AppLocalization.string(", agent working") : ""
+        let approvals = appState.runtime.yolo ? AppLocalization.string(", auto-approve enabled", table: .chat) : ""
+        let activity = appState.turnState == .running ? AppLocalization.string(", agent working", table: .chat) : ""
         return "\(model)\(approvals)\(activity)"
     }
 }

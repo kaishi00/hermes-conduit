@@ -29,8 +29,8 @@ enum ComposerReturnKey {
     /// tell why it's already on.
     static func defaultFootnote(onMac: Bool) -> String {
         sendsByDefault(onMac: onMac)
-            ? AppLocalization.string("On by default on a Mac. Turn it off to make Return insert a new line.")
-            : AppLocalization.string("Off by default on iPhone and iPad.")
+            ? AppLocalization.string("On by default on a Mac. Turn it off to make Return insert a new line.", table: .chat)
+            : AppLocalization.string("Off by default on iPhone and iPad.", table: .chat)
     }
 
     /// What the text view should do with one hardware Return press.

@@ -138,8 +138,8 @@ struct BotScreenUse: Equatable {
     /// it's the chat the sheet opened from, else that chat by name.
     static func controllingLine(_ entry: Entry, openChat: Set<String> = []) -> String {
         entry.isChat(in: openChat)
-            ? AppLocalization.string("This chat is using the screen")
-            : AppLocalization.string("\(name(of: entry, openChat: openChat)) is using the screen")
+            ? AppLocalization.string("This chat is using the screen", table: .bots)
+            : AppLocalization.string("\(name(of: entry, openChat: openChat)) is using the screen", table: .bots)
     }
 
     /// Which bot's screen a chat's menu opens, or nil for none: a Bot
@@ -161,11 +161,11 @@ struct BotScreenUse: Equatable {
     /// the chat the sheet opened from, else its ref, the Bot Chat, or its
     /// title.
     static func name(of entry: Entry, openChat: Set<String> = []) -> String {
-        if entry.isChat(in: openChat) { return AppLocalization.string("this chat") }
+        if entry.isChat(in: openChat) { return AppLocalization.string("this chat", table: .bots) }
         switch entry.kind {
         case "workstream" where !entry.ref.isEmpty: return entry.ref
-        case "bot_chat": return AppLocalization.string("the Bot Chat")
-        default: return entry.title.isEmpty ? AppLocalization.string("another chat") : entry.title
+        case "bot_chat": return AppLocalization.string("the Bot Chat", table: .bots)
+        default: return entry.title.isEmpty ? AppLocalization.string("another chat", table: .bots) : entry.title
         }
     }
 }
@@ -337,7 +337,7 @@ final class BotScreenModel: ObservableObject {
 
     func load() async {
         guard let client else {
-            availability = .failed(AppLocalization.string("Not connected to Hermes."))
+            availability = .failed(AppLocalization.string("Not connected to Hermes.", table: .bots))
             return
         }
         // A hand back that didn't go through when the sheet last closed goes
@@ -384,7 +384,7 @@ final class BotScreenModel: ObservableObject {
 
     func install() async {
         guard let client else {
-            errorText = AppLocalization.string("Not connected to Hermes.")
+            errorText = AppLocalization.string("Not connected to Hermes.", table: .bots)
             return
         }
         installLog = []
@@ -560,7 +560,7 @@ final class BotScreenModel: ObservableObject {
 
     private func perform(_ work: @escaping (HermesClient) async throws -> Void) async {
         guard let client else {
-            errorText = AppLocalization.string("Not connected to Hermes.")
+            errorText = AppLocalization.string("Not connected to Hermes.", table: .bots)
             return
         }
         isBusy = true
@@ -642,8 +642,8 @@ final class BotScreenModel: ObservableObject {
                 installLog = []
             } else {
                 errorText = code == -2
-                    ? AppLocalization.string("This host has no sudo. Run the install command on the host yourself.")
-                    : AppLocalization.string("The install didn't finish. Its log is below.")
+                    ? AppLocalization.string("This host has no sudo. Run the install command on the host yourself.", table: .bots)
+                    : AppLocalization.string("The install didn't finish. Its log is below.", table: .bots)
             }
         default:
             break
@@ -774,7 +774,7 @@ final class BotScreenModel: ObservableObject {
     func pageFailed(_ reason: String, tag: Int?) {
         guard isCurrent(tag), stream == .connecting || stream == .live else { return }
         detach()
-        stream = .lost(reason.isEmpty ? AppLocalization.string("The screen's stream was lost.") : reason)
+        stream = .lost(reason.isEmpty ? AppLocalization.string("The screen's stream was lost.", table: .bots) : reason)
     }
 
     /// The app went to the background: a takeover is handed back, so the
@@ -830,11 +830,11 @@ final class BotScreenModel: ObservableObject {
                 Task { await attach() }
                 return
             }
-            stream = .lost(AppLocalization.string("Someone else took control of the screen."))
+            stream = .lost(AppLocalization.string("Someone else took control of the screen.", table: .bots))
             return
         }
         stream = code == URLSessionWebSocketTask.CloseCode.normalClosure.rawValue
-            ? .idle : .lost(AppLocalization.string("The screen's stream was lost."))
+            ? .idle : .lost(AppLocalization.string("The screen's stream was lost.", table: .bots))
         Task { await load() }
     }
 }

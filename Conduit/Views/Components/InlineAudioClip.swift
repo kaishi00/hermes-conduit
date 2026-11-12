@@ -386,7 +386,7 @@ struct InlineAudioClipView: View {
     private var detailText: String {
         switch problem {
         case .unavailable: return AppLocalization.string("Couldn't open this file")
-        case .unsupported: return AppLocalization.string("Can't play this format here. Open it full screen instead.")
+        case .unsupported: return AppLocalization.string("Can't play this format here. Open it full screen instead.", table: .voice)
         case nil: return openFailed ? AppLocalization.string("Couldn't open this file") : AppLocalization.string("Audio")
         }
     }

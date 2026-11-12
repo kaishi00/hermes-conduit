@@ -1,6 +1,6 @@
 # Home Screen widgets
 
-Conduit provides two medium Home Screen widgets: **Native** and **Conduit-chan**. Both offer the same actions: open or resume the selected conversation, start a new chat, and start Talk. Each widget instance has its own configuration.
+Conduit provides two Home Screen launcher widgets, **Native** and **Conduit-chan**, in small, medium and large. Medium offers three actions: open or resume the selected conversation, start a new chat, and start Talk. Large adds up to four of the workspace's other saved chats (the last one used, then pinned, then recent), each opening in one tap. Small is one tap: it opens the conversation, or a new chat or Talk if you pick that in **Small size opens**. Each widget instance has its own configuration.
 
 The **Pulse** widget (small, medium and large) lists Pulse's newest open cards. **Done** and **Not now** (until later today) work in place, and **Do it** sends the card's message to Hermes with Conduit in the background: to the chat the card came from, or for a card from no chat, to a new chat or to the Bot Chat of the bot picked in Settings > Pulse > Do it. A tap on a card opens it on the Pulse screen. It needs no configuration: it shows the workspace in use, on a dashboard whose plugin serves Pulse.
 
@@ -8,8 +8,8 @@ The **Pulse** widget (small, medium and large) lists Pulse's newest open cards. 
 
 1. Keep Conduit installed and open it after adding or changing a workspace or conversation. The app publishes the local list used by the widget configuration picker.
 2. Touch and hold the Home Screen, choose **Add Widget**, and search for **Conduit**.
-3. Add **Native**, **Conduit-chan**, or both. These entries currently support the medium size on iPhone and iPad. To add **Pulse**, swipe to it in the gallery and pick its size.
-4. Touch and hold a widget, choose **Edit Widget**, then select **Follow current workspace** or a saved workspace. A conversation can be selected from that workspace's saved choices. Turn on **Hide conversation title** to show generic resume text.
+3. Add **Native**, **Conduit-chan**, or both, in any size, on iPhone and iPad. To add **Pulse**, swipe to it in the gallery and pick its size.
+4. Touch and hold a widget, choose **Edit Widget**, then select **Follow current workspace** or a saved workspace. A conversation can be selected from that workspace's saved choices. Turn on **Hide conversation title** to show generic resume text; the large size then lists no other chats. A small widget also asks what **Small size opens**: Conversation, New Chat or Talk.
 
 The workspace and conversation pickers read the app's local widget snapshot. They do not discover remote workspaces or conversations. A workspace or conversation may not appear until Conduit has visited or refreshed it while connected. Following the current workspace updates when the app changes its selected workspace.
 

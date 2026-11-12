@@ -3854,7 +3854,7 @@ extension ContinuousConversationPreferenceTests {
 
         XCTAssertEqual(
             controller.state,
-            .failed(AppLocalization.string("Listening stopped while your phone was locked. Tap Listen to continue."))
+            .failed(AppLocalization.string("Listening stopped while your phone was locked. Tap Listen to continue.", table: .voice))
         )
     }
 }

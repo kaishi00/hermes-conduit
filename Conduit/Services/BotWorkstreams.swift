@@ -225,12 +225,12 @@ struct BotWorkItem: Identifiable, Equatable {
         switch kind {
         case .askOut:
             switch status {
-            case "waiting": return AppLocalization.string("Waiting on \(otherBot)")
-            case "done": return AppLocalization.string("\(otherBot) answered")
+            case "waiting": return AppLocalization.string("Waiting on \(otherBot)", table: .bots)
+            case "done": return AppLocalization.string("\(otherBot) answered", table: .bots)
             default: return Self.statusWord(status)
             }
         case .askIn:
-            return status == "done" ? AppLocalization.string("Answered") : AppLocalization.string("\(otherBot) asks")
+            return status == "done" ? AppLocalization.string("Answered") : AppLocalization.string("\(otherBot) asks", table: .bots)
         case .workstream:
             return Self.statusWord(status)
         }
@@ -246,7 +246,7 @@ struct BotWorkItem: Identifiable, Equatable {
         case "failed": return AppLocalization.string("Failed")
         case "stopped": return AppLocalization.string("Stopped")
         case "interrupted": return AppLocalization.string("Interrupted")
-        case "waiting": return AppLocalization.string("Waiting")
+        case "waiting": return AppLocalization.string("Waiting", table: .bots)
         default: return status
         }
     }
@@ -270,11 +270,11 @@ struct BotWorkCoordination: Equatable {
         /// Who said it, for the line above its words.
         var saidBy: String {
             switch kind {
-            case "found": return AppLocalization.string("\(ref) found")
-            case "assumes": return AppLocalization.string("\(ref) relies on")
-            case "changed": return AppLocalization.string("\(ref) changed")
-            case "user": return AppLocalization.string("You told \(ref)")
-            default: return AppLocalization.string("Noticed about \(ref)")
+            case "found": return AppLocalization.string("\(ref) found", table: .bots)
+            case "assumes": return AppLocalization.string("\(ref) relies on", table: .bots)
+            case "changed": return AppLocalization.string("\(ref) changed", table: .bots)
+            case "user": return AppLocalization.string("You told \(ref)", table: .bots)
+            default: return AppLocalization.string("Noticed about \(ref)", table: .bots)
             }
         }
     }
@@ -334,12 +334,12 @@ struct BotWorkCoordination: Equatable {
         var headline: String {
             switch kind {
             case .flag:
-                return AppLocalization.string("\(ref) may affect \(with.joined(separator: ", "))")
+                return AppLocalization.string("\(ref) may affect \(with.joined(separator: ", "))", table: .bots)
             case .sent:
-                return AppLocalization.string("Sent to \(ref)")
+                return AppLocalization.string("Sent to \(ref)", table: .bots)
             case .proposal:
                 let about = refs.joined(separator: ", ")
-                return about.isEmpty ? AppLocalization.string("Asked you") : AppLocalization.string("Asked you about \(about)")
+                return about.isEmpty ? AppLocalization.string("Asked you", table: .bots) : AppLocalization.string("Asked you about \(about)", table: .bots)
             }
         }
 
@@ -347,18 +347,18 @@ struct BotWorkCoordination: Equatable {
         var stateText: String? {
             switch kind {
             case .flag:
-                return woke ? nil : AppLocalization.string("Kept on the board")
+                return woke ? nil : AppLocalization.string("Kept on the board", table: .bots)
             case .sent:
                 switch state {
-                case "delivered": return AppLocalization.string("In its chat")
-                case "not_arrived": return AppLocalization.string("Didn’t arrive")
-                default: return AppLocalization.string("Not in its chat yet")
+                case "delivered": return AppLocalization.string("In its chat", table: .bots)
+                case "not_arrived": return AppLocalization.string("Didn’t arrive", table: .bots)
+                default: return AppLocalization.string("Not in its chat yet", table: .bots)
                 }
             case .proposal:
                 switch status {
-                case "approved": return AppLocalization.string("You approved")
+                case "approved": return AppLocalization.string("You approved", table: .bots)
                 case "declined": return AppLocalization.string("You declined")
-                default: return AppLocalization.string("No answer yet")
+                default: return AppLocalization.string("No answer yet", table: .bots)
                 }
             }
         }
@@ -366,8 +366,8 @@ struct BotWorkCoordination: Equatable {
         /// What the lines behind it are, said above them.
         func whyCaption(botName: String) -> String? {
             switch kind {
-            case .flag: return AppLocalization.string("What a helper model read while the work ran.")
-            case .sent: return AppLocalization.string("What was on \(botName)’s board in the half hour before.")
+            case .flag: return AppLocalization.string("What a helper model read while the work ran.", table: .bots)
+            case .sent: return AppLocalization.string("What was on \(botName)’s board in the half hour before.", table: .bots)
             case .proposal: return nil
             }
         }
@@ -493,9 +493,9 @@ struct BotWorkSnapshot: Equatable {
     /// or nil when there's no work to show.
     var stripText: String? {
         var parts: [String] = []
-        if workingCount > 0 { parts.append(AppLocalization.string("\(workingCount) working")) }
-        if needsYouCount > 0 { parts.append(AppLocalization.string("\(needsYouCount) needs you")) }
-        if readyCount > 0 { parts.append(AppLocalization.string("\(readyCount) ready")) }
+        if workingCount > 0 { parts.append(AppLocalization.string("\(workingCount) working", table: .bots)) }
+        if needsYouCount > 0 { parts.append(AppLocalization.string("\(needsYouCount) needs you", table: .bots)) }
+        if readyCount > 0 { parts.append(AppLocalization.string("\(readyCount) ready", table: .bots)) }
         // Resolved work alone still opens the panel, for its Resolved list.
         if parts.isEmpty, !items.isEmpty || resolvedCount > 0 { return AppLocalization.string("Work") }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
@@ -882,8 +882,8 @@ struct BotWorkCall: Equatable {
         let ref = self.ref ?? ""
         if running {
             switch tool {
-            case .start: return AppLocalization.string("Starting work…")
-            case .ask: return bot.map { AppLocalization.string("Asking \($0)…") }
+            case .start: return AppLocalization.string("Starting work…", table: .bots)
+            case .ask: return bot.map { AppLocalization.string("Asking \($0)…", table: .bots) }
             default: return nil
             }
         }
@@ -893,12 +893,12 @@ struct BotWorkCall: Equatable {
             guard !ref.isEmpty else { return nil }
             let named = title.map { "\(ref): \($0)" } ?? ref
             return AppLocalization.string("Started \(named)")
-        case .send: return ref.isEmpty ? nil : AppLocalization.string("Sent to \(ref)")
-        case .stop: return ref.isEmpty ? nil : AppLocalization.string("Stopped \(ref)")
-        case .read: return ref.isEmpty ? nil : AppLocalization.string("Read \(ref)")
-        case .close: return ref.isEmpty ? nil : AppLocalization.string("Closed \(ref)")
-        case .ask: return bot.map { AppLocalization.string("Asked \($0)") }
-        case .reply: return ref.isEmpty ? nil : AppLocalization.string("Answered \(ref)")
+        case .send: return ref.isEmpty ? nil : AppLocalization.string("Sent to \(ref)", table: .bots)
+        case .stop: return ref.isEmpty ? nil : AppLocalization.string("Stopped \(ref)", table: .bots)
+        case .read: return ref.isEmpty ? nil : AppLocalization.string("Read \(ref)", table: .bots)
+        case .close: return ref.isEmpty ? nil : AppLocalization.string("Closed \(ref)", table: .bots)
+        case .ask: return bot.map { AppLocalization.string("Asked \($0)", table: .bots) }
+        case .reply: return ref.isEmpty ? nil : AppLocalization.string("Answered \(ref)", table: .bots)
         case .list, .note, .progress: return nil
         }
     }

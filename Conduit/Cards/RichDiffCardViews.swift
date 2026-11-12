@@ -82,14 +82,14 @@ struct RichDiffCard: View {
             let moreCount = diff.fileCount - min(diff.files.count, Self.shownFiles)
             if moreCount > 0 {
                 if diff.opensWhole {
-                    Button(AppLocalization.string("\(moreCount) more files")) {
+                    Button(AppLocalization.string("\(moreCount) more files", table: .chat)) {
                         opened = RichDiffOpened(file: diff.files.count > Self.shownFiles ? Self.shownFiles : nil)
                     }
                     .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(Color.conduitAccent)
                     .frame(minHeight: 36)
                 } else {
-                    Text(AppLocalization.string("\(moreCount) more files"))
+                    Text(AppLocalization.string("\(moreCount) more files", table: .chat))
                         .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
                 }
@@ -111,7 +111,7 @@ struct RichDiffSummary: View {
 
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(AppLocalization.string("\(diff.fileCount) files changed"))
+            Text(AppLocalization.string("\(diff.fileCount) files changed", table: .chat))
                 .scaledFont(.subheadline.weight(.semibold))
             RichDiffCounts(added: diff.added, removed: diff.removed)
             Spacer(minLength: 4)
@@ -166,8 +166,8 @@ struct RichDiffCounts: View {
         .scaledFont(.caption.weight(.semibold))
         .monospacedDigit()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text(verbatim: AppLocalization.string("\(Int(added)) lines added") + ", "
-                                 + AppLocalization.string("\(Int(removed)) lines removed")))
+        .accessibilityLabel(Text(verbatim: AppLocalization.string("\(Int(added)) lines added", table: .chat) + ", "
+                                 + AppLocalization.string("\(Int(removed)) lines removed", table: .chat)))
     }
 }
 
@@ -244,11 +244,11 @@ struct RichDiffFileRow: View {
     }
 
     static func statusName(_ file: RichDiffFile) -> String? {
-        if file.binary { return AppLocalization.string("Binary") }
+        if file.binary { return AppLocalization.string("Binary", table: .chat) }
         switch file.status {
         case .added: return AppLocalization.string("New")
-        case .deleted: return AppLocalization.string("Deleted")
-        case .renamed: return AppLocalization.string("Renamed")
+        case .deleted: return AppLocalization.string("Deleted", table: .chat)
+        case .renamed: return AppLocalization.string("Renamed", table: .chat)
         case .modified: return nil
         }
     }
@@ -322,7 +322,7 @@ struct RichDiffRowView: View {
             RichDiffLineView(line: line, digits: digits, wraps: wraps, language: language)
         case .unchanged(let count):
             Label {
-                Text(AppLocalization.string("\(count) unchanged lines"))
+                Text(AppLocalization.string("\(count) unchanged lines", table: .chat))
             } icon: {
                 Image(systemName: "ellipsis")
             }
@@ -363,7 +363,7 @@ struct RichDiffLineView: View {
             Button {
                 UIPasteboard.general.string = line.text
             } label: {
-                Label(AppLocalization.string("Copy Line"), systemImage: "doc.on.doc")
+                Label(AppLocalization.string("Copy Line", table: .chat), systemImage: "doc.on.doc")
             }
         }
         .accessibilityElement(children: .ignore)
@@ -407,9 +407,9 @@ struct RichDiffLineView: View {
 
     private var kindName: String {
         switch line.kind {
-        case .added: return AppLocalization.string("Added")
-        case .removed: return AppLocalization.string("Removed")
-        case .context: return AppLocalization.string("Unchanged")
+        case .added: return AppLocalization.string("Added", table: .chat)
+        case .removed: return AppLocalization.string("Removed", table: .chat)
+        case .context: return AppLocalization.string("Unchanged", table: .chat)
         }
     }
 
@@ -472,7 +472,7 @@ struct RichDiffSheet: View {
                             .id(file.id)
                         }
                         if shown.moreFiles > 0 {
-                            Text(AppLocalization.string("\(Int(shown.moreFiles)) more files"))
+                            Text(AppLocalization.string("\(Int(shown.moreFiles)) more files", table: .chat))
                                 .scaledFont(.footnote)
                                 .foregroundStyle(.secondary)
                                 .padding(16)
@@ -496,7 +496,7 @@ struct RichDiffSheet: View {
                     ToolbarItem(placement: .primaryAction) {
                         Menu {
                             Toggle(isOn: $wraps) {
-                                Label(AppLocalization.string("Wrap Lines"), systemImage: "text.word.spacing")
+                                Label(AppLocalization.string("Wrap Lines", table: .chat), systemImage: "text.word.spacing")
                             }
                             if shown.files.count > 1 {
                                 Section(AppLocalization.string("Files")) {
@@ -516,7 +516,7 @@ struct RichDiffSheet: View {
                     }
                 }
             }
-            .navigationTitle(Text(verbatim: card.title ?? AppLocalization.string("Changes")))
+            .navigationTitle(Text(verbatim: card.title ?? AppLocalization.string("Changes", table: .chat)))
             .navigationBarTitleDisplayMode(.inline)
         }
     }
@@ -532,8 +532,8 @@ struct RichDiffSheet: View {
             }
         } else if failed {
             VStack(alignment: .leading, spacing: 6) {
-                Text(failure == .gone ? AppLocalization.string("These changes are no longer kept on Hermes.")
-                     : AppLocalization.string("The changes couldn't be loaded."))
+                Text(failure == .gone ? AppLocalization.string("These changes are no longer kept on Hermes.", table: .chat)
+                     : AppLocalization.string("The changes couldn't be loaded.", table: .chat))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                 if failure != .gone {
@@ -573,7 +573,7 @@ struct RichDiffSheet: View {
                     Button {
                         UIPasteboard.general.string = file.patch
                     } label: {
-                        Label(AppLocalization.string("Copy Changes"), systemImage: "doc.on.doc")
+                        Label(AppLocalization.string("Copy Changes", table: .chat), systemImage: "doc.on.doc")
                     }
                     Button {
                         UIPasteboard.general.string = file.path
@@ -597,16 +597,16 @@ struct RichDiffSheet: View {
     @ViewBuilder
     private func fileBody(_ file: RichDiffFile) -> some View {
         if file.binary {
-            note(AppLocalization.string("A binary file: no lines to show."))
+            note(AppLocalization.string("A binary file: no lines to show.", table: .chat))
         } else if file.hunks.isEmpty {
-            if !loading, !failed { note(AppLocalization.string("No lines changed.")) }
+            if !loading, !failed { note(AppLocalization.string("No lines changed.", table: .chat)) }
         } else {
             let digits = RichDiffRow.digits(file)
             let language = (file.path as NSString).pathExtension.lowercased()
             ForEach(Array(RichDiffRow.rows(file).enumerated()), id: \.offset) { _, row in
                 RichDiffRowView(row: row, digits: digits, wraps: wraps, language: language)
             }
-            if file.cut { note(AppLocalization.string("Its other changes aren't shown.")) }
+            if file.cut { note(AppLocalization.string("Its other changes aren't shown.", table: .chat)) }
         }
     }
 

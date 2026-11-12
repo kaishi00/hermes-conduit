@@ -52,9 +52,9 @@ enum SystemSettings {
     /// timer while they're off.
     static var notificationsOffText: String {
         worded(
-            iPhone: AppLocalization.string("Notifications are off for Conduit in iPhone Settings."),
-            iPad: AppLocalization.string("Notifications are off for Conduit in iPad Settings."),
-            mac: AppLocalization.string("Notifications are off for Conduit in System Settings → Notifications.")
+            iPhone: AppLocalization.string("Notifications are off for Conduit in iPhone Settings.", table: .settings),
+            iPad: AppLocalization.string("Notifications are off for Conduit in iPad Settings.", table: .settings),
+            mac: AppLocalization.string("Notifications are off for Conduit in System Settings → Notifications.", table: .settings)
         )
     }
 

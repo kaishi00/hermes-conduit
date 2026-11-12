@@ -35,7 +35,7 @@ struct ArtifactsTabPicker: View {
     @Binding var tab: ArtifactsTab
 
     var body: some View {
-        Picker(AppLocalization.string("Show"), selection: Binding(get: { tab }, set: {
+        Picker(AppLocalization.string("Show", table: .chat), selection: Binding(get: { tab }, set: {
             Haptics.selection()
             tab = $0
         })) {
@@ -226,10 +226,10 @@ struct WorkspaceFolderView: View {
             Button(AppLocalization.string("Cancel"), role: .cancel) { deleting = nil }
         } message: {
             Text(deleting?.isDirectory == true
-                 ? AppLocalization.string("The folder and everything in it are deleted from your Hermes host. This can't be undone.")
-                 : AppLocalization.string("The file is deleted from your Hermes host. This can't be undone."))
+                 ? AppLocalization.string("The folder and everything in it are deleted from your Hermes host. This can't be undone.", table: .chat)
+                 : AppLocalization.string("The file is deleted from your Hermes host. This can't be undone.", table: .chat))
         }
-        .alert(AppLocalization.string("Couldn't do that"), isPresented: Binding(
+        .alert(AppLocalization.string("Couldn't do that", table: .chat), isPresented: Binding(
             get: { failure != nil }, set: { if !$0 { failure = nil } }
         )) {
             Button(AppLocalization.string("OK"), role: .cancel) { failure = nil }
@@ -244,8 +244,8 @@ struct WorkspaceFolderView: View {
 
     private var promptTitle: String {
         switch prompt?.kind {
-        case .folder: return AppLocalization.string("New Folder")
-        case .file: return AppLocalization.string("New File")
+        case .folder: return AppLocalization.string("New Folder", table: .chat)
+        case .file: return AppLocalization.string("New File", table: .chat)
         case .rename: return AppLocalization.string("Rename")
         case nil: return ""
         }
@@ -273,7 +273,7 @@ struct WorkspaceFolderView: View {
                     Image(systemName: "folder.fill")
                         .foregroundStyle(Color.conduitAccent)
                     VStack(alignment: .leading, spacing: 0) {
-                        Text(verbatim: root?.title ?? AppLocalization.string("No folder"))
+                        Text(verbatim: root?.title ?? AppLocalization.string("No folder", table: .chat))
                             .scaledFont(.subheadline.weight(.semibold))
                             .foregroundStyle(.primary)
                             .lineLimit(1)
@@ -295,7 +295,7 @@ struct WorkspaceFolderView: View {
                 .contentShape(Rectangle())
             }
             .disabled(roots.count < 2)
-            .accessibilityLabel(AppLocalization.string("Folder: \(root?.title ?? AppLocalization.string("No folder"))"))
+            .accessibilityLabel(AppLocalization.string("Folder: \(root?.title ?? AppLocalization.string("No folder", table: .chat))", table: .chat))
             if let root, explorer.canChange {
                 Menu {
                     actions(in: root.path)
@@ -303,7 +303,7 @@ struct WorkspaceFolderView: View {
                     // Bots Home's glass +.
                     V2AddGlyph()
                 }
-                .accessibilityLabel(AppLocalization.string("Add to Folder"))
+                .accessibilityLabel(AppLocalization.string("Add to Folder", table: .chat))
             }
         }
         .padding(.top, 8)
@@ -315,18 +315,18 @@ struct WorkspaceFolderView: View {
         Button {
             ask(.folder, in: folder)
         } label: {
-            Label(AppLocalization.string("New Folder"), systemImage: "folder.badge.plus")
+            Label(AppLocalization.string("New Folder", table: .chat), systemImage: "folder.badge.plus")
         }
         Button {
             ask(.file, in: folder)
         } label: {
-            Label(AppLocalization.string("New File"), systemImage: "doc.badge.plus")
+            Label(AppLocalization.string("New File", table: .chat), systemImage: "doc.badge.plus")
         }
         Button {
             uploadFolder = folder
             showsImporter = true
         } label: {
-            Label(AppLocalization.string("Upload Files"), systemImage: "square.and.arrow.up")
+            Label(AppLocalization.string("Upload Files", table: .chat), systemImage: "square.and.arrow.up")
         }
     }
 
@@ -335,7 +335,7 @@ struct WorkspaceFolderView: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(.secondary)
                 .accessibilityHidden(true)
-            TextField(AppLocalization.string("Search names and inside files"), text: $query)
+            TextField(AppLocalization.string("Search names and inside files", table: .chat), text: $query)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .submitLabel(.search)
@@ -366,8 +366,8 @@ struct WorkspaceFolderView: View {
             unavailable(
                 title: Text("No Folder Yet"),
                 detail: Text(includesChat
-                    ? AppLocalization.string("Hermes hasn't said which folder this chat works in yet. Projects' folders show here too.")
-                    : AppLocalization.string("Your projects' folders show here.")),
+                    ? AppLocalization.string("Hermes hasn't said which folder this chat works in yet. Projects' folders show here too.", table: .chat)
+                    : AppLocalization.string("Your projects' folders show here.", table: .chat)),
                 symbol: "folder.badge.questionmark"
             )
         } else if let error = explorer.error, explorer.entries.isEmpty {
@@ -389,7 +389,7 @@ struct WorkspaceFolderView: View {
             // Not while the plugin hasn't said (offline, just connected).
             } else if !explorer.canChange, !appState.notifierPlugin.mayServe(WorkspaceFilesClient.capability) {
                 Label {
-                    Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to search this folder and make, move or delete files here. Settings › Conduit plugin can update it.")))
+                    Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to search this folder and make, move or delete files here. Settings › Conduit plugin can update it.", table: .chat)))
                 } icon: {
                     Image(systemName: "arrow.down.circle")
                 }
@@ -640,7 +640,7 @@ struct WorkspaceFolderView: View {
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(AppLocalization.string("Line \(String(line.number)): \(line.text)"))
+                .accessibilityLabel(AppLocalization.string("Line \(String(line.number)): \(line.text)", table: .chat))
             }
         }
         .padding(10)
@@ -670,7 +670,7 @@ struct WorkspaceFolderView: View {
             Button {
                 share(entry)
             } label: {
-                Label(AppLocalization.string("Share or Save"), systemImage: "square.and.arrow.up")
+                Label(AppLocalization.string("Share or Save", table: .chat), systemImage: "square.and.arrow.up")
             }
         }
         Button {
@@ -766,7 +766,7 @@ struct WorkspaceFolderView: View {
                 let dataURL = await resolver.dataURL(for: entry.path)
                 guard finishOpening(token) else { return }
                 guard let dataURL, let html = HTMLPreviewPage.decodedDocument(fromDataURL: dataURL) else {
-                    failure = AppLocalization.string("This file couldn't be opened.")
+                    failure = AppLocalization.string("This file couldn't be opened.", table: .chat)
                     return
                 }
                 page = OpenPage(name: entry.name, html: html)
@@ -793,7 +793,7 @@ struct WorkspaceFolderView: View {
         let listed = lists.first { $0.contains { $0.path == entry.path } } ?? [entry]
         let images = listed.filter { !$0.isDirectory && GatewayMediaKind(path: $0.name) == .image }
         if !ImageGallery.open(item(entry), in: ImageGallerySource { images.map(item) }) {
-            failure = AppLocalization.string("This file couldn't be opened.")
+            failure = AppLocalization.string("This file couldn't be opened.", table: .chat)
         }
     }
 
@@ -834,7 +834,7 @@ struct WorkspaceFolderView: View {
             let dataURL = await resolver.dataURL(for: entry.path)
             guard finishOpening(token) else { return }
             guard let dataURL, await MediaPreviewPresenter.shared.present(dataURL: dataURL, filename: entry.name) else {
-                failure = AppLocalization.string("This file couldn't be opened.")
+                failure = AppLocalization.string("This file couldn't be opened.", table: .chat)
                 return
             }
         }
@@ -928,13 +928,13 @@ struct WorkspaceFolderView: View {
             let accessing = url.startAccessingSecurityScopedResource()
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
             let size = (try? url.resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? 0
-            let tooLarge = AppLocalization.string("\(url.lastPathComponent) is too large to upload. Files up to 25 MB can be uploaded.")
+            let tooLarge = AppLocalization.string("\(url.lastPathComponent) is too large to upload. Files up to 25 MB can be uploaded.", table: .chat)
             guard size <= WorkspaceFolderView.maxUploadBytes else {
                 failure = tooLarge
                 continue
             }
             guard let data = try? await Task.detached(priority: .userInitiated, operation: { try Data(contentsOf: url) }).value else {
-                failure = AppLocalization.string("This file couldn't be opened.")
+                failure = AppLocalization.string("This file couldn't be opened.", table: .chat)
                 continue
             }
             guard data.count <= WorkspaceFolderView.maxUploadBytes else {
@@ -1034,15 +1034,15 @@ struct WorkspaceFileSheet: View {
         }
         .presentationDragIndicator(.visible)
         .interactiveDismissDisabled(editing && draft != explorer.preview?.text)
-        .alert(AppLocalization.string("This file changed on your Hermes host"), isPresented: $conflict) {
-            Button(AppLocalization.string("Replace It"), role: .destructive) { Task { await save(force: true) } }
-            Button(AppLocalization.string("Keep Editing"), role: .cancel) {}
+        .alert(AppLocalization.string("This file changed on your Hermes host", table: .chat), isPresented: $conflict) {
+            Button(AppLocalization.string("Replace It", table: .chat), role: .destructive) { Task { await save(force: true) } }
+            Button(AppLocalization.string("Keep Editing", table: .chat), role: .cancel) {}
         } message: {
             Text("It changed after you opened it. Replace it with your version, or keep editing and copy what you need.")
         }
         .alert(AppLocalization.string("Discard unsaved changes?"), isPresented: $discarding) {
             Button(AppLocalization.string("Discard Draft"), role: .destructive) { editing = false }
-            Button(AppLocalization.string("Keep Editing"), role: .cancel) {}
+            Button(AppLocalization.string("Keep Editing", table: .chat), role: .cancel) {}
         }
         .alert(AppLocalization.string("Couldn't save"), isPresented: Binding(
             get: { failure != nil }, set: { if !$0 { failure = nil } }
@@ -1081,7 +1081,7 @@ struct WorkspaceFileSheet: View {
                     } label: {
                         Image(systemName: showsSource ? "doc.richtext" : "chevron.left.forwardslash.chevron.right")
                     }
-                    .accessibilityLabel(showsSource ? AppLocalization.string("Show Formatted") : AppLocalization.string("Show Source"))
+                    .accessibilityLabel(showsSource ? AppLocalization.string("Show Formatted", table: .chat) : AppLocalization.string("Show Source", table: .chat))
                 }
                 if canEdit {
                     Button(AppLocalization.string("Edit")) {
@@ -1107,7 +1107,7 @@ struct WorkspaceFileSheet: View {
         } else if let preview = explorer.preview {
             if preview.binary {
                 ContentUnavailableView {
-                    Label(AppLocalization.string("Not a text file"), systemImage: "doc.fill")
+                    Label(AppLocalization.string("Not a text file", table: .chat), systemImage: "doc.fill")
                 } description: {
                     Text("Use Share or Save from the file's menu to open it in another app.")
                 }
@@ -1247,12 +1247,12 @@ struct WorkspaceMoveSheet: View {
                         Button {
                             folder = (current as NSString).deletingLastPathComponent
                         } label: {
-                            Label(AppLocalization.string("Up One Folder"), systemImage: "arrow.turn.left.up")
+                            Label(AppLocalization.string("Up One Folder", table: .chat), systemImage: "arrow.turn.left.up")
                         }
                         .buttonStyle(.settings)
                     }
                 }
-                ConduitSettingsSection(title: AppLocalization.string("Folders"), symbol: "folder", tint: .blue) {
+                ConduitSettingsSection(title: AppLocalization.string("Folders", table: .chat), symbol: "folder", tint: .blue) {
                     if loading {
                         ProgressView()
                             .frame(maxWidth: .infinity)
@@ -1283,7 +1283,7 @@ struct WorkspaceMoveSheet: View {
                     }
                 }
             }
-            .navigationTitle(AppLocalization.string("Move \(entry.name)"))
+            .navigationTitle(AppLocalization.string("Move \(entry.name)", table: .chat))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
@@ -1293,7 +1293,7 @@ struct WorkspaceMoveSheet: View {
                     if moving {
                         ProgressView()
                     } else {
-                        Button(AppLocalization.string("Move Here")) { Task { await move() } }
+                        Button(AppLocalization.string("Move Here", table: .chat)) { Task { await move() } }
                             .disabled(current == entry.folder || current.isEmpty)
                     }
                 }

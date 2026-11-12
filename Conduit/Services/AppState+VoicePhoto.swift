@@ -61,7 +61,7 @@ extension AppState {
         case .tooLarge(let name):
             return AttachmentSizeLimit.tooLargeMessage(names: [name], megabytes: limit)
         case .failed:
-            return AppLocalization.string("Conduit couldn't save the photo. Try again.")
+            return AppLocalization.string("Conduit couldn't save the photo. Try again.", table: .voice)
         }
         guard activeDashboardID == dashboard else {
             Self.deleteStagedScreenshot(photo)
@@ -82,11 +82,11 @@ extension AppState {
     }
 
     private static var voicePhotoNoChatMessage: String {
-        AppLocalization.string("The photo goes to the chat this conversation is in, and Conduit couldn't open it. Open the chat and try again.")
+        AppLocalization.string("The photo goes to the chat this conversation is in, and Conduit couldn't open it. Open the chat and try again.", table: .voice)
     }
 
     private static var voicePhotoMovedOnMessage: String {
-        AppLocalization.string("The conversation changed while the photo saved, so it wasn't added. Try again.")
+        AppLocalization.string("The conversation changed while the photo saved, so it wasn't added. Try again.", table: .voice)
     }
 
     /// The running call's conversation when its model takes pictures
@@ -103,7 +103,7 @@ extension AppState {
     private func addPhotoToLiveCall(_ photo: Attachment, frame: Data?, thread: VoiceThreadTarget?, dashboard: UUID?) async -> String? {
         guard let thread else {
             Self.deleteStagedScreenshot(photo)
-            return AppLocalization.string("The photo goes to the call's chat. Ask for something first, so the call has a chat, then add it.")
+            return AppLocalization.string("The photo goes to the call's chat. Ask for something first, so the call has a chat, then add it.", table: .voice)
         }
         // The call moved on while the photo saved: its old chat isn't opened.
         guard let current = voiceBackgroundJobSupervisor.liveThread, current.isSameConversation(as: thread) else {

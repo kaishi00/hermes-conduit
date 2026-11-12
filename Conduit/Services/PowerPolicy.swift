@@ -48,6 +48,11 @@ enum PollCadence {
     /// The Chats list's registry poll: 4 s while something on the list
     /// changes or a turn runs, then longer each time nothing moved.
     static let chatListSteps: [TimeInterval] = [4, 8, 15, 30, 60]
+    /// The same poll on a gateway that pushes `sessions.changed` (issue
+    /// 851): a turn's first and last messages move the stored rows, and the
+    /// catalog read that follows wakes the poll, so a quiet list may wait
+    /// one step longer.
+    static let chatListStepsFollowingChanges: [TimeInterval] = chatListSteps + [120]
     /// An idle open chat's registry check (another device's turn): 15 s,
     /// then longer while the chat stays the same.
     static let openChatIdleSteps: [TimeInterval] = [15, 30, 60]
@@ -145,10 +150,22 @@ struct ChatListPollPacer {
         var turnRunning: Bool
         /// Bumped by every catalog read that changed the list.
         var catalogGeneration: Int
+        /// The gateway pushes `sessions.changed` (`change_events`).
+        var followsChanges = false
     }
 
-    private(set) var backoff = PollBackoff(steps: PollCadence.chatListSteps)
+    /// Steps through the longer pace; `interval(followingChanges:)` stops
+    /// at 60 s on a gateway without change events.
+    private(set) var backoff = PollBackoff(steps: PollCadence.chatListStepsFollowingChanges)
     private var last: Observation?
+
+    /// The wait at the current step.
+    func interval(followingChanges: Bool) -> TimeInterval {
+        let longest = followingChanges
+            ? PollCadence.chatListStepsFollowingChanges.last
+            : PollCadence.chatListSteps.last
+        return min(backoff.interval, longest ?? backoff.interval)
+    }
 
     /// Something the user did, a return to the app or a send: back to the
     /// shortest interval, and the next tick compares afresh.
@@ -170,7 +187,7 @@ struct ChatListPollPacer {
             // with jitter.
             backoff.lengthen()
             return PollCadence.afterFailure(
-                PollCadence.stretched(backoff.interval, by: conditions),
+                PollCadence.stretched(interval(followingChanges: observation.followsChanges), by: conditions),
                 random: random
             )
         }
@@ -183,7 +200,7 @@ struct ChatListPollPacer {
         } else {
             backoff.lengthen()
         }
-        return PollCadence.stretched(backoff.interval, by: conditions)
+        return PollCadence.stretched(interval(followingChanges: observation.followsChanges), by: conditions)
     }
 
     /// The registry rows' part of an observation.

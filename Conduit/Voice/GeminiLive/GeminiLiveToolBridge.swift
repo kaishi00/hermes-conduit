@@ -859,7 +859,7 @@ final class GeminiLiveToolBridge {
                 if let id = UUID(uuidString: rawID), let message = await supervisor.cancel(jobID: id) {
                     reply = message
                 } else {
-                    reply = AppLocalization.string("There are no background jobs to cancel.")
+                    reply = AppLocalization.string("There are no background jobs to cancel.", table: .voice)
                 }
             } else {
                 reply = await supervisor.cancelAll()

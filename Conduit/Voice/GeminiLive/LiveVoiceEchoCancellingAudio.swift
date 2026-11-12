@@ -174,7 +174,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
             guard let format = AVAudioFormat(standardFormatWithSampleRate: sampleRate, channels: 1) else {
                 outputWanted = false
                 teardownIfUnused()
-                throw VoiceAudioError.unavailable(AppLocalization.string("The gateway reported an unsupported PCM format."))
+                throw VoiceAudioError.unavailable(AppLocalization.string("The gateway reported an unsupported PCM format.", table: .voice))
             }
             interrupt()
             engine.connect(player, to: engine.mainMixerNode, format: format)
@@ -326,7 +326,7 @@ final class EchoCancellingLiveVoiceAudio: NSObject {
         // Connected up front so the speaker side is part of the graph (and
         // of the echo reference) from the start.
         guard let format = playerFormat ?? AVAudioFormat(standardFormatWithSampleRate: defaultOutputSampleRate, channels: 1) else {
-            throw VoiceAudioError.unavailable(AppLocalization.string("The gateway reported an unsupported PCM format."))
+            throw VoiceAudioError.unavailable(AppLocalization.string("The gateway reported an unsupported PCM format.", table: .voice))
         }
         engine.connect(player, to: engine.mainMixerNode, format: format)
 

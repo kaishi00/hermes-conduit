@@ -22,8 +22,8 @@ struct ScreenQuestionVoiceBanner: View {
         if let screenshot {
             VStack(alignment: .leading, spacing: 6) {
                 Text(kind == .photo
-                    ? AppLocalization.string("Asking about this photo")
-                    : AppLocalization.string("Asking about this screenshot"))
+                    ? AppLocalization.string("Asking about this photo", table: .phone)
+                    : AppLocalization.string("Asking about this screenshot", table: .phone))
                     .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                 HStack(spacing: 8) {
@@ -72,7 +72,7 @@ struct ScreenshotNewChatButton: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .accessibilityHint(AppLocalization.string("Moves the screenshot to a new chat."))
+        .accessibilityHint(AppLocalization.string("Moves the screenshot to a new chat.", table: .phone))
         .accessibilityIdentifier("screenQuestion.newChat.\(placement.rawValue)")
     }
 }
@@ -142,7 +142,7 @@ struct ScreenQuestionSettingsSection: View {
         VStack(alignment: .leading, spacing: 6) {
             Button(action: openShortcut) {
                 Label(
-                    isOpeningShortcut ? AppLocalization.string("Opening…") : AppLocalization.string("Add the shortcut"),
+                    isOpeningShortcut ? AppLocalization.string("Opening…", table: .phone) : AppLocalization.string("Add the shortcut", table: .phone),
                     systemImage: "plus.square.on.square"
                 )
             }

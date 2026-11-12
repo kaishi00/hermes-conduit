@@ -143,7 +143,7 @@ enum BotMcpSetup {
         guard body["ok"]?.boolValue == false else { return nil }
         let message = (body["error_message"]?.stringValue ?? body["error"]?.stringValue ?? "")
             .trimmingCharacters(in: .whitespacesAndNewlines)
-        return message.isEmpty ? AppLocalization.string("Hermes did not finish the sign-in.") : message
+        return message.isEmpty ? AppLocalization.string("Hermes did not finish the sign-in.", table: .bots) : message
     }
 
     /// `oauth.start`'s flow id and authorization URL, once that URL sends
@@ -180,7 +180,7 @@ enum BotMcpSetup {
 
     static func pollError(_ result: AnyCodable) -> String {
         let message = (payload(result)["error_message"]?.stringValue ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        return message.isEmpty ? AppLocalization.string("The sign-in was not approved.") : message
+        return message.isEmpty ? AppLocalization.string("The sign-in was not approved.", table: .bots) : message
     }
 
     /// Some gateway builds wrap a reply in a second `result` (Desktop

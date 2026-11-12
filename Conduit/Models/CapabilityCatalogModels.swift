@@ -1053,13 +1053,13 @@ struct ConnectorServerEdit {
 
         var message: String {
             switch self {
-            case .noName: return AppLocalization.string("Give the server a name.")
-            case .nameTaken(let name): return AppLocalization.string("Another server is already called \(name).")
-            case .noTarget: return AppLocalization.string("Give the server an address or a command.")
-            case .notAnObject: return AppLocalization.string("Write the server as one JSON object, such as {\"url\": \"https://…\"}.")
-            case .invalidJSON: return AppLocalization.string("That isn't valid JSON.")
-            case .gone(let name): return AppLocalization.string("\(name) isn't in this profile's config anymore.")
-            case .changedOnHost(let name): return AppLocalization.string("\(name) changed on your host while you were editing. Close this and edit it again.")
+            case .noName: return AppLocalization.string("Give the server a name.", table: .bots)
+            case .nameTaken(let name): return AppLocalization.string("Another server is already called \(name).", table: .bots)
+            case .noTarget: return AppLocalization.string("Give the server an address or a command.", table: .bots)
+            case .notAnObject: return AppLocalization.string("Write the server as one JSON object, such as {\"url\": \"https://…\"}.", table: .bots)
+            case .invalidJSON: return AppLocalization.string("That isn't valid JSON.", table: .bots)
+            case .gone(let name): return AppLocalization.string("\(name) isn't in this profile's config anymore.", table: .bots)
+            case .changedOnHost(let name): return AppLocalization.string("\(name) changed on your host while you were editing. Close this and edit it again.", table: .bots)
             }
         }
 

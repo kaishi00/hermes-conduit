@@ -192,9 +192,9 @@ struct ChatStepLabel: Equatable {
     var runningTitle: String {
         switch kind {
         case .category(let category): AppLocalization.string(String.LocalizationValue(HermesTurnCopy.toolKey(category)))
-        case .named(let name): AppLocalization.string("Using \(name)")
-        case .toolSearch: AppLocalization.string("Looking for tools")
-        case .toolDescribe: AppLocalization.string("Reading tool details")
+        case .named(let name): AppLocalization.string("Using \(name)", table: .chat)
+        case .toolSearch: AppLocalization.string("Looking for tools", table: .chat)
+        case .toolDescribe: AppLocalization.string("Reading tool details", table: .chat)
         }
     }
 
@@ -202,9 +202,9 @@ struct ChatStepLabel: Equatable {
     var doneTitle: String {
         switch kind {
         case .category(let category): AppLocalization.string(ChatStepStyle.doneKey(category))
-        case .named(let name): AppLocalization.string("Used \(name)")
-        case .toolSearch: AppLocalization.string("Looked for tools")
-        case .toolDescribe: AppLocalization.string("Read tool details")
+        case .named(let name): AppLocalization.string("Used \(name)", table: .chat)
+        case .toolSearch: AppLocalization.string("Looked for tools", table: .chat)
+        case .toolDescribe: AppLocalization.string("Read tool details", table: .chat)
         }
     }
 
@@ -358,7 +358,7 @@ struct ChatWorkingLine: View {
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     private var phrase: String {
-        if repliesElsewhere { return AppLocalization.string("Replying on another device") }
+        if repliesElsewhere { return AppLocalization.string("Replying on another device", table: .chat) }
         if let currentToolTitle { return currentToolTitle }
         if let currentToolName {
             return ChatStepLabel(toolName: currentToolName, input: currentToolInput, catalog: rowState.toolCatalog).runningTitle
@@ -406,7 +406,7 @@ struct ChatWorkingLine: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(AppLocalization.string("\(identity.name) is working"))
+        .accessibilityLabel(AppLocalization.string("\(identity.name) is working", table: .chat))
         .accessibilityValue(phrase)
 
         // The timer stays its own element, so VoiceOver reads it current.
@@ -843,7 +843,7 @@ private struct ChatStepRowBody: View {
         .chatStepMenu(
             // Like the run's line: only once the turn is done with it.
             explain: (lookingBack || placement.group.members.contains(where: \.running) || (placement.group.isTrailing && isBusy)) ? nil : explain,
-            title: summary == nil ? AppLocalization.string("Explain this step") : AppLocalization.string("Explain again"),
+            title: summary == nil ? AppLocalization.string("Explain this step", table: .chat) : AppLocalization.string("Explain again", table: .chat),
             thinking: thinkingReveal
         )
     }
@@ -939,7 +939,7 @@ private struct ChatStepGroupHeader: View {
     /// time is on the working line): shown, then spoken.
     private var title: (shown: String, spoken: String) {
         let counted = self.counted ?? members
-        let count = AppLocalization.string("\(counted.count) steps")
+        let count = AppLocalization.string("\(counted.count) steps", table: .chat)
         let span = isLive ? nil : ChatStepTiming.span(of: counted)
         guard let time = ChatStepTiming.text(span),
               let spoken = ChatStepTiming.spokenText(span) else { return (count, count) }
@@ -980,7 +980,7 @@ private struct ChatStepGroupHeader: View {
             // The caller leaves explain out over a step still marked running,
             // hidden ones included: Hermes isn't done with them.
             explain: lookingBack ? nil : explain,
-            title: summary == nil ? AppLocalization.string("Explain these steps") : AppLocalization.string("Explain again"),
+            title: summary == nil ? AppLocalization.string("Explain these steps", table: .chat) : AppLocalization.string("Explain again", table: .chat),
             thinking: thinking
         )
     }
@@ -1059,7 +1059,7 @@ struct ChatStepLookingBack: View {
         HStack(spacing: 6) {
             ProgressView()
                 .controlSize(.mini)
-            Text(AppLocalization.string("Hermes is looking back…"))
+            Text(AppLocalization.string("Hermes is looking back…", table: .chat))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -1088,7 +1088,7 @@ struct ChatThinkingReveal {
     }
 
     var title: String {
-        shown ? AppLocalization.string("Hide thinking") : AppLocalization.string("Show thinking")
+        shown ? AppLocalization.string("Hide thinking", table: .chat) : AppLocalization.string("Show thinking", table: .chat)
     }
 }
 

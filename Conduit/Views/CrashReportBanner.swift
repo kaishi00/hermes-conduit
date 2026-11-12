@@ -29,9 +29,9 @@ struct CrashReportBanner: View {
 
     private var title: String {
         switch offer.state {
-        case .asking(crashed: true): AppLocalization.string("Conduit closed unexpectedly last time")
-        case .asking(crashed: false): AppLocalization.string("Conduit froze last time")
-        case .sending: AppLocalization.string("Sending the report…")
+        case .asking(crashed: true): AppLocalization.string("Conduit closed unexpectedly last time", table: .notifications)
+        case .asking(crashed: false): AppLocalization.string("Conduit froze last time", table: .notifications)
+        case .sending: AppLocalization.string("Sending the report…", table: .notifications)
         case .sent: AppLocalization.string("Report sent. Thank you!")
         case .failed: AppLocalization.string("Couldn't send the report")
         case .hidden: ""
@@ -60,7 +60,7 @@ struct CrashReportBanner: View {
                     .scaledFont(.subheadline)
                     .lineLimit(2)
                 if case .asking = offer.state {
-                    Text(verbatim: AppLocalization.string("Send the report to Conduit's developer? It shows where the app stopped, never your messages."))
+                    Text(verbatim: AppLocalization.string("Send the report to Conduit's developer? It shows where the app stopped, never your messages.", table: .notifications))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)

@@ -245,7 +245,7 @@ extension AppState {
     /// `errorMessage`.
     func setGroupRoomPicture(_ image: UIImage?, roomID: String) async {
         guard let bridge = dashboardTicketBridge, let path = GroupRoomPictures.path(for: roomID) else {
-            errorMessage = AppLocalization.string("Connect to Hermes to change the group picture.")
+            errorMessage = AppLocalization.string("Connect to Hermes to change the group picture.", table: .rooms)
             return
         }
         let dashboard = activeDashboardID
@@ -301,7 +301,7 @@ extension AppState {
             return
         } catch {
             if superseded { return }
-            errorMessage = AppLocalization.string("Could not change the group picture: \(UserFacingError.message(for: error))")
+            errorMessage = AppLocalization.string("Could not change the group picture: \(UserFacingError.message(for: error))", table: .rooms)
         }
     }
 }

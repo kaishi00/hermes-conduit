@@ -84,7 +84,7 @@ struct ModelChooserPage: View {
     /// The setting is saving, or hasn't answered: nothing is picked meanwhile.
     var disabled = false
     /// What an empty catalog says; nil where the footer says it.
-    var emptyNote: String? = AppLocalization.string("Hermes has no models set up yet.")
+    var emptyNote: String? = AppLocalization.string("Hermes has no models set up yet.", table: .settings)
     let onDefault: () -> Void
     let onPick: (ProviderInfo, ModelInfo) -> Void
     /// The setting's own words and warnings, under the models.
@@ -204,7 +204,7 @@ struct ModelChooserPage: View {
             return (VoiceJobModelSettingsSection.providerDefaultTitle(pickedProvider?.title ?? pick.provider), nil)
         }
         let provider = pick.provider.isEmpty ? nil : (pickedProvider?.title ?? pick.provider)
-        return (pick.model, catalog.answered ? [provider, AppLocalization.string("Not listed by Hermes")].compactMap { $0 }.joined(separator: " · ") : provider)
+        return (pick.model, catalog.answered ? [provider, AppLocalization.string("Not listed by Hermes", table: .settings)].compactMap { $0 }.joined(separator: " · ") : provider)
     }
 
     private var currentCard: some View {
@@ -288,7 +288,7 @@ struct ModelChooserPage: View {
             excluding: ModelPickerSelection(model: pick?.model ?? "", provider: pick?.provider ?? "")
         )
         if !pinned.isEmpty || !recent.isEmpty {
-            ConduitSettingsSection(title: AppLocalization.string("Quick picks"), symbol: "pin", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("Quick picks", table: .settings), symbol: "pin", tint: .conduitAccent) {
                 ForEach(pinned) { match in
                     matchRow(match, note: nil)
                 }
@@ -304,7 +304,7 @@ struct ModelChooserPage: View {
         let providers = visibleProviders.filter { !$0.models.isEmpty }
         if !providers.isEmpty {
             // One card of providers, each opening its models under it.
-            ConduitSettingsSection(title: AppLocalization.string("All providers"), symbol: "server.rack", tint: .purple) {
+            ConduitSettingsSection(title: AppLocalization.string("All providers", table: .settings), symbol: "server.rack", tint: .purple) {
                 ForEach(providers, id: \.name) { option in
                     providerRow(option)
                     if expandedProviders.contains(option.name) {
@@ -422,7 +422,7 @@ struct ModelChooserPage: View {
     /// A read that failed, under the models shown or alone.
     @ViewBuilder
     private var failedRows: some View {
-        Text(AppLocalization.string("Could not load models."))
+        Text(AppLocalization.string("Could not load models.", table: .settings))
             .foregroundStyle(.secondary)
         Button(AppLocalization.string("Try Again"), action: retry)
             .buttonStyle(.settings)

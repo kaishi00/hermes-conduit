@@ -26,11 +26,11 @@ enum PhoneAlarmError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .unsupported: return AppLocalization.string("Alarms from Hermes need iOS 26 or later.")
-        case .unavailable: return AppLocalization.string("Alarms couldn't be reached just now. Try again.")
-        case .denied: return AppLocalization.string("Conduit isn't allowed to set alarms. Allow it in the Settings app.")
-        case .past: return AppLocalization.string("That alarm time has already passed.")
-        case .notFound: return AppLocalization.string("That alarm isn't on this iPhone any more.")
+        case .unsupported: return AppLocalization.string("Alarms from Hermes need iOS 26 or later.", table: .phone)
+        case .unavailable: return AppLocalization.string("Alarms couldn't be reached just now. Try again.", table: .phone)
+        case .denied: return AppLocalization.string("Conduit isn't allowed to set alarms. Allow it in the Settings app.", table: .phone)
+        case .past: return AppLocalization.string("That alarm time has already passed.", table: .phone)
+        case .notFound: return AppLocalization.string("That alarm isn't on this iPhone any more.", table: .phone)
         }
     }
 }
@@ -212,11 +212,11 @@ final class AlarmKitPhoneSource: PhoneAlarmSource {
         case .setTimer:
             // PhoneChange already refuses a timer outside this range.
             guard let seconds = fields.seconds, (5...86_400).contains(seconds) else { throw PhoneAlarmError.notFound }
-            let label = fields.label ?? AppLocalization.string("Timer")
+            let label = fields.label ?? AppLocalization.string("Timer", table: .phone)
             return try await schedule(.fixed(now.addingTimeInterval(TimeInterval(seconds))), label: label,
                                       record: PhoneAlarmRecord(kind: "timer", label: fields.label))
         case .setAlarm:
-            let label = fields.label ?? AppLocalization.string("Alarm")
+            let label = fields.label ?? AppLocalization.string("Alarm", table: .phone)
             if let at = fields.at {
                 guard at > now else { throw PhoneAlarmError.past }
                 return try await schedule(.fixed(at), label: label, record: PhoneAlarmRecord(kind: "alarm", label: fields.label))

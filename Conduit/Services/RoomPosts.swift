@@ -100,13 +100,13 @@ enum RoomPostText {
     /// Why a post wasn't posted.
     static func refusal(_ error: String?) -> String {
         switch error {
-        case "ended": return AppLocalization.string("Not posted: the room has ended.")
-        case "not_in": return AppLocalization.string("Not posted: your agents aren't in this room.")
-        case "too_long": return AppLocalization.string("Not posted: it's too long for this room.")
-        case "too_many": return AppLocalization.string("Not posted: too many posts this hour. Try again later.")
-        case "unavailable": return AppLocalization.string("Not posted: the host's Hermes couldn't take it. Try again.")
-        case "bad_post": return AppLocalization.string("Not posted: the host's Hermes couldn't read it.")
-        default: return AppLocalization.string("Not posted.")
+        case "ended": return AppLocalization.string("Not posted: the room has ended.", table: .rooms)
+        case "not_in": return AppLocalization.string("Not posted: your agents aren't in this room.", table: .rooms)
+        case "too_long": return AppLocalization.string("Not posted: it's too long for this room.", table: .rooms)
+        case "too_many": return AppLocalization.string("Not posted: too many posts this hour. Try again later.", table: .rooms)
+        case "unavailable": return AppLocalization.string("Not posted: the host's Hermes couldn't take it. Try again.", table: .rooms)
+        case "bad_post": return AppLocalization.string("Not posted: the host's Hermes couldn't read it.", table: .rooms)
+        default: return AppLocalization.string("Not posted.", table: .rooms)
         }
     }
 
@@ -116,7 +116,7 @@ enum RoomPostText {
     }
 
     static func postFailure(_ error: Error) -> String {
-        AppLocalization.string("Could not post in this room: \(RoomLinksClient.message(for: error))")
+        AppLocalization.string("Could not post in this room: \(RoomLinksClient.message(for: error))", table: .rooms)
     }
 
     /// The pending row's state under its bubble.
@@ -140,13 +140,13 @@ enum RoomPostText {
     static func rowState(post: RoomPost?, inFlight: Bool, takesPosts: Bool = true, roomOver: Bool = false,
                          settling: Bool = false, waitedOut: Bool = false, canAsk: Bool = true) -> RowState {
         if inFlight { return .sending }
-        if waitedOut { return .closed(AppLocalization.string("Not confirmed yet: it may still be posted.")) }
+        if waitedOut { return .closed(AppLocalization.string("Not confirmed yet: it may still be posted.", table: .rooms)) }
         guard takesPosts else {
             // A refusal's reason stands, whatever the plugin says now.
             if case .refused(let error)? = post?.status { return .closed(refusal(error)) }
             guard canAsk else {
-                return .closed(PluginUpdateAsk.text(AppLocalization.string("Can't check this post: update the Conduit plugin on your Hermes."),
-                                                    lead: AppLocalization.string("Can't check this post.")))
+                return .closed(PluginUpdateAsk.text(AppLocalization.string("Can't check this post: update the Conduit plugin on your Hermes.", table: .rooms),
+                                                    lead: AppLocalization.string("Can't check this post.", table: .rooms)))
             }
             if settling { return .sending }
             return .closed(refusal(roomOver ? "ended" : "not_in"))

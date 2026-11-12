@@ -179,23 +179,23 @@ enum RoomDraftText {
         case "ended":
             switch draft.reason {
             case "lapsed":
-                return AppLocalization.string("The invites ran out before everyone answered")
+                return AppLocalization.string("The invites ran out before everyone answered", table: .rooms)
             case "too_few":
-                return AppLocalization.string("Nobody else joined, so it didn't start")
+                return AppLocalization.string("Nobody else joined, so it didn't start", table: .rooms)
             case "start_failed":
-                return AppLocalization.string("Your Hermes couldn't start it")
+                return AppLocalization.string("Your Hermes couldn't start it", table: .rooms)
             case "withdrawn":
-                return AppLocalization.string("You took it back")
+                return AppLocalization.string("You took it back", table: .rooms)
             default:
-                return AppLocalization.string("It ended before it started")
+                return AppLocalization.string("It ended before it started", table: .rooms)
             }
         case "waiting":
             // Everyone answered: the rooms loop starts it on its next pass.
             guard !draft.waiting.isEmpty else { return AppLocalization.string("Starting…") }
             let waiting = names(draft.waiting.map(\.name))
             let joined = draft.joined.map(\.name)
-            guard !joined.isEmpty else { return AppLocalization.string("Waiting for \(waiting)") }
-            return AppLocalization.string("\(names(joined)) joined, waiting for \(waiting)")
+            guard !joined.isEmpty else { return AppLocalization.string("Waiting for \(waiting)", table: .rooms) }
+            return AppLocalization.string("\(names(joined)) joined, waiting for \(waiting)", table: .rooms)
         default:
             return AppLocalization.string("Starting…")
         }
@@ -205,9 +205,9 @@ enum RoomDraftText {
     static func status(of person: RoomDraft.Person) -> String? {
         switch person.status {
         case "joined":
-            return AppLocalization.string("Joined with \(names(person.agents))")
+            return AppLocalization.string("Joined with \(names(person.agents))", table: .rooms)
         case "waiting":
-            return AppLocalization.string("Hasn't answered yet")
+            return AppLocalization.string("Hasn't answered yet", table: .rooms)
         case "declined":
             return AppLocalization.string("Declined")
         default:
@@ -324,7 +324,7 @@ struct RoomDraftsClient {
     /// still going out.
     static func createRefusal(for error: Error) -> String {
         if case DashboardTicketBridgeError.http(504, _) = error {
-            return AppLocalization.string("Your Hermes is still sending the invites. The room shows under Group Chats once it has.")
+            return AppLocalization.string("Your Hermes is still sending the invites. The room shows under Group Chats once it has.", table: .rooms)
         }
         return AppLocalization.string("Could not create the group chat: \(message(for: error))")
     }
@@ -468,7 +468,7 @@ extension AppState {
             return .refused
         }
         guard GroupCreateLimits.canCreate(bots: bots.count, people: links.count) else {
-            errorMessage = AppLocalization.string("A room holds up to 6 agents: your bots, and at least one for each person.")
+            errorMessage = AppLocalization.string("A room holds up to 6 agents: your bots, and at least one for each person.", table: .rooms)
             return .refused
         }
         guard !trimmedName.isEmpty else { return .refused }
