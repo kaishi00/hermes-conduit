@@ -406,11 +406,13 @@ extension AppState {
                 return .gone
             }
         }
-        let outcome = await openNotificationTargetOutcome(
-            ConduitNotificationTarget(
-                profile: profile, sessionId: chatID, dashboardID: activeDashboardID, type: nil, isChatLink: true
-            )
+        let target = ConduitNotificationTarget(
+            profile: profile, sessionId: chatID, dashboardID: activeDashboardID, type: nil, isChatLink: true
         )
+        let outcome = await openNotificationTargetOutcome(target)
+        // One attempt, never retried: a failure the route held back for a
+        // retry is this open's last word.
+        if outcome == .retry { publishNotificationRouteFailure(for: target) }
         switch outcome {
         case .opened: return .opened
         case .failed:
@@ -1191,7 +1193,14 @@ extension AppState {
     /// it never gets `.afterCall`, which needs the route's wait (ConduitApp).
     func openNotificationTarget(_ target: ConduitNotificationTarget) async -> Bool {
         let outcome = await openNotificationTargetOutcome(target)
-        if case .unverified(let message) = outcome { errorMessage = message }
+        if case .unverified(let message) = outcome {
+            errorMessage = message
+            discardNotificationRouteFailure(for: target)
+        } else if outcome == .retry {
+            // One attempt, never retried: a failure the route held back for
+            // a retry is this open's last word.
+            publishNotificationRouteFailure(for: target)
+        }
         return outcome == .opened
     }
 
@@ -1903,6 +1912,12 @@ extension AppState {
             )
         }
         return current
+    }
+
+    /// A new tap's route starts: a failure an earlier tap's route held is
+    /// not this one's, even when both name the same chat.
+    func forgetNotificationRouteFailure() {
+        notificationRouteFailure = nil
     }
 
     /// The route has no attempt left: say why the last one failed, if it had

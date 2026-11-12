@@ -2648,6 +2648,10 @@ final class PushNotificationService: ObservableObject {
     /// first open always runs, however slowly the launch connected, and so
     /// does the retry the window's end scheduled, when it starts on time.
     @discardableResult
+    /// No attempt of the pending tap's route has started yet, or it opens
+    /// after a call as if just made: its window, and its failures, are its own.
+    var pendingRouteIsFresh: Bool { !pendingRouteOpenStarted || pendingRouteAwaitsCall }
+
     func beginNotificationRoute(_ target: ConduitNotificationTarget) -> Bool {
         guard pendingTarget == target else { return true }
         navigationRetryTask?.cancel()

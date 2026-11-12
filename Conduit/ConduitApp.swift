@@ -504,6 +504,9 @@ struct ConduitApp: App {
                     notifications.notificationRouteAwaitsConnection(target)
                     return
                 }
+                // A new tap: a failure an earlier tap's route held is older
+                // news, even for the same chat.
+                if notifications.pendingRouteIsFresh { appState.forgetNotificationRouteFailure() }
                 guard notifications.beginNotificationRoute(target) else {
                     // Its window ran out while the app was offline: the
                     // attempts it did make held their last failure, and this
