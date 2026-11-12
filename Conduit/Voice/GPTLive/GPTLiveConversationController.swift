@@ -1365,8 +1365,9 @@ final class GPTLiveConversationController: ObservableObject {
     /// copy.
     static let delegationContextMarker = "\n\n[Recent voice conversation, for context only. Do just the request above: earlier requests marked \"handled separately\" were passed on before (to a job, the chat, or an answer, or turned down), so skip them unless the request above asks for them.]\n"
 
-    /// The work a delegation asks for: its own text when it carries any,
-    /// otherwise the user's words since the last delegation, with the
+    /// The work a delegation asks for: its own text when that adds
+    /// something, otherwise the user's words since the last delegation
+    /// (WatchBridgeDelegation.requestWords, issue 2292), with the
     /// recent conversation for context. Earlier requests in that context
     /// are marked, so a second job doesn't redo the first one's work.
     /// `userWords` are the user's own words since the last delegation, as
@@ -1386,8 +1387,7 @@ final class GPTLiveConversationController: ObservableObject {
             VoiceThreadRouting.wantsLastReply($0.text) || VoiceThreadRouting.endsWithLastReplyRequest($0.text)
         }
         let userWords = (fresh.isEmpty ? reads : fresh).map(\.text).joined(separator: " ")
-        let own = itemText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let request = own.isEmpty ? userWords : own
+        let request = WatchBridgeDelegation.requestWords(itemText: itemText, userWords: userWords)
         // Nothing new since the last delegation: no request, so Hermes asks
         // the user rather than redoing the one already passed on.
         guard !request.isEmpty else { return ("", userWords) }
