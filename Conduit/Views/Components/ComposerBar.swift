@@ -1769,6 +1769,9 @@ struct ComposerBar: View, Equatable {
     /// newline behavior instead of being swallowed.
     @discardableResult
     private func submitFromReturnKey() -> Bool {
+        // A Bot Chat on its way covers this chat: the field's gate refreshes
+        // a turn later, so check the live state too, and take the key.
+        guard appState.botChatComingOverAnother == nil else { return true }
         // Return stands for Send, which is dictation's Stop while it runs.
         if dictationHoldsSendSlot {
             dictation.tapSlot()

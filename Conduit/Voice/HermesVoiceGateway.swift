@@ -115,6 +115,7 @@ final class HermesVoiceGateway: VoiceGatewayService {
                     return try await self.openSpeechServerSpeech(onStart: start, onPCM16: pcm)
                 },
                 onDevice: makeOnDeviceSpeech,
+                primaryName: "the speech server",
                 onFallback: { error in
                     hermesSpeechFallbackLog.notice("Speech server speech failed, speaking on this iPhone: \(String(describing: error), privacy: .private)")
                 },
@@ -153,6 +154,8 @@ final class HermesVoiceGateway: VoiceGatewayService {
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void,
         onEncodedAudio: @escaping @MainActor (Data) throws -> Void
     ) async throws -> VoiceSpeechStream {
+        // The reading that asked, before any await lets a newer one begin.
+        let traceRun = LiveCallTrace.readAloud.run
         let ticket = try await bridge.mintTicket()
         let unauthorized: URLRequest
         do {
@@ -172,6 +175,7 @@ final class HermesVoiceGateway: VoiceGatewayService {
         task.resume()
         return HermesSpeechStream(
             task: task,
+            traceRun: traceRun,
             fallback: { [bridge, profile] text in
                 try await Self.loadFallbackAudio(bridge: bridge, profile: profile, text: text)
             },
@@ -285,6 +289,10 @@ final class HermesSpeechStream: VoiceSpeechStream {
     private var completed: CheckedContinuation<Bool, Error>?
     private var allText = ""
     private var receivedPCM = false
+    /// Audio received, for Read Aloud's trace (issue 1641), and the
+    /// reading it belongs to (LiveCallTrace.run).
+    private var receivedSeconds: TimeInterval = 0
+    private let traceRun: Int
     private var sampleRate = 24_000.0
     private var started = false
     private var terminalError: Error?
@@ -314,6 +322,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
 
     init(
         task: any HermesSpeechSocket,
+        traceRun: Int? = nil,
         finishIdleTimeout: Duration = .seconds(20),
         keepaliveInterval: Duration = VoiceSocketKeepalive.interval,
         fallback: @escaping @MainActor (String) async throws -> Data,
@@ -322,6 +331,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
         onEncodedAudio: @escaping @MainActor (Data) throws -> Void
     ) {
         self.task = task
+        self.traceRun = traceRun ?? LiveCallTrace.readAloud.run
         self.finishIdleTimeout = finishIdleTimeout
         self.keepaliveInterval = keepaliveInterval
         self.fallback = fallback
@@ -559,6 +569,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
         if !started { try onStart(sampleRate); started = true }
         try onPCM16(data, sampleRate)
         receivedPCM = true
+        if sampleRate > 0 { receivedSeconds += Double(data.count / 2) / sampleRate }
     }
 
     private func playFallback() async throws -> Bool {
@@ -566,6 +577,7 @@ final class HermesSpeechStream: VoiceSpeechStream {
         guard !receivedPCM else { return true }
         guard !fallbackAttempted else { return false }
         fallbackAttempted = true
+        LiveCallTrace.readAloud.note("Hermes speech stream sent no audio: asking for the reply as one clip", run: traceRun)
         let data = try await fallback(allText)
         guard !cancelledByClient, !terminal else { throw CancellationError() }
         try onEncodedAudio(data)
@@ -597,6 +609,11 @@ final class HermesSpeechStream: VoiceSpeechStream {
         receiveTask = nil
         task.cancel(with: .goingAway, reason: nil)
         if case .failure(let error) = result { terminalError = error }
+        let outcome = switch result {
+        case .success: "ended"
+        case .failure(let error): error is CancellationError ? "cancelled" : "failed (\(String(describing: type(of: error))))"
+        }
+        LiveCallTrace.readAloud.note("Hermes speech \(outcome) after \(String(format: "%.1f", receivedSeconds)) s of streamed audio", run: traceRun)
         let continuation = completed
         completed = nil
         continuation?.resume(with: result)

@@ -59,6 +59,8 @@ protocol OnDeviceSpeechSynthesizing: AnyObject {
 @MainActor
 final class OnDeviceSpeechStream: VoiceSpeechStream {
     private let synthesizer: OnDeviceSpeechSynthesizing
+    /// The Read Aloud reading this stream belongs to (LiveCallTrace.run).
+    private let traceRun: Int
     private let fallbackLanguage: String?
     private let onStart: @MainActor (Double) throws -> Void
     private let onPCM16: @MainActor (Data, Double) throws -> Void
@@ -81,6 +83,7 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void
     ) {
         self.synthesizer = synthesizer ?? SystemSpeechSynthesizer()
+        traceRun = LiveCallTrace.readAloud.run
         self.fallbackLanguage = fallbackLanguage
         self.onStart = onStart
         self.onPCM16 = onPCM16
@@ -92,7 +95,11 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         // Whole sentences start speaking while the rest of the reply streams in,
         // each its own utterance: a Premium voice given a long run of them can
         // go quiet past the watchdog partway and lose the rest (issue 2191).
-        queue.append(contentsOf: Self.takeCompleteSentences(from: &pending))
+        let sentences = Self.takeCompleteSentences(from: &pending)
+        if !sentences.isEmpty {
+            LiveCallTrace.readAloud.note("Queued \(sentences.count) sentences (\(sentences.map { String($0.count) }.joined(separator: ", ")) characters)", run: traceRun)
+        }
+        queue.append(contentsOf: sentences)
         speakNext()
     }
 
@@ -103,7 +110,10 @@ final class OnDeviceSpeechStream: VoiceSpeechStream {
         }
         let rest = pending.trimmingCharacters(in: .whitespacesAndNewlines)
         pending = ""
-        if !rest.isEmpty { queue.append(rest) }
+        if !rest.isEmpty {
+            LiveCallTrace.readAloud.note("Queued the rest (\(rest.count) characters)", run: traceRun)
+            queue.append(rest)
+        }
         finishRequested = true
         return try await withTaskCancellationHandler {
             try await withCheckedThrowingContinuation { continuation in
@@ -377,8 +387,17 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
     private var watchdog: Task<Void, Never>?
     /// When the current utterance last produced audio (or started).
     private var lastAudio = ContinuousClock.now
+    /// Read Aloud's trace (issue 1641): the sentence speaking, counted
+    /// from 1 per stream, and the audio it has produced.
+    private var sentence = 0
+    private var sentenceAudio: TimeInterval = 0
+    /// Sentences already noted as producing audio after their end.
+    private var lateAudioNoted: Set<Int> = []
+    /// The Read Aloud reading this voice speaks for (LiveCallTrace.run).
+    private let traceRun: Int
 
     override init() {
+        traceRun = LiveCallTrace.readAloud.run
         super.init()
         synthesizer.delegate = self
     }
@@ -391,10 +410,14 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
     ) {
         utterance += 1
         let id = utterance
+        sentence += 1
+        let number = sentence
+        sentenceAudio = 0
         self.onDone = onDone
         let request = AVSpeechUtterance(string: text)
         request.voice = voice(for: language)
         self.request = request
+        LiveCallTrace.readAloud.note("Sentence \(number): \(text.count) characters, \(Self.traceName(of: request.voice))", run: traceRun)
         armWatchdog(id)
         synthesizer.write(request) { [weak self] buffer in
             // Called off the main thread, in order; the main queue keeps it.
@@ -404,11 +427,21 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
             let isEnd = pcm.frameLength == 0
             DispatchQueue.main.async {
                 MainActor.assumeIsolated {
-                    guard let self, self.utterance == id else { return }
+                    guard let self else { return }
+                    guard self.utterance == id else {
+                        // Audio for a sentence already ended is dropped:
+                        // the trace says so once (issue 1641).
+                        if !data.isEmpty, !self.lateAudioNoted.contains(number) {
+                            self.lateAudioNoted.insert(number)
+                            LiveCallTrace.readAloud.note("Sentence \(number): audio after its end, dropped", run: self.traceRun)
+                        }
+                        return
+                    }
                     if isEnd {
-                        self.finish(id)
+                        self.finish(id, how: "end of speech")
                     } else {
                         self.lastAudio = .now
+                        if rate > 0 { self.sentenceAudio += Double(data.count / 2) / rate }
                         if !data.isEmpty { onAudio(data, rate) }
                     }
                 }
@@ -425,8 +458,9 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
         synthesizer.stopSpeaking(at: .immediate)
     }
 
-    private func finish(_ id: Int) {
+    private func finish(_ id: Int, how: String) {
         guard utterance == id, let onDone else { return }
+        LiveCallTrace.readAloud.note("Sentence \(sentence) ended (\(how)) after \(String(format: "%.1f", sentenceAudio)) s of audio", run: traceRun)
         // Late buffers of a finished utterance are dropped.
         utterance += 1
         self.onDone = nil
@@ -447,7 +481,7 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
                 do { try await Task.sleep(until: self.lastAudio + quiet, clock: .continuous) } catch { return }
                 if ContinuousClock.now - self.lastAudio >= quiet {
                     onDeviceSpeechLog.notice("iPhone speech went quiet without ending; moving on")
-                    self.finish(id)
+                    self.finish(id, how: "quiet for 8 s")
                     return
                 }
             }
@@ -462,9 +496,21 @@ final class SystemSpeechSynthesizer: NSObject, OnDeviceSpeechSynthesizing, AVSpe
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) { [weak self] in
             MainActor.assumeIsolated {
                 guard let self, let request = self.request, ObjectIdentifier(request) == finished else { return }
-                self.finish(self.utterance)
+                self.finish(self.utterance, how: "finished without an end buffer")
             }
         }
+    }
+
+    /// A voice as the trace names it: its quality and identifier, which
+    /// say which voice it was without any text.
+    private static func traceName(of voice: AVSpeechSynthesisVoice?) -> String {
+        guard let voice else { return "no voice found" }
+        let quality = switch voice.quality {
+        case .premium: "Premium"
+        case .enhanced: "Enhanced"
+        default: "Default"
+        }
+        return "\(quality) voice \(voice.identifier)"
     }
 
     /// The voice picked for `language` in Settings, or else the best one
@@ -512,6 +558,9 @@ final class FallbackSpeechStream: VoiceSpeechStream {
     ) -> VoiceSpeechStream
 
     private let openOnDevice: OpenOnDevice
+    /// Who speaks until a failure, as Read Aloud's trace names it.
+    let primaryName: String
+    private let traceRun: Int
     private let onFallback: @MainActor (Error) -> Void
     private let onStart: @MainActor (Double) throws -> Void
     private let onPCM16: @MainActor (Data, Double) throws -> Void
@@ -524,11 +573,14 @@ final class FallbackSpeechStream: VoiceSpeechStream {
 
     private init(
         openOnDevice: @escaping OpenOnDevice,
+        primaryName: String,
         onFallback: @escaping @MainActor (Error) -> Void,
         onStart: @escaping @MainActor (Double) throws -> Void,
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void
     ) {
         self.openOnDevice = openOnDevice
+        self.primaryName = primaryName
+        traceRun = LiveCallTrace.readAloud.run
         self.onFallback = onFallback
         self.onStart = onStart
         self.onPCM16 = onPCM16
@@ -537,12 +589,13 @@ final class FallbackSpeechStream: VoiceSpeechStream {
     static func open(
         hermes: OpenHermes,
         onDevice: @escaping OpenOnDevice,
+        primaryName: String = "Hermes speech",
         onFallback: @escaping @MainActor (Error) -> Void,
         onStart: @escaping @MainActor (Double) throws -> Void,
         onPCM16: @escaping @MainActor (Data, Double) throws -> Void,
         onEncodedAudio: @escaping @MainActor (Data) throws -> Void
     ) async throws -> VoiceSpeechStream {
-        let stream = FallbackSpeechStream(openOnDevice: onDevice, onFallback: onFallback, onStart: onStart, onPCM16: onPCM16)
+        let stream = FallbackSpeechStream(openOnDevice: onDevice, primaryName: primaryName, onFallback: onFallback, onStart: onStart, onPCM16: onPCM16)
         do {
             stream.current = try await hermes(
                 { rate in try onStart(rate) },
@@ -615,6 +668,7 @@ final class FallbackSpeechStream: VoiceSpeechStream {
         guard let hermesError else { return }
         current?.cancel()
         usingFallback = true
+        LiveCallTrace.readAloud.note("\(primaryName.prefix(1).uppercased() + primaryName.dropFirst()) failed before any audio (\(String(describing: type(of: hermesError)))), the iPhone voice reads it", run: traceRun)
         onFallback(hermesError)
         let fallback = openOnDevice(onStart, onPCM16)
         current = fallback

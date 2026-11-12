@@ -623,6 +623,9 @@ struct GroupRoomComposer: View {
     }
 
     private func submitFromReturnKey() -> Bool {
+        // Checked live as well as in the field's gate, which a Bot Chat
+        // coming over the room reaches a render later.
+        guard appState.botChatComingOverAnother == nil else { return true }
         if dictationHoldsSendSlot {
             dictation.tapSlot()
             return true

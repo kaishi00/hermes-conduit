@@ -158,10 +158,11 @@ struct GatewayDiagnosticsSheet: View {
         }
     }
 
-    /// The connection timeline, then the last call from Hermes (#449) and
-    /// the last Grok Live, Qwen Live or Local Live call's steps, so one Copy takes them all.
+    /// The connection timeline, then the last call from Hermes (#449), the
+    /// last Grok Live, Qwen Live or Local Live call's steps and the last
+    /// Read Aloud reading's (issue 1641), so one Copy takes them all.
     private var lastConnectionReport: String? {
-        let reports = [appState.connectionTimeline?.report, HermesCallTrace.shared.timeline?.report, LiveCallTrace.shared.report].compactMap { $0 }
+        let reports = [appState.connectionTimeline?.report, HermesCallTrace.shared.timeline?.report, LiveCallTrace.shared.report, LiveCallTrace.readAloud.report].compactMap { $0 }
         return reports.isEmpty ? nil : reports.joined(separator: "\n\n")
     }
 

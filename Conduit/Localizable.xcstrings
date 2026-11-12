@@ -514612,6 +514612,94 @@
         }
       }
     },
+    "Show chat list and Show artifacts work in a window wide enough to put that column beside the chat." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Chatliste einblenden“ und „Artefakte einblenden“ funktionieren in einem Fenster, das breit genug ist, um diese Spalte neben den Chat zu stellen."
+          }
+        },
+        "en" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Show chat list and Show artifacts work in a window wide enough to put that column beside the chat."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar lista de chats y Mostrar artefactos funcionan en una ventana lo bastante ancha para poner esa columna junto al chat."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Afficher la liste des discussions et Afficher les artefacts fonctionnent dans une fenêtre assez large pour placer cette colonne à côté de la discussion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tampilkan daftar chat dan Tampilkan artefak berfungsi di jendela yang cukup lebar untuk menaruh kolom itu di samping chat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostra elenco chat e Mostra artefatti funzionano in una finestra abbastanza larga da mettere quella colonna accanto alla chat."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「チャット一覧を表示」と「アーティファクトを表示」は、その列をチャットの横に置ける幅のウインドウで使えます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "채팅 목록 보기와 아티팩트 보기는 그 열을 채팅 옆에 둘 만큼 넓은 창에서 작동합니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "„Pokaż listę czatów” i „Pokaż artefakty” działają w oknie na tyle szerokim, by zmieścić tę kolumnę obok czatu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Mostrar lista de conversas e Mostrar artefatos funcionam em uma janela larga o bastante para colocar essa coluna ao lado da conversa."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "«Показать список чатов» и «Показать артефакты» работают в окне, достаточно широком, чтобы поставить эту колонку рядом с чатом."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sohbet listesini göster ve Yapıtları göster, o sütunu sohbetin yanına koyacak kadar geniş bir pencerede çalışır."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "“显示聊天列表”和“显示产物”在宽到能把该栏放在聊天旁边的窗口中可用。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "「顯示聊天列表」和「顯示產物」在寬到能把該欄放在聊天旁邊的視窗中可用。"
+          }
+        }
+      }
+    },
     "Adds a photo to the chat for your next question" : {
       "localizations" : {
         "de" : {

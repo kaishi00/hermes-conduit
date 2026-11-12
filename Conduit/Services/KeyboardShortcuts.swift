@@ -215,7 +215,7 @@ struct KeyboardShortcutsSheet: View {
     var body: some View {
         NavigationStack {
             List {
-                Section(AppLocalization.string("Chats")) {
+                Section {
                     row(.newChat)
                     row(.search)
                     row(.send)
@@ -223,6 +223,14 @@ struct KeyboardShortcutsSheet: View {
                     if usesTabs {
                         row(.chatList)
                         row(.artifacts)
+                    }
+                } header: {
+                    Text(AppLocalization.string("Chats"))
+                } footer: {
+                    // The chat list and Artifacts toggles exist only in a
+                    // window with room for a column beside the chat.
+                    if usesTabs {
+                        Text(AppLocalization.string("Show chat list and Show artifacts work in a window wide enough to put that column beside the chat."))
                     }
                 }
                 Section(AppLocalization.string("Go to")) {

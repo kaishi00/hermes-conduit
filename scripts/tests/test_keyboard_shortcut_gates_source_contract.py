@@ -37,6 +37,18 @@ class KeyboardShortcutGatesSourceContractTests(unittest.TestCase):
             room,
         )
 
+    def test_return_callbacks_recheck_a_bot_chat_cover_live(self):
+        # The fields' gate refreshes a render after the cover starts; the
+        # callbacks check it themselves so a press in between sends nothing.
+        for path in ("Conduit/Views/Components/ComposerBar.swift", "Conduit/Views/Components/GroupRoomComposer.swift"):
+            source = read(path)
+            callback = source[source.index("private func submitFromReturnKey"):]
+            self.assertIn("guard appState.botChatComingOverAnother == nil else { return true }", callback[:500], path)
+
+    def test_sheet_says_where_the_column_keys_work(self):
+        sheet = read("Conduit/Services/KeyboardShortcuts.swift")
+        self.assertIn("Show chat list and Show artifacts work in a window wide enough", sheet)
+
     def test_chat_list_and_artifacts_keys_wait_for_sheets_and_the_shown_chat(self):
         screen = read("Conduit/Views/V2/V2ConversationScreen.swift")
         self.assertIn("ConduitKeyboardShortcut.chatList.shortcut", screen)

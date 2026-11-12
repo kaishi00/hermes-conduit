@@ -564,24 +564,29 @@ briefing; the host's audio bridge starts the session through the same route) ·
 the notifier's session route, on its own Codex exchange and on Hermes' ·
 GPT-Live on the API key (not changed: gpt-live-1 reads its instructions) ·
 the fallback when a host doesn't take it (context appends after the start) ·
+Codex's GA endpoint (the event set, the briefing as instructions after the
+start, on the phone and the Watch alike) ·
 the call trace (Live call trace) · text: docs/VOICE_SETTINGS.md (Diagnostics),
 the notifier README's session route and CHANGELOG.md
 
 **Code**
 - The briefing: `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (briefing, maxBriefingCharacters, the late-briefing fallback where `briefingApplied` is false)
-- The answer: `Conduit/Voice/GPTLive/GPTLiveClient.swift` (briefingApplied, briefingClipped), `Conduit/Voice/GPTLive/GPTLiveSession.swift` (answerStep)
-- The Watch: `Shared/WatchVoice/WatchAudioBridgeWire.swift` (briefingApplied), `notifier/dashboard/api/watch_audio.py`
+- The answer: `Conduit/Voice/GPTLive/GPTLiveClient.swift` (briefingApplied, briefingClipped, gaEvents), `Conduit/Voice/GPTLive/GPTLiveSession.swift` (answerStep, dialect, dropsRequestBriefing)
+- The event sets: `Conduit/Voice/GPTLive/GPTLiveProtocol.swift` (Dialect, contextAppendMessages and its `.instructions` channel, TurnAssembler)
+- The Watch: `Shared/WatchVoice/WatchAudioBridgeWire.swift` (briefingApplied, gaEvents, gptLiveDialect), `ConduitWatch/WatchBridgeCallModel.swift` (the GA briefing sent on `.started` outside the backlog count, turns, endQuietTurnIfDue), `notifier/dashboard/api/watch_audio.py`
+- Tests: `ConduitTests/GPTLiveVoiceTests.swift` (testGPTLiveSubscriptionOnTheGAEndpointSpeaksGAEventsAndSendsTheBriefingAfterTheStart, testGPTLiveInstructionsAppendOnTheGAEventsAndGoAsCommentaryOnTheFramelessOnes), `ConduitTests/WatchAudioBridgeTests.swift`
 - Host: `notifier/dashboard/api/gpt_live.py` (CODEX_ITEMS_MAX_TOKENS, _seeded_items, _clip_block, create_gpt_live_session), `notifier/tests/test_gpt_live.py` (test_seeded_items_never_exceed_the_codex_budget)
 
 **Rulings**
 - On a ChatGPT plan the briefing is the session's first seeded item, a developer message ahead of the history: gpt-live-1-codex doesn't read the session's instructions, so a briefing put there never reached the model while the host reported it applied (notifier #719, found by vesper-de-clerck with real Codex calls). On the API key it stays in the instructions, which gpt-live-1 reads.
 - Codex allows the seeded items 8,192 estimated tokens in all. That budget is kept in one place, the plugin's `_seeded_items`, which builds every subscription session's items (the plugin's exchange and Hermes' alike) for whatever any Conduit sends: the history keeps its newest turns within 2,048 tokens (the whole budget without a briefing), then what Hermes remembers is cut, then the persona, each marked as cut, and Conduit's rules, the call's own blocks and the language rule always go whole. Every earlier size bug was a limit guessed in another unit (Conduit issue 1077's 32 K characters, a context append's 500 tokens), so no other layer keeps a model budget of its own: the app's `maxBriefingCharacters` is only the request's limit for older plugins (2026-11-11, notifier #719).
+- ChatGPT is moving accounts to Codex's GA endpoint (`/backend-api/codex/live/sessions`) one at a time, so a ChatGPT-plan call speaks whichever event set the host reports: `events: "ga"` for the GA endpoint, the frameless events otherwise (an older plugin, or an account still on the old endpoint). On GA, `session.started` brings instructions of its own and the request's are dropped, so the briefing never counts as applied there, whatever the host says: the phone and the Watch send it as `session.instructions.append` as each session starts (a Watch rejoin's too), their appends are `session.commentary.append` and `session.thinking.append`, and turns are made from the deltas, as on the API key. On the frameless events nothing changes (2026-11-11, #2240, issue 2236, found by lbueso with live sessions against the endpoint).
 - `briefing_applied` is true only when the briefing is in the session the host sends; when even its rules don't fit, it's false and Conduit sends the briefing as context after the start, as for any host that doesn't take one. `briefing_clipped` says the memory or persona was cut, and the trace shows it as "cut to fit" (notifier #719).
 
 **Open gaps**
-- None known.
+- On the GA endpoint the briefing goes whole, in 500-byte instruction appends, outside `_seeded_items`' budget: whether GA takes seeded items, and how much instruction text it allows, is unverified.
 
-**Checked:** 2026-11-11, #2232 (added: the briefing as a seeded item within one Codex token budget, notifier #719).
+**Checked:** 2026-11-11, #2240 (Codex's GA endpoint: its events, and the briefing as instructions after the start, issue 2236); 2026-11-11, #2232 (added: the briefing as a seeded item within one Codex token budget, notifier #719).
 
 ## Starting a call
 
@@ -3483,12 +3488,14 @@ keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
 - ⌘. is Stop wherever the composer's Stop would stop (a turn, or the open workstream), a draft in the field or not, in the shown tab's chat only (2026-11-11, #2224).
 - ⌘. doesn't stop a running dictation: that stays with the composer's Stop and Return, which own the dictation (2026-11-11, #2224 review).
 - The sheet lists only the keys the current shell answers: the drawer shell shows Settings with ⌘, and leaves out ⌘1 to ⌘4, ⌃⌘S and ⌥⌘A (2026-11-11, #2224 review).
+- ⌃⌘S and ⌥⌘A exist only where their column fits beside the chat (the list in a window that splits, the side panel in a chat column wide enough). The sheet, a reference opened from anywhere, keeps their rows under the tab shell and says so in the Chats footer rather than following the window it's opened over (2026-11-11, follow-up to #2224).
+- Return and ⌘Return's callbacks check a Bot Chat on its way themselves too, since the field's gate reaches it a render later (2026-11-11, follow-up to #2224).
 
 **Open gaps**
 - Not yet tried on a device: the menus on a Mac and an iPad, and whether ⌘+ fires from ⌘= on a US layout (it's registered as "+").
 - No Back (⌘[) or next/previous chat: Back in a split window means different things per column. Left for the maintainer to decide.
 
-**Checked:** 2026-11-11, added at #2224.
+**Checked:** 2026-11-11, #2241 (the sheet's Chats footer on where ⌃⌘S and ⌥⌘A work; the Return callbacks' live Bot Chat check); added at #2224.
 
 ## Slash commands
 
@@ -4762,20 +4769,26 @@ Classic's transcription streams · Watch calls (Gemini, Qwen, Grok, Local Live; 
 The steps of the last Grok Live, Qwen Live, Local Live or GPT-Live call that
 Diagnostics & logs (Last connection) shows and copies, so a user can paste them
 into an issue: setup, the microphone, the server's turn detection and the
-user's turns, and each tool call; for GPT-Live, its startup.
+user's turns, and each tool call; for GPT-Live, its startup. The last Read
+Aloud reading has its own trace there (issue 1641): which voice read it, how
+it was split, why each sentence ended, and how playback went.
 
 **Siblings:** Grok Live (phone, CarPlay, calls from Hermes) · Local Live ·
 Qwen Live (turn steps and the controller's tool steps) · GPT-Live on the iPhone,
 CarPlay and calls from Hermes (startup steps, #1611) · Gemini Live (no trace) ·
 Watch calls (no trace here; the Watch's own call log, Voice settings > Apple
 Watch, already keeps a GPT-Live call's `briefingApplied` and `greetingApplied`
-in `bridgeStarted`) · docs/VOICE_SETTINGS.md
+in `bridgeStarted`) · Read Aloud, a single reply and Read replies aloud (the
+iPhone voice, Hermes speech, the speech server and the standalone playback
+note into it; Classic and the speech test share those and take no steps) ·
+docs/VOICE_SETTINGS.md
 
 **Code**
 - The trace and its report: `Conduit/Voice/LiveCallTrace.swift`, `Conduit/Views/ChatSupportSheets.swift` (lastConnectionReport)
 - Steps: `Shared/GrokLive/GrokLiveSession.swift`, `Shared/LocalLive/LocalLiveSession.swift`, `Shared/GeminiLive/QwenLiveSocket.swift`, `Shared/GeminiLive/GeminiLiveSession.swift` (onTrace), `Shared/GrokLive/LiveTurnTrace.swift`, `Shared/GrokLive/GrokLiveProtocol.swift` (turnDetectionSummary), `Conduit/Voice/GeminiLive/GeminiLiveConversationController.swift` (traceName, traceInputRoute)
 - GPT-Live's steps: `Conduit/Voice/GPTLive/GPTLiveSession.swift` (onTrace, requestStep, answerStep), `Conduit/Voice/GPTLive/GPTLiveConversationController.swift` (traceName), `Conduit/Voice/GPTLive/GPTLiveClient.swift` (the answer's `source`)
 - Wiring: `Conduit/Services/AppState.swift` (traceName, session.onTrace)
+- Read Aloud's trace: `Conduit/Voice/LiveCallTrace.swift` (readAloud, end), `Conduit/Voice/MessageReadAloudController.swift` (startOperation, traceEngine, traceRoute, settle), `Conduit/Voice/OnDeviceSpeech.swift` (append, finish, SystemSpeechSynthesizer.finish(how:), FallbackSpeechStream.switchToOnDevice), `Conduit/Voice/HermesVoiceGateway.swift` (HermesSpeechStream.complete, playFallback), `Conduit/Voice/AVSpeechPlaybackService.swift` (trace)
 
 **Rulings**
 - A long call keeps its first 20 steps (the setup) and its newest ones, up to 200, so a late turn that never ends is kept (2026-10-28, #1424).
@@ -4784,12 +4797,13 @@ in `bridgeStarted`) · docs/VOICE_SETTINGS.md
 - Qwen Live's trace has the turn steps, dropped microphone audio and the controller's tool steps; Grok's own session steps (setup, functions taken) have no Qwen counterpart (2026-10-28, #1424).
 - A tool step is noted only while its call is still the current one, so a lookup that returns after hang-up stays out of the next call's trace (2026-10-28, #1424).
 - GPT-Live's trace is its startup (#1611): the request's briefing length and whether it carried a persona and memory (by their blocks), whether it was a call from Hermes, a greeting or waits for the user, and how many history items; what the host answered (built by Hermes or the plugin, the billing path, `briefing_applied` and, when the host cut it to fit, `briefing_clipped` ("cut to fit", notifier #719), `greeting_applied`, the voice); session.started or its timeout; a briefing or opening Conduit sent after the start, or asked for again; which side spoke first; connection drops and the provider's error code, never its message. "Applied" means the text was in the session the host sent (the instructions, or on a ChatGPT plan its first seeded item), not that OpenAI took it or the model followed it (2026-11-01, #1611).
+- Read Aloud's trace runs from a reading's start to its end, and nothing is noted outside one, so Classic's iPhone voice and the speech test, which share its classes, never write into it. It names the engine, the route by port kind, each sentence's length and the voice's quality and identifier, why each sentence ended (end of speech, finished without one, quiet for 8 s) with the audio it produced, audio dropped after a sentence ended, and playback's restarts, interruptions, drain watchdog and end. A speech stream notes only into the reading it opened in, and the fallback names who speaks first (Hermes speech or the speech server). Never the reply's words (2026-11-11, #2242, from issue 1641).
 
 **Open gaps**
 - Gemini Live sends no turn detection events and GPT-Live's turns run over WebRTC, so neither has turn steps; Gemini Live has no trace; the Watch has no trace to show.
 - Every trace keeps only the last call, in memory until the app restarts (its steps also go to the system log, which keeps them longer), and nothing joins a call from Hermes, its saved call and the host's session request (#1611 asked for an alias).
 
-**Checked:** 2026-11-11, #2232 (the trace says when the host cut the briefing to fit, notifier #719); 2026-11-01, #1612 (GPT-Live's startup steps, from issue 1611); 2026-10-28, #1424.
+**Checked:** 2026-11-11, #2242 (Read Aloud's own trace, issue 1641); 2026-11-11, #2232 (the trace says when the host cut the briefing to fit, notifier #719); 2026-11-01, #1612 (GPT-Live's startup steps, from issue 1611); 2026-10-28, #1424.
 
 ## Narrated actions left out of speech
 
