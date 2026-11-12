@@ -242,13 +242,23 @@ private struct RichMediaViewer: View {
             RichAudioPlayer.preparePlayback()
             let player = AVPlayer(url: item.url)
             self.player = player
-            // Playing again after an interruption (the controls, or Siri
-            // handing back) takes the lease again, so wake listening steps
-            // aside for the video as before.
+            // The lease follows the video: playing (again, after a pause or
+            // an interruption) takes it, and a pause, the end of the video
+            // or a failed load hands the audio back while the sheet stays
+            // up, so wake listening only steps aside while it plays.
             resumes = player.publisher(for: \.timeControlStatus)
-                .filter { $0 == .playing }
+                .dropFirst()
+                .removeDuplicates()
                 .receive(on: DispatchQueue.main)
-                .sink { _ in MainActor.assumeIsolated { RichAudioPlayer.preparePlayback() } }
+                .sink { status in
+                    MainActor.assumeIsolated {
+                        switch status {
+                        case .playing: RichAudioPlayer.preparePlayback()
+                        case .paused: RichAudioPlayer.endPlayback()
+                        default: break
+                        }
+                    }
+                }
             player.play()
         }
         .onDisappear {
