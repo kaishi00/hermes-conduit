@@ -7714,7 +7714,7 @@ none (no Settings caption or doc gives the cadence)
 **Open gaps**
 - Hermes broadcasts every served profile's changes to every socket, so a busy bot in another profile reads this profile's catalog every 5 s while it works; the signal carries no profile to tell them apart.
 
-**Checked:** 2026-11-12, #PRNUM (a change held by a turn here keeps the 30 s read; the wake follows Low Power's stretched first step); 2026-11-12, #2267 (issue 851).
+**Checked:** 2026-11-12, #2275 (a change held by a turn here keeps the 30 s read; the wake follows Low Power's stretched first step); 2026-11-12, #2267 (issue 851).
 
 ## Reads while a screen shows
 
