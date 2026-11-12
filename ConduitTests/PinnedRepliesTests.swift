@@ -223,7 +223,7 @@ final class PinnedRepliesTests: XCTestCase {
         let menu = try XCTUnwrap(editMenu(bridge))
         XCTAssertEqual(menu.children.count, 4)
         XCTAssertEqual((menu.children[0] as? UIMenu)?.identifier, .standardEdit)
-        XCTAssertEqual((menu.children[1] as? UIAction)?.title, AppLocalization.string("Quote"))
+        XCTAssertEqual((menu.children[1] as? UIAction)?.title, AppLocalization.string("Quote", table: .chat))
         let pin = try XCTUnwrap(menu.children[2] as? UIAction)
         XCTAssertEqual(pin.title, AppLocalization.string("Pin"))
         XCTAssertEqual((menu.children[3] as? UIAction)?.title, AppLocalization.string("Pin reply"))

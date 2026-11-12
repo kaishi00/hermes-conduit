@@ -129,7 +129,7 @@ extension AgentPlan {
     static func validated(_ rows: [Any]) -> [AgentPlanItem] {
         var items = dedupedByID(rows).map { row -> AgentPlanItem in
             guard let row = row as? [String: Any] else {
-                return AgentPlanItem(id: "?", content: AppLocalization.string("(invalid item)"), status: .pending)
+                return AgentPlanItem(id: "?", content: AppLocalization.string("(invalid item)", table: .bots), status: .pending)
             }
             return item(row)
         }
@@ -152,7 +152,7 @@ extension AgentPlan {
         let parent = string(row["parent"])
         return AgentPlanItem(
             id: id.isEmpty ? "?" : id,
-            content: content.isEmpty ? AppLocalization.string("(no description)") : capped(content),
+            content: content.isEmpty ? AppLocalization.string("(no description)", table: .bots) : capped(content),
             status: AgentPlanItem.Status(rawValue: string(row["status"]).lowercased()) ?? .pending,
             parent: parent.isEmpty || parent == id ? nil : parent
         )

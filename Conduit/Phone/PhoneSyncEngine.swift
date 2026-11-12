@@ -526,7 +526,7 @@ final class PhoneSyncEngine: ObservableObject {
             "public_key": NotificationE2E.base64URL(devicePrivate.publicKey.rawRepresentation),
         ])
         guard let hostPublic = answer["host_public_key"] as? String, let kid = answer["kid"] as? String else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The host didn't return a key."))
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The host didn't return a key.", table: .phone))
         }
         let key = try PhoneSyncCrypto.agree(devicePrivate: devicePrivate, deviceID: state.deviceID, hostPublicKey: hostPublic, kid: kid)
         try Task.checkCancellation()
@@ -1236,7 +1236,7 @@ final class PhoneSyncEngine: ObservableObject {
                     let edit = change.fields.contact
                     let typed = [edit?.givenName, edit?.familyName].compactMap { $0 }.joined(separator: " ")
                     let name = change.fields.personName ?? (typed.isEmpty ? edit?.organization : typed)
-                    added = PhonePerson(id: PhonePerson.id(forContact: identifier), name: name ?? AppLocalization.string("Contact"))
+                    added = PhonePerson(id: PhonePerson.id(forContact: identifier), name: name ?? AppLocalization.string("Contact", table: .phone))
                     added.organization = edit?.organization
                     added.nickname = edit?.nickname
                     added.phones = edit?.phones ?? []
@@ -1459,7 +1459,7 @@ final class PhoneSyncEngine: ObservableObject {
     /// Photos turned on without access to the library.
     struct PhotosNotAllowed: LocalizedError {
         var errorDescription: String? {
-            AppLocalization.string("Conduit can't see your photos. Allow Photos for Conduit in Settings to share them with Hermes.")
+            AppLocalization.string("Conduit can't see your photos. Allow Photos for Conduit in Settings to share them with Hermes.", table: .phone)
         }
     }
 

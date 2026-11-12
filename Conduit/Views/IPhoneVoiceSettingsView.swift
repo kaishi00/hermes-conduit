@@ -42,25 +42,25 @@ struct IPhoneVoiceSettingsView: View {
             }
             if loaded, candidates.isEmpty {
                 Text(verbatim: SystemSettings.worded(
-                    iPhone: AppLocalization.string("No voice for \(languageName(language)) is installed on this iPhone yet. To download one, search iPhone Settings for “Voices”."),
-                    iPad: AppLocalization.string("No voice for \(languageName(language)) is installed on this iPad yet. To download one, search iPad Settings for “Voices”."),
-                    mac: AppLocalization.string("No voice for \(languageName(language)) is installed on this Mac yet. To download one, search System Settings for “Voices”.")
+                    iPhone: AppLocalization.string("No voice for \(languageName(language)) is installed on this iPhone yet. To download one, search iPhone Settings for “Voices”.", table: .voice),
+                    iPad: AppLocalization.string("No voice for \(languageName(language)) is installed on this iPad yet. To download one, search iPad Settings for “Voices”.", table: .voice),
+                    mac: AppLocalization.string("No voice for \(languageName(language)) is installed on this Mac yet. To download one, search System Settings for “Voices”.", table: .voice)
                 ))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
             } else if loaded, candidates.allSatisfy(\.isScreenReaderVoice) {
                 Text(verbatim: SystemSettings.worded(
-                    iPhone: AppLocalization.string("Only a screen-reader voice for \(languageName(language)) is installed on this iPhone, so replies sound robotic. To download a natural one, search iPhone Settings for “Voices”; it shows up here once it's done."),
-                    iPad: AppLocalization.string("Only a screen-reader voice for \(languageName(language)) is installed on this iPad, so replies sound robotic. To download a natural one, search iPad Settings for “Voices”; it shows up here once it's done."),
-                    mac: AppLocalization.string("Only a screen-reader voice for \(languageName(language)) is installed on this Mac, so replies sound robotic. To download a natural one, search System Settings for “Voices”; it shows up here once it's done.")
+                    iPhone: AppLocalization.string("Only a screen-reader voice for \(languageName(language)) is installed on this iPhone, so replies sound robotic. To download a natural one, search iPhone Settings for “Voices”; it shows up here once it's done.", table: .voice),
+                    iPad: AppLocalization.string("Only a screen-reader voice for \(languageName(language)) is installed on this iPad, so replies sound robotic. To download a natural one, search iPad Settings for “Voices”; it shows up here once it's done.", table: .voice),
+                    mac: AppLocalization.string("Only a screen-reader voice for \(languageName(language)) is installed on this Mac, so replies sound robotic. To download a natural one, search System Settings for “Voices”; it shows up here once it's done.", table: .voice)
                 ))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
             } else if loaded, !candidates.contains(where: \.isNatural) {
                 Text(verbatim: SystemSettings.worded(
-                    iPhone: AppLocalization.string("This iPhone has no Enhanced or Premium voice for \(languageName(language)) yet, so replies use a basic one. To download one, search iPhone Settings for “Voices”; it shows up here once it's done."),
-                    iPad: AppLocalization.string("This iPad has no Enhanced or Premium voice for \(languageName(language)) yet, so replies use a basic one. To download one, search iPad Settings for “Voices”; it shows up here once it's done."),
-                    mac: AppLocalization.string("This Mac has no Enhanced or Premium voice for \(languageName(language)) yet, so replies use a basic one. To download one, search System Settings for “Voices”; it shows up here once it's done.")
+                    iPhone: AppLocalization.string("This iPhone has no Enhanced or Premium voice for \(languageName(language)) yet, so replies use a basic one. To download one, search iPhone Settings for “Voices”; it shows up here once it's done.", table: .voice),
+                    iPad: AppLocalization.string("This iPad has no Enhanced or Premium voice for \(languageName(language)) yet, so replies use a basic one. To download one, search iPad Settings for “Voices”; it shows up here once it's done.", table: .voice),
+                    mac: AppLocalization.string("This Mac has no Enhanced or Premium voice for \(languageName(language)) yet, so replies use a basic one. To download one, search System Settings for “Voices”; it shows up here once it's done.", table: .voice)
                 ))
                     .scaledFont(.caption)
                     .foregroundStyle(.orange)
@@ -120,7 +120,7 @@ struct IPhoneVoiceSettingsView: View {
             region: Locale.current.region?.identifier,
             systemDefault: IPhoneVoices.systemDefault(for: language)
         )
-        let automaticTitle = automatic.map { AppLocalization.string("Automatic (\(title(for: $0)))") }
+        let automaticTitle = automatic.map { AppLocalization.string("Automatic (\(title(for: $0)))", table: .voice) }
             ?? AppLocalization.string("Automatic")
         let regions = Set(candidates.map(\.language))
         // Screen-reader voices are listed only when nothing else is installed.
@@ -145,8 +145,8 @@ struct IPhoneVoiceSettingsView: View {
             name += " · " + regionName
         }
         switch voice.quality {
-        case 3...: return AppLocalization.string("\(name) (Premium)")
-        case 2: return AppLocalization.string("\(name) (Enhanced)")
+        case 3...: return AppLocalization.string("\(name) (Premium)", table: .voice)
+        case 2: return AppLocalization.string("\(name) (Enhanced)", table: .voice)
         default: return name
         }
     }

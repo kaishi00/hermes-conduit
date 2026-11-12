@@ -25,13 +25,13 @@ enum PhoneShortcutError: LocalizedError, Equatable {
 
     var errorDescription: String? {
         switch self {
-        case .notOnScreen: return AppLocalization.string("Open Conduit to run this shortcut.")
-        case .couldNotOpen: return AppLocalization.string("The Shortcuts app couldn't be opened.")
+        case .notOnScreen: return AppLocalization.string("Open Conduit to run this shortcut.", table: .phone)
+        case .couldNotOpen: return AppLocalization.string("The Shortcuts app couldn't be opened.", table: .phone)
         case .failed(let message):
-            guard let message, !message.isEmpty else { return AppLocalization.string("The shortcut stopped with an error.") }
+            guard let message, !message.isEmpty else { return AppLocalization.string("The shortcut stopped with an error.", table: .phone) }
             return AppLocalization.string("The shortcut stopped with an error: \(message)")
-        case .cancelled: return AppLocalization.string("The shortcut was cancelled.")
-        case .noAnswer: return AppLocalization.string("The Shortcuts app didn't say how the shortcut went.")
+        case .cancelled: return AppLocalization.string("The shortcut was cancelled.", table: .phone)
+        case .noAnswer: return AppLocalization.string("The Shortcuts app didn't say how the shortcut went.", table: .phone)
         }
     }
 }

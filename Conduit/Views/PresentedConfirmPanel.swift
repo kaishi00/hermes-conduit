@@ -80,21 +80,21 @@ struct PresentedConfirmPanel: View {
 
     private var spokenHint: String {
         if let phrase = prompt.spokenYes.first {
-            return AppLocalization.string("Or just say “\(phrase)”")
+            return AppLocalization.string("Or just say “\(phrase)”", table: .chat)
         }
-        return AppLocalization.string("Or just say yes")
+        return AppLocalization.string("Or just say yes", table: .chat)
     }
 
     /// Who asks: a room's agent, a linked person's Hermes, or Hermes.
     private var asker: String {
         if let name = prompt.room?.name, !name.isEmpty {
-            return AppLocalization.string("Asked in \(name)")
+            return AppLocalization.string("Asked in \(name)", table: .chat)
         }
         if let link = prompt.link {
-            return link.name.isEmpty ? AppLocalization.string("A linked person's Hermes asks")
-                : AppLocalization.string("\(link.name)'s Hermes asks")
+            return link.name.isEmpty ? AppLocalization.string("A linked person's Hermes asks", table: .chat)
+                : AppLocalization.string("\(link.name)'s Hermes asks", table: .chat)
         }
-        return AppLocalization.string("Hermes asks")
+        return AppLocalization.string("Hermes asks", table: .chat)
     }
 
     /// A Link's question has nothing to share: it's not answered.
@@ -102,9 +102,9 @@ struct PresentedConfirmPanel: View {
         if !prompt.canConfirm { return AppLocalization.string("Don't answer") }
         // A send to running work isn't a start.
         if prompt.room?.work == true {
-            return prompt.actionLabel == "Send" ? AppLocalization.string("Not now") : AppLocalization.string("Don't start")
+            return prompt.actionLabel == "Send" ? AppLocalization.string("Not now") : AppLocalization.string("Don't start", table: .chat)
         }
-        return prompt.isAsk ? AppLocalization.string("Don't share") : AppLocalization.string("Not now")
+        return prompt.isAsk ? AppLocalization.string("Don't share", table: .chat) : AppLocalization.string("Not now")
     }
 
     private var askerSymbol: String {
@@ -196,8 +196,8 @@ struct PresentedConfirmPanel: View {
     /// instead, typed here.
     private var sayInsteadField: some View {
         VStack(alignment: .leading, spacing: 10) {
-            TextField(prompt.room?.work == true ? AppLocalization.string("What it should do instead")
-                      : AppLocalization.string("What to say instead"), text: $instead, axis: .vertical)
+            TextField(prompt.room?.work == true ? AppLocalization.string("What it should do instead", table: .chat)
+                      : AppLocalization.string("What to say instead", table: .chat), text: $instead, axis: .vertical)
                 .lineLimit(1...5)
                 .focused($insteadFocused)
                 .padding(12)
@@ -246,7 +246,7 @@ struct PresentedConfirmPanel: View {
                 Haptics.selection()
                 sayingInstead = true
             } label: {
-                Text(prompt.room?.work == true ? AppLocalization.string("Change it") : AppLocalization.string("Say instead"))
+                Text(prompt.room?.work == true ? AppLocalization.string("Change it", table: .chat) : AppLocalization.string("Say instead", table: .chat))
                     .scaledFont(.body.weight(.semibold))
                     .frame(minWidth: 64, minHeight: 44)
                     .padding(.horizontal, 6)

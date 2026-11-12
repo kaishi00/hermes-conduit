@@ -385,7 +385,7 @@ enum PulseQuiet {
         formatter.locale = AppLocalization.formattingLocale
         formatter.setLocalizedDateFormatFromTemplate(
             calendar.isDate(date, equalTo: now, toGranularity: .year) ? "EEEEMMMMd" : "EEEEMMMMdy")
-        return AppLocalization.string("Back on \(formatter.string(from: date))")
+        return AppLocalization.string("Back on \(formatter.string(from: date))", table: .pulse)
     }
 }
 
@@ -442,19 +442,19 @@ enum PulseNudge {
     static func title(_ level: String) -> String {
         switch level {
         case "gentle": return AppLocalization.string("Gentle")
-        case "eager": return AppLocalization.string("Eager")
-        default: return AppLocalization.string("Balanced")
+        case "eager": return AppLocalization.string("Eager", table: .pulse)
+        default: return AppLocalization.string("Balanced", table: .pulse)
         }
     }
 
     static func detail(_ level: String) -> String {
         switch level {
         case "gentle":
-            return AppLocalization.string("Only what's worth interrupting you for: one reminder a day, and promises checked less often.")
+            return AppLocalization.string("Only what's worth interrupting you for: one reminder a day, and promises checked less often.", table: .pulse)
         case "eager":
-            return AppLocalization.string("Small things too: six reminders a day, and promises checked sooner.")
+            return AppLocalization.string("Small things too: six reminders a day, and promises checked sooner.", table: .pulse)
         default:
-            return AppLocalization.string("A heads-up on what's open or coming due: three reminders a day.")
+            return AppLocalization.string("A heads-up on what's open or coming due: three reminders a day.", table: .pulse)
         }
     }
 
@@ -521,15 +521,15 @@ struct PulseMemoryPlace: Equatable {
 
     /// "When you get to Costco" or "When you leave work", in the app's language.
     var text: String {
-        leaving ? AppLocalization.string("When you leave \(words)") : AppLocalization.string("When you get to \(words)")
+        leaving ? AppLocalization.string("When you leave \(words)", table: .pulse) : AppLocalization.string("When you get to \(words)", table: .pulse)
     }
 
     /// The saved place the words match, when it isn't named the same way
     /// ("Saved place: Costco Wholesale"), or that none matches yet; nil
     /// when the words are the saved place's name.
     var savedText: String? {
-        guard let saved else { return AppLocalization.string("No saved place has that name yet.") }
-        return saved.localizedCaseInsensitiveCompare(words) == .orderedSame ? nil : AppLocalization.string("Saved place: \(saved)")
+        guard let saved else { return AppLocalization.string("No saved place has that name yet.", table: .pulse) }
+        return saved.localizedCaseInsensitiveCompare(words) == .orderedSame ? nil : AppLocalization.string("Saved place: \(saved)", table: .pulse)
     }
 }
 
@@ -586,8 +586,8 @@ struct PulseMemoryItem: Equatable, Identifiable {
         guard fromInbox, let logged = loggedAt ?? mentionedAt else { return nil }
         let when = logged.formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale))
         let sender = sender.trimmingCharacters(in: .whitespacesAndNewlines)
-        return sender.isEmpty ? AppLocalization.string("Logged on your phone \(when)")
-            : AppLocalization.string("From \(sender), logged \(when)")
+        return sender.isEmpty ? AppLocalization.string("Logged on your phone \(when)", table: .pulse)
+            : AppLocalization.string("From \(sender), logged \(when)", table: .pulse)
     }
 
     /// "Every year on 3 March" for a fact about a yearly date, in the app's
@@ -608,7 +608,7 @@ struct PulseMemoryItem: Equatable, Identifiable {
         formatter.timeZone = calendar.timeZone
         formatter.locale = locale
         formatter.setLocalizedDateFormatFromTemplate("MMMMd")
-        return AppLocalization.string("Every year on \(formatter.string(from: date))")
+        return AppLocalization.string("Every year on \(formatter.string(from: date))", table: .pulse)
     }
 }
 
@@ -620,13 +620,13 @@ enum PulseMemoryKind {
     /// the plugin sends it.
     static func title(_ kind: String) -> String {
         switch kind {
-        case "commitment": return AppLocalization.string("Commitments")
-        case "promise": return AppLocalization.string("Promises")
-        case "intention": return AppLocalization.string("Intentions")
-        case "interest": return AppLocalization.string("Interests")
-        case "fact": return AppLocalization.string("Facts")
-        case "watch": return AppLocalization.string("Things to watch")
-        case "deadline": return AppLocalization.string("Deadlines")
+        case "commitment": return AppLocalization.string("Commitments", table: .pulse)
+        case "promise": return AppLocalization.string("Promises", table: .pulse)
+        case "intention": return AppLocalization.string("Intentions", table: .pulse)
+        case "interest": return AppLocalization.string("Interests", table: .pulse)
+        case "fact": return AppLocalization.string("Facts", table: .pulse)
+        case "watch": return AppLocalization.string("Things to watch", table: .pulse)
+        case "deadline": return AppLocalization.string("Deadlines", table: .pulse)
         default: return kind
         }
     }
@@ -713,27 +713,27 @@ struct PulseRefusal: Equatable {
 
     var message: String {
         switch code {
-        case "reading": return AppLocalization.string("Pulse is already reading older chats.")
-        case "paused": return AppLocalization.string("A paused read is waiting. Carry on or cancel it first.")
-        case "already_read": return AppLocalization.string("Pulse has already read back that far.")
-        case "memory_off": return AppLocalization.string("Turn on Pulse's memory first.")
-        case "pulse_off": return AppLocalization.string("Turn on Pulse first.")
-        case "no_home_chat": return AppLocalization.string("Pulse needs its chat first.")
-        case "unreadable": return AppLocalization.string("Pulse couldn't read Hermes' chats on the host.")
-        case "not_running": return AppLocalization.string("Nothing is being read right now.")
-        case "nothing_to_cancel": return AppLocalization.string("There's nothing to cancel.")
-        case "changed": return AppLocalization.string("Pulse changed in the meantime. Try again.")
-        case "invalid": return AppLocalization.string("Pulse didn't accept that value.")
+        case "reading": return AppLocalization.string("Pulse is already reading older chats.", table: .pulse)
+        case "paused": return AppLocalization.string("A paused read is waiting. Carry on or cancel it first.", table: .pulse)
+        case "already_read": return AppLocalization.string("Pulse has already read back that far.", table: .pulse)
+        case "memory_off": return AppLocalization.string("Turn on Pulse's memory first.", table: .pulse)
+        case "pulse_off": return AppLocalization.string("Turn on Pulse first.", table: .pulse)
+        case "no_home_chat": return AppLocalization.string("Pulse needs its chat first.", table: .pulse)
+        case "unreadable": return AppLocalization.string("Pulse couldn't read Hermes' chats on the host.", table: .pulse)
+        case "not_running": return AppLocalization.string("Nothing is being read right now.", table: .pulse)
+        case "nothing_to_cancel": return AppLocalization.string("There's nothing to cancel.", table: .pulse)
+        case "changed": return AppLocalization.string("Pulse changed in the meantime. Try again.", table: .pulse)
+        case "invalid": return AppLocalization.string("Pulse didn't accept that value.", table: .pulse)
         // A suggestion's Add, Not now or Undo (0.98.0).
-        case "already_added": return AppLocalization.string("This suggestion was already added.")
-        case "dismissed": return AppLocalization.string("This suggestion was set aside with Not now.")
-        case "expired": return AppLocalization.string("This suggestion has expired.")
-        case "not_found": return AppLocalization.string("Pulse no longer has this suggestion.")
-        case "not_added": return AppLocalization.string("There's nothing on your phone to remove.")
-        case "already_undone": return AppLocalization.string("Undo was already tapped for this suggestion.")
+        case "already_added": return AppLocalization.string("This suggestion was already added.", table: .pulse)
+        case "dismissed": return AppLocalization.string("This suggestion was set aside with Not now.", table: .pulse)
+        case "expired": return AppLocalization.string("This suggestion has expired.", table: .pulse)
+        case "not_found": return AppLocalization.string("Pulse no longer has this suggestion.", table: .pulse)
+        case "not_added": return AppLocalization.string("There's nothing on your phone to remove.", table: .pulse)
+        case "already_undone": return AppLocalization.string("Undo was already tapped for this suggestion.", table: .pulse)
         case "unknown_event", "unknown_reminder":
-            return AppLocalization.string("Your phone hasn't told Hermes about it yet. Try again in a moment.")
-        default: return note.isEmpty ? AppLocalization.string("Pulse didn't take that step.") : note
+            return AppLocalization.string("Your phone hasn't told Hermes about it yet. Try again in a moment.", table: .pulse)
+        default: return note.isEmpty ? AppLocalization.string("Pulse didn't take that step.", table: .pulse) : note
         }
     }
 

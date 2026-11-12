@@ -21,8 +21,8 @@ extension AppState {
     /// would lose its connection while Hermes restarts.
     var notifierPluginUpdateBlocker: String? {
         if dashboardTicketBridge == nil { return AppLocalization.string("Connect to this dashboard first.") }
-        if isVoiceCallInProgress { return AppLocalization.string("End the call first: Hermes restarts during the update.") }
-        if activeGatewayRestart.isInProgress { return AppLocalization.string("Wait for the gateway restart to finish.") }
+        if isVoiceCallInProgress { return AppLocalization.string("End the call first: Hermes restarts during the update.", table: .notifications) }
+        if activeGatewayRestart.isInProgress { return AppLocalization.string("Wait for the gateway restart to finish.", table: .notifications) }
         return nil
     }
 
@@ -132,7 +132,7 @@ extension AppState {
         guard updated else { return outcome }
         guard await waitForGatewayAfterNotifierPluginUpdate(dashboardID: dashboardID) else {
             if Task.isCancelled || activeDashboardID != dashboardID { return outcome }
-            return .failed(detail: AppLocalization.string("The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host."))
+            return .failed(detail: AppLocalization.string("The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host.", table: .notifications))
         }
         if case .updated(let version?) = outcome { return .updated(version: version) }
         return .updated(version: notifierPlugin.runningVersion)

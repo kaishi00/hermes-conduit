@@ -161,7 +161,7 @@ enum ServerCertificateProfile {
             "PayloadIdentifier": identifier,
             "PayloadUUID": UUID().uuidString,
             "PayloadDisplayName": name,
-            "PayloadDescription": AppLocalization.string("Lets this device trust the certificate of your Hermes dashboard at \(host)."),
+            "PayloadDescription": AppLocalization.string("Lets this device trust the certificate of your Hermes dashboard at \(host).", table: .connection),
             "PayloadRemovalDisallowed": false,
             "PayloadContent": [root]
         ]

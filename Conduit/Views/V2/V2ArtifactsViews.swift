@@ -59,7 +59,7 @@ struct V2ArtifactsPage: View {
         .navigationTitle(Text("Artifacts"))
         .navigationBarTitleDisplayMode(.large)
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            MinimisedLiveVoiceBar()
+            V2ListCallBar()
         }
     }
 }
@@ -328,7 +328,7 @@ private struct ArtifactsList: View {
         if !appState.notifierPlugin.mayServe(ArtifactsClient.capability) {
             unavailable(
                 title: Text(PluginUpdateAsk.title(AppLocalization.string("Update the Conduit plugin"))),
-                detail: Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to see artifacts here. Settings › Conduit plugin can update it."))),
+                detail: Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to see artifacts here. Settings › Conduit plugin can update it.", table: .chat))),
                 symbol: "arrow.down.circle"
             )
         } else if items.isEmpty, loadedKey != currentKey, !appState.supportsArtifacts, !appState.isConnected,
@@ -447,8 +447,8 @@ private struct ArtifactsList: View {
 
     static func dayTitle(_ day: Date) -> String {
         let calendar = Calendar.current
-        if calendar.isDateInToday(day) { return AppLocalization.string("Today") }
-        if calendar.isDateInYesterday(day) { return AppLocalization.string("Yesterday") }
+        if calendar.isDateInToday(day) { return AppLocalization.string("Today", table: .chat) }
+        if calendar.isDateInYesterday(day) { return AppLocalization.string("Yesterday", table: .chat) }
         let sameYear = calendar.isDate(day, equalTo: Date(), toGranularity: .year)
         return day.formatted(sameYear
             ? .dateTime.weekday(.wide).month(.wide).day()
@@ -566,9 +566,9 @@ private struct ArtifactsList: View {
 
     private func detail(_ item: ArtifactItem) -> String {
         var parts = [Self.kindLabel(item.kind)]
-        if item.source == .attached { parts.append(AppLocalization.string("You sent")) }
+        if item.source == .attached { parts.append(AppLocalization.string("You sent", table: .chat)) }
         if !item.exists {
-            parts.append(AppLocalization.string("No longer on the host"))
+            parts.append(AppLocalization.string("No longer on the host", table: .chat))
         } else if let size = item.size, item.kind != .link {
             parts.append(ByteCountFormatter.string(fromByteCount: size, countStyle: .file))
         }
@@ -597,7 +597,7 @@ private struct ArtifactsList: View {
     }
 
     private func accessibilityName(_ item: ArtifactItem) -> String {
-        [item.name, Self.kindLabel(item.kind), item.exists ? "" : AppLocalization.string("No longer on the host"),
+        [item.name, Self.kindLabel(item.kind), item.exists ? "" : AppLocalization.string("No longer on the host", table: .chat),
          chatIsOpen ? "" : chatName(item) ?? ""]
             .filter { !$0.isEmpty }
             .joined(separator: ", ")
@@ -606,12 +606,12 @@ private struct ArtifactsList: View {
     static func kindLabel(_ kind: ArtifactItem.Kind) -> String {
         switch kind {
         case .image: return AppLocalization.string("Image")
-        case .video: return AppLocalization.string("Video")
+        case .video: return AppLocalization.string("Video", table: .chat)
         case .audio: return AppLocalization.string("Audio")
-        case .page: return AppLocalization.string("Page")
+        case .page: return AppLocalization.string("Page", table: .chat)
         case .document: return AppLocalization.string("Document")
-        case .file: return AppLocalization.string("File")
-        case .link: return AppLocalization.string("Link")
+        case .file: return AppLocalization.string("File", table: .chat)
+        case .link: return AppLocalization.string("Link", table: .chat)
         }
     }
 
@@ -786,7 +786,7 @@ private struct ArtifactsList: View {
             await appState.refreshNotifierPluginStatus()
             guard ticket == generation else { return }
             if appState.notifierPlugin.state == .unknown, loadedKey != key {
-                failure = AppLocalization.string("Couldn't reach this dashboard's notifier.")
+                failure = AppLocalization.string("Couldn't reach this dashboard's notifier.", table: .chat)
                 feed = nil
                 loadedKey = key
             }

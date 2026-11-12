@@ -3733,6 +3733,25 @@ extension VoiceConversationControllerTests {
 
 // MARK: - Microphone sends on a slow connection (#999)
 
+/// A socket that encodes microphone chunks off the main actor, as the
+/// network socket does (issue 1959).
+@MainActor
+final class OffMainEncodingLiveSocket: GeminiLiveSocket {
+    private(set) var sent: [String] = []
+    private(set) var encodedOnMainThread: [Bool] = []
+
+    func send(_ text: String) async throws { sent.append(text) }
+
+    func sendAudio(_ pcm16: Data, encode: @escaping @Sendable (Data) throws -> String) async throws {
+        let (text, onMain) = try await LiveVoiceWireCoding.throwingOffMainActor { (try encode(pcm16), Thread.isMainThread) }
+        encodedOnMainThread.append(onMain)
+        sent.append(text)
+    }
+
+    func receive() async throws -> Data { throw URLError(.cancelled) }
+    func close() {}
+}
+
 /// A socket whose first send stalls until released, as a connection that
 /// stopped taking frames.
 @MainActor
@@ -3786,6 +3805,28 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertTrue(writer.enqueue(["a4"], isAudio: true, done: note("a4")))
         await settle(until: { outcomes["a4"] != nil })
         XCTAssertEqual(socket.sent.last, "a4")
+    }
+
+    /// Issue 1959: a network socket encodes a microphone chunk off the
+    /// main actor as it sends it, and the writer still sends one frame at
+    /// a time, in the order they were queued.
+    func testLiveVoiceSocketWriterEncodesAudioOffTheMainActorInOrder() async {
+        let socket = OffMainEncodingLiveSocket()
+        let writer = LiveVoiceSocketWriter(socket: socket)
+        var outcomes = 0
+        for index in 0..<6 {
+            if index == 3 {
+                XCTAssertTrue(writer.enqueue(["turn"], isAudio: false) { _ in outcomes += 1 })
+            }
+            let queued = writer.enqueue(.audio(Data([UInt8(index)]), encode: { chunk in
+                guard let byte = chunk.first else { throw URLError(.cannotDecodeRawData) }
+                return "a\(byte)"
+            }), isAudio: false) { _ in outcomes += 1 }
+            XCTAssertTrue(queued)
+        }
+        await settle(until: { outcomes == 7 })
+        XCTAssertEqual(socket.sent, ["a0", "a1", "a2", "turn", "a3", "a4", "a5"])
+        XCTAssertEqual(socket.encodedOnMainThread, [false, false, false, false, false, false])
     }
 
     func testLiveVoiceSocketWriterCountsTheAudioFrameOnTheSocket() async {

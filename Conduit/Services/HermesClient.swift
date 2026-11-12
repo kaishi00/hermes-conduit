@@ -191,7 +191,7 @@ struct RpcError: Decodable, Error, LocalizedError, Sendable {
     var errorDescription: String? {
         guard let method, !message.contains(" ") else { return message }
         let named = ([message] + (fields ?? [])).joined(separator: ", ")
-        return AppLocalization.string("Hermes refused \(method) (\(named))")
+        return AppLocalization.string("Hermes refused \(method) (\(named))", table: .connection)
     }
 
     /// Hermes refused the send because another live surface (Hermes
@@ -1132,12 +1132,28 @@ final class HermesClient: ObservableObject {
     /// shapes for the same verbs, so each request is built for the one
     /// this socket reached (#1618).
     private(set) var speaksSessionAuthority = false
+    /// The gateway pushes `sessions.changed` when a stored chat moves, from
+    /// any process, and says so in its `gateway.ready` (`change_events:
+    /// true`, every Hermes since July 2026). The Chats list then reads the
+    /// catalog on that signal and keeps its own timed reads as a slow
+    /// backstop (issue 851); without it, the timed reads are all it has.
+    /// Set from `gateway.ready`; tests set it.
+    var sendsChangeEvents = false
     /// The authority's fences per session id, from snapshots, events and
     /// refusals: `execution_generation` names the running turn a steer,
     /// interrupt or answer is for; `revision` is what a `session.mutate`
     /// expects.
     private var executionGenerations: [String: Int] = [:]
     private var sessionRevisions: [String: Int] = [:]
+    /// The profile a chat in another profile (a Bot Chat) was opened or
+    /// made under, by session id. A gateway that serves several profiles
+    /// on one socket finds a session only under the profile its request
+    /// names, so every later request about that chat (the send, the
+    /// reasoning, Fast and YOLO switches, a model pick, a stop) names it
+    /// too, not just the resume: unnamed, it went to the client's own
+    /// profile and came back `not_found`. A socket handoff and a fresh
+    /// client on the same dashboard (`inheritSessionProfiles`) keep it.
+    private var sessionProfiles: [String: String] = [:]
     /// An open approval or clarify prompt's id → its session and the turn
     /// that asked, which the authority's answers name.
     private var authorityPrompts: [String: (sessionId: String, generation: Int)] = [:]
@@ -1381,6 +1397,7 @@ final class HermesClient: ObservableObject {
         capabilityReplyPending = false
         deferredWindowOwnedDeclines = []
         speaksSessionAuthority = false
+        sendsChangeEvents = false
         executionGenerations = [:]
         sessionRevisions = [:]
         authorityPrompts = [:]
@@ -1463,8 +1480,10 @@ final class HermesClient: ObservableObject {
         backendCountsDeclines = predecessor.backendCountsDeclines
         // The same socket, so the same server and the same fences.
         speaksSessionAuthority = predecessor.speaksSessionAuthority
+        sendsChangeEvents = predecessor.sendsChangeEvents
         executionGenerations.merge(predecessor.executionGenerations) { mine, _ in mine }
         sessionRevisions.merge(predecessor.sessionRevisions) { mine, _ in mine }
+        sessionProfiles.merge(predecessor.sessionProfiles) { mine, _ in mine }
         authorityPrompts.merge(predecessor.authorityPrompts) { mine, _ in mine }
         authorityPromptSessions.merge(predecessor.authorityPromptSessions) { mine, _ in mine }
         // A confirm token belongs to the socket, which stays the same.
@@ -1701,7 +1720,7 @@ final class HermesClient: ObservableObject {
             openTimeoutTask = Task { [weak self] in
                 try? await Task.sleep(for: .seconds(15))
                 guard !Task.isCancelled else { return }
-                self?.failSocketOpen(socket, error: HermesError.timeout(AppLocalization.string("WebSocket connection")))
+                self?.failSocketOpen(socket, error: HermesError.timeout(AppLocalization.string("WebSocket connection", table: .connection)))
             }
         }
     }
@@ -1878,7 +1897,9 @@ final class HermesClient: ObservableObject {
             noteAuthorityFences(fromEvent: eventObject)
             switch eventObject?["type"]?.stringValue {
             case "gateway.ready":
-                speaksSessionAuthority = eventObject?["payload"]?.objectValue?["session_authority"]?.boolValue == true
+                let ready = eventObject?["payload"]?.objectValue
+                speaksSessionAuthority = ready?["session_authority"]?.boolValue == true
+                sendsChangeEvents = ready?["change_events"]?.boolValue == true
                 advertiseClientCapabilities()
             case "request.cancel":
                 // Bookkeeping only: the request is closed whatever the
@@ -2304,11 +2325,48 @@ final class HermesClient: ObservableObject {
         var params = params ?? [:]
         // The client's profile is the DEFAULT scope; a caller-supplied
         // `profile` is explicit intent (Bot Mode addresses another profile's
-        // registry) and always wins.
-        if params["profile"] == nil, let profile, profile != "default" {
+        // registry) and always wins. A request about a chat opened under
+        // another profile (a Bot Chat) names that one.
+        if params["profile"] == nil,
+           let sessionId = params["session_id"] as? String,
+           let owner = sessionProfiles[sessionId] {
+            params["profile"] = owner
+        } else if params["profile"] == nil, let profile, profile != "default" {
             params["profile"] = profile
         }
         return params.isEmpty ? nil : params
+    }
+
+    /// Records the profile `ids` were opened or made under, when it is
+    /// another than the client's own; the client's own (or none) forgets
+    /// them, so they take the client's scope again. A resume that names no
+    /// profile (nil or blank) keeps the one it was sent to.
+    func noteSessionProfile(_ profile: String?, for ids: [String?]) {
+        let named = profile?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let own = (self.profile ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
+        let isOwn = named.isEmpty
+            || named.caseInsensitiveCompare(own.isEmpty ? "default" : own) == .orderedSame
+        for case let id? in ids {
+            let id = id.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !id.isEmpty else { continue }
+            if isOwn {
+                sessionProfiles.removeValue(forKey: id)
+            } else {
+                sessionProfiles[id] = named
+            }
+        }
+    }
+
+    /// The profile a request about `sessionId` names when it names none.
+    func sessionProfile(for sessionId: String) -> String? {
+        sessionProfiles[sessionId]
+    }
+
+    /// A fresh client on the same dashboard (a reconnect, a profile
+    /// switch) takes the chats its predecessor knew were another
+    /// profile's, so a Bot Chat not yet opened again still names its own.
+    func inheritSessionProfiles(from predecessor: HermesClient) {
+        sessionProfiles.merge(predecessor.sessionProfiles) { mine, _ in mine }
     }
 
     // MARK: - The session authority's shapes (#1618)
@@ -2604,6 +2662,7 @@ final class HermesClient: ObservableObject {
         let stored = ["stored_session_id", "storedSessionId", "session_key"]
             .compactMap { object[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .first { !$0.isEmpty }
+        noteSessionProfile(profile, for: [sessionId, stored])
         return (sessionId, stored)
     }
 
@@ -3010,6 +3069,14 @@ final class HermesClient: ObservableObject {
         }
         let object = result.objectValue ?? [:]
         noteAuthorityFences(fromSnapshot: object, sessionId: sessionId)
+        // The profile the resume went to: the one named, else the one
+        // `scopeParams` named for this chat. Only a named profile changes it.
+        let named = profile?.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty == false ? profile : nil
+        noteSessionProfile(named ?? sessionProfiles[sessionId], for: [
+            sessionId, object["session_id"]?.stringValue,
+            object["stored_session_id"]?.stringValue, object["storedSessionId"]?.stringValue,
+            object["session_key"]?.stringValue
+        ])
         if speaksSessionAuthority {
             // The authority's open questions come back in `prompts`, in the
             // live event's shape: shown again like the live event.
@@ -3231,6 +3298,7 @@ final class HermesClient: ObservableObject {
         noteAuthorityFences(fromSnapshot: object, sessionId: sid)
         let stored = object["stored_session_id"]?.stringValue
         let profile = object["profile"]?.stringValue ?? object["profile_id"]?.stringValue
+        if let inProfile { noteSessionProfile(inProfile, for: [sid, stored]) }
         return (sid, stored, profile)
     }
 
@@ -3291,6 +3359,8 @@ final class HermesClient: ObservableObject {
         guard let sessionId = object["branched_session_id"]?.stringValue, !sessionId.isEmpty else {
             throw HermesError.invalidResponse
         }
+        // The branch is kept in its parent's profile.
+        if let owner = sessionProfiles[parentSessionId] { noteSessionProfile(owner, for: [sessionId]) }
         return (sessionId, sessionId, nil)
     }
 
@@ -3630,19 +3700,19 @@ final class HermesClient: ObservableObject {
     /// background) gets it when the chat is read again.
     struct BranchPointUnknownError: LocalizedError {
         var errorDescription: String? {
-            AppLocalization.string("Open the chat again to branch from this reply.")
+            AppLocalization.string("Open the chat again to branch from this reply.", table: .connection)
         }
     }
 
     /// Queue on a Hermes without `prompt.submit`'s `queued` key.
     struct QueueUnsupportedError: LocalizedError {
         var errorDescription: String? {
-            AppLocalization.string("This Hermes can't queue messages. Update Hermes, or touch and hold send to steer or interrupt instead.")
+            AppLocalization.string("This Hermes can't queue messages. Update Hermes, or touch and hold send to steer or interrupt instead.", table: .connection)
         }
 
         /// Attachments have no steer or interrupt to fall back on.
         static var attachmentsMessage: String {
-            AppLocalization.string("This Hermes can't queue attachments. Update Hermes, or send them once the reply has finished.")
+            AppLocalization.string("This Hermes can't queue attachments. Update Hermes, or send them once the reply has finished.", table: .connection)
         }
     }
 
@@ -5382,16 +5452,16 @@ enum HermesError: Error, LocalizedError {
         // Read by people who may not run servers: say what happened and
         // what to do, never an RPC method name.
         case .invalidUrl:
-            return AppLocalization.string("The dashboard address isn't valid. Check it in Settings > Connection.")
+            return AppLocalization.string("The dashboard address isn't valid. Check it in Settings > Connection.", table: .connection)
         case .invalidResponse:
-            return AppLocalization.string("Hermes sent a reply Conduit didn't understand. Updating Hermes and Conduit usually fixes this.")
+            return AppLocalization.string("Hermes sent a reply Conduit didn't understand. Updating Hermes and Conduit usually fixes this.", table: .connection)
         case .notConnected:
             return AppLocalization.string("Conduit isn't connected to Hermes right now. It reconnects on its own, so try again in a moment.")
         case .connectionClosed:
-            return AppLocalization.string("The connection to Hermes dropped. Conduit reconnects on its own, so try again in a moment.")
+            return AppLocalization.string("The connection to Hermes dropped. Conduit reconnects on its own, so try again in a moment.", table: .connection)
         case .timeout:
             return Self.timeoutMessage
-        case .steerRejected: return AppLocalization.string("Hermes could not steer the active response.")
+        case .steerRejected: return AppLocalization.string("Hermes could not steer the active response.", table: .connection)
         }
     }
 
@@ -5451,7 +5521,7 @@ enum MessageNormalizer {
         guard !id.isEmpty else { return nil }
         let title = firstNonEmptyString([
             object["label"], object["name"], object["title"]
-        ]) ?? AppLocalization.string("Untitled project")
+        ]) ?? AppLocalization.string("Untitled project", table: .connection)
         let previews = object["preview_sessions"]?.arrayValue
             ?? object["previewSessions"]?.arrayValue
             ?? []
@@ -6063,7 +6133,7 @@ enum MessageNormalizer {
             let review = role == .system && displayKind == nil
                 ? reviewActivity(from: obj, eventSessionId: nil)
                 : nil
-            let base = ChatMessage(
+            var base = ChatMessage(
                 id: id,
                 role: role,
                 content: content,
@@ -6078,6 +6148,12 @@ enum MessageNormalizer {
                 rowId: rowId,
                 reactions: messageReactions(fromMetadata: obj["display_metadata"])
             )
+            // A finished-agents notice opens to each agent's result, read
+            // from the report Hermes wrote for the model, and only when no
+            // `display_content` projection replaced it (issue 1553).
+            if displayKind == .asyncDelegationComplete, projectedContent == nil, !isToolResult {
+                base.delegationReport = DelegationReport.parse(rawContent)
+            }
 
             // External session history occasionally includes a role-less
             // metadata envelope after the last real message. It normalizes to
@@ -6187,9 +6263,9 @@ enum MessageNormalizer {
 
     private static func delegationCompleteNotice(metadata: AnyCodable?) -> String {
         guard let taskCount = delegationTaskCount(metadata: metadata) else {
-            return AppLocalization.string("Background agent work finished")
+            return AppLocalization.string("Background agent work finished", table: .connection)
         }
-        return AppLocalization.string("\(taskCount) background agents finished")
+        return AppLocalization.string("\(taskCount) background agents finished", table: .connection)
     }
 
     /// Final visible text for a row Hermes tags with a known synthetic
@@ -6213,7 +6289,7 @@ enum MessageNormalizer {
         case .hidden:
             // Defense in depth: hidden rows are dropped before content work.
             // Never echo the physical carrier if that invariant ever breaks.
-            return AppLocalization.string("Hidden system event")
+            return AppLocalization.string("Hidden system event", table: .connection)
         case .modelSwitch:
             // An explicit projection outranks the marker-derived card text;
             // without one, the persisted marker matches Conduit's existing
@@ -6226,13 +6302,13 @@ enum MessageNormalizer {
             if let modelChange {
                 return "[Model has been changed to \(modelChange.provider)/\(modelChange.model)]"
             }
-            return AppLocalization.string("Model changed")
+            return AppLocalization.string("Model changed", table: .connection)
         case .personalitySwitch:
             // The physical marker embeds the full persona prompt; surface a
             // canned label instead, like Hermes Desktop does.
-            return projected ?? AppLocalization.string("Personality changed")
+            return projected ?? AppLocalization.string("Personality changed", table: .connection)
         case .autoContinue:
-            return projected ?? AppLocalization.string("Resumed interrupted turn")
+            return projected ?? AppLocalization.string("Resumed interrupted turn", table: .connection)
         case .asyncDelegationComplete:
             // The localized count notice outranks Hermes' English
             // `display_text`; the title covers rows that carry no usable count.
@@ -6249,7 +6325,7 @@ enum MessageNormalizer {
             // `display_text`; the canned label covers rows without one.
             return projected
                 ?? timelineDisplayText(metadata: metadata)
-                ?? AppLocalization.string("Background process finished")
+                ?? AppLocalization.string("Background process finished", table: .connection)
         case .internalNotification:
             // The row content is the operational notice itself (wake events,
             // background completions); show it as a system notice. An
@@ -6261,7 +6337,7 @@ enum MessageNormalizer {
                 return projected
             }
             let visible = systemNotice ?? rawVisible
-            return visible.isEmpty ? AppLocalization.string("System notification") : visible
+            return visible.isEmpty ? AppLocalization.string("System notification", table: .connection) : visible
         }
     }
 
@@ -6307,7 +6383,7 @@ enum MessageNormalizer {
             return body.isEmpty ? nil : body
         }
         if isUserCorrectionInterruptionNotice(trimmed) {
-            return AppLocalization.string("Response interrupted by a user correction.")
+            return AppLocalization.string("Response interrupted by a user correction.", table: .connection)
         }
         return nil
     }
@@ -6578,7 +6654,7 @@ enum MessageNormalizer {
         let description = ["description", "message", "prompt"]
             .compactMap { payload[$0]?.stringValue }
             .first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }?
-            .trimmingCharacters(in: .whitespacesAndNewlines) ?? AppLocalization.string("Approval required")
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? AppLocalization.string("Approval required", table: .connection)
         let choices = payload["choices"]?.arrayValue?
             .compactMap { $0.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
             .filter { !$0.isEmpty }
@@ -6770,7 +6846,7 @@ enum MessageNormalizer {
             let type = url.pathExtension.isEmpty ? nil : UTType(filenameExtension: url.pathExtension)
             return Attachment(
                 id: "\(messageId)-gateway-file-\(index)",
-                name: name.isEmpty ? AppLocalization.string("Attached file") : name,
+                name: name.isEmpty ? AppLocalization.string("Attached file", table: .connection) : name,
                 uri: path,
                 mimeType: AttachmentTypePolicy.mimeType(for: type),
                 kind: AttachmentTypePolicy.kind(for: type)
@@ -6985,7 +7061,7 @@ enum MessageNormalizer {
             }
             return Attachment(
                 id: "\(messageId)-gateway-image-\(index)",
-                name: name.isEmpty ? AppLocalization.string("Attached image") : name,
+                name: name.isEmpty ? AppLocalization.string("Attached image", table: .connection) : name,
                 uri: path ?? "",
                 mimeType: path.flatMap { imageMimeType(for: $0) },
                 kind: .image,
@@ -7075,8 +7151,8 @@ enum MessageNormalizer {
         let labels = parts.map { part -> String? in
             switch part.lowercased() {
             case "memory updated": return AppLocalization.string("Memory")
-            case "user profile updated": return AppLocalization.string("User profile")
-            case "skill updated": return AppLocalization.string("Skill")
+            case "user profile updated": return AppLocalization.string("User profile", table: .connection)
+            case "skill updated": return AppLocalization.string("Skill", table: .connection)
             default: return nil
             }
         }
@@ -7086,7 +7162,7 @@ enum MessageNormalizer {
         var seen = Set<String>()
         return labels.compactMap { $0 }
             .filter { seen.insert($0).inserted }
-            .map { AppLocalization.string("\($0) updated") }
+            .map { AppLocalization.string("\($0) updated", table: .connection) }
             .joined(separator: " · ")
     }
 
@@ -7101,15 +7177,15 @@ enum MessageNormalizer {
         guard !details.isEmpty else { return ReviewActivity(summary: body, details: nil, fullSessionId: nil) }
         let labels = Set(details.compactMap { detail -> String? in
             let lower = detail.lowercased()
-            if lower.hasPrefix("user profile") { return AppLocalization.string("User profile") }
+            if lower.hasPrefix("user profile") { return AppLocalization.string("User profile", table: .connection) }
             if lower.hasPrefix("memory") { return AppLocalization.string("Memory") }
-            if lower.hasPrefix("skill") { return AppLocalization.string("Skill") }
+            if lower.hasPrefix("skill") { return AppLocalization.string("Skill", table: .connection) }
             return nil
         })
         let summary: String
-        if labels.count == 1, let label = labels.first { summary = AppLocalization.string("\(label) updated") }
-        else if labels.count > 1 { summary = AppLocalization.string("Memory and skills updated") }
-        else { summary = AppLocalization.string("Self-improvement updates saved") }
+        if labels.count == 1, let label = labels.first { summary = AppLocalization.string("\(label) updated", table: .connection) }
+        else if labels.count > 1 { summary = AppLocalization.string("Memory and skills updated", table: .connection) }
+        else { summary = AppLocalization.string("Self-improvement updates saved", table: .connection) }
         return ReviewActivity(summary: summary, details: details, fullSessionId: nil)
     }
 

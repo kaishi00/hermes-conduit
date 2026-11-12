@@ -5,9 +5,10 @@ Hermes' `slash.exec` refuses about half its commands for a chat like
 Conduit's (`unsupported_command`); its clients run those themselves or
 leave them out. Hermes publishes which ones in its gateway command parity
 table (website/docs/developer-guide/gateway-command-parity.md, generated
-from its registry). Conduit keeps two lists against it in AppState.swift:
-the commands it runs itself (`executeSlashCommand`'s cases) and the ones it
-hides (`slashCommandsWithoutConduitRoute`). This script compares them, plus
+from its registry). Conduit keeps two lists against it in
+AppState+SlashCommands.swift: the commands it runs itself
+(`executeSlashCommand`'s cases) and the ones it hides
+(`slashCommandsWithoutConduitRoute`). This script compares them, plus
 the argument words Conduit sends for /fast, /reasoning and /approvals, with
 a Hermes checkout:
 
@@ -27,7 +28,7 @@ from pathlib import Path
 
 PARITY_DOC = "website/docs/developer-guide/gateway-command-parity.md"
 COMMANDS_PY = "hermes_cli/commands.py"
-APP_STATE = "Conduit/Services/AppState.swift"
+SLASH_COMMANDS_FILE = "Conduit/Services/AppState+SlashCommands.swift"
 MODEL_PICKER = "Conduit/Views/ModelPickerView.swift"
 SETTINGS_VIEWS = "Conduit/Views/AuxiliaryViews.swift"
 
@@ -75,7 +76,7 @@ def parse_registry_subcommands(text: str) -> dict[str, list[str]]:
 def parse_swift_string_set(text: str, name: str) -> set[str]:
     match = re.search(rf"static let {re.escape(name)}: Set<String> = \[(.*?)\]", text, re.DOTALL)
     if not match:
-        raise ParseError(f"{name} not found in {APP_STATE}")
+        raise ParseError(f"{name} not found in {SLASH_COMMANDS_FILE}")
     return set(re.findall(r'"([^"]+)"', match.group(1)))
 
 
@@ -84,7 +85,7 @@ def parse_native_routes(text: str) -> set[str]:
     start = text.find("// Client-side special cases")
     end = text.find("\n        default:", start)
     if start < 0 or end < 0:
-        raise ParseError(f"executeSlashCommand's local cases not found in {APP_STATE}")
+        raise ParseError(f"executeSlashCommand's local cases not found in {SLASH_COMMANDS_FILE}")
     names: set[str] = set()
     for case in re.findall(r"^\s+case ((?:\"[^\"]+\",?\s*)+):", text[start:end], re.MULTILINE):
         names.update(re.findall(r'"([^"]+)"', case))
@@ -175,7 +176,7 @@ def main(argv: list[str] | None = None) -> int:
     try:
         parity = parse_parity_table((args.hermes_root / PARITY_DOC).read_text())
         registry_subs = parse_registry_subcommands((args.hermes_root / COMMANDS_PY).read_text())
-        app_state = (args.repo_root / APP_STATE).read_text()
+        app_state = (args.repo_root / SLASH_COMMANDS_FILE).read_text()
         picker = (args.repo_root / MODEL_PICKER).read_text()
         hidden = parse_swift_string_set(app_state, "slashCommandsWithoutConduitRoute")
         native = parse_native_routes(app_state)

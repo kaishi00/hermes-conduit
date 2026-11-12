@@ -85,14 +85,14 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 
 - Approve tools and answer questions straight from a notification, end-to-end encrypted between your host and your phone
 - Live Activities on the Lock Screen and in the Dynamic Island while a reply runs
-- Home Screen widgets to start a chat or talk in one tap, and a Pulse widget whose cards you can mark done, put off or send to Hermes without opening Conduit
+- Home Screen widgets in three sizes to resume a chat, start one or talk in one tap, and a Pulse widget whose cards you can mark done, put off or send to Hermes without opening Conduit
 - Provider, model and reasoning effort switching mid-conversation
 - Connect model providers in Settings > Models & providers: sign in, paste an API key once for every profile (or give one profile its own), or add your own OpenAI-compatible server. Keys stay on your Hermes host and are never shown again. Each provider shows its logo, and one that reports a quota (a subscription sign-in, OpenRouter, OpenCode Go) shows how much is left and when it resets, there and in every model list
 - Pick the helper models Hermes runs smaller jobs on (chat titles, compaction, reading images, Conduit predictions and the rest) in Settings > Models & providers > Helper models, and the order a provider's keys take turns in on its page
 - Multiple dashboards and profiles, each with its own credentials and settings (Settings > Saved Dashboards can ask which dashboard to open each time Conduit launches); rename a profile or change its photo (a GIF, a short video or a still brought to life moves, or make one with Image Playground) and glow in Settings > Profiles; edit a profile's personality, its SOUL.md, in Settings > Edit profile, on the same page Edit Bot opens; All in the profile row lists every profile's chats together, newest first with each row's profile picture, or grouped by profile with each profile's pinned chats and five newest until Show more
 - Capabilities: skills (and Hermes' skill hub to search and install from, with its security scan), tools, connectors (apps such as Gmail or Slack signed in through Nous Portal, and MCP servers you can test and edit, by form or as JSON) and plugins (Hermes' plugin catalog to browse by tier and category, with pictures, and each plugin's own settings), plus Hermes settings and gateway logs
 - Native OAuth sign-in through your dashboard, QR code and setup links, Cloudflare Access service tokens
-- Keyboard shortcuts on an iPad or a Mac: ⌘N for a new chat, ⌘1 to ⌘4 for the tabs, ⌘, for Settings, ⌘F to search, ⌘Return to send, ⌘. to stop a reply, ⌘+ and ⌘− for the chat's text size, and ⌘/ for the full list
+- Keyboard shortcuts on an iPad or a Mac: ⌘N for a new chat, ⌘1 to ⌘4 for the tabs, ⌘, for Settings, ⌘F to search, ⌘Return to send, ⌘. to stop a reply, ⌘+ and ⌘− for the chat's text size, and ⌘/ for the full list. On a Mac a chat or room opens ready to type, and ⌘V pastes into its message box after a click in the conversation
 - Face ID or Touch ID lock, credentials in the Keychain
 - Available in English, French, German, Indonesian, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Russian, Simplified Chinese, Spanish, Traditional Chinese and Turkish
 

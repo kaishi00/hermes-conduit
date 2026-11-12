@@ -19,7 +19,7 @@ struct OfflineChatBanner: View {
 
     private var title: String {
         showsCopy
-            ? AppLocalization.string("Showing a saved copy")
+            ? AppLocalization.string("Showing a saved copy", table: .chat)
             : AppLocalization.string("Can't reach Hermes")
     }
 
@@ -33,7 +33,7 @@ struct OfflineChatBanner: View {
                 Text(title)
                     .scaledFont(.footnote.weight(.semibold))
                 if let savedAt {
-                    Text(AppLocalization.string("Saved \(savedAt.formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale)))"))
+                    Text(AppLocalization.string("Saved \(savedAt.formatted(.relative(presentation: .named).locale(AppLocalization.formattingLocale)))", table: .chat))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                 }

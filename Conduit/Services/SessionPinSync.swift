@@ -20,8 +20,8 @@ struct PinSyncNotice: Identifiable, Equatable {
         let reason = UserFacingError.message(for: error)
         systemImage = "pin.fill"
         message = pinned
-            ? AppLocalization.string("Pinned on this iPhone only. \(reason)")
-            : AppLocalization.string("Unpinned on this iPhone only. \(reason)")
+            ? AppLocalization.string("Pinned on this iPhone only. \(reason)", table: .chat)
+            : AppLocalization.string("Unpinned on this iPhone only. \(reason)", table: .chat)
     }
 }
 

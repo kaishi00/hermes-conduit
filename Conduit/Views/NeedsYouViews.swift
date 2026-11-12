@@ -169,9 +169,9 @@ struct NeedsYouSheet: View {
                 List {
                     if store.items.isEmpty {
                         ContentUnavailableView(
-                            AppLocalization.string("Nothing needs you"),
+                            AppLocalization.string("Nothing needs you", table: .chat),
                             systemImage: "checkmark.circle",
-                            description: Text(AppLocalization.string("When Hermes waits on your approval or answer in any chat, it shows here."))
+                            description: Text(AppLocalization.string("When Hermes waits on your approval or answer in any chat, it shows here.", table: .chat))
                         )
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -186,7 +186,7 @@ struct NeedsYouSheet: View {
                             }
                             .buttonStyle(.plain)
                             .accessibilityHint(item.roomID == nil
-                                ? AppLocalization.string("Opens the chat at its card")
+                                ? AppLocalization.string("Opens the chat at its card", table: .chat)
                                 : AppLocalization.string("Opens this group chat."))
                         }
                     }

@@ -61,6 +61,17 @@ struct VoiceAudioSessionConfiguration: Equatable {
         outputChannelCount: 1
     )
 
+    /// A card's audio or video (issue 826): plays with the ringer switch
+    /// off and pauses other apps' media as a player does; ending it hands
+    /// their audio back.
+    static let mediaPlayback = Self(
+        category: .playback,
+        mode: .default,
+        options: [],
+        outputSampleRate: 24_000,
+        outputChannelCount: 1
+    )
+
     /// Foreground wake phrase listening (#174): records from the microphone
     /// while letting other apps' audio keep playing at full volume. `.default`
     /// rather than `.voiceChat` so no voice processing ducks other media, and

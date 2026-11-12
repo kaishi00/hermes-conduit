@@ -56,7 +56,7 @@ struct DelegationRoutingSettings: View {
     var body: some View {
         if !unsupported {
             VStack(alignment: .leading, spacing: 24) {
-                ConduitSettingsSection(title: AppLocalization.string("Subagent routing"), symbol: "signpost.right.and.left", tint: .conduitAccent) {
+                ConduitSettingsSection(title: AppLocalization.string("Subagent routing", table: .bots), symbol: "signpost.right.and.left", tint: .conduitAccent) {
                     Text("How each subagent gets its model.")
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                     if let routing {
@@ -105,12 +105,12 @@ struct DelegationRoutingSettings: View {
                 .environmentObject(appState)
             }
             .confirmationDialog(
-                AppLocalization.string("Delete route \(deleting?.name ?? "")?"),
+                AppLocalization.string("Delete route \(deleting?.name ?? "")?", table: .bots),
                 isPresented: Binding(get: { deleting != nil }, set: { if !$0 { deleting = nil } }),
                 titleVisibility: .visible,
                 presenting: deleting
             ) { route in
-                Button(AppLocalization.string("Delete route"), role: .destructive) { deleteRoute(route) }
+                Button(AppLocalization.string("Delete route", table: .bots), role: .destructive) { deleteRoute(route) }
             } message: { route in
                 Text(deleteMessage(route))
             }
@@ -136,9 +136,9 @@ struct DelegationRoutingSettings: View {
                                     .scaledFont(.subheadline.weight(.medium))
                                     .foregroundStyle(available || selected ? Color.primary : Color.secondary)
                                 if selected {
-                                    pill(blocked ? AppLocalization.string("Not running") : AppLocalization.string("In use"), tint: blocked ? .orange : .conduitAccent)
+                                    pill(blocked ? AppLocalization.string("Not running", table: .bots) : AppLocalization.string("In use"), tint: blocked ? .orange : .conduitAccent)
                                 } else if !available {
-                                    pill(AppLocalization.string("Plugin"), tint: .secondary)
+                                    pill(AppLocalization.string("Plugin", table: .bots), tint: .secondary)
                                 }
                             }
                             Text(verbatim: modeSummary(mode, routing))
@@ -162,20 +162,20 @@ struct DelegationRoutingSettings: View {
     private func modeLabel(_ mode: String, _ routing: DelegationRouting) -> String {
         switch mode {
         case DelegationRouting.defaultMode: AppLocalization.string("Default")
-        case DelegationRouting.modelMapMode: AppLocalization.string("Model routes")
-        case DelegationRouting.profileRoutesMode: AppLocalization.string("Profile routes")
+        case DelegationRouting.modelMapMode: AppLocalization.string("Model routes", table: .bots)
+        case DelegationRouting.profileRoutesMode: AppLocalization.string("Profile routes", table: .bots)
         default: routing.backend(mode).map { $0.label.isEmpty ? $0.name : $0.label } ?? mode
         }
     }
 
     private func modeSummary(_ mode: String, _ routing: DelegationRouting) -> String {
         switch mode {
-        case DelegationRouting.defaultMode: return AppLocalization.string("Every subagent runs on the delegate model below.")
-        case DelegationRouting.modelMapMode: return AppLocalization.string("Name a few models. The agent picks one for each subagent.")
-        case DelegationRouting.profileRoutesMode: return AppLocalization.string("Subagents run as one of your profiles, with its own model, skills and keys.")
+        case DelegationRouting.defaultMode: return AppLocalization.string("Every subagent runs on the delegate model below.", table: .bots)
+        case DelegationRouting.modelMapMode: return AppLocalization.string("Name a few models. The agent picks one for each subagent.", table: .bots)
+        case DelegationRouting.profileRoutesMode: return AppLocalization.string("Subagents run as one of your profiles, with its own model, skills and keys.", table: .bots)
         default:
             let summary = routing.backend(mode)?.summary ?? ""
-            return summary.isEmpty ? AppLocalization.string("From a plugin. Its settings live with that plugin.") : summary
+            return summary.isEmpty ? AppLocalization.string("From a plugin. Its settings live with that plugin.", table: .bots) : summary
         }
     }
 
@@ -217,7 +217,7 @@ struct DelegationRoutingSettings: View {
     }
 
     private var useDefaultButton: some View {
-        Button(AppLocalization.string("Switch to Default")) { choose(DelegationRouting.defaultMode) }
+        Button(AppLocalization.string("Switch to Default", table: .bots)) { choose(DelegationRouting.defaultMode) }
             .buttonStyle(.settings)
             .disabled(!answered || working)
     }
@@ -227,16 +227,16 @@ struct DelegationRoutingSettings: View {
         switch routing.configured {
         case DelegationRouting.modelMapMode:
             if let route = routing.defaultModelRoute {
-                return AppLocalization.string("Model routes pick each subagent's model, so Delegate model below isn't used. Subagents that pick no route use \(route).")
+                return AppLocalization.string("Model routes pick each subagent's model, so Delegate model below isn't used. Subagents that pick no route use \(route).", table: .bots)
             }
-            return AppLocalization.string("Model routes pick each subagent's model, so Delegate model below isn't used. Subagents that pick no route use the chat's model.")
+            return AppLocalization.string("Model routes pick each subagent's model, so Delegate model below isn't used. Subagents that pick no route use the chat's model.", table: .bots)
         case DelegationRouting.profileRoutesMode:
             if let profile = routing.defaultProfileRoute {
-                return AppLocalization.string("Profile routes pick each subagent's profile, so Delegate model below isn't used. Subagents that pick no profile run as \(profile).")
+                return AppLocalization.string("Profile routes pick each subagent's profile, so Delegate model below isn't used. Subagents that pick no profile run as \(profile).", table: .bots)
             }
-            return AppLocalization.string("Profile routes pick each subagent's profile, so Delegate model below isn't used. Subagents that pick no profile use the chat's model.")
+            return AppLocalization.string("Profile routes pick each subagent's profile, so Delegate model below isn't used. Subagents that pick no profile use the chat's model.", table: .bots)
         default:
-            return AppLocalization.string("\(modeLabel(routing.configured, routing)) decides each subagent's model, so Delegate model below isn't used.")
+            return AppLocalization.string("\(modeLabel(routing.configured, routing)) decides each subagent's model, so Delegate model below isn't used.", table: .bots)
         }
     }
 
@@ -251,7 +251,7 @@ struct DelegationRoutingSettings: View {
     // MARK: Model routes
 
     private func modelRoutes(_ routing: DelegationRouting) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Model routes"), symbol: "shippingbox", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Model routes", table: .bots), symbol: "shippingbox", tint: .conduitAura) {
             Text("The agent reads each route's name and description to pick one for a subagent.")
                 .scaledFont(.footnote).foregroundStyle(.secondary)
             if routing.modelRoutes.isEmpty {
@@ -261,7 +261,7 @@ struct DelegationRoutingSettings: View {
             ForEach(routing.modelRoutes) { route in
                 routeRow(route, isDefault: routing.defaultModelRoute == route.name, routing: routing)
             }
-            Button { editing = RouteEditing(route: nil) } label: { Label(AppLocalization.string("Add route"), systemImage: "plus") }
+            Button { editing = RouteEditing(route: nil) } label: { Label(AppLocalization.string("Add route", table: .bots), systemImage: "plus") }
                 .buttonStyle(.settings)
                 .disabled(!answered || working)
                 .accessibilityIdentifier("settings.delegationRouting.addRoute")
@@ -292,7 +292,7 @@ struct DelegationRoutingSettings: View {
             Menu {
                 Button { editing = RouteEditing(route: route) } label: { Label(AppLocalization.string("Edit"), systemImage: "pencil") }
                 if !isDefault {
-                    Button { saveModelRoutes(routing.defaultingModelRoute(route.name)) } label: { Label(AppLocalization.string("Make default"), systemImage: "star") }
+                    Button { saveModelRoutes(routing.defaultingModelRoute(route.name)) } label: { Label(AppLocalization.string("Make default", table: .bots), systemImage: "star") }
                 }
                 Button(role: .destructive) { deleting = route } label: { Label(AppLocalization.string("Delete"), systemImage: "trash") }
             } label: {
@@ -311,9 +311,9 @@ struct DelegationRoutingSettings: View {
     private func deleteMessage(_ route: DelegationRouting.ModelRoute) -> String {
         let next = routing?.removingModelRoute(route.name)
         if routing?.defaultModelRoute == route.name, let fallback = next?.defaultModelRoute {
-            return AppLocalization.string("Subagents can no longer pick it. It's the default route, so \(fallback) becomes the default.")
+            return AppLocalization.string("Subagents can no longer pick it. It's the default route, so \(fallback) becomes the default.", table: .bots)
         }
-        return AppLocalization.string("Subagents can no longer pick it.")
+        return AppLocalization.string("Subagents can no longer pick it.", table: .bots)
     }
 
     private func deleteRoute(_ route: DelegationRouting.ModelRoute) {
@@ -343,7 +343,7 @@ struct DelegationRoutingSettings: View {
     // MARK: Profile routes
 
     private func profileRoutes(_ routing: DelegationRouting) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Profiles subagents can run as"), symbol: "person.2", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Profiles subagents can run as", table: .bots), symbol: "person.2", tint: .conduitAura) {
             Text("Each profile you turn on brings its own model, skills, persona and keys.")
                 .scaledFont(.footnote).foregroundStyle(.secondary)
             let listed = routing.profileRoutes.map(\.name)
@@ -368,7 +368,7 @@ struct DelegationRoutingSettings: View {
                 set: { on in saveProfileRoutes(routing.togglingProfileRoute(name, on: on)) }
             )) {
                 HStack(spacing: 6) {
-                    Text(verbatim: missing ? AppLocalization.string("\(name) (profile no longer exists)") : name)
+                    Text(verbatim: missing ? AppLocalization.string("\(name) (profile no longer exists)", table: .bots) : name)
                         .scaledFont(.subheadline.weight(.medium))
                     if entry != nil && isDefault { pill(AppLocalization.string("Default"), tint: .conduitAccent) }
                 }
@@ -376,7 +376,7 @@ struct DelegationRoutingSettings: View {
             .tint(.conduitAccent)
             .disabled(!answered || working || (missing && entry == nil))
             if entry != nil {
-                TextField(AppLocalization.string("When to use it (optional)"), text: Binding(
+                TextField(AppLocalization.string("When to use it (optional)", table: .bots), text: Binding(
                     get: { descriptions[name] ?? entry?.description ?? "" },
                     set: { descriptions[name] = $0 }
                 ))
@@ -386,7 +386,7 @@ struct DelegationRoutingSettings: View {
                 .onSubmit { commitDescription(name) }
                 .disabled(!answered || working)
                 if !isDefault {
-                    Button(AppLocalization.string("Make default")) { saveProfileRoutes(routing.defaultingProfileRoute(name)) }
+                    Button(AppLocalization.string("Make default", table: .bots)) { saveProfileRoutes(routing.defaultingProfileRoute(name)) }
                         .buttonStyle(.settings)
                         .disabled(!answered || working)
                 }
@@ -511,12 +511,12 @@ private struct DelegationModelRouteSheet: View {
                     Text("The agent reads the name and description to decide which route a subagent takes.")
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
-                    TextField(AppLocalization.string("Name, like fast"), text: $draft.name)
+                    TextField(AppLocalization.string("Name, like fast", table: .bots), text: $draft.name)
                         .textFieldStyle(.roundedBorder)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                         .accessibilityIdentifier("settings.delegationRoute.name")
-                    TextField(AppLocalization.string("When to use it, like quick lookups and summaries"), text: $draft.description, axis: .vertical)
+                    TextField(AppLocalization.string("When to use it, like quick lookups and summaries", table: .bots), text: $draft.description, axis: .vertical)
                         .textFieldStyle(.roundedBorder)
                         .lineLimit(2...4)
                         .accessibilityIdentifier("settings.delegationRoute.description")
@@ -534,7 +534,7 @@ private struct DelegationModelRouteSheet: View {
                             pick: draft.provider.isEmpty && draft.model.isEmpty ? nil : ModelChooserPick(provider: draft.provider, model: draft.model),
                             reasoning: ModelChooserReasoning(
                                 effort: draft.reasoningEffort,
-                                inheritTitle: AppLocalization.string("Subagent default"),
+                                inheritTitle: AppLocalization.string("Subagent default", table: .bots),
                                 levels: DelegationModelRouteDraft.reasoningEfforts.compactMap(ReasoningEffortLevel.init(rawValue:)),
                                 set: { draft.reasoningEffort = $0 }
                             ),
@@ -548,7 +548,7 @@ private struct DelegationModelRouteSheet: View {
                         let lines = ModelChooserLinkRow.lines(
                             pick: draft.provider.isEmpty && draft.model.isEmpty ? nil : ModelChooserPick(provider: draft.provider, model: draft.model),
                             providers: providers,
-                            defaultTitle: AppLocalization.string("Choose a model"),
+                            defaultTitle: AppLocalization.string("Choose a model", table: .bots),
                             reasoning: draft.reasoningEffort.isEmpty ? nil : ReasoningEffortLevel.displayTitle(for: draft.reasoningEffort)
                         )
                         ModelChooserLinkRow(title: AppLocalization.string("Model"), value: lines.value, detail: lines.detail)
@@ -556,13 +556,13 @@ private struct DelegationModelRouteSheet: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.delegationRoute.model")
                     if draft.provider.isEmpty, let endpoint = route?.baseURL, !endpoint.isEmpty {
-                        Text(AppLocalization.string("Runs on its endpoint, \(endpoint)."))
+                        Text(AppLocalization.string("Runs on its endpoint, \(endpoint).", table: .bots))
                             .scaledFont(.caption).foregroundStyle(.secondary)
                     }
                     ConduitMenuPicker(
                         value: draft.serviceTier,
                         choices: [
-                            (id: "", title: AppLocalization.string("Subagent default")),
+                            (id: "", title: AppLocalization.string("Subagent default", table: .bots)),
                             (id: "normal", title: AppLocalization.string("Normal")),
                             (id: "fast", title: AppLocalization.string("Fast")),
                             (id: "ultrafast", title: AppLocalization.string("Ultrafast")),
@@ -576,7 +576,7 @@ private struct DelegationModelRouteSheet: View {
                 }
                 if let error { Text(error).scaledFont(.caption).foregroundStyle(.red) }
             }
-            .navigationTitle(route == nil ? AppLocalization.string("New model route") : AppLocalization.string("Edit model route"))
+            .navigationTitle(route == nil ? AppLocalization.string("New model route", table: .bots) : AppLocalization.string("Edit model route", table: .bots))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Cancel")) { dismiss() }

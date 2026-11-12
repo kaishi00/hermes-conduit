@@ -34,8 +34,8 @@ struct RoomInviteRosterRow: View {
         .accessibilityLabel(Text(verbatim: invite.name))
         .accessibilityValue(Text(verbatim: line))
         .accessibilityHint(Text(invite.status == "waiting"
-            ? AppLocalization.string("Choose which of your bots join, or decline.")
-            : AppLocalization.string("Shows where the invite stands.")))
+            ? AppLocalization.string("Choose which of your bots join, or decline.", table: .rooms)
+            : AppLocalization.string("Shows where the invite stands.", table: .rooms)))
         .swipeActions(edge: .trailing, allowsFullSwipe: true) {
             if RoomInviteRows.canRemove(invite) {
                 Button(AppLocalization.string("Remove")) {
@@ -111,33 +111,33 @@ struct RoomInviteSheet: View {
                     Text(sendingNote)
                         .settingsCaption()
                 }
-                ConduitSettingsSection(title: AppLocalization.string("Invite"), symbol: "envelope.open", tint: .conduitAccent) {
+                ConduitSettingsSection(title: AppLocalization.string("Invite", table: .rooms), symbol: "envelope.open", tint: .conduitAccent) {
                     Text(verbatim: RoomInviteText.line(for: invite))
                         .scaledFont(.body)
                         .fixedSize(horizontal: false, vertical: true)
                     if invite.status == "waiting", let expiresAt = invite.expiresAt {
-                        Text(AppLocalization.string("Answer by \(RoomDraftText.until(expiresAt))"))
+                        Text(AppLocalization.string("Answer by \(RoomDraftText.until(expiresAt))", table: .rooms))
                             .settingsCaption()
                     }
                     if !invite.people.isEmpty {
-                        Text(AppLocalization.string("Also invited: \(RoomDraftText.names(invite.people))"))
+                        Text(AppLocalization.string("Also invited: \(RoomDraftText.names(invite.people))", table: .rooms))
                             .settingsCaption()
                     }
                     if !invite.hostAgents.isEmpty {
-                        Text(AppLocalization.string("Their agents: \(RoomDraftText.names(invite.hostAgents))"))
+                        Text(AppLocalization.string("Their agents: \(RoomDraftText.names(invite.hostAgents))", table: .rooms))
                             .settingsCaption()
                     }
                 }
                 if appState.linkedRoomInviteIsGone(inviteID) {
                     // The plugin forgot it: nothing here can answer it.
-                    Text(AppLocalization.string("This invite isn't on your Hermes any more."))
+                    Text(AppLocalization.string("This invite isn't on your Hermes any more.", table: .rooms))
                         .settingsCaption()
                 } else if invite.status == "waiting" {
                     bringSection(invite)
                     answerSection(invite)
                 } else {
                     if !invite.joined.isEmpty {
-                        ConduitSettingsSection(title: AppLocalization.string("Your bots"), symbol: "person.2", tint: .conduitAccent) {
+                        ConduitSettingsSection(title: AppLocalization.string("Your bots", table: .rooms), symbol: "person.2", tint: .conduitAccent) {
                             ForEach(invite.joined, id: \.profile) { agent in
                                 Text(verbatim: agent.displayName)
                                     .frame(minHeight: 32, alignment: .leading)
@@ -164,14 +164,14 @@ struct RoomInviteSheet: View {
                 }
             }
             .confirmationDialog(
-                AppLocalization.string("Decline \(invite.name)?"),
+                AppLocalization.string("Decline \(invite.name)?", table: .rooms),
                 isPresented: $confirmingDecline,
                 titleVisibility: .visible
             ) {
-                Button(AppLocalization.string("Decline"), role: .destructive) { answer(invite, agents: []) }
+                Button(AppLocalization.string("Decline", table: .rooms), role: .destructive) { answer(invite, agents: []) }
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
             } message: {
-                Text(AppLocalization.string("The person who invited you is told."))
+                Text(AppLocalization.string("The person who invited you is told.", table: .rooms))
             }
         }
         .task {
@@ -189,17 +189,17 @@ struct RoomInviteSheet: View {
         let bots = bots(for: invite)
         let pickedCount = bots.filter { picked.contains($0.name) }.count
         let placeCount = min(invite.places, RoomInviteLimits.maxAgents)
-        ConduitSettingsSection(title: AppLocalization.string("Your bots"), symbol: "person.2", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Your bots", table: .rooms), symbol: "person.2", tint: .conduitAccent) {
             if placeCount == 0, !readingBots {
                 // Why every bot below is disabled, or none is listed.
-                Text(AppLocalization.string("This room has no places left for your bots."))
+                Text(AppLocalization.string("This room has no places left for your bots.", table: .rooms))
                     .settingsCaption()
             } else if bots.isEmpty {
                 if readingBots {
                     ProgressView()
                         .frame(maxWidth: .infinity)
                 } else {
-                    Text(AppLocalization.string("None of your bots can join this room."))
+                    Text(AppLocalization.string("None of your bots can join this room.", table: .rooms))
                         .settingsCaption()
                 }
             }
@@ -210,9 +210,9 @@ struct RoomInviteSheet: View {
                 }
             }
             VStack(alignment: .leading, spacing: 4) {
-                Text(AppLocalization.string("Places for your bots: \(placeCount)"))
+                Text(AppLocalization.string("Places for your bots: \(placeCount)", table: .rooms))
                 Text(AppLocalization.string(
-                    "Each bot starts with its choices from your last room with the same people, else its defaults."
+                    "Each bot starts with its choices from your last room with the same people, else its defaults.", table: .rooms
                 ))
             }
             .settingsCaption()
@@ -264,7 +264,7 @@ struct RoomInviteSheet: View {
         } label: {
             HStack {
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(AppLocalization.string("\(bot.displayLabel)'s choices"))
+                    Text(AppLocalization.string("\(bot.displayLabel)'s choices", table: .rooms))
                         .scaledFont(.subheadline)
                         .foregroundStyle(.primary)
                     Text(verbatim: RoomInviteChoicesView.summary(binding.wrappedValue))
@@ -290,7 +290,7 @@ struct RoomInviteSheet: View {
                 join(invite)
             } label: {
                 HStack(spacing: 8) {
-                    Text(AppLocalization.string("Join"))
+                    Text(AppLocalization.string("Join", table: .rooms))
                     if busy && !declining {
                         ProgressView()
                             .controlSize(.small)
@@ -304,7 +304,7 @@ struct RoomInviteSheet: View {
                 confirmingDecline = true
             } label: {
                 HStack(spacing: 8) {
-                    Text(AppLocalization.string("Decline"))
+                    Text(AppLocalization.string("Decline", table: .rooms))
                     if busy && declining {
                         ProgressView()
                             .controlSize(.small)
@@ -322,7 +322,7 @@ struct RoomInviteSheet: View {
         let unlisted = RoomInviteLimits.unlisted(picked: picked, profiles: invite.profiles)
         guard unlisted.isEmpty else {
             picked.subtract(unlisted)
-            actionError = AppLocalization.string("Some of the bots you picked can't join this room any more.")
+            actionError = AppLocalization.string("Some of the bots you picked can't join this room any more.", table: .rooms)
             return
         }
         let bots = bots(for: invite).filter { picked.contains($0.name) }
@@ -389,43 +389,43 @@ struct RoomInviteChoicesView: View {
     var body: some View {
         // Settings' own pieces: each choice a dropdown in a card (Sheets in Settings' look).
         SettingsDetailContainer {
-            ConduitSettingsSection(title: AppLocalization.string("What it can do"), symbol: "wrench.and.screwdriver", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("What it can do", table: .rooms), symbol: "wrench.and.screwdriver", tint: .conduitAccent) {
                 ConduitMenuPicker(value: choices.tools, choices: toolChoices, onSelect: { choices.tools = $0 }) {
-                    Text(AppLocalization.string("What it can do")).foregroundStyle(.secondary)
+                    Text(AppLocalization.string("What it can do", table: .rooms)).foregroundStyle(.secondary)
                 }
                 Text(RoomAgentChoicesView.toolsDetail(choices, freeBusy: offersData))
                     .settingsCaption()
             }
-            ConduitSettingsSection(title: AppLocalization.string("What it may share"), symbol: "hand.raised", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("What it may share", table: .rooms), symbol: "hand.raised", tint: .conduitAccent) {
                 ConduitMenuPicker(value: choices.share, choices: Self.shareChoices, onSelect: { choices.share = $0 }) {
-                    Text(AppLocalization.string("What it may share")).foregroundStyle(.secondary)
+                    Text(AppLocalization.string("What it may share", table: .rooms)).foregroundStyle(.secondary)
                 }
                 Text(RoomAgentChoicesView.shareDetail(choices.share))
                     .settingsCaption()
             }
             SettingsCard {
-                Toggle(AppLocalization.string("Search my past chats"), isOn: $choices.searchChats)
+                Toggle(AppLocalization.string("Search my past chats", table: .rooms), isOn: $choices.searchChats)
                     .tint(.conduitAccent)
-                Text(AppLocalization.string("It can search your other chats to answer here, other people's messages in them included."))
+                Text(AppLocalization.string("It can search your other chats to answer here, other people's messages in them included.", table: .rooms))
                     .settingsCaption()
             }
-            ConduitSettingsSection(title: AppLocalization.string("How it takes part"), symbol: "person.wave.2", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("How it takes part", table: .rooms), symbol: "person.wave.2", tint: .conduitAccent) {
                 ConduitMenuPicker(value: choices.takesPart, choices: Self.takesPartChoices, onSelect: { choices.takesPart = $0 }) {
-                    Text(AppLocalization.string("How it takes part")).foregroundStyle(.secondary)
+                    Text(AppLocalization.string("How it takes part", table: .rooms)).foregroundStyle(.secondary)
                 }
                 Text(Self.takesPartDetail(choices.takesPart))
                     .settingsCaption()
             }
-            ConduitSettingsSection(title: AppLocalization.string("Turns a day"), symbol: "number", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("Turns a day", table: .rooms), symbol: "number", tint: .conduitAccent) {
                 ConduitMenuPicker(
                     value: choices.dailyLimit,
                     choices: RoomChoices.dailyLimitSteps(including: original.dailyLimit).map { (id: $0, title: Self.number($0)) },
                     onSelect: { choices.dailyLimit = $0 }
                 ) {
-                    Text(AppLocalization.string("Turns a day")).foregroundStyle(.secondary)
+                    Text(AppLocalization.string("Turns a day", table: .rooms)).foregroundStyle(.secondary)
                 }
                 Text(AppLocalization.string(
-                    "The most turns it takes in this room each day. Once they're used up, it says so and sits out until tomorrow."
+                    "The most turns it takes in this room each day. Once they're used up, it says so and sits out until tomorrow.", table: .rooms
                 ))
                 .settingsCaption()
             }
@@ -439,11 +439,11 @@ struct RoomInviteChoicesView: View {
     /// else while it's the choice; Custom while it's the choice.
     private var toolChoices: [(id: String, title: String)] {
         var shown: [(id: String, title: String)] = [
-            (id: "talk", title: AppLocalization.string("Talk only")),
-            (id: "look", title: AppLocalization.string("Look things up")),
+            (id: "talk", title: AppLocalization.string("Talk only", table: .rooms)),
+            (id: "look", title: AppLocalization.string("Look things up", table: .rooms)),
         ]
         if RoomChoices.offersUseMyData(freeBusy: offersData, current: [original.tools, choices.tools]) {
-            shown.append((id: "data", title: AppLocalization.string("Use my data")))
+            shown.append((id: "data", title: AppLocalization.string("Use my data", table: .rooms)))
         }
         if original.tools == "custom" || choices.tools == "custom" {
             shown.append((id: "custom", title: AppLocalization.string("Custom")))
@@ -452,15 +452,15 @@ struct RoomInviteChoicesView: View {
     }
 
     static var shareChoices: [(id: String, title: String)] {
-        [(id: "helps", title: AppLocalization.string("What helps")),
-         (id: "ask", title: AppLocalization.string("Ask me first")),
-         (id: "nothing", title: AppLocalization.string("Nothing personal"))]
+        [(id: "helps", title: AppLocalization.string("What helps", table: .rooms)),
+         (id: "ask", title: AppLocalization.string("Ask me first", table: .rooms)),
+         (id: "nothing", title: AppLocalization.string("Nothing personal", table: .rooms))]
     }
 
     static var takesPartChoices: [(id: String, title: String)] {
-        [(id: "joins", title: AppLocalization.string("Joins in")),
-         (id: "asked", title: AppLocalization.string("When asked")),
-         (id: "listens", title: AppLocalization.string("Listens only"))]
+        [(id: "joins", title: AppLocalization.string("Joins in", table: .rooms)),
+         (id: "asked", title: AppLocalization.string("When asked", table: .rooms)),
+         (id: "listens", title: AppLocalization.string("Listens only", table: .rooms))]
     }
 
     /// The card's line under a bot brought: each choice, briefly.
@@ -470,7 +470,7 @@ struct RoomInviteChoicesView: View {
             toolsLabel(choices.tools),
             shareLabel(choices.share),
             takesPartLabel(choices.takesPart),
-            AppLocalization.string("Turns a day: \(turnCount)"),
+            AppLocalization.string("Turns a day: \(turnCount)", table: .rooms),
         ]
         .filter { !$0.isEmpty }
         .joined(separator: " · ")
@@ -478,9 +478,9 @@ struct RoomInviteChoicesView: View {
 
     static func toolsLabel(_ tools: String) -> String {
         switch tools {
-        case "talk": return AppLocalization.string("Talk only")
-        case "look": return AppLocalization.string("Look things up")
-        case "data": return AppLocalization.string("Use my data")
+        case "talk": return AppLocalization.string("Talk only", table: .rooms)
+        case "look": return AppLocalization.string("Look things up", table: .rooms)
+        case "data": return AppLocalization.string("Use my data", table: .rooms)
         case "custom": return AppLocalization.string("Custom")
         default: return ""
         }
@@ -488,18 +488,18 @@ struct RoomInviteChoicesView: View {
 
     static func shareLabel(_ share: String) -> String {
         switch share {
-        case "helps": return AppLocalization.string("What helps")
-        case "ask": return AppLocalization.string("Ask me first")
-        case "nothing": return AppLocalization.string("Nothing personal")
+        case "helps": return AppLocalization.string("What helps", table: .rooms)
+        case "ask": return AppLocalization.string("Ask me first", table: .rooms)
+        case "nothing": return AppLocalization.string("Nothing personal", table: .rooms)
         default: return ""
         }
     }
 
     static func takesPartLabel(_ takesPart: String) -> String {
         switch takesPart {
-        case "joins": return AppLocalization.string("Joins in")
-        case "asked": return AppLocalization.string("When asked")
-        case "listens": return AppLocalization.string("Listens only")
+        case "joins": return AppLocalization.string("Joins in", table: .rooms)
+        case "asked": return AppLocalization.string("When asked", table: .rooms)
+        case "listens": return AppLocalization.string("Listens only", table: .rooms)
         default: return ""
         }
     }
@@ -508,11 +508,11 @@ struct RoomInviteChoicesView: View {
     static func takesPartDetail(_ takesPart: String) -> String {
         switch takesPart {
         case "joins":
-            return AppLocalization.string("It takes its turns in the room as the other agents do.")
+            return AppLocalization.string("It takes its turns in the room as the other agents do.", table: .rooms)
         case "asked":
-            return AppLocalization.string("It answers only when a new message @mentions it, or @all.")
+            return AppLocalization.string("It answers only when a new message @mentions it, or @all.", table: .rooms)
         case "listens":
-            return AppLocalization.string("It reads along but never answers.")
+            return AppLocalization.string("It reads along but never answers.", table: .rooms)
         default:
             return ""
         }

@@ -190,7 +190,7 @@ struct PresentedConfirm: Identifiable, Equatable {
             id: id,
             title: String(title.prefix(120)),
             preview: String((entry["preview"] as? String ?? "").prefix(4_000)),
-            actionLabel: label.isEmpty ? AppLocalization.string("Confirm") : String(label.prefix(32)),
+            actionLabel: label.isEmpty ? AppLocalization.string("Confirm", table: .chat) : String(label.prefix(32)),
             spokenYes: (entry["spoken_yes"] as? [String] ?? [])
                 .map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }
                 .filter { !$0.isEmpty }

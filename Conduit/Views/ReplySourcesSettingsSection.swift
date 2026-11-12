@@ -22,8 +22,8 @@ struct ReplySourcesSettingsSection: View {
     }
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Replies to messages from"), symbol: "bubble.left.and.text.bubble.right", tint: .conduitAccent) {
-            Text(AppLocalization.string("A reply to a message you sent from a source turned off here sends no Response ready notification. Applies to this profile on this dashboard."))
+        ConduitSettingsSection(title: AppLocalization.string("Replies to messages from", table: .notifications), symbol: "bubble.left.and.text.bubble.right", tint: .conduitAccent) {
+            Text(AppLocalization.string("A reply to a message you sent from a source turned off here sends no Response ready notification. Applies to this profile on this dashboard.", table: .notifications))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             if loadedKey == key {
@@ -71,18 +71,18 @@ struct ReplySourcesSettingsSection: View {
     private func title(_ source: ReplySource) -> String {
         switch source {
         case .conduit: AppLocalization.string("Conduit")
-        case .desktop: AppLocalization.string("Hermes Desktop and web")
-        case .messaging: AppLocalization.string("Messaging apps")
+        case .desktop: AppLocalization.string("Hermes Desktop and web", table: .notifications)
+        case .messaging: AppLocalization.string("Messaging apps", table: .notifications)
         case .terminal: AppLocalization.string("Terminal")
         }
     }
 
     private func detail(_ source: ReplySource) -> String {
         switch source {
-        case .conduit: AppLocalization.string("Messages you send in this app, its widgets and your Watch")
-        case .desktop: AppLocalization.string("The Hermes Desktop app and the web dashboard")
-        case .messaging: AppLocalization.string("Telegram, Discord, Slack and other platforms Hermes is on")
-        case .terminal: AppLocalization.string("hermes chat on the host")
+        case .conduit: AppLocalization.string("Messages you send in this app, its widgets and your Watch", table: .notifications)
+        case .desktop: AppLocalization.string("The Hermes Desktop app and the web dashboard", table: .notifications)
+        case .messaging: AppLocalization.string("Telegram, Discord, Slack and other platforms Hermes is on", table: .notifications)
+        case .terminal: AppLocalization.string("hermes chat on the host", table: .notifications)
         }
     }
 

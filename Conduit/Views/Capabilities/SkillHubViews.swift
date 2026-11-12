@@ -16,7 +16,7 @@ enum SkillHubStyle {
     static func trustPill(_ trust: String) -> CapabilityPillModel {
         switch trust {
         case "builtin": return CapabilityPillModel(text: AppLocalization.string("Official"), tint: .conduitAura)
-        case "trusted": return CapabilityPillModel(text: AppLocalization.string("Trusted"), tint: .green)
+        case "trusted": return CapabilityPillModel(text: AppLocalization.string("Trusted", table: .bots), tint: .green)
         default: return CapabilityPillModel(text: AppLocalization.string("Community"))
         }
     }
@@ -56,8 +56,8 @@ struct SkillHubEntryRow: View {
         } label: {
             CapabilityRowLabel(
                 symbol: "bag",
-                title: AppLocalization.string("Browse Skill Hub"),
-                detail: AppLocalization.string("Search skills.sh, GitHub, ClawHub and the other sources Hermes has."),
+                title: AppLocalization.string("Browse Skill Hub", table: .bots),
+                detail: AppLocalization.string("Search skills.sh, GitHub, ClawHub and the other sources Hermes has.", table: .bots),
                 chevron: true
             )
         }
@@ -141,18 +141,18 @@ struct SkillHubBrowsePage: View {
         if let hub = store.skillHub {
             if !hub.featured.isEmpty {
                 CapabilitySection(
-                    title: AppLocalization.string("Featured"),
+                    title: AppLocalization.string("Featured", table: .bots),
                     symbol: "star",
                     tint: .conduitAura,
-                    footer: AppLocalization.string("Popular skills from the Hermes Index. Hermes scans each skill before it installs.")
+                    footer: AppLocalization.string("Popular skills from the Hermes Index. Hermes scans each skill before it installs.", table: .bots)
                 ) {
                     rows(hub.featured, hub: hub)
                 }
             } else {
                 CapabilityEmptyState(
-                    title: AppLocalization.string("Search the skill hub"),
+                    title: AppLocalization.string("Search the skill hub", table: .bots),
                     symbol: "magnifyingglass",
-                    message: AppLocalization.string("Type what a skill should do. Hermes searches \(hub.searchableSources.map(\.label).formatted(.list(type: .and))).")
+                    message: AppLocalization.string("Type what a skill should do. Hermes searches \(hub.searchableSources.map(\.label).formatted(.list(type: .and))).", table: .bots)
                 )
             }
             if let error = store.skillHubError {
@@ -160,13 +160,13 @@ struct SkillHubBrowsePage: View {
             }
         } else if store.skillHubMissing {
             CapabilityEmptyState(
-                title: AppLocalization.string("No skill hub on this Hermes"),
+                title: AppLocalization.string("No skill hub on this Hermes", table: .bots),
                 symbol: "bag",
-                message: AppLocalization.string("Update Hermes to browse and install skills from the hub.")
+                message: AppLocalization.string("Update Hermes to browse and install skills from the hub.", table: .bots)
             )
         } else if let error = store.skillHubError {
             CapabilityEmptyState(
-                title: AppLocalization.string("Couldn't reach the skill hub"),
+                title: AppLocalization.string("Couldn't reach the skill hub", table: .bots),
                 symbol: "exclamationmark.triangle",
                 message: error,
                 retry: { Task { await store.loadSkillHub() } }
@@ -191,7 +191,7 @@ struct SkillHubBrowsePage: View {
                 )
             } else {
                 CapabilitySection(
-                    title: AppLocalization.string("Results"),
+                    title: AppLocalization.string("Results", table: .bots),
                     symbol: "magnifyingglass",
                     footer: timedOutNote(results)
                 ) {
@@ -200,7 +200,7 @@ struct SkillHubBrowsePage: View {
             }
         } else if let searchError {
             CapabilityEmptyState(
-                title: AppLocalization.string("The search didn't finish"),
+                title: AppLocalization.string("The search didn't finish", table: .bots),
                 symbol: "exclamationmark.triangle",
                 message: searchError,
                 retry: { Task { await search(now: true) } }
@@ -224,7 +224,7 @@ struct SkillHubBrowsePage: View {
     private func timedOutNote(_ results: SkillHubResults) -> String? {
         guard !results.timedOut.isEmpty else { return nil }
         let names = results.timedOut.map { SkillHubStyle.sourceLabel($0, in: store.skillHub) }
-        return AppLocalization.string("\(names.formatted(.list(type: .and))) didn't answer in time.")
+        return AppLocalization.string("\(names.formatted(.list(type: .and))) didn't answer in time.", table: .bots)
     }
 
     private func search(now: Bool = false) async {
@@ -332,7 +332,7 @@ struct HubSkillDetailPage: View {
                     Button {
                         openURL(url)
                     } label: {
-                        Label(AppLocalization.string("View Source"), systemImage: "arrow.up.right.square")
+                        Label(AppLocalization.string("View Source", table: .bots), systemImage: "arrow.up.right.square")
                             .scaledFont(.subheadline)
                     }
                     .tint(.conduitAccent)
@@ -364,7 +364,7 @@ struct HubSkillDetailPage: View {
                 install()
             } label: {
                 Label(
-                    state == .running ? AppLocalization.string("Installing…") : AppLocalization.string("Install"),
+                    state == .running ? AppLocalization.string("Installing…", table: .bots) : AppLocalization.string("Install"),
                     systemImage: "arrow.down.circle"
                 )
                 .frame(maxWidth: .infinity)
@@ -392,7 +392,7 @@ struct HubSkillDetailPage: View {
 
     @ViewBuilder
     private var scanSection: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Security Scan"), symbol: "checkmark.shield", tint: scanTint) {
+        ConduitSettingsSection(title: AppLocalization.string("Security Scan", table: .bots), symbol: "checkmark.shield", tint: scanTint) {
             if let scan {
                 VStack(alignment: .leading, spacing: 8) {
                     Label(policyTitle(scan.policy), systemImage: policySymbol(scan.policy))
@@ -460,9 +460,9 @@ struct HubSkillDetailPage: View {
 
     private func policyTitle(_ policy: SkillHubScan.Policy) -> String {
         switch policy {
-        case .allow: return AppLocalization.string("No problems found")
-        case .ask: return AppLocalization.string("Worth a look before you install it")
-        case .block: return AppLocalization.string("Hermes won't install this skill")
+        case .allow: return AppLocalization.string("No problems found", table: .bots)
+        case .ask: return AppLocalization.string("Worth a look before you install it", table: .bots)
+        case .block: return AppLocalization.string("Hermes won't install this skill", table: .bots)
         }
     }
 

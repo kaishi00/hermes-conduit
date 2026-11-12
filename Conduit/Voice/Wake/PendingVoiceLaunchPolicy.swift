@@ -85,13 +85,13 @@ enum PendingVoiceLaunchPolicy {
     /// User-visible explanation when an external launch cannot start voice
     /// and AppState has no classified failure to show.
     static var disconnectedFailureMessage: String {
-        AppLocalization.string("Conduit could not connect to Hermes, so voice did not start. Ask again after the connection is restored.")
+        AppLocalization.string("Conduit could not connect to Hermes, so voice did not start. Ask again after the connection is restored.", table: .voice)
     }
 
     /// User-visible explanation when a pending Siri request outlived its
     /// launch window without a conclusive ready/failed outcome.
     static var expiredFailureMessage: String {
-        AppLocalization.string("The Siri voice request expired before Hermes was ready. Ask Siri again now that Conduit is open.")
+        AppLocalization.string("The Siri voice request expired before Hermes was ready. Ask Siri again now that Conduit is open.", table: .voice)
     }
 
     static func normalizedProfile(_ raw: String?) -> String? {
@@ -125,7 +125,7 @@ enum PendingVoiceLaunchPolicy {
     static let wakePhraseLaunchBudget: TimeInterval = 10
 
     static var wakePhraseFailureMessage: String {
-        AppLocalization.string("Conduit lost the connection to Hermes, so voice did not start. Say the wake phrase again after the connection is restored.")
+        AppLocalization.string("Conduit lost the connection to Hermes, so voice did not start. Say the wake phrase again after the connection is restored.", table: .voice)
     }
 
     static func makeWakePhrasePendingIntent(
@@ -148,7 +148,7 @@ enum PendingVoiceLaunchPolicy {
     /// is attached once Hermes connects (`resumeParkedScreenQuestion`).
     static var screenQuestionFailureMessage: String {
         AppLocalization.string(
-            "Conduit couldn't reach Hermes. Your screenshot is kept and will be attached to a chat when Hermes is back."
+            "Conduit couldn't reach Hermes. Your screenshot is kept and will be attached to a chat when Hermes is back.", table: .voice
         )
     }
 
@@ -190,7 +190,7 @@ enum PendingVoiceLaunchPolicy {
         for connection: VoiceLaunchConnectionSnapshot
     ) -> String {
         if let failure = connection.classifiedFailure {
-            return AppLocalization.string("\(failure.userTitle). \(failure.userMessage) Voice did not start — ask Siri again after reconnecting.")
+            return AppLocalization.string("\(failure.userTitle). \(failure.userMessage) Voice did not start — ask Siri again after reconnecting.", table: .voice)
         }
         return disconnectedFailureMessage
     }

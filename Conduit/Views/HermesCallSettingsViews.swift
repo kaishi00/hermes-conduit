@@ -59,14 +59,14 @@ enum HermesCallSettingsFormat {
     }
 
     /// What the test call sends, in the app's language.
-    static var testCallPrompt: String { AppLocalization.string("Call me now to test calls.") }
+    static var testCallPrompt: String { AppLocalization.string("Call me now to test calls.", table: .voice) }
 
     /// What Have Hermes watch for this sends: scheduled checks for what the
     /// call note describes, brought in line with an edited note rather
     /// than added again (plugin 0.16.2's call watches). The note goes as
     /// typed (saved or not), trimmed the way the host keeps it.
     static func watchPrompt(_ note: String) -> String {
-        AppLocalization.string("Make my scheduled checks that call me match this note. Update the ones I already have instead of adding new ones:\n\(rules(note))")
+        AppLocalization.string("Make my scheduled checks that call me match this note. Update the ones I already have instead of adding new ones:\n\(rules(note))", table: .voice)
     }
 
     /// The note as the host keeps it: each line trimmed, no empty lines.
@@ -124,7 +124,7 @@ struct HermesCallsHowToSection: View {
     let hearsMissedCalls: Bool
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("How to use calls"), symbol: "text.bubble", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("How to use calls", table: .voice), symbol: "text.bubble", tint: .conduitAccent) {
             VStack(alignment: .leading, spacing: 8) {
                 Label("Ask in any chat or voice call: “Call me when the tests finish.” Your iPhone rings once the job is done, and answering opens voice in that chat.", systemImage: "phone.arrow.down.left")
                 if settings?.decides != nil {
@@ -280,7 +280,7 @@ struct HermesCallSettingsSection: View {
             Button {
                 addsContact = true
             } label: {
-                Label(AppLocalization.string("Add \(model.botName) to Contacts"), systemImage: "person.crop.circle.badge.plus")
+                Label(AppLocalization.string("Add \(model.botName) to Contacts", table: .voice), systemImage: "person.crop.circle.badge.plus")
             }
             .accessibilityIdentifier("hermesCalls.addContact")
             Text("A Focus or Do Not Disturb silences Hermes' calls. To let them ring through one, save this contact once, then add it to that Focus's People in Settings > Focus. Other callers still follow the Focus's settings.")
@@ -314,7 +314,7 @@ struct HermesCallSettingsSection: View {
                             .scaledFont(.caption)
                             .foregroundStyle(.secondary)
                         if ringsLikeCall, notifications.watchRingsForAnotherIPhone {
-                            Label(AppLocalization.string("Your Apple Watch rings for Conduit on another iPhone, so a call you answer on the Watch goes there. If the Watch is with this iPhone now, pair each of your profiles with this iPhone in Settings > Notifications to move it here."), systemImage: "applewatch.slash")
+                            Label(AppLocalization.string("Your Apple Watch rings for Conduit on another iPhone, so a call you answer on the Watch goes there. If the Watch is with this iPhone now, pair each of your profiles with this iPhone in Settings > Notifications to move it here.", table: .voice), systemImage: "applewatch.slash")
                                 .scaledFont(.caption)
                                 .foregroundStyle(.orange)
                                 .accessibilityIdentifier("hermesCalls.watchElsewhere")
@@ -373,10 +373,10 @@ struct HermesCallSettingsSection: View {
                         Text("Time between calls").foregroundStyle(.secondary)
                     }
                     Stepper(value: binding(\.perHour), in: status.perHourBounds) {
-                        Text(AppLocalization.string("Calls per hour: \(String(draft.perHour))"))
+                        Text(AppLocalization.string("Calls per hour: \(String(draft.perHour))", table: .voice))
                     }
                     Stepper(value: binding(\.perDay), in: status.perDayBounds) {
-                        Text(AppLocalization.string("Calls per day: \(String(draft.perDay))"))
+                        Text(AppLocalization.string("Calls per day: \(String(draft.perDay))", table: .voice))
                     }
                     Text("Past a limit, a finished job sends its usual notification instead of calling. These settings are this profile's, kept on your Hermes host.")
                         .scaledFont(.caption)
@@ -477,11 +477,11 @@ struct HermesCallSettingsSection: View {
     private func testCallRow(_ start: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Button(action: start) {
-                Label(AppLocalization.string("Try a test call"), systemImage: "phone.fill")
+                Label(AppLocalization.string("Try a test call", table: .voice), systemImage: "phone.fill")
             }
             .buttonStyle(.settings)
             .accessibilityIdentifier("settings.hermesCallsTest")
-            Text(AppLocalization.string("Opens a new chat with “\(HermesCallSettingsFormat.testCallPrompt)” ready to send. Send it, and your iPhone rings when Hermes replies."))
+            Text(AppLocalization.string("Opens a new chat with “\(HermesCallSettingsFormat.testCallPrompt)” ready to send. Send it, and your iPhone rings when Hermes replies.", table: .voice))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }
@@ -490,7 +490,7 @@ struct HermesCallSettingsSection: View {
     private func watchRow(_ start: @escaping () -> Void) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Button(action: start) {
-                Label(AppLocalization.string("Have Hermes watch for this"), systemImage: "binoculars.fill")
+                Label(AppLocalization.string("Have Hermes watch for this", table: .voice), systemImage: "binoculars.fill")
             }
             .buttonStyle(.settings)
             .accessibilityIdentifier("settings.hermesCallsWatch")
@@ -506,7 +506,7 @@ struct HermesCallSettingsSection: View {
                 .scaledFont(.subheadline.weight(.semibold))
                 .accessibilityAddTraits(.isHeader)
             TextField(
-                AppLocalization.string("For example: only if production is down or a deploy fails. Never before 9 am."),
+                AppLocalization.string("For example: only if production is down or a deploy fails. Never before 9 am.", table: .voice),
                 text: $rulesText,
                 axis: .vertical
             )

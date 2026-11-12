@@ -18,51 +18,51 @@ struct ShortcutLogError: LocalizedError, Equatable {
     var errorDescription: String? { message }
 
     static var empty: ShortcutLogError {
-        ShortcutLogError(message: AppLocalization.string("There's nothing to log. Give Log to Hermes some details."))
+        ShortcutLogError(message: AppLocalization.string("There's nothing to log. Give Log to Hermes some details.", table: .phone))
     }
 
     /// Kept on the phone: the host keeps events, but this plugin answered
     /// without its inbox.
     static var pluginTooOld: ShortcutLogError {
         ShortcutLogError(message: PluginUpdateAsk.text(
-            AppLocalization.string("Update the Conduit plugin on your Hermes host to log events. This one was kept on the phone and goes after the update."),
-            then: AppLocalization.string("This one was kept on the phone and goes once the host's plugin keeps events.")))
+            AppLocalization.string("Update the Conduit plugin on your Hermes host to log events. This one was kept on the phone and goes after the update.", table: .phone),
+            then: AppLocalization.string("This one was kept on the phone and goes once the host's plugin keeps events.", table: .phone)))
     }
 
     /// Kept on the phone: the profile turned the plugin off. `remedy` says
     /// how to turn it on (issue 1671).
     static func pluginOff(_ remedy: String) -> ShortcutLogError {
-        ShortcutLogError(message: AppLocalization.string("\(remedy) This one was kept on the phone and goes once the plugin is on."))
+        ShortcutLogError(message: AppLocalization.string("\(remedy) This one was kept on the phone and goes once the plugin is on.", table: .phone))
     }
 
     /// Not kept: the plugin doesn't keep events, so nothing on the phone
     /// would show or delete it.
     static var pluginMissing: ShortcutLogError {
         ShortcutLogError(message: PluginUpdateAsk.text(
-            AppLocalization.string("Update the Conduit plugin on your Hermes host to log events. This one wasn't kept."),
-            then: AppLocalization.string("This one wasn't kept.")))
+            AppLocalization.string("Update the Conduit plugin on your Hermes host to log events. This one wasn't kept.", table: .phone),
+            then: AppLocalization.string("This one wasn't kept.", table: .phone)))
     }
 
     /// Kept on the phone: it goes with the next event, or when Conduit
     /// next connects (AppState.drainShortcutInbox).
     static var notConnected: ShortcutLogError {
-        ShortcutLogError(message: AppLocalization.string("Conduit couldn't reach Hermes, so this was kept on the phone. It goes with the next event, or open Conduit."))
+        ShortcutLogError(message: AppLocalization.string("Conduit couldn't reach Hermes, so this was kept on the phone. It goes with the next event, or open Conduit.", table: .phone))
     }
 
     /// Not kept: no connection, and this profile's host isn't known to keep
     /// events yet.
     static var notReachable: ShortcutLogError {
-        ShortcutLogError(message: AppLocalization.string("Conduit couldn't reach Hermes, so this wasn't kept. Open Conduit once, then try again."))
+        ShortcutLogError(message: AppLocalization.string("Conduit couldn't reach Hermes, so this wasn't kept. Open Conduit once, then try again.", table: .phone))
     }
 
     /// Not kept: dated before the days the host keeps.
     static var tooOld: ShortcutLogError {
-        ShortcutLogError(message: AppLocalization.string("This event is older than the 30 days Hermes keeps, so it wasn't logged."))
+        ShortcutLogError(message: AppLocalization.string("This event is older than the 30 days Hermes keeps, so it wasn't logged.", table: .phone))
     }
 
     /// Not kept: the phone couldn't store it (not unlocked since restart).
     static var notStored: ShortcutLogError {
-        ShortcutLogError(message: AppLocalization.string("Conduit couldn't keep this on the phone. Unlock your iPhone, then try again."))
+        ShortcutLogError(message: AppLocalization.string("Conduit couldn't keep this on the phone. Unlock your iPhone, then try again.", table: .phone))
     }
 }
 

@@ -30,12 +30,12 @@ struct ConnectionSetupDraft: Equatable, CustomStringConvertible, CustomDebugStri
     }
 
     var methodTitle: String {
-        if usesExistingAddress { return AppLocalization.string("Current dashboard address") }
+        if usesExistingAddress { return AppLocalization.string("Current dashboard address", table: .connection) }
         switch accessMethod {
-        case .lan: return AppLocalization.string("Same network")
+        case .lan: return AppLocalization.string("Same network", table: .connection)
         case .tailscale: return "Tailscale"
-        case .reverseProxy: return AppLocalization.string("Existing HTTPS domain")
-        case nil: return AppLocalization.string("Choose a connection method")
+        case .reverseProxy: return AppLocalization.string("Existing HTTPS domain", table: .connection)
+        case nil: return AppLocalization.string("Choose a connection method", table: .connection)
         }
     }
 
@@ -95,13 +95,13 @@ enum ConnectionSetupValidationError: Error, Equatable {
 
     var message: String {
         switch self {
-        case .methodRequired: return AppLocalization.string("Choose how this device will reach Hermes.")
-        case .invalidHost: return AppLocalization.string("Enter a valid host or IP address.")
-        case .invalidPort: return AppLocalization.string("Enter a port between 1 and 65535.")
-        case .httpsRequired: return AppLocalization.string("Enter the full HTTPS dashboard address.")
-        case .schemeRequired: return AppLocalization.string("Choose HTTP or HTTPS to match the address Hermes supplied.")
-        case .credentialsRequired: return AppLocalization.string("Enter your Hermes dashboard username and password.")
-        case .policy(let error): return error.errorDescription ?? AppLocalization.string("Enter a valid dashboard URL.")
+        case .methodRequired: return AppLocalization.string("Choose how this device will reach Hermes.", table: .connection)
+        case .invalidHost: return AppLocalization.string("Enter a valid host or IP address.", table: .connection)
+        case .invalidPort: return AppLocalization.string("Enter a port between 1 and 65535.", table: .connection)
+        case .httpsRequired: return AppLocalization.string("Enter the full HTTPS dashboard address.", table: .connection)
+        case .schemeRequired: return AppLocalization.string("Choose HTTP or HTTPS to match the address Hermes supplied.", table: .connection)
+        case .credentialsRequired: return AppLocalization.string("Enter your Hermes dashboard username and password.", table: .connection)
+        case .policy(let error): return error.errorDescription ?? AppLocalization.string("Enter a valid dashboard URL.", table: .connection)
         }
     }
 }

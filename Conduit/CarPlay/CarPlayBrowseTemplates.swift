@@ -340,7 +340,7 @@ enum CarPlayBrowseTemplateFactory {
         handlers: CarPlayBrowseHandlers
     ) -> [CPListSection] {
         let newChat = CPListItem(
-            text: AppLocalization.string("New voice chat"),
+            text: AppLocalization.string("New voice chat", table: .watchCarPlay),
             detailText: nil,
             image: symbolImage("plus.bubble.fill")
         )
@@ -400,8 +400,8 @@ enum CarPlayBrowseTemplateFactory {
 
     static func jobsTemplate(rows: [CarPlayJobRow], handlers: CarPlayBrowseHandlers) -> CPListTemplate {
         let template = CPListTemplate(title: AppLocalization.string("Voice Jobs"), sections: jobSections(rows: rows, handlers: handlers))
-        template.emptyViewTitleVariants = [AppLocalization.string("No Voice Jobs")]
-        template.emptyViewSubtitleVariants = [AppLocalization.string("Start one from a shortcut or by asking during a call.")]
+        template.emptyViewTitleVariants = [AppLocalization.string("No Voice Jobs", table: .watchCarPlay)]
+        template.emptyViewSubtitleVariants = [AppLocalization.string("Start one from a shortcut or by asking during a call.", table: .watchCarPlay)]
         return template
     }
 
@@ -424,8 +424,8 @@ enum CarPlayBrowseTemplateFactory {
         let title = AppLocalization.string("Shortcuts")
         guard !shortcuts.isEmpty else {
             let empty = CPListTemplate(title: title, sections: [])
-            empty.emptyViewTitleVariants = [AppLocalization.string("No shortcuts yet")]
-            empty.emptyViewSubtitleVariants = [AppLocalization.string("Add them on your iPhone in Settings, Voice.")]
+            empty.emptyViewTitleVariants = [AppLocalization.string("No shortcuts yet", table: .watchCarPlay)]
+            empty.emptyViewSubtitleVariants = [AppLocalization.string("Add them on your iPhone in Settings, Voice.", table: .watchCarPlay)]
             return empty
         }
         let buttons = shortcuts.prefix(CarPlayPreferences.maximumShortcuts).enumerated().map { index, shortcut in
@@ -456,7 +456,7 @@ enum CarPlayBrowseTemplateFactory {
                 items: agents.enumerated().map { index, row in
                     optionItem(title: row.title, symbol: "person.crop.circle.fill", isSelected: row.isSelected) { handlers.selectAgent(index) }
                 },
-                header: AppLocalization.string("Agent"),
+                header: AppLocalization.string("Agent", table: .watchCarPlay),
                 sectionIndexTitle: nil
             ))
         }

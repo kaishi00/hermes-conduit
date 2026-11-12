@@ -218,6 +218,17 @@ struct GroupRoomComposer: View {
             applyQuoteRequest(appState.roomQuoteRequest)
             applyRecipientRequest(appState.roomRecipientRequest)
             applyDraftHandBack(appState.roomDraftHandBack)
+            // A chat's transcript paste still waiting for focus isn't this
+            // room's: a room can open over the chat without it leaving.
+            ReturnKeyTextView.cancelPendingPaste()
+            focusOnOpen()
+        }
+        // ⌘V in the room's transcript on a Mac: the field takes focus and
+        // the paste, as a chat's does (issue 1692).
+        .onReceive(ComposerPaste.requests) { target in
+            guard target == .room, takesKeys else { return }
+            isFocused = true
+            ReturnKeyTextView.pasteOnceFocused()
         }
         .onChange(of: appState.roomQuoteRequest) { _, request in
             applyQuoteRequest(request)
@@ -268,6 +279,8 @@ struct GroupRoomComposer: View {
             // in the room's draft for the next visit.
             dictation.cancel()
             uploadTask?.cancel()
+            // A transcript paste still waiting for focus belongs to this room.
+            ReturnKeyTextView.cancelPendingPaste()
         }
         .photosPicker(
             isPresented: $showPhotoPicker,
@@ -301,7 +314,7 @@ struct GroupRoomComposer: View {
         }) {
             ComposerFullEditor(
                 text: $draft,
-                placeholder: AppLocalization.string("Message the room"),
+                placeholder: AppLocalization.string("Message the room", table: .rooms),
                 fieldIdentifier: "room.composer.fullEditor.field",
                 enabled: true,
                 onUserEdit: { _ in },
@@ -344,7 +357,7 @@ struct GroupRoomComposer: View {
             notice(AppLocalization.string("Sending…"), color: .secondary)
         }
         if isUploading {
-            notice(AppLocalization.string("Uploading files…"), color: .secondary)
+            notice(AppLocalization.string("Uploading files…", table: .rooms), color: .secondary)
         }
         if appState.pendingRoomMessage != nil, !appState.activeRoomSendInFlight {
             // The pending row owns the composer; say why Send is off
@@ -400,7 +413,7 @@ struct GroupRoomComposer: View {
         ReturnKeyTextEditor(
             text: $draft,
             isFocused: $isFocused,
-            accessibilityLabel: AppLocalization.string("Message the room"),
+            accessibilityLabel: AppLocalization.string("Message the room", table: .rooms),
             accessibilityIdentifier: "room.composer.field",
             maxLines: 6,
             canSubmitFromReturn: canSubmitFromReturn,
@@ -410,7 +423,7 @@ struct GroupRoomComposer: View {
         )
             .background(alignment: .topLeading) {
                 if draft.isEmpty {
-                    ComposerPlaceholderText(text: AppLocalization.string("Message the room"))
+                    ComposerPlaceholderText(text: AppLocalization.string("Message the room", table: .rooms))
                         .foregroundStyle(.tertiary)
                         .allowsHitTesting(false)
                         .accessibilityHidden(true)
@@ -505,7 +518,7 @@ struct GroupRoomComposer: View {
                 }
             } else {
                 // Older plugins can't store a room's files; say what fixes it.
-                Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.")))
+                Text(PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.", table: .rooms)))
             }
         } label: {
             Image(systemName: "plus")
@@ -612,6 +625,22 @@ struct GroupRoomComposer: View {
         }
         .accessibilityLabel(Text(AppLocalization.string("Send")))
         .accessibilityIdentifier("room.composer.send")
+    }
+
+    /// The room on screen: not one split Settings covers, a hidden tab's,
+    /// or one a Bot Chat on its way covers.
+    private var takesKeys: Bool {
+        shell.chatTakesKeys && appState.botChatComingOverAnother == nil
+    }
+
+    /// On a Mac a room opens ready to type, as a chat does (issue 1692).
+    /// The view is keyed by room, so this runs once a room.
+    private func focusOnOpen() {
+        guard ComposerLayout.focusesOnOpen(), takesKeys else { return }
+        Task { @MainActor in
+            guard takesKeys, ComposerLayout.openMayTakeFocus else { return }
+            isFocused = true
+        }
     }
 
     // MARK: - Sending
@@ -736,7 +765,7 @@ struct GroupRoomComposer: View {
     private var recipientRow: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
-                Text(AppLocalization.string("To"))
+                Text(AppLocalization.string("To", table: .rooms))
                     .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityHidden(true)
@@ -747,8 +776,8 @@ struct GroupRoomComposer: View {
             .padding(.horizontal, 12)
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel(AppLocalization.string("To"))
-        .accessibilityHint(AppLocalization.string("Only the bots you pick answer. With none picked, every bot can answer."))
+        .accessibilityLabel(AppLocalization.string("To", table: .rooms))
+        .accessibilityHint(AppLocalization.string("Only the bots you pick answer. With none picked, every bot can answer.", table: .rooms))
     }
 
     private func recipientChip(_ member: GroupMember) -> some View {
@@ -1040,7 +1069,7 @@ struct GroupRoomComposer: View {
         // A disbanded room sends nothing, whichever target took the drop.
         guard !providers.isEmpty, surface?.room.isDisbanded == false else { return }
         guard appState.canAttachRoomFiles else {
-            composerError = PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats."))
+            composerError = PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to send files to group chats.", table: .rooms))
             Haptics.error()
             return
         }

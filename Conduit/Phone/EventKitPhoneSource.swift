@@ -32,12 +32,12 @@ enum PhoneCalendarSourceError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .denied: return AppLocalization.string("Conduit doesn't have access to your calendar or reminders. Allow it in the Settings app.")
-        case .notFound: return AppLocalization.string("That item isn't on this iPhone any more.")
-        case .noSuchCalendar: return AppLocalization.string("The calendar or list to move it to isn't on this iPhone any more.")
-        case .readOnly: return AppLocalization.string("That calendar can't be changed.")
-        case .writeOnly: return AppLocalization.string("Conduit can only add events, so it can't find existing ones.")
-        case .locationAlarm: return AppLocalization.string("Reminders that go off at a place can't be set from Hermes yet.")
+        case .denied: return AppLocalization.string("Conduit doesn't have access to your calendar or reminders. Allow it in the Settings app.", table: .phone)
+        case .notFound: return AppLocalization.string("That item isn't on this iPhone any more.", table: .phone)
+        case .noSuchCalendar: return AppLocalization.string("The calendar or list to move it to isn't on this iPhone any more.", table: .phone)
+        case .readOnly: return AppLocalization.string("That calendar can't be changed.", table: .phone)
+        case .writeOnly: return AppLocalization.string("Conduit can only add events, so it can't find existing ones.", table: .phone)
+        case .locationAlarm: return AppLocalization.string("Reminders that go off at a place can't be set from Hermes yet.", table: .phone)
         }
     }
 }

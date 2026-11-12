@@ -269,13 +269,13 @@ final class EchoCancellingVoicePlayback: SpeechPlaybackService {
             let file = try AVAudioFile(forReading: url)
             guard file.length > 0,
                   let buffer = AVAudioPCMBuffer(pcmFormat: file.processingFormat, frameCapacity: AVAudioFrameCount(file.length)) else {
-                throw VoiceAudioError.unavailable(AppLocalization.string("Could not play Hermes fallback speech."))
+                throw VoiceAudioError.unavailable(AppLocalization.string("Could not play Hermes fallback speech.", table: .voice))
             }
             try file.read(into: buffer)
             return buffer
         } catch {
             conversationAudioLogger.error("Fallback speech could not be decoded: \(LogRedaction.describing(error), privacy: .public)")
-            throw VoiceAudioError.unavailable(AppLocalization.string("Could not play Hermes fallback speech."))
+            throw VoiceAudioError.unavailable(AppLocalization.string("Could not play Hermes fallback speech.", table: .voice))
         }
     }
 

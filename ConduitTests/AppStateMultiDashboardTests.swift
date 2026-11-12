@@ -2048,6 +2048,122 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(explorer.recent.map(\.name), ["notes.md"])
     }
 
+    /// Open Folder… (issue 1438): a folder opened is listed after the
+    /// chat's and the projects' folders, latest first, for its dashboard
+    /// and profile only, named by its last part (a Windows path's too),
+    /// and Remove from List takes it out.
+    func testAnOpenedFolderIsListedForItsDashboardAndProfile() async {
+        let (appState, _, vps) = heldSwitchFixture()
+        let mac = appState.activeDashboardID
+        let profile = appState.workspaceProfile
+        appState.rememberOpenedWorkspaceFolder("/srv/old", profile: profile)
+        appState.rememberOpenedWorkspaceFolder(#"C:\dev\Site"#, profile: profile)
+        appState.rememberOpenedWorkspaceFolder("/srv/old", profile: profile)
+        let opened = appState.workspaceRoots(includingChat: false).filter { $0.kind == .opened }
+        XCTAssertEqual(opened.map(\.path), ["/srv/old", #"C:\dev\Site"#], "latest first, once each")
+        XCTAssertEqual(opened.map(\.title), ["old", "Site"])
+        XCTAssertTrue(appState.openedWorkspaceFolders(profile: "someone-else").isEmpty)
+
+        appState.forgetOpenedWorkspaceFolder("/srv/old", profile: profile)
+        XCTAssertEqual(appState.openedWorkspaceFolders(profile: profile), [#"C:\dev\Site"#])
+
+        await appState.switchDashboard(to: vps.id)
+        XCTAssertTrue(appState.openedWorkspaceFolders(profile: profile).isEmpty, "another server lists its own")
+        appState.rememberOpenedWorkspaceFolder("/home/vps", profile: profile)
+        if let mac { await appState.switchDashboard(to: mac) }
+        XCTAssertEqual(appState.openedWorkspaceFolders(profile: profile), [#"C:\dev\Site"#])
+    }
+
+    /// Each file opened gets a tab (issue 1438), kept while the sheet
+    /// closes and opens again, the same file once; a closed tab goes, and
+    /// another folder starts with none.
+    func testOpenedFilesKeepTheirTabsUntilAnotherFolderOpens() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let explorer = WorkspaceExplorer()
+        explorer.attach(appState)
+        let a = WorkspaceEntry(name: "a.swift", path: "/w/a.swift", isDirectory: false)
+        let b = WorkspaceEntry(name: "b.md", path: "/w/b.md", isDirectory: false)
+        let text: [String: Any] = ["text": "let x = 1", "language": "swift"]
+        for file in [a, b, a] {
+            let viewing = Task { await explorer.view(file) }
+            try await held.answer(text, toPathEnding: "/api/fs/read-text")
+            await viewing.value
+        }
+        XCTAssertEqual(explorer.openFiles.map(\.name), ["a.swift", "b.md"])
+        explorer.closeFile()
+        XCTAssertEqual(explorer.openFiles.count, 2, "closing the sheet keeps the tabs")
+        explorer.closeTab(a.path)
+        XCTAssertEqual(explorer.openFiles.map(\.name), ["b.md"])
+
+        // Past the limit the oldest tab goes, never one with unsaved changes.
+        explorer.keepsOpen = [b.path]
+        for index in 1...WorkspaceExplorer.openFilesLimit {
+            let file = WorkspaceEntry(name: "f\(index).txt", path: "/w/f\(index).txt", isDirectory: false)
+            let viewing = Task { await explorer.view(file) }
+            try await held.answer(text, toPathEnding: "/api/fs/read-text")
+            await viewing.value
+        }
+        XCTAssertEqual(explorer.openFiles.count, WorkspaceExplorer.openFilesLimit)
+        XCTAssertEqual(explorer.openFiles.first?.path, b.path, "a tab with changes stays")
+        XCTAssertFalse(explorer.openFiles.contains { $0.path == "/w/f1.txt" }, "the oldest unchanged tab went")
+
+        // Another folder starts with none.
+        let opening = Task { await explorer.open(root: "/w/other", profile: "default") }
+        for _ in 0..<100 where !explorer.openFiles.isEmpty { await Task.yield() }
+        XCTAssertTrue(explorer.openFiles.isEmpty)
+        XCTAssertTrue(explorer.keepsOpen.isEmpty)
+        opening.cancel()
+        explorer.close()
+        XCTAssertTrue(explorer.openFiles.isEmpty)
+    }
+
+    /// After a refresh (issue 1438): a tab whose file the folder's fresh
+    /// full listing no longer shows goes, and so does the copied entry; a
+    /// tab with changes stays, and the reader moves to another tab, or
+    /// closes when none is left.
+    func testATabWhoseFileIsGoneGoesOnTheNextRefresh() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        appState.setNotifierPluginStateForTesting(.reported(version: "0.164.0", capabilities: []))
+        let explorer = WorkspaceExplorer()
+        explorer.attach(appState)
+        func listing(_ names: [String]) -> [String: Any] {
+            ["entries": names.map { ["name": $0, "path": "/w/\($0)", "isDirectory": false] }]
+        }
+        let open = Task { await explorer.open(root: "/w", profile: appState.workspaceProfile) }
+        try await held.answer(listing(["a.md", "b.md", "c.md"]), toPathEnding: "/api/fs/list")
+        await open.value
+        let files = explorer.rows().map(\.entry)
+        XCTAssertEqual(files.map(\.name), ["a.md", "b.md", "c.md"])
+        let text: [String: Any] = ["text": "notes", "language": "markdown"]
+        for file in files {
+            let viewing = Task { await explorer.view(file) }
+            try await held.answer(text, toPathEnding: "/api/fs/read-text")
+            await viewing.value
+        }
+        explorer.copied = files[0]
+        explorer.keepsOpen = [files[1].path]
+
+        // All three gone: b.md has changes and stays, the reader moves to it.
+        let refresh = Task { await explorer.refresh() }
+        try await held.answer(listing([]), toPathEnding: "/api/fs/list")
+        await refresh.value
+        XCTAssertEqual(explorer.openFiles.map(\.name), ["b.md"])
+        XCTAssertNil(explorer.copied, "the copied entry is gone too")
+        for _ in 0..<100 where explorer.viewed?.path != files[1].path { await Task.yield() }
+        XCTAssertEqual(explorer.viewed?.path, files[1].path)
+        try await held.answer(text, toPathEnding: "/api/fs/read-text")
+        XCTAssertEqual(explorer.viewedGone, 0)
+
+        // Its changes discarded, the next refresh takes it and the reader closes.
+        explorer.keepsOpen = []
+        let again = Task { await explorer.refresh() }
+        try await held.answer(listing([]), toPathEnding: "/api/fs/list")
+        await again.value
+        XCTAssertTrue(explorer.openFiles.isEmpty)
+        XCTAssertEqual(explorer.viewedGone, 1)
+        explorer.close()
+    }
+
     func testATappedFileNameAsksThePluginAndALaterTapWins() async throws {
         let (appState, held, _) = heldSwitchFixture()
         appState.setNotifierPluginStateForTesting(.reported(

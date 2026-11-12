@@ -302,7 +302,7 @@ struct ComposerBar: View, Equatable {
     }
 
     static func pastedImageErrorMessage(_ message: String) -> String {
-        AppLocalization.string("Could not paste image: \(message)")
+        AppLocalization.string("Could not paste image: \(message)", table: .chat)
     }
 
     private var hasText: Bool {
@@ -530,14 +530,19 @@ struct ComposerBar: View, Equatable {
         // the trailing side.
         .padding(.leading, rests || keepsVoiceButtonBeside ? 16 : (restsWhenIdle ? 12 : 14))
         // A voice message recorded while the button is held keeps it too.
-        .padding(.trailing, rests || keepsVoiceButtonBeside || voiceMessages.isHeld ? 84 : (restsWhenIdle ? 12 : 14))
+        .padding(.trailing, Self.trailingInset(
+            keepsButtonSpot: rests || keepsVoiceButtonBeside,
+            roundButtonBeside: roundButtonBeside,
+            voiceMessageHeld: voiceMessages.isHeld,
+            restsWhenIdle: restsWhenIdle
+        ))
         .padding(.top, 8)
         .padding(.bottom, 10)
         .animation(restsWhenIdle ? ConduitMotion.ease(reduceMotion: reduceMotion) : nil, value: inUseOrHeld)
         .preference(key: V2ComposerExpandedKey.self, value: restsWhenIdle && !keepsVoiceButtonBeside && !rests)
         .preference(key: V2ComposerTypingKey.self, value: Self.hidesMinimisedCallBar(
             restsWhenIdle: restsWhenIdle,
-            isFocused: isTyping,
+            isTyping: isTyping,
             hasText: hasText,
             keepsFocusAfterSend: ComposerLayout.keepsFocusAfterSend()
         ))
@@ -640,6 +645,10 @@ struct ComposerBar: View, Equatable {
             applyPendingPrefill()
             // A screenshot chat can open before this composer is on screen.
             applyFocusRequest(appState.composerFocusRequest)
+            focusOnOpen()
+        }
+        .onReceive(ComposerPaste.requests) { target in
+            pasteFromTranscript(target)
         }
         .onChange(of: updates.inputs.draftKeyOnScreen) { _, newKey in
             handoffComposer(to: newKey)
@@ -674,6 +683,8 @@ struct ComposerBar: View, Equatable {
         }
         .onDisappear {
             dictation.cancel()
+            // A transcript paste still waiting for focus belongs to this chat.
+            ReturnKeyTextView.cancelPendingPaste()
             if voiceMessages.isActive, !voiceMessages.isSending { voiceMessages.cancel() }
             collapseTask?.cancel()
             collapseTask = nil
@@ -1055,11 +1066,11 @@ struct ComposerBar: View, Equatable {
     /// typing: the bar hides only while the field holds words.
     static func hidesMinimisedCallBar(
         restsWhenIdle: Bool,
-        isFocused: Bool,
+        isTyping: Bool,
         hasText: Bool = true,
         keepsFocusAfterSend: Bool = false
     ) -> Bool {
-        restsWhenIdle && isFocused && (hasText || !keepsFocusAfterSend)
+        restsWhenIdle && isTyping && (hasText || !keepsFocusAfterSend)
     }
 
     /// V2's resting composer: attach and the placeholder in a slim bar.
@@ -1075,8 +1086,30 @@ struct ComposerBar: View, Equatable {
 
     /// V2's composer that stays expanded: the big voice button stays
     /// beside it, so its own voice and dictate buttons give way to it.
+    /// On a Mac whose button would only start a call, the call is in the
+    /// chat's header instead (`roundButtonBeside`), and these still give
+    /// way to it.
     private var keepsVoiceButtonBeside: Bool {
         restsWhenIdle && staysExpanded
+    }
+
+    /// The round button stands beside the composer: not on a Mac where all
+    /// it would do is the call the header has (issue 1534).
+    private var roundButtonBeside: Bool {
+        ChatVoiceButtonAction.roundButtonBeside(ChatVoiceButtonAction.resolved(
+            profile: updates.inputs.chatVoiceButtonOverride,
+            app: appChatVoiceButton
+        ))
+    }
+
+    /// The composer's trailing inset: the round button's spot (84 pt)
+    /// where it stands beside a resting composer or one that stays
+    /// expanded, or under a voice message held on it; else the 16 pt the
+    /// leading side has there.
+    static func trailingInset(keepsButtonSpot: Bool, roundButtonBeside: Bool, voiceMessageHeld: Bool, restsWhenIdle: Bool) -> CGFloat {
+        if voiceMessageHeld || (keepsButtonSpot && roundButtonBeside) { return 84 }
+        if keepsButtonSpot { return 16 }
+        return restsWhenIdle ? 12 : 14
     }
 
     private func composerUseChanged(_ inUse: Bool) {
@@ -1149,11 +1182,11 @@ struct ComposerBar: View, Equatable {
                 .buttonStyle(.plain)
                 .accessibilityShowsLargeContentViewer {
                     Label(
-                        AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active"),
+                        AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active", table: .chat),
                         systemImage: "person.2"
                     )
                 }
-                .accessibilityLabel(AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active"))
+                .accessibilityLabel(AppLocalization.string("Delegate agents, \(Int(appState.activeAgents)) active", table: .chat))
             }
 
             if Self.controlsRowShowsDictate(
@@ -1209,8 +1242,8 @@ struct ComposerBar: View, Equatable {
                         .foregroundStyle(.orange)
                 }
                 Text(appState.turnState == .unsupportedGateway
-                     ? AppLocalization.string("Update this Hermes gateway to recover active turns safely.")
-                     : AppLocalization.string("Synchronizing with Hermes before enabling chat controls"))
+                     ? AppLocalization.string("Update this Hermes gateway to recover active turns safely.", table: .chat)
+                     : AppLocalization.string("Synchronizing with Hermes before enabling chat controls", table: .chat))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     Spacer(minLength: 0)
@@ -1283,7 +1316,7 @@ struct ComposerBar: View, Equatable {
                 .buttonStyle(.plain)
                 .foregroundStyle(.secondary)
                 .accessibilityLabel(takeover.phase == .waiting
-                    ? AppLocalization.string("Stop waiting")
+                    ? AppLocalization.string("Stop waiting", table: .chat)
                     : AppLocalization.string("Dismiss"))
             }
 
@@ -1318,7 +1351,7 @@ struct ComposerBar: View, Equatable {
         case .waiting:
             return takeover.takingOverMessage
         case .ready:
-            return AppLocalization.string("This chat is yours now. Send your message again.")
+            return AppLocalization.string("This chat is yours now. Send your message again.", table: .chat)
         case .failed(let message), .unavailable(let message):
             return message
         case .heldHere:
@@ -1356,7 +1389,7 @@ struct ComposerBar: View, Equatable {
         HStack(spacing: 8) {
             ProgressView()
                 .controlSize(.small)
-            Text(AppLocalization.string("Compressing…"))
+            Text(AppLocalization.string("Compressing…", table: .chat))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
             Spacer(minLength: 0)
@@ -1487,7 +1520,7 @@ struct ComposerBar: View, Equatable {
                         }
                     }
                 } label: {
-                    Label(AppLocalization.string("Mention a Bot"), systemImage: "at")
+                    Label(AppLocalization.string("Mention a Bot", table: .chat), systemImage: "at")
                 }
             }
         } label: {
@@ -1599,7 +1632,7 @@ struct ComposerBar: View, Equatable {
             .menuIndicator(.hidden)
             .modifier(composerActionChrome)
             .accessibilityLabel(accessibilityLabel)
-            .accessibilityHint(AppLocalization.string("Touch and hold for other ways to send"))
+            .accessibilityHint(AppLocalization.string("Touch and hold for other ways to send", table: .chat))
             .accessibilityAction(named: Text(accessibilityLabel)) {
                 performComposerAction()
             }
@@ -1998,7 +2031,7 @@ struct ComposerBar: View, Equatable {
             Label(AppLocalization.string("Resume call"), systemImage: "phone.arrow.up.right")
         }
         .accessibilityLabel(AppLocalization.string("Resume call"))
-        .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one"))
+        .accessibilityHint(AppLocalization.string("Starts a new live call that continues this one", table: .chat))
     }
 
     /// Opens Voice. A waveform, so it reads as "talk live", apart from the
@@ -2026,7 +2059,7 @@ struct ComposerBar: View, Equatable {
         }
         .accessibilityLabel(Text("Start voice conversation"))
         .accessibilityHint(appState.phoneVoiceUnavailableReason
-            ?? AppLocalization.string("Starts a voice call; in a chat with messages, the call works in that chat"))
+            ?? AppLocalization.string("Starts a voice call; in a chat with messages, the call works in that chat", table: .chat))
     }
 
     /// Tap to dictate into the draft, tap again to stop; the words are
@@ -2081,8 +2114,8 @@ struct ComposerBar: View, Equatable {
         .accessibilityHint(isCapturing
             ? AppLocalization.string("Stops dictating; the words stay in the message")
             : (dictation.isStarting || dictation.isTranscribing ? "" : (appState.isVoiceInUse
-                ? AppLocalization.string("Dictation is unavailable while a voice conversation has the microphone")
-                : AppLocalization.string("Types what you say into the message"))))
+                ? AppLocalization.string("Dictation is unavailable while a voice conversation has the microphone", table: .chat)
+                : AppLocalization.string("Types what you say into the message", table: .chat))))
     }
 
     private func dictateTitle(isCapturing: Bool) -> Text {
@@ -2509,7 +2542,7 @@ struct ComposerBar: View, Equatable {
     }
 
     static var cameraAccessMessage: String {
-        AppLocalization.string("Taking a photo needs camera access. You can allow it in Settings.")
+        AppLocalization.string("Taking a photo needs camera access. You can allow it in Settings.", table: .chat)
     }
 
     /// Asks for camera access first when it hasn't been decided, so a "Don't
@@ -2597,9 +2630,11 @@ struct ComposerBar: View, Equatable {
             applyPendingPrefill()
             return
         }
-        // Dictated words belong to the draft they started in, and the full
-        // editor to the chat it was opened in.
+        // Dictated words belong to the draft they started in, the full
+        // editor to the chat it was opened in, and a pending transcript
+        // paste to the chat it was asked in.
         dictation.cancel()
+        ReturnKeyTextView.cancelPendingPaste()
         isShowingFullEditor = false
         // A send from the sheet kept focus for the chat it was in, not the
         // one loading now.
@@ -2630,6 +2665,31 @@ struct ComposerBar: View, Equatable {
         } else {
             applyPendingPrefill()
         }
+        focusOnOpen()
+    }
+
+    /// On a Mac a chat opens ready to type, as in a desktop client (issue
+    /// 1692): its field takes focus, at once or, while the chat can't take
+    /// text yet (a sync, a chat still being made), once it can, unless
+    /// another field took focus meanwhile (ReturnKeyTextView's wish). Only
+    /// the composer on screen, and not over a sheet or a text field that
+    /// has focus, such as the list's search.
+    private func focusOnOpen() {
+        guard ComposerLayout.focusesOnOpen(), returnKeysReachChat else { return }
+        // After this update: the draft load unfocuses the field.
+        Task { @MainActor in
+            guard returnKeysReachChat, ComposerLayout.openMayTakeFocus else { return }
+            isFocused = true
+        }
+    }
+
+    /// ⌘V in this chat's transcript (issue 1692): the field takes focus and
+    /// the paste. Only the chat on screen's, and only while it takes text.
+    private func pasteFromTranscript(_ target: ComposerPasteTarget) {
+        guard target == .chat, returnKeysReachChat, !updates.inputs.hasRoomSurface,
+              appState.composerIsEnabled, updates.inputs.takesText else { return }
+        isFocused = true
+        ReturnKeyTextView.pasteOnceFocused()
     }
 
     /// Puts a waiting prefill in once its chat's draft is the one loaded.
@@ -2939,10 +2999,22 @@ struct ComposerBar: View, Equatable {
     /// one like picked documents. A locked composer takes none, as its
     /// Attach menu is off then. A folder isn't attached; the notice names
     /// it and says to drop the files inside.
-    private func handleDroppedFiles(_ providers: [NSItemProvider]) {
-        guard appState.composerIsEnabled, !providers.isEmpty else { return }
+    private func handleDroppedFiles(_ dropped: [NSItemProvider]) {
+        guard appState.composerIsEnabled, !dropped.isEmpty else { return }
         composerErrorMessage = nil
         let origin = asyncAttachmentContext
+        // Dragged from the Folder: their paths go in the draft (issue 1438).
+        let entries = dropped.filter(WorkspaceDrag.isEntry)
+        if !entries.isEmpty {
+            Task {
+                let reference = WorkspaceDrag.reference(to: await WorkspaceDrag.paths(from: entries))
+                guard shouldAcceptAsyncAttachmentCompletion(startedIn: origin), !reference.isEmpty else { return }
+                replaceComposerText(WorkspaceDrag.appending(reference, to: text), cursorAtEnd: true)
+                isFocused = true
+            }
+        }
+        let providers = dropped.filter { !WorkspaceDrag.isEntry($0) }
+        guard !providers.isEmpty else { return }
         let limitMegabytes = attachmentLimitMegabytes
         let files = providers.filter { !AttachmentDrop.isFolder($0) }
         let hasFolders = files.count < providers.count
@@ -3041,21 +3113,21 @@ struct ComposerBar: View, Equatable {
 
     private var accessibilityLabel: String {
         switch action {
-        case .stop: return AppLocalization.string("Stop response")
-        case .steer: return AppLocalization.string("Steer with message")
-        case .interrupt: return AppLocalization.string("Interrupt and correct response")
-        case .queue: return AppLocalization.string("Queue message")
-        case .send: return AppLocalization.string("Send message")
+        case .stop: return AppLocalization.string("Stop response", table: .chat)
+        case .steer: return AppLocalization.string("Steer with message", table: .chat)
+        case .interrupt: return AppLocalization.string("Interrupt and correct response", table: .chat)
+        case .queue: return AppLocalization.string("Queue message", table: .chat)
+        case .send: return AppLocalization.string("Send message", table: .chat)
         case .unavailable:
-            return showsEmptyDraftSend ? AppLocalization.string("Send message") : AppLocalization.string("Composer unavailable")
+            return showsEmptyDraftSend ? AppLocalization.string("Send message", table: .chat) : AppLocalization.string("Composer unavailable", table: .chat)
         }
     }
 
     private var modelAccessibilityLabel: String {
         let model = appState.runtime.model.isEmpty ? AppLocalization.string("Model") : appState.runtime.model
         // Reasoning has its own control beside the model name.
-        let approvals = appState.runtime.yolo ? AppLocalization.string(", auto-approve enabled") : ""
-        let activity = appState.turnState == .running ? AppLocalization.string(", agent working") : ""
+        let approvals = appState.runtime.yolo ? AppLocalization.string(", auto-approve enabled", table: .chat) : ""
+        let activity = appState.turnState == .running ? AppLocalization.string(", agent working", table: .chat) : ""
         return "\(model)\(approvals)\(activity)"
     }
 }

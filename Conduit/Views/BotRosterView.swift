@@ -148,10 +148,9 @@ struct BotRosterView: View {
                 }
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) { pendingDisbandRoom = nil }
-        } message: { _ in
-            Text(AppLocalization.string(
-                "The room, its history, and every member's session end permanently. This cannot be undone."
-            ))
+        } message: { room in
+            Text(GroupRoomDisband.warning(members: room.members,
+                                          chatsKept: appState.notifierPlugin.runtime?.roomChatsKept == true))
         }
         .sheet(item: $presentedDesktopGroup) { group in
             DesktopGroupChatView(group: group)
@@ -225,7 +224,7 @@ struct BotRosterView: View {
             titleVisibility: .visible,
             presenting: pendingDelete
         ) { bot in
-            Button(AppLocalization.string("Delete Bot"), role: .destructive) {
+            Button(AppLocalization.string("Delete Bot", table: .bots), role: .destructive) {
                 Task {
                     let error = await appState.deleteBot(bot)
                     if error == nil { Haptics.success() } else { Haptics.warning() }
@@ -234,7 +233,7 @@ struct BotRosterView: View {
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) {}
         } message: { _ in
-            Text(AppLocalization.string("This permanently removes the bot's profile, chats, memory and skills from the gateway."))
+            Text(AppLocalization.string("This permanently removes the bot's profile, chats, memory and skills from the gateway.", table: .bots))
         }
         .task(id: rosterRefreshKey) {
             await appState.refreshBotRoster()
@@ -396,7 +395,7 @@ struct BotRosterView: View {
         }
         .buttonStyle(.plain)
         .rosterListRow(divider: false)
-        .accessibilityLabel(Text(AppLocalization.string("Hidden bots: \(String(hiddenBots.count))")))
+        .accessibilityLabel(Text(AppLocalization.string("Hidden bots: \(String(hiddenBots.count))", table: .bots)))
         .accessibilityValue(Text(
             showsHiddenBots ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")
         ))
@@ -507,7 +506,7 @@ struct BotRosterView: View {
         }
         guard newRoom.add(names) else {
             Haptics.warning()
-            managementNotice = AppLocalization.string("A room holds up to 6 bots.")
+            managementNotice = AppLocalization.string("A room holds up to 6 bots.", table: .bots)
             return
         }
         flyIntoNewRoom(joining)
@@ -694,7 +693,7 @@ struct BotRosterView: View {
     /// steps). Purpose and who answers are in Group Settings once it's made.
     private var newRoomBar: some View {
         let bots = newRoomBots
-        let suggested = bots.count < 2 ? AppLocalization.string("New room") : joinedNames(bots)
+        let suggested = bots.count < 2 ? AppLocalization.string("New room", table: .bots) : joinedNames(bots)
         // Faces and buttons on top, the name under them at full width:
         // six faces and both buttons leave a phone no room for it beside
         // them.
@@ -714,7 +713,7 @@ struct BotRosterView: View {
                         }
                         .buttonStyle(.plain)
                         .disabled(creatingNewRoom)
-                        .accessibilityLabel(Text(AppLocalization.string("Take \(bot.displayLabel) out")))
+                        .accessibilityLabel(Text(AppLocalization.string("Take \(bot.displayLabel) out", table: .bots)))
                     }
                 }
                 Spacer(minLength: 0)
@@ -750,7 +749,7 @@ struct BotRosterView: View {
                 .padding(.vertical, 7)
                 .background(Color.primary.opacity(0.08), in: RoundedRectangle(cornerRadius: 10, style: .continuous))
                 .accessibilityLabel(Text(AppLocalization.string("Group name")))
-                .accessibilityHint(Text(AppLocalization.string("Empty, the room is named after its bots.")))
+                .accessibilityHint(Text(AppLocalization.string("Empty, the room is named after its bots.", table: .bots)))
                 .accessibilityIdentifier("bots.newRoom.name")
                 if let error = newRoomError {
                     Text(verbatim: error)
@@ -758,7 +757,7 @@ struct BotRosterView: View {
                         .foregroundStyle(.red)
                         .lineLimit(3)
                 } else if bots.count < 2 {
-                    Text(AppLocalization.string("Drag or tap bots to add them."))
+                    Text(AppLocalization.string("Drag or tap bots to add them.", table: .bots))
                         .scaledFont(.caption)
                         .foregroundStyle(.secondary)
                         .lineLimit(2)
@@ -783,7 +782,7 @@ struct BotRosterView: View {
                 Task { managementNotice = await appState.setBotHidden(bot, hidden: !bot.isHiddenByMeta) }
             },
             duplicate: {
-                managementNotice = AppLocalization.string("Duplicating \(bot.displayLabel)…")
+                managementNotice = AppLocalization.string("Duplicating \(bot.displayLabel)…", table: .bots)
                 Task { managementNotice = await appState.duplicateBot(bot) }
             },
             newChat: {
@@ -1056,7 +1055,7 @@ struct BotRosterView: View {
     @ViewBuilder
     private var groupSection: some View {
         if showsGroupSection {
-            Section(AppLocalization.string("Group Chats")) {
+            Section(AppLocalization.string("Group Chats", table: .bots)) {
                 groupRows
                     .modifier(HomeRoomLooksReader())
                 if canStartGroups {
@@ -1078,7 +1077,7 @@ struct BotRosterView: View {
     private var homeGroupSection: some View {
         if showsGroupSection {
             HStack(alignment: .center) {
-                Text(AppLocalization.string("Group Chats"))
+                Text(AppLocalization.string("Group Chats", table: .bots))
                     .scaledFont(.footnote.weight(.semibold))
                     .foregroundStyle(.secondary)
                     .accessibilityAddTraits(.isHeader)
@@ -1110,7 +1109,7 @@ struct BotRosterView: View {
             }
             if showsRoomHint {
                 // No rooms yet: how to start one, gone with the first.
-                Text(AppLocalization.string("Hold one bot over another to start a room."))
+                Text(AppLocalization.string("Hold one bot over another to start a room.", table: .bots))
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -1171,7 +1170,7 @@ struct BotRosterView: View {
             NewRoomPortrait(
                 bots: newRoomBots,
                 flying: Set(roomFlights.map(\.name)),
-                name: newRoom.roomName(suggested: AppLocalization.string("New room")),
+                name: newRoom.roomName(suggested: AppLocalization.string("New room", table: .bots)),
                 members: joinedNames(newRoomBots),
                 onTap: { if !creatingNewRoom { newRoomNameFocused = true } },
                 canJoin: canJoinNewRoom,
@@ -1234,11 +1233,11 @@ struct BotRosterView: View {
             Haptics.light()
             editorMode = .create
         } label: {
-            createCard(title: AppLocalization.string("New Bot"))
+            createCard(title: AppLocalization.string("New Bot", table: .bots))
         }
         .buttonStyle(.plain)
         .rosterListRow(divider: false)
-        .accessibilityLabel(Text(AppLocalization.string("New Bot")))
+        .accessibilityLabel(Text(AppLocalization.string("New Bot", table: .bots)))
     }
 
     private var newGroupCard: some View {
@@ -1258,7 +1257,7 @@ struct BotRosterView: View {
             ProgressView()
                 .frame(maxWidth: .infinity, minHeight: 140)
         case .loading:
-            ProgressView(AppLocalization.string("Loading bots…"))
+            ProgressView(AppLocalization.string("Loading bots…", table: .bots))
                 .frame(maxWidth: .infinity, minHeight: 140)
         case .gatewayUnsupported:
             ContentUnavailableView {
@@ -1267,7 +1266,7 @@ struct BotRosterView: View {
                     systemImage: "arrow.triangle.2.circlepath.trianglebadge.exclamationmark"
                 )
             } description: {
-                Text(AppLocalization.string("Update the gateway, then come back to chat with your bots."))
+                Text(AppLocalization.string("Update the gateway, then come back to chat with your bots.", table: .bots))
             } actions: {
                 Button(AppLocalization.string("Retry")) {
                     Task { await appState.refreshBotRoster() }
@@ -1307,14 +1306,14 @@ struct BotRosterView: View {
         case .available:
             ContentUnavailableView {
                 Label(
-                    AppLocalization.string("No Bots Yet"),
+                    AppLocalization.string("No Bots Yet", table: .bots),
                     systemImage: "person.2"
                 )
             } description: {
-                Text(AppLocalization.string("Bots you create with Hermes appear here."))
+                Text(AppLocalization.string("Bots you create with Hermes appear here.", table: .bots))
             } actions: {
                 if canManageBots {
-                    Button(AppLocalization.string("New Bot")) {
+                    Button(AppLocalization.string("New Bot", table: .bots)) {
                         Haptics.light()
                         editorMode = .create
                     }
@@ -1444,7 +1443,7 @@ private struct BotRosterRow: View {
         .overlay(alignment: .bottom) { V2RowDivider(leadingInset: 48) }
         .accessibilityLabel(Text(bot.displayLabel))
         .accessibilityValue(Text(accessibilityValue))
-        .accessibilityHint(Text(AppLocalization.string("Opens this bot's chat.")))
+        .accessibilityHint(Text(AppLocalization.string("Opens this bot's chat.", table: .bots)))
         .v2SelectedTrait(selection)
         .contextMenu {
             BotRosterMenu(bot: bot, canManage: canManage, canDelete: canDelete, rooms: rooms,
@@ -1456,7 +1455,7 @@ private struct BotRosterRow: View {
                     // Not a destructive role: that removes the row before the
                     // confirmation is answered, and on a Mac it can blank the list (#1364).
                     Button(action: actions.delete) {
-                        Label(AppLocalization.string("Delete Bot"), systemImage: "trash")
+                        Label(AppLocalization.string("Delete Bot", table: .bots), systemImage: "trash")
                     }
                     .tint(.red)
                 }
@@ -1544,17 +1543,17 @@ private struct BotRosterMenu: View {
                     }
                 }
             } label: {
-                Label(AppLocalization.string("Groups"), systemImage: "person.3")
+                Label(AppLocalization.string("Groups", table: .bots), systemImage: "person.3")
             }
         }
         if canStartGroup, let startRoom = actions.startRoom {
             Button(action: startRoom) {
-                Label(AppLocalization.string("Start a Room with…"), systemImage: "person.2.badge.plus")
+                Label(AppLocalization.string("Start a Room with…", table: .bots), systemImage: "person.2.badge.plus")
             }
         }
         if let reorder = actions.reorder {
             Button(action: reorder) {
-                Label(AppLocalization.string("Reorder Bots"), systemImage: "arrow.up.arrow.down")
+                Label(AppLocalization.string("Reorder Bots", table: .bots), systemImage: "arrow.up.arrow.down")
             }
         }
         if canManage {
@@ -1567,7 +1566,7 @@ private struct BotRosterMenu: View {
             }
             Button(action: actions.toggleHidden) {
                 Label(
-                    bot.isHiddenByMeta ? AppLocalization.string("Unhide") : AppLocalization.string("Hide"),
+                    bot.isHiddenByMeta ? AppLocalization.string("Unhide", table: .bots) : AppLocalization.string("Hide", table: .bots),
                     systemImage: bot.isHiddenByMeta ? "eye" : "eye.slash"
                 )
             }
@@ -1581,7 +1580,7 @@ private struct BotRosterMenu: View {
             if canDelete {
                 Divider()
                 Button(role: .destructive, action: actions.delete) {
-                    Label(AppLocalization.string("Delete Bot"), systemImage: "trash")
+                    Label(AppLocalization.string("Delete Bot", table: .bots), systemImage: "trash")
                 }
             }
         }

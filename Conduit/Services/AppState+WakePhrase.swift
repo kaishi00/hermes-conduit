@@ -11,6 +11,11 @@
 import AVFAudio
 import Combine
 import Foundation
+import SwiftUI
+import CryptoKit
+import OSLog
+import UIKit
+import WebKit
 
 extension AppState {
     /// The dashboard key wake phrases are stored under.
@@ -290,6 +295,109 @@ extension AppState {
 
     /// The phrase offered when wake listening is first turned on.
     func suggestedWakePhrase(forProfile profile: String) -> String {
-        AppLocalization.string("Hey \(profileDisplayName(profile))")
+        AppLocalization.string("Hey \(profileDisplayName(profile))", table: .voice)
+    }
+}
+
+extension AppState {
+    // MARK: - Wake phrase (#174)
+
+    func setCarPlayVoiceSurfaceActive(_ active: Bool) {
+        isCarPlayVoiceSurfaceActive = active
+        if active { noteVoiceCallStartedForLocation() }
+        // CarPlay feeds BOTH gates (`hasActiveVoiceSurface` and
+        // `hasForegroundApplicationSurface`), so this publishes both rather
+        // than only the app-foreground one: the adjacent
+        // `handleCarPlayVoiceSurfaceActivated/Removed` handlers then re-state
+        // the same capture value as they own the suspension side-effect, and
+        // no reader can observe a CarPlay edge half-applied.
+        publishVoiceRuntimeGates()
+    }
+
+    /// Whether at least one legitimate Voice presentation surface is
+    /// actually presenting Voice: the phone scene counts only while the
+    /// Voice sheet is up (a foreground phone with the sheet closed presents
+    /// nothing), while a connected CarPlay surface presents Voice by
+    /// itself. This — not the raw phone scene phase — is the Voice runtime's
+    /// foreground gate: live Voice audio is allowed exactly while this is
+    /// true. It deliberately does NOT fake phone `.active`:
+    /// transport/chat reconciliation continues to read `isSceneActive` for
+    /// phone-specific behavior.
+    var hasActiveVoiceSurface: Bool {
+        (isSceneActive && showVoiceSheet) || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive
+            || isNativeCallVoiceSurfaceActive
+    }
+
+    /// A call from Hermes the user answered in CallKit presents the classic
+    /// Voice it opened, with the phone locked or Conduit in the background
+    /// (#558): answering was the user's go-ahead, and the CallKit screen
+    /// keeps mute and hang-up in reach. Only while that Voice sheet is open;
+    /// hanging up closes it.
+    var isNativeCallVoiceSurfaceActive: Bool {
+        isNativeHermesCallAnswered && showVoiceSheet
+    }
+
+    /// Off screen, nobody can tap Listen: the conversation keeps listening
+    /// on its own while it is kept running locked or carried by a call.
+    private var isBackgroundVoiceListeningSurfaceActive: Bool {
+        !isSceneActive && (isLockedVoiceSurfaceActive || isNativeCallVoiceSurfaceActive)
+    }
+
+    /// "Keep listening when locked": an open classic Voice conversation that
+    /// is already running keeps presenting with the phone locked or Conduit
+    /// in the background, the way CarPlay keeps it live. A conversation that
+    /// isn't running (never listened, settled idle, paused, failed, or
+    /// already suspended) doesn't count: it suspends as usual instead.
+    var isLockedVoiceSurfaceActive: Bool {
+        keepVoiceListeningWhenLocked
+            && showVoiceSheet
+            && voiceConversationController.isConversationRunning
+    }
+
+    /// Whether the app itself has a foreground presentation surface: the
+    /// phone scene is on screen, or CarPlay presents the shared conversation
+    /// while the phone is locked.
+    ///
+    /// This is the `hasActiveVoiceSurface` meaning from before the CarPlay
+    /// surface work, and it is deliberately kept separate: that property is
+    /// now a *capture* gate (it also requires the phone Voice sheet), while
+    /// permission alerts and the settings-launched provider tests only ever
+    /// needed "the app is on screen". Voice settings is reachable only from
+    /// the foreground and presents no Voice sheet, so reading the capture
+    /// gate there refused legitimate actions.
+    var hasForegroundApplicationSurface: Bool {
+        isSceneActive || isCarPlayVoiceSurfaceActive || isLockedVoiceSurfaceActive
+            || isNativeCallVoiceSurfaceActive
+    }
+
+    /// Publishes every Voice runtime gate from the current surface
+    /// bookkeeping. Used at the lifecycle boundaries that can change both
+    /// facts at once; a boundary that changes only one (the CarPlay surface
+    /// edges) publishes by the same rule.
+    ///
+    /// INVARIANT for every other writer: the two gates must never be left
+    /// inconsistent *across* an await. A writer either publishes both through
+    /// here, or writes both facts explicitly in one synchronous run (the
+    /// `.background` branch does), or writes only the capture gate because
+    /// the same step tears the runtime down — `stop()` and
+    /// `suspendRuntimeForLifecycle()` both bump `operationGeneration`, so
+    /// in-flight work is fenced even while the app-foreground gate stays
+    /// open.
+    func publishVoiceRuntimeGates() {
+        voiceConversationController.setForegroundActive(hasActiveVoiceSurface)
+        voiceConversationController.setApplicationForegroundActive(hasForegroundApplicationSurface)
+        voiceConversationController.setBackgroundListening(isBackgroundVoiceListeningSurfaceActive)
+    }
+
+    /// Re-asserts the Voice runtime gates from the current surface
+    /// bookkeeping. Presenting the phone Voice sheet must call this BEFORE
+    /// auto-listen: with CarPlay absent the capture gate is false while the
+    /// sheet is closed (`hasActiveVoiceSurface` requires the sheet), and
+    /// `startListening` is gated on it. Both gates are published: a Voice
+    /// surface presenting at all also means the app is on screen, so this
+    /// heals a stale app-foreground gate left by a scene-phase event that
+    /// never fired (the phone may be locked throughout a CarPlay session).
+    func reassertVoiceSurfaceGate() {
+        publishVoiceRuntimeGates()
     }
 }

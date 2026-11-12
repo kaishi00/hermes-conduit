@@ -233,7 +233,7 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
             guard responseHadAudio else {
                 // The cancel goes out before the socket closes.
                 send(["type": "response.cancel"], afterEnd: true)
-                complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Your speech server couldn't speak the reply."))))
+                complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Your speech server couldn't speak the reply.", table: .voice))))
                 closeAfterSending()
                 return
             }
@@ -250,7 +250,7 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
 
     private func failNotReadingBack() {
         send(["type": "response.cancel"], afterEnd: true)
-        complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Your speech server answered instead of reading the reply. Set its model address to the one in Conduit's voice settings."))))
+        complete(.failure(VoiceAudioError.unavailable(AppLocalization.string("Your speech server answered instead of reading the reply. Set its model address to the one in Conduit's voice settings.", table: .voice))))
         closeAfterSending()
     }
 
@@ -287,14 +287,18 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
             while !Task.isCancelled {
                 let message = try await socket.receive()
                 lastActivity = .now
-                let data: Data?
-                switch message {
-                case .string(let string): data = string.data(using: .utf8)
-                case .data(let bytes): data = bytes
-                @unknown default: data = nil
+                // The speech, many frames a second, is parsed and decoded
+                // off the main actor, as a live call's is (issue 1959).
+                let inbound = await LiveVoiceWireCoding.offMainActor { SpeechServerInbound(message) }
+                switch inbound {
+                case .speech(let pcm):
+                    try handleSpeech(pcm)
+                case .event(let data):
+                    guard let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
+                    try handle(event)
+                case .unreadable:
+                    continue
                 }
-                guard let data, let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { continue }
-                try handle(event)
                 if terminal { return }
             }
         } catch {
@@ -303,18 +307,23 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
         }
     }
 
+    private func handleSpeech(_ pcm: Data) throws {
+        guard !terminal, !pcm.isEmpty else { return }
+        if !started {
+            try onStart(Self.sampleRate)
+            started = true
+        }
+        try onPCM16(pcm, Self.sampleRate)
+        receivedPCM = true
+        responseHadAudio = true
+    }
+
     private func handle(_ event: [String: Any]) throws {
         guard !terminal else { return }
         switch event["type"] as? String {
         case "response.output_audio.delta", "response.audio.delta":
-            guard let delta = event["delta"] as? String, let pcm = Data(base64Encoded: delta), !pcm.isEmpty else { return }
-            if !started {
-                try onStart(Self.sampleRate)
-                started = true
-            }
-            try onPCM16(pcm, Self.sampleRate)
-            receivedPCM = true
-            responseHadAudio = true
+            guard let delta = event["delta"] as? String, let pcm = Data(base64Encoded: delta) else { return }
+            try handleSpeech(pcm)
         case "response.output_audio_transcript.delta", "response.audio_transcript.delta":
             guard let delta = event["delta"] as? String, let words = speaking else { return }
             spokenTranscript += delta
@@ -325,7 +334,7 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
             let error = event["error"] as? [String: Any]
             let message = (error?["message"] as? String ?? event["message"] as? String)
                 .map(HermesSpeechFailure.message)
-            fail(VoiceAudioError.unavailable(message ?? AppLocalization.string("Your speech server couldn't speak the reply.")))
+            fail(VoiceAudioError.unavailable(message ?? AppLocalization.string("Your speech server couldn't speak the reply.", table: .voice)))
         default:
             break
         }
@@ -350,7 +359,7 @@ final class SpeechServerSpeechStream: VoiceSpeechStream {
                 guard let self, !self.terminal else { return }
                 if ContinuousClock.now - self.lastActivity >= timeout { break }
             }
-            self?.fail(VoiceAudioError.unavailable(AppLocalization.string("Your speech server stopped speaking.")))
+            self?.fail(VoiceAudioError.unavailable(AppLocalization.string("Your speech server stopped speaking.", table: .voice)))
         }
     }
 
@@ -389,7 +398,7 @@ extension HermesVoiceGateway {
             )
         } catch {
             speechServerSpeechLog.notice("Speech server speak request failed: \(String(describing: error), privacy: .private)")
-            throw VoiceAudioError.unavailable(AppLocalization.string("Could not open the speech stream."))
+            throw VoiceAudioError.unavailable(AppLocalization.string("Could not open the speech stream.", table: .voice))
         }
         // The dashboard's own session cookies (cookie mode), on the
         // cookie-less, redirect-refusing dashboard socket session, like the
@@ -465,7 +474,7 @@ struct SpeechServerVoiceStatus: Equatable {
     var readFailed = false
 
     static var pluginMissingReason: String {
-        PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to have your speech server speak the replies."))
+        PluginUpdateAsk.text(AppLocalization.string("Update the Conduit plugin on your Hermes host to have your speech server speak the replies.", table: .voice))
     }
 
     static var pluginMissing: SpeechServerVoiceStatus {
@@ -557,5 +566,36 @@ struct SpeechServerVoiceStatus: Equatable {
         let plain = CharacterSet.alphanumerics.union(CharacterSet(charactersIn: "-_.:/=@%+,"))
         if !value.isEmpty, value.unicodeScalars.allSatisfy(plain.contains) { return value }
         return "'" + value.replacingOccurrences(of: "'", with: "'\\''") + "'"
+    }
+}
+
+/// One frame from the speech server: the reply's audio already decoded,
+/// or any other event for the stream to read on the main actor.
+private enum SpeechServerInbound: Sendable {
+    case speech(Data)
+    case event(Data)
+    case unreadable
+
+    init(_ message: URLSessionWebSocketTask.Message) {
+        let data: Data
+        switch message {
+        case .string(let string): data = Data(string.utf8)
+        case .data(let bytes): data = bytes
+        @unknown default:
+            self = .unreadable
+            return
+        }
+        guard data.range(of: Data("audio.delta".utf8)) != nil,
+              let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              let type = event["type"] as? String,
+              type == "response.output_audio.delta" || type == "response.audio.delta" else {
+            self = .event(data)
+            return
+        }
+        guard let delta = event["delta"] as? String, let pcm = Data(base64Encoded: delta) else {
+            self = .unreadable
+            return
+        }
+        self = .speech(pcm)
     }
 }

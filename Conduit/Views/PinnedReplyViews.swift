@@ -129,8 +129,8 @@ struct PinnedReplyBar: View {
 
     private var title: String {
         pins.count > 1
-            ? AppLocalization.string("Pinned reply \(String(index + 1)) of \(String(pins.count))")
-            : AppLocalization.string("Pinned reply")
+            ? AppLocalization.string("Pinned reply \(String(index + 1)) of \(String(pins.count))", table: .chat)
+            : AppLocalization.string("Pinned reply", table: .chat)
     }
 
     var body: some View {
@@ -185,19 +185,19 @@ struct PinnedReplyBar: View {
                 Button {
                     showAll()
                 } label: {
-                    Label(AppLocalization.string("Pinned replies"), systemImage: "pin")
+                    Label(AppLocalization.string("Pinned replies", table: .chat), systemImage: "pin")
                 }
             }
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(Text(verbatim: "\(title), \(pin.title)"))
-            .accessibilityHint(AppLocalization.string("Goes to the pinned reply"))
+            .accessibilityHint(AppLocalization.string("Goes to the pinned reply", table: .chat))
             .accessibilityAddTraits(.isButton)
             .accessibilityAction(named: AppLocalization.string("Unpin")) {
                 shownIndex = nil
                 unpin(pin)
             }
             .accessibilityAction(named: PinnedReplyLabelEditor.actionTitle(for: pin)) { label(pin) }
-            .accessibilityAction(named: AppLocalization.string("Pinned replies")) { showAll() }
+            .accessibilityAction(named: AppLocalization.string("Pinned replies", table: .chat)) { showAll() }
             .accessibilityIdentifier("chat.pinnedReplyBar")
             // Pins added, removed or reordered (earlier messages loaded):
             // back to the latest, so the index never names another reply.
@@ -280,10 +280,10 @@ struct PinnedRepliesSheet: View {
                         let thisChatOnly = showsScope && scope == .thisChat && !all.isEmpty
                         ContentUnavailableView(
                             thisChatOnly
-                                ? AppLocalization.string("No pins in this chat")
-                                : AppLocalization.string("No pinned replies"),
+                                ? AppLocalization.string("No pins in this chat", table: .chat)
+                                : AppLocalization.string("No pinned replies", table: .chat),
                             systemImage: "pin",
-                            description: Text(AppLocalization.string("Long-press a reply and choose Pin for the selected text or Pin reply for all of it. It stays at the top of its chat and shows here."))
+                            description: Text(AppLocalization.string("Long-press a reply and choose Pin for the selected text or Pin reply for all of it. It stays at the top of its chat and shows here.", table: .chat))
                         )
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
@@ -306,11 +306,11 @@ struct PinnedRepliesSheet: View {
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
                 VStack(spacing: 8) {
-                    ConduitSheetHeader(title: AppLocalization.string("Pinned replies"), close: { dismiss() })
+                    ConduitSheetHeader(title: AppLocalization.string("Pinned replies", table: .chat), close: { dismiss() })
                     if showsScope {
-                        Picker(AppLocalization.string("Show pins from"), selection: $scope) {
-                            Text(AppLocalization.string("This chat")).tag(Scope.thisChat)
-                            Text(AppLocalization.string("All chats")).tag(Scope.allChats)
+                        Picker(AppLocalization.string("Show pins from", table: .chat), selection: $scope) {
+                            Text(AppLocalization.string("This chat", table: .chat)).tag(Scope.thisChat)
+                            Text(AppLocalization.string("All chats", table: .chat)).tag(Scope.allChats)
                         }
                         .pickerStyle(.segmented)
                         .padding(.horizontal, 20)
@@ -390,7 +390,7 @@ struct PinnedRepliesSheet: View {
                 Label(AppLocalization.string("Unpin"), systemImage: "pin.slash")
             }
         }
-        .accessibilityHint(AppLocalization.string("Opens the chat at this reply"))
+        .accessibilityHint(AppLocalization.string("Opens the chat at this reply", table: .chat))
         .accessibilityAction(named: PinnedReplyLabelEditor.actionTitle(for: pin)) { labelingPin = pin }
         .accessibilityAction(named: AppLocalization.string("Unpin")) { appState.unpinReply(pin) }
         .accessibilityIdentifier("pinnedReplies.row")
@@ -412,7 +412,7 @@ struct PinnedReplyLabelEditor: ViewModifier {
     func body(content: Content) -> some View {
         content
             .alert(
-                AppLocalization.string("Label this pin"),
+                AppLocalization.string("Label this pin", table: .chat),
                 isPresented: Binding(
                     get: { pin != nil },
                     set: { if !$0 { pin = nil } }
@@ -430,7 +430,7 @@ struct PinnedReplyLabelEditor: ViewModifier {
                     pin = nil
                 }
             } message: { _ in
-                Text(AppLocalization.string("A short name for the pins list, such as Security recommendations."))
+                Text(AppLocalization.string("A short name for the pins list, such as Security recommendations.", table: .chat))
             }
             .onChange(of: pin?.id) { _, _ in
                 draft = pin?.label ?? ""
@@ -490,7 +490,7 @@ enum PinnedPassageFlasher {
                 for entry in placed.blocks {
                     entry.host.flashPassage(rects: entry.rects, reduceMotion: reduceMotion)
                 }
-                UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Pinned passage"))
+                UIAccessibility.post(notification: .announcement, argument: AppLocalization.string("Pinned passage", table: .chat))
                 return
             }
         }

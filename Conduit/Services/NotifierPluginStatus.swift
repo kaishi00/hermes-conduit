@@ -47,6 +47,10 @@ struct NotifierPluginStatus: Equatable {
         var restartNeeded: Bool
         /// New with every dashboard process.
         var bootID: String?
+        /// The host keeps a disbanded room's hidden sessions
+        /// (cleanup_disbanded_rooms: off, notifier #443), so Disband's
+        /// warning doesn't say they're deleted.
+        var roomChatsKept = false
     }
 
     /// The plugin version this Conduit build was made against: the least it
@@ -330,7 +334,8 @@ struct NotifierPluginStatus: Equatable {
         return Runtime(
             loadedVersion: response["loaded_version"] as? String,
             restartNeeded: response["restart_needed"] as? Bool ?? false,
-            bootID: response["boot_id"] as? String
+            bootID: response["boot_id"] as? String,
+            roomChatsKept: response["room_chats_kept"] as? Bool == true
         )
     }
 
@@ -438,9 +443,9 @@ extension NotifierPluginStatus {
     /// What Settings and Finish setting up say for a managed plugin.
     static func managedText(_ managedBy: String?) -> String {
         guard let managedBy, !managedBy.isEmpty else {
-            return AppLocalization.string("This dashboard's host keeps the plugin up to date.")
+            return AppLocalization.string("This dashboard's host keeps the plugin up to date.", table: .notifications)
         }
-        return AppLocalization.string("\(managedBy) keeps the plugin up to date.")
+        return AppLocalization.string("\(managedBy) keeps the plugin up to date.", table: .notifications)
     }
 }
 
@@ -478,7 +483,7 @@ enum PluginUpdateAsk {
 
     /// What a host managed by `managedBy` says in place of the ask.
     static func managedAsk(by managedBy: String) -> String {
-        AppLocalization.string("The Conduit plugin on this host doesn't have this yet.")
+        AppLocalization.string("The Conduit plugin on this host doesn't have this yet.", table: .notifications)
             + " " + NotifierPluginStatus.managedText(managedBy)
     }
 

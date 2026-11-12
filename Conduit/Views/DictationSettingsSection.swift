@@ -23,7 +23,7 @@ struct DictationSettingsSection: View {
     }
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Dictation"), symbol: "mic", tint: .conduitAccent) {
+        ConduitSettingsSection(title: AppLocalization.string("Dictation", table: .voice), symbol: "mic", tint: .conduitAccent) {
             ConduitMenuPicker(
                 value: engine.rawValue,
                 choices: DictationEngine.available.map { (id: $0.rawValue, title: $0.title) },
@@ -53,7 +53,7 @@ struct DictationSettingsSection: View {
         VStack(alignment: .leading, spacing: 8) {
             ConduitMenuPicker(
                 value: voiceMessageChoice,
-                choices: [(id: Self.sameAsDictation, title: AppLocalization.string("Same as dictation"))]
+                choices: [(id: Self.sameAsDictation, title: AppLocalization.string("Same as dictation", table: .voice))]
                     + DictationEngine.available.map { (id: $0.rawValue, title: $0.title) },
                 onSelect: selectVoiceMessageEngine
             ) {
@@ -71,8 +71,8 @@ struct DictationSettingsSection: View {
             Text("Custom words")
                 .scaledFont(.subheadline.weight(.semibold))
             Text(engine == .hermes
-                 ? AppLocalization.string("Names and terms dictation should expect, written the way you want them. Hermes uses the words in its own speech to text settings (stt.prompt), not this list.")
-                 : AppLocalization.string("Names and terms dictation should expect, written the way you want them: your company, people, products."))
+                 ? AppLocalization.string("Names and terms dictation should expect, written the way you want them. Hermes uses the words in its own speech to text settings (stt.prompt), not this list.", table: .voice)
+                 : AppLocalization.string("Names and terms dictation should expect, written the way you want them: your company, people, products.", table: .voice))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
             ForEach(words, id: \.self) { word in
@@ -96,7 +96,7 @@ struct DictationSettingsSection: View {
                 .padding(.vertical, 2)
             }
             HStack(spacing: 8) {
-                TextField(AppLocalization.string("Add a word or name"), text: Binding(
+                TextField(AppLocalization.string("Add a word or name", table: .voice), text: Binding(
                     get: { draft },
                     // Longer entries are cut, so the field shows what is kept.
                     set: { draft = String($0.prefix(DictationCustomWords.maximumLength)) }

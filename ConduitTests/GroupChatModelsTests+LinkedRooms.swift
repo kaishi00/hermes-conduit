@@ -218,11 +218,22 @@ extension GroupChatModelsTests {
             linkedRoomMember("furina"), linkedRoomMember("laifu", peer: true),
         ])
         XCTAssertEqual(linked, AppLocalization.string(
-            "The room ends for everyone, and your agents' sessions for it are deleted. Agents on other people's Hermes keep theirs. This cannot be undone."
+            "The room ends for everyone, and your agents' sessions for it are deleted. Agents on other people's Hermes keep theirs. This cannot be undone.", table: .rooms
         ))
         let own = GroupRoomDisband.warning(members: [linkedRoomMember("furina"), linkedRoomMember("nahida")])
         XCTAssertEqual(own, AppLocalization.string(
             "The room, its history, and every member's session end permanently. This cannot be undone."
+        ))
+        // A host set to keep a disbanded room's sessions (notifier #443) says they stay.
+        let linkedKept = GroupRoomDisband.warning(members: [
+            linkedRoomMember("furina"), linkedRoomMember("laifu", peer: true),
+        ], chatsKept: true)
+        XCTAssertEqual(linkedKept, AppLocalization.string(
+            "The room ends for everyone. Your Hermes is set to keep your agents' sessions for it, and agents on other people's Hermes keep theirs. This cannot be undone."
+        ))
+        let ownKept = GroupRoomDisband.warning(members: [linkedRoomMember("furina")], chatsKept: true)
+        XCTAssertEqual(ownKept, AppLocalization.string(
+            "The room and its history end permanently. Your Hermes is set to keep its members' sessions. This cannot be undone."
         ))
     }
 
@@ -349,7 +360,7 @@ extension GroupChatModelsTests {
         none.customTools = []
         XCTAssertEqual(
             RoomAgentChoicesView.toolsDetail(none, freeBusy: true),
-            AppLocalization.string("No tools are picked for it on your Hermes.")
+            AppLocalization.string("No tools are picked for it on your Hermes.", table: .rooms)
         )
     }
 
@@ -362,7 +373,7 @@ extension GroupChatModelsTests {
         // An older plugin's Use my data is only lookups.
         XCTAssertEqual(
             RoomAgentChoicesView.toolsDetail(data, freeBusy: false),
-            AppLocalization.string("It can search the web and X, read web pages and look at images.")
+            AppLocalization.string("It can search the web and X, read web pages and look at images.", table: .rooms)
         )
         XCTAssertEqual(RoomChoicesClient.freeBusyCapability, "room-free-busy")
         XCTAssertTrue(busy.contains("as What it may share allows"), busy)

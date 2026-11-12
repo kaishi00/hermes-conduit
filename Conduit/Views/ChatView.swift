@@ -211,7 +211,7 @@ struct ChatView: View {
     private func runningToolTitle(for tool: ToolActivity) -> String? {
         if let key = BotTeammateMessages.deliveryTarget(toolName: tool.name, input: tool.input) {
             let name = BotTeammateMessages.displayName(for: key, in: appState.shownBotRoster)
-            return AppLocalization.string("Messaging \(name)…")
+            return AppLocalization.string("Messaging \(name)…", table: .chat)
         }
         return BotWorkCall.parse(toolName: tool.name, input: tool.input, output: nil)?.title(running: true)
     }
@@ -299,13 +299,22 @@ struct ChatView: View {
         }
     }
 
+    /// Whether the chat shows the minimised call bar (and a reading's
+    /// player) above its composer: not while words are typed, except
+    /// beside the list, which leaves its own bar to this one (#2270).
+    static func showsMinimisedCallBar(composerTyping: Bool, besideList: Bool) -> Bool {
+        !composerTyping || besideList
+    }
+
     /// The minimised call bar and the composer, below the transcript.
     @ViewBuilder
     private var bottomBar: some View {
         VStack(spacing: 0) {
             // A live call swiped down keeps running; its bar sits here
-            // (in V2, not while someone types in the composer).
-            if !composerTyping {
+            // (in V2, not while someone types in the composer). Beside the
+            // list it stays while typing too: the list leaves its own bar
+            // to this one (V2ListCallBar), so it's the only one there.
+            if Self.showsMinimisedCallBar(composerTyping: composerTyping, besideList: shell.hasChatBeside) {
                 MinimisedLiveVoiceBar()
                     .transition(.move(edge: .bottom).combined(with: .opacity))
             }
@@ -440,8 +449,9 @@ struct ChatView: View {
         .task { await TranscriptPictureMemory.loadKeptSizes() }
         .background(Color.clear)
         // Files dragged onto the chat (Finder on a Mac, Files on an iPad)
-        // are staged in the composer for the user to send (#1408).
-        .attachmentDropTarget(isEnabled: appState.composerIsEnabled) { providers in
+        // are staged in the composer for the user to send (#1408); a file
+        // or folder from the Folder puts its path in the draft (issue 1438).
+        .attachmentDropTarget(isEnabled: appState.composerIsEnabled, takesWorkspaceEntries: true) { providers in
             appState.dropIntoComposer(providers)
         }
         .overlay(alignment: .top) {
@@ -519,7 +529,8 @@ struct ChatView: View {
                         renderRevision: scope.cacheRevision,
                         receivedScopedPreference: true
                     )
-                }
+                },
+                pasteTarget: .chat
             )
             .ignoresSafeArea()
         }
@@ -917,7 +928,7 @@ struct ChatView: View {
             scroller.explicitTopRequested()
             UIAccessibility.post(
                 notification: .announcement,
-                argument: AppLocalization.string("This reply is earlier in the chat. Load earlier messages to reach it.")
+                argument: AppLocalization.string("This reply is earlier in the chat. Load earlier messages to reach it.", table: .chat)
             )
         }
     }
@@ -1098,17 +1109,17 @@ private struct ChatJumpControls: View {
 
     private var jumpTitle: String {
         switch pendingKind {
-        case .question: return AppLocalization.string("Go to your question")
-        case .approval: return AppLocalization.string("Go to the approval")
-        case .input: return AppLocalization.string("Go to the request")
+        case .question: return AppLocalization.string("Go to your question", table: .chat)
+        case .approval: return AppLocalization.string("Go to the approval", table: .chat)
+        case .input: return AppLocalization.string("Go to the request", table: .chat)
         }
     }
 
     private var jumpAccessibilityLabel: String {
         switch pendingKind {
-        case .question: return AppLocalization.string("Go to the question that needs your answer")
-        case .approval: return AppLocalization.string("Go to the approval")
-        case .input: return AppLocalization.string("Go to the request that needs your input")
+        case .question: return AppLocalization.string("Go to the question that needs your answer", table: .chat)
+        case .approval: return AppLocalization.string("Go to the approval", table: .chat)
+        case .input: return AppLocalization.string("Go to the request that needs your input", table: .chat)
         }
     }
 
@@ -1163,7 +1174,7 @@ private struct ChatJumpControls: View {
                 )
                 .modifier(OptionalAccessibilityHint(
                     hint: hasPendingClarify && pendingKind == .question
-                        ? AppLocalization.string("Scrolls to the pending question in the conversation")
+                        ? AppLocalization.string("Scrolls to the pending question in the conversation", table: .chat)
                         : nil
                 ))
                 .padding(.horizontal, 18)
@@ -1475,6 +1486,10 @@ struct MessageBubble: View, Equatable {
                 VoiceCallMarkerCard(link: link, origin: true) {
                     appState.openVoiceCallChat(markerID: link.originMarkerID)
                 }
+            } else if let report = message.delegationReport {
+                // Background agents finished: each one's result a tap away
+                // (issue 1553).
+                DelegationReportCard(message: message, report: report)
             } else if let report = CronBotChatReport.parse(message.content) {
                 // A cron job's report the bot wasn't asked to act on: the
                 // report itself, not a system line (cron_bot_chat).
@@ -1603,7 +1618,7 @@ struct TeammateMessageNote: View {
                         image: image,
                         size: faceSize
                     )
-                    Text(AppLocalization.string("Message from \(name)"))
+                    Text(AppLocalization.string("Message from \(name)", table: .chat))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                         .multilineTextAlignment(.center)
@@ -1621,8 +1636,8 @@ struct TeammateMessageNote: View {
             .accessibilityHint(Text(
                 inbound.body.isEmpty ? ""
                     : expanded
-                    ? AppLocalization.string("Hides what the bot said.")
-                    : AppLocalization.string("Shows what the bot said.")
+                    ? AppLocalization.string("Hides what the bot said.", table: .chat)
+                    : AppLocalization.string("Shows what the bot said.", table: .chat)
             ))
             .accessibilityValue(Text(
                 inbound.body.isEmpty ? ""
@@ -1695,7 +1710,7 @@ struct TeammateReplyNote<Reply: View>: View {
                     Image(systemName: "arrowshape.turn.up.right")
                         .scaledFont(.caption2)
                         .accessibilityHidden(true)
-                    Text(AppLocalization.string("Replied to \(name)"))
+                    Text(AppLocalization.string("Replied to \(name)", table: .chat))
                         .scaledFont(.footnote)
                         .multilineTextAlignment(.center)
                     Image(systemName: expanded ? "chevron.up" : "chevron.down")
@@ -1710,8 +1725,8 @@ struct TeammateReplyNote<Reply: View>: View {
             .frame(maxWidth: .infinity)
             .accessibilityHint(Text(
                 expanded
-                    ? AppLocalization.string("Hides the reply.")
-                    : AppLocalization.string("Shows the reply.")
+                    ? AppLocalization.string("Hides the reply.", table: .chat)
+                    : AppLocalization.string("Shows the reply.", table: .chat)
             ))
             .accessibilityValue(Text(
                 expanded ? AppLocalization.string("Expanded") : AppLocalization.string("Collapsed")
@@ -1776,7 +1791,7 @@ struct UserMessageMoreMenu: View {
             Button {
                 appState.quoteOwnMessageIntoComposer(message)
             } label: {
-                Label(AppLocalization.string("Quote"), systemImage: "text.quote")
+                Label(AppLocalization.string("Quote", table: .chat), systemImage: "text.quote")
             }
             .disabled(!rowState.canQuoteIntoComposer || !hasText)
 
@@ -1792,7 +1807,7 @@ struct UserMessageMoreMenu: View {
                         editAndResend(confirmedLaterTurns: false)
                     }
                 } label: {
-                    Label(AppLocalization.string("Edit and resend"), systemImage: "pencil")
+                    Label(AppLocalization.string("Edit and resend", table: .chat), systemImage: "pencil")
                 }
                 .disabled(rowState.isBusy || rowState.isOffline || !rowState.canQuoteIntoComposer)
             }
@@ -1809,15 +1824,15 @@ struct UserMessageMoreMenu: View {
         .accessibilityLabel(AppLocalization.string("More"))
         .accessibilityIdentifier("chat.messageMoreMenu")
         .confirmationDialog(
-            AppLocalization.string("Edit and resend this message?"),
+            AppLocalization.string("Edit and resend this message?", table: .chat),
             isPresented: $confirmsEdit,
             titleVisibility: .visible
         ) {
-            Button(AppLocalization.string("Edit and resend"), role: .destructive) {
+            Button(AppLocalization.string("Edit and resend", table: .chat), role: .destructive) {
                 editAndResend(confirmedLaterTurns: true)
             }
         } message: {
-            Text(AppLocalization.string("Your later messages and the replies to them leave the chat, and this one goes back in the composer to change and send again."))
+            Text(AppLocalization.string("Your later messages and the replies to them leave the chat, and this one goes back in the composer to change and send again.", table: .chat))
         }
     }
 
@@ -1898,7 +1913,7 @@ struct SteerMessageContent: View, Equatable {
         }
         .textSelection(.enabled)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(AppLocalization.string("Steered: \(reply?.message ?? message.content)"))
+        .accessibilityLabel(AppLocalization.string("Steered: \(reply?.message ?? message.content)", table: .chat))
     }
 }
 
@@ -2185,14 +2200,14 @@ struct UserImageAttachmentPreview: View {
                 let named = failed && namesUnavailable && !attachment.name.isEmpty
                 Label(
                     named ? attachment.name
-                        : failed ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached"),
+                        : failed ? AppLocalization.string("Image unavailable", table: .chat) : AppLocalization.string("Image attached", table: .chat),
                     systemImage: failed ? "photo.badge.exclamationmark" : "photo"
                 )
                 .lineLimit(1)
                 .truncationMode(.middle)
                 .accessibilityLabel(Text(verbatim: named
-                    ? "\(AppLocalization.string("Image unavailable")): \(attachment.name)"
-                    : failed ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached")))
+                    ? "\(AppLocalization.string("Image unavailable", table: .chat)): \(attachment.name)"
+                    : failed ? AppLocalization.string("Image unavailable", table: .chat) : AppLocalization.string("Image attached", table: .chat)))
                 .scaledFont(.caption.weight(.medium))
                 .foregroundStyle(onAccent ? Color.white : Color.primary)
                 .padding(.horizontal, 10)
@@ -2397,7 +2412,7 @@ struct UserImageAttachmentPreview: View {
                 .accessibilityElement()
                 .accessibilityLabel(
                     loading ? AppLocalization.string("Loading image…")
-                        : failed ? AppLocalization.string("Image unavailable") : AppLocalization.string("Image attached")
+                        : failed ? AppLocalization.string("Image unavailable", table: .chat) : AppLocalization.string("Image attached", table: .chat)
                 )
                 .opensMediaPreview { openPreview(showing: nil) }
                 .modifier(ImageDescriptionMenu(description: attachment.imageDescription))
@@ -2530,7 +2545,7 @@ struct UserDocumentAttachmentChip: View {
         .accessibilityLabel(loading
             ? AppLocalization.string("Loading \(AttachmentTypePolicy.displayName(for: attachment))…")
             : failed
-            ? AppLocalization.string("\(AttachmentTypePolicy.displayName(for: attachment)) unavailable")
+            ? AppLocalization.string("\(AttachmentTypePolicy.displayName(for: attachment)) unavailable", table: .chat)
             : AttachmentTypePolicy.displayName(for: attachment))
         .scaledFont(.caption.weight(.medium))
         .foregroundStyle(onAccent ? Color.white : Color.primary)
@@ -2746,7 +2761,7 @@ struct AssistantMessageMoreMenu: View {
             Button {
                 appState.replyInComposer(to: message)
             } label: {
-                Label(AppLocalization.string("Quote"), systemImage: "quote.bubble")
+                Label(AppLocalization.string("Quote", table: .chat), systemImage: "quote.bubble")
             }
             .disabled(!rowState.canQuoteIntoComposer || !hasText)
 
@@ -2754,7 +2769,7 @@ struct AssistantMessageMoreMenu: View {
                 Haptics.medium()
                 Task { await appState.branchFromAssistantMessage(message.id) }
             } label: {
-                Label(AppLocalization.string("Branch"), systemImage: "arrow.triangle.branch")
+                Label(AppLocalization.string("Branch", table: .chat), systemImage: "arrow.triangle.branch")
             }
             .disabled(rowState.isBusy || rowState.isBranchingChat || rowState.isOffline)
 
@@ -2805,7 +2820,7 @@ struct AssistantMessageMoreMenu: View {
         .accessibilityIdentifier("chat.replyMoreMenu")
         // Steps run again: a file written, a message sent, twice.
         .confirmationDialog(
-            AppLocalization.string("Retry this reply?"),
+            AppLocalization.string("Retry this reply?", table: .chat),
             isPresented: $confirmsRetry,
             titleVisibility: .visible
         ) {
@@ -2813,7 +2828,7 @@ struct AssistantMessageMoreMenu: View {
                 retry()
             }
         } message: {
-            Text(AppLocalization.string("Steps ran for this reply, and retrying runs them again."))
+            Text(AppLocalization.string("Steps ran for this reply, and retrying runs them again.", table: .chat))
         }
     }
 
@@ -3131,7 +3146,7 @@ private struct ReviewSummaryCard: View {
             }
             .buttonStyle(.plain)
             .disabled(details.isEmpty)
-            .accessibilityLabel(details.isEmpty ? summary : (expanded ? AppLocalization.string("Collapse review details") : AppLocalization.string("Expand review details")))
+            .accessibilityLabel(details.isEmpty ? summary : (expanded ? AppLocalization.string("Collapse review details", table: .chat) : AppLocalization.string("Expand review details", table: .chat)))
 
             if expanded, !details.isEmpty {
                 VStack(alignment: .leading, spacing: 12) {
@@ -3248,7 +3263,7 @@ private struct ModelChangeSummaryCard: View {
                 }
             }
             SelectableTextView(
-                text: AppLocalization.string("Model has been changed to \(provider)/\(model)"),
+                text: AppLocalization.string("Model has been changed to \(provider)/\(model)", table: .chat),
                 font: .preferredFont(forTextStyle: .subheadline, in: sizeCategory, from: columnText).withTraits(.traitBold),
                 textColor: .label
             )
@@ -3293,7 +3308,7 @@ private struct VoiceCallMarkerCard: View {
 
     private var detail: String {
         if origin { return AppLocalization.string("Open chat") }
-        return duration.map { AppLocalization.string("\($0) · Open transcript") } ?? AppLocalization.string("Open transcript")
+        return duration.map { AppLocalization.string("\($0) · Open transcript", table: .chat) } ?? AppLocalization.string("Open transcript", table: .chat)
     }
 
     private var started: String? {
@@ -3358,7 +3373,7 @@ private struct VoiceCallMarkerCard: View {
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text(spokenLabel))
         .accessibilityAddTraits(.isButton)
-        .accessibilityHint(Text(origin ? AppLocalization.string("Opens the chat this call was started from") : AppLocalization.string("Opens the call's transcript")))
+        .accessibilityHint(Text(origin ? AppLocalization.string("Opens the chat this call was started from", table: .chat) : AppLocalization.string("Opens the call's transcript", table: .chat)))
     }
 }
 
@@ -3464,12 +3479,12 @@ struct ThinkingCard: View {
     }
 }
 
-private enum MessageTimestampTone {
+enum MessageTimestampTone {
     case subtle
     case supporting
 }
 
-private struct MessageTimestampLabel: View {
+struct MessageTimestampLabel: View {
     let timestamp: String
     var tone: MessageTimestampTone = .subtle
 
@@ -3479,7 +3494,7 @@ private struct MessageTimestampLabel: View {
                 .scaledFont(.caption2.weight(.medium))
                 .foregroundStyle(tone == .supporting ? Color.conduitAccent.opacity(0.78) : Color.conduitAccent.opacity(0.70))
                 .monospacedDigit()
-                .accessibilityLabel(AppLocalization.string("Sent \(label)"))
+                .accessibilityLabel(AppLocalization.string("Sent \(label)", table: .chat))
         }
     }
 }
@@ -3650,8 +3665,8 @@ private struct SettledToolCardContent: View, Equatable {
         guard let delivery else { return running ? label.runningTitle : label.doneTitle }
         let name = teammateName(delivery.target)
         return running
-            ? AppLocalization.string("Messaging \(name)…")
-            : AppLocalization.string("Messaged \(name)")
+            ? AppLocalization.string("Messaging \(name)…", table: .chat)
+            : AppLocalization.string("Messaged \(name)", table: .chat)
     }
 
     /// The readable part of a finished call's result, if Conduit has one.
@@ -3846,7 +3861,7 @@ struct ToolCard: View {
     static func truncateForDisplay(_ text: String, maxLines: Int) -> String {
         let lines = text.components(separatedBy: "\n")
         guard lines.count > maxLines else { return text }
-        return lines.prefix(maxLines).joined(separator: "\n") + AppLocalization.string("\n… (\(lines.count - maxLines) more lines)")
+        return lines.prefix(maxLines).joined(separator: "\n") + AppLocalization.string("\n… (\(lines.count - maxLines) more lines)", table: .chat)
     }
 }
 
@@ -3897,7 +3912,7 @@ enum ClarifyCardLayout {
         case .singleQuestion:
             return activity.questions.first?.question ?? ""
         case .batch:
-            return AppLocalization.string("Hermes asked \(activity.questions.count) questions before it can continue")
+            return AppLocalization.string("Hermes asked \(activity.questions.count) questions before it can continue", table: .chat)
         }
     }
 
@@ -4088,11 +4103,11 @@ struct ClarifyCard: View {
 
     private func statusTitle(for status: ClarifyActivity.Status) -> String {
         switch status {
-        case .pending: return AppLocalization.string("NEEDS YOUR INPUT")
-        case .submitting: return AppLocalization.string("SENDING ANSWER")
-        case .answered: return AppLocalization.string("ANSWERED")
+        case .pending: return AppLocalization.string("NEEDS YOUR INPUT", table: .chat)
+        case .submitting: return AppLocalization.string("SENDING ANSWER", table: .chat)
+        case .answered: return AppLocalization.string("ANSWERED", table: .chat)
         case .error: return AppLocalization.string("TRY AGAIN")
-        case .expired: return AppLocalization.string("EXPIRED")
+        case .expired: return AppLocalization.string("EXPIRED", table: .chat)
         }
     }
 
@@ -4269,9 +4284,9 @@ struct ClarifyQuestionRow: View {
                     typeOwnAnswer()
                 } label: {
                     if typesOwnAnswer.wrappedValue {
-                        Label(AppLocalization.string("Something else…"), systemImage: "checkmark")
+                        Label(AppLocalization.string("Something else…", table: .chat), systemImage: "checkmark")
                     } else {
-                        Text(AppLocalization.string("Something else…"))
+                        Text(AppLocalization.string("Something else…", table: .chat))
                     }
                 }
                 if hasFormPick {
@@ -4305,7 +4320,7 @@ struct ClarifyQuestionRow: View {
     }
 
     private var formTextField: some View {
-        TextField(AppLocalization.string("Type your answer…"), text: $customAnswer, axis: .vertical)
+        TextField(AppLocalization.string("Type your answer…", table: .chat), text: $customAnswer, axis: .vertical)
             .lineLimit(1...4)
             .disabled(!isAnswerable)
             .padding(.horizontal, 14)
@@ -4319,7 +4334,7 @@ struct ClarifyQuestionRow: View {
     private var formMenuTitle: String {
         var parts = question.choices.filter { selection.contains($0.value) }.map(\.label)
         if typesOwnAnswer.wrappedValue {
-            parts.append(AppLocalization.string("Something else…"))
+            parts.append(AppLocalization.string("Something else…", table: .chat))
         }
         return parts.isEmpty ? AppLocalization.string("Choose") : parts.joined(separator: ", ")
     }
@@ -4378,7 +4393,7 @@ struct ClarifyQuestionRow: View {
 
         HStack(spacing: 8) {
             TextField(
-                question.choices.isEmpty ? AppLocalization.string("Type your answer…") : AppLocalization.string("Something else…"),
+                question.choices.isEmpty ? AppLocalization.string("Type your answer…", table: .chat) : AppLocalization.string("Something else…", table: .chat),
                 text: $customAnswer,
                 axis: .vertical
             )
@@ -4396,7 +4411,7 @@ struct ClarifyQuestionRow: View {
                     .frame(width: 36, height: 36)
             }
             .buttonStyle(.plain)
-            .accessibilityLabel(AppLocalization.string("Send answer"))
+            .accessibilityLabel(AppLocalization.string("Send answer", table: .chat))
             .foregroundStyle(.white)
             .background(Color.orange, in: Circle())
             .disabled(!canSubmitCustomAnswer)
@@ -4474,7 +4489,7 @@ struct ClarifyQuestionRow: View {
                         .frame(width: 36, height: 36)
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(AppLocalization.string("Send answer"))
+                .accessibilityLabel(AppLocalization.string("Send answer", table: .chat))
                 .foregroundStyle(.white)
                 .background(Color.orange, in: Circle())
                 .disabled(!canSubmitCustomAnswer)
@@ -4486,7 +4501,7 @@ struct ClarifyQuestionRow: View {
     }
 
     private var confirmTitle: String {
-        selection.isEmpty ? AppLocalization.string("Select to confirm") : AppLocalization.string("Confirm \(selection.count) selected")
+        selection.isEmpty ? AppLocalization.string("Select to confirm", table: .chat) : AppLocalization.string("Confirm \(selection.count) selected", table: .chat)
     }
 
     private var isAnswerable: Bool {
@@ -4750,10 +4765,10 @@ struct ApprovalCard: View {
 
     private func decisionTitle(_ choice: String) -> String {
         switch choice {
-        case "once": return AppLocalization.string("Approved once")
-        case "session": return AppLocalization.string("Approved for this session")
-        case "always": return AppLocalization.string("Always allowed")
-        case "deny": return AppLocalization.string("Rejected")
+        case "once": return AppLocalization.string("Approved once", table: .chat)
+        case "session": return AppLocalization.string("Approved for this session", table: .chat)
+        case "always": return AppLocalization.string("Always allowed", table: .chat)
+        case "deny": return AppLocalization.string("Rejected", table: .chat)
         default: return choice
         }
     }
@@ -4762,9 +4777,9 @@ struct ApprovalCard: View {
         switch status {
         case .pending: return AppLocalization.string("APPROVAL NEEDED")
         case .submitting: return AppLocalization.string("SENDING DECISION")
-        case .approved: return AppLocalization.string("APPROVED")
-        case .rejected: return AppLocalization.string("REJECTED")
-        case .expired: return AppLocalization.string("EXPIRED")
+        case .approved: return AppLocalization.string("APPROVED", table: .chat)
+        case .rejected: return AppLocalization.string("REJECTED", table: .chat)
+        case .expired: return AppLocalization.string("EXPIRED", table: .chat)
         case .error: return AppLocalization.string("TRY AGAIN")
         }
     }
@@ -4910,9 +4925,9 @@ struct InputPromptCard: View {
             // No .username / .password content types: once the card
             // settles, iOS would offer to save the site's login to the
             // keychain under Conduit's own domain.
-            TextField(AppLocalization.string("Email or username"), text: $identifier)
+            TextField(AppLocalization.string("Email or username", table: .chat), text: $identifier)
                 .privacySensitive()
-                .accessibilityHint(AppLocalization.string("Save & sign in gives Hermes this login for the site. The model never sees the password."))
+                .accessibilityHint(AppLocalization.string("Save & sign in gives Hermes this login for the site. The model never sees the password.", table: .chat))
                 .keyboardType(.emailAddress)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
@@ -4921,7 +4936,7 @@ struct InputPromptCard: View {
                 .inputPromptField()
                 .disabled(!prompt.isAnswerable)
             SecureField(placeholder(for: prompt.kind), text: $value)
-                .accessibilityHint(AppLocalization.string("Save & sign in gives Hermes this login for the site. The model never sees the password."))
+                .accessibilityHint(AppLocalization.string("Save & sign in gives Hermes this login for the site. The model never sees the password.", table: .chat))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .focused($fieldFocused)
@@ -4935,7 +4950,7 @@ struct InputPromptCard: View {
             // code a text message or email just brought; letters come first
             // because an email's code can have them.
             TextField(placeholder(for: prompt.kind), text: $value)
-                .accessibilityHint(AppLocalization.string("Enter code has Hermes type it into the page. The model never sees it."))
+                .accessibilityHint(AppLocalization.string("Enter code has Hermes type it into the page. The model never sees it.", table: .chat))
                 .privacySensitive()
                 .textContentType(.oneTimeCode)
                 .keyboardType(.asciiCapable)
@@ -4951,7 +4966,7 @@ struct InputPromptCard: View {
             // a sudo or password-manager master password to the
             // system keychain.
             SecureField(placeholder(for: prompt.kind), text: $value)
-                .accessibilityHint(AppLocalization.string("Send gives Hermes this value. Skip lets it continue without one."))
+                .accessibilityHint(AppLocalization.string("Send gives Hermes this value. Skip lets it continue without one.", table: .chat))
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .focused($fieldFocused)
@@ -5011,9 +5026,9 @@ struct InputPromptCard: View {
     private func explanation(for prompt: InputPromptActivity) -> String? {
         switch prompt.kind {
         case .vaultSaveLogin:
-            return AppLocalization.string("Hermes reached this sign-in page and has no login for it. It's saved encrypted where Hermes runs and filled into the page; the model never sees the password.")
+            return AppLocalization.string("Hermes reached this sign-in page and has no login for it. It's saved encrypted where Hermes runs and filled into the page; the model never sees the password.", table: .chat)
         case .vaultCode:
-            return AppLocalization.string("The site is asking for a one-time code from a text message, email or authenticator app. Hermes types it into the page; the model never sees it.")
+            return AppLocalization.string("The site is asking for a one-time code from a text message, email or authenticator app. Hermes types it into the page; the model never sees it.", table: .chat)
         case .sudo, .secret, .vaultUnlock:
             return nil
         }
@@ -5031,8 +5046,8 @@ struct InputPromptCard: View {
 
     private func placeholder(for kind: InputPromptActivity.Kind) -> String {
         switch kind {
-        case .sudo: return AppLocalization.string("sudo password")
-        case .secret: return AppLocalization.string("Secret value")
+        case .sudo: return AppLocalization.string("sudo password", table: .chat)
+        case .secret: return AppLocalization.string("Secret value", table: .chat)
         case .vaultUnlock: return AppLocalization.string("Master password")
         case .vaultSaveLogin: return AppLocalization.string("Password")
         // Not "Code": some languages read that key as program code.
@@ -5042,26 +5057,26 @@ struct InputPromptCard: View {
 
     private func sendTitle(for kind: InputPromptActivity.Kind) -> String {
         switch kind {
-        case .vaultSaveLogin: return AppLocalization.string("Save & sign in")
-        case .vaultCode: return AppLocalization.string("Enter code")
+        case .vaultSaveLogin: return AppLocalization.string("Save & sign in", table: .chat)
+        case .vaultCode: return AppLocalization.string("Enter code", table: .chat)
         case .sudo, .secret, .vaultUnlock: return AppLocalization.string("Send")
         }
     }
 
     private func skipTitle(for kind: InputPromptActivity.Kind) -> String {
         switch kind {
-        case .vaultSaveLogin: return AppLocalization.string("Don't save")
+        case .vaultSaveLogin: return AppLocalization.string("Don't save", table: .chat)
         case .sudo, .secret, .vaultUnlock, .vaultCode: return AppLocalization.string("Skip")
         }
     }
 
     private func statusTitle(for status: InputPromptActivity.Status) -> String {
         switch status {
-        case .pending: return AppLocalization.string("INPUT NEEDED")
+        case .pending: return AppLocalization.string("INPUT NEEDED", table: .chat)
         case .submitting: return AppLocalization.string("SENDING")
-        case .submitted: return AppLocalization.string("SENT")
-        case .skipped: return AppLocalization.string("SKIPPED")
-        case .expired: return AppLocalization.string("EXPIRED")
+        case .submitted: return AppLocalization.string("SENT", table: .chat)
+        case .skipped: return AppLocalization.string("SKIPPED", table: .chat)
+        case .expired: return AppLocalization.string("EXPIRED", table: .chat)
         case .error: return AppLocalization.string("TRY AGAIN")
         }
     }
@@ -5149,7 +5164,7 @@ struct StreamingBubble: View {
                     .scaledFont(.caption.weight(.semibold))
                     .foregroundStyle(.secondary)
 
-                Text(active ? AppLocalization.string("Responding") : AppLocalization.string("Finishing"))
+                Text(active ? AppLocalization.string("Responding", table: .chat) : AppLocalization.string("Finishing", table: .chat))
                     .scaledFont(.caption2.weight(.medium))
                     .foregroundStyle(.secondary)
 

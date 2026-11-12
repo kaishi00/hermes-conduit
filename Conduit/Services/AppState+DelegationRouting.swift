@@ -20,8 +20,8 @@ enum DelegationRoutingError: Error, Equatable, LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .notConnected: AppLocalization.string("Connect to Hermes to change how subagents are routed.")
-        case .unsupported: AppLocalization.string("This Hermes can't route subagents yet. Update Hermes to use routes.")
+        case .notConnected: AppLocalization.string("Connect to Hermes to change how subagents are routed.", table: .bots)
+        case .unsupported: AppLocalization.string("This Hermes can't route subagents yet. Update Hermes to use routes.", table: .bots)
         }
     }
 }
