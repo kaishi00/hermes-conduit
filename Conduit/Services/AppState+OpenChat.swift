@@ -1384,6 +1384,7 @@ extension AppState {
         activeNotificationOpenAttemptID = notificationAttemptID
         isOpeningNotificationSession = true
         let transitionGeneration = beginExplicitChatViewportTransition()
+        noteNotificationRouteAttempt(for: target, transition: transitionGeneration)
         defer {
             // Ends with no transcript of its own laid out (a profile switch
             // it lent the transition to marks a replacement but replaces no
@@ -1763,10 +1764,23 @@ extension AppState {
     struct NotificationRouteErrorSnapshot {
         let chatError: String?
         let errorBehindRoom: String?
+        var roomWasShowing = false
     }
 
     func notificationRouteErrorSnapshot() -> NotificationRouteErrorSnapshot {
-        NotificationRouteErrorSnapshot(chatError: errorMessage, errorBehindRoom: chatErrorBehindRoom)
+        NotificationRouteErrorSnapshot(
+            chatError: errorMessage,
+            errorBehindRoom: chatErrorBehindRoom,
+            roomWasShowing: activeRoomSurface != nil
+        )
+    }
+
+    /// A failure held for a route's end: the tap's route that said it, and
+    /// the viewport transition of that route's latest attempt.
+    struct NotificationRouteFailure {
+        let target: ConduitNotificationTarget
+        let message: String
+        var transition: UInt64
     }
 
     /// Another attempt is due: keep this attempt's words for the window's
@@ -1778,11 +1792,31 @@ extension AppState {
         for target: ConduitNotificationTarget,
         restoring before: NotificationRouteErrorSnapshot
     ) {
-        let earlier = activeRoomSurface == nil ? before.chatError : before.errorBehindRoom
+        // A room still showing kept the chat's line behind it. One the open
+        // closed took both lines with it (`closeRoomSurface`), so the chat
+        // now showing had said nothing: the room's banner isn't its to wear.
+        let earlier: String?
+        if activeRoomSurface != nil {
+            earlier = before.errorBehindRoom
+        } else {
+            earlier = before.roomWasShowing ? nil : before.chatError
+        }
         if let failure = chatSyncErrorMessage, failure != earlier {
-            notificationRouteFailure = (target, failure)
+            notificationRouteFailure = NotificationRouteFailure(
+                target: target,
+                message: failure,
+                transition: chatViewportTransitionGeneration
+            )
         }
         chatSyncErrorMessage = earlier
+    }
+
+    /// A route's attempt for `target` began transition `generation`: the
+    /// failure an earlier attempt held now belongs to this one's screen, so
+    /// a chat opened over it later makes it no longer this route's to say.
+    func noteNotificationRouteAttempt(for target: ConduitNotificationTarget, transition generation: UInt64) {
+        guard notificationRouteFailure?.target == target else { return }
+        notificationRouteFailure?.transition = generation
     }
 
     /// The stable decision key a push-delivered card was recorded under
@@ -1920,7 +1954,7 @@ extension AppState {
         }
     }
 
-    private func notificationOpenAttemptIsCurrent(
+    func notificationOpenAttemptIsCurrent(
         id: UUID,
         transitionGeneration: UInt64
     ) -> Bool {
@@ -1943,9 +1977,13 @@ extension AppState {
     /// The route has no attempt left: say why the last one failed, if it had
     /// anything to say. A retry that opened the chat cleared it already, and
     /// a failure another tap's route left behind is not this route's to say.
+    /// A chat the user opened since the route's latest attempt (a newer
+    /// viewport transition) is not the route's: the words would read as
+    /// that chat's failure, so they go unsaid.
     func publishNotificationRouteFailure(for target: ConduitNotificationTarget) {
         guard let failure = notificationRouteFailure, failure.target == target else { return }
         notificationRouteFailure = nil
+        guard chatViewportTransitionIsCurrent(generation: failure.transition) else { return }
         chatSyncErrorMessage = failure.message
     }
 
