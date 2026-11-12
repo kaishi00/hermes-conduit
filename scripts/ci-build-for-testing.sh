@@ -38,7 +38,7 @@ if [ -n "${BUILD_DESTINATION:-}" ]; then
   DESTINATION="$BUILD_DESTINATION"
   echo "build-for-testing: destination $DESTINATION"
 else
-  SIMULATOR_NAME="${SIMULATOR_NAME:-iPhone 17 Pro}"
+  SIMULATOR_NAME="${SIMULATOR_NAME:-iPhone 18 Pro}"
   build_destination
 
   # Destination readiness gate: absorb the fresh-runner CoreSimulator

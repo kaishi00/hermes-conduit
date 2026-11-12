@@ -64,9 +64,10 @@ permissions:
 
 env:
   # Known simulator, used directly as the xcodebuild destination - no
-  # 'simctl list' enumeration on the happy path. macos-26 images ship the
-  # iPhone 17 family; override here if an image refresh renames devices.
-  SIMULATOR_NAME: "iPhone 17 Pro"
+  # 'simctl list' enumeration on the happy path. The xcode-27 image ships the
+  # iPhone 18 family (iPhone 17 Pro is gone); override here if an image
+  # refresh renames devices.
+  SIMULATOR_NAME: "iPhone 18 Pro"
   # Workspace-anchored DerivedData: GITHUB_WORKSPACE is byte-identical across
   # GitHub-hosted runners for this repo (/Users/runner/work/<repo>/<repo>),
   # so absolute paths inside the .xctestrun are stable from run to run - no
@@ -362,7 +363,7 @@ jobs:
     name: Smoke
     needs: plan
     if: needs.plan.outputs.smoke != 'false'
-    runs-on: macos-26
+    runs-on: xcode-27
     # 75: the UI smoke job alone needed 45 (a stalled first attempt plus the
     # one targeted retry ran past 30 minutes, which GitHub reports as
     # "cancelled" instead of a failure), and the unit smoke invocation now
@@ -372,7 +373,7 @@ jobs:
       - uses: actions/checkout@v7
 
       - name: Select Xcode
-        run: sudo xcode-select -s /Applications/Xcode.app
+        run: sudo bash scripts/ci-select-xcode.sh
 
       - name: Pick the build cache
         # DerivedData from the newest build of the same project and Xcode
@@ -421,7 +422,9 @@ jobs:
         # SIMULATOR_UDID for the steps below.
         env:
           # 1200 like the nightly: 800-900 s builds were common (2026-10-13).
-          BUILD_TIMEOUT_SECS: 1200
+          # A clean build (no cache from this Xcode yet, as after an Xcode
+          # move) gets 1800: the first Xcode 27 build outran 1200 s (#2319).
+          BUILD_TIMEOUT_SECS: ${{ steps.cache.outputs.cache-matched-key && '1200' || '1800' }}
           # Named in the build's timing notice, to explain a clean build.
           BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
         run: bash scripts/ci-hosted-build.sh

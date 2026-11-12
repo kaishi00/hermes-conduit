@@ -106,7 +106,11 @@ What gets compiled (2026-10-15, when builds had grown to 9-17 minutes):
   (`ci-normalize-mtimes.py`) and sets XCBuild's
   `IgnoreFileSystemDeviceInodeChanges`. An incremental build that fails with
   no error in a source file is retried once from scratch. A new Xcode build
-  misses the cache and builds clean. The nightly timing repeats build
+  misses the cache and builds clean, and a build that restored no cache (the
+  nightly UI shards' every build) gets 1800 s instead of 1200 s: the first
+  Xcode 27 build outran 1200 s (#2319). Every macOS job selects the newest
+  released Xcode on its image (`ci-select-xcode.sh`), not the image's default
+  `Xcode.app`, which can lag it (27.1 beside 27.2 and its iOS 27.2 runtime). The nightly timing repeats build
   `project-tests.yml` too and restore the slim cache without saving it
   (since 2026-11-11: their clean full builds ran 1162-1590 s beside the unit
   shards and outran the 1200 s budget on 11-09 and 11-11). A night with a
@@ -275,7 +279,7 @@ nightly-only families, on the slim build and cache) and `ui` (one job per UI sha
 |---|---|---|
 | `plan` | ubuntu | Only what `smoke` needs to start: the **smoke selection** (`plan-tests.py smoke`: `unit-csv`, `ui-csv`) and whether the PR needs the smoke job at all (`smoke`, below). About 20 seconds, so the macOS job starts almost at once. |
 | `self-test` (`Validate & self-test`) | ubuntu | Inventory/planner validation (`plan-tests.py validate`), localization coverage, the recommended plugin version, the feature map's paths and entry shape and, on a PR, that each entry it adds or edits names the PR on its Checked line (`check-feature-map.py`, given the base's map from `HEAD^1` and, on a PR into `linked-rooms` that merges main, main's maps where the PR and its base meet main, so the entries a merge of main brings in keep main's Checked lines (if GitHub can't say whether the PR merges main or give those maps, it warns and checks without them, so those entries fail as the PR's edits until a re-run); its notifier/ paths are looked up on the plugin's main, so a file removed there turns every PR red until the map follows, and a GitHub outage during that lookup only warns), the **nightly partition** check (`plan-tests.py hosted`) and the CI-tooling regression suites (planner tests, destination lookup, gate/contract tests, the bash wrapper tests included), concurrent with `smoke`. |
-| `smoke` (`Smoke`) | macos-26 | The only macOS job: restores main's build cache (on a PR into `linked-rooms`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no retry) and, on a push, the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main` or `linked-rooms`. |
+| `smoke` (`Smoke`) | xcode-27 | The only macOS job: restores main's build cache (on a PR into `linked-rooms`, that branch's when it has one), builds the app and every test target once while the simulator boots (the compile gate), then runs the pinned unit tests (one invocation, no retry) and, on a push, the pinned UI tests (one invocation, one targeted retry) on that build. Saves the full build cache on pushes to `main` or `linked-rooms`. |
 | `ci-gate` | ubuntu | The single stable branch-protection verdict (`CI Gate`), aggregating `plan`, `smoke` and `self-test` via `scripts/ci-gate.py`. |
 
 The self-test job's timeout layering holds: each synthetic hang in the suites
