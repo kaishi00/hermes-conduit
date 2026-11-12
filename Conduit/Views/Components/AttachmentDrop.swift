@@ -266,13 +266,13 @@ extension View {
 /// host path: dropped on a chat, the composer puts the path in the draft
 /// for the user to send (the file stays on the host, where Hermes reads
 /// it; nothing is uploaded or zipped); dropped on a folder in the tree, it
-/// moves there. Other apps and text fields get the same path as text.
+/// moves there. Other apps and text fields get the bare path as text.
 enum WorkspaceDrag {
     /// Conduit's own type, seen only inside the app.
     static let typeIdentifier = "app.conduit.workspace-entry"
 
     static func provider(for entry: WorkspaceEntry) -> NSItemProvider {
-        let provider = NSItemProvider(object: reference(to: [entry.path]) as NSString)
+        let provider = NSItemProvider(object: entry.path as NSString)
         let data = Data(entry.path.utf8)
         provider.registerDataRepresentation(forTypeIdentifier: typeIdentifier, visibility: .ownProcess) { done in
             done(data, nil)

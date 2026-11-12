@@ -68,6 +68,29 @@ extension AppState {
         return trimmed
     }
 
+    /// Whether `path` is `folder` or inside it. A Windows host's paths
+    /// may use backslashes; a POSIX path only slashes.
+    static func workspacePath(_ path: String, isIn folder: String) -> Bool {
+        let base = normalizedWorkspacePath(folder)
+        if path == base { return true }
+        let posix = base.hasPrefix("/") || base.hasPrefix("~")
+        return (posix ? ["/"] : ["/", "\\"]).contains { separator in
+            path.hasPrefix(base.hasSuffix(separator) ? base : base + separator)
+        }
+    }
+
+    /// `path`'s last part, split as `workspacePath(_:isIn:)` splits.
+    static func workspaceName(_ path: String) -> String {
+        // A POSIX name may end in a backslash: only slashes are trimmed there.
+        let posix = path.hasPrefix("/") || path.hasPrefix("~")
+        var normalized = path
+        while normalized.count > 1, normalized.hasSuffix("/") || (!posix && normalized.hasSuffix("\\")) {
+            normalized.removeLast()
+        }
+        guard let cut = normalized.lastIndex(where: { $0 == "/" || (!posix && $0 == "\\") }) else { return normalized }
+        return String(normalized[normalized.index(after: cut)...])
+    }
+
     /// The folder holding `path`, or nil at the top of the disk: what the
     /// project folder picker's Enclosing Folder opens (issue 1661). Hermes
     /// gives a Windows host's paths with backslashes.

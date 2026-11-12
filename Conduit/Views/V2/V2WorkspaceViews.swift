@@ -621,7 +621,7 @@ struct WorkspaceFolderView: View {
     private func moveDropped(_ path: String, into folder: String) {
         guard explorer.canChange, explorer.contains(path),
               WorkspaceExplorer.canMove(path, into: folder) else { return }
-        let name = (path as NSString).lastPathComponent
+        let name = AppState.workspaceName(path)
         Haptics.selection()
         Task { await perform { client, root in try await client.move(root: root, path: path, to: folder, name: name) } }
     }
@@ -826,8 +826,9 @@ struct WorkspaceFolderView: View {
         guard let root = root?.path else { return path }
         let base = AppState.normalizedWorkspacePath(root)
         guard Self.path(path, isIn: base) else { return path }
-        let rest = path.dropFirst(base.count).drop { $0 == "/" }
-        return rest.isEmpty ? (base as NSString).lastPathComponent : String(rest)
+        let posix = base.hasPrefix("/") || base.hasPrefix("~")
+        let rest = path.dropFirst(base.count).drop { $0 == "/" || (!posix && $0 == "\\") }
+        return rest.isEmpty ? AppState.workspaceName(base) : String(rest)
     }
 
     // MARK: - Opening
@@ -981,8 +982,7 @@ struct WorkspaceFolderView: View {
     // MARK: - Changing
 
     static func path(_ path: String, isIn folder: String) -> Bool {
-        let base = AppState.normalizedWorkspacePath(folder)
-        return path == base || path.hasPrefix(base.hasSuffix("/") ? base : base + "/")
+        AppState.workspacePath(path, isIn: folder)
     }
 
     private func ask(_ kind: NamePrompt.Kind, in folder: String) {
