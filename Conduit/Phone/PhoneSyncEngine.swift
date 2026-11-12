@@ -394,6 +394,8 @@ final class PhoneSyncEngine: ObservableObject {
             }
         }
         prompts = []
+        // A Pulse tap from before doesn't carry over to sharing turned on again.
+        approvedOnCard = [:]
         autoAdded = nil
         keys.clear()
         guard readStateIfNeeded() else { return false }

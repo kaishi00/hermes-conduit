@@ -676,6 +676,15 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = await exchange.value
         XCTAssertEqual(source.applied, ["ch_auto"])
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_wait"])
+
+        // Sharing turned off and on again: a tap from before applies nothing.
+        await engine.approveFromCard("ch_after", kind: .addReminder)
+        _ = await engine.turnOff(deleteFromHost: nil)
+        engine.savePreferences(preferences)
+        host.changes = [["id": "ch_after", "kind": "add_reminder", "auto": false, "fields": ["title": "Call Sam"]]]
+        _ = await engine.sync(deadline: .distantFuture, request: host.handle)
+        XCTAssertEqual(source.applied, ["ch_auto"])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_after"])
     }
 
     func testPhoneVoiceCallsReadAnswerAndAdd() async throws {
