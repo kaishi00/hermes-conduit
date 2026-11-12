@@ -399,6 +399,13 @@ struct PulseProposal: Equatable {
 
     var isEvent: Bool { kind == "add_event" }
 
+    /// The phone change Add (or Undo) asks for, as the card shows it: the
+    /// phone applies only a change of this kind without its own card.
+    func phoneChangeKind(undo: Bool) -> PhoneChange.Kind {
+        if undo { return isEvent ? .deleteEvent : .deleteReminder }
+        return isEvent ? .addEvent : .addReminder
+    }
+
     /// Still to settle: waiting for Add, or on its way to the phone.
     var isOpen: Bool { state == .waiting || state == .adding }
 

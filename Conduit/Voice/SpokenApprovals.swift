@@ -27,6 +27,14 @@ enum SpokenApprovalTarget: Equatable {
 
 @MainActor
 enum SpokenApprovals {
+    /// A phone change only its card answers, never a spoken yes or no: a
+    /// photo goes once the user sees it there, and a shortcut runs from its
+    /// card's Run, where its input shows. Such a card still counts as
+    /// waiting, so a yes with it waiting answers nothing else.
+    static func answeredOnlyOnCard(_ kind: PhoneChange.Kind) -> Bool {
+        kind == .sendPhoto || kind == .runShortcut
+    }
+
     /// What waits on the user while they speak.
     struct Waiting {
         var phoneChanges: [String] = []

@@ -1884,7 +1884,7 @@ struct V2PulsePage: View {
                     AccessibilityNotification.Announcement(answer.stateText).post()
                     return
                 }
-                let outcome = await appState.applyPulseApproval(change)
+                let outcome = await appState.applyPulseApproval(change, kind: proposal.phoneChangeKind(undo: undo))
                 guard appState.activeDashboardID == dashboard else { return }
                 await load()
                 guard appState.activeDashboardID == dashboard,
