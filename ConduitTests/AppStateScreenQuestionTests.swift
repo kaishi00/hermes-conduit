@@ -1501,7 +1501,7 @@ final class AppStateScreenQuestionTests: XCTestCase {
         // opens, and the photo already waiting stays.
         supervisor.attachLiveThread(VoiceThreadTarget(runtimeSessionID: "other-chat", storedSessionID: nil, title: "Other"))
         let moved = await appState.addVoicePhoto(image, for: target)
-        XCTAssertNotNil(moved)
+        XCTAssertEqual(moved, AppLocalization.string("The conversation changed while the photo saved, so it wasn't added. Try again."))
         XCTAssertEqual(appState.activeSessionId, "composer-origin")
         XCTAssertEqual(appState.pendingScreenshot(forSession: "composer-origin")?.uri, photo.uri)
     }
