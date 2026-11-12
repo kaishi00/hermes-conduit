@@ -1990,3 +1990,101 @@ extension AppState {
         }
     }
 }
+
+extension AppState {
+    // MARK: - Voice background jobs
+
+    /// Whether a chat was started as a Voice background job (session-list
+    /// badge). Matches every id the session answers to.
+    func isVoiceJobSession(_ session: SessionSummary) -> Bool {
+        guard let remembered = voiceJobSessionIDsByProfile[activeProfile], !remembered.isEmpty else { return false }
+        let ids = Set(session.nestingIDs)
+        return remembered.contains { ids.contains($0) }
+    }
+
+    func rememberVoiceJobSessions(_ sessionIDs: [String], profile: String? = nil) {
+        let fresh = sessionIDs.filter { !$0.isEmpty }
+        guard !fresh.isEmpty else { return }
+        let profile = profile ?? activeProfile
+        var remembered = voiceJobSessionIDsByProfile[profile] ?? []
+        remembered.removeAll { fresh.contains($0) }
+        remembered.append(contentsOf: fresh)
+        if remembered.count > Self.maximumRememberedVoiceJobSessions {
+            remembered.removeFirst(remembered.count - Self.maximumRememberedVoiceJobSessions)
+        }
+        voiceJobSessionIDsByProfile[profile] = remembered
+        persistVoiceJobSessions()
+    }
+
+    /// Resolves a profile or bot name spoken for a voice job against the
+    /// server's profiles and the bot roster (profile name, bot title or
+    /// display name, case-insensitive).
+    func voiceJobProfileTarget(named spokenName: String) -> VoiceJobProfileTarget {
+        let name = spokenName.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !name.isEmpty else { return .unknown }
+        var match: String?
+        if let profile = profiles.first(where: { profilesMatch($0, name) }) {
+            match = profile
+        } else if profilesMatch(name, defaultProfileName) {
+            match = "default"
+        } else if let profile = profiles.first(where: { profilesMatch(profileDisplayName($0), name) }) {
+            // The name Conduit shows, a device-kept one included.
+            match = profile
+        } else if let bot = shownBotRoster.first(where: { bot in
+            profilesMatch(bot.displayLabel, name) || profilesMatch(bot.name, name)
+                || bot.previousNames.contains { profilesMatch($0, name) }
+        }) {
+            match = bot.name
+        }
+        guard let match else { return .unknown }
+        return profilesMatch(match, activeProfile) ? .active : .other(match)
+    }
+
+    /// The names a Watch call's job may give the user's profiles, in the
+    /// order `voiceJobProfileTarget` tries them: the Watch resolves "for
+    /// Fam, …" from these as this phone would. `callProfile` is the
+    /// profile the call is on (the active one when nil). Kept within
+    /// `watchJobProfileNamesBytes`, as it rides in every grant: a spoken
+    /// profile left out goes through the iPhone, which knows them all,
+    /// while a leading "for <name>," for one stays part of the task.
+    func watchJobProfileNames(callProfile: String? = nil) -> [WatchVoiceWire.JobProfileName] {
+        let own = callProfile ?? activeProfile
+        func entry(_ profile: String, _ names: [String]) -> WatchVoiceWire.JobProfileName {
+            .init(
+                profile: profilesMatch(profile, own) ? nil : profile,
+                names: names.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+            )
+        }
+        let entries = profiles.map { entry($0, [$0]) }
+            + [entry("default", [defaultProfileName])]
+            + profiles.map { entry($0, [profileDisplayName($0)]) }
+            + shownBotRoster.map { entry($0.name, [$0.displayLabel, $0.name] + $0.previousNames) }
+        var result: [WatchVoiceWire.JobProfileName] = []
+        var bytes = 0
+        for entry in entries where !entry.names.isEmpty {
+            let cost = (entry.profile?.utf8.count ?? 0) + entry.names.reduce(0) { $0 + $1.utf8.count + 3 } + 24
+            // A prefix, so the Watch tries names in the phone's order.
+            guard bytes + cost <= Self.watchJobProfileNamesBytes else { break }
+            bytes += cost
+            result.append(entry)
+        }
+        return result
+    }
+
+    /// The names' share of a Watch session message, well inside what
+    /// WatchConnectivity carries.
+    static let watchJobProfileNamesBytes = 8_000
+
+    /// Stops following Voice background jobs at a server, profile, or
+    /// sign-out boundary. The jobs keep running on the server as chats.
+    func retireVoiceBackgroundJobs() {
+        // A Watch call to Gemini belongs to the outgoing connection too: it
+        // ends here, before its jobs' news goes back to the supervisor.
+        WatchVoiceLink.shared.direct.connectionRetiring(in: self)
+        voiceJobLedgerRestoredKey = nil  // before the reset's empty ledger
+        voiceBackgroundJobSupervisor.reset()
+        scheduleVoiceJobLedgerRestore()
+        voiceJobSessionListRefreshTask?.cancel()
+        voiceJobSessionListRefreshTask = nil
+    }
+}

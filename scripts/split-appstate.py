@@ -30,6 +30,7 @@ import argparse
 import re
 import sys
 from collections import OrderedDict
+from types import SimpleNamespace
 from pathlib import Path
 
 APP_STATE = "Conduit/Services/AppState.swift"
@@ -106,12 +107,32 @@ STEPS = [
     },
     # 6: chats, their list and what's kept on the phone
     {
-        "AppState+Session.swift": ["Session", "Session management", "New Chat"],
-        "AppState+ChatList.swift": ["Saved chat list", "Stars (#757)", "Read state (#454)"],
-        "AppState+Persistence.swift": ["Persistence", "Offline chat cache (#99)"],
+        "AppState+Session.swift": [
+            "Session", "Session management", "New Chat",
+            "Read state (#454)|from setActiveSessionState",
+        ],
+        "AppState+ChatList.swift": [
+            "Saved chat list", "Stars (#757)", "Read state (#454)|until removePinnedState",
+        ],
+        "AppState+Persistence.swift": [
+            "Persistence|until restorePinnedSessions", "Offline chat cache (#99)",
+        ],
+        "AppState+PinSync.swift": [
+            "Persistence|from restorePinnedSessions until showNotice",
+            "Persistence|from dismissPinSyncNotice until isVoiceJobSession",
+            "Read state (#454)|from removePinnedState until pendingDecisionRestorationMessages",
+        ],
+        "AppState+Notices.swift": ["Persistence|from showNotice until dismissPinSyncNotice"],
+        "AppState+Voice.swift": ["Persistence|from isVoiceJobSession"],
+        "AppState+Reconciliation.swift": [
+            "Read state (#454)|from pendingDecisionRestorationMessages until setActiveSessionState",
+        ],
         "AppState+SessionReferences.swift": [
-            "Session references (durable conversation identity)",
+            "Session references (durable conversation identity)|until cancelScheduledReconnect",
             "Secondary profile title recovery",
+        ],
+        "AppState+ChatResume.swift": [
+            "Session references (durable conversation identity)|from cancelScheduledReconnect",
         ],
         "AppState+PendingSend.swift": ["Sending while connecting: what reads private state"],
     },
@@ -667,7 +688,32 @@ def plan_access(src, file_items):
                 changes[e.decl_line] = widen(src.lines[e.decl_line], which)
                 widened.append((e, which, f"the signature of {d.names[0]}"))
                 queue.append(e)
+    # A fileprivate member of another type in AppState.swift is reached as
+    # `value.name`: widen it when moved code uses (or, for a setter, writes) it.
+    for it in src.outer_before + src.outer_after:
+        if it.dest or it.kind not in ("class", "struct", "enum", "actor"):
+            continue
+        for k in range(it.start, it.end):
+            m = OUTER_MEMBER.match(src.masked[k])
+            if not m:
+                continue
+            which, name = m.group(1), m.group(2)
+            for f, text in every.items():
+                if f == APP_STATE:
+                    continue
+                joined = "\n".join(text)
+                hit = (re.search(r"\." + re.escape(name) + r"\b(?=" + MUTATION + r")", joined)
+                       if which.endswith("(set)") else
+                       re.search(r"\." + re.escape(name) + r"\b", joined))
+                if hit:
+                    changes[k] = widen(changes.get(k, src.lines[k]), which)
+                    widened.append((SimpleNamespace(names=[name], decl_line=k), which, f))
+                    break
     return changes, widened
+
+
+OUTER_MEMBER = re.compile(r"^\s+(?:@\w+(?:\([^)]*\))?\s+)*(?:\w+\s+)*?"
+                          r"(fileprivate\(set\)|fileprivate)\s+(?:\w+\s+)*?(?:var|let|func)\s+(\w+)")
 
 
 def signature(src, d):
@@ -781,7 +827,12 @@ def render_app_state(src, moved, changes):
             for k in range(it.start, it.end):
                 line = changes.get(k, src.lines[k])
                 if "// MARK:" in line:
-                    changes[k] = line.rstrip() + f" ({', '.join(region_dests[it.region])})"
+                    # a MARK cut before keeps the files it named
+                    m = re.search(r" \(((?:AppState\+\w+\.swift(?:, )?)+)\)$", line.rstrip())
+                    files = m.group(1).split(", ") if m else []
+                    head = line.rstrip()[:m.start()] if m else line.rstrip()
+                    files += [f for f in region_dests[it.region] if f not in files]
+                    changes[k] = head + f" ({', '.join(files)})"
                     break
     outer = src.outer_before + src.outer_after
     outer_left = {it.region for it in outer if it.kind != "mark" and it.start not in skip}
@@ -820,9 +871,27 @@ def render_app_state(src, moved, changes):
 MARK_TITLES = {"AppState+OpenChat.swift": "Opening chats",
                "AppState+ProfileSettings.swift": "Profile and connection settings",
                "AppState+AppLinks.swift": "Opening app links",
+               "AppState+PinSync.swift": "Pins kept on the phone and on the host, and pinned replies",
+               "AppState+Notices.swift": "Notices over the app",
+               "AppState+Voice.swift": "Voice background jobs",
+               "AppState+Reconciliation.swift": "Keeping row ids and local notes across a reconcile",
+               "AppState+ChatResume.swift": "Resuming a chat: return surface, viewport and transport",
                "AppState+PinnedChatOrder.swift": "Pinning chats, and the saved order of chats, bots and rooms"}
 
 HEADER_NOTES = {
+    "AppState+PinSync.swift": [
+        "Pinned chats kept on the phone and on the host (SessionPinSync), and",
+        "the replies pinned in a chat. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+Notices.swift": [
+        "The notices shown over the app: a refused call, CarPlay failing, and",
+        "the general notice. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ChatResume.swift": [
+        "Resuming a chat: the surface it returns to, the viewport it restores,",
+        "and the transport continuation after a reconnect. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
     "AppState+AppLinks.swift": [
         "Opening a conduit:// link: a chat, a bot's Bot Chat or a call's",
         "transcript, on whichever profile it belongs to. Moved out of",

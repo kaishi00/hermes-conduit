@@ -3489,3 +3489,224 @@ extension AppState {
         return 0
     }
 }
+
+extension AppState {
+    // MARK: - Keeping row ids and local notes across a reconcile
+
+    func pendingDecisionRestorationMessages(for sessionID: String) -> [ChatMessage] {
+        guard let restorationGuard = restoredPendingDecisionCardsAwaitingConfirmation,
+              restorationGuard.profile == presentationProfile(for: sessionID),
+              restorationGuard.sessionID == sessionID else {
+            return []
+        }
+        guard !sessionPresentationCache.isUnconfirmedPendingDecisionExpired(
+            since: restorationGuard.restoredAt
+        ) else {
+            clearPendingDecisionRestorationGuard()
+            return []
+        }
+        return restorationGuard.messages
+    }
+
+    func clearPendingDecisionRestorationGuard() {
+        restoredPendingDecisionCardsAwaitingConfirmation = nil
+    }
+
+    /// A transcript of the same chat rebuilt from the gateway's rows, with
+    /// each message `previous` already showed under another id taking that
+    /// id back (#1648). Hermes' stored rows carry their database ids, and a
+    /// resume's rows take the same ids from their `row_id`
+    /// (MessageNormalizer), but a gateway that sends no `row_id` numbers its
+    /// resume rows by position ("0", "1-reasoning", ...): a refresh that
+    /// switched source then re-keyed every row, so the transcript drew and
+    /// measured them all again from guesses, lost the reader's place, and
+    /// took a re-keyed latest user message for a new turn. A message pairs
+    /// by its role, text and tool call when each list holds it once and
+    /// their times, where both say one, agree. The same pairing gives a
+    /// live turn's resume rows the ids of the stored rows read with them
+    /// (`keepingStoredRowIDs`), so on such a gateway only the rows Hermes
+    /// hasn't stored yet are drawn under positional ids. A row whose id
+    /// `durableIDs` holds keeps it: the delivery checks, the graft of a
+    /// refreshed page onto older history and the merge of newer stored rows
+    /// all find rows by Hermes' stored ids. An id never goes to a row while
+    /// another row of the rebuilt transcript still has it, and an optimistic
+    /// row's id is never carried.
+    static func keepingRowIDs(
+        from previous: [ChatMessage],
+        in rebuilt: [ChatMessage],
+        durableIDs: Set<String>
+    ) -> [ChatMessage] {
+        let previousIDs = Set(previous.map(\.id))
+        let rebuiltIDs = Set(rebuilt.map(\.id))
+        // Nothing re-keyed: every rebuilt row is new or already shown.
+        guard rebuilt.contains(where: { !previousIDs.contains($0.id) }),
+              previous.contains(where: { !rebuiltIDs.contains($0.id) }) else { return rebuilt }
+        struct Signature: Hashable {
+            let role: MessageRole
+            let content: String
+            let tool: String?
+        }
+        func signature(_ message: ChatMessage) -> Signature {
+            let tool = message.tool.map { tool in
+                tool.id.flatMap { $0.isEmpty ? nil : $0 } ?? tool.name
+            }
+            return Signature(role: message.role, content: message.content, tool: tool)
+        }
+        // Only a message both lists hold once pairs: a text repeated ("yes",
+        // "continue") can't tell which copy is which, above all against a
+        // stored page a few rows behind the resume, so its copies keep their
+        // own ids. Pairs keep their order: the longest run of them rising in
+        // both lists stays, so a row moved out of order doesn't pair.
+        var previousCount: [Signature: Int] = [:]
+        var previousIndex: [Signature: Int] = [:]
+        for (index, message) in previous.enumerated() {
+            let key = signature(message)
+            previousCount[key, default: 0] += 1
+            previousIndex[key] = index
+        }
+        var rebuiltCount: [Signature: Int] = [:]
+        for message in rebuilt { rebuiltCount[signature(message), default: 0] += 1 }
+        var candidates: [(rebuilt: Int, previous: Int)] = []
+        for (index, message) in rebuilt.enumerated() {
+            let key = signature(message)
+            guard rebuiltCount[key] == 1, previousCount[key] == 1,
+                  let shownIndex = previousIndex[key],
+                  MessageTimestampFormatter.sameMoment(previous[shownIndex].timestamp, message.timestamp) else { continue }
+            candidates.append((rebuilt: index, previous: shownIndex))
+        }
+        let pairs = Self.risingRun(candidates)
+        var result = rebuilt
+        for pair in pairs {
+            let shown = previous[pair.previous]
+            let message = rebuilt[pair.rebuilt]
+            // An optimistic row's id (`local-`) stays its own: the delivery
+            // and steer checks read it as a row Hermes hasn't stored yet.
+            guard message.id != shown.id,
+                  !shown.id.hasPrefix("local-"),
+                  !previousIDs.contains(message.id),
+                  !durableIDs.contains(message.id),
+                  !rebuiltIDs.contains(shown.id) else { continue }
+            var kept = message.withID(shown.id)
+            // What only the shown row knew: its stored row (reactions and
+            // rewinds address it) and a step's measured time.
+            kept.rowId = kept.rowId ?? shown.rowId
+            kept.stepDuration = kept.stepDuration ?? shown.stepDuration
+            result[pair.rebuilt] = kept
+        }
+        return result
+    }
+
+    /// A live turn's resume rows, read with Hermes' stored rows of the same
+    /// chat (`stored`): the ones Hermes has stored take those rows' ids, so
+    /// the turn's end, when the stored rows take over, doesn't re-key the
+    /// chat on a gateway whose resume rows don't name their stored rows
+    /// (`row_id`) (#1648).
+    static func keepingStoredRowIDs(
+        _ result: SessionResumeResult,
+        from stored: [ChatMessage]
+    ) -> SessionResumeResult {
+        guard !stored.isEmpty else { return result }
+        return SessionResumeResult(
+            sessionId: result.sessionId,
+            storedSessionId: result.storedSessionId,
+            messages: keepingRowIDs(from: stored, in: result.messages, durableIDs: []),
+            snapshot: result.snapshot
+        )
+    }
+
+    /// Where a reconcile's rows come from.
+    enum ReconcileRowsSource: Equatable {
+        /// Hermes' stored rows (a settled turn, or a resume with no rows).
+        case stored
+        /// The resume's rows, a live turn's, with the stored ones keeping
+        /// the stored rows' ids (`keepingStoredRowIDs`, #1648).
+        case resumeKeepingStoredIDs
+        /// The resume's rows as they came: no stored rows of this chat.
+        case resume
+    }
+
+    /// A compact resume ships no persisted transcript, so the REST rows are
+    /// the durable base even while a turn is live: the in-flight projection
+    /// rides on top through the streaming bubble, matching Desktop's
+    /// cache-as-base rendering. A resume that carried messages keeps the
+    /// historical precedence where a live projection wins over the REST
+    /// read, its stored rows keeping their ids.
+    static func reconcileRowsSource(
+        transcriptMatches: Bool,
+        storedMessages: [ChatMessage]?,
+        result: SessionResumeResult
+    ) -> ReconcileRowsSource {
+        guard transcriptMatches, let storedMessages else { return .resume }
+        let resumeCarriedTranscript = !result.messages.isEmpty
+        if (!storedMessages.isEmpty || !resumeCarriedTranscript)
+            && (!result.snapshot.hasLiveProjection || !resumeCarriedTranscript) {
+            return .stored
+        }
+        return storedMessages.isEmpty ? .resume : .resumeKeepingStoredIDs
+    }
+
+    /// The longest run of `pairs` (in rebuilt order) whose shown index rises
+    /// too, by patience sorting.
+    private static func risingRun(_ pairs: [(rebuilt: Int, previous: Int)]) -> [(rebuilt: Int, previous: Int)] {
+        // tails[k]: the index in `pairs` ending the best run of length k + 1
+        // found so far; links[i]: the pair before pairs[i] in its run.
+        var tails: [Int] = []
+        var links = [Int](repeating: -1, count: pairs.count)
+        for (index, pair) in pairs.enumerated() {
+            var low = 0, high = tails.count
+            while low < high {
+                let middle = (low + high) / 2
+                if pairs[tails[middle]].previous < pair.previous { low = middle + 1 } else { high = middle }
+            }
+            if low > 0 { links[index] = tails[low - 1] }
+            if low == tails.count { tails.append(index) } else { tails[low] = index }
+        }
+        var run: [(rebuilt: Int, previous: Int)] = []
+        var cursor = tails.last ?? -1
+        while cursor >= 0 {
+            run.append(pairs[cursor])
+            cursor = links[cursor]
+        }
+        return run.reversed()
+    }
+
+    /// The chat's own notes (slash command output, /btw and /background
+    /// answers), which Hermes never stores, carried from `previous` into a
+    /// transcript of the same chat rebuilt from the gateway's rows. Each goes
+    /// back after the row it followed, or at the end when that row isn't
+    /// among the rebuilt ones; the notes keep their order either way, so a
+    /// note never lands above one that came before it. A note the rebuilt
+    /// rows already hold (same id, or a system row with the same text) isn't
+    /// added again; two notes with the same text are still two notes.
+    static func keepingLocalNotes(from previous: [ChatMessage], in rebuilt: [ChatMessage]) -> [ChatMessage] {
+        var rebuiltIndex: [String: Int] = [:]
+        for (index, message) in rebuilt.enumerated() where rebuiltIndex[message.id] == nil {
+            rebuiltIndex[message.id] = index
+        }
+        let rebuiltSystemTexts = Set(rebuilt.lazy.filter { $0.role == .system }.map(\.content))
+        // The notes by the rebuilt row they go after: -1 is the top,
+        // rebuilt.count - 1 the end.
+        var notesAfter: [Int: [ChatMessage]] = [:]
+        // The top until a row has gone by.
+        var anchor = -1
+        // Never above a note already placed.
+        var floor = -1
+        for message in previous {
+            guard message.role == .system, message.id.hasPrefix("slash-") else {
+                anchor = rebuiltIndex[message.id] ?? rebuilt.count - 1
+                continue
+            }
+            guard rebuiltIndex[message.id] == nil, !rebuiltSystemTexts.contains(message.content) else { continue }
+            floor = max(floor, anchor)
+            notesAfter[floor, default: []].append(message)
+        }
+        guard !notesAfter.isEmpty else { return rebuilt }
+        var kept = notesAfter[-1] ?? []
+        kept.reserveCapacity(rebuilt.count + notesAfter.values.reduce(0) { $0 + $1.count })
+        for (index, message) in rebuilt.enumerated() {
+            kept.append(message)
+            kept.append(contentsOf: notesAfter[index] ?? [])
+        }
+        return kept
+    }
+}

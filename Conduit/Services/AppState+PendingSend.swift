@@ -11,6 +11,12 @@
 //
 
 import Foundation
+import SwiftUI
+import Combine
+import CryptoKit
+import OSLog
+import UIKit
+import WebKit
 
 /// Words for the composer to put back, and the draft they belong to.
 struct ComposerRestoreRequest: Equatable, Identifiable {
@@ -494,5 +500,147 @@ extension AppState {
             return AppLocalization.string("Your message wasn't sent. It's back in the composer.", table: .chat)
         }
         return AppLocalization.string("Your message to “\(pending.title)” wasn't sent. It's back in that chat's draft.", table: .chat)
+    }
+}
+
+extension AppState {
+    // MARK: - Sending while connecting: what reads private state
+
+    /// The saved copy is the chat on screen: over an empty transcript, or
+    /// over any transcript for a chat picked in the saved list.
+    var showsOfflineChatCopy: Bool {
+        guard let offline = offlineChatPresentation else { return false }
+        return messages.isEmpty || offline.isPickedChat
+    }
+
+    /// The rows the chat view draws: the saved copy's while it is the chat
+    /// on screen, else the live transcript. Hermes' rows take over from the
+    /// copy's in place, by id (#1533).
+    var chatRowsOnScreen: [ChatMessage] {
+        guard showsOfflineChatCopy, let copy = offlineChatPresentation else { return messages }
+        return copy.displayedMessages
+    }
+
+    /// A turn runs in the chat drawn: not in a chat picked in the saved
+    /// list, which isn't the live chat until it opens.
+    var chatOnScreenIsBusy: Bool {
+        isBusy && savedCopyScrollSessionKey == nil
+    }
+
+    /// The conversation the chat view draws while the saved copy on screen
+    /// isn't the live chat's: a chat picked in the saved list before it
+    /// opens, or a launch's copy before its chat resumes. Nil while no copy
+    /// shows, or while it's the live chat's own: that one draws under the
+    /// live chat's key, so Hermes' rows taking over isn't a switch.
+    var savedCopyScrollSessionKey: ChatScrollSessionKey? {
+        guard showsOfflineChatCopy, let copy = offlineChatPresentation else { return nil }
+        if let active = activeSessionId, copy.chatSessionIDs.contains(active) { return nil }
+        guard let sessionID = copy.composerSessionID else { return nil }
+        let key = ChatScrollSessionKey(profile: copy.profile, sessionID: sessionID)
+        return key.isValid ? key : nil
+    }
+
+    /// The live chat on screen is on its way back: synchronizing or
+    /// reconnecting while the connection is up or coming back. Not while a
+    /// New Chat creates its chat: the transcript up until then is the one
+    /// being left.
+    var liveChatIsOnItsWay: Bool {
+        guard activeSessionId != nil, newSessionCreationsInFlight == 0,
+              turnState == .synchronizing || turnState == .reconnecting else { return false }
+        return isConnected || isRecoveringConnection
+    }
+
+    /// Every id the live chat on screen answers to.
+    func liveChatSessionIDs() -> Set<String> {
+        guard var ids = offlineChatIdentities() else { return [] }
+        if let activeSessionId { ids.insert(activeSessionId) }
+        for row in sessions + cronSessions where !ids.isDisjoint(with: row.nestingIDs) {
+            ids.formUnion(row.nestingIDs)
+        }
+        return ids
+    }
+
+    /// A current catalog claim wins over historical scroll aliases: a
+    /// runtime id can be reassigned to a different durable conversation.
+    func liveChatOwnsComposerDraftSessionID(_ sessionID: String) -> Bool {
+        guard let activeSessionId else { return false }
+        if let row = (sessions + cronSessions).first(where: {
+            sessionBelongsToProfile($0, profile: activeProfile) && $0.nestingIDs.contains(activeSessionId)
+        }) {
+            return row.nestingIDs.contains(sessionID)
+        }
+        return liveChatSessionIDs().contains(sessionID)
+    }
+
+    /// The id a live chat's waiting message is kept under: its durable one,
+    /// which outlives the runtime id the chat is open by.
+    func durableComposerSessionID(for sessionID: String) -> String {
+        canonicalSessionID(for: sessionID) ?? sessionID
+    }
+
+    /// Whether two drafts are the same chat's: the same key, the chat under
+    /// another of its ids, or the New Chat draft and the chat it created.
+    func composerDraftKeysAreSameChat(_ lhs: ComposerDraftKey, _ rhs: ComposerDraftKey) -> Bool {
+        guard lhs.profile == rhs.profile else { return false }
+        if lhs == rhs { return true }
+        if let replacement = lostChatReplacement, lhs.profile == activeProfile,
+           activeSessionId.map(replacement.fresh.contains) == true,
+           replacement.lost.contains(lhs.sessionID) && replacement.fresh.contains(rhs.sessionID)
+            || replacement.lost.contains(rhs.sessionID) && replacement.fresh.contains(lhs.sessionID) {
+            return true
+        }
+        if lhs.isNewConversation || rhs.isNewConversation {
+            let chat = lhs.isNewConversation ? rhs : lhs
+            return !chat.isNewConversation && chat.profile == activeProfile
+                && (chat.sessionID == newChatOpenedSessionID || chat.sessionID == newChatOpenedDurableSessionID)
+                && newChatOpenedDurableSessionID.map(liveChatOwnsComposerDraftSessionID) == true
+        }
+        let rows = (sessions + cronSessions).filter { sessionBelongsToProfile($0, profile: lhs.profile) }
+        if let destination = rows.first(where: { $0.nestingIDs.contains(rhs.sessionID) }) {
+            return destination.nestingIDs.contains(lhs.sessionID)
+        }
+        if let origin = rows.first(where: { $0.nestingIDs.contains(lhs.sessionID) }) {
+            return origin.nestingIDs.contains(rhs.sessionID)
+        }
+        return lhs.profile == activeProfile
+            && ComposerBar.draftKeysAreEquivalent(lhs, rhs, identity: activeChatScrollSessionIdentity)
+    }
+
+    /// Typing over a saved copy makes its chat the one that opens, as a tap
+    /// on it in the saved list does: until the live list lands, the
+    /// automatic resume could still open another chat under the words.
+    func noteComposerEditOverSavedCopy() {
+        guard case .savedCopy = composerChatOnScreen,
+              let copy = offlineChatPresentation, !copy.isPickedChat,
+              let transcript = copy.displayedTranscript,
+              chatPickedFromSavedList == nil,
+              copy.dashboardID == activeDashboardID, copy.profile == activeProfile,
+              !liveChatListLanded(dashboardID: copy.dashboardID, profile: copy.profile) else { return }
+        let ids = copy.chatSessionIDs
+        chatPickedFromSavedList = SavedChatListPick(
+            dashboardID: copy.dashboardID,
+            profile: copy.profile,
+            sessionIDs: ids,
+            openID: transcript.sessionID,
+            rowID: copy.snapshot.sessions.first { $0.matches([transcript.sessionID]) }?.id ?? transcript.sessionID
+        )
+        offlineChatPresentation?.picked = OfflineChatPresentation.PickedChat(
+            title: transcript.title,
+            sessionIDs: ids,
+            durableSessionID: transcript.sessionID
+        )
+    }
+
+    @discardableResult
+    func recordPendingComposerSendFile(_ pending: PendingComposerSend) -> Bool {
+        offlineChatCache.recordPendingSend(pending)
+    }
+
+    func removePendingComposerSendFile(_ pending: PendingComposerSend) {
+        offlineChatCache.removePendingSend(id: pending.id, dashboardID: pending.dashboardID, profile: pending.profile)
+    }
+
+    func pendingComposerSendFiles(dashboardID: UUID) -> [PendingComposerSend] {
+        offlineChatCache.loadPendingSends(dashboardID: dashboardID)
     }
 }

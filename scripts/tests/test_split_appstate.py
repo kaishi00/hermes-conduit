@@ -244,6 +244,34 @@ final class AppState: ObservableObject {
         self.assertIn("private(set) var unshifted = 0", app, "a plain shift only reads it")
         self.assertIn("\n    var weakly = 0", app, "self?. writes it")
 
+    def test_widens_another_types_fileprivate_member_the_moved_code_writes(self):
+        (self.repo / split.APP_STATE).write_text('''import SwiftUI
+
+@MainActor
+final class AppState: ObservableObject {
+    // MARK: - Connection
+
+    let projection = Projection()
+
+    func connect() {
+        projection.text = "on"
+        _ = projection.count
+    }
+}
+
+final class Projection {
+    fileprivate(set) var text = ""
+    fileprivate(set) var count = 0
+    fileprivate var hidden = 0
+}
+''')
+        split.STEPS = [{"AppState+Connection.swift": ["Connection"]}]
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        app = self.read("AppState.swift")
+        self.assertIn("\n    var text = \"\"", app, "written as projection.text from the new file")
+        self.assertIn("fileprivate(set) var count = 0", app, "only read")
+        self.assertIn("fileprivate var hidden = 0", app, "not used")
+
     def test_cuts_a_long_region_at_a_declaration(self):
         split.STEPS = [{"AppState+Connection.swift": ["Connection|until connect"],
                         "AppState+Connect.swift": ["Connection|from connect"]}]
@@ -273,6 +301,15 @@ final class AppState: ObservableObject {
         self.assertIn("func connect()", self.read("AppState+Connect.swift"))
         self.assertIn("// MARK: - Connection (AppState+Ready.swift, AppState+Connect.swift)\n",
                       self.read("AppState.swift"), "the MARK left over stored properties names both files")
+
+    def test_a_mark_cut_again_keeps_the_files_it_named(self):
+        split.STEPS = [{"AppState+Ready.swift": ["Connection|until connect"]}]
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        region = "Connection (AppState+Ready.swift)"
+        split.STEPS = [{"AppState+Connect.swift": [region]}]
+        split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        self.assertIn("// MARK: - Connection (AppState+Ready.swift, AppState+Connect.swift)\n",
+                      self.read("AppState.swift"))
 
     def test_points_the_map_at_the_new_file(self):
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")
