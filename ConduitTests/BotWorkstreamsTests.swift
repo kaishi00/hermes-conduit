@@ -1586,6 +1586,31 @@ extension BotModeTests {
         response["counts"] = ["working": 2, "needs_you": 0, "ready": 0, "waiting": 1]
         XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: response, profile: "furina")), .working(2))
     }
+
+    /// Background agents the Bot Chat itself started show on its portrait,
+    /// with its workstreams off too, where it's the one delegating; its
+    /// workstreams' work comes first (app issue 2206).
+    func testThePortraitShowsTheBotChatsOwnAgents() throws {
+        var off = workResponse()
+        off["policy"] = "off"
+        off["bot_chat_agents"] = 2
+        let delegating = BotPortraitStatus.of(BotWorkSnapshot(response: off, profile: "furina"))
+        XCTAssertEqual(delegating, .agents(2))
+        XCTAssertFalse(delegating.title.isEmpty)
+        off["bot_chat_agents"] = 0
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: off, profile: "furina")), .idle)
+        off.removeValue(forKey: "bot_chat_agents")
+        XCTAssertEqual(BotWorkSnapshot(response: off, profile: "furina")?.botChatAgentCount, 0, "an older plugin")
+
+        var on = workResponse()
+        on["bot_chat_agents"] = 1
+        on["counts"] = ["working": 2, "needs_you": 0, "ready": 0]
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: on, profile: "furina")), .working(2))
+        on["counts"] = ["working": 0, "needs_you": 0, "ready": 0]
+        on["work"] = [] as [[String: Any]]
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: on, profile: "furina"), talkingIn: ["Trip"]),
+                       .agents(1), "before talking in a room")
+    }
 }
 
 /// Bot Screen: the host's screen status and lease as Hermes gives them, who
