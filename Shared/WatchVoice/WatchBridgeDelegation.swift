@@ -86,6 +86,10 @@ enum WatchBridgeDelegation {
         let spoken = userWords.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !own.isEmpty else { return spoken }
         guard !spoken.isEmpty else { return own }
+        // "Read chat 2" and "Open chat: 2" name a chat by its number alone,
+        // with or without a colon.
+        guard VoiceChatToolText.readChatMarker(in: own) == nil,
+              VoiceChatToolText.openChatMarker(in: own) == nil else { return own }
         let said = " " + comparable(spoken) + " "
         func repeats(_ text: Substring) -> Bool {
             let words = comparable(String(text))
@@ -99,7 +103,11 @@ enum WatchBridgeDelegation {
         // Before a colon: a job marker leads a request of the user's; any
         // other ("Read chat: 2", "Approve:", "End call:") is a command whose
         // words are its own, so the text stays as the model wrote it.
-        if let colon = body.firstIndex(where: { $0 == ":" || $0 == "：" }),
+        // A colon a digit follows is a time ("9:30"), not a marker.
+        if let colon = body.indices.first(where: { index in
+               (body[index] == ":" || body[index] == "：")
+                   && !(body[body.index(after: index)...].first?.isNumber ?? false)
+           }),
            body[..<colon].split(separator: " ").count <= maxMarkerWords {
             guard isJobMarker(body[..<colon]) else { return own }
             markers.append(String(body[...colon]))

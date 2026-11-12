@@ -253,6 +253,11 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Read chat: 2", userWords: "Please read chat number 2"), "Read chat: 2")
         XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Read chat: 2", userWords: "read chat 2"), "Read chat: 2")
         XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Approve: yes", userWords: "yes"), "Approve: yes")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Read chat 2", userWords: "Hi, read chat 2"), "Read chat 2")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Job 2: make it Friday", userWords: "For job 2, make it Friday."), "Job 2: For job 2, make it Friday.")
+        // A time's colon is no marker: an echo with one still gives way, other text stays.
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "at 9:30 tomorrow", userWords: "Remind me to call Mom at 9:30 tomorrow"), "Remind me to call Mom at 9:30 tomorrow")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Remind me at 9:30", userWords: "Book a table for 30 people"), "Remind me at 9:30")
         XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Weather", userWords: ""), "Weather")
 
         // Nothing new: no request, so Hermes doesn't redo the last one.
