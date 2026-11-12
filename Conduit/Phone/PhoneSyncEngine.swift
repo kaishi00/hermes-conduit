@@ -810,16 +810,16 @@ final class PhoneSyncEngine: ObservableObject {
         batch.keys.contains { !frameKeys.contains($0) }
     }
 
-    /// The sharing as it really is: access taken away in the Settings app
-    /// narrows it, so the host drops what it can no longer have. Attendee
-    /// emails go with full calendar access; "details" with full access or
-    /// reminders (it also covers reminder notes).
     /// The next pass sends the status even when it hasn't changed: the
     /// host woke the phone for a new reading.
     func sendStatusOnNextPass() {
         statusAsked = true
     }
 
+    /// The sharing as it really is: access taken away in the Settings app
+    /// narrows it, so the host drops what it can no longer have. Attendee
+    /// emails go with full calendar access; "details" with full access or
+    /// reminders (it also covers reminder notes).
     nonisolated static func effectiveSharing(_ preferences: PhoneSyncPreferences, access: PhoneCalendarAccess,
                                              remindersAuthorized: Bool, alarmsAuthorized: Bool = false,
                                              photosAuthorized: Bool = false) -> [String: Any] {

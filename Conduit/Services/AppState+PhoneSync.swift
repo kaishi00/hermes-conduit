@@ -42,7 +42,7 @@ extension AppState {
     static let phoneContactEditsCapability = "phone-contact-edits"
     /// Plugin 0.161.0: photo descriptions Hermes searches, and a photo sent on a yes.
     static let phonePhotosCapability = "phone-photos"
-    /// Plugin 0.166.0: the phone's state goes with each message sent from
+    /// Plugin 0.167.0: the phone's state goes with each message sent from
     /// Conduit, when the user lets it (issue 888).
     static let phoneTurnStatusCapability = "phone-turn-status"
     static let phoneSyncTaskIdentifier = "com.milim.relay.phone-sync"
