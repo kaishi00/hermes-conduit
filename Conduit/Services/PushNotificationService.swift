@@ -2640,6 +2640,10 @@ final class PushNotificationService: ObservableObject {
         forgetWaitingTap()
     }
 
+    /// No attempt of the pending tap's route has started yet, or it opens
+    /// after a call as if just made: its window, and its failures, are its own.
+    var pendingRouteIsFresh: Bool { !pendingRouteOpenStarted || pendingRouteAwaitsCall }
+
     /// An open of `target` is starting: a retry still waiting would only
     /// cancel it when it fires, so it stands down. Returns false, clearing
     /// the target, when the tap already had an open and its window has run
