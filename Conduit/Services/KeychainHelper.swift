@@ -12,6 +12,7 @@ import CryptoKit
 import OSLog
 import UIKit
 import WebKit
+import Security
 
 enum KeychainHelper {
     /// Storage backend seam. Production storage is the system keychain; tests

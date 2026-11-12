@@ -170,6 +170,10 @@ struct VoiceBackgroundJob: Identifiable, Equatable {
     /// Whether a background job's first prompt went to Hermes. Until then a
     /// follow-up joins its instructions instead of interrupting it.
     var requestSent = false
+    /// Whether a continued job holds its chat while it checks the chat is
+    /// free and finds its runtime: the call's other requests wait meanwhile.
+    /// Once its request counts as sent, `requestSent` holds the chat instead.
+    var claimsChat = false
     /// Whether a continued job's submit began (after its turn surface
     /// report). Until then a cancel interrupts nothing in its chat.
     var submitted = false
@@ -1668,12 +1672,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     ) async {
         while generation == self.generation, job(jobID)?.status == .starting {
             // One request at a time in the chat: an earlier job of the call
-            // still running there, or a turn typed in it, goes first.
+            // still running there, or a turn typed in it, goes first. A job
+            // claims the chat before it asks whether a turn runs there, so
+            // two of the call's requests never both pass during that wait
+            // (issue 2283).
             let earlier = jobs.contains { other in
-                other.id != jobID && other.status.isActive && other.requestSent
+                other.id != jobID && other.status.isActive && (other.requestSent || other.claimsChat)
                     && [other.runtimeSessionID, other.storedSessionID].compactMap { $0 }.contains { chat.owns(sessionID: $0) }
             }
-            if !earlier, !(await backend.threadIsBusy(chat)) { break }
+            if !earlier {
+                update(jobID) { $0.claimsChat = true }
+                if !(await backend.threadIsBusy(chat)) { break }
+                update(jobID) { $0.claimsChat = false }
+            }
             try? await Task.sleep(for: threadWaitInterval)
         }
         guard generation == self.generation, job(jobID)?.status == .starting else { return }
@@ -1687,6 +1698,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             update(jobID) {
                 if !runtimeID.isEmpty { $0.runtimeSessionID = runtimeID }
                 $0.requestSent = true
+                $0.claimsChat = false
                 $0.sentAt = Date()
             }
             // Only a Watch call continues a chat this way: its later

@@ -542,7 +542,7 @@ struct ComposerBar: View, Equatable {
         .preference(key: V2ComposerExpandedKey.self, value: restsWhenIdle && !keepsVoiceButtonBeside && !rests)
         .preference(key: V2ComposerTypingKey.self, value: Self.hidesMinimisedCallBar(
             restsWhenIdle: restsWhenIdle,
-            isFocused: isTyping,
+            isTyping: isTyping,
             hasText: hasText,
             keepsFocusAfterSend: ComposerLayout.keepsFocusAfterSend()
         ))
@@ -683,6 +683,8 @@ struct ComposerBar: View, Equatable {
         }
         .onDisappear {
             dictation.cancel()
+            // A transcript paste still waiting for focus belongs to this chat.
+            ReturnKeyTextView.cancelPendingPaste()
             if voiceMessages.isActive, !voiceMessages.isSending { voiceMessages.cancel() }
             collapseTask?.cancel()
             collapseTask = nil
@@ -1064,11 +1066,11 @@ struct ComposerBar: View, Equatable {
     /// typing: the bar hides only while the field holds words.
     static func hidesMinimisedCallBar(
         restsWhenIdle: Bool,
-        isFocused: Bool,
+        isTyping: Bool,
         hasText: Bool = true,
         keepsFocusAfterSend: Bool = false
     ) -> Bool {
-        restsWhenIdle && isFocused && (hasText || !keepsFocusAfterSend)
+        restsWhenIdle && isTyping && (hasText || !keepsFocusAfterSend)
     }
 
     /// V2's resting composer: attach and the placeholder in a slim bar.
@@ -2628,9 +2630,11 @@ struct ComposerBar: View, Equatable {
             applyPendingPrefill()
             return
         }
-        // Dictated words belong to the draft they started in, and the full
-        // editor to the chat it was opened in.
+        // Dictated words belong to the draft they started in, the full
+        // editor to the chat it was opened in, and a pending transcript
+        // paste to the chat it was asked in.
         dictation.cancel()
+        ReturnKeyTextView.cancelPendingPaste()
         isShowingFullEditor = false
         // A send from the sheet kept focus for the chat it was in, not the
         // one loading now.
