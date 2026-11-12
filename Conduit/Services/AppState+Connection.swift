@@ -1565,14 +1565,16 @@ extension AppState {
             continuationAutomaticWorkToken = continuation.automaticWorkToken
             handedOffAutomaticIntent = handedOffAutomaticIntent
                 || continuation.handedOffAutomaticIntent
-            await loadChatResumeBusyInputMode(using: client)
+            // Three independent reads, each guarding its own answer against a
+            // switch while it was out: sent together, so the connect tail
+            // waits one round trip for them, not three (issue 1727). The
+            // check that follows is the connection's own.
+            async let busyInputModeRead: Void = loadChatResumeBusyInputMode(using: client)
+            async let profilesRead: Void = loadChatResumeProfiles()
+            async let displayPreferencesRead: Void = loadChatResumeProfileDisplayPreferences()
+            _ = await (busyInputModeRead, profilesRead, displayPreferencesRead)
             guard refreshTransportContinuation(),
                   let activeClient = self.client, activeClient === client else { return }
-            await loadChatResumeProfiles()
-            guard refreshTransportContinuation(),
-                  let activeClient = self.client, activeClient === client else { return }
-            await loadChatResumeProfileDisplayPreferences()
-            guard refreshTransportContinuation() else { return }
             Task { await loadChatResumeSlashCommands() }
             Task { await refreshNotifierPluginStatus() }
         } catch {

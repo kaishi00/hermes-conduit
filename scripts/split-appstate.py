@@ -136,25 +136,105 @@ STEPS = [
         ],
         "AppState+PendingSend.swift": ["Sending while connecting: what reads private state"],
     },
-    # 7: the composer and a turn's stream
+    # 7: the composer, sending, a turn's stream and voice
     {
         "AppState+Composer.swift": [
-            "Quoting into the composer (#385)", "Reactions", "Composer actions",
+            "Quoting into the composer (#385)|until automaticChatResumeWorkMayStillSelectSession",
+            "Composer actions|until TranscriptFreshnessGateOutcome",
         ],
-        "AppState+ChatTakeover.swift": ["Chat takeover"],
+        "AppState+TranscriptFreshness.swift": [
+            "Composer actions|from TranscriptFreshnessGateOutcome",
+        ],
+        "AppState+ChatResume.swift": [
+            "Quoting into the composer (#385)|from automaticChatResumeWorkMayStillSelectSession until invalidateBotModeState",
+        ],
+        "AppState+BotMode.swift": ["Quoting into the composer (#385)|from invalidateBotModeState"],
+        "AppState+Reactions.swift": ["Reactions"],
+        "AppState+NotifierPlugin.swift": ["Chat takeover|until chatTakeover"],
+        "AppState+ChatTakeover.swift": [
+            "Chat takeover|from chatTakeover until resendInPlaceOfLostEmptyChat",
+        ],
+        "AppState+SendMessage.swift": [
+            "Chat takeover|from resendInPlaceOfLostEmptyChat until toggleYolo",
+        ],
+        "AppState+YoloAndReasoning.swift": ["Chat takeover|from toggleYolo"],
         "AppState+SlashCommands.swift": ["Slash Commands"],
-        "AppState+Compression.swift": ["Session compression (`session.compress`)"],
-        "AppState+StreamEvents.swift": ["Stream event handling"],
-        "AppState+Clarify.swift": ["Clarify lifecycle"],
-        "AppState+ChatSupport.swift": ["Chat support surfaces"],
+        "AppState+Compression.swift": ["Session compression (`session.compress`)|until steer"],
+        "AppState+Steering.swift": [
+            "Session compression (`session.compress`)|from steer until respondToClarify",
+        ],
+        "AppState+Clarify.swift": [
+            "Session compression (`session.compress`)|from respondToClarify",
+            "Clarify lifecycle|until appendReasoning",
+        ],
+        "AppState+StreamEvents.swift": ["Stream event handling|until refreshDelegateAgents"],
+        "AppState+DelegateAgents.swift": ["Stream event handling|from refreshDelegateAgents"],
+        "AppState+StreamingText.swift": [
+            "Clarify lifecycle|from appendReasoning until requestChatScrollToLatest",
+            "Chat support surfaces|from scheduleStreamingPublish",
+        ],
+        "AppState+ChatSupport.swift": [
+            "Clarify lifecycle|from requestChatScrollToLatest",
+            "Chat support surfaces|until applyResponseHapticSignal",
+            "Chat support surfaces|from installVoiceCapabilityStateForTesting until loadVoiceProfilePreferences",
+        ],
+        "AppState+ResponseHaptics.swift": [
+            "Chat support surfaces|from applyResponseHapticSignal until spokenPromptSurface",
+        ],
+        "AppState+VoiceConversation.swift": [
+            "Chat support surfaces|from spokenPromptSurface until isWatchVoiceCallActive",
+            "Chat support surfaces|from handleCarPlayVoiceSurfaceRemoved until installVoiceCapabilityStateForTesting",
+            "Chat support surfaces|from loadVoiceProfilePreferences until scheduleStreamingPublish",
+        ],
+        "AppState+WatchCalls.swift": [
+            "Chat support surfaces|from isWatchVoiceCallActive until handleCarPlayVoiceSurfaceRemoved",
+        ],
     },
-    # 8: profiles, capabilities, dashboards and jobs
+    # 8: profiles, capabilities, live voice modes, dashboards, jobs and UI state
     {
-        "AppState+Profiles.swift": ["Profiles and preferences"],
-        "AppState+Capabilities.swift": ["Capabilities", "Capabilities@2", "Tools catalog for step rows"],
-        "AppState+ScheduledJobs.swift": ["Scheduled jobs"],
-        "AppState+Dashboards.swift": ["Saved dashboards (#148)", "Dashboard-scoped presentation (#148)"],
-        "AppState+UIState.swift": ["UI state", "Runtime"],
+        "AppState+SessionCatalog.swift": [
+            "Profiles and preferences|until ForegroundPersistedTailOutcome",
+            "Profiles and preferences|from dashboardSessions until switchProfile#1",
+        ],
+        "AppState+TranscriptHistory.swift": [
+            "Profiles and preferences|from ForegroundPersistedTailOutcome until dashboardSessions",
+        ],
+        "AppState+Profiles.swift": [
+            "Profiles and preferences|from switchProfile#1 until isExpiredPromptError",
+            "Profiles and preferences|from orderedProfiles",
+        ],
+        "AppState+Clarify.swift": [
+            "Profiles and preferences|from isExpiredPromptError until refreshProjects",
+        ],
+        "AppState+Projects.swift": [
+            "Profiles and preferences|from refreshProjects until orderedProfiles",
+        ],
+        "AppState+HelperModels.swift": ["Capabilities|until setGeminiLiveSearchMode"],
+        "AppState+GeminiQwenLive.swift": [
+            "Capabilities|from setGeminiLiveSearchMode until setGPTLiveEnabled",
+        ],
+        "AppState+GPTLive.swift": ["Capabilities|from setGPTLiveEnabled until setGrokLiveEnabled"],
+        "AppState+GrokLive.swift": ["Capabilities|from setGrokLiveEnabled until usesLocalLiveAgent"],
+        "AppState+LocalLive.swift": ["Capabilities|from usesLocalLiveAgent until saveVoiceJobLedger"],
+        "AppState+Voice.swift": [
+            "Capabilities|from saveVoiceJobLedger until consumeVoiceSheetAutoListen",
+        ],
+        "AppState+VoiceConversation.swift": ["Capabilities|from consumeVoiceSheetAutoListen"],
+        "AppState+Capabilities.swift": ["Capabilities@2", "Tools catalog for step rows"],
+        "AppState+ScheduledJobs.swift": ["Scheduled jobs|until sendStartupReads"],
+        "AppState+ProfileConfig.swift": [
+            "Scheduled jobs|from sendStartupReads until KeptRoute",
+            "Scheduled jobs|from loadBusyInputMode",
+        ],
+        "AppState+KeptAnswers.swift": ["Scheduled jobs|from KeptRoute until loadBusyInputMode"],
+        "AppState+Dashboards.swift": [
+            "Dashboard-scoped presentation (#148)", "Saved dashboards (#148)|until makeClient",
+        ],
+        "AppState+SignIn.swift": ["Saved dashboards (#148)|from makeClient"],
+        "AppState+Pulse.swift": ["UI state|from setPulseDoItBot until composerPrefillText"],
+        "AppState+UIState.swift": [
+            "Runtime", "UI state|until setPulseDoItBot", "UI state|from composerPrefillText",
+        ],
     },
 ]
 
@@ -522,7 +602,8 @@ def assign(src, steps):
                         it.dest = fname
                         moves.setdefault(fname, []).append(it)
                     continue
-                # "Region|from name", "Region|until name" or "Region|from a until b":
+                # "Region|from name", "Region|until name" or "Region|from a until b"
+                # (a name with overloads is named as name#1, name#2, ...):
                 # the part of a long region from (or before) a declaration.
                 part, _, cut = part.partition("|")
                 if part not in known:
@@ -534,8 +615,19 @@ def assign(src, steps):
                         raise SystemExit(f"can't cut {part!r} at {cut!r}")
 
                     def at(name):
+                        # `name#2`: the second of a name's overloads
+                        name, _, nth = name.partition("#")
                         found = [i for i, it in enumerate(items) if name in it.names]
-                        if len(found) != 1:
+                        if nth:
+                            n = int(nth) if nth.isascii() and nth.isdigit() else 0
+                            if not 1 <= n <= len(found):
+                                raise SystemExit(f"can't cut {part!r} at {cut!r}: "
+                                                 f"name one as {name}#N, N from 1 to {len(found)}")
+                            found = found[n - 1:n]
+                        elif len(found) != 1:
+                            raise SystemExit(f"can't cut {part!r} at {cut!r}: "
+                                             f"{len(found)} {name!r}, name one as {name}#N")
+                        if not found:
                             raise SystemExit(f"can't cut {part!r} at {cut!r}")
                         return found[0]
                     lo = at(m.group(1)) if m.group(1) else 0
@@ -562,10 +654,10 @@ def code_names(masked_lines):
     return names
 
 
-MUTATION = (r"(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\s*(=(?!=)|&?\+=|&?-=|&?\*=|/=|%=|\|=|&=|\^=|&?<<=|&?>>=|\?\?=)"
-            r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(append|remove\w*|insert|merge|formUnion|"
+MUTATION = (r"(\s*(\?|!)?(\.\w+|\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\]))*\s*(=(?!=)|&?\+=|&?-=|&?\*=|/=|%=|\|=|&=|\^=|&?<<=|&?>>=|\?\?=)"
+            r"|(\s*(\?|!)?(\.\w+|\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\]))*\.(append|remove\w*|insert|merge|formUnion|"
             r"formIntersection|subtract|sort|reverse|popLast|popFirst|update\w*|toggle|"
-            r"swapAt|replaceSubrange|reserveCapacity|shuffle)\b")
+            r"swapAt|replaceSubrange|reserveCapacity|shuffle|move|partition|formSymmetricDifference)\b")
 
 
 # `mutating func` names the app declares (set by run): calling one through a
@@ -580,12 +672,25 @@ def mutating_names(repo):
     return names
 
 
-def writes(masked_lines, name):
+def mutation_pattern():
+    """What follows a name that writes it: an assignment or compound op, or a
+    call of a mutating method, through any chain of members or subscripts."""
     mutation = MUTATION
     if APP_MUTATING:
-        mutation += r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(" + "|".join(sorted(APP_MUTATING)) + r")\b(?!\s*:)"
-    pat = re.compile(r"(?<![\w.])(self\??\.)?" + re.escape(name) + r"\b(?=" + mutation + r")"
+        mutation += r"|(\s*(\?|!)?(\.\w+|\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\]))*\.(" + "|".join(sorted(APP_MUTATING)) + r")\b(?!\s*:)"
+    return mutation
+
+
+def writes(masked_lines, name):
+    pat = re.compile(r"(?<![\w.])(self\??\.)?" + re.escape(name) + r"\b(?=" + mutation_pattern() + r")"
                      r"|&(self\??\.)?" + re.escape(name) + r"\b")
+    return pat.search("\n".join(masked_lines)) is not None
+
+
+def writes_member(masked_lines, name):
+    """Whether code writes `value.name` (another type's member)."""
+    pat = re.compile(r"\??\." + re.escape(name) + r"\b(?=" + mutation_pattern() + r")"
+                     r"|&[\w.?]*(?:\[(?:[^\[\]\n]|\[[^\[\]\n]*\])*\][\w.?]*)*\." + re.escape(name) + r"\b")
     return pat.search("\n".join(masked_lines)) is not None
 
 
@@ -690,6 +795,7 @@ def plan_access(src, file_items):
                 queue.append(e)
     # A fileprivate member of another type in AppState.swift is reached as
     # `value.name`: widen it when moved code uses (or, for a setter, writes) it.
+    # (A private one never reached AppState's code, even in the same file.)
     for it in src.outer_before + src.outer_after:
         if it.dest or it.kind not in ("class", "struct", "enum", "actor"):
             continue
@@ -701,13 +807,12 @@ def plan_access(src, file_items):
             for f, text in every.items():
                 if f == APP_STATE:
                     continue
-                joined = "\n".join(text)
-                hit = (re.search(r"\." + re.escape(name) + r"\b(?=" + MUTATION + r")", joined)
-                       if which.endswith("(set)") else
-                       re.search(r"\." + re.escape(name) + r"\b", joined))
+                hit = (writes_member(text, name) if which.endswith("(set)") else
+                       re.search(r"\." + re.escape(name) + r"\b", "\n".join(text)))
                 if hit:
                     changes[k] = widen(changes.get(k, src.lines[k]), which)
-                    widened.append((SimpleNamespace(names=[name], decl_line=k), which, f))
+                    widened.append((SimpleNamespace(names=[name], decl_line=k, outer_member=True),
+                                    which, f))
                     break
     return changes, widened
 
@@ -774,12 +879,13 @@ def render_new_file(src, fname, items, changes, header_note):
         last_region = None
         first = True
         for it in in_class:
-            if it.region != last_region:
+            title = MARK_TITLES.get(fname, it.region.split('@')[0])
+            if title != last_region:
                 if not first:
                     out.append("")
-                out.append(f"    // MARK: - {MARK_TITLES.get(fname, it.region.split('@')[0])}")
+                out.append(f"    // MARK: - {title}")
                 out.append("")
-                last_region = it.region
+                last_region = title
             elif not first:
                 out.append("")
             out.extend(text(it))
@@ -876,9 +982,198 @@ MARK_TITLES = {"AppState+OpenChat.swift": "Opening chats",
                "AppState+Voice.swift": "Voice background jobs",
                "AppState+Reconciliation.swift": "Keeping row ids and local notes across a reconcile",
                "AppState+ChatResume.swift": "Resuming a chat: return surface, viewport and transport",
-               "AppState+PinnedChatOrder.swift": "Pinning chats, and the saved order of chats, bots and rooms"}
+               "AppState+PinnedChatOrder.swift": "Pinning chats, and the saved order of chats, bots and rooms",
+               "AppState+TranscriptFreshness.swift": "Checking the transcript is fresh before a send",
+               "AppState+BotMode.swift": "Resetting Bot Mode's state",
+               "AppState+Reactions.swift": "Reactions, and branching from a reply",
+               "AppState+NotifierPlugin.swift": "The Conduit plugin's status on this dashboard",
+               "AppState+SendMessage.swift": "Sending a message",
+               "AppState+YoloAndReasoning.swift": "YOLO mode and reasoning effort",
+               "AppState+Steering.swift": "Steering, interrupting and queued sends",
+               "AppState+Clarify.swift": "Clarify, approvals, input prompts and connections",
+               "AppState+DelegateAgents.swift": "Delegate agents",
+               "AppState+StreamingText.swift": "Publishing streamed text and reasoning",
+               "AppState+ChatSupport.swift": "Chat support surfaces",
+               "AppState+ResponseHaptics.swift": "Response haptics",
+               "AppState+VoiceConversation.swift": "Voice conversations and Read Aloud",
+               "AppState+WatchCalls.swift": "Watch calls",
+               "AppState+SessionCatalog.swift": "Reading the session catalog",
+               "AppState+TranscriptHistory.swift": "Persisted transcripts and earlier messages",
+               "AppState+Profiles.swift": "Switching and reading profiles",
+               "AppState+Projects.swift": "Projects and workspace folders",
+               "AppState+HelperModels.swift": "Model providers, helper models and the voice reply model",
+               "AppState+GeminiQwenLive.swift": "Gemini Live and Qwen Live",
+               "AppState+GPTLive.swift": "GPT-Live",
+               "AppState+GrokLive.swift": "Grok Live",
+               "AppState+LocalLive.swift": "Local Live",
+               "AppState+ProfileConfig.swift": "A profile's settings, config and display preferences",
+               "AppState+KeptAnswers.swift": "Answers kept for screens to open on",
+               "AppState+SignIn.swift": "Signing in and restoring a saved connection",
+               "AppState+Pulse.swift": "Pulse's remembered homes, Do it bots and folded briefs"}
 
 HEADER_NOTES = {
+    "AppState+SessionCatalog.swift": [
+        "Reading the session catalog: deferred catalog pages, a profile's",
+        "sessions, archived and cron sessions, and which profile a session",
+        "belongs to. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+TranscriptHistory.swift": [
+        "A chat's persisted transcript: its tail on foregrounding, history",
+        "pages, row ids, and loading earlier messages. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Profiles.swift": [
+        "Switching profiles, reading the profile list, the Siri profile names",
+        "and the fallback profile, and the profiles' order. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Projects.swift": [
+        "Projects: listing, creating, renaming, deleting and moving sessions",
+        "between them, project folders and ideas, and the workspace folders",
+        "opened. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+HelperModels.swift": [
+        "The model routes a profile keeps: model providers, helper models, the",
+        "voice reply and voice job models, and the live voice status. Moved out",
+        "of AppState.swift (issue 828).",
+    ],
+    "AppState+GeminiQwenLive.swift": [
+        "Gemini Live and Qwen Live: their settings, opening and closing a call,",
+        "CarPlay, and the direct live controller they share. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+GPTLive.swift": [
+        "GPT-Live: its settings and billing, its briefing, and opening and",
+        "closing a call, CarPlay included. Moved out of AppState.swift (issue",
+        "828).",
+    ],
+    "AppState+GrokLive.swift": [
+        "Grok Live: its settings, its client, and opening and closing a call,",
+        "CarPlay included. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+LocalLive.swift": [
+        "Local Live: its agent and persona, its settings, its client, and",
+        "opening and closing a call, CarPlay included. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Capabilities.swift": [
+        "A profile's skills and toolsets (loading and toggling them) and the",
+        "tools catalog step rows read. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ScheduledJobs.swift": [
+        "Scheduled (cron) jobs: reading them and their runs, their actions,",
+        "creating, updating and deleting one, and blueprints. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+ProfileConfig.swift": [
+        "A profile's settings and config: the startup reads, display",
+        "preferences, the main and fallback models, config writes, and the busy",
+        "input mode. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+KeptAnswers.swift": [
+        "The answers kept so a screen opens on its last read (KeptRoute), and",
+        "the writes that update them. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+Dashboards.swift": [
+        "Saved dashboards: registering, adopting, switching, signing out of and",
+        "removing one, and what each dashboard keeps apart (display",
+        "preferences, relay gateway ids, model visibility). Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+SignIn.swift": [
+        "Signing in: the client, restoring a saved connection and its",
+        "credentials, Face ID, the offline chat instead of sign-in, and a",
+        "sign-in that's required. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+UIState.swift": [
+        "UI state that isn't a chat's: pausing live publishes, the sidebar,",
+        "a Bot Chat opening, Settings dismissal and room handoffs. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Composer.swift": [
+        "The composer: quoting and replying into it, prefills and drops, and",
+        "submitting what it holds (the submission's ownership and identity,",
+        "starting a chat for it, a send while busy). Moved out of AppState.swift",
+        "(issue 828).",
+    ],
+    "AppState+Reactions.swift": [
+        "Reacting to a message, the agent's reactions, and branching a new chat",
+        "from a reply. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+NotifierPlugin.swift": [
+        "The Conduit plugin's status on this dashboard: its version and the",
+        "newest one, its changelog and notice channel, and provisioning",
+        "notification encryption. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ChatTakeover.swift": [
+        "Taking over a chat another device or the CLI is running, for a typed",
+        "send and for a call, and the message held while it waits. Moved out",
+        "of AppState.swift (issue 828).",
+    ],
+    "AppState+SendMessage.swift": [
+        "Sending a message: sendMessage, resending in place of a lost empty",
+        "chat, send failures, and settling a prompt whose delivery is unknown",
+        "against the transcript. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+YoloAndReasoning.swift": [
+        "A session's YOLO mode and reasoning effort, written to Hermes. Moved",
+        "out of AppState.swift (issue 828).",
+    ],
+    "AppState+SlashCommands.swift": [
+        "Slash commands: the catalog, running a command on the phone or the",
+        "gateway, edit and resend, rewinding turns, and reloading MCP servers",
+        "and skills. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+Compression.swift": [
+        "Compressing a session (`session.compress`), its recovery and legacy",
+        "fallback, and adopting the compressed transcript. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Steering.swift": [
+        "Steering a running turn, redirecting or interrupting it to send, the",
+        "queued sends' rows, and cancelling the current turn. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+Clarify.swift": [
+        "What the agent asks the user mid-turn: clarify questions and forms,",
+        "approvals, input prompts and connection asks, with their expiry and",
+        "the push cards they replace. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+StreamEvents.swift": [
+        "Applying a turn's stream events: status updates, server compaction",
+        "claims, buffering while reconciling, and each event's effect on the",
+        "open chat. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+DelegateAgents.swift": [
+        "The turn's delegate agents (subagents): their roster, steering,",
+        "interrupting, ending and tailing one, and pausing delegation. Moved out",
+        "of AppState.swift (issue 828).",
+    ],
+    "AppState+StreamingText.swift": [
+        "Publishing a turn's streamed text and reasoning to the transcript:",
+        "coalesced publishes, completion, partials and interim commentary.",
+        "Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ChatSupport.swift": [
+        "What the open chat leans on: the workspace, inline images and gateway",
+        "media, gateway diagnostics, the running state, scroll requests, the",
+        "session title, and test hooks. Moved out of AppState.swift (issue 828).",
+    ],
+    "AppState+ResponseHaptics.swift": [
+        "The haptics that mark a reply's activity and its end. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+VoiceConversation.swift": [
+        "Voice conversations and Read Aloud: what can start one, voice",
+        "preferences, switching voice modes, opening and closing a call, CarPlay,",
+        "waiting for the transport, and the voice tests in Settings. Moved out",
+        "of AppState.swift (issue 828).",
+    ],
+    "AppState+WatchCalls.swift": [
+        "Calls from the Watch: planning a direct, bridged, Grok or local live",
+        "call, its connection and host tools, and saving the call. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
     "AppState+PinSync.swift": [
         "Pinned chats kept on the phone and on the host (SessionPinSync), and",
         "the replies pinned in a chat. Moved out of AppState.swift (issue 828).",
@@ -971,6 +1266,8 @@ def collisions(repo, src, widened, written):
     for d, which, _ in widened:
         if which not in ("private", "fileprivate"):
             continue
+        if getattr(d, "outer_member", False):
+            continue  # another type's member: nothing else in its scope
         member = any(d is x or d in getattr(x, "inner", []) for x in src.body)
         for n in d.names:
             if member:
@@ -1046,6 +1343,11 @@ def run(repo, step, write, pr=None, today=None):
         if target.exists():
             body = render_new_file(src, f, items, changes, ["-"])
             block = body[body.index("extension AppState {"):]
+            existing = target.read_text()
+            head = block.split("\n", 3)
+            # a title the file already has: its MARK isn't repeated
+            if head[1].startswith("    // MARK: - ") and head[1] + "\n" in existing and not head[2]:
+                block = head[0] + "\n" + head[3]
             target.write_text(with_imports(target.read_text(), src.imports).rstrip("\n")
                               + "\n\n" + block)
         else:

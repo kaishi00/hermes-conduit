@@ -1768,3 +1768,45 @@ extension AppState {
         return true
     }
 }
+
+extension AppState {
+    // MARK: - Resetting Bot Mode's state
+
+    /// Drops all Bot Mode runtime state at a server-identity boundary. The
+    /// epoch bump fences every in-flight roster response; in-flight bot
+    /// opens are cancelled so a stale flight can never navigate the UI or
+    /// mutate state against the outgoing server.
+    func invalidateBotModeState() {
+        botRosterEpoch += 1
+        botRosterRetry.succeeded()
+        botWork.clear()
+        // Another server's hosts may or may not have a Bot Screen.
+        botScreens.reset()
+        botRosterVerifiedForCurrentConnection = false
+        botChatOpenFlights.values.forEach { $0.task?.cancel() }
+        botChatSessionProfiles.removeAll()
+        botChatSessionLabels.removeAll()
+        botChatOpenFlights.removeAll()
+        // Another server's list: an earlier one's failed open isn't its,
+        // and the marks its taps made, and the cover over the chat, go
+        // with the opens they were for (issue 2085).
+        botsListNotice = nil
+        botChatOpening = nil
+        botChatMarks.removeAll()
+        botChatLatestMark = nil
+        botChatOnItsWay = nil
+        botRoster = []
+        botAvatarImages = [:]
+        botAvatarFetchedGeneration.removeAll()
+        botAvatarFetchInflight.removeAll()
+        botRosterSupportsProtocol = false
+        botRosterRefreshToken = nil
+        // The in-flight refresh, if any, still completes but its epoch guard
+        // discards the stale snapshot; drop the join handle so the next
+        // identity's first refresh cannot join a dead flight.
+        botRosterRefreshFlight = nil
+        isRefreshingBotRoster = false
+        botModePhase = .idle
+        invalidateGroupChatState()
+    }
+}

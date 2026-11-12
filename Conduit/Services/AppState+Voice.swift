@@ -2088,3 +2088,46 @@ extension AppState {
         voiceJobSessionListRefreshTask = nil
     }
 }
+
+extension AppState {
+    /// Saves only into the ledger this run brought back: a boundary's empty
+    /// ledger never overwrites the next dashboard's or profile's.
+    func saveVoiceJobLedger(_ saved: [SavedVoiceJob]) {
+        guard let key = voiceJobLedgerRestoredKey, key == voiceJobLedgerKey else { return }
+        // Only this ledger's jobs: another profile's stay in its own.
+        let saved = saved.filter { $0.ledgerKey == nil || $0.ledgerKey == key }
+        if saved.isEmpty {
+            defaults.removeObject(forKey: key)
+        } else if let data = try? JSONEncoder().encode(saved) {
+            defaults.set(data, forKey: key)
+        }
+    }
+
+    /// After whatever boundary is under way settles, takes back the active
+    /// dashboard and profile's saved jobs.
+    func scheduleVoiceJobLedgerRestore() {
+        voiceJobLedgerRestoredKey = nil
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            let key = self.voiceJobLedgerKey
+            guard self.voiceJobLedgerRestoredKey != key else { return }
+            self.voiceJobLedgerRestoredKey = key
+            self.voiceBackgroundJobSupervisor.restore(SavedVoiceJob.decode(self.defaults.data(forKey: key)))
+        }
+    }
+
+    /// Logical identity of a Voice conversation suspended by an app lifecycle
+    /// transition (scene backgrounded / device locked). Identity only: it
+    /// never holds audio resources, gateway or transport references, session
+    /// leases, or task handles. Recorded when the scene deactivates with the
+    /// Voice sheet open, consumed by foreground restoration, and cleared by
+    /// every destructive Voice boundary (explicit Close, spoken End
+    /// Conversation, profile switch, server replacement, disconnect, forced
+    /// sign-out, voice disabled). In memory only — process death
+    /// intentionally loses it.
+    struct SuspendedVoiceConversation: Equatable {
+        let profile: String
+        let sessionID: String
+        let serverIdentity: String?
+    }
+}

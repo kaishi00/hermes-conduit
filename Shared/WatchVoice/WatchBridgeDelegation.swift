@@ -103,10 +103,12 @@ enum WatchBridgeDelegation {
         // Before a colon: a job marker leads a request of the user's; any
         // other ("Read chat: 2", "Approve:", "End call:") is a command whose
         // words are its own, so the text stays as the model wrote it.
-        // A colon a digit follows is a time ("9:30"), not a marker.
+        // A colon between digits is a time ("9:30"), not a marker;
+        // "Answer:2" is still one.
         if let colon = body.indices.first(where: { index in
                (body[index] == ":" || body[index] == "：")
-                   && !(body[body.index(after: index)...].first?.isNumber ?? false)
+                   && !(index > body.startIndex && body[body.index(before: index)].isNumber
+                        && body[body.index(after: index)...].first?.isNumber == true)
            }),
            body[..<colon].split(separator: " ").count <= maxMarkerWords {
             guard isJobMarker(body[..<colon]) else { return own }

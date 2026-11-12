@@ -253,6 +253,7 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Read chat: 2", userWords: "Please read chat number 2"), "Read chat: 2")
         XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Read chat: 2", userWords: "read chat 2"), "Read chat: 2")
         XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Approve: yes", userWords: "yes"), "Approve: yes")
+        XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Answer:2", userWords: "answer 2"), "Answer:2")
         XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Read chat 2", userWords: "Hi, read chat 2"), "Read chat 2")
         XCTAssertEqual(WatchBridgeDelegation.requestWords(itemText: "Job 2: make it Friday", userWords: "For job 2, make it Friday."), "Job 2: For job 2, make it Friday.")
         // A time's colon is no marker: an echo with one still gives way, other text stays.
