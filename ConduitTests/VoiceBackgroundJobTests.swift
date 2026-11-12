@@ -363,14 +363,28 @@ extension VoiceConversationControllerTests {
         XCTAssertTrue(sentContinuedFake.droppedSurfaces.isEmpty)
         // Two of the call's requests at once: while one checks the chat is
         // free, the other waits, so only one is sent (issue 2283).
-        let (paired, pairedFake) = makeSupervisor()
+        let pairedFake = FakeVoiceJobBackend()
+        let paired = VoiceBackgroundJobSupervisor(
+            backend: pairedFake.backend, pollInterval: .seconds(3_600), threadWaitInterval: .milliseconds(5)
+        )
         pairedFake.threadBusyDelay = .milliseconds(50)
         let chat = VoiceThreadTarget(runtimeSessionID: "rt-call", storedSessionID: nil, title: "Call")
         _ = await paired.continueJob(instructions: "check the disks", in: chat)
         _ = await paired.continueJob(instructions: "check the logs", in: chat)
-        for _ in 0..<200 where pairedFake.submissions.isEmpty { try? await Task.sleep(for: .milliseconds(10)) }
+        await waitFor { !pairedFake.submissions.isEmpty }
         try? await Task.sleep(for: .milliseconds(200))
         XCTAssertEqual(pairedFake.submissions.count, 1)
+        XCTAssertTrue(pairedFake.submissions.first?.1.contains("check the disks") ?? false)
+        // Once the first is over, the second goes in, then ends too.
+        let pairedIDs = paired.jobs.map(\.id)
+        XCTAssertEqual(pairedIDs.count, 2)
+        _ = await paired.cancel(jobID: pairedIDs[0])
+        await waitFor { pairedFake.submissions.count == 2 }
+        XCTAssertEqual(pairedFake.submissions.count, 2)
+        XCTAssertTrue(pairedFake.submissions.last?.1.contains("check the logs") ?? false)
+        _ = await paired.cancel(jobID: pairedIDs[1])
+        XCTAssertEqual(pairedFake.cancelled, ["rt-call", "rt-call"])
+        XCTAssertFalse(paired.jobs.contains { $0.status.isActive })
         // The surface: the Watch for its call's job, else where a spoken message is.
         XCTAssertEqual(TurnSurface.voiceJob(fromWatch: true, carPlay: true, device: .iphone), TurnSurface(place: .watch, input: .spoken))
         XCTAssertEqual(TurnSurface.voiceJob(fromWatch: false, carPlay: true, device: .iphone), TurnSurface(place: .carplay, input: .spoken))
