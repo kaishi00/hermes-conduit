@@ -40,7 +40,7 @@ extension AppState {
     }
 
     /// The folders the Folder tab can open: the chat's own (with `chat`),
-    /// then each project's, once each.
+    /// then each project's, then the ones opened with Open Folder…, once each.
     func workspaceRoots(includingChat chat: Bool) -> [WorkspaceRoot] {
         var roots: [WorkspaceRoot] = []
         var seen = Set<String>()
@@ -52,6 +52,12 @@ extension AppState {
             guard let path = project.primaryPath?.trimmingCharacters(in: .whitespacesAndNewlines), !path.isEmpty,
                   seen.insert(Self.normalizedWorkspacePath(path)).inserted else { continue }
             roots.append(WorkspaceRoot(path: path, title: project.title, kind: .project))
+        }
+        for path in openedWorkspaceFolders(profile: workspaceProfile)
+        where seen.insert(Self.normalizedWorkspacePath(path)).inserted {
+            // A Windows host's paths use backslashes.
+            let name = Self.normalizedWorkspacePath(path).split(whereSeparator: { $0 == "/" || $0 == "\\" }).last.map(String.init) ?? ""
+            roots.append(WorkspaceRoot(path: path, title: name.isEmpty ? path : name, kind: .opened))
         }
         return roots
     }

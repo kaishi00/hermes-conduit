@@ -547,6 +547,12 @@ final class ComposerPasteTextViewTests: XCTestCase {
             .declined,
             "A locked field takes no files"
         )
+        XCTAssertEqual(
+            ReturnKeyTextView.fieldDrop(registeredTypeIdentifiers: [[WorkspaceDrag.typeIdentifier] + words], suggestedNames: [nil],
+                                        isEditable: true, takesFiles: true),
+            .declined,
+            "A Folder row is left to the chat or room around the field, never pasted as its path"
+        )
     }
 
     func testAPictureDroppedOnTheChatFieldKeepsThePicturePaste() async {

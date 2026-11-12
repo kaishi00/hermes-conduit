@@ -59,6 +59,11 @@ class ReturnKeyTextView: UITextView {
         isEditable: Bool,
         takesFiles: Bool
     ) -> FieldDrop {
+        // A Folder row: the chat around the field puts its path in the
+        // draft; a room, whose agents may be on other hosts, turns it down.
+        if registeredTypeIdentifiers.contains(where: { $0.contains(WorkspaceDrag.typeIdentifier) }) {
+            return .declined
+        }
         let items = zip(registeredTypeIdentifiers, suggestedNames)
         if items.contains(where: { AttachmentDrop.takes(registeredTypeIdentifiers: $0, suggestedName: $1) }) {
             // A locked field takes no files, as its Attach menu is off.

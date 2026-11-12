@@ -449,8 +449,9 @@ struct ChatView: View {
         .task { await TranscriptPictureMemory.loadKeptSizes() }
         .background(Color.clear)
         // Files dragged onto the chat (Finder on a Mac, Files on an iPad)
-        // are staged in the composer for the user to send (#1408).
-        .attachmentDropTarget(isEnabled: appState.composerIsEnabled) { providers in
+        // are staged in the composer for the user to send (#1408); a file
+        // or folder from the Folder puts its path in the draft (issue 1438).
+        .attachmentDropTarget(isEnabled: appState.composerIsEnabled, takesWorkspaceEntries: true) { providers in
             appState.dropIntoComposer(providers)
         }
         .overlay(alignment: .top) {
