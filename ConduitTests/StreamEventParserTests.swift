@@ -601,6 +601,20 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(start.merged(with: silentEnd).duration, 10)
         XCTAssertEqual(start.ended(as: .interrupted, at: Date(timeIntervalSince1970: 1_005)).duration, 5)
 
+        // An end only the roster found shows no time; a later end event's
+        // own figure still fills it in.
+        var running = start
+        running.hasGatewayID = true
+        running.sessionId = "s1"
+        running.updatedAt = Date(timeIntervalSince1970: 1_001)
+        let found = try XCTUnwrap(DelegateAgentActivity.reconciled(
+            [running], sessionId: "s1", liveIDs: [], changedBefore: Date(timeIntervalSince1970: 2_000)
+        ).first)
+        XCTAssertEqual(found.status, .completed)
+        XCTAssertNil(found.duration)
+        XCTAssertNil(found.elapsed(at: Date(timeIntervalSince1970: 3_000)))
+        XCTAssertEqual(found.merged(with: complete).duration, 63.5)
+
         let queued = try activity(#"{"type": "subagent.spawn_requested", "session_id": "s1", "payload": {"goal": "g", "task_count": 1, "task_index": 0, "subagent_id": "sa-2"}}"#)
         XCTAssertNil(queued.startedAt)
         XCTAssertNil(queued.elapsed(at: Date()), "a queued agent has no time yet")
