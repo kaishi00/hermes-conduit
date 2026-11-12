@@ -4765,12 +4765,12 @@ message · the group room composer · the Settings caption for the limit
 - Settings: `Conduit/Views/AuxiliaryViews.swift` (the attachment size limit setting)
 
 **Rulings**
-- The message names the limit that refused the file. When that is the user's Settings limit it says where to raise it; when it is a route's own cap at or below the Settings limit (a group room takes 50 MB with the plugin's room files, 14 MB when only Hermes' own room attachments take its files), it names that cap and offers no setting (2026-10-24, from #935's review, #1190; the Hermes cap, #2045).
+- The message names the limit that refused the file. When that is the user's Settings limit it says where to raise it; when it is a route's own cap at or below the Settings limit (a group room takes 50 MB with the plugin's room files, 14 MB when only Hermes' own room attachments take its files, 16 MB in a room with other people's agents, whose message says that's what such a room can share with them), it names that cap and offers no setting (2026-10-24, from #935's review, #1190; the Hermes cap, #2045; the linked room's cap, Eric 2026-11-12).
 
 **Open gaps**
 - The voice message says "larger than your attachment size limit" without the size or where to change it.
 - A pasted picture link whose header claims more pixels than a reply's picture may have is refused as "The image provider returned invalid image data.", not as too large.
-- The Settings caption doesn't say that a group room takes at most 50 MB (14 MB without the plugin) whatever the limit.
+- The Settings caption doesn't say that a group room takes at most 50 MB (14 MB without the plugin, 16 MB with other people's agents) whatever the limit.
 
 **Checked:** 2026-11-08, #2045 (a room without the plugin's room files caps its files at 14 MB, under Hermes' 15 MB); 2026-11-05, #1821 (a picture whose file fails is held to the same limit when it is taken as its bytes or its image object, on the share sheet and a drop); 2026-10-29, #1515 (a long paste over the limit isn't attached: it goes into the field, as pastes did before); 2026-10-28, #1411 (dropped files refused with the same limit and message as picked ones); 2026-10-24, at #1190; the paste's pixel bound at #1191 (#892 review).
 
