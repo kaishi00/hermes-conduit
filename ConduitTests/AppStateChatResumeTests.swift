@@ -4,6 +4,57 @@ import XCTest
 
 @MainActor
 final class AppStateChatResumeTests: XCTestCase {
+    /// A notification route's failed attempt that will be retried holds its
+    /// words instead of showing them, puts back what the chat said before,
+    /// and says them only when the route ends with nothing opened; another
+    /// tap's route never wears them (issue 1919, #1920, #2309).
+    func testANotificationRouteHoldsARetriedFailureUntilTheWindowEnds() {
+        let defaults = makeScratchDefaults("AppStateChatResumeTests.routeHeldFailure")
+        let appState = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            clearSessionPresentationCache: {}
+        )
+        let tapA = ConduitNotificationTarget(profile: nil, sessionId: "chat-a", type: "response.ready")
+        let tapB = ConduitNotificationTarget(profile: nil, sessionId: "chat-b", type: "response.ready")
+
+        appState.errorMessage = "earlier"
+        let before = appState.notificationRouteErrorSnapshot()
+        appState.chatSyncErrorMessage = "Failed to restore this conversation: offline"
+        appState.holdNotificationRouteFailure(for: tapA, restoring: before)
+        XCTAssertEqual(appState.errorMessage, "earlier", "the retry is due: the chat keeps what it said")
+
+        appState.publishNotificationRouteFailure(for: tapB)
+        XCTAssertEqual(appState.errorMessage, "earlier", "another tap's route doesn't say tap A's words")
+
+        appState.publishNotificationRouteFailure(for: tapA)
+        XCTAssertEqual(appState.errorMessage, "Failed to restore this conversation: offline", "the window ended: said once")
+        appState.errorMessage = nil
+        appState.publishNotificationRouteFailure(for: tapA)
+        XCTAssertNil(appState.errorMessage, "and only once")
+
+        // An attempt with no words of its own leaves the earlier one held.
+        appState.chatSyncErrorMessage = "first"
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil))
+        appState.holdNotificationRouteFailure(for: tapA, restoring: appState.notificationRouteErrorSnapshot())
+        appState.discardNotificationRouteFailure(for: tapB)
+        appState.publishNotificationRouteFailure(for: tapA)
+        XCTAssertEqual(appState.errorMessage, "first")
+
+        // An open that landed drops them, and so does a new tap.
+        appState.errorMessage = nil
+        appState.chatSyncErrorMessage = "second"
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil))
+        appState.discardNotificationRouteFailure(for: tapA)
+        appState.publishNotificationRouteFailure(for: tapA)
+        XCTAssertNil(appState.errorMessage)
+        appState.chatSyncErrorMessage = "third"
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil))
+        appState.forgetNotificationRouteFailure()
+        appState.publishNotificationRouteFailure(for: tapA)
+        XCTAssertNil(appState.errorMessage)
+    }
+
     func testPendingClarifyMessageIDIsCachedWhenTranscriptChanges() {
         let suite = "AppStateChatResumeTests.pendingClarifyCache.\(UUID().uuidString)"
         guard let defaults = UserDefaults(suiteName: suite) else {

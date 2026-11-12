@@ -1692,7 +1692,7 @@ extension AppState {
         // A failure that isn't a refusal is retried with backoff, so the
         // error it sets is not the last word: it is put back below and
         // shown only if the window runs out with no chat opened.
-        let routeErrorBeforeOpen = chatSyncErrorMessage
+        let routeErrorBeforeOpen = notificationRouteErrorSnapshot()
         let (outcome, refused, _) = await performSessionOpenNotingRefusal(
             route.resumeTargetID,
             reusing: transitionGeneration,
@@ -1753,16 +1753,36 @@ extension AppState {
             discardNotificationRouteFailure(for: target)
             return .failed
         }
-        // Another attempt is due: keep this attempt's words for the window's
-        // end, and put back whatever the chat had said before, so a retry
-        // that opens the chat never leaves it wearing an error. An attempt
-        // that lost its answer without a message of its own leaves the
-        // earlier one standing, since that is still the last thing known.
-        if let failure = chatSyncErrorMessage, failure != routeErrorBeforeOpen {
+        holdNotificationRouteFailure(for: target, restoring: routeErrorBeforeOpen)
+        return .retry
+    }
+
+    /// The error lines a notification route's open may write, taken before
+    /// it starts: the chat's own and the one behind a room. The open can
+    /// close a room on screen, so the line put back is the one showing then.
+    struct NotificationRouteErrorSnapshot {
+        let chatError: String?
+        let errorBehindRoom: String?
+    }
+
+    func notificationRouteErrorSnapshot() -> NotificationRouteErrorSnapshot {
+        NotificationRouteErrorSnapshot(chatError: errorMessage, errorBehindRoom: chatErrorBehindRoom)
+    }
+
+    /// Another attempt is due: keep this attempt's words for the window's
+    /// end, and put back whatever the line showing had said before, so a
+    /// retry that opens the chat never leaves it wearing an error. An attempt
+    /// that lost its answer without a message of its own leaves the earlier
+    /// one standing, since that is still the last thing known.
+    func holdNotificationRouteFailure(
+        for target: ConduitNotificationTarget,
+        restoring before: NotificationRouteErrorSnapshot
+    ) {
+        let earlier = activeRoomSurface == nil ? before.chatError : before.errorBehindRoom
+        if let failure = chatSyncErrorMessage, failure != earlier {
             notificationRouteFailure = (target, failure)
         }
-        chatSyncErrorMessage = routeErrorBeforeOpen
-        return .retry
+        chatSyncErrorMessage = earlier
     }
 
     /// The stable decision key a push-delivered card was recorded under
