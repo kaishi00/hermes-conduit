@@ -295,6 +295,10 @@ enum VoiceBackgroundJobNotice: Equatable {
 /// Hermes operations the supervisor needs. Closures (not a protocol) so
 /// AppState can bind them to whichever client is current at call time and
 /// tests can script them.
+/// A job whose request was never sent (a cancel or reset overtook it): its
+/// turn surface report is dropped, as after a refused send.
+struct VoiceJobNotSentError: Error {}
+
 struct VoiceBackgroundJobBackend {
     /// `profile` nil creates the job in the active profile. `callsModel`:
     /// the job is the call's own on that profile (a Watch call's, or a Bot
@@ -330,6 +334,11 @@ struct VoiceBackgroundJobBackend {
     /// while its session is made can't file it under another bot.
     var activeProfile: @MainActor () -> String? = { nil }
     var submit: @MainActor (_ sessionID: String, _ text: String) async throws -> Void
+    /// Tells the plugin where a job's request came from, just before its
+    /// submit (TurnSurface, #888): spoken, from the Watch for a Watch call's
+    /// job. Returns what forgets that report when the submit fails.
+    var reportTurnSurface: @MainActor (_ sessionID: String, _ text: String, _ fromWatch: Bool) async
+        -> @MainActor (Error) -> Void = { _, _, _ in { _ in } }
     var cancel: @MainActor (_ sessionID: String) async throws -> Void
     /// The live runtimes of `profile` (nil: the active profile).
     var liveSessions: @MainActor (_ profile: String?) async throws -> [LiveSessionStatus]
@@ -1550,7 +1559,19 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 $0.requestSent = true
                 $0.sentAt = Date()
             }
-            try await backend.submit(runtimeID, Self.jobPrompt(for: request))
+            let prompt = Self.jobPrompt(for: request)
+            let dropTurnSurface = await backend.reportTurnSurface(runtimeID, prompt, fromWatch)
+            // A cancel or reset while the report went: nothing is sent.
+            guard startIsCurrent(job.id, generation: generation) else {
+                dropTurnSurface(VoiceJobNotSentError())
+                return await abandonStart(job, sessionID: runtimeID, generation: generation)
+            }
+            do {
+                try await backend.submit(runtimeID, prompt)
+            } catch {
+                dropTurnSurface(error)
+                throw error
+            }
             // Events may legitimately move the job past .starting while
             // submit awaits; only a cancel or a reset retires it here. A
             // cancel that landed mid-submit reached Hermes before the turn
@@ -1662,7 +1683,21 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                 $0.requestSent = true
                 $0.sentAt = Date()
             }
-            try await backend.submit(runtimeID.isEmpty ? chat.runtimeSessionID : runtimeID, Self.jobPrompt(for: request))
+            // Only a Watch call continues a chat this way: its later
+            // requests say so too, not just its first job's (#888).
+            let sessionID = runtimeID.isEmpty ? chat.runtimeSessionID : runtimeID
+            let prompt = Self.jobPrompt(for: request)
+            let dropTurnSurface = await backend.reportTurnSurface(sessionID, prompt, true)
+            guard generation == self.generation, job(jobID)?.status == .starting else {
+                dropTurnSurface(VoiceJobNotSentError())
+                return
+            }
+            do {
+                try await backend.submit(sessionID, prompt)
+            } catch {
+                dropTurnSurface(error)
+                throw error
+            }
             guard generation == self.generation else { return }
             if job(jobID)?.status == .starting { update(jobID) { $0.status = .running } }
             armCallback(jobID)

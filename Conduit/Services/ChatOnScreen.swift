@@ -53,14 +53,15 @@ enum ChatOnScreen {
         plugin.reports(capability)
     }
 
-    /// The device kind the plugin keeps one hold for. CarPlay and Siri are
-    /// where a message came from, never where a chat is read.
+    /// The device kind the plugin keeps one hold for. CarPlay, Siri, the
+    /// Watch and a widget are where a message came from, never what this
+    /// app runs on.
     @MainActor static var device: String {
         switch TurnSurface.device {
         case .ipad: return "ipad"
         case .mac: return "mac"
         case .vision: return "vision"
-        case .iphone, .carplay, .siri: return "iphone"
+        case .iphone, .carplay, .siri, .watch, .widget: return "iphone"
         }
     }
 

@@ -4809,6 +4809,15 @@ final class AppState: ObservableObject {
                 let client = try await self.clientForVoiceRequest()
                 _ = try await client.sendPrompt(sessionID, text: text)
             },
+            reportTurnSurface: { [weak self] sessionID, text, fromWatch in
+                guard let self else { return { _ in } }
+                let reportedOn = self.activeDashboardID
+                let surface = TurnSurface.voiceJob(fromWatch: fromWatch, carPlay: self.isCarPlayVoiceSurfaceActive)
+                await self.reportTurnSurface(surface, runtimeSessionID: sessionID, text: text)?.value
+                return { [weak self] error in
+                    self?.discardTurnSurface(runtimeSessionID: sessionID, text: text, after: error, reportedOn: reportedOn)
+                }
+            },
             cancel: { [weak self] sessionID in
                 guard let self else { throw HermesError.notConnected }
                 let client = try await self.clientForVoiceRequest()
