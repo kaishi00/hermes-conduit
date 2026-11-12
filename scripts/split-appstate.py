@@ -83,12 +83,16 @@ STEPS = [
     },
     # 4: rooms, bots and profile pictures
     {
-        "AppState+GroupChats.swift": ["Group Chats (hosted rooms)"],
+        # Group Chats and Profile photos both run on past their own code into
+        # code with no MARK of its own: profile settings, and opening chats.
+        "AppState+GroupChats.swift": ["Group Chats (hosted rooms)|until retireSpeechOperationsForServerReplacement"],
+        "AppState+ProfileSettings.swift": ["Group Chats (hosted rooms)|from retireSpeechOperationsForServerReplacement"],
         "AppState+BotMode.swift": [
             "Bot Mode", "Bot Mode (roster + canonical chat)",
             "Bot management (create / edit / delete / avatars)",
         ],
-        "AppState+ProfilePhotos.swift": ["Profile photos from Hermes"],
+        "AppState+ProfilePhotos.swift": ["Profile photos from Hermes|until openWidgetConversation"],
+        "AppState+OpenChat.swift": ["Profile photos from Hermes|from openWidgetConversation"],
     },
     # 5: voice
     {
@@ -492,9 +496,19 @@ def assign(src, steps):
                         it.dest = fname
                         moves.setdefault(fname, []).append(it)
                     continue
+                # "Region|from name" / "Region|until name": the part of a long
+                # region from (or before) the declaration of `name`.
+                part, _, cut = part.partition("|")
                 if part not in known:
                     raise SystemExit(f"no region {part!r}; regions: {', '.join(known)}")
-                for it in region_items[part]:
+                items = region_items[part]
+                if cut:
+                    side, _, name = cut.partition(" ")
+                    at = [i for i, it in enumerate(items) if name in it.names]
+                    if side not in ("from", "until") or len(at) != 1:
+                        raise SystemExit(f"can't cut {part!r} at {cut!r}")
+                    items = items[at[0]:] if side == "from" else items[:at[0]]
+                for it in items:
                     if it.movable:
                         it.dest = fname
                         moves.setdefault(fname, []).append(it)
@@ -513,7 +527,7 @@ def code_names(masked_lines):
     return names
 
 
-MUTATION = (r"(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\s*(=(?!=)|&?\+=|&?-=|&?\*=|/=|%=|\|=|&=|\^=|<<=|>>=|\?\?=)"
+MUTATION = (r"(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\s*(=(?!=)|&?\+=|&?-=|&?\*=|/=|%=|\|=|&=|\^=|&?<<=|&?>>=|\?\?=)"
             r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(append|remove\w*|insert|merge|formUnion|"
             r"formIntersection|subtract|sort|reverse|popLast|popFirst|update\w*|toggle|"
             r"swapAt|replaceSubrange|reserveCapacity|shuffle)\b")
@@ -703,7 +717,7 @@ def render_new_file(src, fname, items, changes, header_note):
             if it.region != last_region:
                 if not first:
                     out.append("")
-                out.append(f"    // MARK: - {it.region.split('@')[0]}")
+                out.append(f"    // MARK: - {MARK_TITLES.get(fname, it.region.split('@')[0])}")
                 out.append("")
                 last_region = it.region
             elif not first:
@@ -761,7 +775,21 @@ def render_app_state(src, moved, changes):
     return "\n".join(keep) + "\n"
 
 
+# A file made from the cut-off end of a region gets a MARK of its own.
+MARK_TITLES = {"AppState+OpenChat.swift": "Opening chats",
+               "AppState+ProfileSettings.swift": "Profile and connection settings"}
+
 HEADER_NOTES = {
+    "AppState+ProfileSettings.swift": [
+        "A dashboard's settings and its profiles' names, pictures, colors and",
+        "order, with the server identity a chat resume keys on. Moved out of",
+        "AppState.swift (issue 828).",
+    ],
+    "AppState+OpenChat.swift": [
+        "Opening a chat: a widget's or a bot's Bot Chat, a room's chat, a saved",
+        "session, a notification's target, and the profile a conversation",
+        "belongs to. Moved out of AppState.swift (issue 828).",
+    ],
     "ChatResumeRecovery.swift": [
         "The seams and steps of resuming a chat: the lifecycle operations",
         "tests replace, reconnect scheduling, and the recovery sequence that",

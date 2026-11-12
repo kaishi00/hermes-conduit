@@ -222,6 +222,22 @@ final class AppState: ObservableObject {
         self.assertIn("private(set) var other = LoadState()", app)
         self.assertIn("\n    var count = 0", app, "&+= writes it")
 
+    def test_cuts_a_long_region_at_a_declaration(self):
+        split.STEPS = [{"AppState+Connection.swift": ["Connection|until connect"],
+                        "AppState+Connect.swift": ["Connection|from connect"]}]
+        saved, split.MARK_TITLES = split.MARK_TITLES, {"AppState+Connect.swift": "Connecting"}
+        try:
+            split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+        finally:
+            split.MARK_TITLES = saved
+        self.assertIn("var isReady: Bool", self.read("AppState+Connection.swift"))
+        connect = self.read("AppState+Connect.swift")
+        self.assertIn("    // MARK: - Connecting\n\n    /// Connects.\n    func connect()", connect)
+        self.assertNotIn("isReady", connect)
+        with self.assertRaises(SystemExit):
+            split.STEPS = [{"AppState+Connection.swift": ["Connection|from nothing"]}]
+            split.run(self.repo, 1, True, pr=42, today="2026-11-12")
+
     def test_points_the_map_at_the_new_file(self):
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")
         text = (self.repo / split.MAP).read_text()
