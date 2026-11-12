@@ -31704,6 +31704,170 @@
           }
         }
       }
+    },
+    "%@ is larger than the %@ MB a room with other people's agents can share with them." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ ist größer als die %2$@ MB, die ein Raum mit Agenten anderer Personen mit ihnen teilen kann."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ supera los %2$@ MB que una sala con agentes de otras personas puede compartir con ellas."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ dépasse les %2$@ Mo qu'un salon avec les agents d'autres personnes peut partager avec elles."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ lebih besar dari %2$@ MB yang bisa dibagikan ruang berisi agen orang lain kepada mereka."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ supera i %2$@ MB che una stanza con agenti di altre persone può condividere con loro."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@は、ほかの人のエージェントがいるグループで共有できる%2$@ MBを超えています。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@은(는) 다른 사람의 에이전트가 있는 방에서 공유할 수 있는 %2$@MB보다 커요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ przekracza %2$@ MB, które pokój z agentami innych osób może im udostępnić."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ é maior que os %2$@ MB que uma sala com agentes de outras pessoas pode compartilhar com elas."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ больше %2$@ МБ, которыми комната с агентами других людей может с ними поделиться."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@, başka kişilerin ajanlarının olduğu bir odanın onlarla paylaşabileceği %2$@ MB'tan büyük."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 超过了有其他人智能体的群聊可与他们共享的 %2$@ MB。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%1$@ 超過了有其他人代理程式的群組可與他們分享的 %2$@ MB。"
+          }
+        }
+      }
+    },
+    "These files are larger than the %@ MB a room with other people's agents can share with them: %@." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Diese Dateien sind größer als die %1$@ MB, die ein Raum mit Agenten anderer Personen mit ihnen teilen kann: %2$@."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estos archivos superan los %1$@ MB que una sala con agentes de otras personas puede compartir con ellas: %2$@."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ces fichiers dépassent les %1$@ Mo qu'un salon avec les agents d'autres personnes peut partager avec elles : %2$@."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "File ini lebih besar dari %1$@ MB yang bisa dibagikan ruang berisi agen orang lain kepada mereka: %2$@."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Questi file superano i %1$@ MB che una stanza con agenti di altre persone può condividere con loro: %2$@."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これらのファイルは、ほかの人のエージェントがいるグループで共有できる%1$@ MBを超えています: %2$@。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이 파일들은 다른 사람의 에이전트가 있는 방에서 공유할 수 있는 %1$@MB보다 커요: %2$@."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Te pliki przekraczają %1$@ MB, które pokój z agentami innych osób może im udostępnić: %2$@."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Estes arquivos são maiores que os %1$@ MB que uma sala com agentes de outras pessoas pode compartilhar com elas: %2$@."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Эти файлы больше %1$@ МБ, которыми комната с агентами других людей может с ними поделиться: %2$@."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bu dosyalar, başka kişilerin ajanlarının olduğu bir odanın onlarla paylaşabileceği %1$@ MB'tan büyük: %2$@."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "这些文件超过了有其他人智能体的群聊可与他们共享的 %1$@ MB：%2$@。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "這些檔案超過了有其他人代理程式的群組可與他們分享的 %1$@ MB：%2$@。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"
