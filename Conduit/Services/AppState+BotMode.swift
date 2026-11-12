@@ -175,7 +175,10 @@ extension AppState {
                     sessionIDs: [requestedID]
                 )
             }
-            if activeNotificationOpenAttemptID == attemptID {
+            // A superseded open (another tap, or a chat the user opened
+            // meanwhile) neither holds nor restores: the line is the newer
+            // open's.
+            if notificationOpenAttemptIsCurrent(id: attemptID, transitionGeneration: transitionGeneration) {
                 holdNotificationRouteFailure(for: target, restoring: routeErrorBeforeOpen)
             }
             return .retry
