@@ -156,12 +156,14 @@ final class WorkspaceExplorer: ObservableObject {
         guard let scope else { return }
         askPluginIfUnanswered()
         let folders = [scope.root] + expanded.sorted()
+        var listed: Set<String> = []
         for folder in folders {
             // Another folder opened meanwhile: the rest belongs to the old one.
             guard self.scope == scope else { return }
-            await load(folder)
+            if await load(folder) { listed.insert(folder) }
         }
         guard self.scope == scope else { return }
+        dropGoneTabs(read: listed)
         await loadRecent()
         if let query = search?.query, !query.isEmpty {
             await runSearch(query)
@@ -512,7 +514,6 @@ final class WorkspaceExplorer: ObservableObject {
             guard isCurrent(ticket, owner, scope.profile) else { return nil }
             Haptics.success()
             await refresh()
-            dropGoneTabs()
             return nil
         } catch {
             guard isCurrent(ticket, owner, scope.profile) else { return nil }
@@ -521,13 +522,13 @@ final class WorkspaceExplorer: ObservableObject {
         }
     }
 
-    /// After a rename, move or delete: a tab, or the copied entry, whose
-    /// folder was just read and no longer lists it goes, so it never opens
-    /// a file that isn't there. A tab with unsaved changes stays.
-    private func dropGoneTabs() {
+    /// After a refresh (a change, pull to refresh, the agent's edits): a
+    /// tab, or the copied entry, whose folder was just read in full and no
+    /// longer lists it goes, so it never opens a file that isn't there. A
+    /// tab with unsaved changes stays; the reader moves off a tab that goes.
+    private func dropGoneTabs(read: Set<String>) {
         guard let root else { return }
         let base = AppState.normalizedWorkspacePath(root)
-        let read = Set([root] + expanded)
         // Gone when a folder on its way up, just read in full, no longer
         // lists the part below it (the file, or a folder holding it).
         func gone(_ path: String) -> Bool {
@@ -546,6 +547,9 @@ final class WorkspaceExplorer: ObservableObject {
         }
         openFiles.removeAll { gone($0.path) && !keepsOpen.contains($0.path) }
         if let copied, gone(copied.path) { self.copied = nil }
+        if let viewed, !openFiles.contains(where: { $0.path == viewed.path }), let next = openFiles.last {
+            Task { await view(next) }
+        }
     }
 
     /// Takes `path`'s tab away; the sheet shows another or closes.
