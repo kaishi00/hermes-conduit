@@ -270,6 +270,31 @@ extension HermesVoiceGatewayTimeoutTests {
         }
     }
 
+    /// The call screen's Camera: Gemini takes the photo as one video frame,
+    /// and Qwen's adapter turns that frame into its image buffer, after a
+    /// moment of audio when none went yet, since Qwen takes a picture only
+    /// after some.
+    @MainActor
+    func testAPhotoGoesAsAVideoFrameAndQwenAppendsItToItsImageBuffer() async throws {
+        let jpeg = Data([0xFF, 0xD8, 0xFF, 0xD9])
+        let frame = GeminiLiveProtocol.message(for: .image(jpeg: jpeg))
+        let video = try XCTUnwrap((frame["realtimeInput"] as? [String: Any])?["video"] as? [String: Any])
+        XCTAssertEqual(video["mimeType"] as? String, "image/jpeg")
+        XCTAssertEqual(video["data"] as? String, jpeg.base64EncodedString())
+        XCTAssertFalse(LiveVoiceClientMessage.image(jpeg: jpeg).isAudio, "a backed-up connection never drops a photo as it may audio")
+
+        let fake = QwenTestSocket()
+        let socket = QwenLiveSocket(upstream: fake)
+        try await socket.send(GeminiLiveProtocol.encode(frame))
+        XCTAssertEqual(fake.sent.map { $0["type"] as? String }, ["input_audio_buffer.append", "input_image_buffer.append"])
+        XCTAssertEqual(fake.sent.last?["image"] as? String, jpeg.base64EncodedString())
+
+        fake.sent = []
+        try await socket.send(GeminiLiveProtocol.encode(frame))
+        XCTAssertEqual(fake.sent.map { $0["type"] as? String }, ["input_image_buffer.append"], "audio already went")
+        XCTAssertFalse(fake.sent.contains { $0["type"] as? String == "response.create" }, "a photo asks for no reply")
+    }
+
     @MainActor
     func testQwenParallelToolsWaitForAllResults() async throws {
         let fake = QwenTestSocket()

@@ -141,6 +141,45 @@ extension GroupChatModelsTests {
         XCTAssertThrowsError(try RoomDraftsClient.parseList(["ok": true, "drafts": [[String: Any]]()]))
     }
 
+    /// Group Chats keeps following while a room is on its way: a draft
+    /// waiting or starting, or started with its room not listed yet, and
+    /// an invite you joined; nothing once each has its room or ended.
+    @MainActor
+    func testARoomOnItsWayKeepsGroupChatsFollowing() throws {
+        let appState = draftsAppState(DraftsRoutes(drafts: []))
+        let starts: [String: Any] = ["available": true, "reason": NSNull()]
+        func drafts(_ statuses: [String]) throws -> LinkedRoomDrafts {
+            let list = try RoomDraftsClient.parseList([
+                "ok": true, "starts": starts,
+                "drafts": statuses.enumerated().map { draftsDraft("conduit-\($0.offset)", status: $0.element) },
+            ])
+            return LinkedRoomDrafts(dashboardID: appState.activeDashboardID, list: list, people: [])
+        }
+        XCTAssertFalse(appState.linkedRoomOnItsWay, "nothing read, nothing on its way")
+        for status in ["waiting", "starting", "started"] {
+            appState.linkedRoomDrafts = try drafts(["ended", status])
+            XCTAssertTrue(appState.linkedRoomOnItsWay, "a draft \(status), its room not listed")
+        }
+        appState.linkedRoomDrafts = try drafts(["ended"])
+        XCTAssertFalse(appState.linkedRoomOnItsWay, "an ended draft won't change")
+        appState.linkedRoomDrafts = LinkedRoomDrafts(dashboardID: UUID(), list: try drafts(["waiting"]).list, people: [])
+        XCTAssertFalse(appState.linkedRoomOnItsWay, "another dashboard's drafts aren't followed here")
+
+        appState.linkedRoomDrafts = nil
+        func invites(_ status: String) throws -> LinkedRoomInvites {
+            let invite = try XCTUnwrap(RoomInvitesClient.invite([
+                "room_id": "conduit-9", "link": "lk1a2b3c4d5e6f", "from": "Furina", "name": "Zoo trip",
+                "status": status, "people": ["Mona"], "slots": 1,
+                "expires_at": 1_790_604_800, "joined": [[String: Any]](),
+            ]))
+            return LinkedRoomInvites(dashboardID: appState.activeDashboardID, invites: [invite])
+        }
+        appState.linkedRoomInvites = try invites("joined")
+        XCTAssertTrue(appState.linkedRoomOnItsWay, "an invite you joined waits for its room")
+        appState.linkedRoomInvites = try invites("waiting")
+        XCTAssertFalse(appState.linkedRoomOnItsWay, "one waiting on you is yours to answer, not followed")
+    }
+
     func testDraftRowsKeepWaitingAndEndedDraftsUntilDismissed() throws {
         let list = try RoomDraftsClient.parseList([
             "ok": true,

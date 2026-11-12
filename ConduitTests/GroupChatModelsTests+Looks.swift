@@ -267,7 +267,7 @@ extension GroupChatModelsTests {
             context.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
         }
         let taken = await appState.setRoomPersonPicture(image)
-        XCTAssertTrue(taken)
+        XCTAssertEqual(taken, .saved)
         XCTAssertEqual(routes.looksPuts.count, 3)
         let person = try XCTUnwrap(routes.looksPuts.last?["person"] as? [String: Any])
         XCTAssertNotNil(person["picture"] as? String)
@@ -275,6 +275,89 @@ extension GroupChatModelsTests {
 
         await appState.setRoomPersonPicture(nil)
         XCTAssertEqual(routes.looksPuts.count, 4)
+        XCTAssertNil(appState.appDefaults.data(forKey: RoomLooksUpload.personPictureKey))
+    }
+
+    /// Eric's host, 2026-11-12: another of his devices, without his
+    /// picture, gave its bots' looks and took his picture away from the
+    /// guest. A Hermes that keeps it for all his devices is given it only
+    /// when he chooses or removes it, and each device shows the one it keeps.
+    @MainActor
+    func testAHermesThatKeepsYourPictureIsGivenItOnlyWhenYouChooseOrRemoveIt() async throws {
+        let routes = CopiesRoutes(copies: [])
+        let bot = BotProfile(
+            name: "default", botTitle: "Furina", displayName: "", profileDescription: "", model: nil, provider: nil,
+            hasAvatar: false, isPinned: false, isHiddenByMeta: false, appearanceColor: "#AA3300",
+            canonicalSession: nil, lastActive: nil, lastPreview: nil
+        )
+        var chatResume = ChatResumeLifecycleOperations.live
+        chatResume.botRoster = { _ in BotRosterSnapshot(bots: [bot], supportsBotProtocol: true) }
+        let appState = try copiesAppState(routes, chatResume: chatResume)
+        copiesConnect(appState)
+        var report = copiesPluginReport
+        report["capabilities"] = (report["capabilities"] as? [String] ?? [])
+            + [RoomDraftsClient.capability, RoomLooksUpload.capability, RoomLooksUpload.youCapability]
+        appState.applyNotifierPluginReport(report)
+        await appState.refreshBotRoster()
+
+        // The bots' looks go without a person, so the one Hermes keeps stays.
+        await appState.shareRoomLooksIfNeeded()
+        XCTAssertEqual(routes.looksPuts.count, 1)
+        XCTAssertNotNil(routes.looksPuts.last?["agents"] as? [String: Any])
+        XCTAssertFalse(routes.looksPuts.last?.keys.contains("person") ?? true)
+
+        // The one another device chose shows here.
+        let kept = Data([0xFF, 0xD8, 0xFF, 0xE0, 0x01, 0x02])
+        routes.looks = ["ok": true, "person": ["picture": kept.base64EncodedString(), "color": NSNull()]]
+        await appState.readRoomPersonPicture()
+        XCTAssertEqual(appState.roomPersonPicture, kept)
+
+        // Choosing one gives only it; removing it gives null.
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 40, height: 40)).image { context in
+            UIColor.systemTeal.setFill()
+            context.fill(CGRect(x: 0, y: 0, width: 40, height: 40))
+        }
+        let chosen = await appState.setRoomPersonPicture(image)
+        XCTAssertEqual(chosen, .saved)
+        XCTAssertEqual(routes.looksPuts.count, 2)
+        XCTAssertEqual(routes.looksPuts.last?.keys.sorted(), ["person"])
+        XCTAssertNotNil((routes.looksPuts.last?["person"] as? [String: Any])?["picture"] as? String)
+        await appState.shareRoomLooksIfNeeded()
+        XCTAssertEqual(routes.looksPuts.count, 2, "the bots' looks didn't change")
+
+        // A Hermes that didn't take it says so, and what's shown stays.
+        let shown = appState.roomPersonPicture
+        routes.failingLooksPuts = 1
+        let refused = await appState.setRoomPersonPicture(nil)
+        XCTAssertEqual(refused, .notSaved)
+        XCTAssertEqual(appState.roomPersonPicture, shown)
+        let removed = await appState.setRoomPersonPicture(nil)
+        XCTAssertEqual(removed, .saved)
+        XCTAssertTrue(routes.looksPuts.last?["person"] is NSNull)
+        XCTAssertNil(appState.roomPersonPicture)
+
+        // A read a change overtook doesn't put the older picture back.
+        routes.looksDelays = [.milliseconds(300)]
+        let read = Task { await appState.readRoomPersonPicture() }
+        try await Task.sleep(for: .milliseconds(50))
+        let again = await appState.setRoomPersonPicture(image)
+        XCTAssertEqual(again, .saved)
+        let saved = appState.roomPersonPicture
+        await read.value
+        XCTAssertNotNil(saved)
+        XCTAssertEqual(appState.roomPersonPicture, saved)
+
+        // Nor does one that started while a save was out and is answered
+        // after it, with the picture from before it.
+        routes.looksPutDelays = [.milliseconds(200)]
+        routes.looksDelays = [.milliseconds(400)]
+        let removing = Task { await appState.setRoomPersonPicture(nil) }
+        try await Task.sleep(for: .milliseconds(50))
+        let during = Task { await appState.readRoomPersonPicture() }
+        let removedAgain = await removing.value
+        XCTAssertEqual(removedAgain, .saved)
+        await during.value
+        XCTAssertNil(appState.roomPersonPicture)
         XCTAssertNil(appState.appDefaults.data(forKey: RoomLooksUpload.personPictureKey))
     }
 }

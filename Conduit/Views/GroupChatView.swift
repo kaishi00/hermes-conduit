@@ -32,6 +32,9 @@ struct GroupChatView: View {
         isV2 && appState.botChatComingOverAnother != nil
     }
     @State private var showingDisbandConfirmation = false
+    /// The ended room someone else hosts whose Delete, from the menu,
+    /// waits for its confirmation.
+    @State private var copyPendingDelete: RoomCopy?
     @State private var showingInfo = false
     @State private var choosingPicture: GroupRoomPictureRequest?
     @State private var showingSettings = false
@@ -128,6 +131,10 @@ struct GroupChatView: View {
         } message: {
             Text(GroupRoomDisband.warning(members: surface?.room.members ?? []))
         }
+        .modifier(RoomCopyDelete(copy: copyPendingDelete, confirming: Binding(
+            get: { copyPendingDelete != nil },
+            set: { if !$0 { copyPendingDelete = nil } }
+        )))
     }
 
     private var bottomBar: some View {
@@ -309,7 +316,7 @@ struct GroupChatView: View {
 
     /// One of the room's own sheets or prompts is up (V2's screen keeps its own).
     private var coveredBySheet: Bool {
-        showingInfo || showingSettings || showingDisbandConfirmation || choosingPicture != nil
+        showingInfo || showingSettings || showingDisbandConfirmation || copyPendingDelete != nil || choosingPicture != nil
     }
 
     /// Where a member's `MEDIA:` files are read: its own profile on the
@@ -424,6 +431,10 @@ struct GroupChatView: View {
                 members: members,
                 picture: surface.flatMap { appState.groupRoomPicture(roomID: $0.room.roomID) }
             )
+            // The bar's items don't get the looks the screen sets above
+            // `.toolbar`: set here, so other people's agents draw in the
+            // title as in the transcript and on Bots Home.
+            .environment(\.groupRoomLooks, appState.activeRoomLooksShown)
         }
         if !isV2 {
             // V2's conversation menu carries these with the gateway's state.
@@ -433,7 +444,8 @@ struct GroupChatView: View {
                         onShowInfo: { showingInfo = true },
                         onDisband: { showingDisbandConfirmation = true },
                         onChoosePicture: { choosingPicture = $0 },
-                        onOpenSettings: { showingSettings = true }
+                        onOpenSettings: { showingSettings = true },
+                        onDeleteCopy: { copyPendingDelete = $0 }
                     )
                 } label: {
                     Image(systemName: "ellipsis.circle")
@@ -563,21 +575,31 @@ private struct GroupRoomEmptyState: View {
 }
 
 /// The open room's actions: Group Info, Group Settings, its picture, Stop
-/// while its members are working, and Disband. In the room's own menu
-/// (drawer shell) or V2's conversation menu.
+/// while its members are working, and Disband; in a room someone else
+/// hosts, Group Info and, once it's over, Delete, as its tile on Bots Home
+/// has. In the room's own menu (drawer shell) or V2's conversation menu.
 struct GroupRoomActionItems: View {
     @EnvironmentObject private var appState: AppState
     let onShowInfo: () -> Void
     let onDisband: () -> Void
     let onChoosePicture: (GroupRoomPictureRequest) -> Void
     let onOpenSettings: () -> Void
+    /// Asks first (the dialog is the screen's, not the menu's).
+    let onDeleteCopy: (RoomCopy) -> Void
 
     var body: some View {
         Button(action: onShowInfo) {
             Label(AppLocalization.string("Group Info"), systemImage: "info.circle")
         }
         // A room someone else hosts is theirs to change.
-        if appState.activeRoomSurface?.copy == nil {
+        if let copy = appState.activeRoomSurface?.copy {
+            if appState.canDelete(copy) {
+                Divider()
+                Button(role: .destructive) { onDeleteCopy(copy) } label: {
+                    Label(AppLocalization.string("Delete"), systemImage: "trash")
+                }
+            }
+        } else {
             ownRoomItems
         }
     }

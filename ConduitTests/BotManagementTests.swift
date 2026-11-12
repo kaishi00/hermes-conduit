@@ -7,6 +7,17 @@ import UIKit
 extension BotModeTests {
     // MARK: - Profile id
 
+    /// The Personality row hands VoiceOver the opening it shows: the
+    /// SOUL's first three lines, at most 300 characters, with an ellipsis
+    /// when there's more (#2227 review).
+    func testSoulPreviewShowsOnlyTheOpening() {
+        XCTAssertEqual(SoulPreview.opening(of: "  \n"), "")
+        XCTAssertEqual(SoulPreview.opening(of: "# Atlas\nCurious."), "# Atlas\nCurious.")
+        XCTAssertEqual(SoulPreview.opening(of: "1\n2\n3\n4\n5"), "1\n2\n3…")
+        let long = String(repeating: "a", count: 400)
+        XCTAssertEqual(SoulPreview.opening(of: long), String(repeating: "a", count: 300) + "…")
+    }
+
     func testSlugMatchesDesktopForAsciiAccentedAndCJKNames() {
         XCTAssertEqual(BotProfileSlug.slug(from: "Ada Lovelace"), "ada-lovelace")
         XCTAssertEqual(BotProfileSlug.slug(from: "  --Hi!! there__ "), "hi-there__")

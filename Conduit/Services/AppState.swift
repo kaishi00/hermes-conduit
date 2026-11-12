@@ -2621,6 +2621,22 @@ final class AppState: ObservableObject {
     /// behind it (a return to the app) would put its error in the room
     /// (#1459); it waits here and shows when the room closes back to the chat.
     private var chatErrorBehindRoom: String?
+    /// What took the place of the room last closed: a chat opening (a
+    /// session open) or a new chat, which the shell shows where the room's
+    /// screen was rather than dropping back to the list (Group Info's Ask
+    /// and Wrap Up landed on Bots Home). Every close sets it, so it never
+    /// outlives the close it describes.
+    private(set) var roomHandedTo: RoomHandoff = .none
+
+    enum RoomHandoff: Equatable {
+        /// Back, a disband, a server change: the room's screen goes.
+        case none
+        /// A session open, whose id is already the active one: it places itself.
+        case openedChat
+        /// A new chat, which has no id until Hermes answers: always an
+        /// ordinary chat, in Sessions, whatever Bot Chat was open before.
+        case newChat
+    }
     /// The restore error the open chat's last failed resume showed, which a
     /// later resume of it that works clears (issue 2025).
     private var chatRestoreFailureShown: String?
@@ -5031,6 +5047,7 @@ final class AppState: ObservableObject {
                 throw VoiceAudioError.unavailable(self.callRefusalMessageForOpenChat()
                     ?? AppLocalization.string("Hermes could not send this to the chat."))
             }
+            let reportedOn = self.activeDashboardID
             await self.reportTurnSurface(self.messageTurnSurface(spoken: true), runtimeSessionID: chat.runtimeID, text: text)?.value
             let outcome: PromptSubmissionOutcome
             do {
@@ -5041,7 +5058,7 @@ final class AppState: ObservableObject {
                     try await client.sendPrompt(chat.runtimeID, text: text, surface: AppState.spokenPromptSurface, voiceTurn: true)
                 }
             } catch {
-                self.discardTurnSurface(runtimeSessionID: chat.runtimeID, text: text, after: error)
+                self.discardTurnSurface(runtimeSessionID: chat.runtimeID, text: text, after: error, reportedOn: reportedOn)
                 throw error
             }
             switch outcome {
@@ -5890,6 +5907,10 @@ final class AppState: ObservableObject {
     /// of `makeVoiceGateway`, so which profile a read speaks as can be
     /// checked without opening a socket.
     var readAloudGatewayFactoryForTesting: ((String) -> VoiceGatewayService?)?
+
+    /// Test-only seam: stands in for `isLiveVoiceCallActive` in the voice
+    /// Camera's live-call path, which needs a running call's controller.
+    var liveVoiceCallActiveForTesting: Bool?
 
     /// Test-only seam: when set, the voice capability refresh requests
     /// through it instead of the dashboard bridge, keeping
@@ -10539,6 +10560,7 @@ final class AppState: ObservableObject {
         }
         let target = runtimeID.isEmpty ? thread.runtimeSessionID : runtimeID
         // Alongside the read below, so it adds no wait between the read and the send.
+        let reportedOn = activeDashboardID
         let surfaceReport = reportTurnSurface(messageTurnSurface(spoken: true), runtimeSessionID: target, text: text)
         let outcome: PromptSubmissionOutcome
         do {
@@ -10563,7 +10585,7 @@ final class AppState: ObservableObject {
         } catch {
             // Nothing of it was sent, or Hermes refused it: its report waits for no turn.
             await surfaceReport?.value
-            discardTurnSurface(runtimeSessionID: target, text: text, after: error)
+            discardTurnSurface(runtimeSessionID: target, text: text, after: error, reportedOn: reportedOn)
             throw error
         }
         switch outcome {
@@ -10816,10 +10838,18 @@ final class AppState: ObservableObject {
         block += " The user may also type in the chat during the call. Notes starting \"[Background only.\" tell you what they typed and what Hermes replied: stay quiet about them until the user brings them up, then use them to follow on."
         // Ask Hermes About Screen: the live model can't see the image, and
         // must not guess at it. The next chat turn carries it to Hermes.
-        if pendingScreenshot(forThread: thread) != nil {
-            block += delegation
-                ? " The user just shared a screenshot to that chat. You can't see it, but Hermes can: delegate their question about their screen as they asked it, and the screenshot goes with it. Don't guess what the screen shows."
-                : " The user just shared a screenshot to that chat. You can't see it, but Hermes can: send their question about their screen to the chat with ask_thread as they asked it, and the screenshot goes with it. Don't use start_job or a lookup for it, and don't guess what the screen shows."
+        // A photo from the call screen's Camera reads the same way: these
+        // instructions start a connection, which hasn't been sent it.
+        if let picture = pendingScreenshotEntry(forThread: thread) {
+            if picture.kind == .photo {
+                block += delegation
+                    ? " The user just took a photo and added it to that chat. You can't see it, but Hermes can: delegate their question about it as they asked it, and the photo goes with it. Don't guess what the photo shows."
+                    : " The user just took a photo and added it to that chat. You can't see it, but Hermes can: send their question about it to the chat with ask_thread as they asked it, and the photo goes with it. Don't use start_job or a lookup for it, and don't guess what the photo shows."
+            } else {
+                block += delegation
+                    ? " The user just shared a screenshot to that chat. You can't see it, but Hermes can: delegate their question about their screen as they asked it, and the screenshot goes with it. Don't guess what the screen shows."
+                    : " The user just shared a screenshot to that chat. You can't see it, but Hermes can: send their question about their screen to the chat with ask_thread as they asked it, and the screenshot goes with it. Don't use start_job or a lookup for it, and don't guess what the screen shows."
+            }
         }
         // A call Hermes made carries the reply in its own brief (#449), and
         // a call seeded with the chat's turns has it there (issue 1983).
@@ -13251,6 +13281,12 @@ final class AppState: ObservableObject {
     /// A looks share is on its way, and another change waits for it.
     var roomLooksSharing = false
     var roomLooksShareAgain = false
+    /// Your room picture's changes so far: a read of the one Hermes keeps
+    /// that started before the latest is dropped.
+    var roomPersonPictureChanges = 0
+    /// A change of your room picture on its way to Hermes: one at a time,
+    /// so an older one can't land last (Settings waits on it).
+    @Published var roomPersonPictureSaving = false
     /// Each bot's picture as sent, by the image it was made from.
     var roomLookPictures: [String: (image: UIImage, data: Data?)] = [:]
     /// The picture you show in rooms over Links, kept on this phone.
@@ -13953,7 +13989,11 @@ final class AppState: ObservableObject {
     /// room and surface over the session composer.
     ///
     /// Parks the room's pending send by default (see `parkedRoomOutboxes`).
-    private func closeRoomSurface(clearingRoomError: Bool = true, parkingPendingSend: Bool = true) {
+    ///
+    /// `handingTo`: what is opening in the room's place (`roomHandedTo`).
+    private func closeRoomSurface(clearingRoomError: Bool = true, parkingPendingSend: Bool = true,
+                                  handingTo: RoomHandoff = .none) {
+        roomHandedTo = handingTo
         if clearingRoomError, activeRoomSurface != nil {
             errorMessage = nil
         }
@@ -14024,6 +14064,11 @@ final class AppState: ObservableObject {
             async let approvals = refreshLinkedRoomApprovals()
             async let joined: Void = refreshLinkedRoomCopiesThenInvites()
             _ = await (rooms, drafts, approvals, joined)
+            // A room on its way when Conduit connects (a launch, a reconnect,
+            // a foreground read that ran before the connection) is followed
+            // from here, or it would show only on the next reload.
+            guard groupRoomEpoch == epoch, activeDashboardID == dashboard else { return }
+            followLinkedRoomsOnTheirWay()
         } catch is CancellationError {
             return
         } catch {
@@ -22653,8 +22698,9 @@ final class AppState: ObservableObject {
             LocationSharingController.shared.appBecameActive()
             Task { await runPhoneSync(reason: .foreground) }
             Task { await syncPresentedScreens() }
-            // An invite that came while Conduit was away, its push missed.
-            Task { await refreshLinkedRoomInvites() }
+            // An invite that came while Conduit was away, its push missed,
+            // and a room that started meanwhile.
+            Task { await refreshLinkedRoomsOnForeground() }
             scheduleWakeRefresh()
             // Voice gates. The capture gate additionally requires a Voice
             // surface (the phone sheet, or CarPlay), so it can be false here
@@ -27990,8 +28036,13 @@ final class AppState: ObservableObject {
         // A session open takes the viewport back from any open room. A room
         // surface is presentation-only (never session state), so closing it
         // here cannot disturb the conversation being opened; the room stays
-        // in the roster, resumable with one tap.
-        if activeRoomSurface != nil {
+        // in the roster, resumable with one tap. The chat shows where the
+        // room was, once this open has named it below: a refused or
+        // superseded open hands the room's screen to nothing, rather than
+        // to the chat that was open before the room. Nothing awaits in
+        // between, so the shell reads the handoff only after it's settled.
+        let closedRoom = activeRoomSurface != nil
+        if closedRoom {
             closeRoomSurface()
         }
         let previousTurnState = turnState
@@ -28049,6 +28100,7 @@ final class AppState: ObservableObject {
         // back to it (issue 1825); the reconcile below takes them.
         keepLeftBackfilledTranscript()
         setActiveSessionState(id: sessionId)
+        if closedRoom { roomHandedTo = .openedChat }
         keepDelegateAgents(of: acceptedSessionIDs)
         messages = []
         // A chat with a saved copy shows it while Hermes sends the transcript
@@ -29056,7 +29108,7 @@ final class AppState: ObservableObject {
         if pendingScreenshots.contains(where: { lost.contains($0.sessionID) }) {
             pendingScreenshots = pendingScreenshots.map { entry in
                 guard lost.contains(entry.sessionID) else { return entry }
-                return PendingScreenshot(sessionID: fresh, attachment: entry.attachment, dashboardID: entry.dashboardID)
+                return PendingScreenshot(sessionID: fresh, attachment: entry.attachment, dashboardID: entry.dashboardID, kind: entry.kind)
             }
         }
         if let key = composerPrefillDraftKey,
@@ -29096,7 +29148,7 @@ final class AppState: ObservableObject {
         // same as a session open: otherwise the room stays on screen while
         // the new session is adopted invisibly behind it.
         if activeRoomSurface != nil {
-            closeRoomSurface()
+            closeRoomSurface(handingTo: .newChat)
         }
         let transitionGeneration = beginExplicitChatViewportTransition(ownedBy: widgetLease)
         newSessionCreationsInFlight += 1
@@ -31350,6 +31402,7 @@ final class AppState: ObservableObject {
         // ahead of it.
         let promptText = Self.promptText(outboundText, fileReferences: fileReferences)
         // Where in Conduit this was sent from, for its turn's line (#888).
+        let surfaceReportedOn = activeDashboardID
         let surfaceReport = reportTurnSurface(
             submissionTurnSurface.flatMap { $0.text == text ? $0.surface : nil }
                 ?? messageTurnSurface(spoken: surface == Self.spokenPromptSurface),
@@ -31527,7 +31580,7 @@ final class AppState: ObservableObject {
             // No turn of it is coming: the same words sent from another
             // client there mustn't take its line.
             if surfaceReport != nil {
-                discardTurnSurface(runtimeSessionID: sessionId, text: promptText, after: error)
+                discardTurnSurface(runtimeSessionID: sessionId, text: promptText, after: error, reportedOn: surfaceReportedOn)
             }
             // Images staged for a send that didn't land would ride on a
             // later turn. One Hermes took was already claimed by it, so

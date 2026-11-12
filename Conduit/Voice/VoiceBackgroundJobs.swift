@@ -2755,6 +2755,28 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
         queueScreenshotNote(Self.screenshotInAnotherChatPrompt, attachmentURI: attachmentURI)
     }
 
+    /// The user took a photo with the call screen's Camera, and it waits on
+    /// the call's chat for the chat's next turn. `seenByModel`: the call's
+    /// model was sent it too (Gemini, Qwen) and can answer about it itself;
+    /// the others hear that Hermes has it.
+    func notePhotoShared(attachmentURI: String, seenByModel: Bool) {
+        queueScreenshotNote(seenByModel ? Self.photoSeenPrompt : Self.photoSharedPrompt, attachmentURI: attachmentURI)
+    }
+
+    /// The photo sent to the model never reached its socket: a note that
+    /// says it can see it is corrected before or after the model hears it.
+    func notePhotoMissedModel(attachmentURI: String) {
+        guard liveThread != nil else { return }
+        if let waiting = chatNotes.firstIndex(where: { $0.screenshotURI == attachmentURI }) {
+            chatNotes[waiting] = ChatNote(text: Self.photoSharedPrompt, screenshotURI: attachmentURI)
+            return
+        }
+        // Not heard, and no longer waiting (removed, or dropped by the
+        // cap): there's nothing to correct.
+        guard screenshotNotesHeard[attachmentURI] == true else { return }
+        queueChatNote(ChatNote(text: Self.photoMissedPrompt, screenshotURI: attachmentURI))
+    }
+
     private func queueScreenshotNote(_ note: String, attachmentURI: String) {
         guard liveThread != nil else { return }
         // A call that already heard of it stays answerable if it goes.
@@ -2773,19 +2795,22 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     static let screenshotInAnotherChatPrompt = "[Background only. The user shared a screenshot, but it went to the chat on screen, not the chat this call is attached to, so your requests can't carry it. If they ask about their screen, tell them to type the question in the chat on screen, where the screenshot is waiting. Don't guess what the screen shows, and don't respond to this note now.]"
 
     static let screenshotSharedPrompt = "[Background only. The user just shared a screenshot to the chat this call is attached to. You can't see it, but Hermes can. When the user asks about their screen, send their question to the chat as they asked it, and the screenshot goes with it. Don't guess what the screen shows, and don't respond to this note now.]"
+    static let photoSharedPrompt = "[Background only. The user just took a photo and added it to the chat this call is attached to. You can't see it, but Hermes can. When the user asks about it, send their question to the chat as they asked it, and the photo goes with it. Don't guess what the photo shows, and don't respond to this note now.]"
+    static let photoSeenPrompt = "[Background only. The user just took a photo and showed it to you; it's also in the chat this call is attached to. Answer what they ask about it from what you see. When they want Hermes to work on it, send their request to the chat as they asked it, and the photo goes with it. Don't respond to this note now.]"
+    static let photoMissedPrompt = "[Background only. The photo the user just took didn't reach you after all: you can't see it, but Hermes can. When the user asks about it, send their question to the chat as they asked it, and the photo goes with it. Don't guess what the photo shows, and don't respond to this note now.]"
 
     /// The user removed a screenshot. A note about it still waiting is
     /// dropped; a call that heard of it, from a note or from its
     /// instructions, hears that it's gone. `inInstructions`: it waits on
     /// the call's chat, so the instructions named it if the call started
     /// with it.
-    func retractScreenshotNote(attachmentURI: String, inInstructions: Bool) {
+    func retractScreenshotNote(attachmentURI: String, inInstructions: Bool, kind: SharedPictureKind = .screenshot) {
         guard liveThread != nil else { return }
         chatNotes.removeAll { $0.screenshotURI == attachmentURI }
         // With a note, only one it heard (not one waiting, or dropped by
         // the cap) needs answering.
         guard screenshotNotesHeard.removeValue(forKey: attachmentURI) ?? inInstructions else { return }
-        queueChatNote(ChatNote(text: Self.screenshotRemovedPrompt))
+        queueChatNote(ChatNote(text: kind == .photo ? Self.photoRemovedPrompt : Self.screenshotRemovedPrompt))
     }
 
     /// A newer screenshot replaced `replacedURI` in its chat. A note about
@@ -2823,6 +2848,7 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     }
 
     static let screenshotRemovedPrompt = "[Background only. The user removed the screenshot they shared: the chat's next turn won't carry one. Don't respond to this note now.]"
+    static let photoRemovedPrompt = "[Background only. The user removed the photo they took: the chat's next turn won't carry it, and it's no longer there to talk about. Don't respond to this note now.]"
 
     /// Removes and returns the oldest exchange waiting for the call.
     func takePendingChatContext() -> String? {

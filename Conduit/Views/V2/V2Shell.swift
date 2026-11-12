@@ -135,6 +135,9 @@ struct V2ShellContext: Equatable {
         /// A switch picked from the profile strip is under way, from the
         /// first tap's fade-out until the switch is over.
         var isPickingProfile = false
+        /// Split, Settings shows in this tab's chat column over its chat,
+        /// which stays mounted and active underneath.
+        var isChatCovered = false
     }
 
     var pickProfile: (String) -> Void = { _ in }
@@ -164,6 +167,15 @@ struct V2ShellContext: Equatable {
         get { values.isRootCovered }
         set { values.isRootCovered = newValue }
     }
+
+    var isChatCovered: Bool {
+        get { values.isChatCovered }
+        set { values.isChatCovered = newValue }
+    }
+
+    /// A chat's own keyboard shortcuts (⌘., ⌃⌘S, ⌥⌘A) reach it: its tab
+    /// shows and Settings doesn't cover it (KeyboardShortcuts.swift).
+    var chatTakesKeys: Bool { isTabActive && !isChatCovered }
 
     var isSplit: Bool {
         get { values.isSplit }
@@ -462,6 +474,10 @@ struct V2Shell: View {
     @AppStorage(V2SplitLayout.listWidths.key) private var storedListWidth = Double(V2SplitLayout.listWidths.standard)
     /// The list's width while its line is dragged (`ColumnDivider`).
     @State private var draggedListWidth: CGFloat?
+    /// The window's width the tabs last laid out by: an iPhone turned
+    /// sideways for a bot's screen in full screen keeps it
+    /// (`InterfaceOrientationGate.layoutWidth`).
+    @State private var layoutWidth: CGFloat?
 
     /// - Parameters:
     ///   - conversationOnLeave: the window's record of the chat showing,
@@ -641,15 +657,30 @@ struct V2Shell: View {
     /// (`V2SplitLayout.listWidths`), less on a window without the room.
     private var sizedTabs: some View {
         GeometryReader { proxy in
-            let canSplit = V2SplitLayout.isSplit(width: proxy.size.width)
-            let split = V2SplitLayout.isSplit(width: proxy.size.width, showsList: chatListBeside)
-            let list = V2SplitLayout.ListColumn(window: proxy.size.width, stored: storedListWidth, dragged: draggedListWidth)
+            // Turned sideways for a bot's screen in full screen, an iPhone
+            // stays one column: splitting rebuilds the stacks, and the
+            // screen's sheet closed with them.
+            let width = InterfaceOrientationGate.layoutWidth(live: proxy.size.width, kept: layoutWidth)
+            let canSplit = V2SplitLayout.isSplit(width: width)
+            let split = V2SplitLayout.isSplit(width: width, showsList: chatListBeside)
+            let list = V2SplitLayout.ListColumn(window: width, stored: storedListWidth, dragged: draggedListWidth)
             let strip = V2StatusStrip(insets: proxy.safeAreaInsets, isPhone: UIDevice.current.userInterfaceIdiom == .phone)
             tabs(split: split, canSplit: canSplit, list: list)
                 // The bars and the screens' clearance under them read it
                 // from here together, so they change in the same pass.
                 .onChange(of: strip, initial: true) { _, strip in
                     if statusStrip != strip { statusStrip = strip }
+                }
+                .onChange(of: proxy.size.width, initial: true) { _, live in
+                    layoutWidth = InterfaceOrientationGate.layoutWidth(live: live, kept: layoutWidth)
+                }
+                // Held: the window's width once the hold ends.
+                .task(id: proxy.size.width) {
+                    let live = proxy.size.width
+                    guard let held = layoutWidth, held != live else { return }
+                    await InterfaceOrientationGate.layoutReleased()
+                    guard !Task.isCancelled else { return }
+                    layoutWidth = InterfaceOrientationGate.layoutWidth(live: live, kept: layoutWidth)
                 }
                 // The window's side safe area as the shell has it, outside
                 // every stack: each tab's screens take it, or their
@@ -736,10 +767,20 @@ struct V2Shell: View {
             // ends that screen.
             .onChange(of: appState.activeRoomSurface?.room.roomID) { old, new in
                 // Leaving: whichever tab holds the room's screen, even one
-                // that isn't showing, drops it so it doesn't come back.
+                // that isn't showing, drops it so it doesn't come back. A
+                // chat opening in the room's place (Group Info's Ask and Wrap
+                // Up, a push or link tapped in the room) shows there instead,
+                // in the tab it belongs in, rather than leave the list under
+                // a chat nobody can see.
                 if old != nil, new == nil {
+                    let handoff = conversationVisible ? appState.roomHandedTo : AppState.RoomHandoff.none
                     if chatsPath.last == .conversation { chatsPath.removeLast() }
                     if botsPath.last == .conversation { botsPath.removeLast() }
+                    if handoff != AppState.RoomHandoff.none, !appState.isVoiceCallScreenPresented {
+                        // A new chat has no id yet, so the Bot Chat open
+                        // before the room would still place it in Bots.
+                        openConversation(ordinary: handoff == .newChat)
+                    }
                 } else if new != nil, !conversationVisible, !appState.isVoiceCallScreenPresented {
                     // A room opened without a row tap (just created) shows.
                     openConversation()
@@ -816,6 +857,12 @@ struct V2Shell: View {
                 visitedTabs.insert(.settings)
                 selectTab(.settings)
             }
+            // ⌘1 to ⌘4 and ⌘, (KeyboardShortcuts.swift); nothing is in
+            // front, which the command checked.
+            .onReceive(KeyboardCommands.tabRequests) { tab in
+                visitedTabs.insert(tab)
+                selectTab(tab)
+            }
             .onChange(of: appState.kanbanTaskOpenRequest) { _, request in
                 // Tasks › Board opens the task and clears the request.
                 guard request != nil else { return }
@@ -887,6 +934,7 @@ struct V2Shell: View {
                             $0.hasChatBeside = chatBeside
                             $0.showsChatRows = V2SplitLayout.showsChatRows(split: split, path: path(of: tab))
                             $0.hasChatVoiceBeside = chatVoiceBeside
+                            $0.isChatCovered = !chatShown
                         }
                         // The opened tab shows at once and the one left
                         // hides at once. A fade read as slow, and a slide
@@ -1203,11 +1251,13 @@ struct V2Shell: View {
     /// one of its workstreams) opened while Bots shows, otherwise in
     /// Sessions. Only one tab ever holds it, since both would show the same
     /// active session.
-    private func openConversation() {
+    /// `ordinary`: the chat on its way is an ordinary one whatever the
+    /// conversation on hand is (a new chat out of a room).
+    private func openConversation(ordinary: Bool = false) {
         let target = V2Tab.conversationTab(
             selected: selectedTab,
-            isBotsChat: appState.placesConversationAsBotChat,
-            fromBotsPage: botsPath.last == .pulse || botsPath.last == .artifacts
+            isBotsChat: !ordinary && appState.placesConversationAsBotChat,
+            fromBotsPage: !ordinary && (botsPath.last == .pulse || botsPath.last == .artifacts)
         )
         appState.botChatOpeningPlaced()
         // The push itself, before the path moves: paired with the

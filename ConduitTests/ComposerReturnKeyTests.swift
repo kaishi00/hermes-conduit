@@ -248,6 +248,90 @@ final class ComposerReturnKeyTests: XCTestCase {
         XCTAssertEqual(view.text, "")
     }
 
+    // MARK: - ⌘Return and the rest of the shortcuts (issue 2219)
+
+    func testCommandReturnIsAPriorityCommandBesidePlainReturn() {
+        let commands = ImagePasteTextView().keyCommands ?? []
+        let command = commands.first { $0.input == "\r" && $0.modifierFlags == .command }
+        XCTAssertNotNil(command)
+        XCTAssertEqual(command?.wantsPriorityOverSystemBehavior, true)
+        // The catalog the shortcut list reads names the same keys.
+        XCTAssertEqual(ConduitKeyboardShortcut.send.key, .return)
+        XCTAssertEqual(ConduitKeyboardShortcut.send.modifiers, .command)
+    }
+
+    func testCommandReturnSendsWhateverTheReturnSettingSays() {
+        let view = ImagePasteTextView()
+        view.onSubmitFromReturn = { true }
+        view.canSubmitFromReturn = true
+
+        view.returnKeySends = false
+        XCTAssertTrue(view.commandReturnKeyCommandApplies(hasMarkedText: false))
+        view.returnKeySends = true
+        XCTAssertTrue(view.commandReturnKeyCommandApplies(hasMarkedText: false))
+        // The IME's Return is the composition's.
+        XCTAssertFalse(view.commandReturnKeyCommandApplies(hasMarkedText: true))
+
+        view.canSubmitFromReturn = false
+        XCTAssertFalse(view.commandReturnKeyCommandApplies(hasMarkedText: false))
+
+        view.canSubmitFromReturn = true
+        view.onSubmitFromReturn = nil
+        XCTAssertFalse(view.commandReturnKeyCommandApplies(hasMarkedText: false))
+    }
+
+    func testCommandReturnSendsThroughTheComposerAndNeverTypesANewline() {
+        let view = ImagePasteTextView()
+        view.returnKeySends = false
+        view.canSubmitFromReturn = true
+        var submitCount = 0
+        view.onSubmitFromReturn = { submitCount += 1; return false }
+
+        view.commandReturnKeyCommandPressed()
+        XCTAssertEqual(submitCount, 1)
+        XCTAssertEqual(view.text, "")
+    }
+
+    func testShortcutGlyphsAreWrittenInTheMenuBarsOrder() {
+        XCTAssertEqual(ConduitKeyboardShortcut.newChat.glyphs, "⌘N")
+        XCTAssertEqual(ConduitKeyboardShortcut.send.glyphs, "⌘↩")
+        XCTAssertEqual(ConduitKeyboardShortcut.chatList.glyphs, "⌃⌘S")
+        XCTAssertEqual(ConduitKeyboardShortcut.artifacts.glyphs, "⌥⌘A")
+        XCTAssertEqual(ConduitKeyboardShortcut.smallerText.glyphs, "⌘−")
+        XCTAssertEqual(ConduitKeyboardShortcut.tabGlyphs(.bots), "⌘1")
+        XCTAssertEqual(ConduitKeyboardShortcut.tabGlyphs(.settings), "⌘4")
+    }
+
+    func testNoTwoShortcutsShareAKey() {
+        var seen = Set<String>()
+        let all = ConduitKeyboardShortcut.allCases.map(\.glyphs)
+            + V2Tab.destinations.compactMap(ConduitKeyboardShortcut.tabGlyphs)
+        for glyphs in all {
+            XCTAssertTrue(seen.insert(glyphs).inserted, "\(glyphs) is taken twice")
+        }
+    }
+
+    func testTextSizeStepsHoldAtTheEndsAndZeroIsTheDefault() {
+        XCTAssertEqual(KeyboardCommands.chatTextSize(after: .default, step: 1), .larger)
+        XCTAssertEqual(KeyboardCommands.chatTextSize(after: .largest, step: 1), .largest)
+        XCTAssertEqual(KeyboardCommands.chatTextSize(after: .smaller, step: -1), .smallest)
+        XCTAssertEqual(KeyboardCommands.chatTextSize(after: .smallest, step: -1), .smallest)
+        XCTAssertEqual(KeyboardCommands.chatTextSize(after: .largest, step: 0), ChatTypography.defaultSize)
+    }
+
+    func testTextSizeShortcutWritesWhereSettingsDoes() throws {
+        let suite = "ComposerReturnKeyTests.textSize.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defer { defaults.removePersistentDomain(forName: suite) }
+
+        KeyboardCommands.stepChatTextSize(by: 1, defaults: defaults)
+        XCTAssertEqual(ChatTypography.stored(in: defaults), .larger)
+        KeyboardCommands.stepChatTextSize(by: -2, defaults: defaults)
+        XCTAssertEqual(ChatTypography.stored(in: defaults), .smaller)
+        KeyboardCommands.stepChatTextSize(by: 0, defaults: defaults)
+        XCTAssertEqual(ChatTypography.stored(in: defaults), .default)
+    }
+
     // MARK: - Suggestion list keys (issue 1576)
 
     func testArrowsMoveTheHighlightAndWrap() {

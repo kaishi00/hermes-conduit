@@ -282,11 +282,23 @@ extension AppState {
         guard !botWork.isActing(item.ref, profile: profile) else {
             return "This workstream is busy with another action, so that wasn't passed on yet. Say so, and offer to try again in a moment."
         }
+        // Read before the send waits: a picture added or removed meanwhile
+        // wasn't what this request left behind.
+        let leftPicture = pendingScreenshotEntry(forThread: thread) != nil
         guard await actOnWorkstream(item, profile: profile, action: .send, text: words) else {
             return "Hermes couldn't pass that to this workstream just now. Say so, and offer to try again."
         }
+        // A screenshot or photo waiting on the chat goes with the chat's
+        // next turn, never into a workstream's session.
+        if leftPicture {
+            return Self.workstreamCallSent + " " + Self.workstreamCallLeftPicture
+        }
         return Self.workstreamCallSent
     }
+
+    /// Added when a picture waits on the workstream's chat: the request
+    /// went without it.
+    static let workstreamCallLeftPicture = "The screenshot or photo waiting in the chat didn't go with it: a workstream takes only words. Tell the user Hermes didn't see it with this request, and don't guess what it shows."
 
     /// What a workstream's call is told once its request went in. Its
     /// answer case needs notifier 0.141.1 (#618), which ships with it: an

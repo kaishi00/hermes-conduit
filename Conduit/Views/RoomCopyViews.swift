@@ -18,7 +18,7 @@ struct RoomCopyRosterRow: View {
     @EnvironmentObject private var appState: AppState
     @State private var confirmingDelete = false
 
-    private var canDelete: Bool { copy.isOver && appState.canDeleteRoomCopies }
+    private var canDelete: Bool { appState.canDelete(copy) }
 
     var body: some View {
         let line = RoomCopyText.line(for: copy)
@@ -64,7 +64,7 @@ struct RoomCopyPortrait: View {
     @Environment(\.v2OpenBeside) private var openBeside
     @State private var confirmingDelete = false
 
-    private var canDelete: Bool { copy.isOver && appState.canDeleteRoomCopies }
+    private var canDelete: Bool { appState.canDelete(copy) }
     private var selection: V2RowSelection { .room(copy.roomID, beside: openBeside) }
 
     private var zoomKey: String { BotZoomArm.roomKey(copy.roomID) }
@@ -152,16 +152,19 @@ struct HomeRoomLooksReader: ViewModifier {
 }
 
 /// Deleting a room someone else hosts once it's over: asked first, and
-/// a refusal said.
-private struct RoomCopyDelete: ViewModifier {
-    let copy: RoomCopy
+/// a refusal said. On its tile, its row, or the open room's screen (the copy
+/// its menu's Delete was tapped for, nil while none waits).
+struct RoomCopyDelete: ViewModifier {
+    let copy: RoomCopy?
     @Binding var confirming: Bool
     @EnvironmentObject private var appState: AppState
     @State private var refusal: String?
 
     func body(content: Content) -> some View {
         content
-            .confirmationDialog(RoomCopyText.deleteTitle, isPresented: $confirming, titleVisibility: .visible) {
+            // Presenting the copy hands Delete the one it was asked for.
+            .confirmationDialog(RoomCopyText.deleteTitle, isPresented: $confirming, titleVisibility: .visible,
+                                presenting: copy) { copy in
                 Button(AppLocalization.string("Delete"), role: .destructive) {
                     Task { @MainActor in
                         if case .refused(let message) = await appState.deleteLinkedRoomCopy(copy) {
@@ -171,7 +174,7 @@ private struct RoomCopyDelete: ViewModifier {
                     }
                 }
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
-            } message: {
+            } message: { _ in
                 Text(RoomCopyText.deleteMessage)
             }
             .alert(

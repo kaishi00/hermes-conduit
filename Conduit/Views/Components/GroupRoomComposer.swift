@@ -31,6 +31,9 @@ struct GroupRoomComposer: View {
     /// A Mac, or an iPad with the room: the controls stay showing, as in a
     /// chat (#1483).
     @Environment(\.composerStaysExpanded) private var staysExpanded
+    /// A room split Settings covers, or a hidden tab's, keeps its field:
+    /// Return and ⌘Return don't send from it.
+    @Environment(\.v2Shell) private var shell
     @State private var attachments: [Attachment] = []
     @State private var isFocused = false
     /// The mention row a hardware keyboard's arrows highlighted; typing
@@ -616,10 +619,13 @@ struct GroupRoomComposer: View {
     /// Return key sends (Settings > Chat > Keyboard), as in a chat: Return
     /// stands for Send, which is dictation's Stop while it runs.
     private var canSubmitFromReturn: Bool {
-        canSend || dictationHoldsSendSlot
+        shell.chatTakesKeys && appState.botChatComingOverAnother == nil && (canSend || dictationHoldsSendSlot)
     }
 
     private func submitFromReturnKey() -> Bool {
+        // Checked live as well as in the field's gate, which a Bot Chat
+        // coming over the room reaches a render later.
+        guard appState.botChatComingOverAnother == nil else { return true }
         if dictationHoldsSendSlot {
             dictation.tapSlot()
             return true

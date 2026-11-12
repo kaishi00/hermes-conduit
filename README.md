@@ -55,6 +55,7 @@ The app works with any Hermes dashboard on its own. The free [Hermes Conduit Not
 
 - Live voice calls with Gemini Live, Qwen Live, GPT-Live (ChatGPT subscription or API key), Grok Live, or Local Live on your own speech server, with echo cancellation and talking over Hermes
 - Start, check and cancel Hermes jobs by voice; results come back into the call
+- Show a call what you're looking at: take a photo mid-call and it joins the call's chat for Hermes; Gemini Live and Qwen Live see it themselves, and the other modes pass your questions about it to Hermes
 - Calls stay with their chat, keep going with the screen locked, shrink to a bar while you read, and are saved as chats you can resume
 - Hermes calls you: a CallKit call when a job is done, Hermes needs you, or a check you scheduled is due, on the phone or the Watch
 - Classic voice and dictation with on-device, Apple, Hermes or your own speech-to-text, spoken Stop and End, wake phrases, and Read Aloud for any reply, or for every reply as it arrives
@@ -91,6 +92,7 @@ Each is off until you turn it on, and goes only to your own Hermes host, encrypt
 - Multiple dashboards and profiles, each with its own credentials and settings (Settings > Saved Dashboards can ask which dashboard to open each time Conduit launches); rename a profile or change its photo (a GIF, a short video or a still brought to life moves, or make one with Image Playground) and glow in Settings > Profiles; edit a profile's personality, its SOUL.md, in Settings > Edit profile, on the same page Edit Bot opens; All in the profile row lists every profile's chats together, newest first with each row's profile picture, or grouped by profile with each profile's pinned chats and five newest until Show more
 - Capabilities: skills (and Hermes' skill hub to search and install from, with its security scan), tools, connectors (apps such as Gmail or Slack signed in through Nous Portal, and MCP servers you can test and edit, by form or as JSON) and plugins (Hermes' plugin catalog to browse by tier and category, with pictures, and each plugin's own settings), plus Hermes settings and gateway logs
 - Native OAuth sign-in through your dashboard, QR code and setup links, Cloudflare Access service tokens
+- Keyboard shortcuts on an iPad or a Mac: ⌘N for a new chat, ⌘1 to ⌘4 for the tabs, ⌘, for Settings, ⌘F to search, ⌘Return to send, ⌘. to stop a reply, ⌘+ and ⌘− for the chat's text size, and ⌘/ for the full list
 - Face ID or Touch ID lock, credentials in the Keychain
 - Available in English, French, German, Indonesian, Italian, Japanese, Korean, Polish, Portuguese (Brazil), Russian, Simplified Chinese, Spanish, Traditional Chinese and Turkish
 

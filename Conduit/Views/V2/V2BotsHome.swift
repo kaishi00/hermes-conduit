@@ -1827,6 +1827,7 @@ struct GroupRoomReorderSheet: View {
                 ForEach(rooms) { room in
                     HStack(spacing: 12) {
                         GroupRoomIcon(picture: appState.groupRoomPicture(roomID: room.roomID), members: room.members, size: 36)
+                            .environment(\.groupRoomLooks, appState.homeRoomLooks(roomID: room.roomID))
                             .accessibilityHidden(true)
                         Text(verbatim: room.name)
                             .scaledFont(.body)

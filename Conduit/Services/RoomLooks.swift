@@ -114,6 +114,9 @@ enum RoomLookImages {
 /// What Conduit gives its Hermes (`PUT /rooms/looks`).
 enum RoomLooksUpload {
     static let capability = "room-looks"
+    /// Your picture kept on Hermes for all your devices (`GET /rooms/looks`
+    /// without a room; a `PUT` keeps what it leaves out), plugin 0.164.7+.
+    static let youCapability = "room-looks-you"
     static let path = "/api/plugins/conduit_push/rooms/looks"
     /// room_looks.MAX_PICTURE_BYTES.
     static let maxPictureBytes = 8 * 1024
@@ -191,21 +194,75 @@ extension AppState {
         return looks
     }
 
+    /// Whether your Hermes keeps your picture for all your devices: each
+    /// device then gives it only when you choose or remove it, so one
+    /// without it set never takes it away from the people in your rooms.
+    var roomLooksKeepYou: Bool {
+        notifierPlugin.reports(RoomLooksUpload.youCapability)
+    }
+
+    enum RoomPersonPictureChange: Equatable {
+        case saved
+        /// It couldn't be made small enough to send.
+        case unusable
+        /// Your Hermes didn't take it.
+        case notSaved
+    }
+
     /// Sets the picture you show in rooms over Links (nil takes it away),
-    /// kept on this phone and given to your Hermes. False for a picture
-    /// that couldn't be made small enough to send, which the caller says.
+    /// kept on this phone and given to your Hermes, which keeps it for all
+    /// your devices where it can (`roomLooksKeepYou`).
     @discardableResult
-    func setRoomPersonPicture(_ image: UIImage?) async -> Bool {
+    func setRoomPersonPicture(_ image: UIImage?) async -> RoomPersonPictureChange {
         let data = image.flatMap(RoomLooksUpload.picture)
-        if image != nil, data == nil { return false }
-        roomPersonPicture = data
+        if image != nil, data == nil { return .unusable }
+        guard !roomPersonPictureSaving else { return .notSaved }
+        roomPersonPictureSaving = true
+        roomPersonPictureChanges &+= 1
+        // Again as it ends: a read that started while it was out may hold
+        // the picture from before it.
+        defer {
+            roomPersonPictureChanges &+= 1
+            roomPersonPictureSaving = false
+        }
+        if roomLooksKeepYou {
+            let dashboard = activeDashboardID
+            let person: Any = data.map { RoomLook(picture: $0, color: nil).body } ?? NSNull()
+            guard isConnected,
+                  let response = try? await roomRouteJSON(path: RoomLooksUpload.path, method: "PUT",
+                                                          body: ["person": person], timeoutMilliseconds: nil),
+                  response["ok"] as? Bool == true else { return .notSaved }
+            // Kept on the dashboard it was saved to; another one shown now
+            // keeps showing its own, which its read brings back.
+            guard activeDashboardID == dashboard else { return .saved }
+            keepRoomPersonPicture(data)
+            return .saved
+        }
+        keepRoomPersonPicture(data)
+        await shareRoomLooksIfNeeded()
+        return .saved
+    }
+
+    /// Shows the picture your Hermes keeps for you, as another of your
+    /// devices last gave it (`GET /rooms/looks` without a room). One that
+    /// fails, or that a change here overtook, keeps what's shown.
+    func readRoomPersonPicture() async {
+        guard roomLooksKeepYou, isConnected, let dashboard = activeDashboardID else { return }
+        let changes = roomPersonPictureChanges
+        guard let response = try? await roomRouteJSON(path: RoomLooksUpload.path, method: "GET", body: nil,
+                                                      timeoutMilliseconds: nil),
+              response["ok"] as? Bool == true, activeDashboardID == dashboard,
+              roomPersonPictureChanges == changes, !roomPersonPictureSaving else { return }
+        keepRoomPersonPicture(RoomLook(response["person"])?.picture)
+    }
+
+    private func keepRoomPersonPicture(_ data: Data?) {
+        if roomPersonPicture != data { roomPersonPicture = data }
         if let data {
             appDefaults.set(data, forKey: RoomLooksUpload.personPictureKey)
         } else {
             appDefaults.removeObject(forKey: RoomLooksUpload.personPictureKey)
         }
-        await shareRoomLooksIfNeeded()
-        return true
     }
 
     /// Gives your Hermes how your bots and you look, when that changed
@@ -237,10 +294,14 @@ extension AppState {
             let color = ProfileGlowRGB(UIColor(Self.botColor(bot, glow: glows[bot.name])))?.hex.uppercased()
             agents[bot.name] = RoomLook(picture: picture, color: color)
         }
-        let person = roomPersonPicture.map { RoomLook(picture: $0, color: nil) }
-        let digest = RoomLooksUpload.digest(agents: agents, person: person)
+        // A Hermes that keeps your picture is given it only when you choose
+        // or remove it (setRoomPersonPicture): this device may not have it.
+        let keepsYou = roomLooksKeepYou
+        let person = keepsYou ? nil : roomPersonPicture.map { RoomLook(picture: $0, color: nil) }
+        let digest = RoomLooksUpload.digest(agents: agents, person: person) + (keepsYou ? "\nkeeps-you" : "")
         guard sharedRoomLooks[dashboard] != digest else { return }
-        let body = RoomLooksUpload.body(agents: agents, person: person)
+        var body = RoomLooksUpload.body(agents: agents, person: person)
+        if keepsYou { body["person"] = nil }
         guard let response = try? await roomRouteJSON(path: RoomLooksUpload.path, method: "PUT", body: body,
                                                       timeoutMilliseconds: nil),
               response["ok"] as? Bool == true, activeDashboardID == dashboard else { return }

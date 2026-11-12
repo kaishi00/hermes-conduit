@@ -11,6 +11,9 @@ final class QwenLiveSocket: GeminiLiveSocket {
     private var pendingTools: Set<String> = []
     private var toolNames: [String: String] = [:]
     private var deliveredTools: Set<String> = []
+    /// Qwen takes a picture only after some audio: its image buffer is
+    /// committed with the audio buffer.
+    private var hasSentAudio = false
     /// Privacy-safe steps for the call's trace: the turn detection Qwen
     /// applied and when it heard the user start and stop, with microphone
     /// levels (#1418), never what anyone said.
@@ -61,8 +64,21 @@ final class QwenLiveSocket: GeminiLiveSocket {
             try await emit(Self.sessionUpdate(setup: setup, voice: voice))
         } else if let input = frame["realtimeInput"] as? [String: Any] {
             if let audio = input["audio"] as? [String: Any], let bytes = audio["data"] as? String {
+                hasSentAudio = true
                 try await emit(["type": "input_audio_buffer.append", "audio": bytes])
                 if let onTrace, let pcm16 = Data(base64Encoded: bytes), let step = turnTrace.add(pcm16) { onTrace(step) }
+            }
+            if let video = input["video"] as? [String: Any], let image = video["data"] as? String {
+                // A still photo (the call screen's Camera). It rides with the
+                // user's next words, committed with the audio buffer; a
+                // moment of silence first if no audio went yet, since Qwen
+                // takes a picture only after some.
+                // https://www.alibabacloud.com/help/en/model-studio/client-events
+                if !hasSentAudio {
+                    hasSentAudio = true
+                    try await emit(["type": "input_audio_buffer.append", "audio": Data(repeating: 0, count: 3200).base64EncodedString()])
+                }
+                try await emit(["type": "input_image_buffer.append", "image": image])
             }
             if input["audioStreamEnd"] as? Bool == true {
                 // End a muted utterance through VAD, without a second commit.
