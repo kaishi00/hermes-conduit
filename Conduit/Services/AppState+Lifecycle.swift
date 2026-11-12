@@ -474,9 +474,12 @@ extension AppState {
             )
             guard stillOwns() else { return }
         }
-        await loadChatResumeBusyInputMode(using: client)
-        guard stillOwns() else { return }
-        await loadChatResumeProfileDisplayPreferences()
+        // Two independent reads, each guarding its own answer against a switch
+        // while it was out: sent together, so the tail waits one round trip for
+        // them, not two (issue 1727).
+        async let busyInputModeRead: Void = loadChatResumeBusyInputMode(using: client)
+        async let displayPreferencesRead: Void = loadChatResumeProfileDisplayPreferences()
+        _ = await (busyInputModeRead, displayPreferencesRead)
         guard stillOwns() else { return }
         Task { await loadChatResumeSlashCommands() }
         Task { await refreshNotifierPluginStatus() }
