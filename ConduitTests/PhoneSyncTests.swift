@@ -657,6 +657,25 @@ extension HermesVoiceGatewayTimeoutTests {
         _ = await engine.sync(deadline: .distantFuture, request: host.handle)
         XCTAssertEqual(source.applied, [])
         XCTAssertEqual(engine.prompts.map(\.id), ["ch_swap", "ch_run"])
+
+        // A tap for another kind while the exchange is still applying another
+        // change, after this one was set to get its card: it still gets it.
+        var preferences = phonePreferences()
+        preferences.autoAdd = true
+        engine.savePreferences(preferences)
+        host.changes = [
+            ["id": "ch_wait", "kind": "delete_event", "auto": false, "target": ["event_id": "ev_2"], "fields": [String: Any]()],
+            ["id": "ch_auto", "kind": "add_reminder", "auto": true, "fields": ["title": "Water plants"]],
+        ]
+        source.holdApply = true
+        let exchange = Task { await engine.sync(deadline: .distantFuture, request: host.handle) }
+        for _ in 0..<500 where !source.isHolding { try await Task.sleep(for: .milliseconds(2)) }
+        XCTAssertTrue(source.isHolding)
+        await engine.approveFromCard("ch_wait", kind: .addEvent)
+        source.releaseApply()
+        _ = await exchange.value
+        XCTAssertEqual(source.applied, ["ch_auto"])
+        XCTAssertEqual(engine.prompts.map(\.id), ["ch_wait"])
     }
 
     func testPhoneVoiceCallsReadAnswerAndAdd() async throws {

@@ -1011,9 +1011,14 @@ final class PhoneSyncEngine: ObservableObject {
                                                alarmTitle: alarmTitle(for: change), personName: personName(for: change)))
             }
         }
-        // One approved on a card while this ran gets no card: the pass the
-        // approval runs applies it.
-        prompts = fresh.filter { approvedOnCard[$0.id] == nil }
+        // One approved on a card while this ran, as the kind it is and still
+        // in time, gets no card: the pass the approval runs applies it. Any
+        // other keeps its card.
+        let current = now()
+        prompts = fresh.filter { prompt in
+            guard let approved = approvedOnCard[prompt.id] else { return true }
+            return approved.kind != prompt.change.kind || approved.until <= current
+        }
         persist()
     }
 
