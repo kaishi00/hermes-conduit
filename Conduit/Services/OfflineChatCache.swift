@@ -44,6 +44,9 @@ struct OfflineCachedMessage: Codable, Equatable {
     /// equals the one drawn from the copy and isn't drawn again. Rows saved
     /// before it was kept have none.
     let rowId: Int?
+    /// A finished-agents notice's results (issue 1553). Rows saved before
+    /// it was kept have none and show the plain notice.
+    let delegationReport: DelegationReport?
 
     static let storableRoles: Set<MessageRole> = [.user, .assistant, .reasoning, .system, .tool]
 
@@ -64,6 +67,7 @@ struct OfflineCachedMessage: Codable, Equatable {
         reactions = message.reactions.isEmpty ? nil : message.reactions
         stepDuration = message.stepDuration
         rowId = message.rowId
+        delegationReport = message.delegationReport
     }
 
     var chatMessage: ChatMessage {
@@ -84,6 +88,7 @@ struct OfflineCachedMessage: Codable, Equatable {
             reactions: reactions ?? []
         )
         message.stepDuration = stepDuration
+        message.delegationReport = delegationReport
         return message
     }
 }

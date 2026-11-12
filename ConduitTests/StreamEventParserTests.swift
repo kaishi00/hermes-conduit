@@ -572,6 +572,56 @@ final class StreamEventParserTests: XCTestCase {
         XCTAssertEqual(card.stream.map(\.text), ["Check requests", "SKILL.md", "Both approved"])
     }
 
+    /// Issue 1553: a card knows how long its agent has run. The first
+    /// running event starts the clock, Hermes' end figure is the time it
+    /// ran, and an end without one counts from the start to that end.
+    func testADelegateCardKnowsHowLongItsAgentRan() throws {
+        func activity(_ json: String) throws -> DelegateAgentActivity {
+            struct NotADelegateEvent: Error {}
+            guard case .delegateAgent(_, let activity) = parse(json) else { throw NotADelegateEvent() }
+            return activity
+        }
+        var start = try activity(#"{"type": "subagent.start", "session_id": "s1", "payload": {"goal": "g", "task_count": 1, "task_index": 0, "subagent_id": "sa-1"}}"#)
+        start.startedAt = Date(timeIntervalSince1970: 1_000)
+        XCTAssertEqual(start.elapsed(at: Date(timeIntervalSince1970: 1_042)), 42)
+        XCTAssertEqual(start.elapsed(at: Date(timeIntervalSince1970: 900)), 0, "Hermes' clock ahead of the phone's never reads negative")
+
+        var tool = try activity(#"{"type": "subagent.tool", "session_id": "s1", "payload": {"goal": "g", "task_index": 0, "subagent_id": "sa-1", "tool_name": "web_search"}}"#)
+        tool.startedAt = Date(timeIntervalSince1970: 1_030)
+        XCTAssertEqual(start.merged(with: tool).startedAt, Date(timeIntervalSince1970: 1_000), "the first start is the start")
+
+        let complete = try activity(#"{"type": "subagent.complete", "session_id": "s1", "payload": {"goal": "g", "task_index": 0, "subagent_id": "sa-1", "status": "completed", "duration_seconds": 63.5}}"#)
+        XCTAssertNil(complete.startedAt, "an end doesn't start a clock")
+        let ended = start.merged(with: complete)
+        XCTAssertEqual(ended.duration, 63.5)
+        XCTAssertEqual(ended.elapsed(at: Date(timeIntervalSince1970: 99_999)), 63.5, "a finished agent's time stops")
+
+        var silentEnd = try activity(#"{"type": "subagent.complete", "session_id": "s1", "payload": {"subagent_id": "sa-1", "status": "completed"}}"#)
+        silentEnd.updatedAt = Date(timeIntervalSince1970: 1_010)
+        XCTAssertEqual(start.merged(with: silentEnd).duration, 10)
+        XCTAssertEqual(start.ended(as: .interrupted, at: Date(timeIntervalSince1970: 1_005)).duration, 5)
+
+        let queued = try activity(#"{"type": "subagent.spawn_requested", "session_id": "s1", "payload": {"goal": "g", "task_count": 1, "task_index": 0, "subagent_id": "sa-2"}}"#)
+        XCTAssertNil(queued.startedAt)
+        XCTAssertNil(queued.elapsed(at: Date()), "a queued agent has no time yet")
+    }
+
+    /// Issue 1553: Hermes' own `started_at` dates a card from the roster, and
+    /// outranks a later first event the chat happened to see.
+    func testTheRosterDatesItsAgentsCards() throws {
+        let row = try JSONDecoder().decode(AnyCodable.self, from: Data(#"{"subagent_id": "a", "status": "running", "started_at": 1000.5}"#.utf8)).objectValue
+        let listed = try XCTUnwrap(DelegateAgentActivity(rosterRow: row, sessionId: "s1"))
+        XCTAssertEqual(listed.startedAt, Date(timeIntervalSince1970: 1000.5))
+
+        var seenLate = DelegateAgentActivity(id: "a", goal: "g", model: nil, status: .running, taskCount: 1, taskIndex: 0,
+                                             currentTool: nil, summary: nil, stream: [], hasGatewayID: true, sessionId: "s1")
+        seenLate.startedAt = Date(timeIntervalSince1970: 2_000)
+        XCTAssertEqual(DelegateAgentActivity.adopting([seenLate], roster: [listed]).first?.startedAt, Date(timeIntervalSince1970: 1000.5))
+        var seenFirst = seenLate
+        seenFirst.startedAt = Date(timeIntervalSince1970: 900)
+        XCTAssertEqual(DelegateAgentActivity.adopting([seenFirst], roster: [listed]).first?.startedAt, Date(timeIntervalSince1970: 900))
+    }
+
     func testSubagentWithoutIDKeysOnGoalAndSlot() {
         let first = parse(#"{"type": "subagent.tool", "session_id": "s1", "payload": {"goal": "Research", "task_index": 1, "text": "web_search"}}"#)
         let second = parse(#"{"type": "subagent.progress", "session_id": "s1", "payload": {"goal": "Research", "task_index": 1, "text": "2 tools"}}"#)

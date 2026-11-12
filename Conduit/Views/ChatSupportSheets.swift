@@ -320,6 +320,13 @@ private struct DelegateAgentCard: View {
     @State private var working = false
     @State private var note: (text: String, isError: Bool)?
 
+    /// Model, tool, status and how long it has run or ran (issue 1553).
+    private func subtitle(at now: Date, spoken: Bool = false) -> String {
+        let seconds = agent.elapsed(at: now)
+        let time = spoken ? ChatStepTiming.spokenText(seconds) : ChatStepTiming.text(seconds)
+        return [agent.model, agent.currentTool, agent.status.label, time].compactMap { $0 }.joined(separator: " · ")
+    }
+
     /// Hermes takes Steer, Stop and live output only for an agent it named
     /// and still runs (#820).
     private var controllable: Bool { agent.status == .running && agent.hasGatewayID && !agent.sessionId.isEmpty }
@@ -332,8 +339,12 @@ private struct DelegateAgentCard: View {
                         Circle().fill(statusColor).frame(width: 9, height: 9)
                         VStack(alignment: .leading, spacing: 2) {
                             Text(agent.goal.isEmpty ? AppLocalization.string("Delegate agent", table: .chat) : agent.goal).scaledFont(.subheadline.weight(.semibold)).lineLimit(2)
-                            Text([agent.model, agent.currentTool, agent.status.label].compactMap { $0 }.joined(separator: " · "))
-                                .scaledFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+                            // A running agent's time counts up each second.
+                            TimelineView(.periodic(from: .now, by: agent.status == .running ? 1 : 3600)) { context in
+                                Text(subtitle(at: context.date))
+                                    .scaledFont(.caption).foregroundStyle(.secondary).lineLimit(1)
+                                    .accessibilityLabel(subtitle(at: context.date, spoken: true))
+                            }
                         }
                         Spacer()
                         Image(systemName: expanded ? "chevron.up" : "chevron.down").scaledFont(.caption).foregroundStyle(.secondary)

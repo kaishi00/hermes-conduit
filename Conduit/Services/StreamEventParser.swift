@@ -310,7 +310,7 @@ enum StreamEventParser {
         let text = payload["text"]?.stringValue ?? payload["message"]?.stringValue ?? payload["summary"]?.stringValue ?? ""
         let kind: DelegateAgentActivity.StreamLine.Kind = eventType.contains("tool") ? .tool : eventType.contains("thinking") ? .thinking : eventType.contains("progress") ? .progress : .summary
         let lines = text.isEmpty ? [] : [DelegateAgentActivity.StreamLine(kind: kind, text: text, isError: status == .failed)]
-        return DelegateAgentActivity(
+        var activity = DelegateAgentActivity(
             id: id,
             // Empty when the event names no goal: the card says "Delegate agent".
             goal: goal,
@@ -323,5 +323,13 @@ enum StreamEventParser {
             stream: lines,
             hasGatewayID: subagentID != nil
         )
+        // A running agent's first event is about when it started (the
+        // card keeps the first one, `merged`); an end says how long it ran
+        // when Hermes counts it (`duration_seconds`, issue 1553).
+        if status == .running { activity.startedAt = activity.updatedAt }
+        if !status.isActive, let seconds = payload["duration_seconds"]?.doubleValue, seconds.isFinite, seconds >= 0 {
+            activity.duration = seconds
+        }
+        return activity
     }
 }

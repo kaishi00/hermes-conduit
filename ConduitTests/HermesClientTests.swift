@@ -556,6 +556,102 @@ final class HermesClientTests: XCTestCase {
         client.disconnect()
     }
 
+    /// A gateway serving several profiles on one socket finds a Bot Chat
+    /// only under the profile a request names, so the requests after the
+    /// resume (the reasoning switch, the send) name the bot's profile too;
+    /// unnamed, Hermes answered `config.set` with `not_found`. A resume
+    /// that names no profile keeps it; one under the client's own forgets it.
+    func testRequestsAfterABotChatResumeNameTheBotsProfile() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport, profile: "analyst")
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+
+        func lastRequest() throws -> [String: Any] {
+            try XCTUnwrap(
+                JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+            )
+        }
+        func answer(_ request: [String: Any], _ result: [String: Any]) throws {
+            let id = try XCTUnwrap(request["id"] as? Int)
+            let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": result]
+            socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+        }
+
+        func expectSend() -> Gate {
+            let gate = Gate()
+            socket.onSend = { gate.signal() }
+            return gate
+        }
+
+        var sent = expectSend()
+        let openTask = Task<SessionResumeResult, Error> {
+            try await client.openSession("runtime-1", profile: "atlas")
+        }
+        try await sent.wait("the bot chat's session.resume to be sent")
+        try answer(try lastRequest(), ["session_id": "runtime-1", "stored_session_id": "stored-1", "messages": [Any]()])
+        _ = try await awaitResult(of: openTask, "the bot chat's resume response")
+        XCTAssertEqual(client.sessionProfile(for: "runtime-1"), "atlas")
+        XCTAssertEqual(client.sessionProfile(for: "stored-1"), "atlas")
+
+        sent = expectSend()
+        let reasoningTask = Task { try await client.setReasoning("runtime-1", effort: "high") }
+        try await sent.wait("the reasoning config.set to be sent")
+        let reasoning = try lastRequest()
+        XCTAssertEqual(reasoning["method"] as? String, "config.set")
+        let reasoningParams = try XCTUnwrap(reasoning["params"] as? [String: Any])
+        XCTAssertEqual(
+            reasoningParams["profile"] as? String, "atlas",
+            "the bot chat's reasoning switch names the bot's profile, not the client's"
+        )
+        try answer(reasoning, ["key": "reasoning", "value": "high"])
+        try await reasoningTask.value
+
+        // Another chat keeps the client's own scope.
+        sent = expectSend()
+        let otherTask = Task { try await client.setReasoning("runtime-2", effort: "low") }
+        try await sent.wait("another chat's config.set to be sent")
+        let other = try lastRequest()
+        XCTAssertEqual((other["params"] as? [String: Any])?["profile"] as? String, "analyst")
+        try answer(other, ["key": "reasoning", "value": "low"])
+        try await otherTask.value
+
+        // Opened again naming no profile (a branch's reconcile), the resume
+        // goes to the bot's profile and keeps it.
+        sent = expectSend()
+        let reopenTask = Task<SessionResumeResult, Error> {
+            try await client.openSession("runtime-1", profile: nil)
+        }
+        try await sent.wait("the unnamed session.resume to be sent")
+        let reopen = try lastRequest()
+        XCTAssertEqual((reopen["params"] as? [String: Any])?["profile"] as? String, "atlas")
+        try answer(reopen, ["session_id": "runtime-1", "messages": [Any]()])
+        _ = try await awaitResult(of: reopenTask, "the unnamed resume response")
+        XCTAssertEqual(client.sessionProfile(for: "runtime-1"), "atlas")
+
+        sent = expectSend()
+        let afterTask = Task { try await client.setReasoning("runtime-1", effort: "low") }
+        try await sent.wait("the config.set after the unnamed resume to be sent")
+        let after = try lastRequest()
+        XCTAssertEqual((after["params"] as? [String: Any])?["profile"] as? String, "atlas")
+        try answer(after, ["key": "reasoning", "value": "low"])
+        try await afterTask.value
+
+        // Opened again under the client's own profile, it takes that scope.
+        sent = expectSend()
+        let ownTask = Task<SessionResumeResult, Error> {
+            try await client.openSession("runtime-1", profile: "analyst")
+        }
+        try await sent.wait("the client-profile session.resume to be sent")
+        try answer(try lastRequest(), ["session_id": "runtime-1", "messages": [Any]()])
+        _ = try await awaitResult(of: ownTask, "the client-profile resume response")
+        XCTAssertNil(client.sessionProfile(for: "runtime-1"))
+        client.disconnect()
+    }
+
     func testExplicitProfileInParamsWinsOverClientScope() async throws {
         let transport = FakeTransport()
         let socket = FakeSocket()
@@ -3183,8 +3279,10 @@ final class HermesClientTests: XCTestCase {
             profile: nil,
             transportFactory: { FakeTransport() }
         )
+        outgoing.sendsChangeEvents = true
         XCTAssertTrue(outgoing.handOffSocket(to: incoming))
         XCTAssertTrue(incoming.speaksSessionAuthority)
+        XCTAssertTrue(incoming.sendsChangeEvents, "The same socket's gateway still pushes sessions.changed")
         count = socket.sentTexts.count
         let confirm = Task<ModelSwitchOutcome, Error> {
             try await incoming.setModel("sess-1", model: "big", provider: "custom", confirmed: true)
@@ -3289,6 +3387,7 @@ final class HermesClientTests: XCTestCase {
             "params": ["type": "gateway.ready", "payload": ["change_events": true]]
         ], to: socket)
         try await sent.wait("client.capabilities to be sent after gateway.ready")
+        XCTAssertTrue(client.sendsChangeEvents, "change_events: the Chats list follows sessions.changed (issue 851)")
 
         let request = try sentFrame(socket)
         XCTAssertEqual(request["method"] as? String, "client.capabilities")
@@ -3302,6 +3401,7 @@ final class HermesClientTests: XCTestCase {
             "params": ["type": "gateway.ready", "payload": [String: Any]()]
         ], to: socket)
         XCTAssertEqual(socket.sentTexts.count, 1, "client.capabilities is sent once per connection")
+        XCTAssertFalse(client.sendsChangeEvents, "A ready without change_events goes back to the timed reads")
         client.disconnect()
     }
 
