@@ -2470,7 +2470,7 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertFalse(request.focuses)
         XCTAssertEqual(
             appState.composerNotice,
-            AppLocalization.string("Your message to “\("A")” wasn't sent. It's back in that chat's draft.")
+            AppLocalization.string("Your message to “\("A")” wasn't sent. It's back in that chat's draft.", table: .chat)
         )
         XCTAssertTrue(appState.messages.isEmpty, "Nothing was sent")
     }
@@ -2753,7 +2753,7 @@ final class OfflineChatCacheTests: XCTestCase {
         XCTAssertEqual(appState.composerRestoreRequests.first?.draft.text, "Hello")
         XCTAssertEqual(
             appState.composerNotice,
-            AppLocalization.string("Your message wasn't sent. It's back in the composer.")
+            AppLocalization.string("Your message wasn't sent. It's back in the composer.", table: .chat)
         )
     }
 

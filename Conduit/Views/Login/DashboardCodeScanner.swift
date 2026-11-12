@@ -27,10 +27,10 @@ struct CodeScanPurpose {
     /// A dashboard's sign-in code, or its address shown as text.
     static var signIn: CodeScanPurpose {
         CodeScanPurpose(
-            title: AppLocalization.string("Scan Code"),
-            hint: AppLocalization.string("Point the camera at the code Hermes shows. For an address shown as text, tap it."),
-            unreadable: AppLocalization.string("That code isn't a dashboard address."),
-            unsupported: AppLocalization.string("This device can't scan codes. Type or paste the address instead."),
+            title: AppLocalization.string("Scan Code", table: .connection),
+            hint: AppLocalization.string("Point the camera at the code Hermes shows. For an address shown as text, tap it.", table: .connection),
+            unreadable: AppLocalization.string("That code isn't a dashboard address.", table: .connection),
+            unsupported: AppLocalization.string("This device can't scan codes. Type or paste the address instead.", table: .connection),
             asksHermesForCode: true
         )
     }
@@ -38,10 +38,10 @@ struct CodeScanPurpose {
     /// A Link invite's QR code, on the other person's phone.
     static var linkInvite: CodeScanPurpose {
         CodeScanPurpose(
-            title: AppLocalization.string("Scan Invite"),
-            hint: AppLocalization.string("Point the camera at the invite's QR code on the other person's phone."),
-            unreadable: AppLocalization.string("That code isn't a Link invite."),
-            unsupported: AppLocalization.string("This device can't scan codes. Paste the invite instead."),
+            title: AppLocalization.string("Scan Invite", table: .connection),
+            hint: AppLocalization.string("Point the camera at the invite's QR code on the other person's phone.", table: .connection),
+            unreadable: AppLocalization.string("That code isn't a Link invite.", table: .connection),
+            unsupported: AppLocalization.string("This device can't scan codes. Paste the invite instead.", table: .connection),
             asksHermesForCode: false
         )
     }
@@ -130,7 +130,7 @@ struct DashboardCodeScannerSheet: View {
                 .accessibilityHint(purpose.hint)
             case .denied:
                 cameraNotice(
-                    AppLocalization.string("Scanning a code needs camera access. You can allow it in Settings."),
+                    AppLocalization.string("Scanning a code needs camera access. You can allow it in Settings.", table: .connection),
                     opensSettings: true
                 )
             case .unsupported:

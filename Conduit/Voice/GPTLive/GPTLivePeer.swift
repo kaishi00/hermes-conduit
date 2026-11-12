@@ -55,8 +55,8 @@ enum GPTLivePeerError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .offerFailed: return AppLocalization.string("Couldn't prepare the GPT-Live call.")
-        case .answerRejected: return AppLocalization.string("GPT-Live's call answer couldn't be used.")
+        case .offerFailed: return AppLocalization.string("Couldn't prepare the GPT-Live call.", table: .voice)
+        case .answerRejected: return AppLocalization.string("GPT-Live's call answer couldn't be used.", table: .voice)
         }
     }
 }

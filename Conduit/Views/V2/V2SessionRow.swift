@@ -76,7 +76,7 @@ enum V2SessionStatus: Equatable {
     var accessibilityWord: String? {
         switch self {
         case .running: return AppLocalization.string("Running")
-        case .approval: return AppLocalization.string("Needs approval")
+        case .approval: return AppLocalization.string("Needs approval", table: .chat)
         case .voice: return AppLocalization.string("Voice")
         case .scheduled: return AppLocalization.string("Scheduled")
         case .job: return AppLocalization.string("Voice Jobs")
@@ -308,10 +308,10 @@ struct V2SessionRow: View {
 
     private var accessibilityValue: String {
         [
-            profileBadge.map { AppLocalization.string("\($0.name) profile") },
+            profileBadge.map { AppLocalization.string("\($0.name) profile", table: .chat) },
             isUnread ? AppLocalization.string("Unread") : nil,
             isPinned ? AppLocalization.string("Pinned") : nil,
-            isStarred ? AppLocalization.string("Starred") : nil,
+            isStarred ? AppLocalization.string("Starred", table: .chat) : nil,
             status.accessibilityWord,
             preview.isEmpty ? nil : preview,
             time.isEmpty ? nil : time
@@ -389,7 +389,7 @@ struct V2ContentMatchRow: View {
     private var accessibilityValue: String {
         [
             isUnread ? AppLocalization.string("Unread") : nil,
-            isStarred ? AppLocalization.string("Starred") : nil,
+            isStarred ? AppLocalization.string("Starred", table: .chat) : nil,
             snippet.plainText.isEmpty ? nil : snippet.plainText,
             time.isEmpty ? nil : time
         ]

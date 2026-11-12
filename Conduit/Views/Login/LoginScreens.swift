@@ -139,7 +139,7 @@ struct LoginAddressStep: View {
             }
             .loginFieldChrome(isFocused: focusedField == .server)
             .id(LoginField.server)
-            Text(AppLocalization.string("No need to type https://. Conduit checks how this dashboard signs in next."))
+            Text(AppLocalization.string("No need to type https://. Conduit checks how this dashboard signs in next.", table: .connection))
                 .scaledFont(.footnote)
                 .foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
@@ -165,7 +165,7 @@ struct LoginAddressStep: View {
                     focusedField = nil
                     flow.showsScanner = true
                 } label: {
-                    Label(AppLocalization.string("Scan Code"), systemImage: "qrcode.viewfinder")
+                    Label(AppLocalization.string("Scan Code", table: .connection), systemImage: "qrcode.viewfinder")
                 }
                 .buttonStyle(.bordered)
                 .buttonBorderShape(.capsule)
@@ -179,7 +179,7 @@ struct LoginAddressStep: View {
 
     private var addressLabel: String {
         context == .firstLaunch
-            ? AppLocalization.string("Your Hermes dashboard address")
+            ? AppLocalization.string("Your Hermes dashboard address", table: .connection)
             : AppLocalization.string("Dashboard address")
     }
 
@@ -193,7 +193,7 @@ struct LoginAddressStep: View {
                 LoginRowLabel(
                     icon: "slider.horizontal.3",
                     title: AppLocalization.string("Advanced"),
-                    detail: AppLocalization.string("Private sign-in, Cloudflare Access token, extra headers"),
+                    detail: AppLocalization.string("Private sign-in, Cloudflare Access token, extra headers", table: .connection),
                     accessory: flow.showsAdvanced ? .expanded : .collapsed
                 )
             }
@@ -372,7 +372,7 @@ struct LoginCredentialsPage: View {
                         focusedField = nil
                         Task { await flow.signInWithBrowserInstead() }
                     } label: {
-                        Label(AppLocalization.string("Sign in with browser instead"), systemImage: "safari")
+                        Label(AppLocalization.string("Sign in with browser instead", table: .connection), systemImage: "safari")
                             .scaledFont(.callout.weight(.semibold))
                             .foregroundStyle(Color.conduitAccent)
                             .frame(minHeight: 44)
@@ -467,7 +467,7 @@ struct LoginCredentialsPage: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(revealsPassword ? AppLocalization.string("Hide password") : AppLocalization.string("Show password"))
+                .accessibilityLabel(revealsPassword ? AppLocalization.string("Hide password", table: .connection) : AppLocalization.string("Show password", table: .connection))
             }
             .loginFieldChrome(isFocused: focusedField == .password, trailingPadding: 4)
             .id(LoginField.password)
@@ -493,8 +493,8 @@ struct LoginSignInOptionsCard: View {
     var body: some View {
         VStack(spacing: 0) {
             LoginSwitchRow(
-                title: AppLocalization.string("Save sign-in"),
-                detail: AppLocalization.string("Signs you back in on its own when the session ends."),
+                title: AppLocalization.string("Save sign-in", table: .connection),
+                detail: AppLocalization.string("Signs you back in on its own when the session ends.", table: .connection),
                 isOn: Binding(get: { flow.saveSignIn }, set: { flow.setSaveSignIn($0) }),
                 identifier: "login.save-sign-in"
             )
@@ -503,11 +503,11 @@ struct LoginSignInOptionsCard: View {
             if flow.biometrics.isAvailable {
                 LoginSwitchRow(
                     title: flow.biometrics.kind == .touchID
-                        ? AppLocalization.string("Use Touch ID")
-                        : AppLocalization.string("Use Face ID"),
+                        ? AppLocalization.string("Use Touch ID", table: .connection)
+                        : AppLocalization.string("Use Face ID", table: .connection),
                     detail: flow.biometrics.kind == .touchID
-                        ? AppLocalization.string("Touch ID unlocks the saved sign-in when Conduit opens.")
-                        : AppLocalization.string("Face ID unlocks the saved sign-in when Conduit opens."),
+                        ? AppLocalization.string("Touch ID unlocks the saved sign-in when Conduit opens.", table: .connection)
+                        : AppLocalization.string("Face ID unlocks the saved sign-in when Conduit opens.", table: .connection),
                     isOn: $flow.useBiometrics,
                     identifier: "login.biometric-toggle"
                 )
@@ -546,14 +546,14 @@ struct LoginDashboardsScreen: View {
         .onChange(of: appState.isConnecting) { _, _ in refreshSignIns() }
         .onChange(of: flow.isWorking) { _, _ in refreshSignIns() }
         .confirmationDialog(
-            AppLocalization.string("Remove Dashboard?"),
+            AppLocalization.string("Remove Dashboard?", table: .connection),
             isPresented: Binding(
                 get: { pendingRemoval != nil },
                 set: { if !$0 { pendingRemoval = nil } }
             ),
             titleVisibility: .visible
         ) {
-            Button(AppLocalization.string("Remove Dashboard"), role: .destructive) {
+            Button(AppLocalization.string("Remove Dashboard", table: .connection), role: .destructive) {
                 if let dashboard = pendingRemoval {
                     flow.clearFailure()
                     appState.removeDashboard(dashboard.id)
@@ -589,7 +589,7 @@ struct LoginDashboardsScreen: View {
             }
             VStack(alignment: .leading, spacing: 8) {
                 SettingsSectionHeader(
-                    title: AppLocalization.string("Your dashboards"),
+                    title: AppLocalization.string("Your dashboards", table: .connection),
                     symbol: "server.rack",
                     tint: .conduitAccent
                 )
@@ -612,7 +612,7 @@ struct LoginDashboardsScreen: View {
                 LoginRowLabel(
                     icon: "plus.circle",
                     title: AppLocalization.string("Add a dashboard"),
-                    detail: AppLocalization.string("Paste or type its address"),
+                    detail: AppLocalization.string("Paste or type its address", table: .connection),
                     accessory: .chevron
                 )
             }
@@ -662,7 +662,7 @@ struct LoginDashboardsScreen: View {
                 Button(role: .destructive) {
                     pendingRemoval = dashboard
                 } label: {
-                    Label(AppLocalization.string("Remove Dashboard"), systemImage: "trash")
+                    Label(AppLocalization.string("Remove Dashboard", table: .connection), systemImage: "trash")
                 }
                 // Not while it connects: the connection would register it
                 // again.
@@ -700,23 +700,23 @@ struct LoginDashboardsScreen: View {
             switch kind {
             case .biometric:
                 if biometricKind == .touchID {
-                    text = AppLocalization.string("Signs in with Touch ID")
+                    text = AppLocalization.string("Signs in with Touch ID", table: .connection)
                     icon = "touchid"
                 } else {
-                    text = AppLocalization.string("Signs in with Face ID")
+                    text = AppLocalization.string("Signs in with Face ID", table: .connection)
                     icon = "faceid"
                 }
             case .password, .session:
-                text = AppLocalization.string("Saved sign-in")
+                text = AppLocalization.string("Saved sign-in", table: .connection)
                 icon = "key"
             case .signInNeeded:
-                text = AppLocalization.string("Sign in needed")
+                text = AppLocalization.string("Sign in needed", table: .connection)
                 icon = "clock"
                 tint = .orange
             }
         }
         if dashboards.count > 1, dashboard.id == appState.activeDashboardID {
-            text = AppLocalization.string("\(text) · Last used")
+            text = AppLocalization.string("\(text) · Last used", table: .connection)
         }
         return LoginRowLabel.Status(text: text, icon: icon, tint: tint)
     }
@@ -931,10 +931,10 @@ struct PrivateSignInPageToggle: View {
     var body: some View {
         Toggle(isOn: $privateSignIn) {
             LoginSwitchLabel(
-                title: AppLocalization.string("Private sign-in page"),
+                title: AppLocalization.string("Private sign-in page", table: .connection),
                 detail: privateSignIn
-                    ? AppLocalization.string("When the sign-in page opens, it starts fresh and shows every way to sign in, such as a login code.")
-                    : AppLocalization.string("The sign-in page can remember your account. Turn this on if you need another way to sign in, such as a login code.")
+                    ? AppLocalization.string("When the sign-in page opens, it starts fresh and shows every way to sign in, such as a login code.", table: .connection)
+                    : AppLocalization.string("The sign-in page can remember your account. Turn this on if you need another way to sign in, such as a login code.", table: .connection)
             )
         }
         .tint(.conduitAccent)
@@ -1072,7 +1072,7 @@ struct LoginFailureCard: View {
                     .accessibilityIdentifier(failure.asksToSignInAgain ? "login.error.sign-in-again" : "login.error.try-again")
 
                     if let destination = failure.helpDestination {
-                        Button(AppLocalization.string("Troubleshoot Connection")) {
+                        Button(AppLocalization.string("Troubleshoot Connection", table: .connection)) {
                             flow.connectionSetupDestination = destination
                         }
                         .buttonStyle(LoginCapsuleButtonStyle())

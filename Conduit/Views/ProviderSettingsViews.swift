@@ -176,10 +176,10 @@ struct ModelPageProviders: View {
         }
         var uses: [String] = []
         if let provider = settings?["delegation.provider"]?.textValue, !provider.isEmpty, runsOn(provider) {
-            uses.append(AppLocalization.string("Delegate model"))
+            uses.append(AppLocalization.string("Delegate model", table: .settings))
         }
         for fallback in fallbacks ?? [] where runsOn(fallback.provider) {
-            uses.append(AppLocalization.string("Fallback \(fallback.model)"))
+            uses.append(AppLocalization.string("Fallback \(fallback.model)", table: .settings))
         }
         // A helper pinned to the provider, with or without a model of its
         // own; one that follows the chat model moves with it.
@@ -202,8 +202,8 @@ struct ProvidersSettingsSection: View {
     @State private var adding = false
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Providers"), symbol: "key.horizontal", tint: .conduitAccent) {
-            Text(AppLocalization.string("Where this profile's models come from. Keys are saved on your Hermes host and are never shown again."))
+        ConduitSettingsSection(title: AppLocalization.string("Providers", table: .settings), symbol: "key.horizontal", tint: .conduitAccent) {
+            Text(AppLocalization.string("Where this profile's models come from. Keys are saved on your Hermes host and are never shown again.", table: .settings))
                 .scaledFont(.footnote).foregroundStyle(.secondary)
             let connected = service.connected
             if !service.hasList {
@@ -214,7 +214,7 @@ struct ProvidersSettingsSection: View {
                 }
             } else {
                 if connected.isEmpty {
-                    Text(AppLocalization.string("No providers yet."))
+                    Text(AppLocalization.string("No providers yet.", table: .settings))
                         .scaledFont(.subheadline).foregroundStyle(.secondary)
                 }
                 ForEach(connected) { entry in
@@ -230,7 +230,7 @@ struct ProvidersSettingsSection: View {
                 if service.loadFailed { failedRow }
             }
             Button { adding = true } label: {
-                Label(AppLocalization.string("Add a provider"), systemImage: "plus")
+                Label(AppLocalization.string("Add a provider", table: .settings), systemImage: "plus")
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .frame(minHeight: 44)
             }
@@ -246,7 +246,7 @@ struct ProvidersSettingsSection: View {
 
     private var failedRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(AppLocalization.string("Could not load providers."))
+            Text(AppLocalization.string("Could not load providers.", table: .settings))
                 .scaledFont(.footnote).foregroundStyle(.secondary)
             Button(AppLocalization.string("Try Again")) { Task { await service.reload() } }
                 .scaledFont(.subheadline.weight(.semibold))
@@ -291,7 +291,7 @@ private struct ProviderRow: View {
                 Text(verbatim: entry.name)
                     .scaledFont(.subheadline.weight(.semibold))
                     .foregroundStyle(.primary)
-                Text(verbatim: isDefault ? ProviderText.status(entry) + " · " + AppLocalization.string("Default model") : ProviderText.status(entry))
+                Text(verbatim: isDefault ? ProviderText.status(entry) + " · " + AppLocalization.string("Default model", table: .settings) : ProviderText.status(entry))
                     .scaledFont(.caption)
                     .foregroundStyle(ProviderText.needsLook(entry) ? Color.orange : Color.secondary)
                 if let quota {
@@ -322,7 +322,7 @@ private struct KeyWaitingForHermes: View {
     var body: some View {
         if service.loadFailed {
             VStack(alignment: .leading, spacing: 6) {
-                Text(AppLocalization.string("Could not load providers."))
+                Text(AppLocalization.string("Could not load providers.", table: .settings))
                     .scaledFont(.footnote).foregroundStyle(.secondary)
                 if retry {
                     Button(AppLocalization.string("Try Again")) { Task { await service.reload() } }
@@ -341,13 +341,13 @@ enum ProviderText {
     static func status(_ entry: ProviderEntry) -> String {
         switch entry.status {
         case .customEndpoint: return AppLocalization.string("Custom endpoint")
-        case .signedIn: return AppLocalization.string("Signed in")
-        case .sharedKey: return entry.keyUseUnknown ? AppLocalization.string("Connected") : AppLocalization.string("Shared key")
-        case .ownKey: return AppLocalization.string("This profile's own key")
-        case .oldCopy: return AppLocalization.string("Old copy of the shared key")
-        case .mainProfileOnly: return AppLocalization.string("Saved for the main profile only")
+        case .signedIn: return AppLocalization.string("Signed in", table: .settings)
+        case .sharedKey: return entry.keyUseUnknown ? AppLocalization.string("Connected") : AppLocalization.string("Shared key", table: .settings)
+        case .ownKey: return AppLocalization.string("This profile's own key", table: .settings)
+        case .oldCopy: return AppLocalization.string("Old copy of the shared key", table: .settings)
+        case .mainProfileOnly: return AppLocalization.string("Saved for the main profile only", table: .settings)
         case .configured:
-            return entry.key == nil ? AppLocalization.string("Settings saved") : AppLocalization.string("Settings saved, no key yet")
+            return entry.key == nil ? AppLocalization.string("Settings saved", table: .settings) : AppLocalization.string("Settings saved, no key yet", table: .settings)
         case .notConnected: return ways(entry)
         }
     }
@@ -356,7 +356,7 @@ enum ProviderText {
     static func ways(_ entry: ProviderEntry) -> String {
         var ways: [String] = []
         if entry.account?.flow == .deviceCode { ways.append(AppLocalization.string("Sign in")) }
-        if entry.account?.flow == .external { ways.append(AppLocalization.string("Sign in on the host")) }
+        if entry.account?.flow == .external { ways.append(AppLocalization.string("Sign in on the host", table: .settings)) }
         if entry.key != nil { ways.append(AppLocalization.string("API key")) }
         if entry.key == nil, entry.account == nil, !entry.settings.isEmpty { ways.append(AppLocalization.string("Settings")) }
         return ways.joined(separator: " · ")
@@ -421,9 +421,9 @@ struct AddProviderSheet: View {
     var body: some View {
         NavigationStack {
             SettingsDetailContainer(compact: true) {
-                Text(AppLocalization.string("For the \(service.profileName) profile. Sign-ins and shared keys reach every profile."))
+                Text(AppLocalization.string("For the \(service.profileName) profile. Sign-ins and shared keys reach every profile.", table: .settings))
                     .scaledFont(.footnote).foregroundStyle(.secondary)
-                ConduitSettingsSection(title: AppLocalization.string("Your own server"), symbol: "server.rack", tint: .conduitAura) {
+                ConduitSettingsSection(title: AppLocalization.string("Your own server", table: .settings), symbol: "server.rack", tint: .conduitAura) {
                     NavigationLink {
                         CustomEndpointForm(service: service, existing: nil, onSaved: { dismiss() })
                     } label: {
@@ -432,7 +432,7 @@ struct AddProviderSheet: View {
                                 Text(AppLocalization.string("Custom endpoint"))
                                     .scaledFont(.subheadline.weight(.semibold))
                                     .foregroundStyle(.primary)
-                                Text(AppLocalization.string("Any OpenAI-compatible server, such as vLLM, LM Studio or Ollama"))
+                                Text(AppLocalization.string("Any OpenAI-compatible server, such as vLLM, LM Studio or Ollama", table: .settings))
                                     .scaledFont(.caption).foregroundStyle(.secondary)
                             }
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -448,7 +448,7 @@ struct AddProviderSheet: View {
                     .accessibilityIdentifier("settings.providers.add.custom")
                     if service.answered, !service.catalogReserved {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(AppLocalization.string("Custom endpoints wait for Hermes' model list."))
+                            Text(AppLocalization.string("Custom endpoints wait for Hermes' model list.", table: .settings))
                                 .scaledFont(.footnote).foregroundStyle(.secondary)
                             Button(AppLocalization.string("Try Again")) { Task { await retryCatalog() } }
                                 .scaledFont(.subheadline.weight(.semibold))
@@ -456,7 +456,7 @@ struct AddProviderSheet: View {
                         }
                     }
                 }
-                ConduitSettingsSection(title: AppLocalization.string("Providers"), symbol: "key.horizontal", tint: .conduitAccent) {
+                ConduitSettingsSection(title: AppLocalization.string("Providers", table: .settings), symbol: "key.horizontal", tint: .conduitAccent) {
                     let matches = matches
                     let wanted = query.trimmingCharacters(in: .whitespacesAndNewlines)
                     if !service.hasList {
@@ -471,7 +471,7 @@ struct AddProviderSheet: View {
                         Text(verbatim: AppLocalization.string("Nothing matches “\(wanted)”."))
                             .scaledFont(.footnote).foregroundStyle(.secondary)
                     } else if matches.isEmpty {
-                        Text(AppLocalization.string("No providers yet."))
+                        Text(AppLocalization.string("No providers yet.", table: .settings))
                             .scaledFont(.footnote).foregroundStyle(.secondary)
                     }
                     ForEach(matches) { entry in
@@ -485,7 +485,7 @@ struct AddProviderSheet: View {
                     }
                     if service.hasList, service.loadFailed {
                         VStack(alignment: .leading, spacing: 6) {
-                            Text(AppLocalization.string("Could not load providers."))
+                            Text(AppLocalization.string("Could not load providers.", table: .settings))
                                 .scaledFont(.footnote).foregroundStyle(.secondary)
                             Button(AppLocalization.string("Try Again")) { Task { await service.reload() } }
                                 .scaledFont(.subheadline.weight(.semibold))
@@ -494,8 +494,8 @@ struct AddProviderSheet: View {
                     }
                 }
             }
-            .navigationTitle(AppLocalization.string("Add a provider"))
-            .searchable(text: $query, prompt: AppLocalization.string("Search providers"))
+            .navigationTitle(AppLocalization.string("Add a provider", table: .settings))
+            .searchable(text: $query, prompt: AppLocalization.string("Search providers", table: .settings))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Done")) { dismiss() }
@@ -602,7 +602,7 @@ struct ProviderDetailPage: View {
                 }
                 if service.loadFailed {
                     VStack(alignment: .leading, spacing: 6) {
-                        Text(AppLocalization.string("Could not load providers."))
+                        Text(AppLocalization.string("Could not load providers.", table: .settings))
                             .scaledFont(.footnote).foregroundStyle(.secondary)
                         Button(AppLocalization.string("Try Again")) { Task { await service.reload() } }
                             .scaledFont(.subheadline.weight(.semibold))
@@ -618,7 +618,7 @@ struct ProviderDetailPage: View {
                             CustomEndpointForm(service: service, existing: (name: entry.name, endpoint: endpoint), onSaved: {})
                                 .v2TabBarClearance()
                         } label: {
-                            SettingsLinkRow(title: AppLocalization.string("Edit endpoint"))
+                            SettingsLinkRow(title: AppLocalization.string("Edit endpoint", table: .settings))
                         }
                         .buttonStyle(.plain)
                         // The kept address has no path; editing waits for Hermes' full one.
@@ -627,7 +627,7 @@ struct ProviderDetailPage: View {
                     }
                 }
                 if let account = entry.account {
-                    ConduitSettingsSection(title: AppLocalization.string("Account"), symbol: "person.crop.circle", tint: .conduitAccent) {
+                    ConduitSettingsSection(title: AppLocalization.string("Account", table: .settings), symbol: "person.crop.circle", tint: .conduitAccent) {
                         ProviderSignInView(service: service, entry: entry, account: account, onSignedIn: {})
                     }
                 }
@@ -655,12 +655,12 @@ struct ProviderDetailPage: View {
                         .scaledFont(.footnote).foregroundStyle(.red)
                 }
                 if context.catalogAnswered, runsDefault(entry) {
-                    Text(AppLocalization.string("This provider runs the default model. Pick another default to remove it."))
+                    Text(AppLocalization.string("This provider runs the default model. Pick another default to remove it.", table: .settings))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                 }
                 if canRemove(entry) {
                     Button(role: .destructive) { confirmingRemove = true } label: {
-                        Label(removing ? AppLocalization.string("Removing…") : AppLocalization.string("Remove provider"), systemImage: "trash")
+                        Label(removing ? AppLocalization.string("Removing…") : AppLocalization.string("Remove provider", table: .settings), systemImage: "trash")
                             .frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 46)
                     }
                     .disabled(removing)
@@ -678,7 +678,7 @@ struct ProviderDetailPage: View {
                     }
                 }
             } else if service.answered {
-                Text(AppLocalization.string("This provider was removed."))
+                Text(AppLocalization.string("This provider was removed.", table: .settings))
                     .scaledFont(.subheadline).foregroundStyle(.secondary)
             }
         }
@@ -696,9 +696,9 @@ struct ProviderDetailPage: View {
         let row = context.catalog.flatMap { entry.catalogRow(in: $0.providers) }
         let models = row?.models ?? []
         if let row, !models.isEmpty {
-            ConduitSettingsSection(title: AppLocalization.string("Models"), symbol: "cpu", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("Models", table: .settings), symbol: "cpu", tint: .conduitAccent) {
                 if context.catalogFailed { catalogFailedRow }
-                Text(AppLocalization.string("Tap a model to make it this profile's default."))
+                Text(AppLocalization.string("Tap a model to make it this profile's default.", table: .settings))
                     .scaledFont(.footnote).foregroundStyle(.secondary)
                 let shown = showsAllModels ? models : Array(models.prefix(Self.shortModelList))
                 ForEach(shown, id: \.id) { model in
@@ -716,7 +716,7 @@ struct ProviderDetailPage: View {
                                 ProgressView().accessibilityLabel(AppLocalization.string("Saving…"))
                             } else if isDefault {
                                 Image(systemName: "checkmark").foregroundStyle(Color.conduitAccent)
-                                    .accessibilityLabel(AppLocalization.string("Default model"))
+                                    .accessibilityLabel(AppLocalization.string("Default model", table: .settings))
                             }
                         }
                         .frame(minHeight: 44)
@@ -727,7 +727,7 @@ struct ProviderDetailPage: View {
                     .disabled(settingDefault != nil || isDefault || !context.catalogAnswered)
                 }
                 if models.count > Self.shortModelList {
-                    Button(showsAllModels ? AppLocalization.string("Show fewer") : AppLocalization.string("Show all models")) {
+                    Button(showsAllModels ? AppLocalization.string("Show fewer") : AppLocalization.string("Show all models", table: .settings)) {
                         showsAllModels.toggle()
                     }
                     .scaledFont(.subheadline.weight(.semibold))
@@ -735,7 +735,7 @@ struct ProviderDetailPage: View {
                 }
             }
         } else if context.catalogFailed {
-            ConduitSettingsSection(title: AppLocalization.string("Models"), symbol: "cpu", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("Models", table: .settings), symbol: "cpu", tint: .conduitAccent) {
                 catalogFailedRow
             }
         }
@@ -744,7 +744,7 @@ struct ProviderDetailPage: View {
     /// The Model lists ruling: a failed read says so and offers Try Again.
     private var catalogFailedRow: some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text(AppLocalization.string("Could not load models."))
+            Text(AppLocalization.string("Could not load models.", table: .settings))
                 .scaledFont(.footnote).foregroundStyle(.secondary)
             Button(AppLocalization.string("Try Again")) { Task { await context.reloadCatalog() } }
                 .scaledFont(.subheadline.weight(.semibold))
@@ -771,11 +771,11 @@ struct ProviderDetailPage: View {
 
     private func removeMessage(_ entry: ProviderEntry) -> String {
         let what = entry.endpoint != nil
-            ? AppLocalization.string("The endpoint is removed from this profile on your Hermes host.")
-            : AppLocalization.string("Hermes signs out of it for every profile.")
+            ? AppLocalization.string("The endpoint is removed from this profile on your Hermes host.", table: .settings)
+            : AppLocalization.string("Hermes signs out of it for every profile.", table: .settings)
         let uses = context.usage(entry)
         guard !uses.isEmpty else { return what }
-        return what + " " + AppLocalization.string("These stop working until you pick another model: \(uses.joined(separator: ", ")).")
+        return what + " " + AppLocalization.string("These stop working until you pick another model: \(uses.joined(separator: ", ")).", table: .settings)
     }
 
     private func makeDefault(provider: String, model: String) {
@@ -784,7 +784,7 @@ struct ProviderDetailPage: View {
         error = nil
         Task {
             if !(await context.makeDefault(provider, model)) {
-                error = AppLocalization.string("Could not save model defaults.")
+                error = AppLocalization.string("Could not save model defaults.", table: .settings)
             }
             settingDefault = nil
         }
@@ -804,7 +804,7 @@ struct ProviderDetailPage: View {
                 }
                 dismiss()
             } catch {
-                self.error = AppLocalization.string("Could not remove the provider: \(UserFacingError.message(for: error))")
+                self.error = AppLocalization.string("Could not remove the provider: \(UserFacingError.message(for: error))", table: .settings)
             }
         }
     }
@@ -888,9 +888,9 @@ private struct ProviderKeyEditor: View {
             if !onMain {
                 ConduitMenuPicker(value: chosenScope, choices: [
                     (id: ProviderKeyScope.allProfiles, title: AppLocalization.string("All profiles")),
-                    (id: ProviderKeyScope.thisProfile, title: AppLocalization.string("Only this profile")),
+                    (id: ProviderKeyScope.thisProfile, title: AppLocalization.string("Only this profile", table: .settings)),
                 ], onSelect: { scope = $0 }) {
-                    Text(AppLocalization.string("Use for")).foregroundStyle(.secondary)
+                    Text(AppLocalization.string("Use for", table: .settings)).foregroundStyle(.secondary)
                 }
                 .disabled(saving)
                 .accessibilityIdentifier("settings.providers.key.scope")
@@ -916,14 +916,14 @@ private struct ProviderKeyEditor: View {
                 .accessibilityIdentifier("settings.providers.key.save")
             }
             if let signup = key.signupURL.flatMap(URL.init(string:)) {
-                Button(AppLocalization.string("Get a key")) { openURL(signup) }
+                Button(AppLocalization.string("Get a key", table: .settings)) { openURL(signup) }
                     .scaledFont(.subheadline.weight(.semibold))
                     .tint(.conduitAccent)
             }
         }
         if !editing { keyActions }
         if !key.heldVars.isEmpty {
-            Text(AppLocalization.string("Another provider reads this key too, so Conduit leaves it in this profile's settings."))
+            Text(AppLocalization.string("Another provider reads this key too, so Conduit leaves it in this profile's settings.", table: .settings))
                 .scaledFont(.caption).foregroundStyle(.secondary)
         }
         if let note {
@@ -938,18 +938,18 @@ private struct ProviderKeyEditor: View {
         switch state {
         case .none:
             return onMain
-                ? AppLocalization.string("A key saved here is shared with every profile that has no key of its own.")
-                : AppLocalization.string("Share a key with every profile, or save one only this profile uses.")
+                ? AppLocalization.string("A key saved here is shared with every profile that has no key of its own.", table: .settings)
+                : AppLocalization.string("Share a key with every profile, or save one only this profile uses.", table: .settings)
         case .shared:
             return onMain
-                ? AppLocalization.string("Every profile without a key of its own uses this one.")
-                : AppLocalization.string("This profile uses the key shared by all profiles.")
+                ? AppLocalization.string("Every profile without a key of its own uses this one.", table: .settings)
+                : AppLocalization.string("This profile uses the key shared by all profiles.", table: .settings)
         case .own:
-            return AppLocalization.string("This profile uses its own key instead of the shared one.")
+            return AppLocalization.string("This profile uses its own key instead of the shared one.", table: .settings)
         case .oldCopy:
-            return AppLocalization.string("This profile still uses a shared key that was replaced since.")
+            return AppLocalization.string("This profile still uses a shared key that was replaced since.", table: .settings)
         case .mainProfileOnly:
-            return AppLocalization.string("This key is in the main profile's settings file, which other profiles can't read. Paste it again to share it.")
+            return AppLocalization.string("This key is in the main profile's settings file, which other profiles can't read. Paste it again to share it.", table: .settings)
         }
     }
 
@@ -958,16 +958,16 @@ private struct ProviderKeyEditor: View {
         if onMain {
             if state == .shared, keyRemovable {
                 Button(role: .destructive) { confirmingUnshare = true } label: {
-                    Text(AppLocalization.string("Remove shared key"))
+                    Text(AppLocalization.string("Remove shared key", table: .settings))
                 }
                 .buttonStyle(.settings)
                 .disabled(saving || !service.answered)
                 .accessibilityIdentifier("settings.providers.key.unshare")
-                .confirmationDialog(AppLocalization.string("Remove the shared key?"), isPresented: $confirmingUnshare, titleVisibility: .visible) {
+                .confirmationDialog(AppLocalization.string("Remove the shared key?", table: .settings), isPresented: $confirmingUnshare, titleVisibility: .visible) {
                     Button(AppLocalization.string("Remove"), role: .destructive) { run { try await service.unshare(entry) } }
                     Button(AppLocalization.string("Cancel"), role: .cancel) {}
                 } message: {
-                    Text(verbatim: AppLocalization.string("Every profile without a key of its own stops using \(entry.name).") + usageLine)
+                    Text(verbatim: AppLocalization.string("Every profile without a key of its own stops using \(entry.name).", table: .settings) + usageLine)
                 }
             } else if state == .mainProfileOnly, !key.removableVars.isEmpty, keyRemovable {
                 Button(role: .destructive) { confirmingRemoveKey = true } label: {
@@ -981,7 +981,7 @@ private struct ProviderKeyEditor: View {
                     }
                     Button(AppLocalization.string("Cancel"), role: .cancel) {}
                 } message: {
-                    Text(verbatim: AppLocalization.string("Conduit never shows a key, so you'd paste it again to use it.") + usageLine)
+                    Text(verbatim: AppLocalization.string("Conduit never shows a key, so you'd paste it again to use it.", table: .settings) + usageLine)
                 }
             }
         } else if state == .own || state == .oldCopy, goesToShared || keyRemovable, leavesItsOwnKey {
@@ -990,7 +990,7 @@ private struct ProviderKeyEditor: View {
             Button {
                 if goesToShared { run { try await service.useShared(entry) } } else { confirmingRemoveKey = true }
             } label: {
-                Text(goesToShared ? AppLocalization.string("Use the shared key") : AppLocalization.string("Remove this profile's key"))
+                Text(goesToShared ? AppLocalization.string("Use the shared key", table: .settings) : AppLocalization.string("Remove this profile's key", table: .settings))
             }
             .buttonStyle(.settings)
             .disabled(saving || !service.answered)
@@ -999,7 +999,7 @@ private struct ProviderKeyEditor: View {
                 Button(AppLocalization.string("Remove"), role: .destructive) { run { try await service.useShared(entry) } }
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
             } message: {
-                Text(verbatim: AppLocalization.string("Conduit never shows a key, so you'd paste it again to use it.") + usageLine)
+                Text(verbatim: AppLocalization.string("Conduit never shows a key, so you'd paste it again to use it.", table: .settings) + usageLine)
             }
         }
     }
@@ -1018,7 +1018,7 @@ private struct ProviderKeyEditor: View {
 
     private var usageLine: String {
         guard !usage.isEmpty else { return "" }
-        return " " + AppLocalization.string("These stop working until you pick another model: \(usage.joined(separator: ", ")).")
+        return " " + AppLocalization.string("These stop working until you pick another model: \(usage.joined(separator: ", ")).", table: .settings)
     }
 
     private func save() {
@@ -1040,7 +1040,7 @@ private struct ProviderKeyEditor: View {
                 check = await service.check(key: value, for: key.writeVar)
             }
             if check.blocksSave {
-                error = check.message.isEmpty ? AppLocalization.string("The provider didn't take this key.") : check.message
+                error = check.message.isEmpty ? AppLocalization.string("The provider didn't take this key.", table: .settings) : check.message
                 return
             }
             do {
@@ -1055,16 +1055,16 @@ private struct ProviderKeyEditor: View {
                 var notes: [String] = []
                 if !cleaned {
                     notes.append(scope == .allProfiles
-                        ? AppLocalization.string("Saved, but the old key couldn't be removed everywhere. A profile still using it says Old copy of the shared key.")
-                        : AppLocalization.string("Saved, but this profile's old key couldn't be removed, so it may still be used first."))
+                        ? AppLocalization.string("Saved, but the old key couldn't be removed everywhere. A profile still using it says Old copy of the shared key.", table: .settings)
+                        : AppLocalization.string("Saved, but this profile's old key couldn't be removed, so it may still be used first.", table: .settings))
                 }
                 // The key another provider also reads stays, and Hermes
                 // reads it ahead of the saved one on this profile.
                 if !key.heldVars.isEmpty {
-                    notes.append(AppLocalization.string("Saved, but this profile still has a key another provider reads, and Hermes uses that one first here."))
+                    notes.append(AppLocalization.string("Saved, but this profile still has a key another provider reads, and Hermes uses that one first here.", table: .settings))
                 }
                 if cleaned, !check.ok {
-                    notes.append(AppLocalization.string("Saved. Hermes couldn't reach the provider to check the key."))
+                    notes.append(AppLocalization.string("Saved. Hermes couldn't reach the provider to check the key.", table: .settings))
                 }
                 note = notes.isEmpty ? nil : notes.joined(separator: " ")
                 // A note stays in view: the Add sheet closes on onSaved.
@@ -1111,7 +1111,7 @@ private struct ProviderSettingsRows: View {
         if !entry.settings.isEmpty {
             ConduitSettingsSection(title: AppLocalization.string("Settings"), symbol: "slider.horizontal.3", tint: .conduitAccent) {
                 if entry.key == nil, entry.account == nil {
-                    Text(AppLocalization.string("This provider needs no key here. Hermes reaches it with these settings for this profile."))
+                    Text(AppLocalization.string("This provider needs no key here. Hermes reaches it with these settings for this profile.", table: .settings))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                 }
                 ForEach(Array(entry.settings.enumerated()), id: \.element.variable) { index, setting in
@@ -1188,12 +1188,12 @@ private struct ProviderSettingsRows: View {
     }
 
     private func title(_ setting: ProviderEntry.Setting) -> String {
-        setting.isBaseURL ? AppLocalization.string("Base URL override") : setting.variable
+        setting.isBaseURL ? AppLocalization.string("Base URL override", table: .settings) : setting.variable
     }
 
     private func status(_ setting: ProviderEntry.Setting) -> String {
-        if setting.saved { return AppLocalization.string("Set for this profile") }
-        return setting.isBaseURL ? AppLocalization.string("Not set, uses the provider's own") : AppLocalization.string("Not set")
+        if setting.saved { return AppLocalization.string("Set for this profile", table: .settings) }
+        return setting.isBaseURL ? AppLocalization.string("Not set, uses the provider's own", table: .settings) : AppLocalization.string("Not set")
     }
 
     private func run(_ work: @escaping () async throws -> Void) {
@@ -1237,9 +1237,9 @@ enum KeyOrder: String, CaseIterable {
 
     var title: String {
         switch self {
-        case .fillFirst: return AppLocalization.string("First key until it runs out")
-        case .roundRobin: return AppLocalization.string("Take turns")
-        case .random: return AppLocalization.string("Random")
+        case .fillFirst: return AppLocalization.string("First key until it runs out", table: .settings)
+        case .roundRobin: return AppLocalization.string("Take turns", table: .settings)
+        case .random: return AppLocalization.string("Random", table: .settings)
         case .leastUsed: return AppLocalization.string("Least used first")
         }
     }
@@ -1318,7 +1318,7 @@ struct KeyOrderPicks: Equatable {
         writes += 1
         guard !saved else { return }
         order = beforeSave
-        error = AppLocalization.string("Could not save the key order.")
+        error = AppLocalization.string("Could not save the key order.", table: .settings)
     }
 }
 
@@ -1336,12 +1336,12 @@ private struct KeyOrderSection: View {
     private var settingKey: String { KeyOrder.settingKey(for: entry.id) ?? "" }
 
     var body: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Key order"), symbol: "arrow.triangle.2.circlepath", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Key order", table: .settings), symbol: "arrow.triangle.2.circlepath", tint: .conduitAura) {
             Group {
                 if signIns > 0 {
-                    Text(AppLocalization.string("This profile has \(String(keys)) keys and sign-ins for \(entry.name). Hermes moves to another when one hits its limit."))
+                    Text(AppLocalization.string("This profile has \(String(keys)) keys and sign-ins for \(entry.name). Hermes moves to another when one hits its limit.", table: .settings))
                 } else {
-                    Text(AppLocalization.string("This profile has \(String(keys)) keys for \(entry.name). Hermes moves to another when one hits its limit."))
+                    Text(AppLocalization.string("This profile has \(String(keys)) keys for \(entry.name). Hermes moves to another when one hits its limit.", table: .settings))
                 }
             }
             .scaledFont(.footnote).foregroundStyle(.secondary)
@@ -1351,7 +1351,7 @@ private struct KeyOrderSection: View {
                     choices: KeyOrder.allCases.map { (id: $0, title: $0.title) },
                     onSelect: choose
                 ) {
-                    Text(AppLocalization.string("Use keys")).foregroundStyle(.secondary)
+                    Text(AppLocalization.string("Use keys", table: .settings)).foregroundStyle(.secondary)
                 }
                 .disabled(!picks.canPick)
             } else if !picks.loadFailed {
@@ -1362,7 +1362,7 @@ private struct KeyOrderSection: View {
             if picks.loadFailed && !picks.answered {
                 // The picker waits for Hermes: a kept or default order may not be its own.
                 VStack(alignment: .leading, spacing: 6) {
-                    Text(AppLocalization.string("Could not load the key order."))
+                    Text(AppLocalization.string("Could not load the key order.", table: .settings))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                     Button(AppLocalization.string("Try Again")) { Task { await read() } }
                         .scaledFont(.subheadline.weight(.semibold))
@@ -1422,15 +1422,15 @@ private struct ProviderSignInView: View {
         if account.signedIn {
             HStack(spacing: 10) {
                 Image(systemName: "person.crop.circle.badge.checkmark").foregroundStyle(.green).accessibilityHidden(true)
-                Text(AppLocalization.string("Signed in")).scaledFont(.subheadline.weight(.semibold))
+                Text(AppLocalization.string("Signed in", table: .settings)).scaledFont(.subheadline.weight(.semibold))
                 Spacer(minLength: 8)
             }
             if !account.signsOutHere, let command = account.command {
-                Text(AppLocalization.string("Sign out on the host with \(command)."))
+                Text(AppLocalization.string("Sign out on the host with \(command).", table: .settings))
                     .scaledFont(.caption).foregroundStyle(.secondary)
             }
         } else if account.flow == .external {
-            Text(AppLocalization.string("This provider signs in on your Hermes host. Run this there, then check again:"))
+            Text(AppLocalization.string("This provider signs in on your Hermes host. Run this there, then check again:", table: .settings))
                 .scaledFont(.footnote).foregroundStyle(.secondary)
             if let command = account.command {
                 HStack {
@@ -1443,7 +1443,7 @@ private struct ProviderSignInView: View {
                 }
             }
             if stillSignedOut {
-                Text(AppLocalization.string("Not signed in yet."))
+                Text(AppLocalization.string("Not signed in yet.", table: .settings))
                     .scaledFont(.footnote).foregroundStyle(.secondary)
             }
             Button(AppLocalization.string("Check again")) {
@@ -1457,7 +1457,7 @@ private struct ProviderSignInView: View {
             }
             .buttonStyle(.settingsPrimary)
         } else if let signIn {
-            Text(AppLocalization.string("Enter this code on the sign-in page:"))
+            Text(AppLocalization.string("Enter this code on the sign-in page:", table: .settings))
                 .scaledFont(.footnote).foregroundStyle(.secondary)
             HStack {
                 Text(verbatim: signIn.userCode)
@@ -1469,13 +1469,13 @@ private struct ProviderSignInView: View {
                     .buttonStyle(.settings)
             }
             if let url = signIn.verificationURL {
-                Button(AppLocalization.string("Open sign-in page")) { openURL(url) }
+                Button(AppLocalization.string("Open sign-in page", table: .settings)) { openURL(url) }
                     .buttonStyle(.settingsPrimary)
             }
             HStack(spacing: 8) {
                 // The text beside it says what it waits for.
                 ProgressView().accessibilityHidden(true)
-                Text(AppLocalization.string("Waiting for you to finish…"))
+                Text(AppLocalization.string("Waiting for you to finish…", table: .settings))
                     .scaledFont(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button(AppLocalization.string("Cancel"), role: .cancel) { cancel() }
@@ -1593,7 +1593,7 @@ private struct CustomEndpointForm: View {
 
     var body: some View {
         SettingsDetailContainer {
-            ConduitSettingsSection(title: AppLocalization.string("Server"), symbol: "server.rack", tint: .conduitAccent) {
+            ConduitSettingsSection(title: AppLocalization.string("Server", table: .settings), symbol: "server.rack", tint: .conduitAccent) {
                 TextField(AppLocalization.string("Name"), text: $draft.name)
                     .textFieldStyle(.roundedBorder)
                     .autocorrectionDisabled()
@@ -1605,19 +1605,19 @@ private struct CustomEndpointForm: View {
                     .textInputAutocapitalization(.never)
                     .accessibilityIdentifier("settings.providers.endpoint.url")
                 SecureField(isNew || existing?.endpoint.keySaved != true
-                            ? AppLocalization.string("API key (optional)")
-                            : AppLocalization.string("New API key (leave empty to keep the saved one)"),
+                            ? AppLocalization.string("API key (optional)", table: .settings)
+                            : AppLocalization.string("New API key (leave empty to keep the saved one)", table: .settings),
                             text: $keyDraft)
                     .textFieldStyle(.roundedBorder)
                         .autocorrectionDisabled()
                     .textInputAutocapitalization(.never)
                 ConduitMenuPicker(value: draft.apiMode, choices: ProviderText.apiModes(), onSelect: { draft.apiMode = $0 }) {
-                    Text(AppLocalization.string("API mode")).foregroundStyle(.secondary)
+                    Text(AppLocalization.string("API mode", table: .settings)).foregroundStyle(.secondary)
                 }
             }
-            ConduitSettingsSection(title: AppLocalization.string("Models"), symbol: "cpu", tint: .conduitAura) {
+            ConduitSettingsSection(title: AppLocalization.string("Models", table: .settings), symbol: "cpu", tint: .conduitAura) {
                 Button { check() } label: {
-                    if checking { ProgressView().accessibilityLabel(AppLocalization.string("Checking…")) } else { Text(AppLocalization.string("Find models")) }
+                    if checking { ProgressView().accessibilityLabel(AppLocalization.string("Checking…")) } else { Text(AppLocalization.string("Find models", table: .settings)) }
                 }
                 .buttonStyle(.settings)
                 .disabled(checking || draft.trimmedBaseURL.isEmpty)
@@ -1629,7 +1629,7 @@ private struct CustomEndpointForm: View {
                     // The endpoint's own models, on the Model page every
                     // model setting opens, as one provider.
                     let endpoint = ProviderInfo(
-                        name: draft.trimmedName.isEmpty ? AppLocalization.string("Your own server") : draft.trimmedName,
+                        name: draft.trimmedName.isEmpty ? AppLocalization.string("Your own server", table: .settings) : draft.trimmedName,
                         models: draft.models.map { ModelInfo(id: $0, label: nil, reasoningCapable: false) }
                     )
                     NavigationLink {
@@ -1650,18 +1650,18 @@ private struct CustomEndpointForm: View {
                     .buttonStyle(.plain)
                     .accessibilityIdentifier("settings.providers.endpoint.model")
                 } else {
-                    TextField(AppLocalization.string("Model name"), text: $draft.model)
+                    TextField(AppLocalization.string("Model name", table: .settings), text: $draft.model)
                         .textFieldStyle(.roundedBorder)
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                 }
-                Toggle(AppLocalization.string("Use as default model"), isOn: $draft.makeDefault)
+                Toggle(AppLocalization.string("Use as default model", table: .settings), isOn: $draft.makeDefault)
             }
             if let error {
                 Label(error, systemImage: "exclamationmark.triangle.fill").scaledFont(.footnote).foregroundStyle(.red)
             }
             Button { save() } label: {
-                Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save endpoint"), systemImage: "checkmark")
+                Label(saving ? AppLocalization.string("Saving…") : AppLocalization.string("Save endpoint", table: .settings), systemImage: "checkmark")
                     .frame(maxWidth: .infinity).padding(.vertical, 6).frame(minHeight: 46)
             }
             .disabled(saving || !draft.canSave)
@@ -1708,9 +1708,9 @@ private struct CustomEndpointForm: View {
                 }
             }
             if result.ok {
-                checkMessage = AppLocalization.string("The server answered.")
+                checkMessage = AppLocalization.string("The server answered.", table: .settings)
             } else {
-                checkMessage = result.message.isEmpty ? AppLocalization.string("Hermes couldn't reach the server.") : result.message
+                checkMessage = result.message.isEmpty ? AppLocalization.string("Hermes couldn't reach the server.", table: .settings) : result.message
             }
         }
     }
@@ -1727,7 +1727,7 @@ private struct CustomEndpointForm: View {
                 onSaved()
                 dismiss()
             } catch {
-                self.error = AppLocalization.string("Could not save the endpoint: \(UserFacingError.message(for: error))")
+                self.error = AppLocalization.string("Could not save the endpoint: \(UserFacingError.message(for: error))", table: .settings)
             }
         }
     }

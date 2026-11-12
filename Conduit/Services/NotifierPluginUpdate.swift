@@ -257,7 +257,7 @@ struct NotifierPluginUpdater {
         case .failed(let detail):
             return .failed(detail: detail)
         case .failedToStart, .notBackYet, .requesting, .restarting:
-            return .failed(detail: AppLocalization.string("The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host."))
+            return .failed(detail: AppLocalization.string("The plugin is updated, but the gateway didn't come back. Run hermes gateway status on the host.", table: .notifications))
         }
 
         // 3. The dashboard, for the plugin's routes.
@@ -347,7 +347,7 @@ struct NotifierPluginUpdater {
                   after.bootID != runtime.bootID else { continue }
             return .back(json, after)
         }
-        return .ended(.failed(detail: AppLocalization.string("The dashboard hasn't come back yet. Check that Hermes is running on the host.")))
+        return .ended(.failed(detail: AppLocalization.string("The dashboard hasn't come back yet. Check that Hermes is running on the host.", table: .notifications)))
     }
 
     /// Nil when the run may go on from here, after a start on the host that
@@ -514,7 +514,7 @@ struct NotifierPluginUpdater {
     /// the notice shows the first lines only.
     static func explainingMixedHermes(_ detail: String?) -> String? {
         guard ranMixedHermes(detail), let detail else { return detail }
-        return AppLocalization.string("Hermes was updated on the host while its dashboard kept running. Restart the Hermes dashboard on the host, then update again.") + "\n\n" + detail
+        return AppLocalization.string("Hermes was updated on the host while its dashboard kept running. Restart the Hermes dashboard on the host, then update again.", table: .notifications) + "\n\n" + detail
     }
 
     /// The host's last word, with the new plugin's report. A pull that
@@ -530,7 +530,7 @@ struct NotifierPluginUpdater {
         if let json { report?(json) }
         if let outcome { return outcome }
         guard let runtime = json.flatMap(NotifierPluginStatus.runtime(from:)) else {
-            return .failed(detail: AppLocalization.string("The dashboard hasn't come back yet. Check that Hermes is running on the host."))
+            return .failed(detail: AppLocalization.string("The dashboard hasn't come back yet. Check that Hermes is running on the host.", table: .notifications))
         }
         return runtime.restartNeeded ? .needsDashboardRestart(detail: nil) : .updated(version: runtime.loadedVersion)
     }
@@ -566,7 +566,7 @@ struct NotifierPluginUpdater {
     private static func check(_ response: [String: Any]) throws {
         guard response["ok"] as? Bool == false else { return }
         let detail = response["error"] as? String
-            ?? AppLocalization.string("Hermes didn't apply the update. Update the plugin from the Hermes dashboard.")
+            ?? AppLocalization.string("Hermes didn't apply the update. Update the plugin from the Hermes dashboard.", table: .notifications)
         throw DashboardTicketBridgeError.http(status: 400, detail: detail)
     }
 

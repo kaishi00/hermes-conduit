@@ -290,6 +290,6 @@ extension AppState {
 
     /// The phrase offered when wake listening is first turned on.
     func suggestedWakePhrase(forProfile profile: String) -> String {
-        AppLocalization.string("Hey \(profileDisplayName(profile))")
+        AppLocalization.string("Hey \(profileDisplayName(profile))", table: .voice)
     }
 }

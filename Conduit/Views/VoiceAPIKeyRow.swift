@@ -81,7 +81,7 @@ struct VoiceAPIKeyRow: View {
                         if isSaving {
                             ProgressView()
                         } else {
-                            Text(configured == nil ? AppLocalization.string("Add key") : AppLocalization.string("Save key"))
+                            Text(configured == nil ? AppLocalization.string("Add key", table: .voice) : AppLocalization.string("Save key"))
                         }
                     }
                     .buttonStyle(.settingsPrimary)
@@ -112,9 +112,9 @@ struct VoiceAPIKeyRow: View {
                 Text(verbatim: masked)
                     .scaledFont(.caption.monospaced())
                     .foregroundStyle(.secondary)
-                    .accessibilityLabel(Text(verbatim: AppLocalization.string("Key set on Hermes") + ", " + masked))
+                    .accessibilityLabel(Text(verbatim: AppLocalization.string("Key set on Hermes", table: .voice) + ", " + masked))
             } else {
-                Text(AppLocalization.string("Key set on Hermes"))
+                Text(AppLocalization.string("Key set on Hermes", table: .voice))
                     .scaledFont(.caption)
                     .foregroundStyle(.green)
             }
@@ -127,7 +127,7 @@ struct VoiceAPIKeyRow: View {
                 .scaledFont(.caption)
                 .foregroundStyle(.orange)
         } else {
-            Text(AppLocalization.string("Hermes didn’t say whether a key is set"))
+            Text(AppLocalization.string("Hermes didn’t say whether a key is set", table: .voice))
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
         }

@@ -101,9 +101,9 @@ struct LinkAsksClient {
 enum LinkAskText {
     static func freeOnTitle(_ choice: String) -> String {
         switch choice {
-        case "yes_no": return AppLocalization.string("Say if you're free")
-        case "times": return AppLocalization.string("Say when you're busy")
-        case "ask": return AppLocalization.string("Ask me first")
+        case "yes_no": return AppLocalization.string("Say if you're free", table: .rooms)
+        case "times": return AppLocalization.string("Say when you're busy", table: .rooms)
+        case "ask": return AppLocalization.string("Ask me first", table: .rooms)
         case "off": return AppLocalization.string("Don't answer")
         default: return choice
         }
@@ -111,7 +111,7 @@ enum LinkAskText {
 
     static func questionsTitle(_ choice: String) -> String {
         switch choice {
-        case "ask": return AppLocalization.string("Ask me")
+        case "ask": return AppLocalization.string("Ask me", table: .rooms)
         case "off": return AppLocalization.string("Don't answer")
         default: return choice
         }
@@ -122,17 +122,17 @@ enum LinkAskText {
         let freeOn: String
         switch rules.freeOn {
         case "yes_no":
-            freeOn = AppLocalization.string("Asked whether you're free on a date, your Hermes says free or busy from the calendar your phone shares with \(profileName), without asking you.")
+            freeOn = AppLocalization.string("Asked whether you're free on a date, your Hermes says free or busy from the calendar your phone shares with \(profileName), without asking you.", table: .rooms)
         case "times":
-            freeOn = AppLocalization.string("Asked whether you're free on a date, your Hermes says so from the calendar your phone shares with \(profileName), and when you're busy then (the times only), without asking you.")
+            freeOn = AppLocalization.string("Asked whether you're free on a date, your Hermes says so from the calendar your phone shares with \(profileName), and when you're busy then (the times only), without asking you.", table: .rooms)
         case "off":
-            freeOn = AppLocalization.string("Your Hermes doesn't say whether you're free.")
+            freeOn = AppLocalization.string("Your Hermes doesn't say whether you're free.", table: .rooms)
         default:
-            freeOn = AppLocalization.string("Asked whether you're free on a date, you see what your Hermes would answer from the calendar your phone shares with \(profileName), and Share it, say something else, or don't.")
+            freeOn = AppLocalization.string("Asked whether you're free on a date, you see what your Hermes would answer from the calendar your phone shares with \(profileName), and Share it, say something else, or don't.", table: .rooms)
         }
         let questions = rules.questions == "off"
-            ? AppLocalization.string("Your Hermes turns \(name)'s questions away.")
-            : AppLocalization.string("Questions from \(name)'s Hermes wait for you: only you answer them, never an agent.")
+            ? AppLocalization.string("Your Hermes turns \(name)'s questions away.", table: .rooms)
+            : AppLocalization.string("Questions from \(name)'s Hermes wait for you: only you answer them, never an agent.", table: .rooms)
         return "\(freeOn) \(questions)"
     }
 }

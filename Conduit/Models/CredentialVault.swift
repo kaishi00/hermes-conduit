@@ -20,9 +20,9 @@ struct VaultItem: Identifiable, Equatable, Codable, Sendable {
 
         var title: String {
             switch self {
-            case .login: AppLocalization.string("Login")
-            case .payment: AppLocalization.string("Payment card")
-            case .address: AppLocalization.string("Postal address")
+            case .login: AppLocalization.string("Login", table: .connection)
+            case .payment: AppLocalization.string("Payment card", table: .connection)
+            case .address: AppLocalization.string("Postal address", table: .connection)
             }
         }
     }
@@ -135,21 +135,21 @@ struct VaultSource: Identifiable, Equatable, Codable, Sendable {
 
     /// The source's state in a word, as its row's badge says it.
     var status: String {
-        if !installed { return AppLocalization.string("Not detected") }
+        if !installed { return AppLocalization.string("Not detected", table: .connection) }
         if !enabled { return AppLocalization.string("Off") }
-        return unlocked ? AppLocalization.string("Unlocked") : AppLocalization.string("Locked")
+        return unlocked ? AppLocalization.string("Unlocked", table: .connection) : AppLocalization.string("Locked", table: .connection)
     }
 
     /// What the state means for the agent, under the row's name.
     var caption: String {
         if !installed {
-            return AppLocalization.string("Not detected. Install the \(displayName) command-line tool on the Hermes computer and sign in to it; Hermes picks it up automatically.")
+            return AppLocalization.string("Not detected. Install the \(displayName) command-line tool on the Hermes computer and sign in to it; Hermes picks it up automatically.", table: .connection)
         }
-        if !enabled { return AppLocalization.string("Detected but turned off for Hermes.") }
+        if !enabled { return AppLocalization.string("Detected but turned off for Hermes.", table: .connection) }
         if unlocked {
-            return AppLocalization.string("Unlocked for this session. Locks itself after 30 minutes idle or when Hermes closes.")
+            return AppLocalization.string("Unlocked for this session. Locks itself after 30 minutes idle or when Hermes closes.", table: .connection)
         }
-        return AppLocalization.string("Detected. Hermes asks you to unlock it when it needs a login, or unlock it now.")
+        return AppLocalization.string("Detected. Hermes asks you to unlock it when it needs a login, or unlock it now.", table: .connection)
     }
 }
 
@@ -291,13 +291,13 @@ struct VaultItemDraft: Equatable {
 
         var message: String {
             switch self {
-            case .label: AppLocalization.string("Give it a label.")
-            case .origin: AppLocalization.string("Enter the site's address, like github.com.")
-            case .login: AppLocalization.string("Enter the login's email or username and its password.")
-            case .cardNumber: AppLocalization.string("Enter the card number.")
-            case .expiry: AppLocalization.string("Enter the expiry month (1 to 12) and year.")
-            case .cvc: AppLocalization.string("Enter the security code.")
-            case .address: AppLocalization.string("Enter the street, city, postal code and country.")
+            case .label: AppLocalization.string("Give it a label.", table: .connection)
+            case .origin: AppLocalization.string("Enter the site's address, like github.com.", table: .connection)
+            case .login: AppLocalization.string("Enter the login's email or username and its password.", table: .connection)
+            case .cardNumber: AppLocalization.string("Enter the card number.", table: .connection)
+            case .expiry: AppLocalization.string("Enter the expiry month (1 to 12) and year.", table: .connection)
+            case .cvc: AppLocalization.string("Enter the security code.", table: .connection)
+            case .address: AppLocalization.string("Enter the street, city, postal code and country.", table: .connection)
             }
         }
     }

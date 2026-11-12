@@ -177,42 +177,42 @@ struct RoomChatOpener {
 
 /// What Group Info says about a room's chats.
 enum RoomChatText {
-    static var sectionTitle: String { AppLocalization.string("Ask Your Agent") }
+    static var sectionTitle: String { AppLocalization.string("Ask Your Agent", table: .rooms) }
 
     static func ask(_ name: String) -> String {
-        AppLocalization.string("Ask \(name) about this room")
+        AppLocalization.string("Ask \(name) about this room", table: .rooms)
     }
 
     static func wrapUp(_ name: String) -> String {
-        AppLocalization.string("Wrap Up with \(name)")
+        AppLocalization.string("Wrap Up with \(name)", table: .rooms)
     }
 
     static var footer: String {
-        AppLocalization.string("Opens a private chat with your agent about this room. Nothing you write there goes to the room. An agent that only listens leaves you notes there when the room goes quiet.")
+        AppLocalization.string("Opens a private chat with your agent about this room. Nothing you write there goes to the room. An agent that only listens leaves you notes there when the room goes quiet.", table: .rooms)
     }
 
     /// The message Wrap Up sends in the room's chat.
     static var wrapUpPrompt: String {
-        AppLocalization.string("Wrap up this room for me: what was decided, what I said I'd do, what I might have missed, and anything waiting on my answer.")
+        AppLocalization.string("Wrap up this room for me: what was decided, what I said I'd do, what I might have missed, and anything waiting on my answer.", table: .rooms)
     }
 
     static func chatTitle(_ roomName: String) -> String {
         let name = roomName.trimmingCharacters(in: .whitespacesAndNewlines)
-        return AppLocalization.string("About \(name.isEmpty ? AppLocalization.string("a room") : name)")
+        return AppLocalization.string("About \(name.isEmpty ? AppLocalization.string("a room") : name)", table: .rooms)
     }
 
-    static var failureTitle: String { AppLocalization.string("Could not open the room's chat") }
+    static var failureTitle: String { AppLocalization.string("Could not open the room's chat", table: .rooms) }
 
     /// The banner's words, once Group Info has closed.
     static func failure(_ reason: String) -> String {
-        AppLocalization.string("Could not open the room's chat: \(reason)")
+        AppLocalization.string("Could not open the room's chat: \(reason)", table: .rooms)
     }
 
     static var wrapUpBlockedByDraft: String {
-        AppLocalization.string("Wrap Up wasn't sent: this chat has a draft. Send or clear it, then try again.")
+        AppLocalization.string("Wrap Up wasn't sent: this chat has a draft. Send or clear it, then try again.", table: .rooms)
     }
 
-    static var openFailure: String { AppLocalization.string("The chat didn't open. Try again.") }
+    static var openFailure: String { AppLocalization.string("The chat didn't open. Try again.", table: .rooms) }
 }
 
 extension AppState {

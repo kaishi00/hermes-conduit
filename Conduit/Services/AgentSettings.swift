@@ -32,19 +32,19 @@ enum AgentSettingsMode: String, CaseIterable, Identifiable {
     var title: String {
         switch self {
         case .off: return AppLocalization.string("Off")
-        case .ask: return AppLocalization.string("Ask me every time")
-        case .small: return AppLocalization.string("Small changes without asking")
+        case .ask: return AppLocalization.string("Ask me every time", table: .bots)
+        case .small: return AppLocalization.string("Small changes without asking", table: .bots)
         }
     }
 
     var summary: String {
         switch self {
         case .off:
-            return AppLocalization.string("Hermes can explain Conduit's settings but can't change them.")
+            return AppLocalization.string("Hermes can explain Conduit's settings but can't change them.", table: .bots)
         case .ask:
-            return AppLocalization.string("When you ask Hermes to change a setting, Conduit shows the change and waits for you to approve it.")
+            return AppLocalization.string("When you ask Hermes to change a setting, Conduit shows the change and waits for you to approve it.", table: .bots)
         case .small:
-            return AppLocalization.string("Changes to how voice sounds apply right away with an Undo. Anything that costs money, shares more with a voice model or keeps the microphone on still asks.")
+            return AppLocalization.string("Changes to how voice sounds apply right away with an Undo. Anything that costs money, shares more with a voice model or keeps the microphone on still asks.", table: .bots)
         }
     }
 
@@ -220,9 +220,9 @@ struct AgentSettingsAppliedNotice: Equatable, Identifiable {
 
     var message: String {
         if changes.count == 1, let change = changes.first {
-            return AppLocalization.string("Hermes changed \(change.title)")
+            return AppLocalization.string("Hermes changed \(change.title)", table: .bots)
         }
-        return AppLocalization.string("Hermes changed \(changes.count) settings")
+        return AppLocalization.string("Hermes changed \(changes.count) settings", table: .bots)
     }
 
     static func == (lhs: Self, rhs: Self) -> Bool { lhs.id == rhs.id }

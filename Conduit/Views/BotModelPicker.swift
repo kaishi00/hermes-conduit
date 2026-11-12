@@ -38,7 +38,7 @@ struct BotModelPicker: View {
             retry: { Task { if refreshFailed { await refreshModels() } else { await load() } } },
             refresh: ModelChooserRefresh(refreshing: refreshing) { Task { await refreshModels() } },
             defaultChoice: allowsInherit
-                ? ModelChooserDefault(title: inheritTitle ?? AppLocalization.string("Same as Main Profile"))
+                ? ModelChooserDefault(title: inheritTitle ?? AppLocalization.string("Same as Main Profile", table: .bots))
                 : nil,
             pick: provider.isEmpty && model.isEmpty ? nil : ModelChooserPick(provider: provider, model: model),
             reasoning: reasoning,
@@ -112,7 +112,7 @@ struct BotModelPicker: View {
     static func summary(model: String, allowsInherit: Bool) -> String {
         if !model.isEmpty { return model }
         return allowsInherit
-            ? AppLocalization.string("Same as Main Profile")
+            ? AppLocalization.string("Same as Main Profile", table: .bots)
             : AppLocalization.string("Not set")
     }
 }

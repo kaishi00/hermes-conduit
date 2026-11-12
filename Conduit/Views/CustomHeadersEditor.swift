@@ -38,7 +38,7 @@ struct CustomHeadersEditorSheet: View {
     private func problem(for row: CustomHeader) -> String? {
         if let issue = issue(for: row) { return issue.message }
         if duplicateNames.contains(row.trimmedName.lowercased()) {
-            return AppLocalization.string("This header is already in the list.")
+            return AppLocalization.string("This header is already in the list.", table: .connection)
         }
         return nil
     }
@@ -59,7 +59,7 @@ struct CustomHeadersEditorSheet: View {
             // Settings' own page, as the server settings that open it (Eric 2026-11-05).
             SettingsDetailContainer {
                 SettingsCard {
-                    Text(AppLocalization.string("Sent with every request to this server, for reverse proxies such as Pangolin, Traefik, or nginx that check a header. Values stay in Keychain."))
+                    Text(AppLocalization.string("Sent with every request to this server, for reverse proxies such as Pangolin, Traefik, or nginx that check a header. Values stay in Keychain.", table: .connection))
                         .scaledFont(.footnote)
                         .foregroundStyle(.secondary)
                     if let origin {
@@ -67,19 +67,19 @@ struct CustomHeadersEditorSheet: View {
                             .scaledFont(.footnote.monospaced())
                             .foregroundStyle(.secondary)
                     } else {
-                        Text(AppLocalization.string("Extra headers are only sent over HTTPS. Enter an https:// server address first."))
+                        Text(AppLocalization.string("Extra headers are only sent over HTTPS. Enter an https:// server address first.", table: .connection))
                             .scaledFont(.footnote)
                             .foregroundStyle(.orange)
                     }
                 }
                 ForEach($rows) { $row in
                     SettingsCard {
-                        TextField(AppLocalization.string("Header name"), text: $row.name)
+                        TextField(AppLocalization.string("Header name", table: .connection), text: $row.name)
                             .textFieldStyle(.roundedBorder)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .accessibilityIdentifier("extra-headers.name")
-                            .accessibilityLabel(AppLocalization.string("Header \(String(position(of: row))) name"))
+                            .accessibilityLabel(AppLocalization.string("Header \(String(position(of: row))) name", table: .connection))
                             .accessibilityHint(problem(for: row) ?? "")
                         HStack {
                             Group {
@@ -93,7 +93,7 @@ struct CustomHeadersEditorSheet: View {
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .accessibilityIdentifier("extra-headers.value")
-                            .accessibilityLabel(AppLocalization.string("Header \(String(position(of: row))) value"))
+                            .accessibilityLabel(AppLocalization.string("Header \(String(position(of: row))) value", table: .connection))
                             .accessibilityHint(problem(for: row) ?? "")
                             Button {
                                 if revealedValues.contains(row.id) {
@@ -106,8 +106,8 @@ struct CustomHeadersEditorSheet: View {
                             }
                             .buttonStyle(.borderless)
                             .accessibilityLabel(revealedValues.contains(row.id)
-                                ? AppLocalization.string("Hide value")
-                                : AppLocalization.string("Show value"))
+                                ? AppLocalization.string("Hide value", table: .connection)
+                                : AppLocalization.string("Show value", table: .connection))
                         }
                         if let problem = problem(for: row) {
                             Text(problem)
@@ -117,18 +117,18 @@ struct CustomHeadersEditorSheet: View {
                         Button(role: .destructive) {
                             rows.removeAll { $0.id == row.id }
                         } label: {
-                            Label(AppLocalization.string("Remove header"), systemImage: "trash")
+                            Label(AppLocalization.string("Remove header", table: .connection), systemImage: "trash")
                                 .scaledFont(.subheadline.weight(.medium))
                                 .foregroundStyle(.red)
                         }
                         .buttonStyle(.plain)
-                        .accessibilityLabel(AppLocalization.string("Remove header \(String(position(of: row)))"))
+                        .accessibilityLabel(AppLocalization.string("Remove header \(String(position(of: row)))", table: .connection))
                     }
                 }
                 Button {
                     rows.append(CustomHeader(name: "", value: ""))
                 } label: {
-                    Label(AppLocalization.string("Add header"), systemImage: "plus")
+                    Label(AppLocalization.string("Add header", table: .connection), systemImage: "plus")
                 }
                 .buttonStyle(.settings)
                 .padding(.horizontal, 16)

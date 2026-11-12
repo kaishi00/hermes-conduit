@@ -33,7 +33,7 @@ struct CredentialVaultSettingsPage: View {
 
     var body: some View {
         SettingsDetailContainer(compact: true) {
-            Text(AppLocalization.string("For the \(appState.profileDisplayName(appState.activeProfile)) profile. Ask Hermes to sign in to a site and it asks you for the login once, on the spot, then signs in by itself. Passwords stay encrypted on the Hermes computer and go straight into the page: the model never sees them, and Conduit never shows them."))
+            Text(AppLocalization.string("For the \(appState.profileDisplayName(appState.activeProfile)) profile. Ask Hermes to sign in to a site and it asks you for the login once, on the spot, then signs in by itself. Passwords stay encrypted on the Hermes computer and go straight into the page: the model never sees them, and Conduit never shows them.", table: .connection))
                 .scaledFont(.footnote).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
             if let problem, snapshot == nil {
@@ -63,14 +63,14 @@ struct CredentialVaultSettingsPage: View {
             }
         }
         .confirmationDialog(
-            AppLocalization.string("Remove this item?"),
+            AppLocalization.string("Remove this item?", table: .connection),
             isPresented: Binding(get: { removing != nil }, set: { if !$0 { removing = nil } }),
             titleVisibility: .visible,
             presenting: removing
         ) { item in
             Button(AppLocalization.string("Remove"), role: .destructive) { remove(item) }
         } message: { item in
-            Text(AppLocalization.string("Hermes forgets “\(item.label)”. This can't be undone."))
+            Text(AppLocalization.string("Hermes forgets “\(item.label)”. This can't be undone.", table: .connection))
         }
     }
 
@@ -80,7 +80,7 @@ struct CredentialVaultSettingsPage: View {
         ConduitSettingsSection(title: AppLocalization.string("Saved"), symbol: "key.fill", tint: .conduitAccent) {
             if let snapshot {
                 if snapshot.items.isEmpty {
-                    Text(AppLocalization.string("Nothing saved yet. You don't have to add anything: Hermes asks for a login the first time it needs one. Use Add to enter one ahead of time."))
+                    Text(AppLocalization.string("Nothing saved yet. You don't have to add anything: Hermes asks for a login the first time it needs one. Use Add to enter one ahead of time.", table: .connection))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -94,7 +94,7 @@ struct CredentialVaultSettingsPage: View {
             }
             if let error { Text(error).scaledFont(.caption).foregroundStyle(.red) }
             Button { adding = true } label: {
-                Label(AppLocalization.string("Add a login, card or address"), systemImage: "plus")
+                Label(AppLocalization.string("Add a login, card or address", table: .connection), systemImage: "plus")
             }
             .buttonStyle(.settings)
             .disabled(snapshot == nil)
@@ -105,8 +105,8 @@ struct CredentialVaultSettingsPage: View {
     @ViewBuilder
     private var managersSection: some View {
         if let managers = snapshot?.managers, !managers.isEmpty {
-            ConduitSettingsSection(title: AppLocalization.string("Password managers"), symbol: "lock.shield", tint: .conduitAura) {
-                Text(AppLocalization.string("Hermes picks up a password manager installed on its computer. It asks you to unlock one the first time it needs a login from it; only the manager's session stays in Hermes' memory, never your master password."))
+            ConduitSettingsSection(title: AppLocalization.string("Password managers", table: .connection), symbol: "lock.shield", tint: .conduitAura) {
+                Text(AppLocalization.string("Hermes picks up a password manager installed on its computer. It asks you to unlock one the first time it needs a login from it; only the manager's session stays in Hermes' memory, never your master password.", table: .connection))
                     .scaledFont(.footnote).foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 ForEach(managers) { source in
@@ -126,7 +126,7 @@ struct CredentialVaultSettingsPage: View {
                 HStack(spacing: 6) {
                     Text(item.label).scaledFont(.subheadline.weight(.medium)).lineLimit(1)
                     if item.hasOTP {
-                        badge(AppLocalization.string("2FA codes"))
+                        badge(AppLocalization.string("2FA codes", table: .connection))
                     }
                 }
                 Text(details(of: item, sources: sources))
@@ -168,13 +168,13 @@ struct CredentialVaultSettingsPage: View {
             if source.installed, source.enabled {
                 if source.unlocked {
                     Button { lock(source) } label: {
-                        Label(AppLocalization.string("Lock"), systemImage: "lock")
+                        Label(AppLocalization.string("Lock", table: .connection), systemImage: "lock")
                     }
                     .buttonStyle(.settings)
                     .disabled(busy.contains(source.name))
                 } else {
                     Button { unlocking = source } label: {
-                        Label(AppLocalization.string("Unlock"), systemImage: "key")
+                        Label(AppLocalization.string("Unlock", table: .connection), systemImage: "key")
                     }
                     .buttonStyle(.settings)
                     .disabled(busy.contains(source.name))
@@ -225,7 +225,7 @@ struct CredentialVaultSettingsPage: View {
         if !item.isLocal {
             parts.append(sources.first(where: { $0.name == item.source })?.displayName ?? item.source)
         } else if let date = item.createdAt {
-            parts.append(AppLocalization.string("Added \(date.formatted(date: .abbreviated, time: .omitted))"))
+            parts.append(AppLocalization.string("Added \(date.formatted(date: .abbreviated, time: .omitted))", table: .connection))
         }
         return parts.joined(separator: " · ")
     }
@@ -324,7 +324,7 @@ private struct VaultSourceUnlockSheet: View {
         NavigationStack {
             SettingsDetailContainer(compact: true) {
                 ConduitSettingsSection(title: source.displayName, symbol: "lock.shield", tint: .conduitAura) {
-                    Text(AppLocalization.string("Hermes hands your master password to \(source.displayName) on its computer and forgets it. It's never saved, logged or shown to the model."))
+                    Text(AppLocalization.string("Hermes hands your master password to \(source.displayName) on its computer and forgets it. It's never saved, logged or shown to the model.", table: .connection))
                         .scaledFont(.footnote).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                     // No .password content type: iOS would offer to save the
@@ -349,7 +349,7 @@ private struct VaultSourceUnlockSheet: View {
                     if working {
                         ProgressView()
                     } else {
-                        Button(AppLocalization.string("Unlock")) { submit() }
+                        Button(AppLocalization.string("Unlock", table: .connection)) { submit() }
                             .disabled(password.isEmpty)
                     }
                 }
@@ -394,10 +394,10 @@ private struct VaultItemAddSheet: View {
                     ForEach(VaultItem.Kind.allCases) { Text($0.title).tag($0) }
                 }
                 .pickerStyle(.segmented)
-                ConduitSettingsSection(title: AppLocalization.string("Name and site"), symbol: "globe", tint: .conduitAccent) {
-                    plainField(AppLocalization.string("Label, like GitHub work account"), text: $draft.label)
-                    plainField(draft.kind == .login ? AppLocalization.string("Site, like github.com") : AppLocalization.string("Site (optional)"), text: $draft.origin, keyboard: .URL)
-                    Text(AppLocalization.string("Saved encrypted on the Hermes computer. Conduit keeps none of it and never shows it again."))
+                ConduitSettingsSection(title: AppLocalization.string("Name and site", table: .connection), symbol: "globe", tint: .conduitAccent) {
+                    plainField(AppLocalization.string("Label, like GitHub work account", table: .connection), text: $draft.label)
+                    plainField(draft.kind == .login ? AppLocalization.string("Site, like github.com", table: .connection) : AppLocalization.string("Site (optional)", table: .connection), text: $draft.origin, keyboard: .URL)
+                    Text(AppLocalization.string("Saved encrypted on the Hermes computer. Conduit keeps none of it and never shows it again.", table: .connection))
                         .scaledFont(.caption).foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
@@ -408,7 +408,7 @@ private struct VaultItemAddSheet: View {
                 }
                 if let error { Text(error).scaledFont(.caption).foregroundStyle(.red) }
             }
-            .navigationTitle(AppLocalization.string("Add to vault"))
+            .navigationTitle(AppLocalization.string("Add to vault", table: .connection))
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button(AppLocalization.string("Cancel")) { dismiss() }
@@ -429,8 +429,8 @@ private struct VaultItemAddSheet: View {
     }
 
     private var loginFields: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Login"), symbol: "person.badge.key", tint: .conduitAura) {
-            Picker(AppLocalization.string("Signs in with"), selection: $draft.identifierType) {
+        ConduitSettingsSection(title: AppLocalization.string("Login", table: .connection), symbol: "person.badge.key", tint: .conduitAura) {
+            Picker(AppLocalization.string("Signs in with", table: .connection), selection: $draft.identifierType) {
                 ForEach(VaultItemDraft.IdentifierType.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented)
@@ -439,37 +439,37 @@ private struct VaultItemAddSheet: View {
             plainField(draft.identifierType.title, text: $draft.identifier, keyboard: draft.identifierType == .email ? .emailAddress : (draft.identifierType == .phone ? .phonePad : .asciiCapable))
                 .privacySensitive()
             secretField(AppLocalization.string("Password"), text: $draft.password)
-            secretField(AppLocalization.string("Authenticator key (optional)"), text: $draft.otpSecret)
-            Text(AppLocalization.string("The setup key a site shows when you turn on two-factor sign-in, or its otpauth:// link. With it saved, Hermes makes the codes itself."))
+            secretField(AppLocalization.string("Authenticator key (optional)", table: .connection), text: $draft.otpSecret)
+            Text(AppLocalization.string("The setup key a site shows when you turn on two-factor sign-in, or its otpauth:// link. With it saved, Hermes makes the codes itself.", table: .connection))
                 .scaledFont(.caption).foregroundStyle(.secondary)
                 .fixedSize(horizontal: false, vertical: true)
         }
     }
 
     private var cardFields: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Payment card"), symbol: "creditcard", tint: .conduitAura) {
-            secretField(AppLocalization.string("Card number"), text: $draft.cardNumber, keyboard: .numberPad)
-            plainField(AppLocalization.string("Name on card (optional)"), text: $draft.cardholderName)
+        ConduitSettingsSection(title: AppLocalization.string("Payment card", table: .connection), symbol: "creditcard", tint: .conduitAura) {
+            secretField(AppLocalization.string("Card number", table: .connection), text: $draft.cardNumber, keyboard: .numberPad)
+            plainField(AppLocalization.string("Name on card (optional)", table: .connection), text: $draft.cardholderName)
                 .privacySensitive()
             HStack {
-                plainField(AppLocalization.string("Month"), text: $draft.expMonth, keyboard: .numberPad)
-                plainField(AppLocalization.string("Year"), text: $draft.expYear, keyboard: .numberPad)
-                secretField(AppLocalization.string("Security code"), text: $draft.cvc, keyboard: .numberPad)
+                plainField(AppLocalization.string("Month", table: .connection), text: $draft.expMonth, keyboard: .numberPad)
+                plainField(AppLocalization.string("Year", table: .connection), text: $draft.expYear, keyboard: .numberPad)
+                secretField(AppLocalization.string("Security code", table: .connection), text: $draft.cvc, keyboard: .numberPad)
             }
-            plainField(AppLocalization.string("Billing postal code (optional)"), text: $draft.postalCode)
+            plainField(AppLocalization.string("Billing postal code (optional)", table: .connection), text: $draft.postalCode)
                 .privacySensitive()
         }
     }
 
     private var addressFields: some View {
-        ConduitSettingsSection(title: AppLocalization.string("Postal address"), symbol: "house", tint: .conduitAura) {
+        ConduitSettingsSection(title: AppLocalization.string("Postal address", table: .connection), symbol: "house", tint: .conduitAura) {
             Group {
-                plainField(AppLocalization.string("Street"), text: $draft.addressLine1)
-                plainField(AppLocalization.string("Apartment, suite (optional)"), text: $draft.addressLine2)
-                plainField(AppLocalization.string("City"), text: $draft.city)
-                plainField(AppLocalization.string("State or region (optional)"), text: $draft.state)
-                plainField(AppLocalization.string("Postal code"), text: $draft.postalCode)
-                plainField(AppLocalization.string("Country"), text: $draft.country)
+                plainField(AppLocalization.string("Street", table: .connection), text: $draft.addressLine1)
+                plainField(AppLocalization.string("Apartment, suite (optional)", table: .connection), text: $draft.addressLine2)
+                plainField(AppLocalization.string("City", table: .connection), text: $draft.city)
+                plainField(AppLocalization.string("State or region (optional)", table: .connection), text: $draft.state)
+                plainField(AppLocalization.string("Postal code", table: .connection), text: $draft.postalCode)
+                plainField(AppLocalization.string("Country", table: .connection), text: $draft.country)
             }
             .privacySensitive()
         }

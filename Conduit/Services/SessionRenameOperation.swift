@@ -38,7 +38,7 @@ enum SessionRenameOperation {
         return normalized
     }
     static func failureMessage(_ error: Error) -> String {
-        AppLocalization.string("Could not rename this conversation: \(UserFacingError.message(for: error))")
+        AppLocalization.string("Could not rename this conversation: \(UserFacingError.message(for: error))", table: .chat)
     }
 
     static func perform(

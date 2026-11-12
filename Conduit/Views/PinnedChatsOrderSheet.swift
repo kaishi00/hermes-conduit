@@ -47,11 +47,11 @@ struct PinnedChatsOrderSheet: View {
                         appState.movePinnedChats(chats, fromOffsets: source, toOffset: destination)
                     }
                 } footer: {
-                    Text(AppLocalization.string("Drag chats into the order you want. A chat you pin next goes on top."))
+                    Text(AppLocalization.string("Drag chats into the order you want. A chat you pin next goes on top.", table: .chat))
                 }
             }
             .environment(\.editMode, $editMode)
-            .navigationTitle(AppLocalization.string("Reorder pinned chats"))
+            .navigationTitle(AppLocalization.string("Reorder pinned chats", table: .chat))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
@@ -76,10 +76,10 @@ extension View {
                     // Next turn, as Rename: the sheet waits for the menu to close.
                     DispatchQueue.main.async { open() }
                 } label: {
-                    Label(AppLocalization.string("Reorder pinned chats"), systemImage: "arrow.up.arrow.down")
+                    Label(AppLocalization.string("Reorder pinned chats", table: .chat), systemImage: "arrow.up.arrow.down")
                 }
             }
-            .accessibilityAction(named: Text(AppLocalization.string("Reorder pinned chats")), open)
+            .accessibilityAction(named: Text(AppLocalization.string("Reorder pinned chats", table: .chat)), open)
         } else {
             self
         }

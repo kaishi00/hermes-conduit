@@ -82,7 +82,7 @@ extension DashboardTicketBridge {
     ) async throws -> [String: Any] {
         guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
         guard let url = Self.pageRequestURL(path: path, baseURL: baseURL) else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("Could not encode dashboard request."))
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("Could not encode dashboard request.", table: .connection))
         }
         let cookies = await cookiesForRequestsWithoutPage()
         guard !isInvalidated else { throw DashboardTicketBridgeError.notReady }
@@ -167,7 +167,7 @@ extension DashboardTicketBridge {
             }
             throw DashboardTicketBridgeError.http(
                 status: http.statusCode,
-                detail: AppLocalization.string("Dashboard request failed (\(String(http.statusCode))).")
+                detail: AppLocalization.string("Dashboard request failed (\(String(http.statusCode))).", table: .connection)
             )
         }
         if http.statusCode == 401 || http.statusCode == 403 {
@@ -194,7 +194,7 @@ extension DashboardTicketBridge {
             let detail = Self.errorDetail(object)
             throw DashboardTicketBridgeError.http(
                 status: http.statusCode,
-                detail: detail ?? AppLocalization.string("Dashboard request failed (\(String(http.statusCode))).")
+                detail: detail ?? AppLocalization.string("Dashboard request failed (\(String(http.statusCode))).", table: .connection)
             )
         }
         // Shaped as the page's response: objects as they are, arrays under

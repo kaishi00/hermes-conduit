@@ -45,7 +45,7 @@ extension AppState {
         var roots: [WorkspaceRoot] = []
         var seen = Set<String>()
         if chat, let folder = chatWorkspaceFolder {
-            roots.append(WorkspaceRoot(path: folder, title: AppLocalization.string("This chat's folder"), kind: .chat))
+            roots.append(WorkspaceRoot(path: folder, title: AppLocalization.string("This chat's folder", table: .chat), kind: .chat))
             seen.insert(Self.normalizedWorkspacePath(folder))
         }
         for project in projects {
@@ -151,7 +151,7 @@ extension AppState {
             workspaceReveal = WorkspaceReveal(path: found, line: line)
         case .success(nil):
             let name = (path as NSString).lastPathComponent
-            let notice = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.")
+            let notice = AppLocalization.string("\(name) isn’t on the server. It may have been deleted, or it’s on another computer.", table: .chat)
             // A notice already up (a message that came back) waits under
             // this one and comes back when it goes.
             if let shown = composerNotice {
@@ -199,7 +199,7 @@ extension AppState {
     func readWorkspaceText(_ path: String, profile: String) async throws -> WorkspaceFilePreview {
         guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         guard let encoded = DashboardPath.encodedQueryComponent(path) else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The workspace path could not be encoded."))
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The workspace path could not be encoded.", table: .chat))
         }
         let result = try await bridge.requestJSON(
             path: DashboardPath.withProfile("/api/fs/read-text?path=\(encoded)", profile: profile)
@@ -219,7 +219,7 @@ extension AppState {
     func workspaceDirectoryEntries(at path: String, profile: String) async throws -> [WorkspaceEntry] {
         guard let bridge = dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
         guard let encodedPath = DashboardPath.encodedQueryComponent(path) else {
-            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The workspace path could not be encoded."))
+            throw DashboardTicketBridgeError.requestFailed(AppLocalization.string("The workspace path could not be encoded.", table: .chat))
         }
         let result = try await bridge.requestJSON(
             path: DashboardPath.withProfile("/api/fs/list?path=\(encodedPath)", profile: profile)

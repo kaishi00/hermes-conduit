@@ -297,7 +297,7 @@ enum RichReviewSender {
             Haptics.error()
             return
         }
-        let label = review.isQuickPick ? AppLocalization.string("Picked") : AppLocalization.string("Sent review")
+        let label = review.isQuickPick ? AppLocalization.string("Picked", table: .chat) : AppLocalization.string("Sent review", table: .chat)
         let body = RichReviewTap.body(card: card, review: review, marks: marks, note: note, label: label)
         let message = RichReviewTap.message(label: label, review: review, marks: marks, title: card.title)
         let key = RichCardTapMemory.key(card: card, button: RichReviewTap.action, chat: context.chat)
@@ -338,7 +338,7 @@ struct RichReviewHeader: View {
             .foregroundStyle(Color.conduitAccent)
             Spacer(minLength: 0)
             if let ref = review.forRef {
-                Text(AppLocalization.string("For \(ref)"))
+                Text(AppLocalization.string("For \(ref)", table: .chat))
                     .scaledFont(.caption.weight(.semibold))
                     .padding(.horizontal, 8)
                     .padding(.vertical, 2)

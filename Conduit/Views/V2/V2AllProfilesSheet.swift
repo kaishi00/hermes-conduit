@@ -23,7 +23,7 @@ struct V2AllProfilesSheet: View {
                 ConduitBackdrop(glowTint: appState.profileGlowTint(appState.activeProfile))
                 ScrollView {
                     VStack(alignment: .leading, spacing: 14) {
-                        Text(AppLocalization.string("All lists these profiles' chats together, newest first. A new chat asks which profile to use."))
+                        Text(AppLocalization.string("All lists these profiles' chats together, newest first. A new chat asks which profile to use.", table: .chat))
                             .scaledFont(.footnote)
                             .foregroundStyle(.secondary)
                             .padding(.horizontal, 4)
@@ -52,7 +52,7 @@ struct V2AllProfilesSheet: View {
                                 appState.setAllProfilesGroupsByProfile(grouped)
                             }
                         )) {
-                            Label(AppLocalization.string("Group by profile"), systemImage: "rectangle.stack")
+                            Label(AppLocalization.string("Group by profile", table: .chat), systemImage: "rectangle.stack")
                                 .scaledFont(.body)
                         }
                         .tint(.conduitAccent)
@@ -65,7 +65,7 @@ struct V2AllProfilesSheet: View {
             }
             .toolbar(.hidden, for: .navigationBar)
             .safeAreaInset(edge: .top, spacing: 0) {
-                ConduitSheetHeader(title: AppLocalization.string("Show in All"), close: { dismiss() })
+                ConduitSheetHeader(title: AppLocalization.string("Show in All", table: .chat), close: { dismiss() })
             }
         }
     }
@@ -87,7 +87,7 @@ struct V2AllProfilesSheet: View {
                     .conduitFixedGlyph()
                     .foregroundStyle(Color.conduitAccent)
                     .frame(width: 30, height: 30)
-                Text(AppLocalization.string("Show only \(name)"))
+                Text(AppLocalization.string("Show only \(name)", table: .chat))
                     .scaledFont(.body)
                     .lineLimit(1)
                 Spacer(minLength: 0)
@@ -133,6 +133,6 @@ struct V2AllProfilesSheet: View {
         .disabled(isIncluded && included.count == 1)
         .padding(.horizontal, 14)
         .frame(minHeight: 52)
-        .accessibilityLabel(AppLocalization.string("\(name) profile"))
+        .accessibilityLabel(AppLocalization.string("\(name) profile", table: .chat))
     }
 }

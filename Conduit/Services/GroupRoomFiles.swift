@@ -68,10 +68,10 @@ final class GroupRoomFilesClient {
         }
         let limit = String(roomCap)
         if names.count == 1, let name = names.first {
-            return AppLocalization.string("\(name) is larger than the \(limit) MB a group room takes.")
+            return AppLocalization.string("\(name) is larger than the \(limit) MB a group room takes.", table: .rooms)
         }
         let list = names.joined(separator: ", ")
-        return AppLocalization.string("These files are larger than the \(limit) MB a group room takes: \(list).")
+        return AppLocalization.string("These files are larger than the \(limit) MB a group room takes: \(list).", table: .rooms)
     }
 
     /// At least the minimum, plus about 1 s for every 64 KB of body (about
@@ -105,12 +105,12 @@ final class GroupRoomFilesClient {
                                     instead: AppLocalization.string("The host's answer couldn't be read. Try again in a moment."))
             case .overMessageLimit:
                 let limit = String(GroupRoomAttachment.maxMessageBytes / 1_000_000)
-                return AppLocalization.string("Together these files are over the \(limit) MB a group room message takes. Send some in another message.")
+                return AppLocalization.string("Together these files are over the \(limit) MB a group room message takes. Send some in another message.", table: .rooms)
             case .tooManyFiles:
                 let limit = String(GroupRoomAttachment.maxPerMessage)
-                return AppLocalization.string("A group room message takes up to \(limit) files. Send the rest in another message.")
+                return AppLocalization.string("A group room message takes up to \(limit) files. Send the rest in another message.", table: .rooms)
             case .notConnected:
-                return AppLocalization.string("Connect to Hermes to send files to this room.")
+                return AppLocalization.string("Connect to Hermes to send files to this room.", table: .rooms)
             }
         }
     }

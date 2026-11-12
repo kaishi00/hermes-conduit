@@ -10,8 +10,8 @@ change is needed.
   development region. Catalog keys are the English source strings, and any
   key a language lacks falls back to them.
 - **Shipped languages**: every other language that appears in
-  `Conduit/Localizable.xcstrings`, `AppShortcuts.xcstrings` or
-  `InfoPlist.xcstrings`, except drafts. At runtime `AppLocalizations` reads
+  `Conduit/Localizable.xcstrings`, a feature table in `Conduit/Strings/`,
+  `AppShortcuts.xcstrings` or `InfoPlist.xcstrings`, except drafts. At runtime `AppLocalizations` reads
   them from the built app's lproj folders, and the App language picker
   offers System Default plus each one, labelled by its own translation of
   the `Name of this language` entry.
@@ -28,7 +28,8 @@ change is needed.
    unless a regional or script variant is deliberate (`pt-BR`, `zh-Hant`).
 2. While the translation is incomplete, add the identifier to
    `ConduitDraftLanguages`. Drafts can land on `main` in small pieces.
-3. Translate every entry in all three catalogs. Translate
+3. Translate every entry in every catalog (Localizable, the feature
+   tables, AppShortcuts and InfoPlist). Translate
    `Name of this language` as the language's own name (for example 日本語).
    `Built-in stop phrases` and `Built-in end conversation phrases` are the
    spoken Stop and goodbye phrases Voice listens for in that language:
@@ -43,10 +44,60 @@ change is needed.
 To preview a draft in the simulator, remove it from `ConduitDraftLanguages`
 in your working copy only.
 
+## Feature tables
+
+The app's strings are split into feature String Catalogs (issue 823), so
+pull requests in different features add keys to different files and stop
+conflicting in one huge catalog:
+
+| Table | Holds the strings of |
+|---|---|
+| `Conduit/Strings/Bots.xcstrings` | Bots, Bot Chat, delegation, capabilities, skills, tools and plugins pages, helper models |
+| `Chat.xcstrings` | Chats list, the chat screen, composer, transcript, cards, sidebar, workspace and artifacts |
+| `Connection.xcstrings` | sign-in, connection setup and repair, dashboards, gateway restart, credentials, custom headers, certificates |
+| `Notifications.xcstrings` | the Conduit plugin, push notifications, reply sources, crash reports |
+| `Phone.xcstrings` | phone sync, Health, location, Shortcuts and App Intents, Ask Hermes about the screen |
+| `Pulse.xcstrings` | Pulse, its settings and looks |
+| `Rooms.xcstrings` | rooms, group chats, Multiplayer people, links and invites |
+| `Settings.xcstrings` | Settings pages that belong to no other feature: models, providers, usage, appearance, app language |
+| `Tasks.xcstrings` | Kanban and scheduled jobs |
+| `Voice.xcstrings` | voice modes, live calls, dictation, read aloud, wake phrase |
+| `WatchCarPlay.xcstrings` | the iPhone side of the Apple Watch and CarPlay |
+| `Conduit/Localizable.xcstrings` | the shared table: keys more than one feature uses, SwiftUI literal keys, and everything Shared/ and the extensions read |
+
+`LocalizationTable` (`Conduit/Services/AppLanguage.swift`) has a case for
+each, and a call names one:
+
+```swift
+AppLocalization.string("Voice replies", table: .voice)
+AppLocalization.string("Cancel")   // no table: Localizable
+```
+
+- **A file belongs to one feature.** Its calls name that feature's table,
+  or none for a shared key. A new string goes where the file's other
+  calls go; a new file takes its feature's table.
+- **A key lives in one table.** When a second feature starts using a key,
+  move it to Localizable and drop `table:` from its calls:
+  `python3 scripts/l10n.py move "Voice replies" --catalog Conduit/Strings/Voice.xcstrings --to Conduit/Localizable.xcstrings`.
+  The checker names the table a key is in when a call looks in the wrong one.
+- **Only the app's own sources name a table.** `Shared/`, the extensions
+  and the files the Watch compiles too carry only Localizable, so their
+  keys stay there. So do SwiftUI literal keys (`Text("…")`,
+  `Button("…")`), which always look in Localizable.
+- A new feature table is a new `LocalizationTable` case and its catalog
+  in `Conduit/Strings/`, in the same change.
+
+Xcode's string extraction stays off (`SWIFT_EMIT_LOC_STRINGS: NO` in
+`project.yml`): the compiler can't see which table a call names, so it
+would copy every feature key back into Localizable. New keys go in with
+worksheets, below.
+
 ## Translating with worksheets
 
 The catalogs are large JSON files, so translate through
-`scripts/l10n.py` rather than editing them by hand:
+`scripts/l10n.py` rather than editing them by hand. Each worksheet entry
+names its `catalog`, a feature table included, and a new key's entry
+names the table its call site does:
 
 ```sh
 python3 scripts/l10n.py export de -o de.json   # what German still lacks
@@ -150,8 +201,15 @@ writes it to `HermesApprovalText` and translate it in both catalogs.
 
 `check-l10n-coverage.py` runs in CI's `Validate & self-test` job:
 
-- every localizable call site resolves to a catalog key whose placeholder
-  types (`%@` vs `%lld`) match what the code passes;
+- every localizable call site resolves to a key in the table it names
+  (Localizable when it names none) whose placeholder types (`%@` vs
+  `%lld`) match what the code passes;
+- each `LocalizationTable` case has its catalog in `Conduit/Strings/` and
+  each catalog there its case; a key lives in one of the app's tables; a
+  Swift file names at most one feature table; only the app's own
+  sources under `Conduit/` name one; and no feature-table key is spelled
+  as a literal in `Shared/` or an extension, whose own lookup helpers
+  (`WidgetLocalization`) read only Localizable;
 - every shipped language translates every key in every catalog, with
   state `translated` and a non-empty value;
 - every integer placeholder is a count with English plural forms, one per

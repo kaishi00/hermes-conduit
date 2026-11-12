@@ -59,7 +59,7 @@ final class KanbanColumnBoardTests: XCTestCase {
             for: KanbanBoardFilterPolicy.visibleColumns(board: board, search: "", assignee: nil, tenant: nil)
         )
         let blocked = try XCTUnwrap(summaries.first { $0.status == "blocked" })
-        XCTAssertEqual(blocked.title, AppLocalization.string("Blocked"))
+        XCTAssertEqual(blocked.title, AppLocalization.string("Blocked", table: .tasks))
         XCTAssertEqual(blocked.count, 3)
         XCTAssertFalse(blocked.isLocked)
         let done = try XCTUnwrap(summaries.first { $0.status == "done" })
