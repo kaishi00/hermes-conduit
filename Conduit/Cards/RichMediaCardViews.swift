@@ -195,6 +195,7 @@ private struct RichMediaViewer: View {
     @Environment(\.openURL) private var openURL
     @State private var player: AVPlayer?
     @State private var resumes: AnyCancellable?
+    @State private var itemFailure: AnyCancellable?
 
     var body: some View {
         NavigationStack {
@@ -259,10 +260,17 @@ private struct RichMediaViewer: View {
                         }
                     }
                 }
+            // A load AVFoundation refuses outright may never leave
+            // `.paused`, so the item failing hands the audio back too.
+            itemFailure = player.currentItem?.publisher(for: \.status)
+                .filter { $0 == .failed }
+                .receive(on: DispatchQueue.main)
+                .sink { _ in MainActor.assumeIsolated { RichAudioPlayer.endPlayback() } }
             player.play()
         }
         .onDisappear {
             resumes = nil
+            itemFailure = nil
             guard let player else { return }
             player.pause()
             RichAudioPlayer.endPlayback()
