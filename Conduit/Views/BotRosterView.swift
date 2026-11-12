@@ -148,10 +148,9 @@ struct BotRosterView: View {
                 }
             }
             Button(AppLocalization.string("Cancel"), role: .cancel) { pendingDisbandRoom = nil }
-        } message: { _ in
-            Text(AppLocalization.string(
-                "The room, its history, and every member's session end permanently. This cannot be undone."
-            ))
+        } message: { room in
+            Text(GroupRoomDisband.warning(members: room.members,
+                                          chatsKept: appState.notifierPlugin.runtime?.roomChatsKept == true))
         }
         .sheet(item: $presentedDesktopGroup) { group in
             DesktopGroupChatView(group: group)
