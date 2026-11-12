@@ -513,7 +513,7 @@ def code_names(masked_lines):
     return names
 
 
-MUTATION = (r"(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\s*(=(?!=)|\+=|-=|\*=|/=|\|=|&=|\?\?=)"
+MUTATION = (r"(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\s*(=(?!=)|&?\+=|&?-=|&?\*=|/=|%=|\|=|&=|\^=|<<=|>>=|\?\?=)"
             r"|(\s*(\?|!)?(\.\w+|\[[^\]\n]*\]))*\.(append|remove\w*|insert|merge|formUnion|"
             r"formIntersection|subtract|sort|reverse|popLast|popFirst|update\w*|toggle|"
             r"swapAt|replaceSubrange|reserveCapacity|shuffle)\b")

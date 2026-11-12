@@ -206,10 +206,12 @@ final class AppState: ObservableObject {
 
     private(set) var loadState = LoadState()
     private(set) var other = LoadState()
+    private(set) var count = 0
 
     func connect() {
         loadState.reset()
         _ = other.n
+        count &+= 1
     }
 }
 ''')
@@ -218,6 +220,7 @@ final class AppState: ObservableObject {
         app = self.read("AppState.swift")
         self.assertIn("\n    var loadState = LoadState()", app)
         self.assertIn("private(set) var other = LoadState()", app)
+        self.assertIn("\n    var count = 0", app, "&+= writes it")
 
     def test_points_the_map_at_the_new_file(self):
         split.run(self.repo, 1, True, pr=42, today="2026-11-12")
