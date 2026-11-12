@@ -8089,7 +8089,7 @@ notifier README's "Where in Conduit a message was sent"
 
 **Code**
 - The report and discard: `Conduit/Services/TurnSurface.swift` (discardRetryDelays, discardMayGoLater), `Conduit/Services/AppState+TurnSurface.swift` (reportTurnSurface, discardTurnSurface)
-- Send sites: `Conduit/Services/AppState.swift` (performComposerSubmission's report and its catch, the live call's chat turn, the call request into an existing chat, the voice job backend's reportTurnSurface), `Conduit/Voice/VoiceBackgroundJobs.swift` (startJob reports before its submit and drops the report when the submit fails), `Conduit/Services/AppState+ShortcutSend.swift` (the Shortcut's send; makeShortcutSendBackend's surface), `Conduit/Services/AppState+PulseWidget.swift` (Do it sends as `.widget`)
+- Send sites: `Conduit/Services/AppState.swift` (performComposerSubmission's report and its catch, the live call's chat turn, the call request into an existing chat, the voice job backend's reportTurnSurface), `Conduit/Voice/VoiceBackgroundJobs.swift` (startJob and sendContinuedJob report before their submit and drop the report when it fails or is overtaken), `Conduit/Services/AppState+ShortcutSend.swift` (the Shortcut's send; makeShortcutSendBackend's surface), `Conduit/Services/AppState+PulseWidget.swift` (Do it sends as `.widget`)
 - Plugin: `notifier/turn_surface.py` (record, take, discard and its DISCARD_HOLD_S hold, record_for_authority, discard_digest_for_authority, note, start_turn, turn_entry), `notifier/dashboard/api/chats.py` (record_turn_surface, discard_turn_surface)
 - Tests: `ConduitTests/AppStateTurnSurfaceTests.swift`, `ConduitTests/VoiceBackgroundJobTests.swift` (testAJobReportsItsTurnSurfaceBeforeItsSubmitAndDropsItWhenRefused), `notifier/tests/test_turn_surface.py`
 
