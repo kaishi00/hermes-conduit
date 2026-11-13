@@ -551,11 +551,23 @@ extension AppState {
             return true
         }
         isRewindingTurns = true
-        slashPromptRefusedDuringRewind = false
-        // This rewind's own: taken from the shared flag as it lets the
-        // next rewind start, so that one can't clear or claim it.
-        var refusedSlashPrompt = false
+        // Not reset here: a refusal an older rewind still owes (its /retry
+        // send was out when this one started) is this one's to report.
+        rewindGeneration &+= 1
+        let generation = rewindGeneration
+        // Held through the reopen, not only the rewind (issue 2381): a
+        // second rewind started meanwhile would reopen the chat over this
+        // one's notes, and its own refusal would land in a transcript this
+        // reopen replaces. Every other way out ends it here.
         defer {
+            // A rewind started after this one's reopen (during /retry's
+            // send) owns the flags now.
+            let owned = rewindGeneration == generation
+            let refusedSlashPrompt = owned && slashPromptRefusedDuringRewind
+            if owned {
+                slashPromptRefusedDuringRewind = false
+                isRewindingTurns = false
+            }
             // Last, after the reopen and the rewind's own note, and only
             // in the chat it ran in (or the one its reopen opened for it).
             let current = composerSubmissionContext()
@@ -591,11 +603,6 @@ extension AppState {
             // From the snapshot to the rewind, nothing else is sent in this
             // app (composerIsEnabled, sendMessage): a send between them
             // would be the turn the dashboard's `/undo N` counted.
-            defer {
-                refusedSlashPrompt = slashPromptRefusedDuringRewind
-                slashPromptRefusedDuringRewind = false
-                isRewindingTurns = false
-            }
             let snapshot: SessionRewindSnapshot
             if let rewindSnapshot = chatResumeLifecycleOperations.rewindSnapshot {
                 snapshot = try await rewindSnapshot(client, storedSessionID)
@@ -698,6 +705,8 @@ extension AppState {
         // Open the chat again so it shows the shortened transcript.
         guard isCurrentOrAliasedComposerSubmission(context) else { return keepWordsInTheirChat() }
         let reopened = await openSessionOutcome(context.durableSessionID ?? sessionID)
+        // Reopened: the composer is free again, for /retry's send too.
+        if rewindGeneration == generation { isRewindingTurns = false }
         guard reopened != .superseded else { return keepWordsInTheirChat() }
         let current = composerSubmissionContext()
         // Our own open moved the viewport on, so `context` is stale by
@@ -1251,10 +1260,19 @@ extension AppState {
                 slashPromptRefusedDuringRewind = true
             }
         case "prefill":
+            let message = obj["message"]?.stringValue ?? output
+            // During a rewind the composer gets the words it takes back,
+            // and its reopen clears a note: told once it is done, as a
+            // refused prompt is.
+            if isRewindingTurns, isCurrentComposerSubmission(context) {
+                if !message.isEmpty || !(obj["notice"]?.stringValue ?? "").isEmpty {
+                    slashPromptRefusedDuringRewind = true
+                }
+                return
+            }
             if let notice = obj["notice"]?.stringValue, !notice.isEmpty {
                 appendSlashOutput(notice, context: context)
             }
-            let message = obj["message"]?.stringValue ?? output
             if !message.isEmpty, isCurrentComposerSubmission(context) {
                 prefillComposer(message)
             }

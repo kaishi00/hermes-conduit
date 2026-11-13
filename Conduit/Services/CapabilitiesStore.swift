@@ -838,22 +838,28 @@ final class CapabilitiesStore {
         var pending = due[...]
         // The list may have gone while it was still reading the servers.
         guard !Task.isCancelled else { return }
+        // These names are this profile's: after a switch none of them is
+        // tested on the other one, whose server may share a name.
+        let token = generation
         await withTaskGroup(of: Void.self) { group in
             for _ in 0..<3 {
                 guard let next = pending.popFirst() else { break }
-                group.addTask { await self.probe(next.name) }
+                group.addTask { await self.probe(next.name, generation: token) }
             }
             while await group.next() != nil {
                 // Leaving the list starts no more tests; the ones running
                 // finish (see probe).
-                if !Task.isCancelled, let next = pending.popFirst() {
-                    group.addTask { await self.probe(next.name) }
+                if !Task.isCancelled, token == generation, let next = pending.popFirst() {
+                    group.addTask { await self.probe(next.name, generation: token) }
                 }
             }
         }
     }
 
-    func probe(_ name: String) async {
+    /// `expected`: the profile and dashboard the name was picked on; after
+    /// a switch the test isn't sent.
+    func probe(_ name: String, generation expected: Int? = nil) async {
+        if let expected, expected != generation { return }
         // Each test starts the server on the host: one at a time.
         guard !probing.contains(name) else { return }
         let token = generation
@@ -925,7 +931,9 @@ final class CapabilitiesStore {
         await readKeptServersAgain()
         if enabled {
             // Unless reading the kept list again just tested it.
-            if (probes[name]?.checkedAt ?? .distantPast) < kept { await probe(name) }
+            // The re-read may have outlasted a switch: the test then goes
+            // nowhere.
+            if (probes[name]?.checkedAt ?? .distantPast) < kept { await probe(name, generation: token) }
         } else {
             probes[name] = nil
         }
@@ -1045,10 +1053,15 @@ final class CapabilitiesStore {
         // Tested again in the background: the editor closes on the save. A
         // kept list Hermes' answer took the place of has its servers tested
         // now, as the tab's open would have, the saved one with them.
+        // The tests start after this returns: a switch in between sends
+        // none of them to the other profile or dashboard.
         if wasKept, !showsKept.contains(.connectors) {
-            Task { await probeServers() }
+            Task {
+                guard token == generation else { return }
+                await probeServers()
+            }
         } else if servers.first(where: { $0.name == name })?.enabled == true {
-            Task { await probe(name) }
+            Task { await probe(name, generation: token) }
         }
     }
 
@@ -1073,10 +1086,15 @@ final class CapabilitiesStore {
             servers.removeAll { $0.name == name }
             servers.append(ConnectorServer.saved(name: name, entry: entry, replacing: nil))
         }
+        // The tests start after this returns: a switch in between sends
+        // none of them to the other profile or dashboard.
         if wasKept, !showsKept.contains(.connectors) {
-            Task { await probeServers() }
+            Task {
+                guard token == generation else { return }
+                await probeServers()
+            }
         } else if servers.first(where: { $0.name == name })?.enabled == true {
-            Task { await probe(name) }
+            Task { await probe(name, generation: token) }
         }
     }
 
@@ -1141,7 +1159,7 @@ final class CapabilitiesStore {
                 // with them.
                 await probeServers()
             } else {
-                await probe(entry.name)
+                await probe(entry.name, generation: token)
             }
             return true
         } catch {
@@ -1197,7 +1215,7 @@ final class CapabilitiesStore {
             return
         }
         guard servers.first(where: { $0.name == name })?.enabled == true else { return }
-        await probe(name)
+        await probe(name, generation: token)
     }
 
     // MARK: Plugins

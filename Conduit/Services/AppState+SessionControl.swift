@@ -31,7 +31,9 @@ extension AppState {
     }
 
     /// Reads the chat's controls (`session.control.read`). A Hermes without
-    /// the verb, or a chat with no live session, leaves the dock as it is.
+    /// the verb, or a chat with no live session, leaves the dock as it is:
+    /// empty on a chat just opened, since opening one clears it (issue
+    /// 2372), so it never offers the last visit's controls.
     func refreshSessionControl(for sessionID: String) async {
         guard let client, !sessionID.isEmpty else { return }
         let revision = sessionControl.revision
@@ -56,6 +58,15 @@ extension AppState {
     func runSessionControl(_ action: SessionControlAction) async {
         guard let client, let sessionID = sessionControl.sessionID,
               sessionControlIsOpenChat(sessionID), sessionControl.working == nil else { return }
+        // Hermes counts criteria by place: one picked from a list that
+        // changed since would remove another (issue 2372).
+        if case .subgoalRemove(let index, let criterion) = action {
+            let subgoals = sessionControl.snapshot.goal?.subgoals ?? []
+            guard subgoals.indices.contains(index - 1), subgoals[index - 1] == criterion else {
+                sessionControl.notice = AppLocalization.string("The goal's criteria changed. Pick the one to remove again.", table: .chat)
+                return
+            }
+        }
         let token = sessionControl.begin(action)
         // Ended on every path, the connection changing included, and only
         // after the dock reads the new state: an action on the old list

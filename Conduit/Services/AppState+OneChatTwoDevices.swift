@@ -87,6 +87,13 @@ extension AppState {
             // an empty one, so the list backs off.
             registry = []
         }
+        // All's rows from other profiles pace it too, by their own
+        // profiles' registries, so one's Running ends as soon as its own does.
+        if let registry0 = registry, isAllProfilesChatsOn {
+            let others = otherProfilesListedLiveRows(Self.chatListIDs(of: allProfilesCatalog.sessions))
+            registry = registry0.union(others.keys)
+            turnRunning = turnRunning || others.running
+        }
         // A gateway that pushes `sessions.changed` has each change read as
         // it comes: the timed read is only its backstop (issue 851). One
         // held back by a turn here keeps the 30 s read, so a chat deleted
@@ -961,10 +968,13 @@ extension AppState {
         sessionCatalogCache.removeSession(
             withIDs: Set([session.id] + session.alternateIds)
         )
-        // The call archive kept for the catalog could list it too: a call
-        // archived on Hermes already, deleted or archived here, leaves no
-        // trace in the live total that would make it read again.
-        archivedCallsReads.removeAll()
+        // A call archive kept for the catalog that lists it is dropped: a
+        // call archived on Hermes already, deleted or archived here, leaves
+        // no trace in the live total that would make it read again. Kept
+        // archives that don't list it (other profiles') stay.
+        archivedCallsReads = archivedCallsReads.filter { _, read in
+            !read.calls.contains { sessionMatches($0, session) }
+        }
         publishWidgetSnapshot()
     }
 

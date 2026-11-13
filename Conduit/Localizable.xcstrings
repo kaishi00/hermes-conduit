@@ -194811,6 +194811,170 @@
           }
         }
       }
+    },
+    "Added %@ on the Hermes this opened on, but Conduit switched to another, so it wasn't tested." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde auf dem Hermes hinzugefügt, auf dem dies geöffnet wurde, aber Conduit hat zu einem anderen gewechselt, daher wurde es nicht getestet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se añadió %@ en el Hermes donde se abrió esto, pero Conduit cambió a otro, así que no se probó."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ a été ajouté sur le Hermes où ceci a été ouvert, mais Conduit est passé à un autre, donc il n'a pas été testé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ditambahkan di Hermes tempat ini dibuka, tetapi Conduit beralih ke Hermes lain, jadi belum diuji."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ è stato aggiunto sull'Hermes in cui è stato aperto, ma Conduit è passato a un altro, quindi non è stato testato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ は開いた Hermes に追加されましたが、Conduit が別の Hermes に切り替わったため、テストされていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@을(를) 이 화면을 연 Hermes에 추가했지만, Conduit가 다른 Hermes로 전환되어 테스트하지 않았습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodano %@ na Hermesie, na którym to otwarto, ale Conduit przełączył się na inny, więc nie został przetestowany."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ foi adicionado no Hermes em que isto foi aberto, mas o Conduit mudou para outro, então não foi testado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ добавлен на Hermes, где это было открыто, но Conduit переключился на другой, поэтому проверка не выполнялась."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, bunun açıldığı Hermes'e eklendi ancak Conduit başka birine geçtiği için test edilmedi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在打开此页面的 Hermes 上添加 %@，但 Conduit 已切换到另一个 Hermes，因此未进行测试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在開啟此頁面的 Hermes 上加入 %@，但 Conduit 已切換到另一個 Hermes，因此未進行測試。"
+          }
+        }
+      }
+    },
+    "Wait for the Hermes update to finish." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Warte, bis das Hermes-Update abgeschlossen ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Espera a que termine la actualización de Hermes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attendez la fin de la mise à jour de Hermes."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tunggu hingga pembaruan Hermes selesai."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Attendi che l'aggiornamento di Hermes sia completato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes のアップデートが終わるまでお待ちください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 업데이트가 끝날 때까지 기다리세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Poczekaj na zakończenie aktualizacji Hermesa."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aguarde a atualização do Hermes terminar."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Дождитесь завершения обновления Hermes."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes güncellemesinin bitmesini bekleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "请等待 Hermes 更新完成。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "請等候 Hermes 更新完成。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

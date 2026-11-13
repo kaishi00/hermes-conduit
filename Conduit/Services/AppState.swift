@@ -411,6 +411,13 @@ final class AppState: ObservableObject {
     }
 
     var liveSessionStatusProfile: String?
+    /// The registries of the other profiles something on screen shows (All,
+    /// a project's page, Bots Home), read by name beside the profile in
+    /// use's.
+    @Published var otherProfilesLiveStatus = OtherProfilesLiveStatus()
+    /// What on screen shows other profiles' live status, by what asked:
+    /// their registries are read with the profile in use's while it shows.
+    var liveStatusAsks: [String: LiveStatusAsk] = [:]
     /// The client whose gateway rejected `session.active_list`, so the chat
     /// list's poll stops asking it.
     weak var activeListUnsupportedClient: HermesClient?
@@ -453,6 +460,15 @@ final class AppState: ObservableObject {
                     newChatOpenedSessionID = nil
                 }
                 schedulePendingComposerSendCheck()
+                // The dock acts only on word this visit got (issue 2372):
+                // another chat, or the same one opened again, reads its
+                // goal, loop and heartbeat afresh. A new id for the open
+                // chat keeps them.
+                // Cleared even while empty, so a read the last visit started
+                // can't fill it either.
+                let sameChat = activeChatScrollSessionIdentity.contains(oldValue)
+                    || sessionControl.sessionID.map(sessionControlIsOpenChat) == true
+                if !sameChat { sessionControl.clear() }
                 // The Model and Context sheets act on the chat they came up
                 // over. Another chat taking its place (a notification, an
                 // app link) takes them down; a new id for the same
@@ -585,16 +601,19 @@ final class AppState: ObservableObject {
     /// being prepared, so the chat never appears to jump to an empty canvas.
     @Published var isOpeningNotificationSession = false
     @Published var isBranchingChat = false
-    /// An Edit and resend, /undo or /retry reading the chat's turns and
-    /// taking them back. Another rewind is refused and the composer and
-    /// sends wait meanwhile: they would change the history its count was
-    /// read from, and `hermes dashboard`'s `/undo N` has no fence to refuse
-    /// a stale count.
+    /// An Edit and resend, /undo or /retry reading the chat's turns, taking
+    /// them back and reopening the chat. Another rewind is refused and the
+    /// composer and sends wait meanwhile: they would change the history its
+    /// count was read from (`hermes dashboard`'s `/undo N` has no fence to
+    /// refuse a stale count), or land in the transcript the reopen replaces.
     @Published var isRewindingTurns = false
-    /// A slash command's prompt refused while a rewind ran: the rewind
-    /// says so once it is done, after its reopen has replaced the
+    /// A slash command's prompt or prefill refused while a rewind ran: the
+    /// rewind says so once it is done, after its reopen has replaced the
     /// transcript a note added sooner would be in.
     var slashPromptRefusedDuringRewind = false
+    /// Counts rewinds started: a rewind clears the flags above only while
+    /// no later one has started.
+    var rewindGeneration = 0
     /// Runtime ids of conversations with a dedicated `session.compress` RPC
     /// in flight. Manual compression is LLM-bound and can take minutes, so
     /// the chat shows a small "Compressing…" affordance while the ACTIVE
@@ -3077,9 +3096,12 @@ final class AppState: ObservableObject {
     /// Reads the invites again for a while after a Link is made
     /// (RoomInvites.swift followLinkedRoomInvites).
     var linkedRoomInviteFollow: Task<Void, Never>?
-    /// The linked rooms' read on a return to the app, while it runs: a
-    /// return meanwhile joins it (issue 2359).
-    var linkedRoomsForegroundRead: Task<Void, Never>?
+    /// One read of each Linked Rooms list at a time (issue 2359).
+    let linkedRoomDraftsReader = LinkedRoomListRead()
+    /// A drafts read asked for with the people that hasn't run yet.
+    var linkedRoomDraftsPeopleAsked = false
+    let linkedRoomInvitesReader = LinkedRoomListRead()
+    let linkedRoomApprovalsReader = LinkedRoomListRead()
     /// What your agents' turns in rooms other people host wait for you to
     /// approve, which Group Chats lists first (RoomApprovals.swift).
     @Published var linkedRoomApprovals: LinkedRoomApprovals?

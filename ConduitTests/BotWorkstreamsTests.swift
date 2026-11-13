@@ -1639,6 +1639,56 @@ extension BotModeTests {
         XCTAssertEqual(BotPortraitStatus.idle.title, "")
     }
 
+    /// Live status for every bot: what the bot's chats do (its profile's
+    /// registry and the plugin's waits) shows on its portrait, without the
+    /// plugin's workstreams too. A chat waiting on the user needs them,
+    /// running chats add to its work, and a room it talks in comes first
+    /// when nothing else works, since a room's turns run in its chats.
+    func testThePortraitSaysWhatTheBotsChatsDo() throws {
+        XCTAssertEqual(BotPortraitStatus.of(nil, chats: BotLiveChats(working: 2, waiting: 0)), .working(2))
+        XCTAssertEqual(BotPortraitStatus.of(nil, chats: BotLiveChats(working: 2, waiting: 1)), .needsYou(1))
+        XCTAssertEqual(BotPortraitStatus.of(nil, talkingIn: ["Trip"], chats: BotLiveChats(working: 1, waiting: 0)),
+                       .inRooms(["Trip"]))
+        XCTAssertEqual(BotPortraitStatus.of(nil, chats: BotLiveChats()), .idle)
+        let both = try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina"))
+        XCTAssertEqual(BotPortraitStatus.of(both, chats: BotLiveChats(working: 0, waiting: 2)), .needsYou(3),
+                       "Its workstreams' and its chats' waits add up")
+        var working = workResponse()
+        working["counts"] = ["working": 2, "needs_you": 0, "ready": 0]
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: working, profile: "furina"),
+                                            chats: BotLiveChats(working: 1, waiting: 0)), .working(3))
+        var quiet = workResponse()
+        quiet["counts"] = ["working": 0, "needs_you": 0, "ready": 1]
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: quiet, profile: "furina"),
+                                            chats: BotLiveChats(working: 1, waiting: 0)), .working(1),
+                       "A running chat says more than an unanswered ask")
+        var off = workResponse()
+        off["policy"] = "off"
+        XCTAssertEqual(BotPortraitStatus.of(BotWorkSnapshot(response: off, profile: "furina"),
+                                            chats: BotLiveChats(working: 0, waiting: 1)), .needsYou(1))
+
+        // A registry counts as one bot's only when Hermes' session authority
+        // listed it (its rows name their source), leaving out the bot's
+        // workstreams, which their own list counts.
+        let scoped = SessionLiveStatusIndex(rows: [
+            LiveSessionStatus(runtimeSessionId: "rt-chat", storedSessionId: "chat", status: "working", isProfileScoped: true),
+            LiveSessionStatus(runtimeSessionId: "rt-work", storedSessionId: "work", status: "working", isProfileScoped: true),
+            LiveSessionStatus(runtimeSessionId: "rt-ask", storedSessionId: "ask", status: "waiting", isProfileScoped: true),
+            LiveSessionStatus(runtimeSessionId: "rt-idle", storedSessionId: "idle", status: "idle", isProfileScoped: true),
+        ])
+        XCTAssertEqual(scoped.counts(leavingOut: ["work"]), BotLiveChats(working: 1, waiting: 1))
+        let legacy = SessionLiveStatusIndex(rows: [
+            LiveSessionStatus(runtimeSessionId: "rt-chat", storedSessionId: "chat", status: "working"),
+        ])
+        XCTAssertNil(legacy.counts(), "The legacy dashboard lists every profile's chats under each")
+        let chat = SessionSummary(id: "chat", alternateIds: [], title: "Chat", model: "Hermes", updatedLabel: "",
+                                  profile: "default", source: .chat, isActive: false, isArchived: false)
+        XCTAssertEqual(legacy.status(for: chat), .working, "Its rows still light chat rows by id")
+        let row = LiveSessionStatus(from: ["id": .string("rt"), "session_key": .string("s"), "status": .string("working"), "source": .null])
+        XCTAssertEqual(row?.isProfileScoped, true)
+        XCTAssertEqual(LiveSessionStatus(from: ["id": .string("rt")])?.isProfileScoped, false)
+    }
+
     /// Hand-offs between bots: answering another bot's ask comes before its
     /// own work, and an unanswered ask of its own shows when nothing else
     /// does; a closed or answered one shows nothing.

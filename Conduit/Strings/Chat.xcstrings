@@ -45138,6 +45138,88 @@
           }
         }
       }
+    },
+    "The goal's criteria changed. Pick the one to remove again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Kriterien des Ziels haben sich geändert. Wähle das zu entfernende erneut."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los criterios del objetivo cambiaron. Vuelve a elegir el que quieres quitar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les critères de l'objectif ont changé. Choisissez à nouveau celui à retirer."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kriteria tujuan berubah. Pilih lagi yang ingin dihapus."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "I criteri dell'obiettivo sono cambiati. Scegli di nuovo quello da rimuovere."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目標の条件が変わりました。削除する条件をもう一度選んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "목표의 기준이 바뀌었습니다. 제거할 기준을 다시 선택하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Kryteria celu się zmieniły. Wybierz ponownie to, które chcesz usunąć."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os critérios da meta mudaram. Escolha de novo o que quer remover."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Критерии цели изменились. Выберите заново, какой удалить."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hedefin ölçütleri değişti. Kaldırılacak olanı yeniden seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目标的条件已更改。请重新选择要移除的条件。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "目標的條件已變更。請重新選擇要移除的條件。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

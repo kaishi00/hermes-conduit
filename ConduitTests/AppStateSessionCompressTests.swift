@@ -2080,6 +2080,66 @@ final class AppStateSessionCompressTests: XCTestCase {
         )
     }
 
+    /// A rewind holds the chat through its reopen (issue 2381): a second
+    /// rewind can't start and reopen over the first one's notes, and a
+    /// prefill refused meanwhile is named once, after the reopen.
+    func testASecondRewindWaitsForTheFirstsReopen() async throws {
+        var rewinds = 0
+        var reopens = 0
+        var releaseReopen: CheckedContinuation<Void, Never>?
+        var operations = ChatResumeLifecycleOperations(
+            openSession: { _, _, _ in
+                reopens += 1
+                if reopens == 1 { await withCheckedContinuation { releaseReopen = $0 } }
+                return SessionResumeResult(
+                    sessionId: "composer-origin",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in }
+        )
+        operations.rewindSnapshot = { _, _ in Self.rewindTurns }
+        operations.rewindSession = { _, _, _, _ in
+            rewinds += 1
+            return SessionRewindReceipt(rewoundCount: 1, text: "latest ask", filesLine: nil)
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+        let appState = harness.appState
+
+        let first = Task { @MainActor in await appState.submitComposer(text: "/undo") }
+        for _ in 0..<500 where releaseReopen == nil { await Task.yield() }
+        let release = try XCTUnwrap(releaseReopen, "the first rewind reached its reopen")
+
+        XCTAssertTrue(appState.isRewindingTurns, "the reopen is still the rewind's")
+        XCTAssertFalse(appState.composerIsEnabled)
+        _ = await appState.submitComposer(text: "/undo")
+        XCTAssertEqual(rewinds, 1, "no second rewind starts under the first one's reopen")
+        let client = try XCTUnwrap(appState.client)
+        await appState.handleSlashResult(
+            .object(["type": .string("prefill"), "message": .string("a command's draft")]),
+            depth: 0,
+            aliasArgument: "",
+            client: client,
+            sessionID: origin.id,
+            context: appState.composerSubmissionContext()
+        )
+        XCTAssertTrue(appState.slashPromptRefusedDuringRewind, "a prefill now would be replaced by the rewind's words")
+
+        release.resume()
+        _ = await first.value
+
+        XCTAssertFalse(appState.isRewindingTurns)
+        XCTAssertEqual(appState.composerPrefillText, "latest ask", "the composer holds the words taken back")
+        let refusal = AppLocalization.string("A command's message wasn't sent while a message was being taken back. Run the command again.")
+        XCTAssertEqual(appState.messages.filter { $0.content == refusal }.count, 1, "named once, after the reopen")
+        XCTAssertEqual(appState.messages.last?.content, refusal)
+    }
+
     func testARefusedSlashPromptsNoteStaysOutOfAChatOpenedDuringTheRewind() async throws {
         weak var appState: AppState?
         var operations = ChatResumeLifecycleOperations(
@@ -2575,7 +2635,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(harness.appState.sessionControl.snapshot.goal?.isPaused, true)
         XCTAssertNil(harness.appState.sessionControl.working)
 
-        await harness.appState.runSessionControl(.subgoalRemove(index: 1))
+        await harness.appState.runSessionControl(.subgoalRemove(index: 1, criterion: "tests pass"))
         XCTAssertEqual(actions.last?.0, "subgoal.remove")
         XCTAssertEqual(actions.last?.1?["index"] as? Int, 1, "Hermes counts criteria from 1")
         XCTAssertEqual(harness.appState.sessionControl.notice, "Removed criterion 1.", "what Hermes said shows under the dock")
@@ -2584,6 +2644,65 @@ final class AppStateSessionCompressTests: XCTestCase {
         await harness.appState.runSessionControl(.goalClear)
         XCTAssertNotNil(harness.appState.sessionControl.notice, "a refusal says why under the dock")
         XCTAssertNil(harness.appState.sessionControl.working)
+    }
+
+    func testTheDockActsOnlyOnWhatThisVisitRead() async throws {
+        var readFails = false
+        var actions: [String] = []
+        let harness = controlHarness { operations in
+            operations.readSessionControl = { _, _ in
+                if readFails { throw URLError(.timedOut) }
+                return Self.goalSnapshot
+            }
+            operations.runSessionControl = { _, action, _ in
+                actions.append(action.name)
+                return (Self.goalSnapshot, nil)
+            }
+        }
+        harness.appState.sessions = [session("composer-origin", storedID: "stored-origin", alternateIDs: ["runtime-2"])]
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+        harness.appState.activeSessionId = "runtime-2"
+        XCTAssertEqual(harness.appState.sessionControl.snapshot, Self.goalSnapshot, "a new id for the open chat keeps its dock")
+
+        harness.appState.activeSessionId = nil
+        XCTAssertTrue(harness.appState.sessionControl.snapshot.isEmpty, "leaving the chat clears its dock")
+        harness.appState.activeSessionId = "composer-origin"
+        readFails = true
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+        XCTAssertNil(harness.appState.sessionControl.sessionID, "a failed read on the way back leaves the last visit's controls gone")
+        await harness.appState.runSessionControl(.goalClear)
+        XCTAssertEqual(actions, [], "nothing to act on until Hermes says what's there")
+
+        readFails = false
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+        await harness.appState.runSessionControl(.subgoalRemove(index: 1, criterion: "docs updated"))
+        XCTAssertEqual(actions, [], "a criterion picked from a list that changed isn't removed by its old place")
+        XCTAssertEqual(harness.appState.sessionControl.notice,
+                       AppLocalization.string("The goal's criteria changed. Pick the one to remove again.", table: .chat))
+        await harness.appState.runSessionControl(.subgoalRemove(index: 1, criterion: "tests pass"))
+        XCTAssertEqual(actions, ["subgoal.remove"])
+    }
+
+    func testAFirstDockReadThatOutlivedItsVisitIsDropped() async throws {
+        weak var appState: AppState?
+        var leavesMidRead = true
+        let harness = controlHarness { operations in
+            operations.readSessionControl = { _, _ in
+                if leavesMidRead {
+                    leavesMidRead = false
+                    appState?.activeSessionId = nil
+                    appState?.activeSessionId = "composer-origin"
+                }
+                return Self.goalSnapshot
+            }
+        }
+        appState = harness.appState
+        harness.appState.activeSessionId = "composer-origin"
+
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+
+        XCTAssertTrue(harness.appState.sessionControl.snapshot.isEmpty,
+                      "a read from before leaving and coming back, started while the dock was empty, doesn't fill the new visit's dock")
     }
 
     func testADockAnswerOrReadThatWasOvertakenIsDropped() async throws {
