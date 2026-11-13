@@ -97,12 +97,6 @@ extension AppState {
         }
     }
 
-    /// Clears a finished update's outcome. A check or update in progress stays.
-    func dismissHermesUpdateOutcome() {
-        guard !hermesUpdate.isInProgress else { return }
-        clearHermesUpdate()
-    }
-
     /// Stops following an update and forgets it, for sign-out.
     func stopFollowingHermesUpdate() {
         hermesUpdateTask?.cancel()

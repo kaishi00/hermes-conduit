@@ -133,6 +133,10 @@ struct SessionControlSnapshot: Equatable {
     static func everyText(seconds: Double) -> String {
         let formatter = DateComponentsFormatter()
         formatter.unitsStyle = .abbreviated
+        // The pinned App Language, not the phone's.
+        var calendar = Calendar.current
+        calendar.locale = AppLocalization.formattingLocale
+        formatter.calendar = calendar
         formatter.maximumUnitCount = 2
         formatter.allowedUnits = seconds >= 3600 ? [.hour, .minute] : (seconds >= 60 ? [.minute, .second] : [.second])
         let interval = formatter.string(from: max(seconds, 1)) ?? ""

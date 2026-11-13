@@ -80,6 +80,8 @@ extension GatewayRestartTests {
         XCTAssertEqual(HermesUpdater.verdict(idle, receipt: ["outcome": "failed", "action_id": "a1"], actionID: "a1"), .failed)
         XCTAssertEqual(HermesUpdater.verdict(idle, receipt: ["outcome": "success", "action_id": "older"], actionID: "a1"), .unknown,
                        "another update's receipt proves nothing about this one")
+        XCTAssertEqual(HermesUpdater.verdict(idle, receipt: ["outcome": "success", "action_id": "older"], actionID: nil), .unknown,
+                       "with no id of its own, an update isn't settled by an older one's receipt")
         XCTAssertEqual(HermesUpdater.verdict(GatewayRestartActionStatus(running: true), receipt: nil, actionID: "a1"), .running)
     }
 

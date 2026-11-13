@@ -64,8 +64,10 @@ extension AppState {
             } else {
                 answer = try await client.runSessionControl(action, sessionId: sessionID)
             }
-            guard self.client === client, sessionControl.isCurrent(token) else { return }
+            // Ended even when the connection changed meanwhile, so a
+            // reconnect never leaves the dock waiting.
             sessionControl.end(token)
+            guard self.client === client, sessionControl.isCurrent(token) else { return }
             if let snapshot = answer.snapshot {
                 sessionControl.apply(snapshot, for: sessionID)
             } else {
@@ -77,8 +79,8 @@ extension AppState {
                 sessionControl.notice = note
             }
         } catch {
-            guard self.client === client, sessionControl.isCurrent(token) else { return }
             sessionControl.end(token)
+            guard self.client === client, sessionControl.isCurrent(token) else { return }
             sessionControl.notice = UserFacingError.message(for: error)
         }
     }

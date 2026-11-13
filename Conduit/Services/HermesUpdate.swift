@@ -91,6 +91,8 @@ enum HermesUpdateState: Equatable {
     case updated(version: String?)
     /// Hermes turned the update down or it failed; `detail` is its words.
     case failed(detail: String?)
+    /// The check itself didn't get an answer; nothing was updated.
+    case checkFailed(detail: String?)
     /// This install updates another way: Hermes' words and the command to
     /// run on the host, when there is one.
     case manual(message: String, command: String?)
@@ -142,10 +144,11 @@ struct HermesUpdater {
     func check(force: Bool) async -> HermesUpdateState {
         do {
             let json = try await request(Self.checkPath + (force ? "?force=true" : ""), "GET")
-            guard let check = HermesUpdateCheck(json: json) else { return .failed(detail: nil) }
+            guard let check = HermesUpdateCheck(json: json) else { return .checkFailed(detail: nil) }
             return .checked(check)
         } catch {
             if Task.isCancelled { return .idle }
+            if case .failed(let detail) = Self.outcome(forRequestError: error) { return .checkFailed(detail: detail) }
             return Self.outcome(forRequestError: error)
         }
     }
@@ -226,8 +229,10 @@ struct HermesUpdater {
     static func verdict(_ status: GatewayRestartActionStatus, receipt: [String: Any]?, actionID: String?) -> Verdict {
         if status.running { return .running }
         if let actionID, status.lines.contains("=== hermes-update completed \(actionID) ===") { return .succeeded }
+        // Only this action's receipt: without an id, an older update's
+        // receipt could settle this one.
         if let receipt, let outcome = receipt["outcome"] as? String,
-           actionID == nil || (receipt["action_id"] as? String) == actionID {
+           let actionID, (receipt["action_id"] as? String) == actionID {
             switch outcome {
             case "success", "partial": return .succeeded
             case "failed": return .failed

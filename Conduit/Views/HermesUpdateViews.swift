@@ -71,7 +71,11 @@ struct HermesUpdateSection: View {
         .onChange(of: appState.activeDashboardID) { lastCheck = nil }
         .task(id: appState.activeDashboardID) {
             // Hermes answers from its cache, so opening the page is cheap.
-            if appState.activeHermesUpdate == .idle { appState.checkHermesUpdate(force: false) }
+            // An earlier check is read again; an update's outcome stays.
+            switch appState.activeHermesUpdate {
+            case .idle, .checked, .checkFailed: appState.checkHermesUpdate(force: false)
+            default: break
+            }
         }
         .onChange(of: state, initial: true) { previous, state in
             if case .checked(let check) = state { lastCheck = check }
@@ -123,6 +127,8 @@ struct HermesUpdateSection: View {
                        detail: nil, symbol: "checkmark.circle.fill", tint: .green)
         case .failed(let detail):
             outcomeRow(AppLocalization.string("Couldn't update Hermes", table: .connection), detail: detail, symbol: "exclamationmark.triangle.fill", tint: .red)
+        case .checkFailed(let detail):
+            outcomeRow(AppLocalization.string("Couldn't check for updates", table: .connection), detail: detail, symbol: "exclamationmark.circle.fill", tint: .orange)
         case .manual(let message, let command):
             outcomeRow(AppLocalization.string("Update Hermes on the host", table: .connection), detail: message, command: command, symbol: "info.circle.fill", tint: .orange)
         case .notBackYet:
