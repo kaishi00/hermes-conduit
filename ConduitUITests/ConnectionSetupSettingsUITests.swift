@@ -225,6 +225,7 @@ final class ConnectionSetupSettingsUITests: XCTestCase {
             app.swipeUp()
         }
         XCTAssertTrue(element.isHittable)
+        waitUntilSettled(element)
         element.tap()
     }
 
