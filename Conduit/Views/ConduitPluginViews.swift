@@ -455,12 +455,13 @@ struct NotifierPluginUpdateStatusView: View {
                 tint: .green
             )
         case .needsDashboardRestart(let detail):
-            // Every way here restarted the gateway first, so "Restarting the gateway…" just showed:
-            // say that half is done and the dashboard is what's left (notifier issue 774).
+            // A host's refusal (Desktop, a plugin host) comes right after the gateway restart, so
+            // "Restarting the gateway…" just showed: say that half is done and the dashboard is
+            // what's left (notifier issue 774). Without one, say only what's left.
             return Row(
                 title: AppLocalization.string("Restart the Hermes dashboard to finish", table: .notifications),
                 detail: detail.map { AppLocalization.string("The gateway restarted and runs the new plugin. Only the dashboard still runs the old one.", table: .notifications) + " " + $0 }
-                    ?? AppLocalization.string("The gateway restarted and runs the new plugin, but the dashboard can't restart itself here. Restart the dashboard on the host once.", table: .notifications),
+                    ?? AppLocalization.string("The new plugin is on the host, and only the dashboard still runs the old one. Restart the dashboard on the host once.", table: .notifications),
                 symbol: "clock.badge.exclamationmark",
                 tint: .orange
             )

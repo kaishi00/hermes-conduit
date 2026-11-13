@@ -956,12 +956,12 @@ extension GatewayRestartTests {
         XCTAssertTrue(NotifierPluginUpdateStatusView.row(for: .unsupported, plugin: missing)?.detail?.contains("missing") == true)
     }
 
-    func testADashboardLeftToRestartSaysTheGatewayAlreadyDid() {
+    func testADashboardLeftToRestartSaysOnlyTheDashboardIsLeft() {
         // Notifier issue 774: "Restarting the gateway…" then "restart needed" read as a stuck update.
         let plugin = NotifierPluginStatus()
         let plain = NotifierPluginUpdateStatusView.row(for: .needsDashboardRestart(detail: nil), plugin: plugin)
         XCTAssertEqual(plain?.title, "Restart the Hermes dashboard to finish")
-        XCTAssertTrue(plain?.detail?.hasPrefix("The gateway restarted and runs the new plugin") == true)
+        XCTAssertEqual(plain?.detail, "The new plugin is on the host, and only the dashboard still runs the old one. Restart the dashboard on the host once.")
         let hosts = NotifierPluginUpdateStatusView.row(for: .needsDashboardRestart(detail: "Restart Hermes Desktop to finish the update"), plugin: plugin)
         XCTAssertEqual(hosts?.detail, "The gateway restarted and runs the new plugin. Only the dashboard still runs the old one. Restart Hermes Desktop to finish the update")
     }
