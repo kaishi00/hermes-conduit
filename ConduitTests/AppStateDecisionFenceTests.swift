@@ -555,6 +555,40 @@ final class AppStateDecisionFenceTests: XCTestCase {
         XCTAssertEqual(card.choice, "deny")
     }
 
+    /// "Tell Hermes what to do instead": the words steer the waiting turn
+    /// before the command is rejected, so they ride on its result.
+    func testTellHermesInsteadSteersThenRejects() async throws {
+        var steered: [String] = []
+        var operations = ChatResumeLifecycleOperations()
+        operations.steer = { _, session, text in steered.append("\(session): \(text)") }
+        let appState = makeAppState(chatResumeLifecycleOperations: operations)
+        appState.activeSessionId = "default"
+        appState.messages = [approvalFixture()]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+        let sent = ClarifyGate()
+        socket.onSend = { sent.signal() }
+        socket.refusesApprovalPendingBeforeRespond = true
+        let shown = try XCTUnwrap(appState.messages.first?.approval)
+
+        let task = Task {
+            await appState.rejectApprovalAndSteer(messageId: "approval-msg", instruction: "  Use the staging box  ", shown: shown)
+        }
+        try await sent.wait("the approval.respond request to be sent")
+        XCTAssertEqual(steered, ["default: Use the staging box"], "The steer goes first")
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        XCTAssertEqual((request["params"] as? [String: Any])?["choice"] as? String, "deny")
+        deliverResult(socket, rpcID: try XCTUnwrap(request["id"] as? Int), result: [:])
+        await task.value
+
+        XCTAssertEqual(appState.messages.first?.approval?.status, .rejected)
+        XCTAssertTrue(appState.messages.contains { $0.isSteer && $0.content == "Use the staging box" }, "The steer shows in the chat")
+        XCTAssertNil(appState.composerPrefillDraftKey, "A steer Hermes took leaves the composer alone")
+    }
+
     func testRequestIdentifiedApprovalWithZeroResolvedExpires() async throws {
         let appState = makeAppState()
         appState.messages = [approvalFixture(requestId: "stale-request")]

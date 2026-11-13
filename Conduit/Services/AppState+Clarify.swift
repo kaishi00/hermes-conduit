@@ -1210,6 +1210,23 @@ extension AppState {
     /// When the card has since changed to ask something else (a legacy card
     /// is updated in place by the next command), nothing is sent: the card
     /// on screen already shows the new question to answer.
+    /// The approval card's "Tell Hermes what to do instead" (Hermes' TUI
+    /// "No, and tell Hermes instead"): the words go into the waiting turn
+    /// as a steer first, so they ride on the refused command's result, and
+    /// then the command is rejected. A steer Hermes refuses (the turn ended
+    /// meanwhile) keeps the words in the composer, to send as the next
+    /// message; the command is rejected either way.
+    func rejectApprovalAndSteer(messageId: String, instruction: String, shown: ApprovalActivity) async {
+        let words = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty,
+              let current = messages.first(where: { $0.id == messageId })?.approval,
+              current.status == .pending || current.status == .error,
+              current.asksSameAs(shown) else { return }
+        let steered = await steer(words, surfacesFailure: false)
+        await respondToApproval(messageId: messageId, choice: "deny", shown: shown)
+        if !steered { prefillComposer(words) }
+    }
+
     func respondToApproval(messageId: String, choice: String, shown: ApprovalActivity? = nil) async {
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].approval,

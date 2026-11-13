@@ -924,6 +924,18 @@ struct ChatMessage: Identifiable, Equatable {
     var isSteer: Bool {
         role == .user && displayKind == Self.steerDisplayKind
     }
+
+    /// Hermes' `display_kind` for the user's message of a turn the model's
+    /// safety filter refused. Hermes drops the whole turn from the model's
+    /// context, so the chat can't lock into refusing, and keeps this row
+    /// for display only (Hermes 0.23.1 and later).
+    static let contentRefusedDisplayKind = "content_refused"
+
+    /// The user's own message of a turn the model's safety filter refused:
+    /// shown greyed with a notice, never answered.
+    var isContentRefused: Bool {
+        role == .user && displayKind == Self.contentRefusedDisplayKind
+    }
 }
 
 // MARK: - Reactions

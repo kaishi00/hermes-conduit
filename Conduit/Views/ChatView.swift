@@ -1393,6 +1393,8 @@ struct MessageBubble: View, Equatable {
         case .user:
             if message.isSteer {
                 SteerBubble(message: message)
+            } else if message.isContentRefused {
+                ContentRefusedBubble(message: message)
             } else if let brief = WorkstreamBrief.parse(message.content) {
                 // A workstream's brief from the bot coordinating it: a card,
                 // not something the user typed (Bot workstreams).
@@ -1865,6 +1867,76 @@ struct SteerBubble: View {
                     .frame(maxWidth: .infinity, alignment: .trailing)
             }
         }
+    }
+}
+
+/// The user's message of a turn the model's safety filter refused (Hermes'
+/// `content_refused` row): their words greyed in a dashed card with a line
+/// saying what happened. Hermes took the turn out of the model's context,
+/// so there is nothing to edit, resend or retry: the row has no controls,
+/// and its words can still be selected and copied.
+struct ContentRefusedBubble: View {
+    let message: ChatMessage
+    @Environment(\.sizeCategory) private var sizeCategory
+    @Environment(\.chatTextSize) private var chatTextSize
+
+    var body: some View {
+        HStack {
+            Spacer(minLength: 40)
+            VStack(alignment: .trailing, spacing: 4) {
+                ContentRefusedMessageContent(
+                    message: message,
+                    sizeCategory: sizeCategory,
+                    chatTextSize: chatTextSize
+                )
+                .equatable()
+
+                MessageTimestampLabel(timestamp: message.timestamp)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
+        }
+    }
+}
+
+/// Settled refused-row content, behind the same Equatable gate as
+/// UserMessageContent so streaming publishes cannot re-evaluate it.
+struct ContentRefusedMessageContent: View, Equatable {
+    let message: ChatMessage
+    /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
+    let sizeCategory: ContentSizeCategory
+    /// Explicit chat text-size input — see UserMessageContent.
+    let chatTextSize: ChatTextAppearance
+
+    /// What the row says under the user's words. Conduit's own words, in
+    /// the app's language, not the English notice Hermes stores on the row.
+    static var notice: String {
+        AppLocalization.string("The model's safety filter refused this message. Try asking another way.", table: .chat)
+    }
+
+    var body: some View {
+        let words = ReplyQuoteEnvelope.parse(message.content)?.message ?? message.content
+        VStack(alignment: .leading, spacing: 8) {
+            if words.contains(where: { !$0.isWhitespace }) {
+                MarkdownText(source: words)
+                    .opacity(0.6)
+            }
+            Label {
+                Text(Self.notice)
+            } icon: {
+                Image(systemName: "exclamationmark.shield")
+            }
+            .scaledFont(.footnote)
+            .foregroundStyle(.secondary)
+        }
+        .padding(.horizontal, 15)
+        .padding(.vertical, 10)
+        .overlay {
+            RoundedRectangle(cornerRadius: 21, style: .continuous)
+                .strokeBorder(Color.secondary.opacity(0.45), style: StrokeStyle(lineWidth: 1, dash: [5, 4]))
+        }
+        .textSelection(.enabled)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(AppLocalization.string("Refused by the model's safety filter: \(words)", table: .chat))
     }
 }
 
@@ -4591,6 +4663,11 @@ struct ApprovalCard: View {
     /// The approval as drawn when Always allow was tapped: the confirmation
     /// answers that one, even if the card changes while it is up.
     @State private var alwaysShown: ApprovalActivity?
+    /// "Tell Hermes what to do instead" is open: the field for the words
+    /// that go to Hermes with the rejection.
+    @State private var tellsInstead = false
+    @State private var instead = ""
+    @FocusState private var insteadFocused: Bool
 
     var body: some View {
         if let approval = message.approval {
@@ -4685,6 +4762,8 @@ struct ApprovalCard: View {
                         }
                     }
                     .scaledFont(.subheadline.weight(.medium))
+
+                    insteadControls(approval)
                 }
 
                 if approval.status != .expired, let error = approval.error, !error.isEmpty {
@@ -4746,6 +4825,62 @@ struct ApprovalCard: View {
         }
         .buttonStyle(.bordered)
         .disabled(!allows("deny", for: approval) || !canRespond(approval.status))
+    }
+
+    /// Reject, and tell Hermes what to do instead: the words steer the
+    /// waiting turn, then the command is rejected (Hermes' TUI has the same
+    /// choice wherever Deny is offered).
+    @ViewBuilder
+    private func insteadControls(_ approval: ApprovalActivity) -> some View {
+        if allows("deny", for: approval) {
+            if tellsInstead {
+                VStack(alignment: .leading, spacing: 8) {
+                    TextField(
+                        AppLocalization.string("What should Hermes do instead?", table: .chat),
+                        text: $instead,
+                        axis: .vertical
+                    )
+                    .lineLimit(1...4)
+                    .textFieldStyle(.roundedBorder)
+                    .focused($insteadFocused)
+                    .submitLabel(.send)
+                    .onSubmit { sendInstead(approval) }
+                    HStack(spacing: 8) {
+                        Button(AppLocalization.string("Reject and send", table: .chat), role: .destructive) {
+                            sendInstead(approval)
+                        }
+                        .buttonStyle(.bordered)
+                        .disabled(!canRespond(approval.status) || !instead.contains(where: { !$0.isWhitespace }))
+                        Button("Cancel") {
+                            tellsInstead = false
+                            insteadFocused = false
+                        }
+                        .buttonStyle(.borderless)
+                        Spacer(minLength: 0)
+                    }
+                    .scaledFont(.subheadline.weight(.medium))
+                }
+            } else {
+                Button {
+                    tellsInstead = true
+                    insteadFocused = true
+                } label: {
+                    Label(AppLocalization.string("Tell Hermes what to do instead", table: .chat), systemImage: "text.bubble")
+                }
+                .buttonStyle(.borderless)
+                .scaledFont(.footnote.weight(.medium))
+                .disabled(!canRespond(approval.status))
+            }
+        }
+    }
+
+    private func sendInstead(_ approval: ApprovalActivity) {
+        let words = instead.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty, allows("deny", for: approval), canRespond(approval.status) else { return }
+        tellsInstead = false
+        insteadFocused = false
+        instead = ""
+        Task { await appState.rejectApprovalAndSteer(messageId: message.id, instruction: words, shown: approval) }
     }
 
     private func allows(_ choice: String, for approval: ApprovalActivity) -> Bool {

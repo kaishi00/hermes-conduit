@@ -1876,12 +1876,16 @@ final class AppStateSessionCompressTests: XCTestCase {
     private func rewindHarness(
         savedDashboard: Bool = false,
         rewoundText: String = "first ask",
+        rollback: ((RollbackMethod, String, [String: Any]) -> AnyCodable)? = nil,
         rewound: @escaping (Int, SessionRewindSnapshot) -> Void
     ) -> (appState: AppState, defaults: UserDefaults, suite: String) {
         var operations = ChatResumeLifecycleOperations(
             openSession: { _, _, _ in throw URLError(.networkConnectionLost) }
         )
         operations.rewindSnapshot = { _, _ in Self.rewindTurns }
+        if let rollback {
+            operations.rollback = { _, method, session, params in rollback(method, session, params) }
+        }
         operations.rewindSession = { _, _, target, snapshot in
             rewound(target, snapshot)
             return SessionRewindReceipt(rewoundCount: 4, text: target == 11 ? rewoundText : nil)
@@ -1991,6 +1995,69 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(
             harness.appState.messages.last?.content,
             "Couldn't find that message in the chat's history. Open the chat again, then try once more."
+        )
+    }
+
+    func testRollbackWordsReadAsDesktopReadsThem() {
+        XCTAssertEqual(RollbackRequest(argument: "")?.method, .list)
+        XCTAssertEqual(RollbackRequest(argument: "ls")?.method, .list)
+        XCTAssertNil(RollbackRequest(argument: "list --all"))
+        XCTAssertEqual(RollbackRequest(argument: "diff 2"), RollbackRequest(method: .diff, hash: "2", filePath: nil, all: false))
+        XCTAssertNil(RollbackRequest(argument: "diff"))
+        XCTAssertEqual(
+            RollbackRequest(argument: "3 src/my file.swift --all"),
+            RollbackRequest(method: .restore, hash: "3", filePath: "src/my file.swift", all: true)
+        )
+        XCTAssertEqual(RollbackRequest(argument: "abc123")?.params as NSDictionary?, ["hash": "abc123"] as NSDictionary)
+    }
+
+    func testRollbackListsTheChatsCheckpointsNumberedForRestore() async throws {
+        var calls: [(RollbackMethod, String)] = []
+        let harness = rewindHarness(rollback: { method, session, _ in
+            calls.append((method, session))
+            return .object([
+                "enabled": .bool(true),
+                "checkpoints": .array([
+                    .object(["hash": .string("0123456789abcdef"), "timestamp": .string("2026-11-13 10:00"), "message": .string("before write_file")]),
+                    .object(["hash": .string("fedcba9876543210"), "timestamp": .string("2026-11-13 09:00"), "message": .string("")])
+                ])
+            ])
+        }) { _, _ in }
+
+        _ = await harness.appState.submitComposer(text: "/rollback")
+
+        XCTAssertEqual(calls.map(\.0), [.list])
+        XCTAssertEqual(calls.first?.1, "composer-origin")
+        let note = try XCTUnwrap(harness.appState.messages.last?.content)
+        XCTAssertTrue(note.contains("1. 01234567  2026-11-13 10:00  before write_file"), note)
+        XCTAssertTrue(note.contains("2. fedcba98  2026-11-13 09:00"), note)
+    }
+
+    func testRollbackWithCheckpointsOffSaysHowToTurnThemOn() {
+        XCTAssertEqual(
+            AppState.checkpointList(["enabled": .bool(false), "checkpoints": .array([])]),
+            "File checkpoints are off for this chat. Turn them on with checkpoints.enabled in Hermes' config.yaml."
+        )
+    }
+
+    func testAWholeRollbackThatTookTurnsBackOpensTheChatAgain() async throws {
+        var params: [[String: Any]] = []
+        let harness = rewindHarness(rollback: { method, _, sent in
+            XCTAssertEqual(method, .restore)
+            params.append(sent)
+            return .object(["success": .bool(true), "restored_to": .string("0123456789abcdef"), "history_removed": .number(2)])
+        }) { _, _ in }
+
+        _ = await harness.appState.submitComposer(text: "/rollback 1")
+
+        XCTAssertEqual(params.first?["hash"] as? String, "1")
+        XCTAssertNil(params.first?["file_path"])
+        let notes = harness.appState.messages.suffix(2).map(\.content)
+        XCTAssertEqual(notes.first, "Restored checkpoint 01234567.\nMessages taken back from this chat: 2")
+        XCTAssertEqual(
+            notes.last,
+            "Open the chat again to see the messages the restore took back.",
+            "the harness's reopen fails, so the note says the chat on screen is stale"
         )
     }
 

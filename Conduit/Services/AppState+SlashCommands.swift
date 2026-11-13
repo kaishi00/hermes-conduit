@@ -39,6 +39,7 @@ extension AppState {
         SlashCommand(name: "reload-skills", aliases: ["reload_skills"], description: AppLocalization.string("Rescan installed skills"), category: "Hermes"),
         SlashCommand(name: "queue", aliases: ["q"], description: AppLocalization.string("Queue a prompt for the next turn"), category: "Hermes"),
         SlashCommand(name: "retry", description: AppLocalization.string("Retry the last user message"), category: "Hermes"),
+        SlashCommand(name: "rollback", description: AppLocalization.string("List or restore file checkpoints"), category: "Hermes"),
         SlashCommand(name: "status", description: AppLocalization.string("Show current session status"), category: "Hermes"),
         SlashCommand(name: "steer", aliases: ["s"], description: AppLocalization.string("Steer the current run"), category: "Hermes"),
         SlashCommand(name: "stop", description: AppLocalization.string("Stop the reply and background processes"), category: "Hermes"),
@@ -63,7 +64,7 @@ extension AppState {
         "image", "import", "indicator", "journey", "learning", "memory-graph",
         "palette", "paste", "pause", "pet", "platform", "plugins", "prompt",
         "compose", "quit", "exit", "redraw", "reload", "restart", "resume", "rewind",
-        "rollback", "save", "sessions", "sethome", "set-home", "skin",
+        "save", "sessions", "sethome", "set-home", "skin",
         "snapshot", "snap", "start", "statusbar", "sb", "subscription",
         "upgrade", "timestamps", "ts", "tools", "topic", "update",
         "wake", "worktree"
@@ -347,6 +348,14 @@ extension AppState {
                 sessionID: sessionId,
                 context: submissionContext
             ) else { break }
+            return
+        case "rollback":
+            // Hermes' file checkpoints, which slash.exec refuses: its own
+            // clients run `rollback.list|diff|restore` (Desktop's /rollback).
+            // A Hermes without them gets the command through slash.exec,
+            // whose refusal says so.
+            cancelChatResumeRestoration()
+            guard await runRollback(argument: command.argument, client: client, sessionID: sessionId, context: submissionContext) else { break }
             return
         case "stop":
             // Desktop's /stop: the running reply, then this chat's
@@ -671,24 +680,183 @@ extension AppState {
             )
             return true
         }
+        // /undo never touches files: Hermes names the files the undone
+        // turns changed and the /rollback that restores them.
+        let filesLine = await undoRollbackHint(client: client, sessionID: sessionID, target: target, profile: profile)
+        func withFilesLine(_ note: String) -> String {
+            filesLine.map { "\(note)\n\n\($0)" } ?? note
+        }
         guard !text.isEmpty else {
             // A turn that held more than text has nothing to put back.
             appendSlashOutput(
-                turnCount == 1
+                withFilesLine(turnCount == 1
                     ? AppLocalization.string("Took back your last message.")
-                    : AppLocalization.string("Messages taken back: \(turnCount)"),
+                    : AppLocalization.string("Messages taken back: \(turnCount)")),
                 context: current
             )
             return true
         }
         appendSlashOutput(
-            turnCount == 1
+            withFilesLine(turnCount == 1
                 ? AppLocalization.string("Took back your last message. It's in the composer to edit.")
-                : AppLocalization.string("The oldest is in the composer to edit. Messages taken back: \(turnCount)"),
+                : AppLocalization.string("The oldest is in the composer to edit. Messages taken back: \(turnCount)")),
             context: current
         )
         prefillComposer(text)
         return true
+    }
+
+    /// `/undo`'s line about files: with checkpoints on and one taken while
+    /// the undone turns ran, Hermes names the files they changed and the
+    /// `/rollback` that restores them (`rollback.list`'s `undo_hint`, in
+    /// Hermes' language). Advisory: nil when Hermes has none, or is older.
+    private func undoRollbackHint(
+        client: HermesClient,
+        sessionID: String,
+        target: SessionRewindSnapshot.Turn,
+        profile: String?
+    ) async -> String? {
+        guard let since = target.timestamp else { return nil }
+        let params: [String: Any] = ["undo_since": since, "undo_message_id": target.rowID]
+        let result: AnyCodable
+        do {
+            if let rollback = chatResumeLifecycleOperations.rollback {
+                result = try await rollback(client, .list, sessionID, params)
+            } else {
+                result = try await client.rollback(.list, sessionId: sessionID, params: params, profile: profile)
+            }
+        } catch {
+            return nil
+        }
+        let text = result.objectValue?["undo_hint"]?.objectValue?["text"]?.stringValue?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        return text.isEmpty ? nil : text
+    }
+
+    /// `/rollback` (Hermes Desktop's): lists the chat's file checkpoints,
+    /// shows one's diff, or restores the working folder (or one file) to
+    /// one. A whole restore can take back the turns since, so the chat
+    /// opens again to show them gone. False when this Hermes has no
+    /// checkpoint verbs, so slash.exec answers.
+    private func runRollback(
+        argument: String,
+        client: HermesClient,
+        sessionID: String,
+        context: ComposerSubmissionContext
+    ) async -> Bool {
+        guard let request = RollbackRequest(argument: argument) else {
+            appendSlashOutput(Self.rollbackUsage, context: context)
+            return true
+        }
+        if request.method == .restore, request.filePath == nil, isBusy {
+            appendSlashOutput(AppLocalization.string("Wait for the reply to finish, or /stop it, then try again."), context: context)
+            return true
+        }
+        let profile = botScopeProfile(forSessionIDs: [sessionID], workspaceProfile: activeProfile)
+        let result: AnyCodable
+        do {
+            if let rollback = chatResumeLifecycleOperations.rollback {
+                result = try await rollback(client, request.method, sessionID, request.params)
+            } else {
+                result = try await client.rollback(request.method, sessionId: sessionID, params: request.params, profile: profile)
+            }
+        } catch where HermesClient.isMissingRPCMethod(error) {
+            return false
+        } catch {
+            if isCurrentComposerSubmission(context) {
+                appendSlashOutput(Self.slashFailureNote(command: "rollback", error: error), context: context)
+            }
+            return true
+        }
+        guard isCurrentComposerSubmission(context) else { return true }
+        let object = result.objectValue ?? [:]
+        switch request.method {
+        case .list:
+            appendSlashOutput(Self.checkpointList(object), context: context)
+        case .diff:
+            let parts = [object["stat"]?.stringValue, object["diff"]?.stringValue]
+                .compactMap { $0?.trimmingCharacters(in: .newlines) }
+                .filter { !$0.isEmpty }
+            appendSlashOutput(
+                parts.isEmpty
+                    ? AppLocalization.string("No changes since that checkpoint.")
+                    : Self.diffBlock(parts.joined(separator: "\n")),
+                context: context
+            )
+        case .restore:
+            appendSlashOutput(Self.restoreNote(object), context: context)
+            // A whole restore that took turns back: open the chat again so
+            // they leave the screen.
+            let removed = HermesClient.exactIntValue(object["history_removed"]) ?? 0
+            if object["success"]?.boolValue == true, request.filePath == nil, removed > 0 {
+                let reopened = await openSessionOutcome(context.durableSessionID ?? sessionID)
+                // Our own open moved the viewport on, so `context` is stale
+                // by construction; the restored chat must still be on screen.
+                let current = composerSubmissionContext()
+                if reopened == .failed,
+                   composerSessionIDsAreEquivalent(context.sessionID, current.sessionID)
+                    || composerSessionIDsAreEquivalent(context.durableSessionID, current.sessionID) {
+                    appendSlashOutput(
+                        AppLocalization.string("Open the chat again to see the messages the restore took back."),
+                        context: current
+                    )
+                }
+            }
+        }
+        return true
+    }
+
+    /// A checkpoint's diff as a fenced block, so it draws as code.
+    static func diffBlock(_ diff: String) -> String {
+        ["```diff", diff, "```"].joined(separator: "\n")
+    }
+
+    static var rollbackUsage: String {
+        AppLocalization.string("Usage: /rollback [list], /rollback diff <n>, or /rollback <n> [file] [--all]. Restores the files Hermes changed to a checkpoint.")
+    }
+
+    /// `rollback.list`'s checkpoints, newest first, numbered as /rollback
+    /// takes them.
+    static func checkpointList(_ object: [String: AnyCodable]) -> String {
+        if object["enabled"]?.boolValue == false {
+            return AppLocalization.string("File checkpoints are off for this chat. Turn them on with checkpoints.enabled in Hermes' config.yaml.")
+        }
+        let rows = object["checkpoints"]?.arrayValue?.compactMap(\.objectValue) ?? []
+        guard !rows.isEmpty else {
+            return AppLocalization.string("No checkpoints yet for this chat's folder.")
+        }
+        let lines = rows.enumerated().map { index, row -> String in
+            let hash = String((row["hash"]?.stringValue ?? "").prefix(8))
+            let parts = [hash, row["timestamp"]?.stringValue ?? "", row["message"]?.stringValue ?? ""]
+                .filter { !$0.isEmpty }
+            return "\(index + 1). " + parts.joined(separator: "  ")
+        }
+        return ([AppLocalization.string("Checkpoints, newest first:")] + lines + [
+            "",
+            AppLocalization.string("Restore with /rollback <n> [file] (add --all to also overwrite your own edits). See the changes with /rollback diff <n>.")
+        ]).joined(separator: "\n")
+    }
+
+    /// What a restore did: the checkpoint, Hermes' own note (files it left
+    /// alone), and how many messages it took back.
+    static func restoreNote(_ object: [String: AnyCodable]) -> String {
+        guard object["success"]?.boolValue == true else {
+            let error = object["error"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return error.isEmpty
+                ? AppLocalization.string("The restore didn't go through.")
+                : AppLocalization.string("The restore didn't go through: \(error)")
+        }
+        let hash = String((object["restored_to"]?.stringValue ?? "").prefix(8))
+        var lines = [hash.isEmpty
+            ? AppLocalization.string("Restored the checkpoint.")
+            : AppLocalization.string("Restored checkpoint \(hash).")]
+        if let reason = object["reason"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines), !reason.isEmpty {
+            lines.append(reason)
+        }
+        if let removedCount = HermesClient.exactIntValue(object["history_removed"]), removedCount > 0 {
+            lines.append(AppLocalization.string("Messages taken back from this chat: \(removedCount)"))
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Words taken back in `key`'s draft, ahead of whatever is typed

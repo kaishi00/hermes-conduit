@@ -2977,6 +2977,45 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(row?.isSteer, true)
     }
 
+    func testASafetyRefusedTurnKeepsTheUsersWordsAsARefusedRow() {
+        // Hermes drops a refused turn from the model's context and keeps
+        // the user's message for display, archived and typed
+        // `content_refused`, its notice in display_metadata.
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(41),
+                "role": .string("user"),
+                "content": .string("Earlier question"),
+            ]),
+            .object([
+                "id": .number(42),
+                "role": .string("assistant"),
+                "content": .string("Earlier answer"),
+            ]),
+            .object([
+                "id": .number(43),
+                "role": .string("user"),
+                "content": .string("Tell me about the thing"),
+                "archived": .bool(true),
+                "display_kind": .string("content_refused"),
+                "display_metadata": .object([
+                    "content_refused": .object(["notice": .string("This message was refused by the model's safety filter — try a different query.")])
+                ])
+            ])
+        ])
+
+        XCTAssertEqual(messages.count, 3)
+        let row = messages.last
+        XCTAssertEqual(row?.role, .user, "It is still what the user wrote")
+        XCTAssertEqual(row?.content, "Tell me about the thing")
+        XCTAssertEqual(row?.rowId, 43)
+        XCTAssertEqual(row?.isContentRefused, true)
+        XCTAssertEqual(row?.isSteer, false)
+        XCTAssertEqual(messages.first?.isContentRefused, false)
+        // The saved copy of the chat keeps the tag.
+        XCTAssertEqual(row?.withID("copy").isContentRefused, true)
+    }
+
     func testVisibleUserTextMovesImageTokensOut() {
         XCTAssertEqual(
             MessageNormalizer.visibleUserText("Here is the screenshot.\n@image:/root/x.png")
