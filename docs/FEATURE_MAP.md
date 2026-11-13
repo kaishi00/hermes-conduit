@@ -7071,7 +7071,7 @@ follow-ups (the same chip, see Cards Hermes shows)
 - Row and tag: `Conduit/Views/Components/PredictiveRow.swift`, placed in `Conduit/Views/ChatView.swift` (bottomBar, MessageBubble), its reasons in `Conduit/Views/ChatRowState.swift`
 - Composer: `Conduit/Views/Components/ComposerBar.swift` (applyPredictiveRequest, predictiveDraftChanged), `Conduit/Views/Components/ComposerUpdates.swift`
 - Settings: `Conduit/Views/PredictiveSettingsView.swift`, listed in `Conduit/Views/AuxiliaryViews.swift` (ChatSettingsDetail)
-- Notifier, from plugin 0.80: `notifier/predict.py` and `notifier/dashboard/api/chats.py` (`/predict`), tested in `notifier/tests/test_predict.py`; `notifier/README.md`, `notifier/CHANGELOG.md`
+- Notifier, from plugin 0.80: `notifier/predict.py` and `notifier/dashboard/api/chats.py` (`/predict`), tested in `notifier/tests/test_predict.py` and `notifier/tests/test_predict_cleanup.py`; from 0.168.3 the fork uses Hermes' client-only release helper (or client-only cleanup on older Hermes), not the parent chat's session teardown; `notifier/README.md`, `notifier/CHANGELOG.md`
 - Tests: `ConduitTests/ChatTypographyTests+Predictive.swift`, the reconnect in `ConduitTests/AppStateChatResumeTests.swift`
 
 **Rulings**
