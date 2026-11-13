@@ -25,6 +25,10 @@ final class ShareDraftModel: ObservableObject {
     @Published private(set) var collection = ShareDraftCollection(text: "", attachments: [], problems: [])
     @Published private(set) var workspaceID: WidgetWorkspaceID?
     @Published var target: ShareDraftTarget = .newChat
+    /// What Hermes should do with it: chat about it (the draft waits in
+    /// the composer), or sort it out or remember it (sent in a new chat
+    /// once Conduit opens).
+    @Published var action: ShareDraftAction = .chat
     /// Whether a notification will take the user back to Conduit.
     @Published private(set) var notifiesWhenSaved = false
     var onFinish: ((Outcome) -> Void)?
@@ -92,9 +96,10 @@ final class ShareDraftModel: ObservableObject {
         let envelope = ShareDraftEnvelope(
             createdAt: Date(),
             workspace: workspace?.id,
-            target: workspace == nil ? .newChat : target,
+            target: workspace == nil || action.sendsOnPickup ? .newChat : target,
             text: collection.text,
-            attachments: collection.attachments
+            attachments: collection.attachments,
+            action: action
         )
         do {
             try inbox.commit(envelope, from: staging)
@@ -127,8 +132,13 @@ final class ShareDraftModel: ObservableObject {
     /// the notification itself carries nothing but its id.
     private func postReadyNotification(for envelope: ShareDraftEnvelope) {
         let content = UNMutableNotificationContent()
-        content.title = AppLocalization.string("Draft ready in Conduit")
-        content.body = AppLocalization.string("Tap to review it before you send it.")
+        if envelope.action.sendsOnPickup {
+            content.title = AppLocalization.string("Ready to send in Conduit")
+            content.body = AppLocalization.string("Tap to open Conduit, which sends it to Hermes.")
+        } else {
+            content.title = AppLocalization.string("Draft ready in Conduit")
+            content.body = AppLocalization.string("Tap to review it before you send it.")
+        }
         content.threadIdentifier = "conduit.share-draft"
         let request = UNNotificationRequest(
             identifier: ShareDraftInbox.notificationIdentifierPrefix + envelope.id.uuidString,

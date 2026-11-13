@@ -159,6 +159,9 @@ extension GroupChatModelsTests {
         for status in ["waiting", "starting", "started"] {
             appState.linkedRoomDrafts = try drafts(["ended", status])
             XCTAssertTrue(appState.linkedRoomOnItsWay, "a draft \(status), its room not listed")
+            // Past the first 15 minutes (issue 2359) a draft waiting on
+            // answers is left to its push; one starting is followed on.
+            XCTAssertEqual(appState.linkedRoomOnItsWay(waiting: false), status != "waiting", status)
         }
         // Everyone who joined it did so with none of their agents (Just me): its people are still read.
         let ownOnly = GroupRoom(roomID: "conduit-1", name: "Zoo trip", members: [], authorityGatewayID: "gw", authorityEpoch: 1,
@@ -183,6 +186,7 @@ extension GroupChatModelsTests {
         }
         appState.linkedRoomInvites = try invites("joined")
         XCTAssertTrue(appState.linkedRoomOnItsWay, "an invite you joined waits for its room")
+        XCTAssertFalse(appState.linkedRoomOnItsWay(waiting: false), "past 15 minutes it's left to its push")
         appState.linkedRoomInvites = try invites("waiting")
         XCTAssertFalse(appState.linkedRoomOnItsWay, "one waiting on you is yours to answer, not followed")
     }
@@ -634,6 +638,35 @@ extension GroupChatModelsTests {
         XCTAssertEqual(routes.draftsReads, 1)
     }
 
+    /// A drafts read made before a Block that answers after it is dropped:
+    /// it would bring back the blocked host's rows (issue 2347).
+    @MainActor
+    func testADraftsReadABlockOvertookIsDropped() async throws {
+        let backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+        defer { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let routes = DraftsRoutes(drafts: [draftsDraft("conduit-1")])
+        routes.holdsFirstRead = true
+        let appState = draftsAppState(routes)
+        draftsConnect(appState)
+        // Group Chats is available first, so the plugin's word reads the drafts.
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(draftsPluginReport)
+        let before = Task { @MainActor in await appState.refreshLinkedRoomDrafts() }
+        await draftsWait("the held read", until: { routes.holding })
+
+        // The Block takes the host's draft away: the plugin lists it no more.
+        routes.drafts = []
+        let removed = try await appState.block(RoomBlockTarget(id: "lk-mona", name: "Mona"))
+        XCTAssertTrue(removed)
+        XCTAssertEqual(routes.unlinks, 1)
+        XCTAssertEqual(appState.linkedRoomDraftRows.map(\.id), [], "Block reads the drafts again itself")
+
+        routes.answerHeldRead()
+        await before.value
+        XCTAssertEqual(appState.linkedRoomDraftRows.map(\.id), [], "the read from before the Block is dropped")
+    }
+
     /// A read from before a sign-out answers after the sign-in on the same
     /// dashboard, whose own read failed: it's dropped, as the room list's
     /// is, and shows nothing of the signed-out session.
@@ -668,7 +701,10 @@ extension GroupChatModelsTests {
 /// the first can wait until the test answers it, and Links reads fail.
 @MainActor
 private final class DraftsRoutes {
-    let drafts: [[String: Any]]
+    /// What the plugin lists; a held read answers with what was listed when
+    /// it was made.
+    var drafts: [[String: Any]]
+    private(set) var unlinks = 0
     /// The first drafts read waits until `answerHeldRead()`.
     var holdsFirstRead = false
     /// Drafts reads after the first fail.
@@ -682,8 +718,13 @@ private final class DraftsRoutes {
     }
 
     func answer(_ path: String, _ method: String, _ body: [String: Any]?, _ timeout: Int?) async throws -> [String: Any] {
+        if path == "\(RoomLinksClient.path)/links?link_id=lk-mona", method == "DELETE" {
+            unlinks += 1
+            return ["ok": true, "removed": true]
+        }
         guard path == RoomDraftsClient.path, method == "GET" else { throw URLError(.fileDoesNotExist) }
         draftsReads += 1
+        let listed = drafts
         if draftsReads == 1, holdsFirstRead {
             holding = true
             while !released, !Task.isCancelled {
@@ -694,7 +735,7 @@ private final class DraftsRoutes {
             throw URLError(.timedOut)
         }
         let starts: [String: Any] = ["available": true, "reason": NSNull()]
-        return ["ok": true, "drafts": drafts, "starts": starts]
+        return ["ok": true, "drafts": listed, "starts": starts]
     }
 
     func answerHeldRead() {

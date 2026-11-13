@@ -74,9 +74,10 @@ final class MarkdownReferenceLinkTests: XCTestCase {
 
     func testFoundationCompositePreservesFragmentContentWithSoftLineBreaks() throws {
         // Paragraph accumulation keeps internal newlines in the fragment.
-        // Foundation renders soft breaks as spaces under `.full` — the same
-        // behavior production already relies on without definitions — and
-        // appending definitions must not disturb it beyond resolving the link.
+        // Foundation renders soft breaks as spaces under `.full` (production
+        // turns them into hard breaks first, InlineMarkdownContent's
+        // keepingLineBreaks), and appending definitions must not disturb it
+        // beyond resolving the link.
         let fragment = "first line\nsecond [link][id] line"
         let definitions = "[id]: https://example.com"
 

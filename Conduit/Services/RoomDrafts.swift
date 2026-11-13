@@ -421,6 +421,7 @@ extension AppState {
     func refreshLinkedRoomDrafts(readingPeople: Bool = true) async {
         guard canInviteLinkedPeople, groupChatPhase == .available, isConnected else { return }
         let epoch = groupRoomEpoch
+        let generation = linkedRosterGeneration
         let client = roomDraftsClient
         let links = roomLinksClient
         do {
@@ -429,7 +430,9 @@ extension AppState {
             if readingPeople || people == nil, let read = try? await links.list() {
                 people = read.links.filter { $0.status == "linked" }
             }
-            guard groupRoomEpoch == epoch, activeDashboardID == client.dashboardID else { return }
+            // One a Block overtook could still list the person blocked.
+            guard groupRoomEpoch == epoch, linkedRosterGeneration == generation,
+                  activeDashboardID == client.dashboardID else { return }
             let openRoom = activeRoomSurface.flatMap { $0.copy == nil ? $0.room : nil }
             let hadPeople = openRoom.map { hasLinkedPeople($0) } ?? true
             linkedRoomDrafts = LinkedRoomDrafts(dashboardID: client.dashboardID, list: list, people: people ?? [])

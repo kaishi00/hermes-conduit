@@ -192,6 +192,11 @@ struct WorkspaceFolderView: View {
                 return
             }
             guard seen != target else { return }
+            // The agent's file tools often land back to back: they're read
+            // once they settle, not once each (issue 2355). The next change
+            // cancels this task, and its own waits again.
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
             await explorer.refresh()
             guard !Task.isCancelled else { return }
             seenChanges = target
@@ -293,6 +298,27 @@ struct WorkspaceFolderView: View {
                         showsFolderPicker = true
                     } label: {
                         Label(AppLocalization.string("Open Folder…", table: .chat), systemImage: "folder.badge.plus")
+                    }
+                    // The chat works here from now on (Hermes Desktop's
+                    // folder chip), for a folder that isn't already its own.
+                    if includesChat, let root, root.kind != .chat, appState.canMoveOpenChatFolder {
+                        Button {
+                            let picked = rootPath
+                            Task {
+                                switch await appState.moveOpenChatFolder(to: root.path) {
+                                case .moved:
+                                    Haptics.selection()
+                                    // Only if the reader hasn't picked another folder meanwhile.
+                                    if rootPath == picked { rootPath = nil }
+                                case .failed(let message):
+                                    failure = message
+                                case .superseded:
+                                    break
+                                }
+                            }
+                        } label: {
+                            Label(AppLocalization.string("Work Here in This Chat", table: .chat), systemImage: "arrow.right.doc.on.clipboard")
+                        }
                     }
                     if let root, root.kind == .opened {
                         Button {
@@ -1011,13 +1037,20 @@ struct WorkspaceFolderView: View {
         }
     }
 
-    private func perform(_ action: (WorkspaceFilesClient, String) async throws -> Void) async {
-        if let error = await explorer.change(action) {
+    /// Returns whether the change went through.
+    @discardableResult
+    private func perform(refreshing: Bool = true, _ action: (WorkspaceFilesClient, String) async throws -> Void) async -> Bool {
+        if let error = await explorer.change(refreshing: refreshing, action) {
             failure = UserFacingError.message(for: error)
+            return false
         }
+        return true
     }
 
+    /// Each file goes up in turn, and the folders are read once after the
+    /// last (issue 2355).
     private func upload(_ urls: [URL], into folder: String) async {
+        var uploaded = false
         for url in urls {
             let accessing = url.startAccessingSecurityScopedResource()
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
@@ -1035,10 +1068,13 @@ struct WorkspaceFolderView: View {
                 failure = tooLarge
                 continue
             }
-            await perform { client, root in
+            if await perform(refreshing: false, { client, root in
                 try await client.upload(root: root, in: folder, name: url.lastPathComponent, data: data)
+            }) {
+                uploaded = true
             }
         }
+        if uploaded { await explorer.refresh() }
     }
 
     /// The plugin takes up to 25 MB a file.
@@ -1406,7 +1442,7 @@ struct WorkspaceFileSheet: View {
                                 let _ = imageGallery.update { [text = preview.text] in
                                     ChatImageGallery.markdownItems(text, resolver: nil, recognizesGatewayMedia: false)
                                 }
-                                MarkdownText(source: preview.text)
+                                MarkdownText(source: preview.text, keepsLineBreaks: false)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .environment(\.imageGallery, imageGallery)
                             } else {

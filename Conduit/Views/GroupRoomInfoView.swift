@@ -211,10 +211,16 @@ struct GroupRoomInfoSheet: View {
     /// shows no line rather than a wrong one.
     private func loadAgentTools(roomID: String, profiles: [String]) async {
         let client = appState.roomChoicesClient
+        // All at once, not one after another (issue 2359): a room holds at
+        // most six agents.
         var read: [String: RoomChoices] = [:]
-        // A room holds at most six agents, so one read after another.
-        for profile in profiles {
-            if let choices = try? await client.choices(roomID: roomID, profile: profile) { read[profile] = choices }
+        await withTaskGroup(of: (String, RoomChoices?).self) { group in
+            for profile in profiles {
+                group.addTask { @MainActor in (profile, try? await client.choices(roomID: roomID, profile: profile)) }
+            }
+            for await (profile, choices) in group {
+                if let choices { read[profile] = choices }
+            }
         }
         // Left (or a newer read started), or another room opened meanwhile.
         guard !Task.isCancelled, appState.activeRoomSurface?.room.roomID == roomID else { return }

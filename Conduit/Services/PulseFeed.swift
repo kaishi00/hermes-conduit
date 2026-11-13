@@ -1310,6 +1310,14 @@ extension AppState {
             && (card.canBeDone || card.isFound && notifierPlugin.reports(PulseClient.foundActionsCapability))
     }
 
+    /// Not now's "Don't bring it back" on this card: one with no Done (a
+    /// whole report), which otherwise could only be put off and came back.
+    /// A card with Done has that for good; swiped away with no time, the
+    /// thing behind it would only rest a week.
+    func canPutPulseCardAwayForGood(_ card: PulseCard) -> Bool {
+        !canMarkPulseCardDone(card)
+    }
+
     /// Do it on this card: one about something Pulse remembers, or a report
     /// item Pulse found on its own (0.77.0).
     func canActOnPulseCard(_ card: PulseCard) -> Bool {

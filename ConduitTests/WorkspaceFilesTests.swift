@@ -219,6 +219,74 @@ extension HermesVoiceGatewayTimeoutTests {
         XCTAssertNil(sent?["expected_mtime"], "Replace It saves over whatever is there")
     }
 
+    /// An upload, and a save past 64 KB, are encoded off the main thread
+    /// and sent without the page (issue 2356); a small save goes the usual
+    /// way.
+    func testAnUploadAndABigSaveAreSentEncoded() async throws {
+        var asked: [String] = []
+        var encoded: [(path: String, body: [String: Any])] = []
+        let client = WorkspaceFilesClient(profile: "work", request: { path, _, _ in
+            asked.append(path)
+            return ["ok": true]
+        }, sendEncoded: { path, body in
+            encoded.append((path, try XCTUnwrap(JSONSerialization.jsonObject(with: body) as? [String: Any])))
+            return ["ok": true, "entry": ["name": "a.bin", "path": "/w/a.bin", "isDirectory": false]]
+        })
+
+        let entry = try await client.upload(root: "/w", in: "/w", name: "a.bin", data: Data([1, 2, 3]))
+        XCTAssertEqual(entry?.path, "/w/a.bin")
+        XCTAssertEqual(encoded.count, 1)
+        XCTAssertTrue(encoded[0].path.hasPrefix("/api/plugins/conduit_push/workspace/upload"), encoded[0].path)
+        XCTAssertEqual(encoded[0].body["data"] as? String, Data([1, 2, 3]).base64EncodedString())
+        XCTAssertEqual(encoded[0].body["name"] as? String, "a.bin")
+        XCTAssertEqual(encoded[0].body["overwrite"] as? Bool, false)
+        XCTAssertTrue(asked.isEmpty)
+
+        try await client.save(root: "/w", path: "/w/a.txt", content: "small", readAt: nil)
+        XCTAssertEqual(asked.count, 1, "a small save goes the usual way")
+        let big = String(repeating: "x", count: WorkspaceFilesClient.encodedSaveBytes + 1)
+        try await client.save(root: "/w", path: "/w/a.txt", content: big, readAt: Date(timeIntervalSince1970: 1_700_000_000))
+        XCTAssertEqual(encoded.count, 2)
+        XCTAssertEqual(encoded[1].body["content"] as? String, big)
+        XCTAssertEqual(encoded[1].body["expected_mtime"] as? Double, 1_700_000_000)
+    }
+
+    /// The editor colors a file from tokens found off the main thread
+    /// (issue 2354): the same colors the chat's code takes.
+    func testTheEditorsTokensColorAsTheChatsCode() throws {
+        let source = "let x = 42 // done\nprint(\"héllo\") /* a\nb */ if"
+        let tokens = try XCTUnwrap(SyntaxHighlighter.coloredTokens(in: source))
+        let text = source as NSString
+        let named = tokens.map { (text.substring(with: $0.range), $0.kind) }
+        XCTAssertEqual(named.map(\.0), ["let", "42", "// done", "\"héllo\"", "/* a\nb */", "if"])
+        XCTAssertEqual(named.map(\.1), [.keyword, .number, .comment, .string, .comment, .keyword])
+        let highlighted = SyntaxHighlighter.highlight(source, language: "swift")
+        for token in tokens {
+            let range = try XCTUnwrap(Range(token.range, in: source))
+            let start = try XCTUnwrap(AttributedString.Index(range.lowerBound, within: highlighted))
+            XCTAssertEqual(highlighted[start...].runs.first?.foregroundColor, token.kind.color)
+        }
+    }
+
+    /// The gutter numbers lines from an index found once per change, a
+    /// wrapped line once and the line after a final newline too.
+    func testTheEditorsLineIndexNumbersLines() {
+        let index = WorkspaceLineIndex()
+        let text = NSMutableString(string: "one\ntwo\n\nfour")
+        XCTAssertEqual(index.count(in: text), 4)
+        XCTAssertEqual(index.line(at: 0, in: text), 1)
+        XCTAssertEqual(index.line(at: 3, in: text), 1, "the newline ends its own line")
+        XCTAssertEqual(index.line(at: 4, in: text), 2)
+        XCTAssertEqual(index.line(at: 8, in: text), 3)
+        XCTAssertEqual(index.line(at: 9, in: text), 4)
+        text.append("\n")
+        XCTAssertEqual(index.count(in: text), 4, "kept until the text changes")
+        index.invalidate()
+        XCTAssertEqual(index.count(in: text), 5)
+        XCTAssertEqual(index.line(at: text.length, in: text), 5)
+        XCTAssertEqual(WorkspaceLineIndex().count(in: NSMutableString()), 1)
+    }
+
     func testCodeThatNamesAPathLinksToTheFile() throws {
         for path in ["docs/guide.md", "/srv/app/main.py", "~/notes.txt", "README.md", "src/app/", "./run.sh",
                      "src/app/models", "~/projects", "./out"] {

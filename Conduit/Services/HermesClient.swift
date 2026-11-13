@@ -480,6 +480,9 @@ enum StreamEvent {
     /// `background.complete` / `btw.complete`: a side agent's answer (or
     /// `error: …`), on the session that started it.
     case sideAgentComplete(sessionId: String, kind: SideAgentKind, taskId: String, text: String, question: String?)
+    /// `session.control.update`: the session's goal, loop and heartbeat
+    /// after a change, whichever client made it.
+    case sessionControl(sessionId: String, snapshot: SessionControlSnapshot)
     case unparsed(payload: [String: Any])
 }
 
@@ -662,6 +665,9 @@ struct SessionRewindSnapshot: Equatable {
         /// The turn's text; nil when it held more than text (a picture or
         /// a file), which `/retry` can't send again as typed.
         let text: String?
+        /// When it was sent (Unix seconds), for `/undo`'s line about the
+        /// files the undone turns changed (`rollback.list`'s `undo_since`).
+        var timestamp: Double? = nil
     }
 
     let turns: [Turn]
@@ -692,7 +698,26 @@ struct SessionRewindSnapshot: Equatable {
         case nil, .null?, .string("")?, .string("steer")?: break
         default: return nil
         }
-        return Turn(rowID: rowID, text: text(of: row["content"]))
+        return Turn(rowID: rowID, text: text(of: row["content"]), timestamp: epochSeconds(row["timestamp"]))
+    }
+
+    /// A row's time as the epoch seconds Hermes' `undo_since` takes: a
+    /// number as stored, or a string holding one or an ISO 8601 date (an
+    /// older `session.resume`'s rows).
+    static func epochSeconds(_ value: AnyCodable?) -> Double? {
+        switch value {
+        case .number(let seconds)?:
+            return seconds
+        case .string(let text)?:
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let seconds = Double(trimmed) { return seconds }
+            let plain = ISO8601DateFormatter()
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return (plain.date(from: trimmed) ?? fractional.date(from: trimmed))?.timeIntervalSince1970
+        default:
+            return nil
+        }
     }
 
     /// A text turn's words; nil when a part isn't text. A stored prompt
@@ -721,6 +746,55 @@ struct SessionRewindSnapshot: Equatable {
 
 /// Hermes' answer to a rewind: how many rows it took back, and the user
 /// turn it rewound to.
+/// Hermes' file checkpoint verbs (`/rollback`).
+enum RollbackMethod: String {
+    case list = "rollback.list"
+    case diff = "rollback.diff"
+    case restore = "rollback.restore"
+}
+
+/// `/rollback`'s words: `[list]`, `diff <n|hash>`, or `<n|hash> [file]
+/// [--all]`, as Hermes Desktop reads them. Nil for a usage error.
+struct RollbackRequest: Equatable {
+    let method: RollbackMethod
+    /// Every param but the session's.
+    let hash: String?
+    let filePath: String?
+    let all: Bool
+
+    init?(argument: String) {
+        let words = argument.split(whereSeparator: \.isWhitespace).map(String.init)
+        let all = words.contains("--all")
+        let rest = words.filter { $0 != "--all" }
+        let first = rest.first?.lowercased() ?? ""
+        if first.isEmpty || first == "list" || first == "ls" {
+            guard rest.count <= 1, !all else { return nil }
+            self.init(method: .list, hash: nil, filePath: nil, all: false)
+        } else if first == "diff" {
+            guard rest.count == 2, !all else { return nil }
+            self.init(method: .diff, hash: rest[1], filePath: nil, all: false)
+        } else {
+            let file = rest.dropFirst().joined(separator: " ")
+            self.init(method: .restore, hash: rest[0], filePath: file.isEmpty ? nil : file, all: all)
+        }
+    }
+
+    init(method: RollbackMethod, hash: String?, filePath: String?, all: Bool) {
+        self.method = method
+        self.hash = hash
+        self.filePath = filePath
+        self.all = all
+    }
+
+    var params: [String: Any] {
+        var params: [String: Any] = [:]
+        if let hash { params["hash"] = hash }
+        if let filePath { params["file_path"] = filePath }
+        if all { params["all"] = true }
+        return params
+    }
+}
+
 struct SessionRewindReceipt: Equatable {
     let rewoundCount: Int
     /// The rewound turn's text; nil when it held more than text.
@@ -4195,14 +4269,25 @@ final class HermesClient: ObservableObject {
         }
         let result: AnyCodable
         let builtForDashboard = !speaksSessionAuthority
+        let sendWatch = SendWatch()
         do {
-            result = try await rpc("approval.respond", params: params)
+            let sent = params
+            result = try await AuthorityAnswerSend.$watch.withValue(sendWatch) {
+                try await self.rpc("approval.respond", params: sent)
+            }
         } catch let error as RpcError where builtForDashboard && speaksSessionAuthority && error.refusesShape {
             // Sent before the ready was read, to the authority, which refuses
             // this shape before anything runs: answer it in its own.
             return try await respondToApprovalOutcome(
                 sessionId: sessionId, requestId: requestId, choice: choice, profile: profile
             )
+        } catch HermesError.notConnected {
+            // Never written (no socket, or one not ready): nothing was taken,
+            // and the card can be answered again (issue 2333's review).
+            throw AnswerNotSent(underlying: HermesError.notConnected)
+        } catch let error where !(error is RpcError) && sendWatch.unwritten {
+            // Cancelled before the write, or the socket refused the frame.
+            throw AnswerNotSent(underlying: error)
         }
         // Current Hermes reports the number of queue entries resolved. Older
         // gateways omitted the field after a successful response to legacy
@@ -4763,6 +4848,60 @@ final class HermesClient: ObservableObject {
             revision: Self.exactIntValue(result.objectValue?["revision"])
         )
         return SessionRewindReceipt(result: result)
+    }
+
+    /// Hermes' file checkpoints for the chat's working folder (`/rollback`):
+    /// `rollback.list`, `rollback.diff` or `rollback.restore` with
+    /// `params`, which `slash.exec` refuses for a chat like Conduit's.
+    /// `profile` opens a bot chat's store, as for a rewind.
+    func rollback(_ method: RollbackMethod, sessionId: String, params: [String: Any], profile: String? = nil) async throws -> AnyCodable {
+        var params = params
+        params["session_id"] = sessionId
+        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            params["profile"] = profile
+        }
+        return try await rpc(method.rawValue, params: params)
+    }
+
+    /// The chat's goal, loop and heartbeat (`session.control.read`).
+    func sessionControl(sessionId: String, profile: String? = nil) async throws -> SessionControlSnapshot {
+        var params: [String: Any] = ["session_id": sessionId]
+        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { params["profile"] = profile }
+        guard let snapshot = SessionControlSnapshot(try await rpc("session.control.read", params: params)) else {
+            throw HermesError.invalidResponse
+        }
+        return snapshot
+    }
+
+    /// Runs one control action (`session.control`) and returns what the
+    /// chat's controls are now, with Hermes' own words when it gave any.
+    func runSessionControl(_ action: SessionControlAction, sessionId: String, profile: String? = nil) async throws -> (snapshot: SessionControlSnapshot?, note: String?) {
+        var params: [String: Any] = ["session_id": sessionId, "action": action.name]
+        if let args = action.args { params["args"] = args }
+        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { params["profile"] = profile }
+        let result = try await rpc("session.control", params: params)
+        let dispatch = result.objectValue?["dispatch"]?.objectValue
+        let note = ["output", "notice", "message"].lazy
+            .compactMap { dispatch?[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+        return (SessionControlSnapshot(result), note)
+    }
+
+    /// The background processes a live session started (`process.list`):
+    /// servers, watchers and long builds Hermes left running.
+    func backgroundProcesses(sessionId: String, profile: String? = nil) async throws -> [BackgroundProcess] {
+        var params: [String: Any] = ["session_id": sessionId]
+        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { params["profile"] = profile }
+        let result = try await rpc("process.list", params: params)
+        guard let rows = result.objectValue?["processes"]?.arrayValue else { throw HermesError.invalidResponse }
+        return rows.compactMap { BackgroundProcess($0.objectValue) }
+    }
+
+    /// Ends one background process (`process.kill`).
+    func killBackgroundProcess(sessionId: String, processId: String, profile: String? = nil) async throws {
+        var params: [String: Any] = ["session_id": sessionId, "process_id": processId]
+        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { params["profile"] = profile }
+        _ = try await rpc("process.kill", params: params)
     }
 
     func dispatchCommand(sessionId: String, name: String, arg: String) async throws -> AnyCodable {
@@ -5930,6 +6069,15 @@ enum MessageNormalizer {
                 && rawRole == "user"
                 && (obj["display_kind"]?.stringValue ?? "")
                     .trimmingCharacters(in: .whitespacesAndNewlines) == ChatMessage.steerDisplayKind
+            // A turn the model's safety filter refused: Hermes took it out of
+            // the model's context and kept the user's own message for display,
+            // typed `display_kind: "content_refused"`. It stays the user's
+            // row (their words); the tag lets the transcript draw it greyed
+            // with a notice instead of as a message waiting on a reply.
+            let isRefusedRow = !isToolResult
+                && rawRole == "user"
+                && (obj["display_kind"]?.stringValue ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines) == ChatMessage.contentRefusedDisplayKind
             var role: MessageRole
             switch rawRole {
             case "user": role = .user
@@ -6002,8 +6150,9 @@ enum MessageNormalizer {
             if role == .assistant, !isToolResult, displayKind == nil, isSilenceMarker(rawContent) {
                 rawContent = ""
             }
-            let modelChange = modelChangeActivity(fromText: rawContent)
-            let systemNotice = systemNoticeText(fromText: rawContent)
+            // A refused turn stays the user's words, whatever they look like.
+            let modelChange = isRefusedRow ? nil : modelChangeActivity(fromText: rawContent)
+            let systemNotice = isRefusedRow ? nil : systemNoticeText(fromText: rawContent)
             // A known synthetic display kind never renders as a human turn,
             // even when its persisted role is `user` and its text matches no
             // legacy marker. Unknown kinds keep ordinary normalization.
@@ -6150,7 +6299,8 @@ enum MessageNormalizer {
                 review: review,
                 attachments: userContent.attachments,
                 displayKind: displayKind?.rawValue
-                    ?? (isSteerRow && role == .user ? ChatMessage.steerDisplayKind : nil),
+                    ?? (isSteerRow && role == .user ? ChatMessage.steerDisplayKind : nil)
+                    ?? (isRefusedRow && role == .user ? ChatMessage.contentRefusedDisplayKind : nil),
                 rowId: rowId,
                 reactions: messageReactions(fromMetadata: obj["display_metadata"])
             )

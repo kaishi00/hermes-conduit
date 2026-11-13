@@ -399,11 +399,11 @@ extension AppState {
     func readLinkedRoomCopies() async -> [RoomCopy]? {
         guard canReadRoomCopies, isConnected else { return nil }
         let epoch = groupRoomEpoch
-        let generation = linkedRoomCopiesGeneration
+        let generation = linkedRosterGeneration
         let client = roomCopiesClient
-        // A read a delete overtook could still list the deleted copy.
+        // A read a delete, Block or leave overtook could still list what went.
         guard let copies = try? await client.copies(), groupRoomEpoch == epoch,
-              linkedRoomCopiesGeneration == generation, activeDashboardID == client.dashboardID else { return nil }
+              linkedRosterGeneration == generation, activeDashboardID == client.dashboardID else { return nil }
         let read = LinkedRoomCopies(dashboardID: client.dashboardID, copies: copies)
         // The room screen reads them each quiet tick: unchanged, nothing is published.
         if read != linkedRoomCopies { linkedRoomCopies = read }
@@ -448,7 +448,7 @@ extension AppState {
         } catch {
             return .refused(RoomCopyText.deleteRefusal(for: error))
         }
-        linkedRoomCopiesGeneration &+= 1
+        linkedRosterGeneration &+= 1
         if var copies = linkedRoomCopies, copies.dashboardID == client.dashboardID {
             copies.copies.removeAll { $0.id == copy.id }
             linkedRoomCopies = copies

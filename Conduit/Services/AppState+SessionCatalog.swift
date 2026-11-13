@@ -302,8 +302,21 @@ extension AppState {
         var sessions: [SessionSummary] = []
         var isAuthoritative = false
         // Sent alongside the live list: the plugin archives a standalone
-        // call when it ends, which Conduit still lists with its calls.
-        async let archivedCalls = archivedVoiceCallSessions(profile: profile, maximumPages: maximumPages, using: bridge)
+        // call when it ends, which Conduit still lists with its calls. The
+        // archived pages read last time serve again (issue 2357) while
+        // they're under 5 minutes old, no call was tagged since, and the
+        // live list holds as many chats as then: a call archived meanwhile
+        // leaves it, so its total moves and they're read again.
+        let callsKey = ArchivedCallsRead.key(dashboard: activeDashboardID, profile: profile, pages: maximumPages)
+        let tagCount = voiceSessionTagsByKey[voiceHistoryKey(profile: profile)]?.count ?? 0
+        let kept = archivedCallsReads[callsKey].flatMap {
+            $0.servesAgain(tags: tagCount, now: Date()) ? $0 : nil
+        }
+        let archivedRead: Task<[SessionSummary]?, Never>? = kept != nil ? nil : Task { [weak self] in
+            await self?.archivedVoiceCallSessions(profile: profile, maximumPages: maximumPages, using: bridge)
+        }
+        defer { archivedRead?.cancel() }
+        var liveTotal: Int?
 
         for page in 0..<maximumPages {
             let offset = page * 200
@@ -320,6 +333,7 @@ extension AppState {
             let explicitHasMore = rawHasMore.map { booleanValue($0) }
             let nextOffset = Self.integerValue(response["next_offset"] ?? response["nextOffset"])
             let total = Self.integerValue(response["total"])
+            if page == 0 { liveTotal = total }
             let hasExplicitTerminalSignal = explicitHasMore == false
                 || (nextOffset.map { $0 <= offset } ?? false)
                 || (total.map { offset + batch.count >= $0 } ?? false)
@@ -345,7 +359,25 @@ extension AppState {
         // live list's authority doesn't hang on this one.
         let tags = voiceSessionTagsByKey[voiceHistoryKey(profile: profile)] ?? [:]
         let listedIDs = Set(sessions.map(\.id))
-        let calls = await archivedCalls ?? (self.sessions + self.cronSessions).filter {
+        var archivedCalls: [SessionSummary]?
+        if let kept, let liveTotal, kept.liveTotal == liveTotal {
+            archivedCalls = kept.calls
+        } else {
+            if let archivedRead {
+                archivedCalls = await archivedRead.value
+            } else {
+                // Kept, but the live list moved (or says no total): read now.
+                archivedCalls = await archivedVoiceCallSessions(profile: profile, maximumPages: maximumPages, using: bridge)
+            }
+            if let archivedCalls, let liveTotal {
+                archivedCallsReads[callsKey] = ArchivedCallsRead(
+                    calls: archivedCalls, liveTotal: liveTotal, tags: tagCount, readAt: Date()
+                )
+            } else {
+                archivedCallsReads[callsKey] = nil
+            }
+        }
+        let calls = archivedCalls ?? (self.sessions + self.cronSessions).filter {
             var archived = $0
             archived.isArchived = true
             return Self.isArchivedVoiceChat(archived, tags: tags) && sessionBelongsToProfile($0, profile: profile)
@@ -520,5 +552,28 @@ extension AppState {
             .map { "\($0.key.rawValue)=\($0.value.count)" }
             .sorted()
             .joined(separator: ", ")
+    }
+}
+
+/// The archived pages' calls as last read for a profile (issue 2357), with
+/// what they were read under: the live list's total, and how many calls
+/// were tagged.
+struct ArchivedCallsRead {
+    let calls: [SessionSummary]
+    let liveTotal: Int
+    let tags: Int
+    let readAt: Date
+
+    /// How long a read serves the catalog reads after it.
+    static let lifetime: TimeInterval = SessionCatalogCache.fullHistoryRefreshInterval
+
+    static func key(dashboard: UUID?, profile: String, pages: Int) -> String {
+        "\(dashboard?.uuidString ?? "-")|\(profile.lowercased())|\(pages)"
+    }
+
+    /// Whether this read may serve again, before the live list's total is
+    /// compared.
+    func servesAgain(tags: Int, now: Date) -> Bool {
+        self.tags == tags && now.timeIntervalSince(readAt) < Self.lifetime && now >= readAt
     }
 }

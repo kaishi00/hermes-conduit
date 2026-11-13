@@ -54,6 +54,24 @@ final class ShareDraftTests: XCTestCase {
         XCTAssertEqual(try ShareDraftEnvelope.decoded(from: ShareDraftEnvelope.encoded(noWorkspace)), noWorkspace)
     }
 
+    func testEnvelopeKeepsItsActionAndAnOlderOneReadsAsChat() throws {
+        for action in ShareDraftAction.allCases {
+            let original = ShareDraftEnvelope(
+                createdAt: Date(timeIntervalSince1970: 1_792_000_000), workspace: workspace,
+                target: .newChat, text: "Dentist Tuesday 3pm", attachments: [], action: action
+            )
+            XCTAssertEqual(try ShareDraftEnvelope.decoded(from: ShareDraftEnvelope.encoded(original)).action, action)
+        }
+        var object = try XCTUnwrap(JSONSerialization.jsonObject(with: ShareDraftEnvelope.encoded(envelope())) as? [String: Any])
+        object["action"] = nil
+        XCTAssertEqual(try ShareDraftEnvelope.decoded(from: JSONSerialization.data(withJSONObject: object)).action, .chat,
+                       "a draft written before the choice existed")
+        // Sort it out and Remember it start a chat of their own.
+        let intoAChat = ShareDraftEnvelope(createdAt: Date(), workspace: workspace, target: .conversation(reference()),
+                                           text: "a", attachments: [], action: .sortOut)
+        XCTAssertFalse(intoAChat.isValid)
+    }
+
     func testEnvelopeOfAnotherSchemaIsRefused() throws {
         var object = try XCTUnwrap(JSONSerialization.jsonObject(with: ShareDraftEnvelope.encoded(envelope())) as? [String: Any])
         object["schemaVersion"] = 2

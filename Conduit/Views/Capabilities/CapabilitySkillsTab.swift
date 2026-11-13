@@ -98,6 +98,11 @@ struct CapabilitySkillsTab: View {
                     }
                 }
             }
+            if let updates = store.hubSkillUpdates {
+                HubSkillUpdatesCard(state: updates, updating: store.skillsUpdate == .running, canUpdate: appState.canChangeCapabilities) {
+                    updateHubSkills()
+                }
+            }
             if case .failed(let reason) = store.skillsUpdate {
                 Text(verbatim: AppLocalization.string("Updating hub skills failed: \(reason)", table: .bots))
                     .scaledFont(.caption)
@@ -204,6 +209,13 @@ struct CapabilitySkillsTab: View {
             }
             if appState.skills.contains(where: { $0.provenance == "hub" }) {
                 Button {
+                    Haptics.selection()
+                    Task { await store.checkHubSkillUpdates() }
+                } label: {
+                    Label(AppLocalization.string("Check for Updates"), systemImage: "arrow.down.circle")
+                }
+                .disabled(store.hubSkillUpdates == .checking)
+                Button {
                     updateHubSkills()
                 } label: {
                     Label(AppLocalization.string("Update Hub Skills", table: .bots), systemImage: "arrow.triangle.2.circlepath")
@@ -268,6 +280,52 @@ struct CapabilitySkillsTab: View {
             }
             bulkRunning = false
         }
+    }
+}
+
+/// Check for Updates' answer under the installed skills: which hub skills
+/// have a newer version, with Update Hub Skills, or that every one is
+/// current.
+private struct HubSkillUpdatesCard: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    let state: HubSkillUpdatesState
+    let updating: Bool
+    let canUpdate: Bool
+    let update: () -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            switch state {
+            case .checking:
+                HStack(spacing: 8) {
+                    ProgressView().controlSize(.small)
+                    Text(AppLocalization.string("Checking the hub for updates…", table: .bots))
+                        .scaledFont(.footnote).foregroundStyle(.secondary)
+                }
+            case .found(let updates) where updates.isEmpty:
+                Label(AppLocalization.string("Hub skills are up to date.", table: .bots), systemImage: "checkmark.circle")
+                    .scaledFont(.footnote).foregroundStyle(.secondary)
+            case .found(let updates):
+                Text(AppLocalization.string("Updates available: \(updates.map(\.name).joined(separator: ", "))", table: .bots))
+                    .scaledFont(.footnote)
+                Button {
+                    update()
+                } label: {
+                    if updating {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Label(AppLocalization.string("Update Hub Skills", table: .bots), systemImage: "arrow.triangle.2.circlepath")
+                    }
+                }
+                .buttonStyle(.settingsPrimary)
+                .disabled(updating || !canUpdate)
+            case .failed(let reason):
+                Text(verbatim: AppLocalization.string("Couldn't check for updates: \(reason)", table: .bots))
+                    .scaledFont(.caption).foregroundStyle(.red)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.horizontal, 4)
     }
 }
 

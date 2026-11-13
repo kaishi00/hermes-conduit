@@ -230,6 +230,10 @@ enum StreamEventParser {
             let percent = usage["context_percent"]?.doubleValue ?? (Double(used) / Double(max) * 100)
             return .contextUpdate(sessionId: sessionId, percent: percent, used: used, max: max)
 
+        case "session.control.update":
+            guard !sessionId.isEmpty, let snapshot = SessionControlSnapshot(obj["payload"]) else { return nil }
+            return .sessionControl(sessionId: sessionId, snapshot: snapshot)
+
         case "cwd.update", "workspace.update":
             let cwd = payload?["cwd"]?.stringValue ?? ""
             return .cwdUpdate(sessionId: sessionId, cwd: cwd)

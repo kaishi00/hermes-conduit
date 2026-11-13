@@ -221,3 +221,32 @@ enum SkillHub {
     }
 
 }
+
+/// A hub skill with a newer version at its source: one row of
+/// `GET /api/skills/hub/updates` (`hermes skills check`).
+struct HubSkillUpdate: Identifiable, Equatable {
+    let name: String
+    let identifier: String
+    let source: String
+
+    var id: String { identifier.isEmpty ? name : identifier }
+
+    init?(_ row: Any) {
+        guard let row = row as? [String: Any] else { return nil }
+        let name = (row["name"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let identifier = (row["identifier"] as? String)?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        guard !name.isEmpty || !identifier.isEmpty else { return nil }
+        self.name = name.isEmpty ? identifier : name
+        self.identifier = identifier
+        source = (row["source"] as? String) ?? ""
+    }
+}
+
+/// The Skills tab's Check for Updates.
+enum HubSkillUpdatesState: Equatable {
+    case checking
+    /// Hermes' answer: the hub skills that have updates, none when every
+    /// one is current.
+    case found([HubSkillUpdate])
+    case failed(String)
+}

@@ -2243,6 +2243,70 @@ extension AppStateMultiDashboardTests {
         explorer.close()
     }
 
+    /// Going back to an open tab shows the text read for it (issue 2355),
+    /// without reading the file again; a refresh that can't vouch for the
+    /// file's date, or the tab closing, has it read again.
+    func testGoingBackToATabShowsItsTextWithoutReadingItAgain() async throws {
+        let (appState, held, _) = heldSwitchFixture()
+        let explorer = WorkspaceExplorer()
+        explorer.attach(appState)
+        let open = Task { await explorer.open(root: "/w", profile: appState.workspaceProfile) }
+        try await held.answer(["entries": [
+            ["name": "a.swift", "path": "/w/a.swift", "isDirectory": false],
+            ["name": "b.md", "path": "/w/b.md", "isDirectory": false],
+        ]], toPathEnding: "/api/fs/list")
+        await open.value
+        let files = explorer.rows().map(\.entry)
+        XCTAssertEqual(files.map(\.name), ["a.swift", "b.md"])
+        func reads() -> Int { held.sent.filter { $0.path.hasSuffix("/api/fs/read-text") }.count }
+        for (file, words) in zip(files, ["let a = 1", "notes"]) {
+            let viewing = Task { await explorer.view(file) }
+            try await held.answer(["text": words, "language": "swift"], toPathEnding: "/api/fs/read-text")
+            await viewing.value
+        }
+        XCTAssertEqual(reads(), 2)
+
+        // A reply link's read of an open tab is dropped when the kept text
+        // shows instead, so no later open takes it under a newer date.
+        explorer.prefetchText(files[0].path, profile: appState.workspaceProfile)
+        try await held.answer(["text": "let a = 1", "language": "swift"], toPathEnding: "/api/fs/read-text")
+        XCTAssertTrue(explorer.keepsPrefetchedText)
+        await explorer.view(files[0])
+        XCTAssertFalse(explorer.keepsPrefetchedText, "the link's read goes with the kept text shown")
+        XCTAssertEqual(reads(), 3, "an open tab's text isn't read again")
+        XCTAssertEqual(explorer.preview?.text, "let a = 1")
+        XCTAssertFalse(explorer.previewLoading)
+
+        // Hermes' own listing has no dates: a refresh can't say the file is
+        // unchanged, so it's read again.
+        // A link's read from before the refresh goes with it: it may hold
+        // text from before the change the refresh follows.
+        explorer.prefetchText(files[1].path, profile: appState.workspaceProfile)
+        try await held.answer(["text": "notes", "language": "markdown"], toPathEnding: "/api/fs/read-text")
+        let refresh = Task { await explorer.refresh() }
+        try await held.answer(["entries": files.map { ["name": $0.name, "path": $0.path, "isDirectory": false] }],
+                              toPathEnding: "/api/fs/list")
+        await refresh.value
+        XCTAssertFalse(explorer.keepsPrefetchedText, "a link's read from before a refresh isn't taken up")
+        XCTAssertFalse(explorer.keepsPreview(of: files[1].path))
+        let viewing = Task { await explorer.view(files[1]) }
+        try await held.answer(["text": "notes again", "language": "markdown"], toPathEnding: "/api/fs/read-text")
+        await viewing.value
+        XCTAssertEqual(reads(), 5)
+        XCTAssertEqual(explorer.preview?.text, "notes again")
+
+        // An upload of several files changes with no refresh each, then
+        // refreshes once (issue 2355).
+        func listings() -> Int { held.sent.filter { $0.path.hasSuffix("/api/fs/list") }.count }
+        let listedBefore = listings()
+        for _ in 0..<3 { _ = await explorer.change(refreshing: false) { _, _ in } }
+        XCTAssertEqual(listings(), listedBefore, "no refresh per file")
+
+        explorer.closeTab(files[1].path)
+        XCTAssertFalse(explorer.keepsPreview(of: files[1].path), "a closed tab's text goes")
+        explorer.close()
+    }
+
     func testATappedFileNameAsksThePluginAndALaterTapWins() async throws {
         let (appState, held, _) = heldSwitchFixture()
         appState.setNotifierPluginStateForTesting(.reported(

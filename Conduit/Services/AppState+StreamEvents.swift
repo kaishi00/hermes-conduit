@@ -57,6 +57,9 @@ extension AppState {
         case .userMessage(let sessionId, let rowId, let text, _):
             noteUserMessageElsewhere(sessionId: sessionId, rowId: rowId, text: text)
             return
+        case .sessionControl(let sessionId, let snapshot):
+            applySessionControl(snapshot, for: sessionId)
+            return
         default:
             break
         }
@@ -349,7 +352,8 @@ extension AppState {
                 .contextUpdate(let sessionId, _, _, _), .cwdUpdate(let sessionId, _),
                 .modelUpdate(let sessionId, _, _), .agentCount(let sessionId, _),
                 .delegateAgent(let sessionId, _), .statusUpdate(let sessionId, _, _),
-                .sideAgentComplete(let sessionId, _, _, _, _):
+                .sideAgentComplete(let sessionId, _, _, _, _),
+                .sessionControl(let sessionId, _):
             // `.sessionTitle` and `.statusUpdate` never reach
             // bufferIfReconciling (handleStreamEvent returns early for them).
             return sessionId
@@ -780,8 +784,8 @@ extension AppState {
             // TUI show it, leaving the stream and running state alone.
             appendSlashOutput(Self.sideAgentNote(kind: kind, taskId: taskId, text: text, question: question))
 
-        case .userMessage, .sessionsChanged:
-            // Read signals, handled in handleStreamEvent.
+        case .userMessage, .sessionsChanged, .sessionControl:
+            // Handled in handleStreamEvent.
             break
 
         case .unparsed:

@@ -53,6 +53,12 @@ enum PollCadence {
     /// catalog read that follows wakes the poll, so a quiet list may wait
     /// one step longer.
     static let chatListStepsFollowingChanges: [TimeInterval] = chatListSteps + [120]
+    /// A window counted in view while inactive (a Mac's behind other apps,
+    /// with no way to tell it's covered) keeps the list's 4 s pace for this
+    /// long, then waits at least `chatListInactiveFloor` even while a turn
+    /// runs (issue 2360). Coming back to it reads at once.
+    static let chatListInactiveAfter: TimeInterval = 120
+    static let chatListInactiveFloor: TimeInterval = 30
     /// An idle open chat's registry check (another device's turn): 15 s,
     /// then longer while the chat stays the same.
     static let openChatIdleSteps: [TimeInterval] = [15, 30, 60]
@@ -152,6 +158,9 @@ struct ChatListPollPacer {
         var catalogGeneration: Int
         /// The gateway pushes `sessions.changed` (`change_events`).
         var followsChanges = false
+        /// How long the app has been inactive while its window still counts
+        /// as in view (a Mac's); nil while it's active.
+        var inactiveFor: TimeInterval? = nil
     }
 
     /// Steps through the longer pace; `interval(followingChanges:)` stops
@@ -186,15 +195,25 @@ struct ChatListPollPacer {
             // A failed read moves nothing: it backs off like a quiet one,
             // with jitter.
             backoff.lengthen()
-            return PollCadence.afterFailure(
-                PollCadence.stretched(interval(followingChanges: observation.followsChanges), by: conditions),
-                random: random
-            )
+            var wait = interval(followingChanges: observation.followsChanges)
+            if let inactive = observation.inactiveFor, inactive >= PollCadence.chatListInactiveAfter {
+                wait = max(wait, PollCadence.chatListInactiveFloor)
+            }
+            return PollCadence.afterFailure(PollCadence.stretched(wait, by: conditions), random: random)
         }
         let changed = last.map {
             $0.registry != registry || $0.catalogGeneration != observation.catalogGeneration
         } ?? true
         last = observation
+        if let inactive = observation.inactiveFor, inactive >= PollCadence.chatListInactiveAfter {
+            // Nothing says anyone sees the window: no turn or change keeps
+            // the 4 s pace.
+            backoff.lengthen()
+            return PollCadence.stretched(
+                max(interval(followingChanges: observation.followsChanges), PollCadence.chatListInactiveFloor),
+                by: conditions
+            )
+        }
         if observation.turnRunning || changed {
             backoff.reset()
         } else {

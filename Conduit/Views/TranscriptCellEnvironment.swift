@@ -150,6 +150,50 @@ struct TranscriptCellEnvironment: Equatable {
         return self == same
     }
 
+    /// Which rows could measure differently under this environment than
+    /// under `other` (issue 2358). A turn starting or ending, or a reply
+    /// landing, moves only the rows' state that names its rows (the
+    /// running turn's, the newest reply, the follow-ups' board, a run's
+    /// summary, a teammate's reply), so only those rows forget their
+    /// heights; anything else changing still forgets every row's.
+    func measurementChange(from other: Self) -> TranscriptMeasurementChange {
+        if measuresLike(other) { return .none }
+        let new = chatRowState
+        let old = other.chatRowState
+        var rest = other
+        rest.chatRowState.isBusy = new.isBusy
+        rest.chatRowState.cardsCanSend = new.cardsCanSend
+        rest.chatRowState.latestAssistantMessageID = new.latestAssistantMessageID
+        rest.chatRowState.retryableReplyID = new.retryableReplyID
+        rest.chatRowState.followUpBoardRowID = new.followUpBoardRowID
+        rest.chatRowState.teammateReplies = new.teammateReplies
+        rest.chatRowState.stepSummaries = new.stepSummaries
+        rest.chatRowState.stepSummariesAsked = new.stepSummariesAsked
+        guard measuresLike(rest) else { return .all }
+        // `cardsCanSend` only enables a card's buttons; the follow-ups it
+        // shows or hides go with `followUpBoardRowID`.
+        var messages: Set<String> = []
+        for (before, after) in [
+            (old.latestAssistantMessageID, new.latestAssistantMessageID),
+            (old.retryableReplyID, new.retryableReplyID),
+            (old.followUpBoardRowID, new.followUpBoardRowID),
+        ] where before != after {
+            if let before { messages.insert(before) }
+            if let after { messages.insert(after) }
+        }
+        for id in Set(old.teammateReplies.keys).union(new.teammateReplies.keys)
+        where old.teammateReplies[id] != new.teammateReplies[id] {
+            messages.insert(id)
+        }
+        var runs: Set<String> = []
+        for key in Set(old.stepSummaries.keys).union(new.stepSummaries.keys)
+        where old.stepSummaries[key] != new.stepSummaries[key] {
+            runs.insert(key)
+        }
+        runs.formUnion(old.stepSummariesAsked.symmetricDifference(new.stepSummariesAsked))
+        return .rows(messages: messages, runs: runs, turn: old.isBusy != new.isBusy)
+    }
+
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.chatRowState == rhs.chatRowState
             && lhs.chatRowActions == rhs.chatRowActions
@@ -260,5 +304,46 @@ private struct TranscriptCellSystemEnvironment: ViewModifier {
             .environment(\.isEnabled, values.isEnabled)
             .environment(\.openURL, values.openURL)
             .tint(Color.conduitAccent)
+    }
+}
+
+/// Which of the transcript's rows forget their measured heights when its
+/// environment changes (TranscriptCellEnvironment.measurementChange).
+enum TranscriptMeasurementChange: Equatable {
+    /// None: nothing a row's height reads changed.
+    case none
+    /// Every row, on screen or not.
+    case all
+    /// The rows of `messages`, the rows of the step runs whose summary key
+    /// is in `runs`, and with `turn` every row after the last message sent
+    /// (the running turn's: its run draws live while Hermes works).
+    case rows(messages: Set<String>, runs: Set<String>, turn: Bool)
+
+    /// The ids of `rows` this change reaches; nil for every row.
+    func rowIDs(in rows: [TranscriptRow]) -> Set<String>? {
+        switch self {
+        case .none: return []
+        case .all: return nil
+        case let .rows(messages, runs, turn):
+            var ids: Set<String> = []
+            if turn {
+                let lastSent = rows.lastIndex { row in
+                    if case .message(let target) = row.kind { return target.message.role == .user }
+                    return false
+                }
+                for row in rows[(lastSent.map { $0 + 1 } ?? 0)...] { ids.insert(row.id) }
+            }
+            guard !messages.isEmpty || !runs.isEmpty else { return ids }
+            var runKeys: [String: String?] = [:]
+            for row in rows {
+                guard case .message(let target) = row.kind else { continue }
+                if messages.contains(target.message.id) { ids.insert(row.id) }
+                guard !runs.isEmpty, let group = target.step?.group else { continue }
+                let key = runKeys[group.id] ?? group.summaryKey
+                runKeys[group.id] = key
+                if let key, runs.contains(key) { ids.insert(row.id) }
+            }
+            return ids
+        }
     }
 }

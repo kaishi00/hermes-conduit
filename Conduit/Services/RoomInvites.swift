@@ -378,8 +378,8 @@ enum RoomInviteOpening: Equatable {
     case waiting
     /// A call is on, and it said the invite opens once the call has ended.
     case afterCall
-    /// The dashboard changed while the invites were read: try again, on
-    /// the one in use now.
+    /// The dashboard changed, or a Block, leave or take out landed, while
+    /// the invites were read: try again, on the one in use now.
     case retry
     /// It can't open; `errorMessage` says why, or nothing will open it.
     case failed
@@ -457,20 +457,25 @@ extension AppState {
         // Until a time, not a count: ticks that came due while iOS held the
         // app suspended are one read on return, not a burst of them. Ticks in
         // the background are skipped; the return to the foreground reads.
-        let end = Date().addingTimeInterval(Self.linkedRoomInviteFollowSeconds)
+        let started = Date()
+        let end = started.addingTimeInterval(Self.linkedRoomInviteFollowSeconds)
+        let waitingEnd = started.addingTimeInterval(Self.linkedRoomWaitingFollowSeconds)
         linkedRoomInviteFollow = Task { [weak self] in
             while true {
                 let early = Date() < end
                 try? await Task.sleep(for: early ? Self.linkedRoomInviteFollowInterval
                                                  : Self.linkedRoomPendingFollowInterval)
                 guard !Task.isCancelled, let self, self.activeDashboardID == dashboard else { return }
-                guard early || self.linkedRoomOnItsWay else { return }
+                // A draft waiting on answers, or an invite waiting for its
+                // host, can wait for days: followed for 15 minutes, then
+                // left to its push and the next return to the app (issue
+                // 2359). A room starting, or started and not listed yet, is
+                // followed until it shows.
+                guard early || self.linkedRoomOnItsWay(waiting: Date() < waitingEnd) else { return }
                 guard self.isSceneActive else { continue }
                 // The people New Group Chat offers only in the first minutes,
                 // when a Link was just made; after, the drafts alone.
-                await self.refreshLinkedRoomDrafts(readingPeople: early)
-                await self.refreshGroupRoomsForStartedDrafts()
-                await self.refreshLinkedRoomInvites()
+                await self.refreshLinkedRoomReads(readingPeople: early, approvals: false)
             }
         }
     }
@@ -478,17 +483,23 @@ extension AppState {
     /// A room is on its way to Group Chats: a draft of yours waits or starts,
     /// or started with its room not listed yet, or an invite you joined
     /// waits for its room, or started with its copy not listed yet.
-    var linkedRoomOnItsWay: Bool {
+    var linkedRoomOnItsWay: Bool { linkedRoomOnItsWay(waiting: true) }
+
+    /// `linkedRoomOnItsWay`; without `waiting`, only a room starting or
+    /// started and not listed yet, not a draft waiting on answers or an
+    /// invite joined and waiting for its host.
+    func linkedRoomOnItsWay(waiting: Bool) -> Bool {
         if let drafts = linkedRoomDrafts, drafts.dashboardID == activeDashboardID {
             let listed = Set(groupRooms.map(\.roomID))
             if drafts.list.drafts.contains(where: {
-                ["waiting", "starting"].contains($0.status) || ($0.status == "started" && !listed.contains($0.id))
+                (waiting && $0.status == "waiting") || $0.status == "starting"
+                    || ($0.status == "started" && !listed.contains($0.id))
             }) { return true }
         }
         if let invites = linkedRoomInvites, invites.dashboardID == activeDashboardID {
             let copied = linkedRoomCopyInviteIDs
             if invites.invites.contains(where: {
-                $0.status == "joined" || ($0.status == "started" && canReadRoomCopies && !copied.contains($0.id))
+                (waiting && $0.status == "joined") || ($0.status == "started" && canReadRoomCopies && !copied.contains($0.id))
             }) { return true }
         }
         return false
@@ -497,14 +508,48 @@ extension AppState {
     /// Back in the foreground: an invite that came while Conduit was away,
     /// its push missed, and the drafts, so a room that started meanwhile
     /// shows, and the approvals; a room still on its way is followed again.
+    /// A return within `linkedRoomsForegroundAwayMinimum` (Control
+    /// Center pulled down, a notification glanced at) reads nothing: the
+    /// pushes and Group Chats' own reads cover so short a time (issue 2359).
+    /// One read runs at a time; a return while it runs joins it.
     func refreshLinkedRoomsOnForeground() async {
-        await refreshLinkedRoomDrafts(readingPeople: false)
+        if let away = lastLeftForegroundAt, Date().timeIntervalSince(away) < Self.linkedRoomsForegroundAwayMinimum {
+            return
+        }
+        if let running = linkedRoomsForegroundRead {
+            await running.value
+            return
+        }
+        let read = Task { [weak self] in
+            guard let self else { return }
+            // An approval that came up while away shows without waiting for
+            // Group Chats' next tick (it skips ticks while the app is inactive).
+            await self.refreshLinkedRoomReads(readingPeople: false, approvals: true)
+            self.followLinkedRoomsOnTheirWay()
+        }
+        linkedRoomsForegroundRead = read
+        await read.value
+        linkedRoomsForegroundRead = nil
+    }
+
+    /// The drafts, invites and (with `approvals`) approvals read together,
+    /// not one after another (issue 2359); the rooms after the drafts, when
+    /// one started that isn't listed yet.
+    func refreshLinkedRoomReads(readingPeople: Bool, approvals: Bool) async {
+        async let drafts: Void = refreshDraftsThenStartedRooms(readingPeople: readingPeople)
+        async let invites: Void = refreshLinkedRoomInvites()
+        async let approved: Void = refreshLinkedRoomApprovalsIfAnswerable(approvals)
+        _ = await (drafts, invites, approved)
+    }
+
+    private func refreshLinkedRoomApprovalsIfAnswerable(_ asked: Bool) async {
+        guard asked, groupChatPhase == .available, canAnswerRoomApprovals else { return }
+        _ = await refreshLinkedRoomApprovals()
+    }
+
+    private func refreshDraftsThenStartedRooms(readingPeople: Bool) async {
+        await refreshLinkedRoomDrafts(readingPeople: readingPeople)
         await refreshGroupRoomsForStartedDrafts()
-        await refreshLinkedRoomInvites()
-        // An approval that came up while away shows without waiting for
-        // Group Chats' next tick (it skips ticks while the app is inactive).
-        if groupChatPhase == .available, canAnswerRoomApprovals { await refreshLinkedRoomApprovals() }
-        followLinkedRoomsOnTheirWay()
     }
 
     /// Follows a room on its way that a read just found: one a launch, a
@@ -524,6 +569,10 @@ extension AppState {
     }
 
     nonisolated static let linkedRoomInviteFollowSeconds: TimeInterval = 180
+    /// How long a waiting draft or joined invite is followed (issue 2359).
+    nonisolated static let linkedRoomWaitingFollowSeconds: TimeInterval = 15 * 60
+    /// The least time away for a return to read the linked rooms again.
+    nonisolated static let linkedRoomsForegroundAwayMinimum: TimeInterval = 30
     nonisolated static let linkedRoomInviteFollowInterval: Duration = .seconds(10)
     nonisolated static let linkedRoomPendingFollowInterval: Duration = .seconds(30)
 
@@ -531,10 +580,13 @@ extension AppState {
     func readLinkedRoomInvites() async -> Bool {
         guard canInviteLinkedPeople, isConnected else { return false }
         let epoch = groupRoomEpoch
+        let generation = linkedRosterGeneration
         let client = roomInvitesClient
         do {
             let invites = try await client.invites()
-            guard groupRoomEpoch == epoch, activeDashboardID == client.dashboardID else { return false }
+            // One a leave or Block overtook could bring back the row it changed.
+            guard groupRoomEpoch == epoch, linkedRosterGeneration == generation,
+                  activeDashboardID == client.dashboardID else { return false }
             linkedRoomInvites = LinkedRoomInvites(dashboardID: client.dashboardID, invites: invites)
             // A room you joined that has started is listed as its copy, which
             // this Hermes keeps from then on: read the copies while one isn't
@@ -638,6 +690,7 @@ extension AppState {
             return .failed
         }
         let epoch = groupRoomEpoch
+        let rosterGeneration = linkedRosterGeneration
         let reader = roomInvitesClient
         let invites: [RoomInvite]
         do {
@@ -649,6 +702,10 @@ extension AppState {
         }
         guard !Task.isCancelled else { return .waiting }
         guard activeDashboardID == reader.dashboardID else { return .retry }
+        // A Block, leave or take out that landed while this read was out
+        // makes its list stale: read again rather than bring back (or open)
+        // a row it took away.
+        guard linkedRosterGeneration == rosterGeneration else { return .retry }
         if groupRoomEpoch == epoch {
             linkedRoomInvites = LinkedRoomInvites(dashboardID: reader.dashboardID, invites: invites)
         }
