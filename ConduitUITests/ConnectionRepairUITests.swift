@@ -280,6 +280,7 @@ final class ConnectionRepairUITests: XCTestCase {
             app.swipeUp()
         }
         XCTAssertTrue(element.isHittable)
+        waitUntilSettled(element)
         element.tap()
     }
 
