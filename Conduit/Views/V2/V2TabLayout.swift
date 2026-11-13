@@ -160,6 +160,10 @@ final class V2TabLayoutStore: ObservableObject {
         }
     }
 
+    deinit {
+        if let defaultsObserver { NotificationCenter.default.removeObserver(defaultsObserver) }
+    }
+
     /// Saves the layout and publishes it at once.
     func save(_ layout: V2TabLayout) {
         guard layout != self.layout else { return }

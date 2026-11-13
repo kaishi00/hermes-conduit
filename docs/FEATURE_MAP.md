@@ -864,7 +864,9 @@ bar's ⌘1 to ⌘4 and the Keyboard Shortcuts sheet (Keyboard shortcuts: the
 keys follow the order, ⌘, stays Settings) · Sync across devices (`app.tabs`,
 as `app.main_button_new_chat`) · the Appearance caption and the sheet's
 footer · README (Bots Home's line) · Bots Home ("the first tab" until the
-user reorders) · not needed: a notification, widget, link or Shortcut (each
+user reorders) · not needed: the main button beside the bar (Voice beside
+the tabs: it stands beside whichever tabs the bar shows, its own behavior
+unchanged), a notification, widget, link or Shortcut (each
 pushes its chat in Sessions as before, which is why Sessions can't be
 hidden), the split layout (Settings beside the Sessions list and the bar
 under the list key on the tab, not its place), the drawer shell (no tabs;
@@ -890,6 +892,7 @@ store takes any key)
 **Open gaps**
 - Stage 2, approved and not built: Pulse and Artifacts as optional tabs, capped at five. Every tab then holds its own chat and Back path, where only Bots and Sessions do today.
 - Not seen on a device or a simulator yet: the sheet, and a reordered bar on a Duo's strip.
+- Under the drawer shell the menu bar still lists the tabs' items, whose keys do nothing there (as before #2378); the Keyboard Shortcuts sheet leaves them out.
 - With Bots hidden, a bot's own chats open in Sessions' stack; Bots Home's Pulse pill and Artifacts shortcut go with the tab, and the Sessions bar keeps its own.
 
 **Checked:** 2026-11-13, added at #2378.
