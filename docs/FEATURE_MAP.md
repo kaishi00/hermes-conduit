@@ -6651,7 +6651,7 @@ reads only active rows) · text that describes it (none)
 - A caption sent after its picture through the API server (parts in that order) would be read as context and hidden; Hermes' own ingress, Conduit and Desktop put the text first.
 - A message typed with `[screenshot]` alone on a line hides the words after it, which can't be told from Hermes' stand-in.
 
-**Checked:** 2026-11-13, #2353 (a safety-refused turn's message shows greyed; the saved copy keeps its kind; Pulse, the list's preview and voice's reads needed no change); 2026-11-04, #1760 (new entry: a picture turn's recalled memory and plugin notes left the bubble, the list, a rewind's words and Pulse's reads, notifier #544).
+**Checked:** 2026-11-13, #NEWPR (a refused turn whose words look like a system note or model change stays the user's row; a picture-only refused row's VoiceOver label is the notice); 2026-11-13, #2353 (a safety-refused turn's message shows greyed; the saved copy keeps its kind; Pulse, the list's preview and voice's reads needed no change); 2026-11-04, #1760 (new entry: a picture turn's recalled memory and plugin notes left the bubble, the list, a rewind's words and Pulse's reads, notifier #544).
 
 ## Pictures in messages
 

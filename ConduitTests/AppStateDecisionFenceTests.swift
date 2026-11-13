@@ -724,6 +724,7 @@ final class AppStateDecisionFenceTests: XCTestCase {
         let socket = ClarifyFakeSocket()
         _ = try await installConnectedClient(appState, socket: socket, transport: ClarifyFakeTransport())
         let shown = try XCTUnwrap(appState.messages.first?.approval)
+        defer { duringSteer = nil }
         duringSteer = {
             XCTAssertEqual(appState.messages.first?.approval?.status, .submitting, "taken while the steer goes")
             appState.messages[0].approval?.command = "migrate"

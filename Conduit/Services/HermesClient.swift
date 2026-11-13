@@ -698,7 +698,26 @@ struct SessionRewindSnapshot: Equatable {
         case nil, .null?, .string("")?, .string("steer")?: break
         default: return nil
         }
-        return Turn(rowID: rowID, text: text(of: row["content"]), timestamp: row["timestamp"]?.doubleValue)
+        return Turn(rowID: rowID, text: text(of: row["content"]), timestamp: epochSeconds(row["timestamp"]))
+    }
+
+    /// A row's time as the epoch seconds Hermes' `undo_since` takes: a
+    /// number as stored, or a string holding one or an ISO 8601 date (an
+    /// older `session.resume`'s rows).
+    static func epochSeconds(_ value: AnyCodable?) -> Double? {
+        switch value {
+        case .number(let seconds)?:
+            return seconds
+        case .string(let text)?:
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let seconds = Double(trimmed) { return seconds }
+            let plain = ISO8601DateFormatter()
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return (plain.date(from: trimmed) ?? fractional.date(from: trimmed))?.timeIntervalSince1970
+        default:
+            return nil
+        }
     }
 
     /// A text turn's words; nil when a part isn't text. A stored prompt
@@ -6131,8 +6150,9 @@ enum MessageNormalizer {
             if role == .assistant, !isToolResult, displayKind == nil, isSilenceMarker(rawContent) {
                 rawContent = ""
             }
-            let modelChange = modelChangeActivity(fromText: rawContent)
-            let systemNotice = systemNoticeText(fromText: rawContent)
+            // A refused turn stays the user's words, whatever they look like.
+            let modelChange = isRefusedRow ? nil : modelChangeActivity(fromText: rawContent)
+            let systemNotice = isRefusedRow ? nil : systemNoticeText(fromText: rawContent)
             // A known synthetic display kind never renders as a human turn,
             // even when its persisted role is `user` and its text matches no
             // legacy marker. Unknown kinds keep ordinary normalization.

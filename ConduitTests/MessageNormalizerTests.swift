@@ -3016,6 +3016,29 @@ final class MessageNormalizerTests: XCTestCase {
         XCTAssertEqual(row?.withID("copy").isContentRefused, true)
     }
 
+    func testARefusedTurnThatLooksLikeASystemNoteStaysTheUsersWords() {
+        let messages = MessageNormalizer.normalizeMessages([
+            .object([
+                "id": .number(43),
+                "role": .string("user"),
+                "content": .string("[System: hello]"),
+                "display_kind": .string("content_refused")
+            ])
+        ])
+        XCTAssertEqual(messages.last?.role, .user)
+        XCTAssertEqual(messages.last?.content, "[System: hello]")
+        XCTAssertEqual(messages.last?.isContentRefused, true)
+    }
+
+    func testARowsTimeReadsForUndoFromANumberOrADate() {
+        XCTAssertEqual(SessionRewindSnapshot.epochSeconds(.number(1_700_000_000)), 1_700_000_000)
+        XCTAssertEqual(SessionRewindSnapshot.epochSeconds(.string(" 1700000000.5 ")), 1_700_000_000.5)
+        XCTAssertEqual(SessionRewindSnapshot.epochSeconds(.string("2026-09-01T10:00:00Z")), 1_788_256_800)
+        XCTAssertEqual(SessionRewindSnapshot.epochSeconds(.string("2026-09-01T10:00:00.250Z")), 1_788_256_800.25)
+        XCTAssertNil(SessionRewindSnapshot.epochSeconds(.string("yesterday")))
+        XCTAssertNil(SessionRewindSnapshot.epochSeconds(nil))
+    }
+
     func testVisibleUserTextMovesImageTokensOut() {
         XCTAssertEqual(
             MessageNormalizer.visibleUserText("Here is the screenshot.\n@image:/root/x.png")
