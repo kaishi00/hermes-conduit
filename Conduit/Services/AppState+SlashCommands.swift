@@ -1224,8 +1224,11 @@ extension AppState {
         case "send", "skill":
             // These send a prompt — extract the message and send it
             let message = obj["message"]?.stringValue ?? output
-            if !message.isEmpty {
-                _ = await sendMessage(message, attachments: [], context: context)
+            // Refused (a rewind counting this chat's turns meanwhile): the
+            // words go back to the composer rather than vanish.
+            if !message.isEmpty, !(await sendMessage(message, attachments: [], context: context)),
+               isRewindingTurns, isCurrentComposerSubmission(context) {
+                prefillComposer(message)
             }
         case "prefill":
             if let notice = obj["notice"]?.stringValue, !notice.isEmpty {

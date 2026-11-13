@@ -1996,6 +1996,24 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertFalse(submitted)
         XCTAssertFalse(sent)
         XCTAssertEqual(sends, 0)
+
+        // A slash command's prompt refused meanwhile goes back to the
+        // composer, and a call's request says why the chat is busy.
+        let client = try XCTUnwrap(harness.appState.client)
+        await harness.appState.handleSlashResult(
+            .object(["type": .string("send"), "message": .string("run the plan")]),
+            depth: 0,
+            aliasArgument: "",
+            client: client,
+            sessionID: origin.id,
+            context: harness.appState.composerSubmissionContext()
+        )
+        XCTAssertEqual(sends, 0)
+        XCTAssertEqual(harness.appState.composerPrefillText, "run the plan")
+        XCTAssertEqual(
+            harness.appState.callRefusalMessageForOpenChat(),
+            AppLocalization.string("Still taking a message back. Try again in a moment.")
+        )
     }
 
     func testUndoNamesTheFilesLineHermesUndoAnsweredWith() async throws {

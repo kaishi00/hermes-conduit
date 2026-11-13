@@ -388,7 +388,11 @@ extension AppState {
 
     /// Why the open chat refused a call's request, when another app holds it.
     func callRefusalMessageForOpenChat() -> String? {
-        activeChatTakeover?.callRefusalMessage
+        // A rewind counting the chat's turns held it, not Hermes.
+        if isRewindingTurns {
+            return AppLocalization.string("Still taking a message back. Try again in a moment.")
+        }
+        return activeChatTakeover?.callRefusalMessage
     }
 
     /// A call's request to a chat that isn't on screen. Refused because
