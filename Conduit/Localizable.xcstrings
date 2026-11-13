@@ -194156,6 +194156,744 @@
         }
       }
     },
+    "A program Hermes starts on your host (stdio)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Programm, das Hermes auf deinem Host startet (stdio)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un programa que Hermes inicia en tu host (stdio)."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un programme que Hermes lance sur votre hôte (stdio)."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Program yang dijalankan Hermes di host Anda (stdio)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un programma che Hermes avvia sul tuo host (stdio)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermesがホストで起動するプログラム（stdio）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 호스트에서 실행하는 프로그램(stdio)."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Program uruchamiany przez Hermes na Twoim hoście (stdio)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um programa que o Hermes inicia no seu host (stdio)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Программа, которую Hermes запускает на вашем хосте (stdio)."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes'in sunucunuzda başlattığı bir program (stdio)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 在你的主机上启动的程序（stdio）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes 在你的主機上啟動的程式（stdio）。"
+          }
+        }
+      }
+    },
+    "A server online, reached by its address (HTTP or SSE)." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ein Server im Netz, erreichbar über seine Adresse (HTTP oder SSE)."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un servidor en línea, al que se accede por su dirección (HTTP o SSE)."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un serveur en ligne, joint par son adresse (HTTP ou SSE)."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Server daring, dijangkau lewat alamatnya (HTTP atau SSE)."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un server online, raggiunto tramite il suo indirizzo (HTTP o SSE)."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "アドレスで接続するオンラインのサーバー（HTTPまたはSSE）。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "주소로 연결하는 온라인 서버(HTTP 또는 SSE)."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Serwer online, osiągalny pod swoim adresem (HTTP lub SSE)."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um servidor online, acessado pelo endereço (HTTP ou SSE)."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сервер в сети, доступный по адресу (HTTP или SSE)."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adresiyle erişilen çevrimiçi bir sunucu (HTTP veya SSE)."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "通过地址访问的在线服务器（HTTP 或 SSE）。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "透過位址存取的線上伺服器（HTTP 或 SSE）。"
+          }
+        }
+      }
+    },
+    "Headers here are saved in the config as written. For a token Hermes keeps in .env, use Settings." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Header hier werden so in der Konfiguration gespeichert, wie sie stehen. Für ein Token, das Hermes in .env aufbewahrt, nutze „Einstellungen“."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Los encabezados de aquí se guardan en la configuración tal cual. Para un token que Hermes guarde en .env, usa Ajustes."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Les en-têtes saisis ici sont enregistrés tels quels dans la configuration. Pour un jeton que Hermes garde dans .env, utilisez Réglages."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Header di sini disimpan ke konfigurasi apa adanya. Untuk token yang disimpan Hermes di .env, gunakan Pengaturan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le intestazioni qui vengono salvate nella configurazione così come sono. Per un token che Hermes conserva in .env, usa Impostazioni."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ここのヘッダーは書いたとおりに設定に保存されます。Hermesが.envに保管するトークンは「設定」で入力してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "여기의 헤더는 작성한 그대로 설정에 저장됩니다. Hermes가 .env에 보관하는 토큰은 설정에서 입력하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nagłówki z tego miejsca są zapisywane w konfiguracji tak, jak je wpiszesz. Token przechowywany przez Hermes w .env podaj w Ustawieniach."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Os cabeçalhos aqui são salvos na configuração como escritos. Para um token que o Hermes guarda no .env, use Ajustes."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Заголовки отсюда сохраняются в конфигурации как есть. Для токена, который Hermes хранит в .env, используйте «Настройки»."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Buradaki başlıklar yapılandırmaya yazıldığı gibi kaydedilir. Hermes'in .env içinde tuttuğu bir belirteç için Ayarlar'ı kullanın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此处的标头会按原样保存到配置中。若要让 Hermes 将令牌保存在 .env 中，请使用“设置”。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "此處的標頭會按原樣儲存到設定中。若要讓 Hermes 將權杖保存在 .env 中，請使用「設定」。"
+          }
+        }
+      }
+    },
+    "One per line. Add env and the rest in JSON." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eins pro Zeile. Env und den Rest fügst du in JSON hinzu."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uno por línea. Añade env y lo demás en JSON."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un par ligne. Ajoutez env et le reste en JSON."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satu per baris. Tambahkan env dan lainnya di JSON."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uno per riga. Aggiungi env e il resto in JSON."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "1行に1つ。envなどはJSONで追加します。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "한 줄에 하나씩. env 등은 JSON에서 추가하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeden w wierszu. Env i resztę dodaj w JSON."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Um por linha. Adicione env e o resto em JSON."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "По одному в строке. Env и остальное добавьте в JSON."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Satır başına bir tane. Env ve gerisini JSON'da ekleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每行一个。env 等其他内容请在 JSON 中添加。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "每行一個。env 等其他內容請在 JSON 中新增。"
+          }
+        }
+      }
+    },
+    "Reached by" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erreichbar über"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acceso por"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Joint par"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dijangkau lewat"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Raggiunto tramite"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "接続方法"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "연결 방식"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Osiągalny przez"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Acessado por"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Доступ через"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Erişim yolu"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "访问方式"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "存取方式"
+          }
+        }
+      }
+    },
+    "Sent as a bearer token. Hermes keeps it in .env on your host; it isn't shown again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wird als Bearer-Token gesendet. Hermes bewahrt es in .env auf deinem Host auf; es wird nicht wieder angezeigt."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se envía como token bearer. Hermes lo guarda en .env en tu host; no se vuelve a mostrar."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Envoyé comme jeton bearer. Hermes le garde dans .env sur votre hôte ; il n’est plus affiché."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dikirim sebagai bearer token. Hermes menyimpannya di .env pada host Anda; token tidak ditampilkan lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inviato come token bearer. Hermes lo conserva in .env sul tuo host; non viene più mostrato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bearerトークンとして送信されます。Hermesがホストの.envに保管し、再表示はされません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bearer 토큰으로 전송됩니다. Hermes가 호스트의 .env에 보관하며 다시 표시되지 않습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wysyłany jako token bearer. Hermes przechowuje go w .env na Twoim hoście; nie jest ponownie wyświetlany."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Enviado como token bearer. O Hermes o guarda no .env do seu host; ele não é mostrado de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Отправляется как bearer-токен. Hermes хранит его в .env на вашем хосте; он больше не показывается."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bearer belirteci olarak gönderilir. Hermes onu sunucunuzdaki .env içinde tutar; tekrar gösterilmez."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作为 Bearer 令牌发送。Hermes 会将其保存在主机的 .env 中，之后不再显示。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "作為 Bearer 權杖傳送。Hermes 會將其保存在主機的 .env 中，之後不再顯示。"
+          }
+        }
+      }
+    },
+    "Sign in from the server's page once it's added." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Melde dich auf der Seite des Servers an, sobald er hinzugefügt ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Inicia sesión desde la página del servidor cuando se haya añadido."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Connectez-vous depuis la page du serveur une fois qu’il est ajouté."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masuk dari halaman server setelah ditambahkan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Accedi dalla pagina del server dopo averlo aggiunto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "追加後、サーバーのページからサインインしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "추가한 후 서버 페이지에서 로그인하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zaloguj się na stronie serwera po jego dodaniu."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Faça login na página do servidor depois de adicioná-lo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Войдите на странице сервера после его добавления."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eklendikten sonra sunucunun sayfasından oturum açın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加后，在服务器页面登录。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增後，在伺服器頁面登入。"
+          }
+        }
+      }
+    },
+    "Token" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Jeton"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "トークン"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "토큰"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Token"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Токен"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Belirteç"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "令牌"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "權杖"
+          }
+        }
+      }
+    },
+    "Added %@ on the Hermes this opened on, but Conduit switched to another, so it wasn't tested." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ wurde auf dem Hermes hinzugefügt, auf dem dies geöffnet wurde, aber Conduit hat zu einem anderen gewechselt, daher wurde es nicht getestet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Se añadió %@ en el Hermes donde se abrió esto, pero Conduit cambió a otro, así que no se probó."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ a été ajouté sur le Hermes où ceci a été ouvert, mais Conduit est passé à un autre, donc il n'a pas été testé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ ditambahkan di Hermes tempat ini dibuka, tetapi Conduit beralih ke Hermes lain, jadi belum diuji."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ è stato aggiunto sull'Hermes in cui è stato aperto, ma Conduit è passato a un altro, quindi non è stato testato."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ は開いた Hermes に追加されましたが、Conduit が別の Hermes に切り替わったため、テストされていません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@을(를) 이 화면을 연 Hermes에 추가했지만, Conduit가 다른 Hermes로 전환되어 테스트하지 않았습니다."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodano %@ na Hermesie, na którym to otwarto, ale Conduit przełączył się na inny, więc nie został przetestowany."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ foi adicionado no Hermes em que isto foi aberto, mas o Conduit mudou para outro, então não foi testado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@ добавлен на Hermes, где это было открыто, но Conduit переключился на другой, поэтому проверка не выполнялась."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "%@, bunun açıldığı Hermes'e eklendi ancak Conduit başka birine geçtiği için test edilmedi."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在打开此页面的 Hermes 上添加 %@，但 Conduit 已切换到另一个 Hermes，因此未进行测试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "已在開啟此頁面的 Hermes 上加入 %@，但 Conduit 已切換到另一個 Hermes，因此未進行測試。"
+          }
+        }
+      }
+    },
     "Wait for the Hermes update to finish." : {
       "localizations" : {
         "de" : {

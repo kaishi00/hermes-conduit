@@ -891,27 +891,86 @@ extension AppState {
         keptRead(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile)
     }
 
-    /// A catalog server Hermes added to a bot's profile, kept as Hermes now
-    /// holds it (#1533): on in the bot's lists, installed in its catalog,
-    /// and, signing in with OAuth, waiting for a sign-in.
+    /// A server Hermes added to a profile, kept as Hermes now holds it
+    /// (#1533): on in the bot's lists, installed in its catalog when it's
+    /// listed there, and, signing in with OAuth, waiting for a sign-in.
     private func keepBotMcpServerAdded(
-        _ entry: BotMcpCatalogEntry,
+        name: String,
+        description: String,
+        enabled: Bool = true,
         oauth: Bool,
         profile: String,
         on owner: DashboardRuntimeOwner?
     ) {
         keepWrittenChange(BotProfileDetails.self, KeptRoute.botDetails, profile: profile, on: owner) { details in
-            guard !details.capabilities.mcpServers.contains(where: { $0.name == entry.name }) else { return }
-            details.capabilities.mcpServers.append(BotCapability(name: entry.name, description: entry.description, enabled: true))
+            guard !details.capabilities.mcpServers.contains(where: { $0.name == name }) else { return }
+            details.capabilities.mcpServers.append(BotCapability(name: name, description: description, enabled: enabled))
         }
         keepWrittenChange(BotMcpSetupSnapshot.self, KeptRoute.botMcpSetup, profile: profile, on: owner) { setup in
             setup.catalog = setup.catalog.map { listed in
-                guard listed.name == entry.name else { return listed }
+                guard listed.name == name else { return listed }
                 return BotMcpCatalogEntry(name: listed.name, description: listed.description, requires: listed.requires, installed: true)
             }
             if oauth {
-                setup.servers[entry.name] = BotMcpServerSummary(name: entry.name, auth: "oauth", oauthTokensPresent: false)
+                setup.servers[name] = BotMcpServerSummary(name: name, auth: "oauth", oauthTokensPresent: false)
             }
+        }
+    }
+
+    /// Adds a server typed in Conduit rather than taken from the catalog
+    /// (Add Server on the Connectors tab and on Edit Bot's MCP page) to a
+    /// profile. Hermes writes it at once, refuses a name already taken and
+    /// keeps a bearer token in the profile's .env. Throws what Hermes
+    /// refused, for the sheet to say, and stops when Conduit moved to
+    /// another Hermes meanwhile, so no test or sign-in follows there;
+    /// returns whether the server is on (a JSON entry may say
+    /// `enabled: false`) and signs in with OAuth, which comes next.
+    func addCustomMcpServer(
+        profile: String,
+        name: String,
+        entry: [String: Any],
+        bearerToken: String?,
+        openedOn opened: DashboardRuntimeOwner? = nil
+    ) async throws -> (enabled: Bool, oauth: Bool) {
+        guard let client, isConnected else { throw CapabilitiesStoreError.notConnected }
+        // The sheet was opened on another Hermes: nothing goes to this one.
+        if let opened, !ownsDashboardRuntime(opened) {
+            throw CapabilitiesStoreError.declined(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
+        }
+        let owner = currentDashboardRuntimeOwner()
+        let added = try await client.addMcpServer(profile: profile, name: name, config: entry, bearerToken: bearerToken)
+        let auth = BotMcpSetup.addedServer(from: added, name: name)?.auth ?? (entry["auth"] as? String)
+        let oauth = auth?.lowercased() == "oauth"
+        let enabled = entry["enabled"] as? Bool ?? true
+        // Hermes already wrote it on the one the sheet opened on: say so, so
+        // nobody adds it again there.
+        guard client === self.client, let owner, ownsDashboardRuntime(owner) else {
+            throw CapabilitiesStoreError.declined(AppLocalization.string("Added \(name) on the Hermes this opened on, but Conduit switched to another, so it wasn't tested."))
+        }
+        keepBotMcpServerAdded(name: name, description: "", enabled: enabled, oauth: oauth, profile: profile, on: owner)
+        return (enabled, oauth)
+    }
+
+    /// Tests a server just added to a bot's profile: connect, list its
+    /// tools, disconnect.
+    func testAddedBotMcpServer(profile: String, name: String) async -> BotMcpInstallOutcome {
+        guard let client, isConnected else {
+            return .failed(AppLocalization.string("Connect to Hermes to manage bots."))
+        }
+        let epoch = botRosterEpoch
+        do {
+            let tested = BotMcpSetup.testResult(try await client.testBotMcpServer(profile: profile, name: name))
+            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
+                return .failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
+            }
+            return tested.ok
+                ? .ready
+                : .addedWithProblem(tested.error ?? AppLocalization.string("It did not connect."))
+        } catch {
+            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
+                return .failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
+            }
+            return .addedWithProblem(UserFacingError.message(for: error))
         }
     }
 
@@ -936,7 +995,7 @@ extension AppState {
             do {
                 let added = try await client.addBotMcpServer(profile: profile, name: entry.name, preset: entry.name)
                 oauth = BotMcpSetup.addedServer(from: added, name: entry.name)?.auth?.lowercased() == "oauth"
-                keepBotMcpServerAdded(entry, oauth: oauth, profile: profile, on: owner)
+                keepBotMcpServerAdded(name: entry.name, description: entry.description, oauth: oauth, profile: profile, on: owner)
             } catch {
                 return .failed(AppLocalization.string("Could not add \(entry.name): \(UserFacingError.message(for: error))"))
             }

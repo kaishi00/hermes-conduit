@@ -6181,84 +6181,166 @@
         }
       }
     },
-    "The new plugin is on the host, but this dashboard can't restart itself. Restart it on the host once." : {
+    "The gateway restarted and runs the new plugin. Only the dashboard still runs the old one." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das neue Plugin ist auf dem Host, aber dieses Dashboard kann sich nicht selbst neu starten. Starte es einmal auf dem Host neu."
+            "value" : "Das Gateway wurde neu gestartet und nutzt das neue Plugin. Nur das Dashboard nutzt noch das alte."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "El nuevo plugin ya está en el host, pero este panel no puede reiniciarse solo. Reinícialo una vez en el host."
+            "value" : "El gateway se reinició y usa el nuevo plugin. Solo el panel sigue usando el anterior."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Le nouveau plugin est sur l’hôte, mais ce tableau de bord ne peut pas redémarrer seul. Redémarrez-le une fois sur l’hôte."
+            "value" : "La passerelle a redémarré et utilise le nouveau plugin. Seul le tableau de bord utilise encore l’ancien."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Plugin baru sudah ada di host, tetapi dasbor ini tidak dapat memulai ulang sendiri. Mulai ulang sekali di host."
+            "value" : "Gateway sudah dimulai ulang dan memakai plugin baru. Hanya dasbor yang masih memakai yang lama."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Il nuovo plugin è sull’host, ma questa dashboard non può riavviarsi da sola. Riavviala una volta sull’host."
+            "value" : "Il gateway si è riavviato e usa il nuovo plugin. Solo la dashboard usa ancora quello vecchio."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新しいプラグインはホストにありますが、このダッシュボードは自分で再起動できません。ホストで一度再起動してください。"
+            "value" : "ゲートウェイは再起動し、新しいプラグインで動いています。古いプラグインのままなのはダッシュボードだけです。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "새 플러그인이 호스트에 있지만 이 대시보드는 스스로 다시 시작할 수 없습니다. 호스트에서 한 번 다시 시작하세요."
+            "value" : "게이트웨이가 다시 시작되어 새 플러그인으로 실행 중입니다. 대시보드만 아직 이전 플러그인을 사용합니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Nowa wtyczka jest na hoście, ale ten panel nie może sam się ponownie uruchomić. Uruchom go ponownie raz na hoście."
+            "value" : "Brama została ponownie uruchomiona i używa nowej wtyczki. Tylko panel nadal używa starej."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "O novo plugin já está no host, mas este painel não consegue reiniciar sozinho. Reinicie-o uma vez no host."
+            "value" : "O gateway reiniciou e usa o novo plugin. Só o painel ainda usa o antigo."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Новый плагин уже на хосте, но этот дашборд не может перезапуститься сам. Перезапустите его на хосте один раз."
+            "value" : "Шлюз перезапущен и работает с новым плагином. Только дашборд ещё работает со старым."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Yeni eklenti ana makinede, ancak bu panel kendini yeniden başlatamıyor. Ana makinede bir kez yeniden başlatın."
+            "value" : "Ağ geçidi yeniden başladı ve yeni eklentiyi kullanıyor. Yalnızca panel hâlâ eskisini kullanıyor."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新插件已在主机上，但此仪表板无法自行重启。请在主机上重启一次。"
+            "value" : "网关已重启并运行新插件。只有仪表板仍在运行旧插件。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "新外掛程式已在主機上，但此儀表板無法自行重新啟動。請在主機上重新啟動一次。"
+            "value" : "閘道已重新啟動並執行新外掛程式。只有儀表板仍在執行舊外掛程式。"
+          }
+        }
+      }
+    },
+    "The new plugin is on the host, and only the dashboard still runs the old one. Restart the dashboard on the host once." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Das neue Plugin ist auf dem Host, und nur das Dashboard nutzt noch das alte. Starte das Dashboard einmal auf dem Host neu."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El nuevo plugin ya está en el host y solo el panel sigue usando el anterior. Reinicia el panel una vez en el host."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le nouveau plugin est sur l’hôte, et seul le tableau de bord utilise encore l’ancien. Redémarrez le tableau de bord une fois sur l’hôte."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Plugin baru sudah ada di host, dan hanya dasbor yang masih memakai yang lama. Mulai ulang dasbor sekali di host."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il nuovo plugin è sull’host e solo la dashboard usa ancora quello vecchio. Riavvia la dashboard una volta sull’host."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新しいプラグインはホストにあり、古いプラグインのままなのはダッシュボードだけです。ホストでダッシュボードを一度再起動してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "새 플러그인이 호스트에 있으며, 대시보드만 아직 이전 플러그인을 사용합니다. 호스트에서 대시보드를 한 번 다시 시작하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Nowa wtyczka jest na hoście i tylko panel nadal używa starej. Uruchom panel ponownie raz na hoście."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O novo plugin já está no host, e só o painel ainda usa o antigo. Reinicie o painel uma vez no host."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Новый плагин уже на хосте, и только дашборд ещё работает со старым. Перезапустите дашборд на хосте один раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yeni eklenti ana makinede ve yalnızca panel hâlâ eskisini kullanıyor. Paneli ana makinede bir kez yeniden başlatın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新插件已在主机上，只有仪表板仍在运行旧插件。请在主机上重启一次仪表板。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新外掛程式已在主機上，只有儀表板仍在執行舊外掛程式。請在主機上重新啟動一次儀表板。"
           }
         }
       }

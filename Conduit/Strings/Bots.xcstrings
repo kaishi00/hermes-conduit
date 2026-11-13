@@ -3577,88 +3577,6 @@
         }
       }
     },
-    "Add servers from Hermes' catalog in Edit Bot, once the bot is made." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Füge Server aus dem Hermes-Katalog unter „Bot bearbeiten“ hinzu, sobald der Bot erstellt ist."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Añade servidores del catálogo de Hermes en Editar bot, una vez creado el bot."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Ajoutez des serveurs du catalogue Hermes dans Modifier le bot, une fois le bot créé."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Tambahkan server dari katalog Hermes di Edit Bot setelah bot dibuat."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Aggiungi server dal catalogo di Hermes in Modifica bot, una volta creato il bot."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "ボットを作成したら、「ボットを編集」で Hermes のカタログからサーバを追加できます。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "봇을 만든 뒤 봇 편집에서 Hermes 카탈로그의 서버를 추가하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Dodaj serwery z katalogu Hermesa w Edytuj bota, gdy bot zostanie utworzony."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Adicione servidores do catálogo do Hermes em Editar bot, depois que o bot for criado."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Добавляйте серверы из каталога Hermes в «Изменить бота», когда бот будет создан."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bot oluşturulduktan sonra Botu Düzenle'den Hermes kataloğundaki sunucuları ekleyin."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "创建机器人后，可在“编辑机器人”中从 Hermes 目录添加服务器。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "建立機器人後，可在「編輯機器人」中從 Hermes 目錄加入伺服器。"
-          }
-        }
-      }
-    },
     "Added %@, but it did not connect: %@" : {
       "localizations" : {
         "de" : {
@@ -4487,88 +4405,6 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "套用更新"
-          }
-        }
-      }
-    },
-    "Ask Hermes to add an MCP server, or install one from the catalog when it lists some." : {
-      "localizations" : {
-        "de" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Bitte Hermes, einen MCP-Server hinzuzufügen, oder installiere einen aus dem Katalog, sobald er welche anbietet."
-          }
-        },
-        "es" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Pídele a Hermes que añada un servidor MCP o instala uno del catálogo cuando ofrezca alguno."
-          }
-        },
-        "fr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Demandez à Hermes d'ajouter un serveur MCP, ou installez-en un depuis le catalogue lorsqu'il en propose."
-          }
-        },
-        "id" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Minta Hermes menambahkan server MCP, atau pasang dari katalog jika ada yang tersedia."
-          }
-        },
-        "it" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Chiedi a Hermes di aggiungere un server MCP, oppure installane uno dal catalogo quando ne elenca."
-          }
-        },
-        "ja" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes に MCP サーバーの追加を頼むか、カタログに掲載されていればそこからインストールしてください。"
-          }
-        },
-        "ko" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes에게 MCP 서버를 추가해 달라고 요청하거나, 카탈로그에 있으면 거기서 설치하세요."
-          }
-        },
-        "pl" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Poproś Hermesa o dodanie serwera MCP albo zainstaluj go z katalogu, gdy jakieś się w nim pojawią."
-          }
-        },
-        "pt-BR" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Peça ao Hermes para adicionar um servidor MCP ou instale um do catálogo quando houver algum."
-          }
-        },
-        "ru" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Попросите Hermes добавить MCP-сервер или установите его из каталога, когда там что-то появится."
-          }
-        },
-        "tr" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "Hermes'ten bir MCP sunucusu eklemesini isteyin ya da katalogda varsa oradan yükleyin."
-          }
-        },
-        "zh-Hans" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "让 Hermes 添加一个 MCP 服务器，或在目录中有可用项时从中安装。"
-          }
-        },
-        "zh-Hant" : {
-          "stringUnit" : {
-            "state" : "translated",
-            "value" : "請 Hermes 新增一個 MCP 伺服器，或在目錄中有可用項目時從中安裝。"
           }
         }
       }
@@ -49641,6 +49477,334 @@
           "stringUnit" : {
             "state" : "translated",
             "value" : "顯示背後的原因"
+          }
+        }
+      }
+    },
+    "Add MCP Server" : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP-Server hinzufügen"
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añadir servidor MCP"
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajouter un serveur MCP"
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tambah Server MCP"
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi server MCP"
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCPサーバーを追加"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP 서버 추가"
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodaj serwer MCP"
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicionar Servidor MCP"
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавить MCP-сервер"
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "MCP Sunucusu Ekle"
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "添加 MCP 服务器"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "新增 MCP 伺服器"
+          }
+        }
+      }
+    },
+    "Add MCP servers in Edit Bot, once the bot is made." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge MCP-Server unter „Bot bearbeiten“ hinzu, sobald der Bot erstellt ist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añade servidores MCP en Editar bot cuando el bot esté creado."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajoutez des serveurs MCP dans Modifier le bot, une fois le bot créé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tambahkan server MCP di Edit Bot setelah bot dibuat."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi server MCP in Modifica bot, una volta creato il bot."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "ボットを作成したら、「ボットを編集」でMCPサーバーを追加できます。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "봇을 만든 후 봇 편집에서 MCP 서버를 추가하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodaj serwery MCP w Edytuj bota, gdy bot zostanie utworzony."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicione servidores MCP em Editar Bot depois que o bot for criado."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавьте MCP-серверы в «Изменить бота», когда бот будет создан."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bot oluşturulduktan sonra Botu Düzenle'den MCP sunucuları ekleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "创建机器人后，在“编辑机器人”中添加 MCP 服务器。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "建立機器人後，在「編輯機器人」中新增 MCP 伺服器。"
+          }
+        }
+      }
+    },
+    "Add an MCP server above, or install one from the catalog when it lists some." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge oben einen MCP-Server hinzu oder installiere einen aus dem Katalog, sobald er welche anbietet."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Añade un servidor MCP arriba o instala uno del catálogo cuando ofrezca alguno."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ajoutez un serveur MCP ci-dessus, ou installez-en un depuis le catalogue lorsqu’il en propose."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tambahkan server MCP di atas, atau pasang dari katalog jika tersedia."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Aggiungi un server MCP qui sopra, oppure installane uno dal catalogo quando ne elenca."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "上でMCPサーバーを追加するか、カタログに掲載されていればそこからインストールしてください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "위에서 MCP 서버를 추가하거나, 카탈로그에 있으면 거기서 설치하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Dodaj serwer MCP powyżej lub zainstaluj go z katalogu, gdy jakieś się tam pojawią."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Adicione um servidor MCP acima ou instale um do catálogo quando ele listar algum."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Добавьте MCP-сервер выше или установите его из каталога, когда там что-то появится."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Yukarıdan bir MCP sunucusu ekleyin veya katalogda varsa oradan yükleyin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在上方添加 MCP 服务器，或在目录中有可用项时从中安装。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在上方新增 MCP 伺服器，或在目錄中有可用項目時從中安裝。"
+          }
+        }
+      }
+    },
+    "Paste the server's token, or choose another way to sign in." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Füge das Token des Servers ein oder wähle eine andere Anmeldeart."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pega el token del servidor o elige otra forma de iniciar sesión."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Collez le jeton du serveur, ou choisissez un autre mode de connexion."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tempel token server, atau pilih cara masuk lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Incolla il token del server oppure scegli un altro modo di accesso."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "サーバーのトークンを貼り付けるか、別のサインイン方法を選んでください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "서버 토큰을 붙여넣거나 다른 로그인 방식을 선택하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wklej token serwera lub wybierz inny sposób logowania."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Cole o token do servidor ou escolha outra forma de login."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Вставьте токен сервера или выберите другой способ входа."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sunucunun belirtecini yapıştırın veya başka bir oturum açma yolu seçin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "粘贴服务器的令牌，或选择其他登录方式。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "貼上伺服器的權杖，或選擇其他登入方式。"
           }
         }
       }

@@ -909,6 +909,40 @@ extension KanbanTests {
         XCTAssertTrue(store.probing.isEmpty)
     }
 
+    /// A profile switch while the first tests run starts none of the rest,
+    /// and a test picked before it sends nothing: the names were the old
+    /// profile's (#2387).
+    func testAProfileSwitchStartsNoMoreOfTheOldProfilesTests() async {
+        let names = ["a", "b", "c", "d", "e"]
+        var responses: [String: [String: Any]] = [
+            "/api/mcp/servers": ["servers": names.map { ["name": $0, "transport": "http", "url": "https://\($0)", "enabled": true] }],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+        ]
+        for name in names { responses["/api/mcp/servers/\(name)/test"] = ["ok": true] }
+        let requester = CapabilityMockRequester(responses: responses)
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        await store.loadConnectors()
+        let picked = store.generation
+        var held: [CheckedContinuation<Void, Never>] = []
+        requester.beforeAnswering = { path in
+            guard path.hasSuffix("/test") else { return }
+            await withCheckedContinuation { held.append($0) }
+        }
+
+        let list = Task { await store.probeServers() }
+        while held.count < 3 { await Task.yield() }
+        store.configure(requester: requester, profile: "work")
+        held.forEach { $0.resume() }
+        await list.value
+        XCTAssertEqual(requester.calls.filter { $0.path.hasSuffix("/test") }.count, 3)
+
+        requester.beforeAnswering = nil
+        await store.probe("d", generation: picked)
+        XCTAssertEqual(requester.calls.filter { $0.path.hasSuffix("/test") }.count, 3, "a stale test is never sent")
+        XCTAssertFalse(requester.calls.contains { $0.path.contains("profile=work") && $0.path.hasSuffix("/test") })
+    }
+
     /// A test cancelled under it (the dashboard gone) isn't a failed test:
     /// nothing is recorded, so it's tested again.
     func testACancelledConnectorTestRecordsNothing() async {
@@ -958,6 +992,102 @@ extension KanbanTests {
         XCTAssertThrowsError(try edit.saved(fromJSON: false)) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .noTarget) }
         edit.name = " "
         XCTAssertThrowsError(try edit.saved(fromJSON: false)) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .noName) }
+    }
+
+    // MARK: Adding a server (#1570)
+
+    func testANewServerChoosesHowItIsReachedAndHowItSignsIn() throws {
+        var edit = ConnectorServerEdit.newServer()
+        XCTAssertTrue(edit.isNew)
+        XCTAssertTrue(edit.isRemote, "a new server starts on an address")
+        edit.name = " griply "
+        edit.url = "https://mcp.griply.app/mcp"
+
+        edit.signIn = .token
+        XCTAssertThrowsError(try edit.added(fromJSON: false)) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .noToken) }
+        edit.token = "  abc123 "
+        var added = try edit.added(fromJSON: false)
+        XCTAssertEqual(added.name, "griply")
+        XCTAssertEqual(added.bearerToken, "abc123", "Hermes keeps the token in .env")
+        XCTAssertEqual(added.entry as NSDictionary, ["url": "https://mcp.griply.app/mcp"] as NSDictionary, "the entry never holds it")
+
+        edit.signIn = .oauth
+        added = try edit.added(fromJSON: false)
+        XCTAssertNil(added.bearerToken)
+        XCTAssertEqual(added.entry["auth"] as? String, "oauth")
+
+        // The JSON carries the form's choice, and a JSON token never goes.
+        try edit.showJSON()
+        XCTAssertTrue(edit.json.contains(#""auth" : "oauth""#))
+        edit.json = #"{"url": "https://mcp.griply.app/mcp", "headers": {"X-Team": "core"}}"#
+        try edit.showForm()
+        XCTAssertEqual(edit.signIn, ConnectorServerEdit.SignIn.none, "the JSON dropped OAuth")
+        edit.signIn = .token
+        XCTAssertNil(try edit.added(fromJSON: true).bearerToken)
+        XCTAssertEqual((try edit.added(fromJSON: false).entry["headers"] as? [String: String])?["X-Team"], "core", "the JSON's other keys stay")
+
+        // A command drops the address and its sign-in.
+        edit.signIn = .oauth
+        edit.setReachedByAddress(false)
+        edit.command = "npx"
+        edit.arguments = "-y\n@griply/mcp"
+        added = try edit.added(fromJSON: false)
+        XCTAssertNil(added.bearerToken)
+        XCTAssertNil(added.entry["url"])
+        XCTAssertNil(added.entry["auth"])
+        XCTAssertEqual(added.entry["command"] as? String, "npx")
+        XCTAssertEqual(added.entry["args"] as? [String], ["-y", "@griply/mcp"])
+    }
+
+    func testANewServerMovesBetweenTheFormAndJSONHalfFilled() throws {
+        var edit = ConnectorServerEdit.newServer()
+        try edit.showJSON()
+        XCTAssertTrue(edit.json.contains(#""url""#), "the JSON shows where the address goes")
+        edit.json = "{}"
+        try edit.showForm()
+        try edit.formatJSON()
+        XCTAssertThrowsError(try edit.added(fromJSON: true)) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .noName) }
+        edit.name = "files"
+        XCTAssertThrowsError(try edit.added(fromJSON: true)) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .noTarget) }
+        XCTAssertThrowsError(try edit.added(fromJSON: false)) { XCTAssertEqual($0 as? ConnectorServerEdit.Problem, .noTarget) }
+
+        // An existing server's form can't switch how it's reached.
+        var existing = ConnectorServerEdit(name: "griply", entry: ["url": "https://mcp.griply.app/mcp"])
+        existing.setReachedByAddress(false)
+        XCTAssertTrue(existing.isRemote)
+        XCTAssertFalse(existing.isNew)
+    }
+
+    func testAnAddedServersNumbersReachHermesAsNumbers() throws {
+        // The JSON typed in Add MCP Server goes out through AnyCodable.from.
+        let parsed = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(#"{"timeout": 1, "enabled": true, "args": [0, "x"]}"#.utf8)
+        ) as? [String: Any])
+        XCTAssertEqual(AnyCodable.from(parsed), .object([
+            "timeout": .number(1),
+            "enabled": .bool(true),
+            "args": .array([.number(0), .string("x")]),
+        ]))
+        XCTAssertEqual(AnyCodable.from(["on": false, "port": 0] as [String: Any]), .object(["on": .bool(false), "port": .number(0)]))
+    }
+
+    func testAnAddedServerShowsFromHermesListOnlyOnTheProfileItWasAddedTo() async {
+        let requester = CapabilityMockRequester(responses: [
+            "/api/mcp/servers": ["servers": [["name": "griply", "transport": "http", "url": "https://mcp.griply.app/mcp", "enabled": false]]],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+        ])
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "work")
+        let callsBefore = requester.calls.count
+
+        await store.serverAdded("griply", entry: ["url": "https://mcp.griply.app/mcp"], generation: store.generation &+ 1)
+        XCTAssertTrue(store.servers.isEmpty, "after a switch nothing changes")
+        XCTAssertEqual(requester.calls.count, callsBefore)
+
+        await store.serverAdded("griply", entry: ["url": "https://mcp.griply.app/mcp"], generation: store.generation)
+        XCTAssertEqual(store.servers.map(\.name), ["griply"])
+        XCTAssertTrue(requester.calls.contains { $0.path == "/api/mcp/servers?profile=work" && $0.method == "GET" })
+        XCTAssertFalse(requester.calls.contains { $0.path.hasSuffix("/test") }, "a server that's off isn't tested")
     }
 
     func testServerJSONMustBeOneObjectWithAnAddressOrCommand() {
