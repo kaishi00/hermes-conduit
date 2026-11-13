@@ -455,11 +455,29 @@ struct BotWorkPanel: View {
                     .listRowSeparator(.hidden)
                     .listRowInsets(EdgeInsets(top: 2, leading: 16, bottom: 0, trailing: 16))
                 } else if snapshot.resolvedCount == 0 {
-                    Text("No work yet")
+                    // Off, it never will have any: Edit Bot > Work's own words for it.
+                    Text(snapshot.isOn ? AppLocalization.string("No work yet")
+                         : AppLocalization.string("\(botName) does everything in its Bot Chat itself. Work that’s already running carries on.", table: .bots))
                         .scaledFont(.subheadline)
                         .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                         .listRowBackground(Color.clear)
                         .listRowSeparator(.hidden)
+                }
+                // What the Bot Chat asked and waits on comes first: it
+                // holds the work up until the user answers.
+                if let questions = snapshot.coordination?.openQuestions, !questions.isEmpty {
+                    sectionHeader(AppLocalization.string("Asked you", table: .bots), symbol: "questionmark.bubble.fill", tint: .orange)
+                    ForEach(questions) { question in
+                        BotWorkQuestionCard(
+                            question: question, profile: profile,
+                            isActing: work.isActing(question.id, profile: profile),
+                            onWhy: { whyItem = question }
+                        )
+                        .listRowBackground(Color.clear)
+                        .listRowSeparator(.hidden)
+                        .listRowInsets(EdgeInsets(top: 5, leading: 16, bottom: 5, trailing: 16))
+                    }
                 }
                 if !snapshot.pinned.isEmpty {
                     sectionHeader(AppLocalization.string("Pinned"), symbol: "pin.fill", tint: .orange)
@@ -497,7 +515,8 @@ struct BotWorkPanel: View {
                         withAnimation(ConduitMotion.response) { showsCoordination = true }
                     } label: {
                         HStack(spacing: 10) {
-                            Image(systemName: "arrow.triangle.branch")
+                            // Edit Bot > Work's mark for Coordination.
+                            Image(systemName: "point.3.connected.trianglepath.dotted")
                                 .foregroundStyle(.secondary)
                                 .accessibilityHidden(true)
                             Text(AppLocalization.string("Coordination", table: .bots))
@@ -554,10 +573,29 @@ struct BotWorkPanel: View {
                     .listRowInsets(EdgeInsets(top: 14, leading: 16, bottom: 12, trailing: 16))
                     .accessibilityIdentifier("botWork.resolved")
                 }
+            } else if work.couldNotRead(profile) {
+                // Nothing kept and the read got nothing: said, with a way
+                // to ask again, rather than a spinner that never ends.
+                VStack(alignment: .leading, spacing: 10) {
+                    Text(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."))
+                        .scaledFont(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                    Button(AppLocalization.string("Try Again")) {
+                        Haptics.light()
+                        work.retryReading(profile)
+                        Task { await appState.refreshBotWork(profile: profile) }
+                    }
+                    .buttonStyle(.settings)
+                    .accessibilityIdentifier("botWork.retry")
+                }
+                .listRowBackground(Color.clear)
+                .listRowSeparator(.hidden)
             } else {
                 ProgressView()
                     .frame(maxWidth: .infinity)
                     .listRowBackground(Color.clear)
+                    .listRowSeparator(.hidden)
             }
         }
         .listStyle(.plain)
@@ -665,6 +703,88 @@ struct BotWorkPanel: View {
         .task(id: "\(profile)\u{1F}\(appState.isConnected)") {
             await appState.loadResolvedWork(profile: profile)
         }
+    }
+}
+
+/// A question the Bot Chat asked the user about its work and waits on, at
+/// the top of the Work panel: what it asks, and Approve or Decline, which
+/// is the user's own answer with nothing typed in the Bot Chat. On a yes
+/// the Bot Chat goes ahead. The card's words open what was behind it.
+private struct BotWorkQuestionCard: View {
+    @EnvironmentObject private var appState: AppState
+    let question: BotWorkCoordination.Item
+    let profile: String
+    let isActing: Bool
+    let onWhy: () -> Void
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Button {
+                Haptics.light()
+                onWhy()
+            } label: {
+                VStack(alignment: .leading, spacing: 4) {
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(question.headline)
+                            .scaledFont(.subheadline.weight(.semibold))
+                            .foregroundStyle(Color.orange)
+                        Spacer(minLength: 4)
+                        Text(question.at, format: .relative(presentation: .numeric, unitsStyle: .narrow))
+                            .scaledFont(.caption)
+                            .foregroundStyle(.tertiary)
+                            .lineLimit(1)
+                    }
+                    if !question.title.isEmpty {
+                        Text(question.title)
+                            .scaledFont(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                            .lineLimit(2)
+                    }
+                    Text(BotWorkLook.rendered(question.text))
+                        .scaledFont(.footnote)
+                        .foregroundStyle(Color.primary)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityElement(children: .combine)
+            let layout = dynamicTypeSize.isAccessibilitySize
+                ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
+            layout {
+                answerButton(AppLocalization.string("Approve"), approved: true)
+                answerButton(AppLocalization.string("Decline"), approved: false)
+            }
+            .disabled(isActing || !appState.isConnected)
+        }
+        .padding(14)
+        // A "Needs you" card's orange: it waits on the user as one does.
+        .background(RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color.orange.opacity(0.09)))
+        .overlay(RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(Color.orange.opacity(0.32), lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("botWork.question.\(question.id)")
+    }
+
+    private func answerButton(_ title: String, approved: Bool) -> some View {
+        Button {
+            Haptics.light()
+            Task { await appState.answerBotQuestion(question, profile: profile, approved: approved) }
+        } label: {
+            Text(title)
+                .scaledFont(.subheadline.weight(.semibold))
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                .frame(maxWidth: .infinity, minHeight: 44)
+                .foregroundStyle(approved ? Color.black.opacity(0.85) : Color.primary)
+                .background(
+                    RoundedRectangle(cornerRadius: 16, style: .continuous)
+                        .fill(approved ? Color.orange : Color.primary.opacity(0.08))
+                )
+                .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -776,17 +896,37 @@ private struct BotWorkRow: View {
 
     private var tint: Color { BotWorkLook.tint(item) }
 
+    private var botName: String {
+        appState.botWork.snapshot(profile)?.botName ?? appState.profileDisplayName(profile)
+    }
+
+    /// Waiting on the user with nothing to answer on the card itself (no
+    /// approval read, no screen ask): its chat is where they answer, so the
+    /// way there shows without opening the card.
+    private var offersChatClosed: Bool {
+        item.needsYou && item.approval == nil && item.screenAsk.isEmpty
+            && item.kind == .workstream && !item.sessionID.isEmpty
+    }
+
     /// The line under the title: what it's doing, else why it stopped,
     /// else where it stands.
     private var subtitle: String {
         // Resolved before it finished: "Resolved", not where it was left.
         if item.isResolvedUnfinished { return item.statusText }
         if item.isClosed {
-            return item.resolvedBy == "bot" ? AppLocalization.string("\(item.statusText) · resolved by the bot", table: .bots)
+            return item.resolvedBy == "bot" ? AppLocalization.string("\(item.statusText) · resolved by \(botName)", table: .bots)
                 : AppLocalization.string("\(item.statusText) · resolved by you", table: .bots)
         }
         if !item.screenAsk.isEmpty {
             return AppLocalization.string("Needs you on the screen · \(item.screenAsk)", table: .bots)
+        }
+        // Waiting on the user says so first, then the step it stopped at:
+        // the step alone read as work still going.
+        if item.status == "needs_you" {
+            if let doing = item.doing { return AppLocalization.string("Needs you · \(doing)", table: .bots) }
+            // No step to name: what it stopped on, when it said.
+            if !item.error.isEmpty { return AppLocalization.string("Needs you · \(item.error)", table: .bots) }
+            return item.statusText
         }
         if let doing = item.doing { return doing }
         if item.needsYou, !item.error.isEmpty {
@@ -814,6 +954,9 @@ private struct BotWorkRow: View {
             }
             if !item.isClosed, item.kind == .workstream, !item.screenAsk.isEmpty || !item.screen.isEmpty {
                 screenBox
+            }
+            if !expanded, offersChatClosed {
+                openChatButton
             }
             if expanded {
                 // At the top, where it shows without scrolling past a long
@@ -1092,6 +1235,21 @@ private struct BotWorkRow: View {
             }
             if item.actions.contains(.send) {
                 replyField
+            }
+            // Also on the card, not only its long press: who coordinates it.
+            if let handOver = [BotWorkItem.Action.leaveAlone, .coordinate].first(where: { item.manage.contains($0) }) {
+                Button {
+                    Haptics.light()
+                    Task { await appState.actOnWorkstream(item, profile: profile, action: handOver) }
+                } label: {
+                    Label(handOver == .leaveAlone ? AppLocalization.string("Leave Alone", table: .bots)
+                              : AppLocalization.string("Let \(botName) Coordinate It", table: .bots),
+                          systemImage: handOver == .leaveAlone ? "hand.raised" : "point.3.connected.trianglepath.dotted")
+                        .frame(maxWidth: .infinity, minHeight: 36)
+                }
+                .buttonStyle(.settings)
+                .disabled(isActing || !appState.isConnected)
+                .accessibilityIdentifier("botWork.handOver.\(item.ref)")
             }
         }
     }

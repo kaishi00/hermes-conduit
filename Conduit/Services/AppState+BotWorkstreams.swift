@@ -31,6 +31,9 @@ final class BotWorkStore: ObservableObject {
     /// Each bot's Resolved list as far as it was read, while its panel
     /// shows it.
     @Published private(set) var resolvedLists: [String: ResolvedList] = [:]
+    /// Bots whose work couldn't be read and has nothing kept to show, so
+    /// their panel says so rather than waiting for good.
+    @Published private(set) var unread: Set<String> = []
     /// Actions on their way, by bot and ref, so a button isn't tapped twice.
     @Published private(set) var acting: Set<String> = []
     /// Every workstream's chat Conduit knows of, on every bot, worked out
@@ -91,8 +94,23 @@ final class BotWorkStore: ObservableObject {
     func snapshot(_ profile: String) -> BotWorkSnapshot? { snapshots[profile] }
 
     func set(_ snapshot: BotWorkSnapshot) {
+        if unread.contains(snapshot.profile) { unread.remove(snapshot.profile) }
         guard snapshots[snapshot.profile] != snapshot else { return }
         snapshots[snapshot.profile] = snapshot
+    }
+
+    /// A read that got nothing: said only while there's no list to show.
+    func noteUnread(_ profile: String) {
+        guard snapshots[profile] == nil, !unread.contains(profile) else { return }
+        unread.insert(profile)
+    }
+
+    /// Whether the bot's work couldn't be read and nothing is kept of it.
+    func couldNotRead(_ profile: String) -> Bool { snapshots[profile] == nil && unread.contains(profile) }
+
+    /// A new try: the panel waits again rather than saying it failed.
+    func retryReading(_ profile: String) {
+        if unread.contains(profile) { unread.remove(profile) }
     }
 
     /// A row as an action left it; `reopened` puts one back from the
@@ -102,10 +120,17 @@ final class BotWorkStore: ObservableObject {
         snapshots[profile] = reopened ? snapshot.reopening(item) : snapshot.replacing(item)
     }
 
+    /// A question as the user's tap answered it.
+    func answer(_ id: String, approved: Bool, profile: String) {
+        guard let snapshot = snapshots[profile] else { return }
+        snapshots[profile] = snapshot.answering(id, approved: approved)
+    }
+
     func clear() {
         snapshots = [:]
         resolvedLists = [:]
         refusals = [:]
+        unread = []
         acting = []
         reading = []
         rereads = []
@@ -414,7 +439,10 @@ extension AppState {
         if botWork.snapshot(profile) == nil, let kept = client.kept(in: answers) {
             setBotWork(kept)
         }
-        guard isConnected else { return }
+        guard isConnected else {
+            botWork.noteUnread(profile)
+            return
+        }
         guard botWork.beginReading(profile) else {
             // The read under way predates the action, so it's dropped: it
             // reads again when it's done, and the row shows what came after.
@@ -431,7 +459,9 @@ extension AppState {
                 guard botWork.isCurrent(mark, profile: profile) else { continue }
                 setBotWork(listed)
             } catch {
-                // Kept as it was; the next refresh asks again.
+                // Kept as it was; the next refresh asks again. With nothing
+                // kept, the panel says it couldn't be read.
+                if botWork.isCurrent(mark, profile: profile) { botWork.noteUnread(profile) }
             }
         } while botWork.takeReadAgain(profile)
     }
@@ -483,6 +513,40 @@ extension AppState {
         }
         Haptics.warning()
         // The refusal shows now; the row is read again behind it.
+        Task { await refreshBotWork(profile: profile, afterAction: true) }
+        return false
+    }
+
+    /// The user's Approve or Decline on a question the Bot Chat asked them
+    /// about its work, from its card in the Work panel: kept by the plugin
+    /// as their own answer, with no message typed in the Bot Chat. On a
+    /// yes the Bot Chat is told and goes ahead. True when the plugin kept it.
+    @discardableResult
+    func answerBotQuestion(_ question: BotWorkCoordination.Item, profile: String, approved: Bool) async -> Bool {
+        guard botWork.begin(question.id, profile: profile) else { return false }
+        defer { botWork.end(question.id, profile: profile) }
+        botWork.setRefusal(nil, profile: profile)
+        botWork.noteAction(profile)
+        let mark = botWork.mark(profile)
+        do {
+            try await botWorkClient(profile: profile).answer(question: question.id, approved: approved)
+            guard botWork.mark(profile).epoch == mark.epoch else { return true }
+            botWork.noteAction(profile)
+            botWork.answer(question.id, approved: approved, profile: profile)
+            Haptics.success()
+            Task { await refreshBotWork(profile: profile, afterAction: true) }
+            return true
+        } catch {
+            guard botWork.mark(profile).epoch == mark.epoch else { return false }
+            if case DashboardTicketBridgeError.http(_, let detail) = error, !detail.isEmpty {
+                botWork.setRefusal(detail, profile: profile, ref: question.id)
+            } else {
+                botWork.setRefusal(AppLocalization.string("Couldn't reach this bot's work. Try again in a moment."),
+                                   profile: profile, ref: question.id)
+            }
+        }
+        Haptics.warning()
+        // The refusal shows now; the question is read again behind it.
         Task { await refreshBotWork(profile: profile, afterAction: true) }
         return false
     }
