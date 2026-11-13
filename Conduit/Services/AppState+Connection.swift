@@ -1006,6 +1006,7 @@ extension AppState {
         // A restart already handed to Hermes carries on there; Conduit
         // stops following it.
         stopFollowingGatewayRestart()
+        stopFollowingHermesUpdate()
         stopFollowingNotifierPluginUpdate()
         automaticPairingAttempts.removeAll()
         cancelScenePhaseAttempt()

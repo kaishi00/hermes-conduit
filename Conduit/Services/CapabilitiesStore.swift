@@ -121,6 +121,8 @@ final class CapabilitiesStore {
     /// Hub skills being removed, by name, and why one failed.
     private(set) var skillRemovals: [String: CapabilityInstallState] = [:]
     private(set) var skillsUpdate: CapabilityInstallState?
+    /// Check for Updates' answer, nil until asked.
+    private(set) var hubSkillUpdates: HubSkillUpdatesState?
 
     // Tools
     /// Tool name -> calls over the last year; nil until read.
@@ -207,6 +209,7 @@ final class CapabilitiesStore {
         skillHubMissing = false
         skillRemovals = [:]
         skillsUpdate = nil
+        hubSkillUpdates = nil
         toolCalls = nil
         servers = []
         connectorCatalog = []
@@ -639,11 +642,32 @@ final class CapabilitiesStore {
                 return false
             }
             skillsUpdate = nil
+            // What was listed as having updates has them now.
+            if case .found = hubSkillUpdates { hubSkillUpdates = .found([]) }
             return true
         } catch {
             guard token == generation, !(error is CancellationError) else { return false }
             skillsUpdate = .failed(UserFacingError.message(for: error))
             return false
+        }
+    }
+
+    /// Asks Hermes which hub skills have a newer version at their source
+    /// (`hermes skills check`, which fetches from every source, so it can
+    /// take a minute), as Hermes Desktop's Skills tab does.
+    func checkHubSkillUpdates() async {
+        let token = generation
+        hubSkillUpdates = .checking
+        do {
+            let answer = try await request(scoped("/api/skills/hub/updates"), timeout: 120_000)
+            guard token == generation else { return }
+            let rows = (answer["updates"] as? [Any] ?? []).compactMap(HubSkillUpdate.init)
+            hubSkillUpdates = .found(rows)
+        } catch {
+            guard token == generation, !(error is CancellationError) else { return }
+            hubSkillUpdates = Self.isMissingRoute(error)
+                ? .failed(AppLocalization.string("Update Hermes to check hub skills for updates.", table: .bots))
+                : .failed(UserFacingError.message(for: error))
         }
     }
 

@@ -260,6 +260,7 @@ extension AppState {
     /// carries over to the next account's chats.
     func clearAuthorityQueueState() {
         authorityQueue.clear()
+        sessionControl.clear()
         queuedSendRows = [:]
         queuedSendOrder = []
         ownSendRowIDs = [:]
