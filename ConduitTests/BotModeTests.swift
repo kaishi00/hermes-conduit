@@ -1280,6 +1280,10 @@ final class BotModeTests: XCTestCase {
     }
 
     func testServerSwitchCancelsInFlightBotOpen() async {
+        // The switch waits for the flight to reach its resume, not a fixed
+        // 60 ms: on a loaded runner the open finished navigating instead of
+        // being abandoned (hosted Smoke on Xcode 27, 2026-11-13, #2326).
+        let (resumingStream, resumingSignal) = AsyncStream<Void>.makeStream()
         let harness = makeBotHarness(
             configureDefaults: { defaults in
                 defaults.set(
@@ -1290,6 +1294,7 @@ final class BotModeTests: XCTestCase {
             lifecycleOperations: ChatResumeLifecycleOperations(
                 openSessionWithProfile: { _, id, _, _ in
                     // The flight is mid-resume when the server switches.
+                    resumingSignal.yield()
                     try? await Task.sleep(nanoseconds: 250_000_000)
                     return SessionResumeResult(
                         sessionId: id,
@@ -1311,7 +1316,8 @@ final class BotModeTests: XCTestCase {
         let bot = makeBot(name: "atlas")
 
         async let opened: Bool = harness.appState.openBotChat(for: bot)
-        try? await Task.sleep(nanoseconds: 60_000_000)
+        var resuming = resumingStream.makeAsyncIterator()
+        _ = await resuming.next()
         _ = harness.appState.prepareChatResumeForConnection(
             to: "https://elsewhere.example",
             dashboardID: UUID()
