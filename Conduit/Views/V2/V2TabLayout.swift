@@ -295,7 +295,7 @@ struct V2TabsOrderSheet: View {
         }
         if layout.canHide(tab) {
             Toggle(isOn: Binding(
-                get: { !store.layout.isHidden(tab) },
+                get: { !store.layout.isHidden(tab) && !store.unavailable.contains(tab) },
                 set: { shown in
                     Haptics.selection()
                     var next = store.layout
@@ -306,8 +306,10 @@ struct V2TabsOrderSheet: View {
                 .tint(.conduitAccent)
                 // The bar is full: one comes off before another goes on.
                 // Or this dashboard doesn't have the page (Pulse without
-                // the plugin serving it): turning it on would show nothing.
-                .disabled(layout.isHidden(tab) && (!layout.canShow(tab) || store.unavailable.contains(tab)))
+                // the plugin serving it): its switch reads off and dimmed,
+                // and a layout that shows it keeps it for the dashboards
+                // that do.
+                .disabled((layout.isHidden(tab) && !layout.canShow(tab)) || store.unavailable.contains(tab))
                 .accessibilityIdentifier("settings.tabs.show.\(tab.rawValue)")
         } else {
             label
