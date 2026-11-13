@@ -215,7 +215,7 @@ extension AppState {
             let listed = !linkedRoomApprovalRows.isEmpty
             try? await Task.sleep(for: Self.rosterApprovalsInterval(listed: listed))
             guard !Task.isCancelled else { return }
-            if groupChatPhase == .available, canAnswerRoomApprovals { await refreshLinkedRoomApprovals() }
+            if groupChatPhase == .available, canAnswerRoomApprovals, isSceneActive { await refreshLinkedRoomApprovals() }
         }
     }
 

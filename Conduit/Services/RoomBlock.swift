@@ -30,9 +30,13 @@ enum RoomBlock {
         var seen = Set<String>()
         var targets: [RoomBlockTarget] = []
         if let copy {
-            targets.append(RoomBlockTarget(id: copy.link, name: copy.from))
+            targets.append(RoomBlockTarget(id: copy.link, name: RoomCopyText.hostName(for: copy)))
         } else if let draft {
-            targets = draft.people.map { RoomBlockTarget(id: $0.id, name: $0.name) }
+            let someone = AppLocalization.string("Someone you've linked with", table: .rooms)
+            targets = draft.people.map {
+                let name = $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
+                return RoomBlockTarget(id: $0.id, name: name.isEmpty ? someone : name)
+            }
         }
         return targets.filter { !$0.id.isEmpty && seen.insert($0.id).inserted }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
@@ -53,7 +57,9 @@ extension AppState {
         guard canInviteLinkedPeople, let surface = activeRoomSurface else { return [] }
         let targets = surface.copy.map { RoomBlock.targets(copy: $0, draft: nil) }
             ?? RoomBlock.targets(copy: nil, draft: linkedRoomDraft(surface.room.roomID))
-        let dashboard = activeDashboardID
+        // The room's own dashboard: a surface left from before a switch
+        // then fails block(_:)'s check instead of reaching the new Hermes.
+        let dashboard = surface.dashboardID
         return targets.map { RoomBlockTarget(id: $0.id, name: $0.name, dashboardID: dashboard) }
     }
 

@@ -320,6 +320,9 @@ extension GroupChatModelsTests {
         alone.justMe = true
         XCTAssertEqual(RoomInviteText.line(for: alone),
                        AppLocalization.string("Started, and you're in it without your agents", table: .rooms))
+        var leftAlone = try XCTUnwrap(RoomInvitesClient.invite(invitesInvite("conduit-1", from: furina, status: "left", reason: "left")))
+        leftAlone.justMe = true
+        XCTAssertEqual(RoomInviteText.line(for: leftAlone), AppLocalization.string("You left", table: .rooms))
         XCTAssertEqual(try line("lapsed"), AppLocalization.string("The invite ran out", table: .rooms))
         XCTAssertEqual(try line("declined"), AppLocalization.string("You declined"))
         XCTAssertEqual(try line("left", reason: "left"), AppLocalization.string("Your agents left", table: .rooms))

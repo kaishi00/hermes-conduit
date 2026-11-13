@@ -181,7 +181,9 @@ enum RoomInviteText {
         case "declined":
             return AppLocalization.string("You declined")
         case "left":
-            return AppLocalization.string("Your agents left", table: .rooms)
+            return invite.justMe
+                ? AppLocalization.string("You left", table: .rooms)
+                : AppLocalization.string("Your agents left", table: .rooms)
         case "cancelled":
             switch invite.reason {
             case "withdrawn":
