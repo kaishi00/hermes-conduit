@@ -1937,14 +1937,14 @@ opening its own chat (see Notifications), sign-in flows
 - Tests: `ConduitTests/NotificationDashboardOwnershipTests.swift`
 
 **Rulings**
-- A profile or dashboard picked by hand during a call asks first ("End the call and switch?", with the destination's name) and switches only on End Call and Switch; Cancel leaves the call and the screen as they were. Every call counts, as for the refusals: on screen or minimised, Classic voice, CarPlay, the Watch and a call from Hermes (issue 2390, PR_NUM).
+- A profile or dashboard picked by hand during a call asks first ("End the call and switch?", with the destination's name) and switches only on End Call and Switch; Cancel leaves the call and the screen as they were. Every call counts, as for the refusals: on screen or minimised, Classic voice, CarPlay, the Watch and a call from Hermes (issue 2390, #2398).
 - A move Conduit makes for a tap refuses during a call rather than asking, since it can wait or be tapped again (2026-10-26, #1297).
 
 **Open gaps**
 - A call that carries on across a profile or dashboard switch, and checking another profile mid-call, wait on the all-live rework (stages 2 and 3; issue 2390).
 - Settings shows no call bar: the call keeps running behind it and the bar is back once Settings closes. Whether a Voice setting reaches the running call isn't said on screen (issue 2390, with the device pickers of issue 2389).
 
-**Checked:** 2026-11-13, PR_NUM (new entry: the hand-picked switches ask first; the refusals unchanged).
+**Checked:** 2026-11-13, #2398 (new entry: the hand-picked switches ask first; the refusals unchanged).
 
 ## Pulse
 
