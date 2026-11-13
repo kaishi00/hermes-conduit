@@ -190,6 +190,111 @@ extension SidebarLayoutTests {
         XCTAssertFalse(V2SplitLayout.tabBarUnderList(split: false, tab: .chats))
     }
 
+    // MARK: - The tabs' order (issue 2084)
+
+    func testAnUnsetTabLayoutIsTheStandardOne() {
+        let layout = V2TabLayout(stored: nil)
+        XCTAssertEqual(layout.order, [.bots, .chats, .tasks, .settings])
+        XCTAssertTrue(layout.isStandard)
+        XCTAssertEqual(layout, V2TabLayout(stored: []))
+        XCTAssertEqual(layout.stored, ["bots", "chats", "tasks", "settings"])
+    }
+
+    func testConduitOpensOnTheFirstTabShown() {
+        XCTAssertEqual(V2TabLayout(stored: ["chats", "bots", "tasks", "settings"]).first, .chats)
+        XCTAssertEqual(V2TabLayout(stored: ["tasks", "chats", "bots", "settings"]).first, .tasks)
+        // A hidden first tab passes it to the next one.
+        XCTAssertEqual(V2TabLayout(stored: ["-bots", "chats", "tasks", "settings"]).first, .chats)
+        XCTAssertEqual(V2TabLayout(stored: ["-bots", "-tasks", "settings", "chats"]).first, .settings)
+    }
+
+    func testAHiddenTabLeavesTheBarButKeepsItsPlace() {
+        var layout = V2TabLayout.standard
+        layout.setHidden(.tasks, true)
+        XCTAssertEqual(layout.shown, [.bots, .chats, .settings])
+        XCTAssertEqual(layout.stored, ["bots", "chats", "-tasks", "settings"])
+        XCTAssertFalse(layout.isStandard)
+        layout.setHidden(.tasks, false)
+        XCTAssertEqual(layout.shown, [.bots, .chats, .tasks, .settings])
+        XCTAssertTrue(layout.isStandard)
+    }
+
+    func testSessionsAndSettingsCannotBeHidden() {
+        var layout = V2TabLayout.standard
+        layout.setHidden(.chats, true)
+        layout.setHidden(.settings, true)
+        XCTAssertEqual(layout.shown, [.bots, .chats, .tasks, .settings])
+        XCTAssertFalse(layout.canHide(.chats))
+        XCTAssertFalse(layout.canHide(.settings))
+        XCTAssertTrue(layout.canHide(.bots))
+        XCTAssertTrue(layout.canHide(.tasks))
+        // A stored list that hides them (hand-edited, or another build's)
+        // shows them anyway.
+        let stored = V2TabLayout(stored: ["-chats", "-settings", "-bots", "-tasks"])
+        XCTAssertEqual(stored.shown, [.chats, .settings])
+    }
+
+    func testAnOddStoredTabListStillListsEveryTabOnce() {
+        // A name twice counts once; a tab left out is shown after the rest.
+        let layout = V2TabLayout(stored: ["chats", "chats", "-chats", "settings"])
+        XCTAssertEqual(layout.order, [.chats, .settings, .bots, .tasks])
+        XCTAssertEqual(layout.shown, [.chats, .settings, .bots, .tasks])
+        // A tab a newer Conduit added is kept for it, in neither list here.
+        let newer = V2TabLayout(stored: ["pulse", "chats", "-artifacts", "bots", "tasks", "settings", ""])
+        XCTAssertEqual(newer.order, [.chats, .bots, .tasks, .settings])
+        XCTAssertEqual(newer.stored, ["chats", "bots", "tasks", "settings", "pulse", "-artifacts"])
+    }
+
+    func testMovingATabChangesTheBarAndTheTabConduitOpensOn() {
+        var layout = V2TabLayout.standard
+        layout.move(fromOffsets: [1], toOffset: 0)
+        XCTAssertEqual(layout.shown, [.chats, .bots, .tasks, .settings])
+        XCTAssertEqual(layout.first, .chats)
+        layout.reset()
+        XCTAssertEqual(layout, .standard)
+    }
+
+    func testAHiddenTabStandsInTheBarOnlyWhileItShows() {
+        let layout = V2TabLayout(stored: ["chats", "-tasks", "-bots", "settings"])
+        XCTAssertEqual(layout.bar(selected: .chats), [.chats, .settings])
+        // A link to a task with Tasks hidden: the tab stands in its place
+        // until the reader leaves it.
+        XCTAssertEqual(layout.bar(selected: .tasks), [.chats, .tasks, .settings])
+        XCTAssertEqual(layout.bar(selected: .bots), [.chats, .bots, .settings])
+    }
+
+    func testAHiddenBotsTabIsNotMadeAtLaunch() {
+        XCTAssertEqual(V2TabLayout.standard.madeAtLaunch(opensOn: .bots), [.bots, .chats])
+        let sessionsFirst = V2TabLayout(stored: ["chats", "bots", "tasks", "settings"])
+        XCTAssertEqual(sessionsFirst.madeAtLaunch(opensOn: .chats), [.bots, .chats])
+        let noBots = V2TabLayout(stored: ["chats", "-bots", "tasks", "settings"])
+        XCTAssertEqual(noBots.madeAtLaunch(opensOn: .chats), [.chats])
+        // A Bot Chat iOS closed Conduit on opens there all the same.
+        XCTAssertEqual(noBots.madeAtLaunch(opensOn: .bots), [.bots, .chats])
+        let tasksFirst = V2TabLayout(stored: ["tasks", "-bots", "chats", "settings"])
+        XCTAssertEqual(tasksFirst.madeAtLaunch(opensOn: .tasks), [.tasks, .chats])
+    }
+
+    @MainActor
+    func testTheTabLayoutStoreSavesAndFollowsTheDefaults() throws {
+        let suite = "V2TabLayoutStoreTests"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suite))
+        defaults.removePersistentDomain(forName: suite)
+        defer { defaults.removePersistentDomain(forName: suite) }
+        let store = V2TabLayoutStore(defaults: defaults)
+        XCTAssertTrue(store.layout.isStandard)
+        var layout = store.layout
+        layout.move(fromOffsets: [1], toOffset: 0)
+        layout.setHidden(.bots, true)
+        store.save(layout)
+        XCTAssertEqual(defaults.stringArray(forKey: V2TabLayout.key), ["chats", "-bots", "tasks", "settings"])
+        // Another device's layout, written by Sync across devices.
+        defaults.set(["tasks", "chats", "bots", "settings"], forKey: V2TabLayout.key)
+        store.reload()
+        XCTAssertEqual(store.layout.shown, [.tasks, .chats, .bots, .settings])
+        XCTAssertEqual(V2TabLayoutStore(defaults: defaults).layout, store.layout)
+    }
+
     func testV2SplitListStackLeavesOutTheConversation() {
         let project = ProjectSummary(id: "p1", title: "Trips", isHome: false, sessionCount: 0, previewSessions: [])
         XCTAssertEqual(V2SplitLayout.listRoutes([.conversation]), [])

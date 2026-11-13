@@ -298,14 +298,22 @@ final class ComposerReturnKeyTests: XCTestCase {
         XCTAssertEqual(ConduitKeyboardShortcut.chatList.glyphs, "⌃⌘S")
         XCTAssertEqual(ConduitKeyboardShortcut.artifacts.glyphs, "⌥⌘A")
         XCTAssertEqual(ConduitKeyboardShortcut.smallerText.glyphs, "⌘−")
-        XCTAssertEqual(ConduitKeyboardShortcut.tabGlyphs(.bots), "⌘1")
-        XCTAssertEqual(ConduitKeyboardShortcut.tabGlyphs(.settings), "⌘4")
+        let standard = V2TabLayout.standard.shown
+        XCTAssertEqual(ConduitKeyboardShortcut.tabGlyphs(.bots, in: standard), "⌘1")
+        XCTAssertEqual(ConduitKeyboardShortcut.tabGlyphs(.settings, in: standard), "⌘4")
+        // The keys follow the bar's order, and a hidden tab has none
+        // (issue 2084).
+        let reordered = V2TabLayout(stored: ["chats", "-bots", "settings", "tasks"]).shown
+        XCTAssertEqual(ConduitKeyboardShortcut.tabGlyphs(.chats, in: reordered), "⌘1")
+        XCTAssertEqual(ConduitKeyboardShortcut.tabGlyphs(.settings, in: reordered), "⌘2")
+        XCTAssertEqual(ConduitKeyboardShortcut.tabGlyphs(.tasks, in: reordered), "⌘3")
+        XCTAssertNil(ConduitKeyboardShortcut.tabGlyphs(.bots, in: reordered))
     }
 
     func testNoTwoShortcutsShareAKey() {
         var seen = Set<String>()
         let all = ConduitKeyboardShortcut.allCases.map(\.glyphs)
-            + V2Tab.destinations.compactMap(ConduitKeyboardShortcut.tabGlyphs)
+            + V2TabLayout.standardOrder.compactMap { ConduitKeyboardShortcut.tabGlyphs($0, in: V2TabLayout.standardOrder) }
         for glyphs in all {
             XCTAssertTrue(seen.insert(glyphs).inserted, "\(glyphs) is taken twice")
         }

@@ -131,6 +131,7 @@ extension AppState {
             .defaults("app.return_key_sends", ComposerReturnKey.preferenceKey, .bool, in: defaults),
             .defaults("app.stop_at_reply_start", ChatReplyStartPreference.key, .bool, in: defaults),
             .defaults("app.main_button_new_chat", V2MainButtonPreference.key, .bool, in: defaults),
+            .defaults("app.tabs", V2TabLayout.key, .strings, in: defaults),
             .defaults("app.sessions_bar_profiles", V2SessionsBarPreferences.Profiles.key, .string, in: defaults),
             sessionsBarProjectsSlot,
             .defaults("app.sessions_bar_pulse", V2SessionsBarPreferences.showsPulseKey, .bool, in: defaults),

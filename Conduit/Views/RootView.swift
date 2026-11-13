@@ -549,8 +549,9 @@ struct MainView: View {
     @ViewBuilder
     private var sidebarLayoutContent: some View {
         if useV2Shell {
-            // V2 opens on the Chats list (Eric, 2026-10-15), or on the chat
-            // iOS closed it on in the background (#1559); a chat a
+            // V2 opens on its first tab (Bots, until the user reorders the
+            // tabs, issue 2084), or on the chat iOS closed it on in the
+            // background (#1559); a chat a
             // notification or widget opens is pushed over it.
             V2Shell(conversationOnLeave: $conversationOnLeave, reopening: conversationToReopen)
         } else if isPersistentSidebarActive {
