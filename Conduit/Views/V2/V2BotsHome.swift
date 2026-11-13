@@ -1168,13 +1168,19 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// workstreams waits, opens that chat at its card, as Needs you does;
     /// anything else opens the overview, where its work is.
     private func statusTapped(_ status: BotPortraitStatus) {
-        if case .needsYou = status,
-           (appState.servesBotWorkstreams ? work.snapshot(bot.name)?.needsYouCount ?? 0 : 0) == 0,
-           let wait = appState.newestBotChatWait(bot.name) {
+        if let wait = chatWaitThePillOpens(status) {
             appState.openNeedsYou(wait)
             return
         }
         onOverview()
+    }
+
+    /// The wait in the bot's chats its "needs you" opens: only when none
+    /// of its workstreams waits, whose list the overview shows.
+    private func chatWaitThePillOpens(_ status: BotPortraitStatus) -> NeedsYouItem? {
+        guard case .needsYou = status,
+              (appState.servesBotWorkstreams ? work.snapshot(bot.name)?.needsYouCount ?? 0 : 0) == 0 else { return nil }
+        return appState.newestBotChatWait(bot.name)
     }
 
     private var color: Color { appState.botColor(bot) }
@@ -1205,6 +1211,13 @@ struct BotPortraitCell<MenuContent: View>: View {
             .accessibilityValue(Text(accessibilityValue(status)))
             .accessibilityHint(Text(portraitHint))
             .accessibilityAction(named: Text(AppLocalization.string("Overview", table: .bots))) { onOverview() }
+            // The pill is hidden from VoiceOver: a wait in the bot's chats
+            // that it opens gets its own action, beside Overview.
+            .accessibilityActions {
+                if let wait = chatWaitThePillOpens(status) {
+                    Button(AppLocalization.string("Needs you")) { appState.openNeedsYou(wait) }
+                }
+            }
             .v2SelectedTrait(selection)
 
             // The name, and the ⓘ beside it; at accessibility sizes the ⓘ

@@ -236,10 +236,6 @@ struct V2ProjectPage: View {
                 missedReads = true
                 return
             }
-            // The other profiles' rows read their own registries, with the
-            // Chats list's poll, while the page shows.
-            let liveStatus = appState.askLiveStatus("project", profiles: appState.allProfilesIncluded)
-            defer { appState.endLiveStatusAsk("project", token: liveStatus) }
             if missedReads {
                 missedReads = false
                 await reload()
@@ -247,6 +243,17 @@ struct V2ProjectPage: View {
             while true {
                 do { try await Task.sleep(for: .seconds(20)) } catch { return }
                 await reload()
+            }
+        }
+        // The other profiles' rows read their own registries, with the
+        // Chats list's poll, while the page shows; profiles that load (or
+        // change) while it's open are asked for too.
+        .task(id: "\(pageShows)|\(appState.allProfilesIncluded)") {
+            guard pageShows else { return }
+            let liveStatus = appState.askLiveStatus("project", profiles: appState.allProfilesIncluded)
+            defer { appState.endLiveStatusAsk("project", token: liveStatus) }
+            while true {
+                do { try await Task.sleep(for: .seconds(3600)) } catch { return }
             }
         }
         .onChange(of: appState.isConnected) { _, isConnected in
