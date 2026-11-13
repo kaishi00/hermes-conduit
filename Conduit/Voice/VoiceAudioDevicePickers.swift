@@ -109,7 +109,6 @@ final class VoiceInputPicker: NSObject, ObservableObject {
         guard let lease else { return }
         self.lease = nil
         coordinator.release(lease)
-        VoiceAudioRouteNames.shared.refresh()
     }
 }
 
@@ -120,7 +119,10 @@ extension VoiceInputPicker: AVInputPickerInteraction.Delegate {
     nonisolated func inputPickerInteractionWillBeginDismissing(_ interaction: AVInputPickerInteraction) {}
     nonisolated func inputPickerInteractionDidEndDismissing(_ interaction: AVInputPickerInteraction) {
         MainActor.assumeIsolated {
+            VoiceBuiltInMicrophoneFallback.userPickedInput()
             releaseSession()
+            // Without a lease of its own the session stays; the names
+            // still change with the pick.
             VoiceAudioRouteNames.shared.refresh()
         }
     }

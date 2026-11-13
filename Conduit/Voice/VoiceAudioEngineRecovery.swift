@@ -164,8 +164,9 @@ final class VoiceBuiltInMicrophoneFallback {
         self.preferBuiltInMicrophone = preferBuiltInMicrophone ?? {
             let session = AVAudioSession.sharedInstance()
             guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else { return false }
-            VoiceBuiltInMicrophoneFallback.inputPreferredBefore = session.preferredInput
+            let previous = session.preferredInput
             try session.setPreferredInput(builtIn)
+            VoiceBuiltInMicrophoneFallback.hold.take(previous: previous, settingUID: builtIn.uid)
             return true
         }
         self.clearPreferredInput = clearPreferredInput ?? {
@@ -174,9 +175,7 @@ final class VoiceBuiltInMicrophoneFallback {
             // picked while the fallback held the built-in one is newer and
             // stays.
             let session = AVAudioSession.sharedInstance()
-            let previous = VoiceBuiltInMicrophoneFallback.inputPreferredBefore
-            VoiceBuiltInMicrophoneFallback.inputPreferredBefore = nil
-            guard session.preferredInput?.portType == .builtInMic else { return }
+            guard case .restore(let previous) = VoiceBuiltInMicrophoneFallback.hold.release(currentUID: session.preferredInput?.uid) else { return }
             try session.setPreferredInput(previous)
         }
     }
@@ -184,7 +183,13 @@ final class VoiceBuiltInMicrophoneFallback {
     static let bluetoothInputs: Set<AVAudioSession.Port> = [.bluetoothHFP, .bluetoothLE]
 
     /// The preferred input the fallback replaced, put back by `clear()`.
-    private static var inputPreferredBefore: AVAudioSessionPortDescription?
+    private static var hold = VoicePreferredInputHold<AVAudioSessionPortDescription>()
+
+    /// The user chose a microphone in iOS's input picker while the fallback
+    /// held the built-in one: theirs stays, even if it is the built-in one.
+    static func userPickedInput() {
+        hold.forget()
+    }
 
     /// Moves capture to the built-in microphone when it records from a
     /// Bluetooth headset. Whether it moved.
@@ -204,5 +209,46 @@ final class VoiceBuiltInMicrophoneFallback {
         } catch {
             engineRecoveryLogger.error("Could not clear the built-in microphone preference: \(LogRedaction.message(error), privacy: .public)")
         }
+    }
+}
+
+/// A while that Conduit moves the preferred input on its own (wake on
+/// CarPlay, the built-in microphone fallback): what was preferred before,
+/// and the input it set. The earlier preference comes back only while the
+/// one it set is still preferred; a microphone the user picked since, in
+/// iOS's input picker, is newer and stays (issue 2389).
+struct VoicePreferredInputHold<Port> {
+    enum Release {
+        /// The user picked another input since: leave it.
+        case keep
+        /// Put this back (nil lets the route choose again).
+        case restore(Port?)
+    }
+
+    private var previous: Port?
+    private var setUID: String?
+
+    var isHeld: Bool { setUID != nil }
+
+    /// Records a move; a second move keeps the first one's earlier input.
+    mutating func take(previous: Port?, settingUID uid: String) {
+        if setUID == nil { self.previous = previous }
+        setUID = uid
+    }
+
+    /// The user picked an input themselves: nothing goes back.
+    mutating func forget() {
+        previous = nil
+        setUID = nil
+    }
+
+    /// Ends the hold.
+    mutating func release(currentUID: String?) -> Release {
+        defer {
+            previous = nil
+            setUID = nil
+        }
+        guard let setUID, setUID == currentUID else { return .keep }
+        return .restore(previous)
     }
 }
