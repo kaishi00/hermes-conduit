@@ -370,6 +370,7 @@ struct VoiceSettingsView: View {
                         voiceModeSection
                         liveModeSettings
                         conversationSection
+                        VoiceAudioDeviceSettingsSection()
                         if let chatVoiceButton {
                             chatVoiceButtonSection(chatVoiceButton)
                         }

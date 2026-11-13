@@ -63,6 +63,9 @@ final class AppleSpeechWakeWordService: WakeWordService {
     /// This listener set the session's preferred input (CarPlay) and must
     /// clear it before handing the session back.
     private var prefersBuiltInMicrophone = false
+    /// The microphone preferred before wake moved to the iPhone's own (one
+    /// the user picked in iOS's input picker, issue 2389), put back after.
+    private var inputPreferredBeforeWake: AVAudioSessionPortDescription?
     /// A system interruption (a call, Siri) is in progress.
     private var isInterrupted = false
     private var observers: [NSObjectProtocol] = []
@@ -235,17 +238,20 @@ final class AppleSpeechWakeWordService: WakeWordService {
                 AppLocalization.string("Wake listening on CarPlay needs the iPhone's microphone, which is not available right now.", table: .voice)
             )
         }
+        if !prefersBuiltInMicrophone { inputPreferredBeforeWake = session.preferredInput }
         try session.setPreferredInput(builtIn)
         prefersBuiltInMicrophone = true
     }
 
     /// A conversation that takes the session over uses the car's own
-    /// microphone again.
+    /// microphone again, or the one the user picked before.
     private func clearPreferredInput() {
         guard prefersBuiltInMicrophone else { return }
         prefersBuiltInMicrophone = false
+        let previous = inputPreferredBeforeWake
+        inputPreferredBeforeWake = nil
         do {
-            try AVAudioSession.sharedInstance().setPreferredInput(nil)
+            try AVAudioSession.sharedInstance().setPreferredInput(previous)
         } catch {
             wakeLogger.error("wake listening could not clear its preferred input: \(LogRedaction.message(error), privacy: .public)")
         }

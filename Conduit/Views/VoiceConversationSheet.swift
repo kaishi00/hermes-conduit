@@ -133,6 +133,8 @@ struct VoiceConversationSheet: View {
                         : AppLocalization.string("The microphone is not capturing right now.", table: .voice)))
                 Spacer(minLength: 0)
             }
+            // The microphone and output pickers (issue 2389).
+            VoiceCallAudioDeviceButtons()
         }
     }
 
@@ -585,6 +587,8 @@ extension VoiceConversationSheet {
                 if let modeSwitch {
                     VoiceModeCapsule(modeSwitch: modeSwitch)
                 }
+                // The microphone and output pickers (issue 2389).
+                VoiceCallAudioDeviceButtons()
             }
             .frame(maxWidth: .infinity)
 

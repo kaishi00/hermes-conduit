@@ -164,15 +164,22 @@ final class VoiceBuiltInMicrophoneFallback {
         self.preferBuiltInMicrophone = preferBuiltInMicrophone ?? {
             let session = AVAudioSession.sharedInstance()
             guard let builtIn = session.availableInputs?.first(where: { $0.portType == .builtInMic }) else { return false }
+            VoiceBuiltInMicrophoneFallback.inputPreferredBefore = session.preferredInput
             try session.setPreferredInput(builtIn)
             return true
         }
         self.clearPreferredInput = clearPreferredInput ?? {
-            try AVAudioSession.sharedInstance().setPreferredInput(nil)
+            // The microphone the user picked in iOS's input picker, if any
+            // (issue 2389); nil lets the route choose again.
+            try AVAudioSession.sharedInstance().setPreferredInput(VoiceBuiltInMicrophoneFallback.inputPreferredBefore)
+            VoiceBuiltInMicrophoneFallback.inputPreferredBefore = nil
         }
     }
 
     static let bluetoothInputs: Set<AVAudioSession.Port> = [.bluetoothHFP, .bluetoothLE]
+
+    /// The preferred input the fallback replaced, put back by `clear()`.
+    private static var inputPreferredBefore: AVAudioSessionPortDescription?
 
     /// Moves capture to the built-in microphone when it records from a
     /// Bluetooth headset. Whether it moved.
