@@ -221,13 +221,16 @@ struct BotMcpServersView: View {
                 if mcpProfile != nil, mcpSetup != nil {
                     Button {
                         mcpNotice = nil
-                        addOwner = appState.currentDashboardRuntimeOwner()
+                        // Without a Hermes to hold to, the add couldn't be
+                        // fenced: the button waits for one.
+                        guard let owner = appState.currentDashboardRuntimeOwner() else { return }
+                        addOwner = owner
                         addingServer = true
                     } label: {
                         Label(AppLocalization.string("Add MCP Server", table: .bots), systemImage: "plus")
                     }
                     .buttonStyle(.settings)
-                    .disabled(mcpBusy != nil || !canSetUpServers)
+                    .disabled(mcpBusy != nil || !canSetUpServers || appState.currentDashboardRuntimeOwner() == nil)
                 }
                 Group {
                     if mcpProfile == nil {
