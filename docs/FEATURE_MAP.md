@@ -4832,7 +4832,7 @@ writes and Pulse's report reads · the Send to Hermes shortcut
 - Sort it out and Remember it send when Conduit next comes to the front (the notification takes the user there); the extension can't hold a connection to send on its own.
 - The Send to Hermes shortcut has no Sort it out or Remember it option: a shortcut writes its own words, so "Sort this out: …" already works there.
 
-**Checked:** 2026-11-13, #NEWPR (What should Hermes do?: Chat about it, Sort it out, Remember it; the two that send go in a new chat on pickup; the phone tool, Hermes' memory, Pulse and the notifier needed no change; README's share sheet line); 2026-11-05, #1821 (issue 1747 on build 251: the picture was still left out as unreadable; every read is now tried in turn, with the reason shown and logged).
+**Checked:** 2026-11-13, #2367 (What should Hermes do?: Chat about it, Sort it out, Remember it; the two that send go in a new chat on pickup; the phone tool, Hermes' memory, Pulse and the notifier needed no change; README's share sheet line); 2026-11-05, #1821 (issue 1747 on build 251: the picture was still left out as unreadable; every read is now tried in turn, with the reason shown and logged).
 
 ## Files over the size limit
 
