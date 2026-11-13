@@ -3091,6 +3091,8 @@ final class AppState: ObservableObject {
     var linkedRoomInviteFollow: Task<Void, Never>?
     /// One read of each Linked Rooms list at a time (issue 2359).
     let linkedRoomDraftsReader = LinkedRoomListRead()
+    /// A drafts read asked for with the people that hasn't run yet.
+    var linkedRoomDraftsPeopleAsked = false
     let linkedRoomInvitesReader = LinkedRoomListRead()
     let linkedRoomApprovalsReader = LinkedRoomListRead()
     /// What your agents' turns in rooms other people host wait for you to

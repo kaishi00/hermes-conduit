@@ -551,7 +551,8 @@ extension AppState {
             return true
         }
         isRewindingTurns = true
-        slashPromptRefusedDuringRewind = false
+        // Not reset here: a refusal an older rewind still owes (its /retry
+        // send was out when this one started) is this one's to report.
         rewindGeneration &+= 1
         let generation = rewindGeneration
         // Held through the reopen, not only the rewind (issue 2381): a

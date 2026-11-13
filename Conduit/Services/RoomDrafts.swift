@@ -422,8 +422,14 @@ extension AppState {
         guard canInviteLinkedPeople, groupChatPhase == .available, isConnected else { return }
         // One at a time, with or without the people (issue 2359): an older
         // read can't publish over a newer one.
+        // A caller that wants the people and joins a queued read without
+        // them still gets them: the read takes every ask made before it ran.
+        if readingPeople { linkedRoomDraftsPeopleAsked = true }
         _ = await linkedRoomDraftsReader.read(key: linkedRoomListReadKey(), since: since) { [weak self] in
-            await self?.readLinkedRoomDraftsNow(readingPeople: readingPeople)
+            guard let self else { return false }
+            let readingPeople = self.linkedRoomDraftsPeopleAsked
+            self.linkedRoomDraftsPeopleAsked = false
+            await self.readLinkedRoomDraftsNow(readingPeople: readingPeople)
             return true
         }
     }

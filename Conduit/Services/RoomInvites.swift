@@ -750,16 +750,17 @@ final class LinkedRoomListRead {
         guard let running, running.key == key else { return await start(key: key, body) }
         if running.startedAt > since { return await running.task.value }
         if let queued, queued.key == key { return await queued.task.value }
-        let prior = running.task
+        let prior = running
         let id = UUID()
         let task = Task { @MainActor [weak self] () -> Bool in
-            _ = await prior.value
+            _ = await prior.task.value
             guard let self else { return false }
             if self.queued?.id == id { self.queued = nil }
             // A read started meanwhile (another key's, after a Block or a
             // sign-in) began after every caller here asked: it's theirs, and
-            // this one never takes its place.
-            if let newer = self.running { return await newer.task.value }
+            // this one never takes its place. The prior read itself may not
+            // have cleared its slot yet: that one is never shared here.
+            if let newer = self.running, newer.id != prior.id { return await newer.task.value }
             return await self.start(key: key, body)
         }
         queued = (id, key, task)
