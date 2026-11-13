@@ -297,6 +297,10 @@ struct V2PulsePage: View {
             ForEach(PulseRest.choices(night: page?.night, brief: page?.briefTime)) { rest in
                 Button(rest.title) { dismiss(card, true, until: rest) }
             }
+            // No Done on it (a whole report): the only way off the screen for good.
+            if appState.canPutPulseCardAwayForGood(card) {
+                Button(AppLocalization.string("Don't bring it back", table: .pulse)) { dismiss(card, true) }
+            }
         } message: { _ in
             Text("It comes back as new then, unless it got done meanwhile.")
         }
@@ -510,6 +514,7 @@ struct V2PulsePage: View {
 
     /// Not now: off the list, nothing learned. A plugin before 0.68.0 can't
     /// take it; one from 0.78.3 asks until when, and the card comes back then.
+    /// A card with no Done can also be put away for good there.
     /// On a suggestion it's for good: it won't be added.
     @ViewBuilder private func notNowButton(_ card: PulseCard) -> some View {
         if card.isProposal {
