@@ -2053,12 +2053,10 @@ final class AppStateSessionCompressTests: XCTestCase {
 
         XCTAssertEqual(params.first?["hash"] as? String, "1")
         XCTAssertNil(params.first?["file_path"])
-        let notes = harness.appState.messages.suffix(2).map(\.content)
-        XCTAssertEqual(notes.first, "Restored checkpoint 01234567.\nMessages taken back from this chat: 2")
         XCTAssertEqual(
-            notes.last,
-            "Open the chat again to see the messages the restore took back.",
-            "the harness's reopen fails, so the note says the chat on screen is stale"
+            harness.appState.messages.last?.content,
+            "Restored checkpoint 01234567.\nMessages taken back from this chat: 2\n\nOpen the chat again to see the messages the restore took back.",
+            "the note goes under the reopen; the harness's reopen fails, so it says the chat on screen is stale"
         )
     }
 

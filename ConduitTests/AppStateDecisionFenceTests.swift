@@ -589,6 +589,35 @@ final class AppStateDecisionFenceTests: XCTestCase {
         XCTAssertNil(appState.composerPrefillDraftKey, "A steer Hermes took leaves the composer alone")
     }
 
+    /// A legacy card the next command updates in place while Tell Hermes
+    /// instead's steer goes isn't answered, and goes back to waiting rather
+    /// than staying taken.
+    func testTellHermesInsteadLeavesALegacyCardTheNextCommandReplacedWaiting() async throws {
+        var duringSteer: (() -> Void)?
+        var operations = ChatResumeLifecycleOperations()
+        operations.steer = { _, _, _ in duringSteer?() }
+        let appState = makeAppState(chatResumeLifecycleOperations: operations)
+        appState.activeSessionId = "default"
+        appState.messages = [approvalFixture()]
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: ClarifyFakeTransport())
+        let shown = try XCTUnwrap(appState.messages.first?.approval)
+        duringSteer = {
+            XCTAssertEqual(appState.messages.first?.approval?.status, .submitting, "taken while the steer goes")
+            appState.messages[0].approval?.command = "migrate"
+            appState.messages[0].approval?.description = "Run the migration?"
+        }
+        let sentBefore = socket.sentTexts.count
+
+        await appState.rejectApprovalAndSteer(messageId: "approval-msg", instruction: "Use staging", shown: shown)
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.command, "migrate")
+        XCTAssertEqual(card.status, .pending, "the new question waits for its own answer")
+        XCTAssertNil(card.choice)
+        XCTAssertFalse(socket.sentTexts.dropFirst(sentBefore).contains { $0.contains("approval.respond") }, "nothing answers the new question")
+    }
+
     func testRequestIdentifiedApprovalWithZeroResolvedExpires() async throws {
         let appState = makeAppState()
         appState.messages = [approvalFixture(requestId: "stale-request")]

@@ -789,24 +789,28 @@ extension AppState {
                 context: context
             )
         case .restore:
-            appendSlashOutput(Self.restoreNote(object), context: context)
+            let note = Self.restoreNote(object)
             // A whole restore that took turns back: open the chat again so
-            // they leave the screen.
+            // they leave the screen. The note goes under the reloaded
+            // transcript, which would otherwise replace it.
             let removed = HermesClient.exactIntValue(object["history_removed"]) ?? 0
-            if object["success"]?.boolValue == true, request.filePath == nil, removed > 0 {
-                let reopened = await openSessionOutcome(context.durableSessionID ?? sessionID)
-                // Our own open moved the viewport on, so `context` is stale
-                // by construction; the restored chat must still be on screen.
-                let current = composerSubmissionContext()
-                if reopened == .failed,
-                   composerSessionIDsAreEquivalent(context.sessionID, current.sessionID)
-                    || composerSessionIDsAreEquivalent(context.durableSessionID, current.sessionID) {
-                    appendSlashOutput(
-                        AppLocalization.string("Open the chat again to see the messages the restore took back."),
-                        context: current
-                    )
-                }
+            guard object["success"]?.boolValue == true, request.filePath == nil, removed > 0 else {
+                appendSlashOutput(note, context: context)
+                return true
             }
+            let reopened = await openSessionOutcome(context.durableSessionID ?? sessionID)
+            guard reopened != .superseded else { return true }
+            // Our own open moved the viewport on, so `context` is stale
+            // by construction; the restored chat must still be on screen.
+            let current = composerSubmissionContext()
+            guard composerSessionIDsAreEquivalent(context.sessionID, current.sessionID)
+                || composerSessionIDsAreEquivalent(context.durableSessionID, current.sessionID) else { return true }
+            appendSlashOutput(
+                reopened == .failed
+                    ? note + "\n\n" + AppLocalization.string("Open the chat again to see the messages the restore took back.")
+                    : note,
+                context: current
+            )
         }
         return true
     }
