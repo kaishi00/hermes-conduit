@@ -159,6 +159,9 @@ extension GroupChatModelsTests {
         for status in ["waiting", "starting", "started"] {
             appState.linkedRoomDrafts = try drafts(["ended", status])
             XCTAssertTrue(appState.linkedRoomOnItsWay, "a draft \(status), its room not listed")
+            // Past the first 15 minutes (issue 2359) a draft waiting on
+            // answers is left to its push; one starting is followed on.
+            XCTAssertEqual(appState.linkedRoomOnItsWay(waiting: false), status != "waiting", status)
         }
         // Everyone who joined it did so with none of their agents (Just me): its people are still read.
         let ownOnly = GroupRoom(roomID: "conduit-1", name: "Zoo trip", members: [], authorityGatewayID: "gw", authorityEpoch: 1,
@@ -183,6 +186,7 @@ extension GroupChatModelsTests {
         }
         appState.linkedRoomInvites = try invites("joined")
         XCTAssertTrue(appState.linkedRoomOnItsWay, "an invite you joined waits for its room")
+        XCTAssertFalse(appState.linkedRoomOnItsWay(waiting: false), "past 15 minutes it's left to its push")
         appState.linkedRoomInvites = try invites("waiting")
         XCTAssertFalse(appState.linkedRoomOnItsWay, "one waiting on you is yours to answer, not followed")
     }
