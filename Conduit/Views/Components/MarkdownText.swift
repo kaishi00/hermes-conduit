@@ -43,6 +43,12 @@ struct MarkdownText: View {
     /// the same value, so the whole stream stays at one size. The
     /// `.default` environment default keeps non-chat subtrees untouched.
     @Environment(\.chatTextSize) private var chatTextSize
+    /// A Dynamic Type change must re-run this body: the render cache keys on
+    /// the process-wide category, so only a fresh evaluation picks up the new
+    /// fonts. From iOS 27 SwiftUI can skip this body when the parent passes
+    /// the same inputs, so it reads the category itself rather than relying
+    /// on the parent's re-render (settled-content gate, nightly 2026-11-13).
+    @Environment(\.sizeCategory) private var sizeCategory
     @Environment(\.markdownJoinsProseRuns) private var joinsProseRuns
     @Environment(\.accessibilityVoiceOverEnabled) private var voiceOverEnabled
     @Environment(\.accessibilitySwitchControlEnabled) private var switchControlEnabled
@@ -76,6 +82,7 @@ struct MarkdownText: View {
     @ViewBuilder
     private var normalBody: some View {
         let _ = isStreaming ? () : TranscriptPerf.note(.settledMarkdownBody, context: source)
+        let _ = sizeCategory
         let rendering = MarkdownRenderCache.rendering(
             source: source,
             recognizesGatewayMedia: gatewayMediaDataURL != nil,

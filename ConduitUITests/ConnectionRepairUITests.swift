@@ -76,6 +76,10 @@ final class ConnectionRepairUITests: XCTestCase {
         XCTAssertTrue(username.waitForExistence(timeout: 5))
         tapVisible(username, in: app)
         username.typeText("repair-user")
+        // Dismiss the keyboard first: on iOS 27 the Passwords AutoFill bar
+        // can leave the password field under the keyboard, out of
+        // app.swipeUp()'s reach (see ConnectionSetupUITests).
+        dismissKeyboard(app)
         let password = app.secureTextFields[Identity.password]
         tapVisible(password, in: app)
         password.typeText("repair-fixture")
@@ -227,6 +231,10 @@ final class ConnectionRepairUITests: XCTestCase {
         XCTAssertTrue(username.waitForExistence(timeout: 5))
         tapVisible(username, in: app)
         username.typeText("repair-user")
+        // Dismiss the keyboard first: on iOS 27 the Passwords AutoFill bar
+        // can leave the password field under the keyboard, out of
+        // app.swipeUp()'s reach (see ConnectionSetupUITests).
+        dismissKeyboard(app)
         let password = app.secureTextFields[Identity.password]
         tapVisible(password, in: app)
         password.typeText("repair-fixture")
