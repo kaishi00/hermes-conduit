@@ -2266,8 +2266,14 @@ extension AppStateMultiDashboardTests {
         }
         XCTAssertEqual(reads(), 2)
 
+        // A reply link's read of an open tab is dropped when the kept text
+        // shows instead, so no later open takes it under a newer date.
+        explorer.prefetchText(files[0].path, profile: appState.workspaceProfile)
+        try await held.answer(["text": "let a = 1", "language": "swift"], toPathEnding: "/api/fs/read-text")
+        XCTAssertTrue(explorer.keepsPrefetchedText)
         await explorer.view(files[0])
-        XCTAssertEqual(reads(), 2, "an open tab's text isn't read again")
+        XCTAssertFalse(explorer.keepsPrefetchedText, "the link's read goes with the kept text shown")
+        XCTAssertEqual(reads(), 3, "an open tab's text isn't read again")
         XCTAssertEqual(explorer.preview?.text, "let a = 1")
         XCTAssertFalse(explorer.previewLoading)
 
@@ -2281,7 +2287,7 @@ extension AppStateMultiDashboardTests {
         let viewing = Task { await explorer.view(files[1]) }
         try await held.answer(["text": "notes again", "language": "markdown"], toPathEnding: "/api/fs/read-text")
         await viewing.value
-        XCTAssertEqual(reads(), 3)
+        XCTAssertEqual(reads(), 4)
         XCTAssertEqual(explorer.preview?.text, "notes again")
 
         // An upload of several files changes with no refresh each, then

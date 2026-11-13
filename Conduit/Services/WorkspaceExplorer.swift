@@ -404,6 +404,10 @@ final class WorkspaceExplorer: ObservableObject {
             // Read already for its tab, and unchanged since as far as its
             // folder's listing says: the entry opened carries the date its
             // save checks, so text kept from another date is read again.
+            // A reply link's read of it started with the tap goes too: left
+            // behind, a later open within its lifetime would take that read
+            // under a date the file may have moved to since.
+            takePrefetchedText(entry.path, profile: profile)?.cancel()
             preview = kept.preview
             previewError = nil
             previewLoading = false
@@ -656,4 +660,6 @@ final class WorkspaceExplorer: ObservableObject {
 
     /// Whether `path`'s text is kept for its tab. Readable for tests.
     func keepsPreview(of path: String) -> Bool { previews[path] != nil }
+    /// Whether a reply link's read waits to be taken up. Readable for tests.
+    var keepsPrefetchedText: Bool { prefetchedText != nil }
 }
