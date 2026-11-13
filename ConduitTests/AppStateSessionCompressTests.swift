@@ -2315,6 +2315,144 @@ final class AppStateSessionCompressTests: XCTestCase {
         )
     }
 
+    // MARK: - Goal, loop and heartbeat dock; /agents; the Folder's Work Here
+
+    private func controlHarness(_ configure: (inout ChatResumeLifecycleOperations) -> Void) -> (appState: AppState, defaults: UserDefaults, suite: String) {
+        var operations = ChatResumeLifecycleOperations(
+            openSession: { _, _, _ in throw URLError(.networkConnectionLost) }
+        )
+        configure(&operations)
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin", storedID: "stored-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+        return harness
+    }
+
+    private static let goalSnapshot = SessionControlSnapshot(
+        goal: .init(title: "Ship the release", status: "active", turnsUsed: 2, maxTurns: 20, subgoals: ["tests pass"], pausedReason: nil, lastReason: nil),
+        revision: "r1"
+    )
+
+    func testAgentsOpensTheAgentsSheetInsteadOfAskingHermes() async throws {
+        var slashExecs: [String] = []
+        let harness = controlHarness { operations in
+            operations.executeSlash = { _, _, command in
+                slashExecs.append(command)
+                return .object([:])
+            }
+        }
+
+        _ = await harness.appState.submitComposer(text: "/tasks")
+
+        XCTAssertTrue(harness.appState.showAgentsSheet, "/agents (and its /tasks) opens the chat's agents and processes")
+        XCTAssertEqual(slashExecs, [], "slash.exec refuses /agents for app chats")
+    }
+
+    func testTheDockShowsTheOpenChatsControlsAndNotAnotherChats() async throws {
+        let harness = controlHarness { operations in
+            operations.readSessionControl = { _, session in
+                XCTAssertEqual(session, "composer-origin")
+                return Self.goalSnapshot
+            }
+        }
+
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+        XCTAssertEqual(harness.appState.sessionControl.snapshot.goal?.title, "Ship the release")
+
+        let loop = SessionControlSnapshot(loop: .init(prompt: "check CI", status: "active", intervalSeconds: 300, ticksFired: 1, maxTicks: 0, until: "", nextDueAt: 0, pausedReason: nil, deferredByGoal: false), revision: "r2")
+        harness.appState.handleStreamEvent(.sessionControl(sessionId: "another-chat", snapshot: loop))
+        XCTAssertEqual(harness.appState.sessionControl.snapshot, Self.goalSnapshot, "another chat's update is dropped")
+
+        harness.appState.handleStreamEvent(.sessionControl(sessionId: "composer-origin", snapshot: loop))
+        XCTAssertEqual(harness.appState.sessionControl.snapshot.loop?.prompt, "check CI")
+        XCTAssertNil(harness.appState.sessionControl.snapshot.goal, "Hermes' snapshot is the whole state")
+    }
+
+    func testADockActionSendsHermesItsNameAndShowsWhatHermesAnswers() async throws {
+        var actions: [(String, [String: Any]?)] = []
+        var fails = false
+        let harness = controlHarness { operations in
+            operations.readSessionControl = { _, _ in Self.goalSnapshot }
+            operations.runSessionControl = { _, action, session in
+                XCTAssertEqual(session, "composer-origin")
+                actions.append((action.name, action.args))
+                if fails { throw RpcError(code: 4004, message: "no active goal") }
+                var paused = Self.goalSnapshot
+                paused.goal?.status = "paused"
+                return (paused, nil)
+            }
+        }
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+
+        await harness.appState.runSessionControl(.goalPause)
+        XCTAssertEqual(actions.last?.0, "goal.pause")
+        XCTAssertEqual(harness.appState.sessionControl.snapshot.goal?.isPaused, true)
+        XCTAssertNil(harness.appState.sessionControl.working)
+
+        await harness.appState.runSessionControl(.subgoalRemove(index: 1))
+        XCTAssertEqual(actions.last?.0, "subgoal.remove")
+        XCTAssertEqual(actions.last?.1?["index"] as? Int, 1, "Hermes counts criteria from 1")
+
+        fails = true
+        await harness.appState.runSessionControl(.goalClear)
+        XCTAssertNotNil(harness.appState.sessionControl.notice, "a refusal says why under the dock")
+        XCTAssertNil(harness.appState.sessionControl.working)
+    }
+
+    func testSettingAGoalReadsTheDockAfterHermesRunsIt() async throws {
+        var reads = 0
+        let harness = controlHarness { operations in
+            operations.executeSlash = { _, _, _ in .object(["type": .string("exec"), "output": .string("Goal set.")]) }
+            operations.readSessionControl = { _, _ in
+                reads += 1
+                return Self.goalSnapshot
+            }
+        }
+
+        _ = await harness.appState.submitComposer(text: "/goal Ship the release")
+
+        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(harness.appState.sessionControl.snapshot.goal?.title, "Ship the release")
+    }
+
+    func testBackgroundProcessesListAndStopForTheOpenChat() async throws {
+        var killed: [(String, String)] = []
+        let harness = controlHarness { operations in
+            operations.listBackgroundProcesses = { _, session in
+                XCTAssertEqual(session, "composer-origin")
+                return [BackgroundProcess(id: "proc_1", command: "npm run dev", pid: 4242, uptimeSeconds: 90, output: "ready on :3000")]
+            }
+            operations.killBackgroundProcess = { _, session, process in killed.append((session, process)) }
+        }
+
+        let processes = try XCTUnwrap(await harness.appState.loadBackgroundProcesses())
+        XCTAssertEqual(processes.map(\.command), ["npm run dev"])
+        let failure = await harness.appState.killBackgroundProcess(processes[0])
+        XCTAssertNil(failure)
+        XCTAssertEqual(killed.first?.0, "composer-origin")
+        XCTAssertEqual(killed.first?.1, "proc_1")
+    }
+
+    func testWorkHereMovesTheOpenChatsStoredSessionToTheFolder() async throws {
+        var moves: [(String, String)] = []
+        let harness = controlHarness { operations in
+            operations.moveSessionWorkspace = { _, key, folder in
+                moves.append((key, folder))
+                return folder
+            }
+        }
+        harness.appState.isConnected = true
+
+        let failure = await harness.appState.moveOpenChatFolder(to: "/srv/app")
+
+        XCTAssertNil(failure)
+        XCTAssertEqual(moves.first?.0, "stored-origin", "the move names the durable session, as Move to Project does")
+        XCTAssertEqual(moves.first?.1, "/srv/app")
+        XCTAssertEqual(harness.appState.chatWorkspaceFolder, "/srv/app", "the Folder shows the new folder as the chat's at once")
+    }
+
     private func makeHarness(
         lifecycleOperations: ChatResumeLifecycleOperations = .live,
         conversationIdentityIndex: ConversationIdentityIndex? = nil,
