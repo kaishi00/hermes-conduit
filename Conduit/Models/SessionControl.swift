@@ -151,7 +151,7 @@ enum SessionControlAction: Equatable {
     case loopPause, loopResume, loopStop
     /// `criterion` is the text the dock showed at `index`: the action is
     /// refused when the list has changed under it.
-    case subgoalRemove(index: Int, criterion: String? = nil)
+    case subgoalRemove(index: Int, criterion: String)
     case subgoalClear
     case heartbeatPause, heartbeatResume, heartbeatClear
 

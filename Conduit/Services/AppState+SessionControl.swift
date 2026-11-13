@@ -60,7 +60,7 @@ extension AppState {
               sessionControlIsOpenChat(sessionID), sessionControl.working == nil else { return }
         // Hermes counts criteria by place: one picked from a list that
         // changed since would remove another (issue 2372).
-        if case .subgoalRemove(let index, let criterion?) = action {
+        if case .subgoalRemove(let index, let criterion) = action {
             let subgoals = sessionControl.snapshot.goal?.subgoals ?? []
             guard subgoals.indices.contains(index - 1), subgoals[index - 1] == criterion else {
                 sessionControl.notice = AppLocalization.string("The goal's criteria changed. Pick the one to remove again.", table: .chat)

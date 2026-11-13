@@ -2635,7 +2635,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(harness.appState.sessionControl.snapshot.goal?.isPaused, true)
         XCTAssertNil(harness.appState.sessionControl.working)
 
-        await harness.appState.runSessionControl(.subgoalRemove(index: 1))
+        await harness.appState.runSessionControl(.subgoalRemove(index: 1, criterion: "tests pass"))
         XCTAssertEqual(actions.last?.0, "subgoal.remove")
         XCTAssertEqual(actions.last?.1?["index"] as? Int, 1, "Hermes counts criteria from 1")
         XCTAssertEqual(harness.appState.sessionControl.notice, "Removed criterion 1.", "what Hermes said shows under the dock")

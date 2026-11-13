@@ -176,7 +176,7 @@ extension GatewayRestartTests {
     func testDockActionsUseHermesNames() {
         XCTAssertEqual(SessionControlAction.loopStop.name, "loop.stop")
         XCTAssertEqual(SessionControlAction.heartbeatResume.name, "heartbeat.resume")
-        XCTAssertEqual(SessionControlAction.subgoalRemove(index: 2).args?["index"] as? Int, 2)
+        XCTAssertEqual(SessionControlAction.subgoalRemove(index: 2, criterion: "docs updated").args?["index"] as? Int, 2)
         XCTAssertTrue(SessionControlAction.goalClear.ends)
         XCTAssertFalse(SessionControlAction.goalPause.ends)
     }
