@@ -278,7 +278,8 @@ extension AppState {
         ))
         // Its chat's composer says why. On another chat (the user moved on
         // while it was sent), the notice says which chat holds it, as a
-        // refused message's does, and the files left out wait for that chat.
+        // refused message's does; files left out aren't mentioned there (the
+        // map's ruling: a rare overlap not worth carrying them on the request).
         guard activeDashboardID == dashboardID, restoreKey.profile == activeProfile else { return true }
         if composerDraftKeysAreSameChat(restoreKey, composerDraftKeyOnScreen) {
             composerNotice = notice
