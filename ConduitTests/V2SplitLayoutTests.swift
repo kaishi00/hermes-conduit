@@ -306,7 +306,7 @@ extension SidebarLayoutTests {
         XCTAssertEqual(store.layout.shown, [.tasks, .chats, .bots, .settings])
         XCTAssertEqual(V2TabLayoutStore(defaults: defaults).layout, store.layout)
         // A dashboard without Pulse: its tab leaves the bar and the keys.
-        defaults.set(["pulse", "chats", "bots", "settings"], forKey: V2TabLayout.key)
+        defaults.set(["pulse", "chats", "bots", "-tasks", "settings"], forKey: V2TabLayout.key)
         store.reload()
         XCTAssertEqual(store.tabs, [.pulse, .chats, .bots, .settings])
         store.setAvailable(.pulse, false)
