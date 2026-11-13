@@ -378,8 +378,8 @@ enum RoomInviteOpening: Equatable {
     case waiting
     /// A call is on, and it said the invite opens once the call has ended.
     case afterCall
-    /// The dashboard changed while the invites were read: try again, on
-    /// the one in use now.
+    /// The dashboard changed, or a Block, leave or take out landed, while
+    /// the invites were read: try again, on the one in use now.
     case retry
     /// It can't open; `errorMessage` says why, or nothing will open it.
     case failed
@@ -641,6 +641,7 @@ extension AppState {
             return .failed
         }
         let epoch = groupRoomEpoch
+        let rosterGeneration = linkedRosterGeneration
         let reader = roomInvitesClient
         let invites: [RoomInvite]
         do {
@@ -652,6 +653,10 @@ extension AppState {
         }
         guard !Task.isCancelled else { return .waiting }
         guard activeDashboardID == reader.dashboardID else { return .retry }
+        // A Block, leave or take out that landed while this read was out
+        // makes its list stale: read again rather than bring back (or open)
+        // a row it took away.
+        guard linkedRosterGeneration == rosterGeneration else { return .retry }
         if groupRoomEpoch == epoch {
             linkedRoomInvites = LinkedRoomInvites(dashboardID: reader.dashboardID, invites: invites)
         }

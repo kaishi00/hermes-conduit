@@ -522,6 +522,49 @@ final class AppStateDecisionFenceTests: XCTestCase {
         XCTAssertNil(appState.errorMessage)
     }
 
+    // The socket refused the frame: the answer never left, so the card can
+    // be answered again on the new connection.
+    func testStaleSessionWideAnswerThatNeverLeftIsOfferedAgain() async throws {
+        let appState = makeAppState()
+        appState.messages = [approvalFixture()]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        socket.holdSendCompletion = true
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        appState.client = makeReplacementClient(baseURL: "https://two.example")
+        socket.releaseSends(error: URLError(.networkConnectionLost))
+        await parked.task.value
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.status, .pending, "nothing reached Hermes")
+        XCTAssertNil(card.choice)
+        XCTAssertNil(card.error)
+    }
+
+    // Hermes said it waits no longer: the card ends saying that, not that the
+    // connection changed.
+    func testStaleSessionWideAnswerHermesNoLongerWaitedOnSaysSo() async throws {
+        let appState = makeAppState()
+        appState.messages = [approvalFixture()]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        appState.client = makeReplacementClient(baseURL: "https://two.example")
+        deliverError(socket, rpcID: parked.rpcID, code: 4009, message: "no pending approval")
+        await parked.task.value
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.status, .expired)
+        XCTAssertEqual(
+            card.error,
+            AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
+        )
+    }
+
     // MARK: - Stale native clarify completions
 
     func testStaleClarifySuccessCannotMutateReplacedClientState() async throws {

@@ -634,6 +634,33 @@ extension GroupChatModelsTests {
         XCTAssertEqual(routes.draftsReads, 1)
     }
 
+    /// A drafts read made before a Block that answers after it is dropped:
+    /// it would bring back the blocked host's rows (issue 2347).
+    @MainActor
+    func testADraftsReadABlockOvertookIsDropped() async throws {
+        let backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+        defer { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let routes = DraftsRoutes(drafts: [draftsDraft("conduit-1")])
+        routes.holdsFirstRead = true
+        let appState = draftsAppState(routes)
+        draftsConnect(appState)
+        appState.applyNotifierPluginReport(draftsPluginReport)
+        let before = Task { @MainActor in await appState.refreshLinkedRoomDrafts() }
+        await draftsWait("the held read", until: { routes.holding })
+
+        // The Block takes the host's draft away: the plugin lists it no more.
+        routes.drafts = []
+        let removed = try await appState.block(RoomBlockTarget(id: "lk-mona", name: "Mona"))
+        XCTAssertTrue(removed)
+        XCTAssertEqual(routes.unlinks, 1)
+        XCTAssertEqual(appState.linkedRoomDraftRows.map(\.id), [], "Block reads the drafts again itself")
+
+        routes.answerHeldRead()
+        await before.value
+        XCTAssertEqual(appState.linkedRoomDraftRows.map(\.id), [], "the read from before the Block is dropped")
+    }
+
     /// A read from before a sign-out answers after the sign-in on the same
     /// dashboard, whose own read failed: it's dropped, as the room list's
     /// is, and shows nothing of the signed-out session.
@@ -668,7 +695,10 @@ extension GroupChatModelsTests {
 /// the first can wait until the test answers it, and Links reads fail.
 @MainActor
 private final class DraftsRoutes {
-    let drafts: [[String: Any]]
+    /// What the plugin lists; a held read answers with what was listed when
+    /// it was made.
+    var drafts: [[String: Any]]
+    private(set) var unlinks = 0
     /// The first drafts read waits until `answerHeldRead()`.
     var holdsFirstRead = false
     /// Drafts reads after the first fail.
@@ -682,8 +712,13 @@ private final class DraftsRoutes {
     }
 
     func answer(_ path: String, _ method: String, _ body: [String: Any]?, _ timeout: Int?) async throws -> [String: Any] {
+        if path == "\(RoomLinksClient.path)/links?link_id=lk-mona", method == "DELETE" {
+            unlinks += 1
+            return ["ok": true, "removed": true]
+        }
         guard path == RoomDraftsClient.path, method == "GET" else { throw URLError(.fileDoesNotExist) }
         draftsReads += 1
+        let listed = drafts
         if draftsReads == 1, holdsFirstRead {
             holding = true
             while !released, !Task.isCancelled {
@@ -694,7 +729,7 @@ private final class DraftsRoutes {
             throw URLError(.timedOut)
         }
         let starts: [String: Any] = ["available": true, "reason": NSNull()]
-        return ["ok": true, "drafts": drafts, "starts": starts]
+        return ["ok": true, "drafts": listed, "starts": starts]
     }
 
     func answerHeldRead() {

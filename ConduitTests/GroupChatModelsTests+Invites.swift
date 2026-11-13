@@ -558,6 +558,61 @@ extension GroupChatModelsTests {
         XCTAssertNil(appState.linkedRoomInviteFollow, "no follow for a list a disconnect cleared mid-refresh")
     }
 
+    /// An invites read, or a tapped invite's, made before a Block that
+    /// answers after it brings back nothing the Block took away: the list
+    /// is dropped, and the tapped one is read again (issue 2347).
+    @MainActor
+    func testAnInvitesReadABlockOvertookIsDropped() async throws {
+        let backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+        defer { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let routes = InvitesRoutes(invites: [invitesInvite("conduit-1")])
+        let appState = invitesAppState(routes)
+        invitesConnect(appState)
+        appState.applyNotifierPluginReport(invitesPluginReport)
+        await invitesWait("the first read", until: { appState.linkedRoomInviteRows.map(\.roomID) == ["conduit-1"] })
+
+        routes.holdsNextRead = true
+        let before = Task { @MainActor in await appState.readLinkedRoomInvites() }
+        await invitesWait("the held read", until: { routes.holding })
+        // The Block takes the host's invite away: the plugin lists it no more.
+        routes.invites = []
+        let reads = routes.invitesReads
+        let removed = try await appState.block(RoomBlockTarget(id: "lk-mona", name: "Mona"))
+        XCTAssertTrue(removed)
+        XCTAssertEqual(routes.unlinks, 1)
+        XCTAssertGreaterThan(routes.invitesReads, reads, "Block reads the invites again itself")
+        XCTAssertEqual(appState.linkedRoomInviteRows, [])
+        routes.answerHeldRead()
+        let kept = await before.value
+        XCTAssertFalse(kept, "the read from before the Block is dropped")
+        XCTAssertEqual(appState.linkedRoomInviteRows, [], "the blocked host's invite stays gone")
+    }
+
+    @MainActor
+    func testATappedInviteReadABlockOvertookOpensNothing() async throws {
+        let backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+        defer { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let routes = InvitesRoutes(invites: [invitesInvite("conduit-1")])
+        let appState = invitesAppState(routes)
+        invitesConnect(appState)
+        appState.applyNotifierPluginReport(invitesPluginReport)
+        await invitesWait("the first read", until: { appState.linkedRoomInviteRows.map(\.roomID) == ["conduit-1"] })
+
+        routes.holdsNextRead = true
+        let tapped = RoomInviteTarget(link: "lk1a2b3c4d5e6f", roomID: "conduit-1", dashboardID: appState.activeDashboardID)
+        let opening = Task { @MainActor in await appState.openRoomInvite(tapped) }
+        await invitesWait("the held read", until: { routes.holding })
+        routes.invites = []
+        _ = try await appState.block(RoomBlockTarget(id: "lk-mona", name: "Mona"))
+        routes.answerHeldRead()
+        let outcome = await opening.value
+        XCTAssertEqual(outcome, .retry, "read again, on what the plugin lists now")
+        XCTAssertNil(appState.presentedRoomInvite, "the blocked host's card doesn't open")
+        XCTAssertEqual(appState.linkedRoomInviteRows, [], "nor does its row come back")
+    }
+
     /// An invite's notification opens its card once the plugin's status
     /// is in; one the plugin no longer lists says so, and one from a
     /// dashboard this device doesn't know opens nothing.
@@ -606,7 +661,10 @@ extension GroupChatModelsTests {
 /// answers it, and Links reads fail.
 @MainActor
 private final class InvitesRoutes {
-    let invites: [[String: Any]]
+    /// What the plugin lists; a held read answers with what was listed when
+    /// it was made.
+    var invites: [[String: Any]]
+    private(set) var unlinks = 0
     /// The next invites read waits until `answerHeldRead()`.
     var holdsNextRead = false
     /// Invites reads fail from now on.
@@ -641,8 +699,13 @@ private final class InvitesRoutes {
             if answerTimesOut { throw DashboardTicketBridgeError.http(status: 504, detail: "") }
             return ["ok": true, "invite": answered ?? [:]]
         }
+        if path == "\(RoomLinksClient.path)/links?link_id=lk-mona", method == "DELETE" {
+            unlinks += 1
+            return ["ok": true, "removed": true]
+        }
         guard path == RoomInvitesClient.path, method == "GET" else { throw URLError(.fileDoesNotExist) }
         invitesReads += 1
+        let listed = invites
         if holdsNextRead {
             holdsNextRead = false
             holding = true
@@ -653,7 +716,7 @@ private final class InvitesRoutes {
         } else if readsFail {
             throw URLError(.timedOut)
         }
-        return ["ok": true, "invites": invites]
+        return ["ok": true, "invites": listed]
     }
 
     func answerHeldRead() {
