@@ -188,7 +188,19 @@ extension DashboardTicketBridge {
         guard !oversized else {
             throw DashboardTicketBridgeError.oversizedResponse(limit: maxResponseBytes)
         }
-        let value = data.isEmpty ? nil : try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        let value: Any?
+        if data.count > Self.inlineAnswerLimit {
+            // A big answer (a file's text, a long chat list) is parsed off
+            // the main thread, as the page's answers are (issues 2355,
+            // 2357); a switch meanwhile drops it, as above.
+            value = await Self.parsedOffMain(data)
+            guard !isInvalidated else {
+                if (200...299).contains(http.statusCode) { throw DashboardTicketBridgeError.answeredAfterSwitch }
+                throw DashboardTicketBridgeError.notReady
+            }
+        } else {
+            value = data.isEmpty ? nil : try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed])
+        }
         guard (200...299).contains(http.statusCode) else {
             let object = value as? [String: Any]
             let detail = Self.errorDetail(object)
@@ -204,6 +216,17 @@ extension DashboardTicketBridge {
         if data.isEmpty { return [:] }
         return ["value": value ?? String(decoding: data, as: UTF8.self)]
     }
+
+    /// An answer as JSON, or nil, parsed off the main thread.
+    private static func parsedOffMain(_ data: Data) async -> Any? {
+        await Task.detached(priority: .userInitiated) {
+            ParsedAnswer(value: try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]))
+        }.value.value
+    }
+
+    /// Unchecked because JSON objects aren't Sendable; made off the main
+    /// thread and read only on it.
+    private struct ParsedAnswer: @unchecked Sendable { let value: Any? }
 
     /// The error text a failed response carries, as the page reads it.
     private static func errorDetail(_ object: [String: Any]?) -> String? {

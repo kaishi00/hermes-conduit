@@ -192,6 +192,11 @@ struct WorkspaceFolderView: View {
                 return
             }
             guard seen != target else { return }
+            // The agent's file tools often land back to back: they're read
+            // once they settle, not once each (issue 2355). The next change
+            // cancels this task, and its own waits again.
+            try? await Task.sleep(for: .milliseconds(500))
+            guard !Task.isCancelled else { return }
             await explorer.refresh()
             guard !Task.isCancelled else { return }
             seenChanges = target
@@ -1011,13 +1016,20 @@ struct WorkspaceFolderView: View {
         }
     }
 
-    private func perform(_ action: (WorkspaceFilesClient, String) async throws -> Void) async {
-        if let error = await explorer.change(action) {
+    /// Returns whether the change went through.
+    @discardableResult
+    private func perform(refreshing: Bool = true, _ action: (WorkspaceFilesClient, String) async throws -> Void) async -> Bool {
+        if let error = await explorer.change(refreshing: refreshing, action) {
             failure = UserFacingError.message(for: error)
+            return false
         }
+        return true
     }
 
+    /// Each file goes up in turn, and the folders are read once after the
+    /// last (issue 2355).
     private func upload(_ urls: [URL], into folder: String) async {
+        var uploaded = false
         for url in urls {
             let accessing = url.startAccessingSecurityScopedResource()
             defer { if accessing { url.stopAccessingSecurityScopedResource() } }
@@ -1035,10 +1047,13 @@ struct WorkspaceFolderView: View {
                 failure = tooLarge
                 continue
             }
-            await perform { client, root in
+            if await perform(refreshing: false, { client, root in
                 try await client.upload(root: root, in: folder, name: url.lastPathComponent, data: data)
+            }) {
+                uploaded = true
             }
         }
+        if uploaded { await explorer.refresh() }
     }
 
     /// The plugin takes up to 25 MB a file.

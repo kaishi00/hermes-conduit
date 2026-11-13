@@ -16,6 +16,9 @@ final class WorkspaceFilesClient {
     static let path = "/api/plugins/conduit_push/workspace"
 
     typealias Request = @MainActor (_ path: String, _ method: String, _ body: [String: Any]?) async throws -> [String: Any]
+    /// Sends a POST whose JSON body is already encoded (an upload's, a
+    /// large save's), never through the page (issue 2356).
+    typealias EncodedRequest = @MainActor (_ path: String, _ body: Data) async throws -> [String: Any]
 
     enum Failure: Error {
         case malformed
@@ -23,11 +26,19 @@ final class WorkspaceFilesClient {
 
     private let profile: String
     private let request: Request
+    private let sendEncoded: EncodedRequest?
 
-    init(profile: String, request: @escaping Request) {
+    /// Without `sendEncoded`, an encoded body goes through `request` as a
+    /// dictionary again (tests).
+    init(profile: String, request: @escaping Request, sendEncoded: EncodedRequest? = nil) {
         self.profile = profile
         self.request = request
+        self.sendEncoded = sendEncoded
     }
+
+    /// A save bigger than this many bytes is encoded off the main thread
+    /// and sent as an upload is; a smaller one goes the usual way.
+    static let encodedSaveBytes = 64 * 1024
 
     /// With `answers`, the listing is kept as the plugin gave it, so the
     /// folder opens on it next time (#1533).
@@ -104,7 +115,13 @@ final class WorkspaceFilesClient {
     func save(root: String, path: String, content: String, readAt: Date?) async throws -> WorkspaceEntry? {
         var body: [String: Any] = ["root": root, "path": path, "content": content]
         if let readAt { body["expected_mtime"] = readAt.timeIntervalSince1970 }
-        return try await change("save", body)
+        guard content.utf8.count > Self.encodedSaveBytes else { return try await change("save", body) }
+        let expected = readAt?.timeIntervalSince1970
+        return try await changeEncoded("save") {
+            var body: [String: Any] = ["root": root, "path": path, "content": content]
+            if let expected { body["expected_mtime"] = expected }
+            return body
+        }
     }
 
     /// A rename is a move within the same folder.
@@ -132,8 +149,12 @@ final class WorkspaceFilesClient {
     @MainActor
     @discardableResult
     func upload(root: String, in folder: String, name: String, data: Data, replacing: Bool = false) async throws -> WorkspaceEntry? {
-        try await change("upload", ["root": root, "path": folder, "name": name,
-                                    "data": data.base64EncodedString(), "overwrite": replacing])
+        // Up to 25 MB: encoded off the main thread, and sent without the
+        // page, which would copy it into a script on the main thread
+        // (issue 2356), as a room's files go up.
+        try await changeEncoded("upload") {
+            ["root": root, "path": folder, "name": name, "data": data.base64EncodedString(), "overwrite": replacing]
+        }
     }
 
     /// Where the file a chat's reply names as `path` (a bare name or a
@@ -187,7 +208,28 @@ final class WorkspaceFilesClient {
 
     @MainActor
     private func change(_ action: String, _ body: [String: Any]) async throws -> WorkspaceEntry? {
-        let response = try await request(actionPath(action), "POST", body)
+        try Self.changed(await request(actionPath(action), "POST", body))
+    }
+
+    /// `change` with a body `makeBody` builds and encodes off the main
+    /// thread.
+    @MainActor
+    private func changeEncoded(
+        _ action: String,
+        _ makeBody: @escaping @Sendable () -> [String: Any]
+    ) async throws -> WorkspaceEntry? {
+        let encoded = try await Task.detached(priority: .userInitiated) {
+            try JSONSerialization.data(withJSONObject: makeBody())
+        }.value
+        let path = actionPath(action)
+        guard let sendEncoded else {
+            let body = try JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+            return try Self.changed(await request(path, "POST", body))
+        }
+        return try Self.changed(await sendEncoded(path, encoded))
+    }
+
+    private static func changed(_ response: [String: Any]) throws -> WorkspaceEntry? {
         guard response["ok"] as? Bool == true else { throw Failure.malformed }
         return (response["entry"] as? [String: Any]).flatMap(WorkspaceEntry.init(row:))
     }
