@@ -808,6 +808,9 @@ final class PulseFeedTests: XCTestCase {
         XCTAssertTrue(state.canMarkPulseCardDone(date) && state.canActOnPulseCard(date))
         XCTAssertTrue(state.canMarkPulseCardDone(fact) && state.canActOnPulseCard(fact))
         XCTAssertFalse(state.canMarkPulseCardDone(report) || state.canActOnPulseCard(report))
+        // Not now offers "Don't bring it back" where there's no Done: the whole report.
+        XCTAssertTrue(state.canPutPulseCardAwayForGood(report))
+        XCTAssertFalse(state.canPutPulseCardAwayForGood(date) || state.canPutPulseCardAwayForGood(owed))
         // Found in a chat, Do it opens that chat; from no chat, Pulse's own is
         // no chat to open, so it starts a new one.
         XCTAssertTrue(state.pulseCardHasChat(fact))
