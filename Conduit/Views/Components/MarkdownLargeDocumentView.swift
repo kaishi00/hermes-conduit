@@ -349,13 +349,15 @@ struct LargeMarkdownPreparedDocument {
             segmentDescriptors: all,
             descriptorsByChunk: descriptorsByChunk,
             specializedByChunk: specializedByChunk,
-            sourceIdentity: Self.identity(of: source)
+            sourceIdentity: Self.identity(of: source, keepsLineBreaks: keepsLineBreaks)
         )
     }
 
-    static func identity(of source: String) -> String {
+    static func identity(of source: String, keepsLineBreaks: Bool = true) -> String {
         // Hermes' @session links take the chat's name once Conduit lists it.
-        "\(source.utf8.count)-\(source.hashValue)-\(HermesSessionReference.titleKey(for: source).hashValue)"
+        // The line-break choice is in it, as in the render cache's key, so a
+        // view whose choice changed prepares its plan again.
+        "\(source.utf8.count)-\(source.hashValue)-\(HermesSessionReference.titleKey(for: source).hashValue)-\(keepsLineBreaks ? 1 : 0)"
     }
 
     /// Web-page units per chunk (diagrams and formulas are chunks of
@@ -473,7 +475,9 @@ struct LargeMarkdownExpandedView: View {
     /// Chunks added per explicit Continue action.
     static let continueChunkBatch = 25
 
-    private var sourceIdentity: String { LargeMarkdownPreparedDocument.identity(of: source) }
+    private var sourceIdentity: String {
+        LargeMarkdownPreparedDocument.identity(of: source, keepsLineBreaks: keepsLineBreaks)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
