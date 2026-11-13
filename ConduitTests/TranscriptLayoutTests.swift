@@ -162,6 +162,75 @@ final class TranscriptLayoutTests: XCTestCase {
                        "Another row measures afresh")
     }
 
+    /// Issue 1763: dragging back over rows already seen measured each
+    /// row's SwiftUI content again as its cell came back on screen (row 84
+    /// of a 1,910-message chat measured 15 times in 8 passes). A row the
+    /// transcript measured since it last drew something else takes that
+    /// height; one that changed, one at another width, one measured on an
+    /// earlier visit, or one whose environment changed measures again.
+    func testARowAlreadyMeasuredIsNotMeasuredAgainWhenItsCellComesBack() throws {
+        show(["a", "b"])
+        let width = layout.itemWidth
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width), "Guessed, not measured")
+
+        measure(["a": 100])
+        XCTAssertTrue(layout.hasCurrentMeasurement(of: "a", width: width))
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width + 40), "Only at the width laid out")
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "b", width: width))
+
+        layout.setRows([TranscriptRow(id: "a", kind: .empty), TranscriptRow(id: "b", kind: .empty)], changed: ["a"])
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width), "A row about to draw something else")
+        layout.invalidateLayout(with: UICollectionViewLayoutInvalidationContext())
+        view.layoutIfNeeded()
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width), "Nor once it does, until it measures")
+        measure(["a": 120])
+        XCTAssertTrue(layout.hasCurrentMeasurement(of: "a", width: width))
+
+        // The same conversation laid out again: its kept heights frame the
+        // rows, but each measures once more.
+        let scope = layout.scope
+        layout.setScope(UUID().uuidString)
+        layout.setScope(scope)
+        view.layoutIfNeeded()
+        XCTAssertEqual(try itemHeight("a"), 120)
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width))
+
+        // The cell: told the height is known, it keeps its frame's.
+        let suiteName = "transcript-cell-known-height"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let cell = TranscriptCell(frame: CGRect(x: 0, y: 0, width: width, height: 40))
+        var known = true
+        cell.knowsHeight = { _, _ in known }
+        cell.host(
+            TranscriptCellRoot(
+                rowID: "a",
+                content: AnyView(Color.clear.frame(height: 100)),
+                rowEnvironment: TranscriptCellEnvironment(EnvironmentValues(), disclosure: nil),
+                appState: appState,
+                resized: { _ in }
+            ),
+            rowID: "a",
+            in: UIViewController()
+        )
+        let attributes = UICollectionViewLayoutAttributes(forCellWith: IndexPath(item: 0, section: 0))
+        attributes.size = CGSize(width: width, height: 40)
+        let ideal = 100 + TranscriptLayout.rowGap
+        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, 40, "Known: its frame's height")
+
+        var larger = TranscriptCellEnvironment(EnvironmentValues(), disclosure: nil)
+        larger.dynamicTypeSize = .accessibility3
+        cell.updateEnvironment(larger)
+        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, ideal, accuracy: 1,
+                       "Another environment measures again")
+        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, 40, "Then known again")
+
+        known = false
+        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, ideal, accuracy: 1,
+                       "Not known: it measures")
+    }
+
     func testARowChangingHeightMovesTheRowsUnderItInTheSamePass() throws {
         show(["a", "b", "c"])
         measure(["a": 100, "b": 100, "c": 100])
