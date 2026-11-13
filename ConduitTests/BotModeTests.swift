@@ -4658,13 +4658,9 @@ final class BotModeTests: XCTestCase {
     /// for the route's end nor puts back the line: the screen is the newer
     /// open's (issue 2324).
     func testASupersededBotChatOpenHoldsNoRouteFailure() async {
-        var supersede: (() -> Void)?
         let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
             loadCatalog: { _, _ in [] },
-            openSessionWithProfile: { _, _, _, _ in
-                supersede?()
-                throw URLError(.timedOut)
-            },
+            openSessionWithProfile: { _, _, _, _ in throw URLError(.timedOut) },
             refreshContext: { _, _ in },
             botRoster: { _ in
                 BotRosterSnapshot(
@@ -4681,17 +4677,20 @@ final class BotModeTests: XCTestCase {
         harness.appState.connection = connection
         await harness.appState.refreshBotRoster()
         let appState = harness.appState
-        supersede = { appState.beginExplicitChatViewportTransition() }
-
         let attempt = UUID()
         appState.activeNotificationOpenAttemptID = attempt
         let generation = appState.beginExplicitChatViewportTransition()
+        // A chat the user opened meanwhile: the open is superseded whether
+        // it fails before or at its session open.
+        appState.beginExplicitChatViewportTransition()
         let outcome = await appState.routeBotOwnedNotification(
             ConduitNotificationTarget(profile: "default", sessionId: "default-tip", type: "response"),
             notifiedProfile: "default",
+            canonicalProfile: "default",
             attemptID: attempt,
             transitionGeneration: generation
         )
+        XCTAssertFalse(appState.botRoster.isEmpty, "the roster names the bot")
         XCTAssertEqual(outcome, .retry)
         XCTAssertNil(appState.notificationRouteFailure, "a superseded open holds nothing")
     }

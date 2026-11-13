@@ -5754,10 +5754,19 @@ final class AppStateChatResumeTests: XCTestCase {
 
     /// A reconnect that succeeds keeps the failed send's line (its words
     /// are back in the composer), while an older banner goes (issue 2115).
+    /// Read while the connected session's catalog read is held, before the
+    /// harness's chat bootstrap says anything of its own.
     func testAReconnectKeepsTheFailedSendsLine() async {
+        let gates = [ControlledSuspension(), ControlledSuspension()]
+        var catalogReads = 0
         let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
             connectClient: { _ in },
-            loadCatalog: { _, _ in [] },
+            loadCatalog: { _, _ in
+                let gate = catalogReads < gates.count ? gates[catalogReads] : nil
+                catalogReads += 1
+                await gate?.suspend()
+                return []
+            },
             mintTicket: { _ in "fresh-ticket" },
             refreshContext: { _, _ in }
         ))
@@ -5766,14 +5775,20 @@ final class AppStateChatResumeTests: XCTestCase {
         harness.appState.isConnected = false
         harness.appState.showSendFailure("Failed to send")
 
-        await harness.appState.connect(with: connection, profile: "default")
+        let first = Task { @MainActor in await harness.appState.connect(with: connection, profile: "default") }
+        await gates[0].waitUntilSuspended()
         XCTAssertTrue(harness.appState.isConnected)
         XCTAssertEqual(harness.appState.errorMessage, "Failed to send", "the failed send's line stays")
+        gates[0].resume()
+        await first.value
 
         harness.appState.errorMessage = "Hermes stopped answering"
         harness.appState.isConnected = false
-        await harness.appState.connect(with: connection, profile: "default")
+        let second = Task { @MainActor in await harness.appState.connect(with: connection, profile: "default") }
+        await gates[1].waitUntilSuspended()
         XCTAssertNil(harness.appState.errorMessage, "an older banner goes")
+        gates[1].resume()
+        await second.value
     }
 
     /// An older, unrelated message left on screen doesn't offer Repair while
