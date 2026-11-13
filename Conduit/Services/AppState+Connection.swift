@@ -1099,6 +1099,7 @@ extension AppState {
         // (and the full-history marker would suppress the reload that could
         // correct them).
         sessionCatalogCache.removeAll()
+        archivedCallsReads.removeAll()
         // Signed out: the next sign-in's list loads before it says anything.
         sessionCatalogLoadState.reset()
         pinnedSessionIDs = []

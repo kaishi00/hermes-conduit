@@ -729,6 +729,7 @@ extension AppState {
         let cronKey = "\(activeProfile):cron"
         sessionCatalogCache.removeValue(forKey: sessionKey)
         sessionCatalogCache.removeValue(forKey: cronKey)
+        archivedCallsReads.removeAll()
         // The newest page is what the pull is for: the spinner clears once
         // it lands, and the older pages are read after it, rather than all
         // 25 one after another first (issue 1724).

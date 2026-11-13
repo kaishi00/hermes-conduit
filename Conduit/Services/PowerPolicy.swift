@@ -195,10 +195,11 @@ struct ChatListPollPacer {
             // A failed read moves nothing: it backs off like a quiet one,
             // with jitter.
             backoff.lengthen()
-            return PollCadence.afterFailure(
-                PollCadence.stretched(interval(followingChanges: observation.followsChanges), by: conditions),
-                random: random
-            )
+            var wait = interval(followingChanges: observation.followsChanges)
+            if let inactive = observation.inactiveFor, inactive >= PollCadence.chatListInactiveAfter {
+                wait = max(wait, PollCadence.chatListInactiveFloor)
+            }
+            return PollCadence.afterFailure(PollCadence.stretched(wait, by: conditions), random: random)
         }
         let changed = last.map {
             $0.registry != registry || $0.catalogGeneration != observation.catalogGeneration

@@ -130,6 +130,10 @@ extension ChatSyncTests {
         XCTAssertEqual(waits, [30, 30, 30, 60])
         pacer.reset()
         XCTAssertEqual(pacer.next(after: observation(["a|rt|working|9"], running: true), conditions: DeviceConditions(), random: 0), 4)
+        // A failed read keeps the floor too.
+        var failed = observation(nil)
+        failed.inactiveFor = PollCadence.chatListInactiveAfter
+        XCTAssertEqual(pacer.next(after: failed, conditions: DeviceConditions(), random: 0), 30, "a failed read inactive")
     }
 
     func testPowerAResetGoesBackToFourSeconds() {
