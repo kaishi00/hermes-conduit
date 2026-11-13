@@ -133,7 +133,7 @@ struct HermesUpdateSection: View {
             outcomeRow(AppLocalization.string("Update Hermes on the host", table: .connection), detail: message, command: command, symbol: "info.circle.fill", tint: .orange)
         case .notBackYet:
             outcomeRow(AppLocalization.string("Hermes isn't back yet", table: .connection),
-                       detail: AppLocalization.string("The update may still be running. Run hermes update on the host to check.", table: .connection),
+                       detail: AppLocalization.string("The update may still be running. Check for updates again in a few minutes.", table: .connection),
                        symbol: "clock.badge.exclamationmark", tint: .orange)
         case .unsupported:
             outcomeRow(AppLocalization.string("This Hermes can't update from Conduit", table: .connection),

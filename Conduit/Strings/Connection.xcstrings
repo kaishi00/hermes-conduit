@@ -37415,84 +37415,84 @@
         }
       }
     },
-    "The update may still be running. Run hermes update on the host to check." : {
+    "The update may still be running. Check for updates again in a few minutes." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Das Update läuft vielleicht noch. Führe hermes update auf dem Host aus, um nachzusehen."
+            "value" : "Das Update läuft vielleicht noch. Suche in ein paar Minuten erneut nach Updates."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Puede que la actualización siga en curso. Ejecuta hermes update en el host para comprobarlo."
+            "value" : "Puede que la actualización siga en curso. Vuelve a buscar actualizaciones en unos minutos."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "La mise à jour est peut-être encore en cours. Exécutez hermes update sur l’hôte pour vérifier."
+            "value" : "La mise à jour est peut-être encore en cours. Recherchez à nouveau les mises à jour dans quelques minutes."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pembaruan mungkin masih berjalan. Jalankan hermes update di host untuk memeriksa."
+            "value" : "Pembaruan mungkin masih berjalan. Periksa pembaruan lagi dalam beberapa menit."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "L’aggiornamento potrebbe essere ancora in corso. Esegui hermes update sull’host per controllare."
+            "value" : "L’aggiornamento potrebbe essere ancora in corso. Cerca di nuovo gli aggiornamenti tra qualche minuto."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "更新はまだ実行中かもしれません。ホストでhermes updateを実行して確認してください。"
+            "value" : "更新はまだ実行中かもしれません。数分後にもう一度アップデートを確認してください。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "업데이트가 아직 진행 중일 수 있습니다. 호스트에서 hermes update를 실행해 확인하세요."
+            "value" : "업데이트가 아직 진행 중일 수 있습니다. 몇 분 후에 업데이트를 다시 확인하세요."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Aktualizacja może nadal trwać. Uruchom hermes update na hoście, aby sprawdzić."
+            "value" : "Aktualizacja może nadal trwać. Sprawdź dostępność aktualizacji ponownie za kilka minut."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "A atualização pode ainda estar em andamento. Execute hermes update no host para verificar."
+            "value" : "A atualização pode ainda estar em andamento. Verifique se há atualizações novamente em alguns minutos."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Обновление может ещё выполняться. Выполните hermes update на хосте, чтобы проверить."
+            "value" : "Обновление может ещё выполняться. Проверьте наличие обновлений снова через несколько минут."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Güncelleme hâlâ sürüyor olabilir. Denetlemek için ana makinede hermes update çalıştırın."
+            "value" : "Güncelleme hâlâ sürüyor olabilir. Birkaç dakika sonra güncellemeleri yeniden denetleyin."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "更新可能仍在进行。在主机上运行 hermes update 查看。"
+            "value" : "更新可能仍在进行。请过几分钟再检查更新。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "更新可能仍在進行。在主機上執行 hermes update 查看。"
+            "value" : "更新可能仍在進行。請過幾分鐘再檢查更新。"
           }
         }
       }
