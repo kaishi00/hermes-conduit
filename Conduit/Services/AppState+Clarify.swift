@@ -1314,7 +1314,12 @@ extension AppState {
                 )
             }
             guard profile == activeProfile, self.client === client else {
-                rearmStaleSubmission(messageId: messageId, decisionKey: decisionKey, sessionId: current.sessionId)
+                rearmStaleSubmission(
+                    messageId: messageId,
+                    decisionKey: decisionKey,
+                    sessionId: current.sessionId,
+                    mayHaveAnsweredQueue: answeredRequestId == nil
+                )
                 return
             }
             guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
@@ -1346,7 +1351,13 @@ extension AppState {
             schedulePendingApprovalsRefresh(sessionId: current.sessionId, using: client)
         } catch {
             guard profile == activeProfile, self.client === client else {
-                rearmStaleSubmission(messageId: messageId, decisionKey: decisionKey, sessionId: current.sessionId)
+                // Only an answer that never left can't have reached Hermes.
+                rearmStaleSubmission(
+                    messageId: messageId,
+                    decisionKey: decisionKey,
+                    sessionId: current.sessionId,
+                    mayHaveAnsweredQueue: answeredRequestId == nil && !(error is HermesClient.AnswerNotSent)
+                )
                 return
             }
             guard let updatedIndex = messages.firstIndex(where: { $0.id == messageId }),
@@ -1400,13 +1411,31 @@ extension AppState {
     /// will settle it. It goes back to pending, so it can be answered
     /// again, and the new client reads the queue, which retires it if
     /// Hermes took the answer after all.
-    private func rearmStaleSubmission(messageId: String, decisionKey: String?, sessionId: String) {
+    ///
+    /// Not a session-wide answer that may have reached Hermes
+    /// (`mayHaveAnsweredQueue`): no queue read retires a card without a
+    /// request id, and a gateway without `approval.pending` can't be read
+    /// at all, so a second tap would settle whatever request is oldest
+    /// now, one the person never saw (issue 2333). It ends instead, as a
+    /// redacted card gives way rather than guess; nothing is sent again.
+    private func rearmStaleSubmission(
+        messageId: String,
+        decisionKey: String?,
+        sessionId: String,
+        mayHaveAnsweredQueue: Bool = false
+    ) {
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               SessionPresentationCache.decisionKey(for: messages[index]) == decisionKey,
               messages[index].approval?.status == .submitting else { return }
-        messages[index].approval?.status = .pending
-        messages[index].approval?.choice = nil
-        messages[index].approval?.error = nil
+        if mayHaveAnsweredQueue {
+            messages[index].approval?.status = .expired
+            messages[index].approval?.choice = nil
+            messages[index].approval?.error = AppLocalization.string("The connection changed before Hermes confirmed this answer. It isn't sent again, since it could answer a different request.")
+        } else {
+            messages[index].approval?.status = .pending
+            messages[index].approval?.choice = nil
+            messages[index].approval?.error = nil
+        }
         cacheMessagePresentation()
         if let client {
             schedulePendingApprovalsRefresh(sessionId: sessionId, using: client)

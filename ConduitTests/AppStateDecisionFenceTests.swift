@@ -477,6 +477,51 @@ final class AppStateDecisionFenceTests: XCTestCase {
         XCTAssertNil(card.error)
     }
 
+    // A session-wide answer that may have reached Hermes can't be offered
+    // again after its connection was replaced: a second tap would settle
+    // whatever request is oldest now (issue 2333).
+    func testStaleSessionWideAnswerIsNotOfferedAgain() async throws {
+        let appState = makeAppState()
+        appState.messages = [approvalFixture()]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        XCTAssertEqual(appState.messages.first?.approval?.status, .submitting)
+
+        appState.client = makeReplacementClient(baseURL: "https://two.example")
+        deliverResult(socket, rpcID: parked.rpcID, result: ["resolved": 1])
+        await parked.task.value
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.status, .expired, "a re-tap would answer the session's next request")
+        XCTAssertNil(card.choice)
+        XCTAssertEqual(
+            card.error,
+            AppLocalization.string("The connection changed before Hermes confirmed this answer. It isn't sent again, since it could answer a different request.")
+        )
+    }
+
+    func testStaleSessionWideAnswerFailureIsNotOfferedAgain() async throws {
+        let appState = makeAppState()
+        appState.messages = [approvalFixture()]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        appState.client = makeReplacementClient(baseURL: "https://two.example")
+        // Failed after it was sent: Hermes may have taken it first.
+        deliverError(socket, rpcID: parked.rpcID, code: 5000, message: "socket closed")
+        await parked.task.value
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.status, .expired)
+        XCTAssertNil(card.choice)
+        XCTAssertNil(appState.errorMessage)
+    }
+
     // MARK: - Stale native clarify completions
 
     func testStaleClarifySuccessCannotMutateReplacedClientState() async throws {

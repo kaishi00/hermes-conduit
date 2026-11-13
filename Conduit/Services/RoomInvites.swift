@@ -531,10 +531,13 @@ extension AppState {
     func readLinkedRoomInvites() async -> Bool {
         guard canInviteLinkedPeople, isConnected else { return false }
         let epoch = groupRoomEpoch
+        let generation = linkedRosterGeneration
         let client = roomInvitesClient
         do {
             let invites = try await client.invites()
-            guard groupRoomEpoch == epoch, activeDashboardID == client.dashboardID else { return false }
+            // One a leave or Block overtook could bring back the row it changed.
+            guard groupRoomEpoch == epoch, linkedRosterGeneration == generation,
+                  activeDashboardID == client.dashboardID else { return false }
             linkedRoomInvites = LinkedRoomInvites(dashboardID: client.dashboardID, invites: invites)
             // A room you joined that has started is listed as its copy, which
             // this Hermes keeps from then on: read the copies while one isn't

@@ -318,6 +318,39 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.linkedRoomApprovalRows, [], "the read from before the sign-out is dropped")
     }
 
+    /// A roster read made before a Block that answers after it is dropped:
+    /// it would bring back the blocked host's grants. The Block reads the
+    /// approvals again itself, so they go at once (issue 2347).
+    @MainActor
+    func testARosterReadABlockOvertookIsDropped() async throws {
+        let backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+        defer { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let routes = ApprovalsRoutes(approvals: [approvalsApproval()])
+        let appState = approvalsAppState(routes)
+        approvalsConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(approvalsPluginReport)
+        await approvalsWait("the first read", until: { appState.linkedRoomApprovalRows.count == 1 })
+
+        routes.holdsNextRead = true
+        let before = Task { @MainActor in await appState.refreshLinkedRoomApprovals() }
+        await approvalsWait("the held read", until: { routes.holding })
+        // The Block ends the grant: the plugin lists it no more.
+        routes.approvals = []
+        let reads = routes.approvalsReads
+        let removed = try await appState.block(RoomBlockTarget(id: "lk-mona", name: "Mona"))
+        XCTAssertTrue(removed)
+        XCTAssertEqual(routes.unlinks, 1)
+        XCTAssertEqual(routes.approvalsReads, reads + 1, "Block reads the approvals again itself")
+        XCTAssertEqual(appState.linkedRoomApprovalRows, [])
+
+        routes.answerHeldRead()
+        let committed = await before.value
+        XCTAssertFalse(committed, "the read from before the Block is dropped")
+        XCTAssertEqual(appState.linkedRoomApprovalRows, [], "the blocked host's grant stays gone")
+    }
+
     /// An "Approval needed" notification opens a listed approval's card
     /// when its decision's session key or its chat is the approval's
     /// session; anything else opens its chat as before.
@@ -456,6 +489,7 @@ private final class ApprovalsRoutes {
     /// Answers are refused as answered already.
     var refusesAnswers = false
     private(set) var approvalsReads = 0
+    private(set) var unlinks = 0
     private(set) var answers: [[String: Any]] = []
     private(set) var holding = false
     private var released = false
@@ -477,13 +511,15 @@ private final class ApprovalsRoutes {
             return ["ok": true, "invites": invites]
         case (RoomApprovalsClient.path, "GET"):
             approvalsReads += 1
+            // What was listed when the read was made, however long it waits.
+            let listed = approvals
             if holdsNextRead {
                 holdsNextRead = false
                 await hold()
             } else if readsFail {
                 throw URLError(.timedOut)
             }
-            return ["ok": true, "approvals": approvals]
+            return ["ok": true, "approvals": listed]
         case ("\(RoomApprovalsClient.path)/answer", "POST"):
             if refusesAnswers { throw DashboardTicketBridgeError.http(status: 409, detail: Self.notPending) }
             answers.append(body ?? [:])
@@ -491,6 +527,9 @@ private final class ApprovalsRoutes {
             let request = body?["request_id"] as? String
             approvals.removeAll { $0["run_id"] as? String == run && $0["request_id"] as? String == request }
             return ["ok": true, "approval": body ?? [:]]
+        case ("\(RoomLinksClient.path)/links?link_id=lk-mona", "DELETE"):
+            unlinks += 1
+            return ["ok": true, "removed": true]
         default:
             throw URLError(.fileDoesNotExist)
         }
