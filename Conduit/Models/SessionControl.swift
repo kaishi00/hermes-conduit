@@ -9,6 +9,7 @@
 //  `/loop`, `/heartbeat`, `/subgoal`), which Hermes runs as before.
 //
 
+import Combine
 import Foundation
 
 struct SessionControlSnapshot: Equatable {

@@ -66,6 +66,11 @@ extension AppState {
             } else {
                 await refreshSessionControl(for: sessionID)
             }
+            // What Hermes said about it ("Removed criterion 2"), under the dock.
+            if let note = answer.note?.trimmingCharacters(in: .whitespacesAndNewlines), !note.isEmpty,
+               sessionControl.sessionID == sessionID {
+                sessionControl.notice = note
+            }
         } catch {
             guard self.client === client, sessionControl.sessionID == sessionID else { return }
             sessionControl.end()

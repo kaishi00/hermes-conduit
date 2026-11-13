@@ -2401,7 +2401,7 @@ final class AppStateSessionCompressTests: XCTestCase {
                 if fails { throw RpcError(code: 4004, message: "no active goal") }
                 var paused = Self.goalSnapshot
                 paused.goal?.status = "paused"
-                return (paused, nil)
+                return (paused, action.name == "subgoal.remove" ? "Removed criterion 1." : nil)
             }
         }
         await harness.appState.refreshSessionControl(for: "composer-origin")
@@ -2414,6 +2414,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         await harness.appState.runSessionControl(.subgoalRemove(index: 1))
         XCTAssertEqual(actions.last?.0, "subgoal.remove")
         XCTAssertEqual(actions.last?.1?["index"] as? Int, 1, "Hermes counts criteria from 1")
+        XCTAssertEqual(harness.appState.sessionControl.notice, "Removed criterion 1.", "what Hermes said shows under the dock")
 
         fails = true
         await harness.appState.runSessionControl(.goalClear)
@@ -2447,7 +2448,8 @@ final class AppStateSessionCompressTests: XCTestCase {
             operations.killBackgroundProcess = { _, session, process in killed.append((session, process)) }
         }
 
-        let processes = try XCTUnwrap(await harness.appState.loadBackgroundProcesses())
+        let listed = await harness.appState.loadBackgroundProcesses()
+        let processes = try XCTUnwrap(listed)
         XCTAssertEqual(processes.map(\.command), ["npm run dev"])
         let failure = await harness.appState.killBackgroundProcess(processes[0])
         XCTAssertNil(failure)

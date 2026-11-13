@@ -105,6 +105,10 @@ struct HermesUpdateSection: View {
             } else if check.updateAvailable {
                 // An install this dashboard can't update in place.
                 outcomeRow(Self.availableTitle(check), detail: check.message, command: check.updateCommand, symbol: "info.circle.fill", tint: .orange)
+            } else if check.behind == nil, !check.canApply, let command = check.updateCommand, !command.isEmpty {
+                // Docker or pip: Hermes can't tell from here, so how to update
+                // on the host.
+                outcomeRow(AppLocalization.string("Update Hermes on the host", table: .connection), detail: check.message, command: command, symbol: "info.circle.fill", tint: .orange)
             } else if check.behind == nil {
                 outcomeRow(AppLocalization.string("Couldn't check for updates", table: .connection), detail: check.message, symbol: "exclamationmark.circle.fill", tint: .orange)
             } else {
