@@ -3335,6 +3335,7 @@ private struct ReviewRunCard<FirstCard: View>: View {
 
             if expanded {
                 firstCard
+                    .transition(.rowFoldSwap)
             }
         }
     }
