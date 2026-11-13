@@ -2695,6 +2695,9 @@ extension AppState {
         // (or reconnected) after they began never saw them start.
         let resumedSessionID = result.sessionId
         Task { [weak self] in _ = await self?.adoptDelegateRoster(for: resumedSessionID) }
+        // Its standing goal, loop and heartbeat, for the dock above the
+        // composer.
+        Task { [weak self] in await self?.refreshSessionControl(for: resumedSessionID) }
         chatCards.applyServerPlan(
             result.snapshot.todoState,
             for: chatCardsChat(including: [result.sessionId, result.storedSessionId])

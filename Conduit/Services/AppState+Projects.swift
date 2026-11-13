@@ -389,6 +389,72 @@ extension AppState {
         }
     }
 
+    /// Whether the open chat can be moved to another folder from the Folder:
+    /// a chat is open on a Hermes that re-homes a chat's workspace.
+    var canMoveOpenChatFolder: Bool {
+        guard let open = activeSessionId, !open.isEmpty else { return false }
+        return supportsSessionWorkspaceMove && sessionMutationID == nil
+    }
+
+    /// Makes `folder` the open chat's working folder, as Hermes Desktop's
+    /// folder chip does: the re-home Move to Project uses
+    /// (`session.workspace.move`), for any folder the Folder shows. Hermes
+    /// moves a running reply with it, and the chat's project follows the
+    /// folder. `.superseded` when the dashboard or profile changed while
+    /// it ran, so the answer belongs to nobody on screen.
+    func moveOpenChatFolder(to folder: String) async -> ChatFolderMoveResult {
+        let path = folder.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let open = activeSessionId, !open.isEmpty, !path.isEmpty else {
+            return .failed(AppLocalization.string("Open a chat first.", table: .chat))
+        }
+        if sessionMutationID != nil {
+            return .failed(AppLocalization.string("Wait for the current conversation change to finish, then try again."))
+        }
+        guard let client, isConnected, supportsSessionWorkspaceMove else {
+            return .failed(AppLocalization.string("Reconnect to Hermes to move this conversation."))
+        }
+        let identities = knownSessionIDs(for: open).union([open])
+        // The open chat's own row first; an alias match only when it has none.
+        let row = sessions.first { $0.id == open || $0.storedSessionId == open }
+            ?? sessions.first { session in
+                identities.contains(session.id)
+                    || session.storedSessionId.map(identities.contains) == true
+                    || !identities.isDisjoint(with: session.alternateIds)
+            }
+        let sessionKey = row.map { $0.storedSessionId ?? $0.id } ?? open
+        let profile = activeProfile
+        sessionMutationID = open
+        defer { sessionMutationID = nil }
+        do {
+            let moved: String
+            if let move = chatResumeLifecycleOperations.moveSessionWorkspace {
+                moved = try await move(client, sessionKey, path)
+            } else {
+                moved = try await client.moveSessionWorkspace(sessionKey, cwd: path)
+            }
+            guard profile == activeProfile, self.client === client else { return .superseded }
+            // Hermes' session.info names the new folder too; this shows it
+            // at once, and only for the chat still open.
+            if activeSessionId == open {
+                var updated = runtime
+                updated.cwd = moved
+                setRuntime(updated)
+            }
+            if supportsProjects {
+                await loadProjects(using: client, profile: profile)
+                guard profile == activeProfile, self.client === client else { return .superseded }
+            }
+            return .moved
+        } catch {
+            guard profile == activeProfile, self.client === client else { return .superseded }
+            if isMethodUnavailable(error) {
+                workspaceMoveUnsupportedClient = client
+                return .failed(AppLocalization.string("Update Hermes to move conversations between folders.", table: .chat))
+            }
+            return .failed(UserFacingError.message(for: error))
+        }
+    }
+
     /// The project folder picker starts at the same live workspace the chat
     /// browser uses, else at Home's folder, so a project can be made with no
     /// chat open (issue 1661). Folder paths are selected from Hermes'
@@ -519,4 +585,12 @@ extension AppState {
             body: ["path": path, "content": idea.hasSuffix("\n") ? idea : "\(idea)\n"]
         )) != nil
     }
+}
+
+/// How "Work Here in This Chat" ended.
+enum ChatFolderMoveResult: Equatable {
+    case moved
+    /// The dashboard or profile changed while it ran.
+    case superseded
+    case failed(String)
 }

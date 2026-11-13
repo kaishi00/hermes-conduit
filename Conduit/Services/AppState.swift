@@ -847,6 +847,13 @@ final class AppState: ObservableObject {
     /// to (AppState+GatewayRestart.swift).
     @Published var gatewayRestart = GatewayRestartSlot()
     var gatewayRestartTask: Task<Void, Never>?
+    /// Update Hermes in Settings > Connection, and the dashboard it belongs
+    /// to (AppState+HermesUpdate.swift).
+    @Published var hermesUpdate: HermesUpdateState = .idle
+    var hermesUpdateDashboardID: UUID?
+    var hermesUpdateTask: Task<Void, Never>?
+    /// Test seam: answers Update Hermes' dashboard requests.
+    var hermesUpdateRequest: (@MainActor (String, String) async throws -> [String: Any])?
     /// Restart now is under way (restartGatewayNow): one at a time, however
     /// many places show the wait.
     @Published var gatewayRestartingNow = false
@@ -1230,6 +1237,9 @@ final class AppState: ObservableObject {
     /// The open chat's queue on the session authority: messages waiting
     /// their turn and turns a restart cut off (AppState+AuthorityQueue.swift).
     let authorityQueue = AuthorityQueueStore()
+    /// The open chat's standing goal, loop and heartbeat, for the dock above
+    /// the composer (AppState+SessionControl.swift).
+    let sessionControl = SessionControlStore()
     /// The user's own messages the authority queued, by their admission id
     /// (the receipt's, which their queue row and their turn's start name):
     /// their bubble waits in the dock above the composer and comes back to

@@ -321,6 +321,8 @@ struct ChatView: View {
             planDock
             // Predictive guesses (off unless turned on in Settings > Chat).
             PredictiveRow(store: appState.predictive, appState: appState)
+            // The chat's standing goal, loop and heartbeat (issue 821).
+            SessionControlDock(store: appState.sessionControl, appState: appState, openChatID: appState.activeSessionId)
             // The chat's queue on the Webapp's listener: messages waiting
             // their turn, and a turn a gateway restart cut off.
             AuthorityQueueDock(store: appState.authorityQueue, appState: appState, openChatID: appState.activeSessionId)
@@ -1949,7 +1951,9 @@ struct ContentRefusedMessageContent: View, Equatable {
         }
         .textSelection(.enabled)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(AppLocalization.string("Refused by the model's safety filter: \(words)", table: .chat))
+        .accessibilityLabel(words.isEmpty
+            ? AppLocalization.string("The model's safety filter refused this message. Try asking another way.", table: .chat)
+            : AppLocalization.string("Refused by the model's safety filter: \(words)", table: .chat))
     }
 }
 

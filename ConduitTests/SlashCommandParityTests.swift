@@ -39,8 +39,8 @@ extension ComposerDraftStoreTests {
 
     func testCatalogLeavesOutCommandsHermesRefusesForConduit() {
         let names = Set(AppState.normalizedSlashCatalog(Self.catalog).map(\.name))
-        XCTAssertTrue(names.isSuperset(of: ["steer", "goal", "fast", "stop", "queue", "undo"]))
-        XCTAssertTrue(names.isDisjoint(with: ["save", "skin", "agents", "tools"]))
+        XCTAssertTrue(names.isSuperset(of: ["steer", "goal", "fast", "stop", "queue", "undo", "agents"]))
+        XCTAssertTrue(names.isDisjoint(with: ["save", "skin", "tools"]))
         XCTAssertEqual(
             AppState.normalizedSlashCatalog(Self.catalog).first { $0.name == "steer" }?.aliases,
             ["s"]
