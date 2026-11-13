@@ -1280,6 +1280,12 @@ final class BotModeTests: XCTestCase {
     }
 
     func testServerSwitchCancelsInFlightBotOpen() async {
+        // The switch lands while the flight is held in its resume, not after
+        // a fixed 60 ms: on a loaded runner the open finished navigating
+        // instead of being abandoned (hosted Smoke on Xcode 27, 2026-11-13,
+        // #2326). The resume waits for the test to release it.
+        let (resumingStream, resumingSignal) = AsyncStream<Void>.makeStream()
+        let (releaseStream, releaseResume) = AsyncStream<Void>.makeStream()
         let harness = makeBotHarness(
             configureDefaults: { defaults in
                 defaults.set(
@@ -1290,7 +1296,8 @@ final class BotModeTests: XCTestCase {
             lifecycleOperations: ChatResumeLifecycleOperations(
                 openSessionWithProfile: { _, id, _, _ in
                     // The flight is mid-resume when the server switches.
-                    try? await Task.sleep(nanoseconds: 250_000_000)
+                    resumingSignal.yield()
+                    for await _ in releaseStream { break }
                     return SessionResumeResult(
                         sessionId: id,
                         storedSessionId: "stored-1",
@@ -1311,11 +1318,26 @@ final class BotModeTests: XCTestCase {
         let bot = makeBot(name: "atlas")
 
         async let opened: Bool = harness.appState.openBotChat(for: bot)
-        try? await Task.sleep(nanoseconds: 60_000_000)
+        // Bounded: an open that never reaches its resume fails here instead
+        // of hanging the run.
+        let watchdog = Task {
+            try? await Task.sleep(nanoseconds: 10_000_000_000)
+            resumingSignal.finish()
+        }
+        var resuming = resumingStream.makeAsyncIterator()
+        let reachedResume = await resuming.next() != nil
+        watchdog.cancel()
+        guard reachedResume else {
+            releaseResume.finish()
+            XCTFail("the open must reach its resume before the server switch")
+            _ = await opened
+            return
+        }
         _ = harness.appState.prepareChatResumeForConnection(
             to: "https://elsewhere.example",
             dashboardID: UUID()
         )
+        releaseResume.finish()
         let result = await opened
 
         XCTAssertFalse(result, "a server switch must abandon the in-flight bot open")
