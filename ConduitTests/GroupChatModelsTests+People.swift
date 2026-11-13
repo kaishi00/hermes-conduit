@@ -850,6 +850,15 @@ extension GroupChatModelsTests {
         )
         XCTAssertEqual(RoomBlock.targets(copy: nil, draft: draft).map(\.name), ["Ann", "Zed"])
         XCTAssertEqual(RoomBlock.targets(copy: nil, draft: nil), [])
+        // Each carries the open room's own dashboard, so block(_:) refuses it
+        // once that isn't the active one.
+        let room = GroupRoom(roomID: "conduit-1", name: "Zoo trip", members: [], authorityGatewayID: "gw-a",
+                             authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 0)
+        let dashboard = UUID()
+        let copySurface = AppState.GroupRoomSurface(dashboardID: dashboard, room: room, copy: copy)
+        XCTAssertEqual(RoomBlock.targets(for: copySurface, draft: draft).map(\.dashboardID), [dashboard], "a copy lists its host, not a draft's people")
+        let hostedSurface = AppState.GroupRoomSurface(dashboardID: dashboard, room: room)
+        XCTAssertEqual(RoomBlock.targets(for: hostedSurface, draft: draft).map(\.dashboardID), [dashboard, dashboard])
         // A Link with no name still reads as someone.
         let unnamed = try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(room: "conduit-3", link: "lk-anon", from: "")))
         XCTAssertEqual(RoomBlock.targets(copy: unnamed, draft: nil).map(\.name), [AppLocalization.string("The host", table: .rooms)])

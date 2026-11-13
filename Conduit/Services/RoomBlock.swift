@@ -42,6 +42,15 @@ enum RoomBlock {
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
+    /// The open room's targets, each stamped with the room's own dashboard:
+    /// a surface left from before a switch then fails block(_:)'s check
+    /// instead of reaching the new Hermes. `draft` is the room's, when this
+    /// Hermes hosts it.
+    static func targets(for surface: AppState.GroupRoomSurface, draft: RoomDraft?) -> [RoomBlockTarget] {
+        let listed = surface.copy.map { Self.targets(copy: $0, draft: nil) } ?? Self.targets(copy: nil, draft: draft)
+        return listed.map { RoomBlockTarget(id: $0.id, name: $0.name, dashboardID: surface.dashboardID) }
+    }
+
     static func title(_ name: String) -> String {
         AppLocalization.string("Block \(name)?", table: .rooms)
     }
@@ -55,12 +64,7 @@ extension AppState {
     /// Who Group Info's Block lists for the open room.
     var activeRoomBlockTargets: [RoomBlockTarget] {
         guard canInviteLinkedPeople, let surface = activeRoomSurface else { return [] }
-        let targets = surface.copy.map { RoomBlock.targets(copy: $0, draft: nil) }
-            ?? RoomBlock.targets(copy: nil, draft: linkedRoomDraft(surface.room.roomID))
-        // The room's own dashboard: a surface left from before a switch
-        // then fails block(_:)'s check instead of reaching the new Hermes.
-        let dashboard = surface.dashboardID
-        return targets.map { RoomBlockTarget(id: $0.id, name: $0.name, dashboardID: dashboard) }
+        return RoomBlock.targets(for: surface, draft: surface.copy == nil ? linkedRoomDraft(surface.room.roomID) : nil)
     }
 
     /// Unlinks them, then reads the rooms again. False when the Link was
