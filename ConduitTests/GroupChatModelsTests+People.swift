@@ -864,7 +864,7 @@ extension GroupChatModelsTests {
         XCTAssertEqual(RoomBlock.targets(copy: unnamed, draft: nil).map(\.name), [""])
         XCTAssertEqual(RoomBlock.title(""), AppLocalization.string("Block this person?", table: .rooms))
         XCTAssertEqual(RoomBlock.button(""), AppLocalization.string("Block this person", table: .rooms))
-        XCTAssertTrue(RoomBlock.message("").hasPrefix(AppLocalization.string("This unlinks their Hermes from yours, on both sides: nothing more from them reaches your Hermes, and the rooms you share with them stop. Linking again takes a new invite.", table: .rooms)))
+        XCTAssertEqual(RoomBlock.message(""), AppLocalization.string("This unlinks their Hermes from yours, on both sides: nothing more from them reaches your Hermes, and the rooms you share with them stop. Linking again takes a new invite.", table: .rooms))
         XCTAssertEqual(RoomBlock.refusalTitle(""), AppLocalization.string("Could not block this person", table: .rooms))
         XCTAssertEqual(RoomBlock.button("Mona"), AppLocalization.string("Block \("Mona")", table: .rooms))
         let quiet = RoomDraft(

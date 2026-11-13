@@ -1383,8 +1383,13 @@ extension AppState {
         let notificationAttemptID = UUID()
         activeNotificationOpenAttemptID = notificationAttemptID
         isOpeningNotificationSession = true
+        // Whether the held failure's screen still showed as this attempt began:
+        // a chat the user opened since makes it no longer the route's to say.
+        let heldFailureWasCurrent = notificationRouteFailure.map {
+            chatViewportTransitionIsCurrent(generation: $0.transition)
+        } ?? false
         let transitionGeneration = beginExplicitChatViewportTransition()
-        noteNotificationRouteAttempt(for: target, transition: transitionGeneration)
+        noteNotificationRouteAttempt(for: target, transition: transitionGeneration, heldWasCurrent: heldFailureWasCurrent)
         defer {
             // Ends with no transcript of its own laid out (a profile switch
             // it lent the transition to marks a replacement but replaces no
@@ -1754,7 +1759,7 @@ extension AppState {
             discardNotificationRouteFailure(for: target)
             return .failed
         }
-        holdNotificationRouteFailure(for: target, restoring: routeErrorBeforeOpen)
+        holdNotificationRouteFailure(for: target, restoring: routeErrorBeforeOpen, transition: transitionGeneration)
         return .retry
     }
 
@@ -1777,10 +1782,13 @@ extension AppState {
 
     /// A failure held for a route's end: the tap's route that said it, and
     /// the viewport transition of that route's latest attempt.
+    /// The room epoch too: opening a room doesn't move the transition, and
+    /// the words would land behind a room opened since (issue 2324).
     struct NotificationRouteFailure {
         let target: ConduitNotificationTarget
         let message: String
         var transition: UInt64
+        var roomEpoch: Int
     }
 
     /// Another attempt is due: keep this attempt's words for the window's
@@ -1790,7 +1798,8 @@ extension AppState {
     /// one standing, since that is still the last thing known.
     func holdNotificationRouteFailure(
         for target: ConduitNotificationTarget,
-        restoring before: NotificationRouteErrorSnapshot
+        restoring before: NotificationRouteErrorSnapshot,
+        transition: UInt64
     ) {
         // A room still showing kept the chat's line behind it. One the open
         // closed took both lines with it (`closeRoomSurface`), so the chat
@@ -1805,7 +1814,8 @@ extension AppState {
             notificationRouteFailure = NotificationRouteFailure(
                 target: target,
                 message: failure,
-                transition: chatViewportTransitionGeneration
+                transition: transition,
+                roomEpoch: groupRoomEpoch
             )
         }
         chatSyncErrorMessage = earlier
@@ -1814,9 +1824,21 @@ extension AppState {
     /// A route's attempt for `target` began transition `generation`: the
     /// failure an earlier attempt held now belongs to this one's screen, so
     /// a chat opened over it later makes it no longer this route's to say.
-    func noteNotificationRouteAttempt(for target: ConduitNotificationTarget, transition generation: UInt64) {
+    /// Only one whose screen still showed as the attempt began
+    /// (`heldWasCurrent`): after a chat the user opened in between, a
+    /// retry that fails too must not say it there (issue 2324).
+    func noteNotificationRouteAttempt(
+        for target: ConduitNotificationTarget,
+        transition generation: UInt64,
+        heldWasCurrent: Bool
+    ) {
         guard notificationRouteFailure?.target == target else { return }
+        guard heldWasCurrent else {
+            notificationRouteFailure = nil
+            return
+        }
         notificationRouteFailure?.transition = generation
+        notificationRouteFailure?.roomEpoch = groupRoomEpoch
     }
 
     /// The stable decision key a push-delivered card was recorded under
@@ -1983,7 +2005,8 @@ extension AppState {
     func publishNotificationRouteFailure(for target: ConduitNotificationTarget) {
         guard let failure = notificationRouteFailure, failure.target == target else { return }
         notificationRouteFailure = nil
-        guard chatViewportTransitionIsCurrent(generation: failure.transition) else { return }
+        guard chatViewportTransitionIsCurrent(generation: failure.transition),
+              groupRoomEpoch == failure.roomEpoch else { return }
         chatSyncErrorMessage = failure.message
     }
 

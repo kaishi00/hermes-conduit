@@ -1501,6 +1501,8 @@ extension VoiceConversationControllerTests {
         let (supervisor, fake) = makeThreadSupervisor()
         let chat = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
         var sentWhileSubmitting = -1
+        var cancelsAtThreadSubmit = -1
+        fake.onThreadSubmit = { [weak fake] in cancelsAtThreadSubmit = fake?.cancelled.count ?? -1 }
         fake.duringSubmit = { [weak supervisor, weak fake] in
             guard let supervisor, let fake, let id = supervisor.jobs.first?.id else { return }
             _ = supervisor.startThreadTurn(request: "check the build")
@@ -1512,7 +1514,63 @@ extension VoiceConversationControllerTests {
         guard await waitFor({ !fake.threadSubmissions.isEmpty }) else { return }
         XCTAssertEqual(sentWhileSubmitting, 0, "the thread turn waits while the continued job submits")
         XCTAssertEqual(fake.cancelled, ["rt-chat", "rt-chat"], "both cancels landed before the thread turn went")
+        XCTAssertEqual(cancelsAtThreadSubmit, 2, "counted as the thread turn was sent")
         XCTAssertEqual(fake.threadSubmissions.count, 1)
+    }
+
+    /// The shared hold the other way (issue 2325): a continued job waits
+    /// behind a thread turn of the call sent in the chat, then goes.
+    func testAContinuedJobWaitsBehindASentThreadTurn() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        _ = supervisor.startThreadTurn(request: "check the build")
+        guard await waitFor({ supervisor.jobs.first?.status == .running }) else { return }
+        let chat = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        _ = await supervisor.continueJob(instructions: "and the logs", in: chat)
+        try? await Task.sleep(for: .milliseconds(100))
+        XCTAssertTrue(fake.submissions.isEmpty, "the thread turn still runs there")
+        supervisor.observe(.messageComplete(sessionId: "rt-chat", messageId: nil, content: "Green.", reasoning: nil))
+        guard await waitFor({ fake.submissions.count == 1 }) else { return }
+        XCTAssertEqual(fake.submissions.first?.0, "rt-chat")
+    }
+
+    /// A thread turn said between a continued job's claim and its submit
+    /// waits for the submit (issue 2325).
+    func testAThreadTurnWaitsBetweenAContinuedJobsClaimAndSubmit() async {
+        let (supervisor, fake) = makeThreadSupervisor()
+        var sentBeforeSubmit = -1
+        fake.onSurfaceReport = { [weak supervisor, weak fake] in
+            guard let supervisor, let fake else { return }
+            _ = supervisor.startThreadTurn(request: "check the build")
+            try? await Task.sleep(for: .milliseconds(100))
+            sentBeforeSubmit = fake.threadSubmissions.count
+        }
+        let chat = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        _ = await supervisor.continueJob(instructions: "and the logs", in: chat)
+        guard await waitFor({ fake.submissions.count == 1 }) else { return }
+        XCTAssertEqual(sentBeforeSubmit, 0, "held from the claim until the submit")
+    }
+
+    /// A cancel that fails after the submit returned puts the job back to
+    /// starting; it doesn't keep holding the chat, so a thread turn of the
+    /// call still goes (issue 2325).
+    func testAFailedCancelAfterTheSubmitDoesntHoldTheChat() async throws {
+        let (supervisor, fake) = makeThreadSupervisor()
+        fake.parksCancel = true
+        fake.cancelError = URLError(.timedOut)
+        var cancelling: Task<String?, Never>?
+        fake.duringSubmit = { [weak supervisor, weak fake] in
+            guard let supervisor, let fake, let id = supervisor.jobs.first?.id else { return }
+            cancelling = Task { await supervisor.cancel(jobID: id) }
+            await fake.cancelParked.waitUntil(1)
+        }
+        let chat = VoiceThreadTarget(runtimeSessionID: "rt-chat", storedSessionID: "st-chat", title: "Build")
+        _ = await supervisor.continueJob(instructions: "and the logs", in: chat)
+        guard await waitFor({ fake.submissions.count == 1 && supervisor.jobs.first?.submitInFlight == false }) else { return }
+        fake.releaseCancel()
+        _ = await cancelling?.value
+        XCTAssertEqual(supervisor.jobs.first?.status, .starting, "the failed cancel put it back")
+        _ = supervisor.startThreadTurn(request: "check the build")
+        guard await waitFor({ fake.threadSubmissions.count == 1 }) else { return }
     }
 
     func testAVoiceTurnsReplyIsNotAlsoTypedContext() async {

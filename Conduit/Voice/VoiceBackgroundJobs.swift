@@ -1683,10 +1683,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
             // claims the chat before it asks whether a turn runs there, so
             // two of the call's requests never both pass during that wait
             // (issue 2283).
+            // A thread turn is matched by its chat as runThreadTurns matches
+            // them, so one sent on a runtime the chat resumed onto since
+            // still counts (issue 2325).
             let earlier = jobs.contains { other in
                 other.id != jobID && (other.submitInFlight || other.status.isActive
                     && (other.requestSent || other.claimsChat || other.isThreadTurn && other.threadTurnSubmitted))
-                    && [other.runtimeSessionID, other.storedSessionID].compactMap { $0 }.contains { chat.owns(sessionID: $0) }
+                    && ([other.runtimeSessionID, other.storedSessionID].compactMap { $0 }.contains { chat.owns(sessionID: $0) }
+                        || other.isThreadTurn && threadTargets[other.id].map { Self.sameChat($0, chat) } == true)
             }
             if !earlier {
                 update(jobID) { $0.claimsChat = true }
@@ -2365,11 +2369,14 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
     /// A continued job of the call holds `thread`, from claiming it through
     /// its submit's return: a cancel it repeats then must not stop a turn
     /// sent meanwhile (review of #2310). Once its turn runs, the chat is
-    /// busy and that holds it.
+    /// busy and that holds it. Not once the submit has returned: a failed
+    /// cancel puts the job back to starting, and holding the chat then
+    /// would keep the call's turns waiting with nothing to pump them
+    /// (issue 2325).
     private func continuedJobHoldsChat(_ thread: VoiceThreadTarget) -> Bool {
         jobs.contains { job in
             job.continuesChat
-                && (job.submitInFlight || job.status == .starting && (job.claimsChat || job.requestSent))
+                && (job.submitInFlight || job.status == .starting && (job.claimsChat || job.requestSent && !job.submitted))
                 && [job.runtimeSessionID, job.storedSessionID].compactMap { $0 }.contains { thread.owns(sessionID: $0) }
         }
     }
@@ -2556,6 +2563,8 @@ final class VoiceBackgroundJobSupervisor: ObservableObject, VoiceBackgroundJobHa
                     $0.outcomeDelivered = job.outcomeDelivered
                 }
             }
+            // The call's turns that waited on it go in once nothing holds the chat.
+            if job.continuesChat { pumpThreadTurns() }
             return false
         }
     }

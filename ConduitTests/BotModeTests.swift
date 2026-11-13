@@ -4623,6 +4623,79 @@ final class BotModeTests: XCTestCase {
         XCTAssertEqual(harness.appState.activeBotChatProfile, "default")
     }
 
+    /// The chats a client knew were a bot's go with it to the next client on
+    /// the same dashboard, through a reconnect (connect(with:), as a silent
+    /// re-auth makes) and a profile switch; another dashboard's client
+    /// starts without them (issue 2277).
+    func testAReconnectAndAProfileSwitchKeepTheBotChatProfileMap() async {
+        var connected: [HermesClient] = []
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            connectClient: { client in connected.append(client) },
+            loadCatalog: { _, _ in [] },
+            mintTicket: { _ in "ticket-2" },
+            openSession: { _, id, _ in
+                SessionResumeResult(sessionId: id, messages: [], snapshot: SessionRuntimeSnapshot(object: [:]))
+            },
+            refreshContext: { _, _ in }
+        ))
+        let appState = harness.appState
+        let connection = HermesConnection(baseUrl: "https://127.0.0.1:1", ticket: "saved")
+        let first = HermesClient(connection: connection, profile: "default")
+        first.noteSessionProfile("atlas", for: ["bot-chat-1"])
+        appState.connection = connection
+        appState.client = first
+        appState.isConnected = true
+
+        await appState.connect(with: connection, profile: "default")
+        XCTAssertEqual(connected.last?.sessionProfile(for: "bot-chat-1"), "atlas", "a reconnect keeps it")
+        await appState.switchProfile(to: "work")
+        XCTAssertEqual(appState.client?.sessionProfile(for: "bot-chat-1"), "atlas", "so does a profile switch")
+        await appState.connect(with: HermesConnection(baseUrl: "https://127.0.0.2:1", ticket: "other"), profile: "default")
+        XCTAssertNil(connected.last?.sessionProfile(for: "bot-chat-1"), "another dashboard's client starts without it")
+    }
+
+    /// A Bot Chat open a newer chat open overtook neither holds its failure
+    /// for the route's end nor puts back the line: the screen is the newer
+    /// open's (issue 2324).
+    func testASupersededBotChatOpenHoldsNoRouteFailure() async {
+        var supersede: (() -> Void)?
+        let harness = makeBotHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            loadCatalog: { _, _ in [] },
+            openSessionWithProfile: { _, _, _, _ in
+                supersede?()
+                throw URLError(.timedOut)
+            },
+            refreshContext: { _, _ in },
+            botRoster: { _ in
+                BotRosterSnapshot(
+                    bots: [self.makeBot(name: "default", canonicalID: "default-bot-chat")],
+                    supportsBotProtocol: false
+                )
+            },
+            findBotChat: { _, _ in
+                [BotChatLookupRow(id: "default-bot-chat", resolvedID: "default-tip", title: BotMode.canonicalChatTitle)]
+            }
+        ))
+        let connection = HermesConnection(baseUrl: "https://one.example", ticket: "ticket")
+        harness.appState.client = HermesClient(connection: connection, profile: "default")
+        harness.appState.connection = connection
+        await harness.appState.refreshBotRoster()
+        let appState = harness.appState
+        supersede = { appState.beginExplicitChatViewportTransition() }
+
+        let attempt = UUID()
+        appState.activeNotificationOpenAttemptID = attempt
+        let generation = appState.beginExplicitChatViewportTransition()
+        let outcome = await appState.routeBotOwnedNotification(
+            ConduitNotificationTarget(profile: "default", sessionId: "default-tip", type: "response"),
+            notifiedProfile: "default",
+            attemptID: attempt,
+            transitionGeneration: generation
+        )
+        XCTAssertEqual(outcome, .retry)
+        XCTAssertNil(appState.notificationRouteFailure, "a superseded open holds nothing")
+    }
+
     /// A Bot Chat that compacted after the roster was read is known to the
     /// roster only by its old canonical id. The target profile's canonical
     /// lookup reports the lineage tip, so the push opens the Bot Chat in Bots

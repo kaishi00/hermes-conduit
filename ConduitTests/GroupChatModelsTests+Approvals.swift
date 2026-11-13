@@ -318,6 +318,34 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.linkedRoomApprovalRows, [], "the read from before the sign-out is dropped")
     }
 
+    /// Coming back to the foreground reads the approvals with the drafts and
+    /// invites, so one that came up while away shows at once; a plugin that
+    /// doesn't list them isn't asked (#2340, issue 2343).
+    @MainActor
+    func testTheForegroundReadsTheApprovalsOnlyWhereThePluginListsThem() async {
+        let backend = InMemoryKeychainBackend()
+        KeychainHelper.useBackendForTesting(backend)
+        defer { KeychainHelper.useBackendForTesting(KeychainHelper.SystemKeychainBackend()) }
+        let routes = ApprovalsRoutes(approvals: [])
+        let appState = approvalsAppState(routes)
+        approvalsConnect(appState)
+        await appState.refreshGroupChatSupport()
+        appState.applyNotifierPluginReport(approvalsPluginReport)
+        await approvalsWait("the first read", until: { routes.approvalsReads == 1 })
+        routes.approvals = [approvalsApproval()]
+        await appState.refreshLinkedRoomsOnForeground()
+        XCTAssertEqual(routes.approvalsReads, 2)
+        XCTAssertEqual(appState.linkedRoomApprovalRows.map(\.id), ["run_a1/req-1"])
+
+        let older = ApprovalsRoutes(approvals: [approvalsApproval()])
+        let without = approvalsAppState(older)
+        approvalsConnect(without)
+        await without.refreshGroupChatSupport()
+        without.applyNotifierPluginReport(["ok": true, "version": "0.105.0", "capabilities": [RoomInvitesClient.capability]])
+        await without.refreshLinkedRoomsOnForeground()
+        XCTAssertEqual(older.approvalsReads, 0, "not where the plugin doesn't list them")
+    }
+
     /// A roster read made before a Block that answers after it is dropped:
     /// it would bring back the blocked host's grants. The Block reads the
     /// approvals again itself, so they go at once (issue 2347).
