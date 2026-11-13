@@ -33,7 +33,7 @@ extension BotModeTests {
         XCTAssertTrue(snapshot.isOn)
         XCTAssertEqual(snapshot.botName, "Furina")
         XCTAssertEqual(snapshot.items.map(\.ref), ["W1", "W2", "A1", "W3"])
-        XCTAssertEqual(snapshot.active.map(\.ref), ["W1", "W2", "A1"])
+        XCTAssertEqual(snapshot.active.map(\.ref), ["W2", "W1", "A1"])  // what waits on the user comes first
         XCTAssertEqual(snapshot.recent.map(\.ref), ["W3"])
         XCTAssertEqual(snapshot.sessionIDs, ["20261101_w1", "20261101_w2", "20261101_w3"])
         let running = snapshot.items[0]
@@ -585,6 +585,82 @@ extension BotModeTests {
         store.clear()
         XCTAssertNil(store.refusal("furina"))
         XCTAssertFalse(store.isWorkstream(row("20261101_w2")))
+    }
+
+    func testAnOpenQuestionNeedsTheUserAndATapAnswersIt() throws {
+        // Under Ask Me First the Bot Chat's question waited with no sign of it and nowhere to answer (Eric 2026-11-13).
+        var response = workResponse()
+        response["counts"] = ["working": 1, "needs_you": 1, "ready": 0, "waiting": 1, "questions": 2]
+        response["coordination"] = ["mode": "ask", "items": [
+            ["id": "P3", "kind": "proposal", "ref": "W1", "refs": ["W1"], "title": "Login bug", "at": 1_800_000_300.0,
+             "text": "Stop W1", "status": "open", "answer": "", "why": [], "actions": ["approve", "decline"]],
+            ["id": "P2", "kind": "proposal", "ref": "W2", "title": "Deploy", "at": 1_800_000_200.0,
+             "text": "Move W2 to v2", "status": "open", "answer": "", "why": [], "actions": ["approve", "decline"]],
+            ["id": "P1", "kind": "proposal", "ref": "W2", "title": "Deploy", "at": 1_800_000_100.0,
+             "text": "Pause W2", "status": "declined", "answer": "", "why": [], "actions": []],
+            ["id": "E5", "kind": "flag", "ref": "W1", "title": "Login bug", "at": 1_800_000_050.0,
+             "text": "W1 found v1 is gone", "with": ["W2"], "woke": true, "why": [], "actions": ["approve", "decline"]],
+        ]]
+        let snapshot = try XCTUnwrap(BotWorkSnapshot(response: response, profile: "furina"))
+        XCTAssertEqual(snapshot.questionCount, 2)
+        XCTAssertEqual(snapshot.needsYouCount, 3)  // the workstream that needs them, and the two questions
+        // Oldest first, and only what can be answered here: not an answered one, nor a flag.
+        XCTAssertEqual(snapshot.coordination?.openQuestions.map(\.id), ["P2", "P3"])
+        let answered = snapshot.answering("P2", approved: true)
+        XCTAssertEqual(answered.questionCount, 1)
+        XCTAssertEqual(answered.needsYouCount, 2)
+        XCTAssertEqual(answered.coordination?.openQuestions.map(\.id), ["P3"])
+        let kept = try XCTUnwrap(answered.coordination?.items.first { $0.id == "P2" })
+        XCTAssertEqual(kept.stateText, "You approved")
+        XCTAssertFalse(kept.canAnswer)
+        XCTAssertEqual(answered.answering("P2", approved: false), answered)  // answered once
+        XCTAssertEqual(answered.answering("P3", approved: false).coordination?.items.first?.stateText, "You declined")
+        XCTAssertEqual(answered.answering("P3", approved: false).needsYouCount, 1)
+        // A plugin before 0.168.0 takes no answer and counts none: its questions stay in the Coordination list.
+        var older = response
+        older["counts"] = ["working": 1, "needs_you": 1, "ready": 0, "waiting": 1]
+        older["coordination"] = ["mode": "ask", "items": [
+            ["id": "P2", "kind": "proposal", "ref": "W2", "title": "Deploy", "at": 1_800_000_200.0,
+             "text": "Move W2 to v2", "status": "open", "answer": "", "why": []],
+        ]]
+        let before = try XCTUnwrap(BotWorkSnapshot(response: older, profile: "furina"))
+        XCTAssertEqual(before.needsYouCount, 1)
+        XCTAssertEqual(before.coordination?.openQuestions, [])
+        XCTAssertEqual(before.answering("P2", approved: true), before)
+        // The Bot Chat's own step for it reads as what it did, not its tool's name.
+        let asked = try XCTUnwrap(BotWorkCall.parse(
+            toolName: "work_propose", input: #"{"text": "Stop W1", "ref": "W1"}"#, output: #"{"ok": true, "id": "P3"}"#
+        ))
+        XCTAssertEqual(asked.title(running: false), "Asked you")
+        let recorded = try XCTUnwrap(BotWorkCall.parse(
+            toolName: "tool_call", input: #"{"name": "work_propose", "arguments": {"id": "P3", "answer": "approved"}}"#,
+            output: #"{"ok": true, "id": "P3", "status": "approved"}"#
+        ))
+        XCTAssertEqual(recorded.title(running: false), "Kept your answer")
+        let refused = try XCTUnwrap(BotWorkCall.parse(
+            toolName: "work_propose", input: #"{"text": "Stop W1", "ref": "W1"}"#,
+            output: #"{"ok": false, "error": "already_asked"}"#
+        ))
+        XCTAssertNil(refused.title(running: false))
+    }
+
+    func testAWorkListThatCouldNotBeReadSaysSoUntilOneIs() throws {
+        // The Work panel span for good when its first read failed.
+        let store = BotWorkStore()
+        XCTAssertFalse(store.couldNotRead("furina"))
+        store.noteUnread("furina")
+        XCTAssertTrue(store.couldNotRead("furina"))
+        store.retryReading("furina")  // Try Again: it waits again
+        XCTAssertFalse(store.couldNotRead("furina"))
+        store.noteUnread("furina")
+        store.set(try XCTUnwrap(BotWorkSnapshot(response: workResponse(), profile: "furina")))
+        XCTAssertFalse(store.couldNotRead("furina"))
+        store.noteUnread("furina")  // a later read that fails keeps the list shown
+        XCTAssertFalse(store.couldNotRead("furina"))
+        store.clear()
+        store.noteUnread("furina")
+        store.clear()
+        XCTAssertFalse(store.couldNotRead("furina"))
     }
 
     func testWorkToolCallsDrawAsWorkCards() throws {

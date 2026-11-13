@@ -300,9 +300,12 @@ struct BotWorkCoordination: Equatable {
         /// A send's state: "delivered", "waiting" or "not_arrived".
         let state: String
         /// A proposal's: "open", "approved" or "declined", and the user's words.
-        let status: String
+        private(set) var status: String
         let answer: String
         let why: [Line]
+        /// An open question the user can answer on its card (plugin
+        /// 0.168.0+ takes Approve and Decline for it).
+        private(set) var canAnswer: Bool
 
         init?(row: [String: Any]) {
             guard let id = row["id"] as? String, !id.isEmpty,
@@ -322,12 +325,22 @@ struct BotWorkCoordination: Equatable {
             state = row["state"] as? String ?? ""
             status = row["status"] as? String ?? ""
             answer = row["answer"] as? String ?? ""
+            let actions = row["actions"] as? [String] ?? []
+            canAnswer = kind == .proposal && status == "open" && actions.contains("approve") && actions.contains("decline")
             why = (row["why"] as? [[String: Any]] ?? []).enumerated().compactMap { index, line in
                 guard let text = line["text"] as? String, !text.isEmpty,
                       let at = (line["at"] as? NSNumber)?.doubleValue else { return nil }
                 return Line(id: index, ref: line["ref"] as? String ?? "", title: line["title"] as? String ?? "",
                             kind: line["kind"] as? String ?? "", text: text, at: Date(timeIntervalSince1970: at))
             }
+        }
+
+        /// The question as the user's tap answered it.
+        func answered(approved: Bool) -> Item {
+            var copy = self
+            copy.status = approved ? "approved" : "declined"
+            copy.canAnswer = false
+            return copy
         }
 
         /// What happened, in a line.
@@ -375,7 +388,18 @@ struct BotWorkCoordination: Equatable {
 
     /// "ask" or "auto"; "off" lists nothing.
     let mode: String
-    let items: [Item]
+    private(set) var items: [Item]
+
+    /// What the Bot Chat asked the user and still waits on, which they can
+    /// answer here, oldest first: the Work panel shows them above the work.
+    var openQuestions: [Item] { items.filter(\.canAnswer).sorted { $0.at < $1.at } }
+
+    /// The list with one question as the user's tap answered it.
+    func answering(_ id: String, approved: Bool) -> BotWorkCoordination {
+        var copy = self
+        copy.items = items.map { $0.id == id ? $0.answered(approved: approved) : $0 }
+        return copy
+    }
 
     init?(_ response: [String: Any]?) {
         guard let response, let mode = response["mode"] as? String else { return nil }
@@ -393,7 +417,12 @@ struct BotWorkSnapshot: Equatable {
     let botName: String
     var items: [BotWorkItem]
     private(set) var workingCount: Int
+    /// What waits on the user: workstreams that need them, and the
+    /// questions the Bot Chat asked and waits on (`questionCount`).
     private(set) var needsYouCount: Int
+    /// Open questions the user can answer on their cards (plugin 0.168.0+
+    /// counts them); they're part of `needsYouCount`.
+    private(set) var questionCount: Int
     private(set) var readyCount: Int
     private(set) var resolvedCount: Int
     /// Every workstream's chat the plugin knows, resolved ones too.
@@ -403,7 +432,7 @@ struct BotWorkSnapshot: Equatable {
     let screen: BotScreenUse?
     /// What the Bot Chat did to keep the work in step; nil from a plugin
     /// before the list (0.155).
-    let coordination: BotWorkCoordination?
+    private(set) var coordination: BotWorkCoordination?
     /// How many background agents the Bot Chat itself started that still
     /// run (a Bot Chat on Everything Here, or with its workstreams off,
     /// delegates itself); 0 from a plugin before the count (app issue 2206).
@@ -417,7 +446,8 @@ struct BotWorkSnapshot: Equatable {
         items = rows.compactMap(BotWorkItem.init(row:))
         let counts = response["counts"] as? [String: Any] ?? [:]
         workingCount = (counts["working"] as? NSNumber)?.intValue ?? 0
-        needsYouCount = (counts["needs_you"] as? NSNumber)?.intValue ?? 0
+        questionCount = max(0, (counts["questions"] as? NSNumber)?.intValue ?? 0)
+        needsYouCount = ((counts["needs_you"] as? NSNumber)?.intValue ?? 0) + questionCount
         readyCount = (counts["ready"] as? NSNumber)?.intValue ?? 0
         resolvedCount = (response["resolved_count"] as? NSNumber)?.intValue ?? 0
         knownSessionIDs = Set((response["workstream_sessions"] as? [String] ?? []).filter { !$0.isEmpty })
@@ -446,6 +476,19 @@ struct BotWorkSnapshot: Equatable {
         copy.workingCount = max(0, workingCount - Self.counts(old, "working") + Self.counts(item, "working"))
         copy.needsYouCount = max(0, needsYouCount - Self.counts(old, "needs_you") + Self.counts(item, "needs_you"))
         copy.readyCount = max(0, readyCount - Self.counts(old, "ready") + Self.counts(item, "ready"))
+        return copy
+    }
+
+    /// The list with a question as the user's tap answered it: it stops
+    /// waiting on them at once, as the plugin counts it.
+    func answering(_ id: String, approved: Bool) -> BotWorkSnapshot {
+        guard let coordination, coordination.items.contains(where: { $0.id == id && $0.canAnswer }) else { return self }
+        var copy = self
+        copy.coordination = coordination.answering(id, approved: approved)
+        if questionCount > 0 {
+            copy.questionCount = questionCount - 1
+            copy.needsYouCount = max(0, needsYouCount - 1)
+        }
         return copy
     }
 
@@ -478,7 +521,11 @@ struct BotWorkSnapshot: Equatable {
     /// The panel's sections: what the user pinned, then work still at it
     /// or waiting on them, then the rest, newest change first.
     var pinned: [BotWorkItem] { items.filter(\.isPinned) }
-    var active: [BotWorkItem] { items.filter { $0.isActive && !$0.isPinned } }
+    /// What waits on the user comes first, each group in the list's order.
+    var active: [BotWorkItem] {
+        let shown = items.filter { $0.isActive && !$0.isPinned }
+        return shown.filter(\.needsYou) + shown.filter { !$0.needsYou }
+    }
     var recent: [BotWorkItem] { items.filter { !$0.isActive && !$0.isPinned } }
 
     /// Every workstream's chat, so lists and search leave them to the bot.
@@ -615,6 +662,18 @@ final class BotWorkstreamsClient {
         let response = try await request(path, "POST", body)
         guard response["ok"] as? Bool == true else { throw Failure.malformed }
         return (response["work"] as? [String: Any]).flatMap(BotWorkItem.init(row:))
+    }
+
+    /// The user's own answer to a question the Bot Chat asked them (`id`:
+    /// P1), tapped on its card: the plugin keeps it, and on a yes tells the
+    /// Bot Chat, which goes ahead.
+    @MainActor
+    func answer(question id: String, approved: Bool) async throws {
+        guard let encoded = DashboardPath.encodedQueryComponent(id) else { throw Failure.malformed }
+        let path = DashboardPath.withProfile("\(Self.path)/\(encoded)/\(approved ? "approve" : "decline")",
+                                             profile: profile, parameter: parameter)
+        let response = try await request(path, "POST", [:])
+        guard response["ok"] as? Bool == true else { throw Failure.malformed }
     }
 }
 
@@ -826,6 +885,7 @@ struct BotWorkCall: Equatable {
         case reply = "work_reply"
         case note = "work_note"
         case progress = "work_progress"
+        case propose = "work_propose"
     }
 
     let tool: Tool
@@ -842,6 +902,8 @@ struct BotWorkCall: Equatable {
     let profile: String?
     /// False when the answer says nothing was done.
     let succeeded: Bool
+    /// A work_propose call that records the user's answer, not a question.
+    var answered = false
 
     static let scanLimit = 64 * 1024
 
@@ -878,7 +940,8 @@ struct BotWorkCall: Equatable {
             sessionID: text("link", answer).flatMap(sessionID(inLink:)),
             profile: text("link", answer).flatMap(profile(inLink:)),
             // An answer that can't be read keeps the step's own words.
-            succeeded: answer["ok"] as? Bool ?? !answer.isEmpty
+            succeeded: answer["ok"] as? Bool ?? !answer.isEmpty,
+            answered: tool == .propose && text("answer", arguments) != nil
         )
     }
 
@@ -904,6 +967,8 @@ struct BotWorkCall: Equatable {
         case .close: return ref.isEmpty ? nil : AppLocalization.string("Closed \(ref)", table: .bots)
         case .ask: return bot.map { AppLocalization.string("Asked \($0)", table: .bots) }
         case .reply: return ref.isEmpty ? nil : AppLocalization.string("Answered \(ref)", table: .bots)
+        case .propose: return answered ? AppLocalization.string("Kept your answer", table: .bots)
+            : AppLocalization.string("Asked you", table: .bots)
         case .list, .note, .progress: return nil
         }
     }

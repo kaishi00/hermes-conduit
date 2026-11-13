@@ -168,7 +168,7 @@ struct RoomInviteSheet: View {
                 isPresented: $confirmingDecline,
                 titleVisibility: .visible
             ) {
-                Button(AppLocalization.string("Decline", table: .rooms), role: .destructive) { answer(invite, agents: []) }
+                Button(AppLocalization.string("Decline"), role: .destructive) { answer(invite, agents: []) }
                 Button(AppLocalization.string("Cancel"), role: .cancel) {}
             } message: {
                 Text(AppLocalization.string("The person who invited you is told.", table: .rooms))
@@ -304,7 +304,7 @@ struct RoomInviteSheet: View {
                 confirmingDecline = true
             } label: {
                 HStack(spacing: 8) {
-                    Text(AppLocalization.string("Decline", table: .rooms))
+                    Text(AppLocalization.string("Decline"))
                     if busy && declining {
                         ProgressView()
                             .controlSize(.small)
