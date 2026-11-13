@@ -613,6 +613,8 @@ struct V2ProfileStrip: View {
 private struct DashboardSwitchMenu: ViewModifier {
     @EnvironmentObject private var appState: AppState
     let enabled: Bool
+    /// A switch picked during a call, waiting on the user's answer (issue 2390).
+    @State private var pendingCallEndingSwitch: CallEndingSwitch?
 
     func body(content: Content) -> some View {
         // Always attached, with the items gated: switching the modifier on
@@ -626,7 +628,9 @@ private struct DashboardSwitchMenu: ViewModifier {
                     ForEach(others) { dashboard in
                         Button {
                             Haptics.medium()
-                            Task { await appState.switchDashboard(to: dashboard.id) }
+                            appState.switchEndingCall(to: dashboard.label, pending: &pendingCallEndingSwitch) {
+                                Task { await appState.switchDashboard(to: dashboard.id) }
+                            }
                         } label: {
                             Label {
                                 Text(verbatim: dashboard.label)
@@ -638,6 +642,7 @@ private struct DashboardSwitchMenu: ViewModifier {
                 }
             }
         }
+        .callEndingSwitchConfirmation($pendingCallEndingSwitch)
     }
 }
 

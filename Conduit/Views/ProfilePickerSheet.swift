@@ -21,6 +21,8 @@ struct ProfilePickerSheet: View {
     /// (Keychain reads stay off the render path).
     @State private var dashboardRows: [SavedDashboardRowModel] = []
     @State private var switchingToDashboard: UUID?
+    /// A pick made during a call, waiting on the user's answer (issue 2390).
+    @State private var pendingCallEndingSwitch: CallEndingSwitch?
     /// The bar's Profiles preference: Current only leaves one chip, so the All
     /// chip is out of the bar whenever All chats is off, and this sheet is
     /// where the bar sends a tap.
@@ -91,7 +93,9 @@ struct ProfilePickerSheet: View {
                                 }
                             ) {
                                 Haptics.medium()
-                                Task { await appState.switchProfile(to: profile); dismiss() }
+                                appState.switchEndingCall(to: appState.profileDisplayName(profile), pending: &pendingCallEndingSwitch) {
+                                    Task { await appState.switchProfile(to: profile); dismiss() }
+                                }
                             }
                         }
                     }
@@ -107,6 +111,7 @@ struct ProfilePickerSheet: View {
             .safeAreaInset(edge: .top, spacing: 0) {
                 ConduitSheetHeader(title: AppLocalization.string("Profiles"), close: { dismiss() })
             }
+            .callEndingSwitchConfirmation($pendingCallEndingSwitch)
         }
     }
 
@@ -189,6 +194,13 @@ extension ProfilePickerSheet {
     private func switchDashboard(to row: SavedDashboardRowModel) {
         guard !row.isActive, switchingToDashboard == nil else { return }
         Haptics.medium()
+        appState.switchEndingCall(to: row.dashboard.label, pending: &pendingCallEndingSwitch) {
+            startDashboardSwitch(to: row)
+        }
+    }
+
+    private func startDashboardSwitch(to row: SavedDashboardRowModel) {
+        guard !row.isActive, switchingToDashboard == nil else { return }
         switchingToDashboard = row.id
         Task {
             await appState.switchDashboard(to: row.id)
