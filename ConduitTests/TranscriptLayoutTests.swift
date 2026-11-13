@@ -435,6 +435,45 @@ final class TranscriptLayoutTests: XCTestCase {
         XCTAssertFalse(busy.measuresLike(base))
     }
 
+    /// A turn starting or ending, or a reply landing, changes only the
+    /// rows' state that names its rows (issue 2358): those rows measure
+    /// again and the rest of a long chat keeps its heights; anything else
+    /// in the rows' state still forgets them all.
+    func testATurnsEndForgetsOnlyTheRowsItReaches() {
+        let base = TranscriptCellEnvironment(EnvironmentValues(), disclosure: nil)
+        var cache = ChatMessageScrollTargetCache()
+        cache.update(for: [
+            ChatMessage(id: "old", role: .assistant, content: "Earlier", timestamp: "2026-10-31T09:00:00Z"),
+            ChatMessage(id: "sent", role: .user, content: "Go", timestamp: "2026-10-31T09:01:00Z"),
+            ChatMessage(id: "answer", role: .assistant, content: "Done", timestamp: "2026-10-31T09:02:00Z"),
+        ])
+        let rows = cache.targets.map { TranscriptRow(id: $0.id, kind: .message($0)) }
+            + [TranscriptRow(id: TranscriptRow.workingID, kind: .working(TranscriptWorkingLine()))]
+
+        var ended = base
+        ended.chatRowState.isBusy = true
+        ended.chatRowState.cardsCanSend = false
+        var idle = base
+        idle.chatRowState.retryableReplyID = "answer"
+        idle.chatRowState.latestAssistantMessageID = "answer"
+        let change = idle.measurementChange(from: ended)
+        XCTAssertEqual(change.rowIDs(in: rows), ["answer", TranscriptRow.workingID],
+                       "the turn's rows after the message sent, not the earlier reply")
+
+        var summarized = idle
+        summarized.chatRowState.teammateReplies = ["old": "Atlas"]
+        XCTAssertEqual(summarized.measurementChange(from: idle).rowIDs(in: rows), ["old"])
+
+        XCTAssertEqual(idle.measurementChange(from: idle), .none)
+        var pinned = idle
+        pinned.chatRowState.pinnedMessageIDs = ["old"]
+        XCTAssertNil(pinned.measurementChange(from: idle).rowIDs(in: rows), "a change naming no rows forgets them all")
+        var biggerText = idle
+        biggerText.dynamicTypeSize = idle.dynamicTypeSize == .xxxLarge ? .small : .xxxLarge
+        biggerText.chatRowState.isBusy = true
+        XCTAssertEqual(biggerText.measurementChange(from: idle), .all)
+    }
+
     /// A row not measured yet that draws something else (an edit landing
     /// off screen) is guessed again from what it draws now, moving the
     /// rows under it in the snapshot's own pass.

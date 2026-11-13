@@ -194,6 +194,13 @@ final class TranscriptLayout: UICollectionViewLayout {
         measuredSinceChange = []
     }
 
+    /// Only `ids` measure again as their cells next show them: the change
+    /// named the rows it reaches (TranscriptMeasurementChange).
+    func forgetMeasurements(of ids: Set<String>) {
+        guard !ids.isEmpty else { return }
+        measuredSinceChange.subtract(ids)
+    }
+
     /// Whether the row's height at `width` was measured since it last drew
     /// something else, so its cell needn't measure it again
     /// (TranscriptCell.preferredLayoutAttributesFitting).
