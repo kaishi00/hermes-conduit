@@ -572,7 +572,7 @@ extension AppState {
     /// Whether the invites were read now and kept.
     func readLinkedRoomInvites(since: Date? = nil) async -> Bool {
         guard canInviteLinkedPeople, isConnected else { return false }
-        return await linkedRoomInvitesRead.read(key: linkedRoomListReadKey(), since: since) { [weak self] in
+        return await linkedRoomInvitesReader.read(key: linkedRoomListReadKey(), since: since) { [weak self] in
             await self?.readLinkedRoomInvitesNow() ?? false
         }
     }
@@ -743,7 +743,7 @@ final class LinkedRoomListRead {
     }
 
     private var running: Run?
-    private var queued: (key: AnyHashable, task: Task<Bool, Never>)?
+    private var queued: (id: UUID, key: AnyHashable, task: Task<Bool, Never>)?
 
     func read(key: AnyHashable, since: Date? = nil, _ body: @escaping @MainActor () async -> Bool) async -> Bool {
         let since = since ?? Date()
@@ -751,13 +751,18 @@ final class LinkedRoomListRead {
         if running.startedAt > since { return await running.task.value }
         if let queued, queued.key == key { return await queued.task.value }
         let prior = running.task
+        let id = UUID()
         let task = Task { @MainActor [weak self] () -> Bool in
             _ = await prior.value
             guard let self else { return false }
-            self.queued = nil
+            if self.queued?.id == id { self.queued = nil }
+            // A read started meanwhile (another key's, after a Block or a
+            // sign-in) began after every caller here asked: it's theirs, and
+            // this one never takes its place.
+            if let newer = self.running { return await newer.task.value }
             return await self.start(key: key, body)
         }
-        queued = (key, task)
+        queued = (id, key, task)
         return await task.value
     }
 

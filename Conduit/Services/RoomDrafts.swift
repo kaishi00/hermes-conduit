@@ -421,7 +421,7 @@ extension AppState {
     func refreshLinkedRoomDrafts(readingPeople: Bool = true, since: Date? = nil) async {
         guard canInviteLinkedPeople, groupChatPhase == .available, isConnected else { return }
         // One at a time per kind (issue 2359).
-        _ = await linkedRoomDraftsRead.read(key: linkedRoomListReadKey(readingPeople), since: since) { [weak self] in
+        _ = await linkedRoomDraftsReader.read(key: linkedRoomListReadKey(readingPeople), since: since) { [weak self] in
             await self?.readLinkedRoomDraftsNow(readingPeople: readingPeople)
             return true
         }

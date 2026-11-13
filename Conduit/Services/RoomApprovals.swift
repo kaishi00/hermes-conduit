@@ -230,7 +230,7 @@ extension AppState {
         guard canAnswerRoomApprovals, isConnected else { return false }
         // One at a time (issue 2359): a burst of pushes, the 15 s follow
         // and Group Chats' reads share it.
-        return await linkedRoomApprovalsRead.read(key: linkedRoomListReadKey(), since: since) { [weak self] in
+        return await linkedRoomApprovalsReader.read(key: linkedRoomListReadKey(), since: since) { [weak self] in
             await self?.readLinkedRoomApprovals() != nil
         }
     }

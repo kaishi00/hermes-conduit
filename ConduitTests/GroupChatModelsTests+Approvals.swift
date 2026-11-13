@@ -398,27 +398,37 @@ extension GroupChatModelsTests {
             for _ in 0..<1000 where held.count < count { await Task.yield() }
             for _ in 0..<50 { await Task.yield() }
         }
+        func release() {
+            held.forEach { $0.resume() }
+            held.removeAll()
+        }
         let left = Date().addingTimeInterval(-60)
         let first = Task { @MainActor in await read.read(key: 1, body) }
         await settle(until: 1)
         let afterLeaving = Task { @MainActor in await read.read(key: 1, since: left, body) }
         let push = Task { @MainActor in await read.read(key: 1, body) }
         let secondPush = Task { @MainActor in await read.read(key: 1, body) }
-        let otherKey = Task { @MainActor in await read.read(key: 2, body) }
-        await settle(until: 2)
-        XCTAssertEqual(calls, 2, "the return joins the first read; the other key's read starts at once")
-
-        held.forEach { $0.resume() }
-        held.removeAll()
         await settle(until: 1)
-        XCTAssertEqual(calls, 3, "the two pushes share one read, after the first")
-        held.forEach { $0.resume() }
+        XCTAssertEqual(calls, 1, "the return joins the first read; the pushes wait for one after it")
 
-        for task in [first, afterLeaving, push, secondPush, otherKey] {
+        release()
+        await settle(until: 1)
+        XCTAssertEqual(calls, 2, "the two pushes share one read, after the first")
+        release()
+        for task in [first, afterLeaving, push, secondPush] {
             let answered = await task.value
             XCTAssertTrue(answered)
         }
-        XCTAssertEqual(calls, 3)
+
+        // Another key (a Block, a sign-in) doesn't wait on the read before it.
+        let before = Task { @MainActor in await read.read(key: 1, body) }
+        await settle(until: 1)
+        let otherKey = Task { @MainActor in await read.read(key: 2, body) }
+        await settle(until: 2)
+        XCTAssertEqual(calls, 4)
+        release()
+        _ = await before.value
+        _ = await otherKey.value
     }
 
     /// Settings > Multiplayer's Unlink fences the roster reads the way
