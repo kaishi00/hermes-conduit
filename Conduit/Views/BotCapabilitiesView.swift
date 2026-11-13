@@ -183,6 +183,8 @@ struct BotMcpServersView: View {
     @State private var mcpNotice: MCPNotice?
     @State private var keysEntry: BotMcpCatalogEntry?
     @State private var addingServer = false
+    /// The Hermes Add MCP Server was opened on: it writes there or nowhere.
+    @State private var addOwner: AppState.DashboardRuntimeOwner?
     /// Whether the server Add MCP Server just wrote is on and signs in
     /// with OAuth.
     @State private var added: (enabled: Bool, oauth: Bool) = (true, false)
@@ -219,6 +221,7 @@ struct BotMcpServersView: View {
                 if mcpProfile != nil, mcpSetup != nil {
                     Button {
                         mcpNotice = nil
+                        addOwner = appState.currentDashboardRuntimeOwner()
                         addingServer = true
                     } label: {
                         Label(AppLocalization.string("Add MCP Server", table: .bots), systemImage: "plus")
@@ -380,9 +383,10 @@ struct BotMcpServersView: View {
     /// refused; once Hermes wrote it, the page signs it in or tests it.
     private var addServerSheet: some View {
         let profile = mcpProfile ?? ""
+        let owner = addOwner
         return ConnectorAddSheet(profileName: appState.profileDisplayName(profile)) { name, entry, bearerToken in
             added = try await appState.addCustomMcpServer(
-                profile: profile, name: name, entry: entry, bearerToken: bearerToken
+                profile: profile, name: name, entry: entry, bearerToken: bearerToken, openedOn: owner
             )
         } onAdded: { name in
             // One the JSON turned off stays off, and isn't tested.
