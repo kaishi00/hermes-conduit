@@ -2731,13 +2731,13 @@ quotes · the Apple Watch
 - Previews (one line, by design): `Conduit/Services/PreviewText.swift`
 
 **Rulings**
-- A lone newline inside a paragraph, list item or quote is a line break, as chat apps draw it, not CommonMark's soft break: "one number per line" reads one per line. Each line a break follows gets CommonMark's own hard break (a trailing backslash) before Foundation parses it, and the line separator Foundation draws for a hard break becomes a newline, so selection copies what the reply wrote. A line already ending in a hard break (two spaces or a backslash) is left as written, as is a break before a blank line or a setext "===" underline. Emphasis and links still run across a break (2026-11-13, #2349).
+- A lone newline inside a paragraph, list item or quote is a line break, as chat apps draw it, not CommonMark's soft break: "one number per line" reads one per line. Each line a break follows gets CommonMark's own hard break (two trailing spaces, which are only whitespace inside a code span or a link's address, where a backslash would show) before Foundation parses it, and the line separator Foundation draws for a hard break becomes a newline, so selection copies what the reply wrote. A line already ending in a hard break (two spaces or a backslash) is left as written, as is a break next to a blank line or a setext "===" underline. Emphasis and links still run across a break (2026-11-13, #2349).
 
 **Open gaps**
-- An inline code span split across lines shows a backslash at the break.
+- An inline code span split across lines joins its lines with three spaces instead of one.
 - Previews and quotes join a reply's lines into one, as before; Read Aloud reads the source lines, so it was never affected; the Watch shows plain text, which keeps its newlines.
 
-**Checked:** 2026-11-13, #2349 (new entry: a single line break in a reply drew as a space, Furina's count to 30 on one line; chats, group rooms, Bot Chat, tool results, call job cards and long replies share the parse; selection copies the newline).
+**Checked:** 2026-11-13, #2349 (new entry: a single line break in a reply drew as a space, Furina's count to 30 on one line; chats, group rooms, Bot Chat, tool results, call job cards and long replies share the parse; selection copies the newline; review: two spaces rather than a backslash, so links and code spans across a break keep working, a setext underline left alone, a backslash before a space is text, one walk for the line separators).
 
 ## Markdown lists in messages
 

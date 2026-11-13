@@ -1153,9 +1153,26 @@ enum InlineMarkdownContent {
             options: .init(interpretedSyntax: .full)
         )) ?? AttributedString(source)
         // Foundation draws a hard break as a line separator; a newline is
-        // what the reply wrote and what selection copies.
-        while let separator = attributed.range(of: "\u{2028}") {
-            attributed.characters.replaceSubrange(separator, with: "\n")
+        // what the reply wrote and what selection copies. One walk, so a
+        // paragraph of many short lines stays linear.
+        if attributed.characters.contains("\u{2028}") {
+            let characters = attributed.characters
+            var normalized = AttributedString()
+            var cursor = characters.startIndex
+            var index = characters.startIndex
+            while index < characters.endIndex {
+                let next = characters.index(after: index)
+                if characters[index] == "\u{2028}" {
+                    normalized.append(attributed[cursor..<index])
+                    var newline = AttributedString(attributed[index..<next])
+                    newline.characters.replaceSubrange(newline.startIndex..<newline.endIndex, with: "\n")
+                    normalized.append(newline)
+                    cursor = next
+                }
+                index = next
+            }
+            normalized.append(attributed[cursor..<characters.endIndex])
+            attributed = normalized
         }
 
         var endIndex = attributed.characters.endIndex
@@ -1171,25 +1188,32 @@ enum InlineMarkdownContent {
     /// A single line break in a reply stays a line break, as chat apps
     /// draw it: "one number per line" reads one per line. CommonMark makes
     /// it a soft break, which Foundation draws as a space, so each line
-    /// that a break follows ends with a backslash, CommonMark's own hard
-    /// break. A line that already ends in one (a backslash, or two spaces)
-    /// is left as written, and so is a break before a blank line or a
-    /// setext underline ("==="), where a backslash would show.
+    /// that a break follows ends with two spaces, CommonMark's own hard
+    /// break. Spaces, not a backslash: inside a code span or a link's
+    /// address they're only whitespace, where a backslash would show or
+    /// break the link. A line that already ends in a hard break (two
+    /// spaces, or a backslash touching the newline) is left as written, as
+    /// is a break next to a blank line or a setext underline ("===").
     static func keepingLineBreaks(_ source: String) -> String {
         guard source.contains("\n") else { return source }
         var lines = source.components(separatedBy: "\n")
+        func isSetextUnderline(_ trimmed: String) -> Bool {
+            !trimmed.isEmpty && trimmed.allSatisfy { $0 == "=" }
+        }
         for index in lines.indices.dropLast() {
             let line = lines[index]
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
             let next = lines[index + 1].trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
-                  !next.isEmpty,
-                  !next.allSatisfy({ $0 == "=" }),
+            guard !trimmed.isEmpty, !next.isEmpty,
+                  !isSetextUnderline(trimmed), !isSetextUnderline(next),
                   !line.hasSuffix("  ") else { continue }
             var body = Substring(line)
             while let last = body.last, last == " " || last == "\t" || last == "\r" { body.removeLast() }
+            // A backslash right before the newline is already a hard break;
+            // one with a space after it is literal text.
             let trailingBackslashes = body.reversed().prefix { $0 == "\\" }.count
-            if trailingBackslashes % 2 == 1 { continue }
-            lines[index] = String(body) + "\\"
+            if trailingBackslashes % 2 == 1, body.count == line.count { continue }
+            lines[index] = String(body) + "  "
         }
         return lines.joined(separator: "\n")
     }

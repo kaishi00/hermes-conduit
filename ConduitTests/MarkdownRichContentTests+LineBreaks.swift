@@ -53,10 +53,32 @@ extension MarkdownRichContentPolicyTests {
 
     func testLineBreaksLeaveBlankLinesAndSetextUnderlinesAlone() {
         XCTAssertEqual(InlineMarkdownContent.keepingLineBreaks("one line"), "one line")
-        XCTAssertEqual(InlineMarkdownContent.keepingLineBreaks("a\nb"), "a\\\nb")
+        XCTAssertEqual(InlineMarkdownContent.keepingLineBreaks("a\nb"), "a  \nb")
         XCTAssertEqual(InlineMarkdownContent.keepingLineBreaks("a\n\nb"), "a\n\nb")
         XCTAssertEqual(InlineMarkdownContent.keepingLineBreaks("Title\n==="), "Title\n===")
-        XCTAssertEqual(InlineMarkdownContent.keepingLineBreaks("a\nb\n"), "a\\\nb\n")
+        XCTAssertEqual(InlineMarkdownContent.keepingLineBreaks("Title\n===\nBody"), "Title\n===\nBody")
+        XCTAssertEqual(InlineMarkdownContent.keepingLineBreaks("a\nb\n"), "a  \nb\n")
+    }
+
+    func testABackslashWithASpaceAfterItIsTextAndTheBreakStays() {
+        let attributed = InlineMarkdownContent.attributed(source: "a\\ \nb", references: .empty)
+        XCTAssertEqual(String(attributed.characters), "a\\\nb")
+    }
+
+    func testLinksAndCodeSpansRunAcrossABreakWithNothingShowing() throws {
+        let link = InlineMarkdownContent.attributed(source: "[docs](\nhttps://example.com) here", references: .empty)
+        XCTAssertEqual(String(link.characters), "docs here")
+        let docs = try XCTUnwrap(link.characters.firstRange(of: "docs"))
+        XCTAssertEqual(link[docs].link?.absoluteString, "https://example.com")
+
+        let code = InlineMarkdownContent.attributed(source: "`one\ntwo`", references: .empty)
+        XCTAssertFalse(String(code.characters).contains("\\"), String(code.characters))
+    }
+
+    func testManyShortLinesKeepEveryBreak() {
+        let lines = (1...2000).map(String.init).joined(separator: "\n")
+        let attributed = InlineMarkdownContent.attributed(source: lines, references: .empty)
+        XCTAssertEqual(String(attributed.characters), lines)
     }
 
     func testSelectableParagraphKeepsLineBreaks() throws {
