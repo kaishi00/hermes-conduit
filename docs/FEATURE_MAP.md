@@ -891,7 +891,7 @@ store takes any key)
 **Rulings**
 - Pulse and Artifacts can be tabs: the only two pages that stand on their own (Projects is a way of listing Sessions, Scheduled half of Tasks, files a chat's). Both are off until the user turns one on, and the bar holds five at most, so a sixth waits for another to come off; a stored list with more hides from the end (Eric, 2026-11-13, #2380, stage 2 of the pick on #2378).
 - A page tab holds its own chat: one opened from a Pulse card or an artifact is pushed over the page, or shown beside it on a split window, and Back returns to the page, as under a page pushed in Bots. A new chat out of a room is an ordinary one and goes to Sessions. A chat showing there is kept for the launch after iOS ends Conduit, as one in Sessions or Bots is (2026-11-13, #2380).
-- Pulse's tab wears the dot its buttons do, and a Pulse notification opens it when it's in the bar (otherwise the page is pushed in Sessions, as before). Where the dashboard has no Pulse the tab leaves the bar and the ⌘ keys, a first tab of Pulse passes the launch to the next one, and a reader on it when Pulse goes lands on the first tab left (2026-11-13, #2380).
+- Pulse's tab wears the dot its buttons do, and a Pulse notification opens it when it's in the bar (otherwise the page is pushed in Sessions, as before). Where the dashboard has no Pulse the tab leaves the bar and the ⌘ keys, a first tab of Pulse passes the launch to the next one, and a reader on it when Pulse goes lands on the first tab left, one in a chat opened from it once they go Back. Edit Tabs' switch for it is off and dimmed there, so nobody turns on a tab that wouldn't show (2026-11-13, #2380).
 - The pages' other ways in stay as they are with a tab in the bar: Bots Home's pills and the Sessions bar's buttons still push the page where they stand (the Sessions bar's own switches hide its two, #2012). Whether they should step aside for a tab is the maintainer's call (2026-11-13, #2380).
 - One list is the whole setting: the order, the hidden tabs and so the tab Conduit opens on, which is the first one shown. No separate "Open on" choice and no "Last used": a return after iOS closed Conduit already reopens the chat that was showing (Eric, 2026-11-13, #2378, picked "Stage 1 now, stage 2 after" from four).
 - Sessions and Settings move but can't be hidden: Settings is the only way back to this choice, and Sessions is where a chat opened from outside the app is pushed. Bots and Tasks can be (Eric, 2026-11-13, #2378).
@@ -902,6 +902,7 @@ store takes any key)
 
 **Open gaps**
 - Not seen on a device yet: the sheet, five tabs in the bar on a small phone (a long name shrinks to 0.8 before it's cut) and on a Duo's strip, where a fifth icon brings the bar's top to about 341 pt, 9 pt under iOS's window controls by the simulator's numbers.
+- With five tabs shown, a hidden tab something else opens stands in as a sixth while it shows, and the names shrink or cut to fit.
 - With Pulse a tab, the page can also be open under Bots or Sessions at the same time: each copy reads the feed for itself.
 - Under the drawer shell the menu bar still lists the tabs' items, whose keys do nothing there (as before #2378); the Keyboard Shortcuts sheet leaves them out.
 - With Bots hidden, a bot's own chats open in Sessions' stack; Bots Home's Pulse pill and Artifacts shortcut go with the tab, and the Sessions bar keeps its own.
@@ -3619,11 +3620,11 @@ keyboard): the menu bar's commands, the keys a screen keeps for itself,
 ⌘Return in the composer and the Keyboard Shortcuts sheet (issue 2219).
 
 **Siblings:** the menu bar on a Mac and an iPad (⌘N New Chat in place of
-New Window, ⌘, Settings, ⌘1 to ⌘4 the tabs, ⌘+ ⌘− ⌘0 the chat text size,
+New Window, ⌘, Settings, ⌘1 to ⌘5 the tabs, ⌘+ ⌘− ⌘0 the chat text size,
 ⌘/ the sheet) · the iPad's ⌘-held overlay (the same items) · the V2 tab
 shell (the tabs, in the user's order: The tabs' order and the tab Conduit
 opens on) and the drawer shell (⌘, opens its Settings sheet; no tabs
-for ⌘1 to ⌘4) · a chat's ⌘. Stop (the composer's Stop) · the Chats list's ⌘F
+for ⌘1 to ⌘5) · a chat's ⌘. Stop (the composer's Stop) · the Chats list's ⌘F
 (Chats top bar and search) · a chat's ⌃⌘S chat list and ⌥⌘A artifacts ·
 ⌘Return in every composer, a chat's, a room's and the full editor (Composer
 Return key) · Settings > Chat's text size slider and Sync across devices
@@ -3652,7 +3653,7 @@ keys (screen-local, unchanged), the Watch and CarPlay (no keyboard)
 - ⌘Return sends whatever the Return key setting says, with Return's limits (no IME composing, the composer able to send a typed message) (2026-11-11, #2224).
 - ⌘. is Stop wherever the composer's Stop would stop (a turn, or the open workstream), a draft in the field or not, in the shown tab's chat only (2026-11-11, #2224).
 - ⌘. doesn't stop a running dictation: that stays with the composer's Stop and Return, which own the dictation (2026-11-11, #2224 review).
-- The sheet lists only the keys the current shell answers: the drawer shell shows Settings with ⌘, and leaves out ⌘1 to ⌘4, ⌃⌘S and ⌥⌘A (2026-11-11, #2224 review).
+- The sheet lists only the keys the current shell answers: the drawer shell shows Settings with ⌘, and leaves out ⌘1 to ⌘5, ⌃⌘S and ⌥⌘A (2026-11-11, #2224 review).
 - ⌃⌘S and ⌥⌘A exist only where their column fits beside the chat (the list in a window that splits, the side panel in a chat column wide enough). The sheet, a reference opened from anywhere, keeps their rows under the tab shell and says so in the Chats footer rather than following the window it's opened over (2026-11-11, follow-up to #2224).
 - Return and ⌘Return's callbacks check a Bot Chat on its way themselves too, since the field's gate reaches it a render later (2026-11-11, follow-up to #2224).
 

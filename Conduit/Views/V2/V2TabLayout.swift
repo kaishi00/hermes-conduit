@@ -167,7 +167,7 @@ struct V2TabLayout: Equatable {
 }
 
 /// The saved tab layout, published only when it changes: the shell, both
-/// bars, the menu bar's ⌘1 to ⌘4 and the Keyboard Shortcuts sheet follow it.
+/// bars, the menu bar's ⌘1 to ⌘5 and the Keyboard Shortcuts sheet follow it.
 /// Read here rather than through `@AppStorage`, which redraws its view on
 /// every write to the defaults, whatever the key.
 @MainActor
@@ -305,7 +305,9 @@ struct V2TabsOrderSheet: View {
             )) { label }
                 .tint(.conduitAccent)
                 // The bar is full: one comes off before another goes on.
-                .disabled(layout.isHidden(tab) && !layout.canShow(tab))
+                // Or this dashboard doesn't have the page (Pulse without
+                // the plugin serving it): turning it on would show nothing.
+                .disabled(layout.isHidden(tab) && (!layout.canShow(tab) || store.unavailable.contains(tab)))
                 .accessibilityIdentifier("settings.tabs.show.\(tab.rawValue)")
         } else {
             label

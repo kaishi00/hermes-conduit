@@ -769,6 +769,14 @@ struct V2Shell: View {
             .onChange(of: [pulsePath, artifactsPath]) { old, new in
                 giveUpRoomIfLeft()
                 if old.contains(where: { $0.contains(.conversation) }) { standDownIfChatLeft() }
+                // Back from a chat that kept Pulse's tab standing after the
+                // dashboard stopped serving Pulse: its page has nothing to
+                // show, so the reader lands on the first tab left.
+                if selectedTab == .pulse, pulsePath.isEmpty, !appState.showsPulseScreen {
+                    let next = tabLayout.layout.first(without: [.pulse])
+                    visitedTabs.insert(next)
+                    selectTab(next)
+                }
             }
             .onChange(of: appState.isModalSheetPresented) { _, presented in
                 // A sheet's dismissal shows the chat again: what came in under
