@@ -2423,7 +2423,7 @@ final class AppStateSessionCompressTests: XCTestCase {
     }
 
     func testADockAnswerOrReadThatWasOvertakenIsDropped() async throws {
-        var appState: AppState?
+        weak var appState: AppState?
         var clearsMidAction = false
         let loop = SessionControlSnapshot(loop: .init(prompt: "check CI", status: "active", intervalSeconds: 300, ticksFired: 1, maxTicks: 0, until: "", nextDueAt: 0, pausedReason: nil, deferredByGoal: false), revision: "r2")
         var eventMidRead = false
@@ -2457,7 +2457,7 @@ final class AppStateSessionCompressTests: XCTestCase {
     }
 
     func testADockActionWithoutASnapshotStaysBusyUntilTheDockReadsHermes() async throws {
-        var appState: AppState?
+        weak var appState: AppState?
         var busyDuringRead: Bool?
         var reads = 0
         var paused = Self.goalSnapshot
@@ -2482,7 +2482,7 @@ final class AppStateSessionCompressTests: XCTestCase {
     }
 
     func testWorkHereThatOutlivesAProfileSwitchIsNeitherSuccessNorFailure() async throws {
-        var appState: AppState?
+        weak var appState: AppState?
         let harness = controlHarness { operations in
             operations.moveSessionWorkspace = { _, _, folder in
                 appState?.activeProfile = "coder"
