@@ -112,9 +112,12 @@ final class SheetAboveAllHost {
             Task { @MainActor in
                 Self.showing.remove(key)
                 // Gone, so the same item can show again; a newer one keeps its own.
+                // (Its controller too, so the presentation check doesn't
+                // take a quick swipe for a refusal and show it again.)
                 if let self, self.shownID == id {
                     self.shownID = nil
                     self.decided = nil
+                    self.controller = nil
                 }
                 closed()
             }
