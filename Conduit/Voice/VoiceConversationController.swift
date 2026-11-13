@@ -87,6 +87,10 @@ final class VoiceConversationController: ObservableObject {
     /// or mutable policy so route classification is deterministic.
     private let routePolicyProvider: @MainActor () -> VoiceBargeInRoutePolicy
     private let submit: @MainActor (String) async -> Bool
+    /// Why the chat refused a transcript, when the app knows (another app
+    /// holds the chat, or a rewind is counting its turns); nil for the
+    /// generic failure.
+    private let submitRefusal: @MainActor () -> String?
     /// Cancels the authoritative Hermes turn. Returns whether the
     /// cancellation actually succeeded (true also when there was nothing
     /// left to cancel). Call sites that only need the interrupt to have been
@@ -249,7 +253,8 @@ final class VoiceConversationController: ObservableObject {
         steer: (@MainActor (String) async -> VoiceSteerOutcome)? = nil,
         onEndConversation: (@MainActor () -> Void)? = nil,
         backgroundJobs: VoiceBackgroundJobHandling? = nil,
-        pushToTalkSurfaceAvailable: (@MainActor () -> Bool)? = nil
+        pushToTalkSurfaceAvailable: (@MainActor () -> Bool)? = nil,
+        submitRefusal: (@MainActor () -> String?)? = nil
     ) {
         let capture = capture ?? AVAudioCaptureService()
         self.capture = capture
@@ -267,6 +272,7 @@ final class VoiceConversationController: ObservableObject {
             self.routePolicyProvider = { VoiceBargeInRoutePolicy.current() }
         }
         self.submit = submit
+        self.submitRefusal = submitRefusal ?? { nil }
         self.interrupt = interrupt
         self.steerTurn = steer
         self.endConversationRequest = onEndConversation
@@ -1500,7 +1506,8 @@ final class VoiceConversationController: ObservableObject {
             guard await submit(transcript) else {
                 guard isCurrent(generation) else { return }
                 isAwaitingVoiceAssistant = false
-                state = .failed(AppLocalization.string("Hermes could not submit the transcription.", table: .voice))
+                state = .failed(submitRefusal()
+                    ?? AppLocalization.string("Hermes could not submit the transcription.", table: .voice))
                 return
             }
             guard isCurrent(generation) else { return }

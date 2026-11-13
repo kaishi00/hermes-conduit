@@ -1903,7 +1903,9 @@ final class AppState: ObservableObject {
             guard let self else { return false }
             return self.isSceneActive && self.showVoiceSheet
                 && !self.isCarPlayVoiceSurfaceActive && !self.isNativeHermesCallAnswered
-        }
+        },
+        // A refused transcript says why, as the live modes do.
+        submitRefusal: { [weak self] in self?.callRefusalMessageForOpenChat() }
     )
     /// Classic voice audio: the default capture and playback, or one
     /// echo-cancelling engine when speaker talk-over is on, chosen for each

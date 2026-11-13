@@ -409,6 +409,33 @@ final class VoiceConversationControllerTests: XCTestCase {
         XCTAssertEqual(controller.conversationTranscript.map(\.text), ["Hello Hermes"])
     }
 
+    /// A transcript the chat refused says why, when the app knows (a
+    /// rewind counting the chat's turns, another app holding it).
+    func testARefusedTranscriptSaysWhyTheChatRefusedIt() async {
+        let capture = MockCapture(permissionGranted: true)
+        let gateway = MockGateway(transcript: "Hello Hermes")
+        let controller = VoiceConversationController(
+            capture: capture,
+            playback: MockPlayback(),
+            gateway: gateway,
+            submit: { _ in false },
+            interrupt: { true },
+            submitRefusal: { "Still taking a message back. Try again in a moment." }
+        )
+        controller.beginVoiceTurn(sessionID: "session")
+        await controller.startListening()
+        let start = Date()
+        controller.ingestAudioLevel(0.1, at: start)
+        controller.ingestAudioLevel(0, at: start.addingTimeInterval(1.3))
+        let failed = await awaitPublishedValue(controller.$state, initialValue: controller.state) {
+            if case .failed = $0 { return true }
+            return false
+        }
+
+        XCTAssertTrue(failed)
+        XCTAssertEqual(controller.state, .failed("Still taking a message back. Try again in a moment."))
+    }
+
     func testAppleOnDeviceModeBypassesHermesTranscription() async {
         let capture = MockCapture(permissionGranted: true)
         let gateway = MockGateway(transcript: "Hermes transcript")
