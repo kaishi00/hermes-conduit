@@ -3957,6 +3957,8 @@ private struct AppearanceSettingsDetail: View {
     @AppStorage("conduit.ipadPersistentSidebar") private var iPadPersistentSidebar = false
     @AppStorage(V2ShellPreference.key) private var usesV2 = V2ShellPreference.defaultValue
     @AppStorage(V2MainButtonPreference.key) private var mainButtonNewChat = V2MainButtonPreference.defaultValue
+    @ObservedObject private var tabLayout = V2TabLayoutStore.shared
+    @State private var showsTabsOrder = false
     @AppStorage(V2ChatListPreference.key) private var chatListBeside = V2ChatListPreference.defaultValue
     @AppStorage(V2SessionsBarPreferences.Profiles.key) private var sessionsBarProfiles = V2SessionsBarPreferences.Profiles.defaultValue
     @AppStorage(V2SessionsBarPreferences.showsProjectsKey) private var sessionsBarProjects = V2SessionsBarPreferences.showsProjectsDefault
@@ -4066,6 +4068,32 @@ private struct AppearanceSettingsDetail: View {
             // The gold button beside V2's tabs: voice, or New chat for
             // people who'd rather not talk. A chat keeps its voice button.
             if usesV2 {
+                // The bar's order, the tabs it leaves out and so the tab
+                // Conduit opens on (issue 2084).
+                ConduitSettingsSection(title: AppLocalization.string("Tabs", table: .settings), symbol: "dock.rectangle", tint: .conduitAccent) {
+                    Text(AppLocalization.string("Choose the order of the tabs and hide the ones you don't use. Conduit opens on the first tab. Applies on iPhone, iPad and Mac.", table: .settings))
+                        .scaledFont(.footnote)
+                        .foregroundStyle(.secondary)
+                    Button {
+                        Haptics.selection()
+                        showsTabsOrder = true
+                    } label: {
+                        HStack(spacing: 8) {
+                            Text(AppLocalization.string("Edit Tabs", table: .settings))
+                            Spacer(minLength: 8)
+                            Text(tabLayout.layout.shown.map(\.title).formatted(.list(type: .and, width: .narrow).locale(AppLocalization.formattingLocale)))
+                                .scaledFont(.footnote)
+                                .foregroundStyle(.secondary)
+                                .lineLimit(1)
+                            SettingsChevron()
+                        }
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityIdentifier("settings.tabs.edit")
+                    .sheet(isPresented: $showsTabsOrder) { V2TabsOrderSheet() }
+                }
+
                 ConduitSettingsSection(title: AppLocalization.string("Main button"), symbol: "circle.circle.fill", tint: .conduitAccent) {
                     Text("Choose what the round button beside the tabs does. The other one moves to the top bar, and a chat keeps its voice button.")
                         .scaledFont(.footnote)

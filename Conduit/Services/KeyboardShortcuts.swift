@@ -90,14 +90,15 @@ enum ConduitKeyboardShortcut: String, CaseIterable, Identifiable {
         return text
     }
 
-    /// ⌘1 to ⌘4: the tabs in the bar's order.
-    static func tabShortcut(_ tab: V2Tab) -> KeyboardShortcut? {
-        guard let index = V2Tab.destinations.firstIndex(of: tab) else { return nil }
+    /// ⌘1 to ⌘4: the tabs in the bar's order, which is the user's
+    /// (`V2TabLayout.shown`). A tab they hid has no key.
+    static func tabShortcut(_ tab: V2Tab, in tabs: [V2Tab]) -> KeyboardShortcut? {
+        guard let index = tabs.firstIndex(of: tab), index < 9 else { return nil }
         return KeyboardShortcut(KeyEquivalent(Character(String(index + 1))), modifiers: .command)
     }
 
-    static func tabGlyphs(_ tab: V2Tab) -> String? {
-        tabShortcut(tab).map { glyphs(key: $0.key, modifiers: $0.modifiers) }
+    static func tabGlyphs(_ tab: V2Tab, in tabs: [V2Tab]) -> String? {
+        tabShortcut(tab, in: tabs).map { glyphs(key: $0.key, modifiers: $0.modifiers) }
     }
 }
 
@@ -166,10 +167,13 @@ enum KeyboardCommands {
     }
 }
 
-/// The menu bar on a Mac and an iPad (and ⌘ held on an iPad). Reads no
-/// observed state, so AppState's publishes never rebuild the menus; each
-/// command checks what it needs when it's pressed.
+/// The menu bar on a Mac and an iPad (and ⌘ held on an iPad). Observes
+/// nothing of AppState's, so its publishes never rebuild the menus; each
+/// command checks what it needs when it's pressed. The tabs' items follow
+/// the saved tab layout, which publishes only when the user changes it.
 struct ConduitKeyboardCommands: Commands {
+    @ObservedObject private var tabLayout = V2TabLayoutStore.shared
+
     var body: some Commands {
         // ⌘N was the system's New Window, which Conduit's one-window guard
         // closed at once (issue 2219).
@@ -182,8 +186,9 @@ struct ConduitKeyboardCommands: Commands {
                 .keyboardShortcut(ConduitKeyboardShortcut.settings.shortcut)
         }
         CommandGroup(before: .sidebar) {
-            ForEach(V2Tab.destinations) { tab in
-                if let shortcut = ConduitKeyboardShortcut.tabShortcut(tab) {
+            let tabs = tabLayout.layout.shown
+            ForEach(tabs) { tab in
+                if let shortcut = ConduitKeyboardShortcut.tabShortcut(tab, in: tabs) {
                     Button(tab.title) { KeyboardCommands.show(tab) }
                         .keyboardShortcut(shortcut)
                 }
@@ -211,8 +216,10 @@ struct KeyboardShortcutsSheet: View {
     /// The drawer shell has no tabs and no chat list or Artifacts toggles:
     /// the sheet leaves out the keys it doesn't answer.
     @AppStorage(V2ShellPreference.key) private var usesTabs = V2ShellPreference.defaultValue
+    @ObservedObject private var tabLayout = V2TabLayoutStore.shared
 
     var body: some View {
+        let tabs = tabLayout.layout.shown
         NavigationStack {
             List {
                 Section {
@@ -235,8 +242,8 @@ struct KeyboardShortcutsSheet: View {
                 }
                 Section(AppLocalization.string("Go to", table: .settings)) {
                     if usesTabs {
-                        ForEach(V2Tab.destinations) { tab in
-                            if let glyphs = ConduitKeyboardShortcut.tabGlyphs(tab) {
+                        ForEach(tabs) { tab in
+                            if let glyphs = ConduitKeyboardShortcut.tabGlyphs(tab, in: tabs) {
                                 row(title: tab.title, glyphs: tab == .settings
                                     ? [glyphs, ConduitKeyboardShortcut.settings.glyphs]
                                     : [glyphs])

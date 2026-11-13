@@ -2,8 +2,9 @@
 //  V2Shell.swift
 //  Conduit
 //
-//  Conduit V2's navigation shell: four tabs (Chats, Tasks, Bots, Settings)
-//  in place of the sessions drawer. It is new presentation over the same
+//  Conduit V2's navigation shell: four tabs (Bots, Sessions, Tasks,
+//  Settings), in the order the user keeps them (`V2TabLayout`), in place of
+//  the sessions drawer. It is new presentation over the same
 //  AppState: the open conversation is still AppState's one active session,
 //  and `showSidebar` keeps meaning "the chat is covered", which here is
 //  "no conversation is pushed on the visible tab". Everything that already
@@ -17,10 +18,10 @@ import os
 
 /// The shell's four destinations.
 enum V2Tab: String, Identifiable, Hashable {
-    /// The tab an opened conversation is pushed in. Bots is the launch tab,
-    /// so a plain session opened over it (a notification, a widget, a
-    /// Shortcut) still goes to Sessions; only a bot's own chats, and chats
-    /// opened from a page in Bots, stay in Bots.
+    /// The tab an opened conversation is pushed in. A plain session opened
+    /// over Bots (a notification, a widget, a Shortcut) still goes to
+    /// Sessions; only a bot's own chats, and chats opened from a page in
+    /// Bots, stay in Bots.
     /// A chat opened from a page pushed in Bots (Pulse, Artifacts) stays
     /// there too, so Back returns to that page.
     static func conversationTab(selected: V2Tab, isBotsChat: Bool, fromBotsPage: Bool = false) -> V2Tab {
@@ -31,11 +32,6 @@ enum V2Tab: String, Identifiable, Hashable {
     case tasks
     case bots
     case settings
-
-    /// The tabs the bar lists. Bots comes first: picking a bot and
-    /// talking to it is Conduit's home, and direct sessions are a tab
-    /// over (designs/bot-mode-coordinator/bots-home-ui.md).
-    static let destinations: [V2Tab] = [.bots, .chats, .tasks, .settings]
 
     var id: String { rawValue }
 
@@ -428,18 +424,21 @@ struct V2Shell: View {
     @EnvironmentObject private var appState: AppState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.layoutDirection) private var layoutDirection
-    @State private var selectedTab: V2Tab = .bots
-    /// The app opens on Bots, or on the chat iOS closed it on
-    /// (`V2ReopenedConversation`). Nothing is pushed during the launch's
-    /// first layout: a push then, even without animation, left the app
-    /// never idle, so a reopened chat is in the path from the start.
+    /// The bar's order and the tabs it shows (Settings > Appearance > Tabs).
+    @ObservedObject private var tabLayout = V2TabLayoutStore.shared
+    @State private var selectedTab: V2Tab
+    /// The app opens on the first tab (Bots, until the user reorders them),
+    /// or on the chat iOS closed it on (`V2ReopenedConversation`). Nothing
+    /// is pushed during the launch's first layout: a push then, even
+    /// without animation, left the app never idle, so a reopened chat is
+    /// in the path from the start.
     @State private var chatsPath: [V2Route] = []
     @State private var botsPath: [V2Route] = []
     /// Bots Home's portraits and the Bot Chats they open (BotZoomSource).
     @Namespace private var botZoom
     /// The custom bar keeps a tab alive once it has been opened, so its
     /// scroll position and pushed screens survive switching away.
-    @State private var visitedTabs: Set<V2Tab> = [.chats, .bots]
+    @State private var visitedTabs: Set<V2Tab>
     @State private var contentFaded = false
     @State private var contentShift: CGFloat = 0
     @State private var profileSwitchToken = 0
@@ -483,21 +482,24 @@ struct V2Shell: View {
     ///   - conversationOnLeave: the window's record of the chat showing,
     ///     kept current here.
     ///   - reopening: where this launch opens, from that record
-    ///     (`V2ReopenedConversation.launch`); nil opens on Bots.
+    ///     (`V2ReopenedConversation.launch`); nil opens on the first tab.
     init(conversationOnLeave: Binding<String> = .constant(""), reopening launch: V2ReopenedConversation.Launch? = nil) {
         _conversationOnLeave = conversationOnLeave
         _roomToReopen = State(initialValue: launch?.roomID == nil ? nil : launch)
+        let layout = V2TabLayoutStore.shared.layout
+        var opensOn = layout.first
         switch launch?.tab {
         case .bots?:
-            _selectedTab = State(initialValue: .bots)
+            opensOn = .bots
             _botsPath = State(initialValue: launch?.path ?? [])
-            _visitedTabs = State(initialValue: [.chats, .bots])
         case .chats?:
-            _selectedTab = State(initialValue: .chats)
+            opensOn = .chats
             _chatsPath = State(initialValue: launch?.path ?? [])
         case .tasks?, .settings?, nil:
             break
         }
+        _selectedTab = State(initialValue: opensOn)
+        _visitedTabs = State(initialValue: layout.madeAtLaunch(opensOn: opensOn))
     }
 
     /// Whether the visible tab shows the conversation.
@@ -857,8 +859,8 @@ struct V2Shell: View {
                 visitedTabs.insert(.settings)
                 selectTab(.settings)
             }
-            // ⌘1 to ⌘4 and ⌘, (KeyboardShortcuts.swift); nothing is in
-            // front, which the command checked.
+            // ⌘1 to ⌘4, in the bar's order, and ⌘, (KeyboardShortcuts.swift);
+            // nothing is in front, which the command checked.
             .onReceive(KeyboardCommands.tabRequests) { tab in
                 visitedTabs.insert(tab)
                 selectTab(tab)
@@ -892,7 +894,7 @@ struct V2Shell: View {
         }
     }
 
-    /// The four tabs over a custom glass capsule, the gold voice button
+    /// The tabs over a custom glass capsule, the gold voice button
     /// beside it, on every iOS version. iOS 26's own tab bar has no place
     /// for a separate circle: a search-role tab sat inside the bar as a
     /// second Voice item under the button.
@@ -912,8 +914,11 @@ struct V2Shell: View {
         let strip = statusStrip
         let settingsBeside = V2SplitLayout.settingsBesideList(split: split)
         let underList = V2SplitLayout.tabBarUnderList(split: split, tab: selectedTab)
+        let barTabs = tabLayout.layout.bar(selected: selectedTab)
+        // Every tab, hidden ones included: one that's been opened stays
+        // made behind the others, as a shown one does.
         return ZStack {
-            ForEach(V2Tab.destinations) { tab in
+            ForEach(V2TabLayout.standardOrder) { tab in
                 // The selected tab shows from the tap's own frame; it joins
                 // the visited ones right after. Split, Settings shows in
                 // the Chats tab's chat column instead of a tab of its own.
@@ -957,7 +962,7 @@ struct V2Shell: View {
             ZStack(alignment: .bottom) {
                 if strip == nil, split || (!conversationVisible && !pulseVisible) {
                     HStack(spacing: 10) {
-                        V2CapsuleTabBar(selection: $selectedTab)
+                        V2CapsuleTabBar(selection: $selectedTab, tabs: barTabs)
                         voiceButton(chatVoiceBeside: V2SplitLayout.hasChatVoiceBeside(split: split, path: path(of: selectedTab), inRoom: appState.activeRoomSurface != nil))
                     }
                     .padding(.horizontal, 16)
@@ -1016,7 +1021,7 @@ struct V2Shell: View {
         ZStack(alignment: .bottom) {
             if split || path(of: selectedTab).isEmpty {
                 VStack(spacing: 12) {
-                    V2StripTabBar(selection: $selectedTab, width: strip.columnWidth)
+                    V2StripTabBar(selection: $selectedTab, tabs: tabLayout.layout.bar(selected: selectedTab), width: strip.columnWidth)
                     voiceButton(chatVoiceBeside: V2SplitLayout.hasChatVoiceBeside(split: split, path: path(of: selectedTab), inRoom: appState.activeRoomSurface != nil))
                         .environment(\.v2MainButtonDiameter, strip.columnWidth)
                 }
@@ -1811,16 +1816,18 @@ struct V2NoticeBanner: View {
 
 // MARK: - Capsule tab bar
 
-/// The tab bar: four items in a glass capsule, the selection
-/// highlight sliding between them on the overshoot spring.
+/// The tab bar: the tabs in a glass capsule, in the user's order
+/// (`V2TabLayout.bar`), the selection highlight sliding between them on the
+/// overshoot spring.
 private struct V2CapsuleTabBar: View {
     @Binding var selection: V2Tab
+    let tabs: [V2Tab]
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var highlight
 
     var body: some View {
         HStack(spacing: 2) {
-            ForEach(V2Tab.destinations) { tab in
+            ForEach(tabs) { tab in
                 let isSelected = selection == tab
                 Button {
                     withAnimation(ConduitMotion.overshoot(reduceMotion: reduceMotion)) {
@@ -1903,20 +1910,21 @@ struct V2StatusStrip: Equatable {
     var columnOuterMargin: CGFloat { max(4, min(Self.columnOuterMargin, width - columnWidth - 4)) }
 }
 
-/// The tab bar standing in a Duo's status strip: the same four items as
+/// The tab bar standing in a Duo's status strip: the same items as
 /// the capsule, one above another, the selection sliding between them.
 /// Icons only, as iOS's own controls in the strip: a title doesn't fit
 /// their 50 pt column ("Settings" alone is 44 pt), and the labelled bar
 /// was tall enough to run into those controls (issue 2118).
 private struct V2StripTabBar: View {
     @Binding var selection: V2Tab
+    let tabs: [V2Tab]
     let width: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var highlight
 
     var body: some View {
         VStack(spacing: 2) {
-            ForEach(V2Tab.destinations) { tab in
+            ForEach(tabs) { tab in
                 let isSelected = selection == tab
                 Button {
                     withAnimation(ConduitMotion.overshoot(reduceMotion: reduceMotion)) {

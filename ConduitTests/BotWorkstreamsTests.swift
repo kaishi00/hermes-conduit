@@ -908,7 +908,8 @@ extension BotModeTests {
     /// Bots Home (Eric 2026-11-03, layout A): Bots is the first tab and
     /// the old Chats tab is Sessions.
     func testBotsComeFirstAndChatsIsSessions() {
-        XCTAssertEqual(V2Tab.destinations, [.bots, .chats, .tasks, .settings])
+        XCTAssertEqual(V2TabLayout.standard.shown, [.bots, .chats, .tasks, .settings])
+        XCTAssertEqual(V2TabLayout.standard.first, .bots)
         XCTAssertEqual(V2Tab.chats.title, AppLocalization.string("Sessions"))
     }
 
