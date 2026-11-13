@@ -137,6 +137,50 @@ final class WidgetSnapshotAppStateTests: XCTestCase {
         XCTAssertEqual(reloadCount - reloadsBeforeArchive, 1)
     }
 
+    /// A catalog read that lists the same rows for the same scope again
+    /// publishes no widget snapshot and starts no Projects read; changed
+    /// rows do both, and the projects are read again once past
+    /// `projectsRereadInterval` (issue 2357, leftovers in 2375).
+    func testTheSameRowsAgainSkipTheWorkAfterAChange() async throws {
+        var rows = [session("first", title: "First chat")]
+        let same = AppState(
+            defaults: defaults,
+            loadSavedConnection: false,
+            dashboardRegistry: SavedDashboardRegistry(activeDashboardID: dashboardA.id, dashboards: [dashboardA, dashboardB]),
+            clearSessionPresentationCache: {},
+            sessionCatalogLoader: { _ in rows },
+            sessionPresentationCache: SessionPresentationCache(defaults: defaults),
+            profileAppearanceStore: ProfileAppearanceStore(defaults: defaults, avatarsRoot: root.appendingPathComponent("appearance-same", isDirectory: true), legacyAvatarDirectories: [])
+        )
+        same.widgetSnapshotStoreOverride = store
+        same.widgetSnapshotReloadOverride = {}
+        same.widgetSessionMutationRequestOverride = { _, _, _ in [:] }
+        let snapshotFile = root.appendingPathComponent(WidgetSnapshotStore.filename)
+
+        await same.loadSessions(forceRefresh: true)
+        let generation = same.chatListCatalogGeneration
+        XCTAssertNotNil(store.read())
+
+        try FileManager.default.removeItem(at: snapshotFile)
+        await same.loadSessions(forceRefresh: true)
+        XCTAssertEqual(same.chatListCatalogGeneration, generation, "the same rows aren't a change")
+        XCTAssertNil(store.read(), "nor is the widget's snapshot built again")
+
+        rows.append(session("second", title: "Second chat"))
+        await same.loadSessions(forceRefresh: true)
+        XCTAssertEqual(same.chatListCatalogGeneration, generation &+ 1)
+        XCTAssertNotNil(store.read(), "changed rows publish")
+
+        let client = HermesClient(connection: HermesConnection(baseUrl: dashboardA.normalizedURL, ticket: "t"), profile: "default")
+        let readAt = Date(timeIntervalSince1970: 1_700_000_000)
+        XCTAssertTrue(same.projectsNeedReading(using: client, profile: "default", now: readAt), "never read")
+        same.projectsRead = ("default", ObjectIdentifier(client), readAt)
+        XCTAssertFalse(same.projectsNeedReading(using: client, profile: "default", now: readAt.addingTimeInterval(60)))
+        XCTAssertTrue(same.projectsNeedReading(using: client, profile: "default",
+                                               now: readAt.addingTimeInterval(AppState.projectsRereadInterval)), "due again")
+        XCTAssertTrue(same.projectsNeedReading(using: client, profile: "work", now: readAt.addingTimeInterval(60)), "another profile")
+    }
+
     private func session(_ id: String, title: String) -> SessionSummary {
         SessionSummary(
             id: id,

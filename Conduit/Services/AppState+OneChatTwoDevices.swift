@@ -961,10 +961,13 @@ extension AppState {
         sessionCatalogCache.removeSession(
             withIDs: Set([session.id] + session.alternateIds)
         )
-        // The call archive kept for the catalog could list it too: a call
-        // archived on Hermes already, deleted or archived here, leaves no
-        // trace in the live total that would make it read again.
-        archivedCallsReads.removeAll()
+        // A call archive kept for the catalog that lists it is dropped: a
+        // call archived on Hermes already, deleted or archived here, leaves
+        // no trace in the live total that would make it read again. Kept
+        // archives that don't list it (other profiles') stay.
+        archivedCallsReads = archivedCallsReads.filter { _, read in
+            !read.calls.contains { sessionMatches($0, session) }
+        }
         publishWidgetSnapshot()
     }
 
