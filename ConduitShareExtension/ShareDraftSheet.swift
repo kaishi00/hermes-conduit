@@ -202,7 +202,7 @@ struct ShareDraftSheet: View {
                 }
             } footer: {
                 VStack(alignment: .leading, spacing: 6) {
-                    if model.snapshot == nil || model.workspaces.isEmpty {
+                    if !model.action.sendsOnPickup, model.snapshot == nil || model.workspaces.isEmpty {
                         Text("Open Conduit once to see your recent chats here.")
                     }
                     if !model.action.sendsOnPickup {

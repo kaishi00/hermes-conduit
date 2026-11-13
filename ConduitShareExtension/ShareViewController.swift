@@ -3,9 +3,10 @@
 //  ConduitShareExtension
 //
 //  Conduit's entry in the share sheet (#812). It reads what was shared,
-//  lets the user pick a recent chat or a new one, and leaves a draft in the
-//  App Group for Conduit to show in that chat's composer. It never talks to
-//  Hermes and holds no credentials.
+//  lets the user pick what Hermes should do and a recent chat or a new one,
+//  and leaves a draft in the App Group for Conduit to show in that chat's
+//  composer, or, for Sort it out and Remember it, to send in a new chat. It
+//  never talks to Hermes itself and holds no credentials.
 //
 //  A share extension can't open its app: NSExtensionContext.open(_:) is
 //  only honoured for Today and iMessage extensions, and UIApplication isn't

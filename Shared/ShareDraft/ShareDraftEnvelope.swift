@@ -5,7 +5,9 @@
 //  A draft shared into Conduit from another app (#812). The share extension
 //  writes one envelope per share into the App Group's ShareInbox folder; the
 //  app picks it up when it comes to the front and puts it in the composer of
-//  the chat it was meant for, where nothing is sent until the user sends it.
+//  the chat it was meant for, where nothing is sent until the user sends it;
+//  a share marked Sort it out or Remember it opens a new chat instead and is
+//  sent there with its instruction (ShareDraftAction).
 //  Compiled into the app and the share extension.
 //
 

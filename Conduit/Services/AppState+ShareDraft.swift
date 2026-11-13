@@ -243,6 +243,7 @@ extension AppState {
         // Taken before a send, so a share whose send fails after the user
         // moved on goes back to its own chat, not the one they opened.
         let restoreKey = composerDraftKeyOnScreen
+        let restoreTitle = displayedChatTitle
         if action.sendsOnPickup {
             content.text = Self.sharedDraftPrompt(action, text: draft.envelope.text)
             // Sent only into the new chat it opened: a chat that couldn't
@@ -275,12 +276,20 @@ extension AppState {
             pending: nil,
             sharedDraftID: id
         ))
-        reportSharedDraftProblems(staged, limitMegabytes: limit, openedItsChat: openedItsChat)
-        // Its chat's composer says why; another chat's isn't about it.
-        if activeDashboardID == dashboardID, composerDraftKeysAreSameChat(restoreKey, composerDraftKeyOnScreen) {
+        // Its chat's composer says why. On another chat (the user moved on
+        // while it was sent), the notice says which chat holds it, as a
+        // refused message's does; files left out aren't mentioned there (the
+        // map's ruling: a rare overlap not worth carrying them on the request).
+        guard activeDashboardID == dashboardID, restoreKey.profile == activeProfile else { return true }
+        if composerDraftKeysAreSameChat(restoreKey, composerDraftKeyOnScreen) {
             composerNotice = notice
-            composerNoticeSystemImage = "square.and.arrow.down"
+            reportSharedDraftProblems(staged, limitMegabytes: limit, openedItsChat: openedItsChat)
+        } else {
+            let named = restoreTitle.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                ? AppLocalization.string("New chat") : restoreTitle
+            composerNotice = AppLocalization.string("Your message to “\(named)” wasn't sent. It's back in that chat's draft.", table: .chat)
         }
+        composerNoticeSystemImage = "square.and.arrow.down"
         return true
     }
 
