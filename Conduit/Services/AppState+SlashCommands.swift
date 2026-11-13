@@ -517,7 +517,9 @@ extension AppState {
     /// message and everything after it (Edit and resend). Hermes' `_rewind`
     /// (hermes_cli/gateway_chat_commands.py): the target comes from the
     /// same `session.resume` snapshot whose fences the rewind presents.
-    /// False when this Hermes has no `session.mutate`.
+    /// `hermes dashboard` has no `session.mutate`: there the client takes
+    /// the turns back with Hermes' own `/undo N` (HermesClient.rewindSession).
+    /// False when the gateway's listener has no `session.mutate`.
     private func rewindLastTurns(
         retry: Bool,
         argument: String,
@@ -561,12 +563,17 @@ extension AppState {
         // A bot chat's transcript lives in the bot profile's store; any
         // other chat's in the workspace's, which needs no profile.
         let profile = botScopeProfile(forSessionIDs: [sessionID], workspaceProfile: activeProfile)
+        // Hermes' resume finds a chat by its stored id, never by the
+        // runtime id `hermes dashboard` gives the open chat: read by that,
+        // the snapshot was "session not found" there (App Store review of
+        // build 259). On the gateway's own listener the two are the same.
+        let storedSessionID = context.durableSessionID ?? sessionID
         do {
             let snapshot: SessionRewindSnapshot
             if let rewindSnapshot = chatResumeLifecycleOperations.rewindSnapshot {
-                snapshot = try await rewindSnapshot(client, sessionID)
+                snapshot = try await rewindSnapshot(client, storedSessionID)
             } else {
-                snapshot = try await client.rewindSnapshot(sessionId: sessionID, profile: profile)
+                snapshot = try await client.rewindSnapshot(sessionId: storedSessionID, profile: profile)
             }
             guard isCurrentComposerSubmission(context) else { return true }
             if let editing {
@@ -636,9 +643,14 @@ extension AppState {
         // turns changed and the /rollback that restores them. Read now,
         // before the chat opens again, so no wait comes between that and
         // the words going back.
-        let filesLine = retry || editing != nil
-            ? nil
-            : await undoRollbackHint(client: client, sessionID: sessionID, target: target, profile: profile)
+        let filesLine: String?
+        if retry || editing != nil {
+            filesLine = nil
+        } else if let named = receipt.filesLine {
+            filesLine = named
+        } else {
+            filesLine = await undoRollbackHint(client: client, sessionID: sessionID, target: target, profile: profile)
+        }
         // Taken back on Hermes: Edit and resend's words go back now, into
         // their own chat's draft, whatever happens to the reopen below.
         if editing != nil, !text.isEmpty {

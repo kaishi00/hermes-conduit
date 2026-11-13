@@ -673,17 +673,24 @@ struct SessionRewindSnapshot: Equatable {
     let turns: [Turn]
     let revision: Int?
     let generation: Int?
+    /// The id the resume answered with: on `hermes dashboard`, the open
+    /// chat's runtime id (a new one when the old one was reaped), which
+    /// its `/undo` names; on the gateway's listener, the stored id.
+    var runtimeSessionID: String? = nil
 
-    init(turns: [Turn], revision: Int?, generation: Int?) {
+    init(turns: [Turn], revision: Int?, generation: Int?, runtimeSessionID: String? = nil) {
         self.turns = turns
         self.revision = revision
         self.generation = generation
+        self.runtimeSessionID = runtimeSessionID
     }
 
     init(resume object: [String: AnyCodable]) {
         turns = (object["messages"]?.arrayValue ?? []).compactMap { Self.userTurn($0.objectValue ?? [:]) }
         revision = HermesClient.exactIntValue(object["revision"])
         generation = HermesClient.exactIntValue(object["execution_generation"])
+        let answered = object["session_id"]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        runtimeSessionID = answered.isEmpty ? nil : answered
     }
 
     /// Hermes' `_user_turns`: a live user row with a durable id, typed by a
@@ -799,10 +806,34 @@ struct SessionRewindReceipt: Equatable {
     let rewoundCount: Int
     /// The rewound turn's text; nil when it held more than text.
     let text: String?
+    /// Hermes' line on the files the undone turns changed, when its answer
+    /// carried it (`hermes dashboard`'s `/undo`); nil asks `rollback.list`.
+    var filesLine: String? = nil
 
-    init(rewoundCount: Int, text: String?) {
+    init(rewoundCount: Int, text: String?, filesLine: String? = nil) {
         self.rewoundCount = rewoundCount
         self.text = text
+        self.filesLine = filesLine
+    }
+
+    /// `hermes dashboard`'s `/undo N` answer: `prefill` with the words of
+    /// the turn it went back to, and a notice whose first line counts the
+    /// rows ("↶ Undid 2 turns (4 message(s)). …") and whose next lines, when
+    /// there are any, name the files those turns changed.
+    init(undoPrefill result: AnyCodable) {
+        let object = result.objectValue ?? [:]
+        let lines = (object["notice"]?.stringValue ?? "")
+            .split(separator: "\n", omittingEmptySubsequences: false)
+            .map(String.init)
+        let counted = lines.first.flatMap { line -> Int? in
+            guard let match = line.range(of: #"\((\d+) message"#, options: .regularExpression) else { return nil }
+            return Int(line[match].filter(\.isNumber))
+        }
+        rewoundCount = counted ?? 1
+        let words = object["message"]?.stringValue ?? ""
+        text = words.isEmpty ? nil : words
+        let rest = lines.dropFirst().joined(separator: "\n").trimmingCharacters(in: .whitespacesAndNewlines)
+        filesLine = rest.isEmpty ? nil : rest
     }
 
     init(result: AnyCodable) {
@@ -4828,6 +4859,9 @@ final class HermesClient: ObservableObject {
         snapshot: SessionRewindSnapshot,
         profile: String? = nil
     ) async throws -> SessionRewindReceipt {
+        if !speaksSessionAuthority {
+            return try await undoTurns(sessionId: sessionId, targetMessageID: targetMessageID, snapshot: snapshot)
+        }
         var params: [String: Any] = [
             "session_id": sessionId,
             "request_id": UUID().uuidString.lowercased(),
@@ -4848,6 +4882,25 @@ final class HermesClient: ObservableObject {
             revision: Self.exactIntValue(result.objectValue?["revision"])
         )
         return SessionRewindReceipt(result: result)
+    }
+
+    /// `hermes dashboard`'s rewind: it has no `session.mutate`, so its own
+    /// `/undo N` takes back the target turn and every turn after it, N
+    /// counted in the snapshot just read, on the runtime that resume
+    /// answered with. Its answer puts the target's words back (`prefill`).
+    private func undoTurns(
+        sessionId: String,
+        targetMessageID: Int,
+        snapshot: SessionRewindSnapshot
+    ) async throws -> SessionRewindReceipt {
+        guard let index = snapshot.turns.firstIndex(where: { $0.rowID == targetMessageID }) else {
+            return SessionRewindReceipt(rewoundCount: 0, text: nil)
+        }
+        let result = try await executeSlash(
+            sessionId: snapshot.runtimeSessionID ?? sessionId,
+            command: "undo \(snapshot.turns.count - index)"
+        )
+        return SessionRewindReceipt(undoPrefill: result)
     }
 
     /// Hermes' file checkpoints for the chat's working folder (`/rollback`):
