@@ -167,7 +167,8 @@ final class TranscriptLayoutTests: XCTestCase {
     /// of a 1,910-message chat measured 15 times in 8 passes). A row the
     /// transcript measured since it last drew something else takes that
     /// height; one that changed, one at another width, one measured on an
-    /// earlier visit, or one whose environment changed measures again.
+    /// earlier visit, or any row once the chat's environment changed (off
+    /// screen too, whichever cell shows it next) measures again.
     func testARowAlreadyMeasuredIsNotMeasuredAgainWhenItsCellComesBack() throws {
         show(["a", "b"])
         let width = layout.itemWidth
@@ -183,6 +184,20 @@ final class TranscriptLayoutTests: XCTestCase {
         layout.invalidateLayout(with: UICollectionViewLayoutInvalidationContext())
         view.layoutIfNeeded()
         XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width), "Nor once it does, until it measures")
+        measure(["a": 120])
+        XCTAssertTrue(layout.hasCurrentMeasurement(of: "a", width: width))
+
+        // A report repeating the height it has keeps it current, but not
+        // while the row is about to draw something else.
+        layout.forgetCurrentMeasurements()
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width), "The chat's environment changed")
+        measure(["a": 120])
+        XCTAssertTrue(layout.hasCurrentMeasurement(of: "a", width: width), "The same height, measured again")
+        layout.setRows([TranscriptRow(id: "a", kind: .empty), TranscriptRow(id: "b", kind: .empty)], changed: ["a"])
+        layout.rowResized("a", to: CGSize(width: width, height: 120))
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width), "Not for a row about to change")
+        layout.invalidateLayout(with: UICollectionViewLayoutInvalidationContext())
+        view.layoutIfNeeded()
         measure(["a": 120])
         XCTAssertTrue(layout.hasCurrentMeasurement(of: "a", width: width))
 
@@ -218,13 +233,6 @@ final class TranscriptLayoutTests: XCTestCase {
         attributes.size = CGSize(width: width, height: 40)
         let ideal = 100 + TranscriptLayout.rowGap
         XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, 40, "Known: its frame's height")
-
-        var larger = TranscriptCellEnvironment(EnvironmentValues(), disclosure: nil)
-        larger.dynamicTypeSize = .accessibility3
-        cell.updateEnvironment(larger)
-        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, ideal, accuracy: 1,
-                       "Another environment measures again")
-        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, 40, "Then known again")
 
         known = false
         XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, ideal, accuracy: 1,

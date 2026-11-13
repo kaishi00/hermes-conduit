@@ -186,12 +186,21 @@ final class TranscriptLayout: UICollectionViewLayout {
         return asksContentSize ? 0 : max(pendingRowsBottom, requestedReserve) - contentBefore
     }
 
+    /// The chat's environment changed (a setting a row's controls depend
+    /// on, such as showing reasoning or a Retry control): every row measures
+    /// again as its cell next shows it, on screen or not. The heights stay,
+    /// so the rows keep their frames until then.
+    func forgetCurrentMeasurements() {
+        measuredSinceChange = []
+    }
+
     /// Whether the row's height at `width` was measured since it last drew
     /// something else, so its cell needn't measure it again
     /// (TranscriptCell.preferredLayoutAttributesFitting).
     func hasCurrentMeasurement(of id: String, width: CGFloat) -> Bool {
+        // Every insert follows a write to `heights`; the table changing
+        // under a new width or scope clears the set with it.
         abs(width - itemWidth) <= 0.5
-            && heights[id] != nil
             && measuredSinceChange.contains(id)
             && !pendingChanges.contains(id)
     }
