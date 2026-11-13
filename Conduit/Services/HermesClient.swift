@@ -5698,6 +5698,11 @@ enum HermesError: Error, LocalizedError {
 extension AnyCodable {
     static func from(_ value: Any) -> AnyCodable {
         if value is NSNull { return .null }
+        // 0 and 1 from JSON (a server's timeout or argument) are NSNumbers
+        // that `as? Bool` also takes: only a real true/false is a Bool.
+        if let number = value as? NSNumber {
+            return isBoolean(number) ? .bool(number.boolValue) : .number(number.doubleValue)
+        }
         if let v = value as? Bool { return .bool(v) }
         if let v = value as? Int { return .number(Double(v)) }
         if let v = value as? Double { return .number(v) }

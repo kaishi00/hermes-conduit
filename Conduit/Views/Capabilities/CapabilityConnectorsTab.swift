@@ -22,6 +22,9 @@ struct CapabilityConnectorsTab: View {
     @State private var actionError: String?
     @State private var hostedApps = HostedAppsModel()
     @State private var adding = false
+    /// The profile and dashboard showing when Add MCP Server was pressed:
+    /// the sheet writes there or nowhere.
+    @State private var addTarget: AddTarget?
     /// A server just added: its page opens, to test or sign in.
     @State private var opened: String?
 
@@ -125,7 +128,9 @@ struct CapabilityConnectorsTab: View {
                 Task { await store.installConnector(entry, env: env) }
             }
         }
-        .sheet(isPresented: $adding) { addSheet }
+        .sheet(isPresented: $adding) {
+            if let addTarget { addSheet(addTarget) }
+        }
         .navigationDestination(item: $opened) { name in
             ConnectorDetailPage(name: name, store: store)
                 .v2TabBarClearance()
@@ -144,6 +149,7 @@ struct CapabilityConnectorsTab: View {
         Button {
             Haptics.selection()
             actionError = nil
+            addTarget = AddTarget(owner: appState.currentCapabilitiesOwner, generation: store.generation, profile: store.profile)
             adding = true
         } label: {
             Label(AppLocalization.string("Add MCP Server", table: .bots), systemImage: "plus")
@@ -155,12 +161,18 @@ struct CapabilityConnectorsTab: View {
         .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.12))
     }
 
-    /// Add MCP Server for the profile and dashboard showing when it opened:
-    /// after a switch it writes nothing.
-    private var addSheet: some View {
-        let owner = appState.currentCapabilitiesOwner
-        let generation = store.generation
-        let profile = store.profile
+    private struct AddTarget {
+        let owner: CapabilitySnapshotOwner
+        let generation: Int
+        let profile: String
+    }
+
+    /// Add MCP Server for the profile and dashboard showing when it was
+    /// pressed: after a switch it writes nothing.
+    private func addSheet(_ target: AddTarget) -> some View {
+        let owner = target.owner
+        let generation = target.generation
+        let profile = target.profile
         return ConnectorAddSheet(profileName: appState.profileDisplayName(profile)) { name, entry, bearerToken in
             guard store.generation == generation, store.serves(owner),
                   appState.currentCapabilitiesOwner == owner else {

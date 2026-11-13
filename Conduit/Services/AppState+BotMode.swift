@@ -960,6 +960,9 @@ extension AppState {
                 ? .ready
                 : .addedWithProblem(tested.error ?? AppLocalization.string("It did not connect."))
         } catch {
+            guard botOpenFenceIsCurrent(epoch: epoch, client: client) else {
+                return .failed(AppLocalization.string("Conduit switched to another Hermes, so the setup stopped."))
+            }
             return .addedWithProblem(UserFacingError.message(for: error))
         }
     }

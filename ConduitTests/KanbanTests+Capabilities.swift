@@ -1024,6 +1024,19 @@ extension KanbanTests {
         XCTAssertFalse(existing.isNew)
     }
 
+    func testAnAddedServersNumbersReachHermesAsNumbers() throws {
+        // The JSON typed in Add MCP Server goes out through AnyCodable.from.
+        let parsed = try XCTUnwrap(JSONSerialization.jsonObject(
+            with: Data(#"{"timeout": 1, "enabled": true, "args": [0, "x"]}"#.utf8)
+        ) as? [String: Any])
+        XCTAssertEqual(AnyCodable.from(parsed), .object([
+            "timeout": .number(1),
+            "enabled": .bool(true),
+            "args": .array([.number(0), .string("x")]),
+        ]))
+        XCTAssertEqual(AnyCodable.from(["on": false, "port": 0] as [String: Any]), .object(["on": .bool(false), "port": .number(0)]))
+    }
+
     func testAnAddedServerShowsFromHermesListOnlyOnTheProfileItWasAddedTo() async {
         let requester = CapabilityMockRequester(responses: [
             "/api/mcp/servers": ["servers": [["name": "griply", "transport": "http", "url": "https://mcp.griply.app/mcp", "enabled": false]]],
