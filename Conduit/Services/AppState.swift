@@ -591,6 +591,10 @@ final class AppState: ObservableObject {
     /// read from, and `hermes dashboard`'s `/undo N` has no fence to refuse
     /// a stale count.
     @Published var isRewindingTurns = false
+    /// A slash command's prompt refused while a rewind ran: the rewind
+    /// says so once it is done, after its reopen has replaced the
+    /// transcript a note added sooner would be in.
+    var slashPromptRefusedDuringRewind = false
     /// Runtime ids of conversations with a dedicated `session.compress` RPC
     /// in flight. Manual compression is LLM-bound and can take minutes, so
     /// the chat shows a small "Compressing…" affordance while the ACTIVE

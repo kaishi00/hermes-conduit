@@ -551,6 +551,14 @@ extension AppState {
             return true
         }
         isRewindingTurns = true
+        slashPromptRefusedDuringRewind = false
+        defer {
+            // Last, after the reopen and the rewind's own note.
+            if slashPromptRefusedDuringRewind {
+                slashPromptRefusedDuringRewind = false
+                appendSlashOutput(AppLocalization.string("A command's message wasn't sent while a message was being taken back. Run the command again."))
+            }
+        }
         let nothingToRewind = retry
             ? AppLocalization.string("There's no message to retry.")
             : editing != nil
@@ -1224,15 +1232,13 @@ extension AppState {
         case "send", "skill":
             // These send a prompt — extract the message and send it
             let message = obj["message"]?.stringValue ?? output
-            // Refused (a rewind counting this chat's turns meanwhile): say
-            // so, rather than drop it silently. Not the composer, which the
-            // rewind fills with the words it takes back.
+            // Refused (a rewind counting this chat's turns meanwhile): the
+            // rewind says so when it is done, rather than drop it silently.
+            // Not the composer, which the rewind fills with the words it
+            // takes back, nor a note now, which its reopen would clear.
             if !message.isEmpty, !(await sendMessage(message, attachments: [], context: context)),
                isRewindingTurns, isCurrentComposerSubmission(context) {
-                appendSlashOutput(
-                    AppLocalization.string("Still taking a message back. Try again in a moment."),
-                    context: context
-                )
+                slashPromptRefusedDuringRewind = true
             }
         case "prefill":
             if let notice = obj["notice"]?.stringValue, !notice.isEmpty {
