@@ -465,6 +465,26 @@ final class VoiceAudioSessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(read.withLock { $0 }, [.began, .ended(shouldResume: false)])
         XCTAssertNil(AudioSessionInterruption(Notification(name: .audioSessionInterruption)))
     }
+
+    /// iOS 27's notifications without their contexts say nothing, so the
+    /// forwarder posts nothing: not "ended, don't resume", which would
+    /// leave paused observers parked, and not "began" for an inactive
+    /// session it can't attribute to the system.
+    func testIOS27NotificationsWithoutTheirContextsForwardNothing() throws {
+        guard #available(iOS 27, *) else { throw XCTSkip("the iOS 27 notifications need iOS 27") }
+        let center = NotificationCenter.default
+        let read = OSAllocatedUnfairLock<[AudioSessionInterruption?]>(initialState: [])
+        let observer = center.addObserver(forName: .audioSessionInterruption, object: nil, queue: nil) { note in
+            read.withLock { $0.append(AudioSessionInterruption(note)) }
+        }
+        defer { center.removeObserver(observer) }
+        center.post(name: AVAudioSession.resumptionRecommendationNotification, object: nil)
+        center.post(name: AVAudioSession.didBecomeInactiveNotification, object: nil)
+        XCTAssertEqual(read.withLock { $0 }, [])
+        // The forwarder is listening: what it reposts arrives here.
+        AudioSessionInterruption.began.post()
+        XCTAssertEqual(read.withLock { $0 }, [.began])
+    }
 }
 
 @MainActor
