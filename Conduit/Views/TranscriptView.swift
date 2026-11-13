@@ -217,10 +217,13 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         dropParkedIfIdle()
         // Before the rows: a cell configured for them draws with these.
         if environment != rowEnvironment {
-            rowEnvironment = environment
             // Rows measured under the last environment, off screen too,
-            // measure again as their cells next show them.
-            layout.forgetCurrentMeasurements()
+            // measure again as their cells next show them, unless only
+            // something no row's height reads changed.
+            if !environment.measuresLike(rowEnvironment) {
+                layout.forgetCurrentMeasurements()
+            }
+            rowEnvironment = environment
             for case let cell as TranscriptCell in collectionView.visibleCells {
                 cell.updateEnvironment(environment)
             }
