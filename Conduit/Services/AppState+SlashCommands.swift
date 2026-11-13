@@ -635,6 +635,10 @@ extension AppState {
             }
             return true
         }
+        // Hermes' files line goes under whichever note the /undo ends with.
+        func withFilesLine(_ note: String) -> String {
+            filesLine.map { "\(note)\n\n\($0)" } ?? note
+        }
         // Open the chat again so it shows the shortened transcript.
         guard isCurrentOrAliasedComposerSubmission(context) else { return keepWordsInTheirChat() }
         let reopened = await openSessionOutcome(context.durableSessionID ?? sessionID)
@@ -648,9 +652,9 @@ extension AppState {
             // Taken back, but the chat on screen still shows it: say so,
             // and keep the words (a /retry's too) in the composer.
             appendSlashOutput(
-                text.isEmpty
+                withFilesLine(text.isEmpty
                     ? AppLocalization.string("Took the message back, but the chat couldn't reload. Open it again to see the change.")
-                    : AppLocalization.string("Took the message back, but the chat couldn't reload. Open it again to see the change. The message is in the composer."),
+                    : AppLocalization.string("Took the message back, but the chat couldn't reload. Open it again to see the change. The message is in the composer.")),
                 context: current
             )
             if !text.isEmpty, editing == nil { prefillComposer(text) }
@@ -686,9 +690,6 @@ extension AppState {
                 runsSlashCommands: false
             )
             return true
-        }
-        func withFilesLine(_ note: String) -> String {
-            filesLine.map { "\(note)\n\n\($0)" } ?? note
         }
         guard !text.isEmpty else {
             // A turn that held more than text has nothing to put back.

@@ -1877,12 +1877,13 @@ final class AppStateSessionCompressTests: XCTestCase {
         savedDashboard: Bool = false,
         rewoundText: String = "first ask",
         rollback: ((RollbackMethod, String, [String: Any]) -> AnyCodable)? = nil,
+        turns: SessionRewindSnapshot = AppStateSessionCompressTests.rewindTurns,
         rewound: @escaping (Int, SessionRewindSnapshot) -> Void
     ) -> (appState: AppState, defaults: UserDefaults, suite: String) {
         var operations = ChatResumeLifecycleOperations(
             openSession: { _, _, _ in throw URLError(.networkConnectionLost) }
         )
-        operations.rewindSnapshot = { _, _ in Self.rewindTurns }
+        operations.rewindSnapshot = { _, _ in turns }
         if let rollback {
             operations.rollback = { _, method, session, params in rollback(method, session, params) }
         }
@@ -2059,6 +2060,32 @@ final class AppStateSessionCompressTests: XCTestCase {
             "Open the chat again to see the messages the restore took back.",
             "the harness's reopen fails, so the note says the chat on screen is stale"
         )
+    }
+
+    func testUndoNamesTheFilesTheUndoneTurnsChangedEvenWhenTheChatCouldntReload() async throws {
+        var reads: [(RollbackMethod, [String: Any])] = []
+        let turns = SessionRewindSnapshot(
+            turns: [.init(rowID: 11, text: "first ask", timestamp: 1_700_000_000), .init(rowID: 17, text: "latest ask")],
+            revision: 5,
+            generation: 2
+        )
+        let harness = rewindHarness(rollback: { method, _, params in
+            reads.append((method, params))
+            return .object(["enabled": .bool(true), "checkpoints": .array([]),
+                            "undo_hint": .object(["text": .string("Files changed: app.py. /rollback 1 restores them.")])])
+        }, turns: turns) { _, _ in }
+
+        _ = await harness.appState.submitComposer(text: "/undo 2")
+
+        XCTAssertEqual(reads.map(\.0), [.list])
+        XCTAssertEqual(reads.first?.1["undo_since"] as? Double, 1_700_000_000)
+        XCTAssertEqual(reads.first?.1["undo_message_id"] as? Int, 11)
+        XCTAssertEqual(
+            harness.appState.messages.last?.content,
+            "Took the message back, but the chat couldn't reload. Open it again to see the change. The message is in the composer.\n\nFiles changed: app.py. /rollback 1 restores them.",
+            "the harness's reopen fails; Hermes' files line still goes under the note"
+        )
+        XCTAssertEqual(harness.appState.composerPrefillText, "first ask")
     }
 
     func testUndoBeyondTheTranscriptRewindsNothing() async throws {
