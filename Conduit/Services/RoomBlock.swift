@@ -30,24 +30,50 @@ enum RoomBlock {
         var seen = Set<String>()
         var targets: [RoomBlockTarget] = []
         if let copy {
-            targets.append(RoomBlockTarget(id: copy.link, name: RoomCopyText.hostName(for: copy)))
+            targets.append(RoomBlockTarget(id: copy.link, name: copy.from.trimmingCharacters(in: .whitespacesAndNewlines)))
         } else if let draft {
-            let someone = AppLocalization.string("Someone you've linked with", table: .rooms)
             targets = draft.people.map {
-                let name = $0.name.trimmingCharacters(in: .whitespacesAndNewlines)
-                return RoomBlockTarget(id: $0.id, name: name.isEmpty ? someone : name)
+                RoomBlockTarget(id: $0.id, name: $0.name.trimmingCharacters(in: .whitespacesAndNewlines))
             }
         }
         return targets.filter { !$0.id.isEmpty && seen.insert($0.id).inserted }
             .sorted { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
     }
 
+    /// The open room's targets, each stamped with the room's own dashboard:
+    /// a surface left from before a switch then fails block(_:)'s check
+    /// instead of reaching the new Hermes. `draft` is the room's, when this
+    /// Hermes hosts it.
+    static func targets(for surface: AppState.GroupRoomSurface, draft: RoomDraft?) -> [RoomBlockTarget] {
+        let listed = surface.copy.map { Self.targets(copy: $0, draft: nil) } ?? Self.targets(copy: nil, draft: draft)
+        return listed.map { RoomBlockTarget(id: $0.id, name: $0.name, dashboardID: surface.dashboardID) }
+    }
+
+    // A Link with no name reads as "this person" rather than splicing a
+    // stand-in into a name's place ("Block The host's Hermes").
+
+    static func button(_ name: String) -> String {
+        name.isEmpty
+            ? AppLocalization.string("Block this person", table: .rooms)
+            : AppLocalization.string("Block \(name)", table: .rooms)
+    }
+
     static func title(_ name: String) -> String {
-        AppLocalization.string("Block \(name)?", table: .rooms)
+        name.isEmpty
+            ? AppLocalization.string("Block this person?", table: .rooms)
+            : AppLocalization.string("Block \(name)?", table: .rooms)
     }
 
     static func message(_ name: String) -> String {
-        AppLocalization.string("This unlinks \(name)'s Hermes from yours, on both sides: nothing more from them reaches your Hermes, and the rooms you share with them stop. Linking again takes a new invite.", table: .rooms)
+        name.isEmpty
+            ? AppLocalization.string("This unlinks their Hermes from yours, on both sides: nothing more from them reaches your Hermes, and the rooms you share with them stop. Linking again takes a new invite.", table: .rooms)
+            : AppLocalization.string("This unlinks \(name)'s Hermes from yours, on both sides: nothing more from them reaches your Hermes, and the rooms you share with them stop. Linking again takes a new invite.", table: .rooms)
+    }
+
+    static func refusalTitle(_ name: String) -> String {
+        name.isEmpty
+            ? AppLocalization.string("Could not block this person", table: .rooms)
+            : AppLocalization.string("Could not block \(name)", table: .rooms)
     }
 }
 
@@ -55,12 +81,7 @@ extension AppState {
     /// Who Group Info's Block lists for the open room.
     var activeRoomBlockTargets: [RoomBlockTarget] {
         guard canInviteLinkedPeople, let surface = activeRoomSurface else { return [] }
-        let targets = surface.copy.map { RoomBlock.targets(copy: $0, draft: nil) }
-            ?? RoomBlock.targets(copy: nil, draft: linkedRoomDraft(surface.room.roomID))
-        // The room's own dashboard: a surface left from before a switch
-        // then fails block(_:)'s check instead of reaching the new Hermes.
-        let dashboard = surface.dashboardID
-        return targets.map { RoomBlockTarget(id: $0.id, name: $0.name, dashboardID: dashboard) }
+        return RoomBlock.targets(for: surface, draft: surface.copy == nil ? linkedRoomDraft(surface.room.roomID) : nil)
     }
 
     /// Unlinks them, then reads the rooms again. False when the Link was
