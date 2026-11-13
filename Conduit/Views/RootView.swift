@@ -38,25 +38,27 @@ struct RootView: View {
         .animation(.easeInOut(duration: 0.2), value: appState.showLogin)
         // A sign-in code link asks here, above both the sign-in screen and
         // the app, so it survives the sign-in screen giving way to the app
-        // while a saved dashboard connects at launch.
-        .sheet(item: $appState.pendingConnectLink) { link in
+        // while a saved dashboard connects at launch. These four show over a
+        // sheet that's already up (sheetAboveAll), rather than waiting
+        // unseen until it closes.
+        .sheetAboveAll(item: $appState.pendingConnectLink) { link in
             ConnectLinkSheet(link: link)
                 .environmentObject(appState)
         }
         // A Link invite, the same way: it waits there for Conduit to
         // connect when it opened Conduit.
-        .sheet(item: $appState.pendingRoomLink) { invite in
+        .sheetAboveAll(item: $appState.pendingRoomLink) { invite in
             RoomLinkOpenedSheet(invite: invite)
                 .environmentObject(appState)
         }
         // An invite to a room whose notification was tapped: its join card.
-        .sheet(item: $appState.presentedRoomInvite) { invite in
+        .sheetAboveAll(item: $appState.presentedRoomInvite) { invite in
             RoomInviteSheet(invite: invite)
                 .environmentObject(appState)
         }
         // An approval in a room hosted elsewhere whose notification was
         // tapped: its card.
-        .sheet(item: $appState.presentedRoomApproval) { approval in
+        .sheetAboveAll(item: $appState.presentedRoomApproval) { approval in
             RoomApprovalSheet(approval: approval)
                 .environmentObject(appState)
         }

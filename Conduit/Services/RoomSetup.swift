@@ -289,7 +289,8 @@ enum RoomSetupRooms {
                 && room.members.contains { !$0.isPeer && $0.out == nil && $0.profile?.lowercased() == key }
         }.map(\.name)
         let elsewhere = copies.filter { copy in
-            !copy.isOver && copy.yours.contains { $0.profile.lowercased() == key }
+            // An agent of yours taken out of a copy that goes on doesn't answer there already.
+            !copy.isOver && copy.yours.contains { $0.profile.lowercased() == key && copy.out[$0.memberID] == nil }
         }.map(\.name)
         let names = (hosted + elsewhere).map { $0.trimmingCharacters(in: .whitespacesAndNewlines) }.filter { !$0.isEmpty }
         return Array(Set(names)).sorted { $0.localizedStandardCompare($1) == .orderedAscending }
@@ -300,7 +301,10 @@ enum RoomSetupRooms {
         guard let rooms, !rooms.isEmpty else {
             return AppLocalization.string("\(profileName) then stops answering in rooms already started with other people's agents, which hold it to the tools it had when they started. New rooms use these.", table: .rooms)
         }
-        let named = ListFormatter.localizedString(byJoining: rooms)
+        if rooms.count == 1 {
+            return AppLocalization.string("\(profileName) then stops answering in \(rooms[0]), which holds it to the tools it had when it started. New rooms use these.", table: .rooms)
+        }
+        let named = rooms.formatted(.list(type: .and).locale(AppLocalization.formattingLocale))
         return AppLocalization.string("\(profileName) then stops answering in \(named), which hold it to the tools it had when they started. New rooms use these.", table: .rooms)
     }
 }
@@ -312,7 +316,9 @@ extension AppState {
         RoomSetupRooms.holding(
             profile: profile,
             rooms: groupRoomsListed && groupRoomsComplete ? groupRooms : nil,
-            copies: canInviteLinkedPeople ? linkedRoomCopies?.copies : []
+            // Copies read on another Hermes before a switch say nothing about this one's.
+            copies: !canInviteLinkedPeople ? []
+                : linkedRoomCopies?.dashboardID == activeDashboardID ? linkedRoomCopies?.copies : nil
         )
     }
 }

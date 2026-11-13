@@ -320,10 +320,8 @@ final class VoiceMessageRecorder: ObservableObject {
             Task { @MainActor [weak self] in self?.audioWasLost(generation: generation) }
         }
         audioObservers = [
-            center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { note in
-                let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt)
-                    .flatMap(AVAudioSession.InterruptionType.init(rawValue:))
-                if type == .began { lost(note) }
+            center.addObserver(forName: .audioSessionInterruption, object: nil, queue: nil) { note in
+                if AudioSessionInterruption(note) == .began { lost(note) }
             },
             center.addObserver(forName: AVAudioSession.mediaServicesWereResetNotification, object: nil, queue: nil, using: lost),
             center.addObserver(forName: .AVAudioEngineConfigurationChange, object: engine, queue: nil, using: lost),

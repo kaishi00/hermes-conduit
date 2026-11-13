@@ -371,18 +371,18 @@ final class WatchAudio {
 
     private func observe(_ engine: AVAudioEngine) {
         observers = [
-            NotificationCenter.default.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: .main) { [weak self] note in
-                let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+            NotificationCenter.default.addObserver(forName: .audioSessionInterruption, object: nil, queue: .main) { [weak self] note in
+                let interruption = AudioSessionInterruption(note)
                 MainActor.assumeIsolated {
                     guard let self else { return }
-                    switch type {
+                    switch interruption {
                     case .began?:
                         WatchCallLog.shared.note("audioInterruptionBegan")
                         self.onInterruption?(true)
                     case .ended?:
                         WatchCallLog.shared.note("audioInterruptionEnded")
                         self.onInterruption?(false)
-                    default:
+                    case nil:
                         break
                     }
                 }

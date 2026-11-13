@@ -31,6 +31,20 @@ enum PeopleSettingsText {
         }
     }
 
+    /// Whose Conduit plugin to update so a Link carries everything, or nil
+    /// when they match (and for a reason a newer plugin adds).
+    static func update(for link: RoomLink) -> String? {
+        guard link.status == "linked" else { return nil }
+        switch link.behind {
+        case "theirs":
+            return AppLocalization.string("\(link.name)'s Conduit plugin is older than yours, so some of what your rooms share won't reach them. Ask them to update it.", table: .rooms)
+        case "yours":
+            return AppLocalization.string("\(link.name)'s Conduit plugin is newer than yours, so some of what they share isn't reaching you. Update your Conduit plugin.", table: .rooms)
+        default:
+            return nil
+        }
+    }
+
     /// What Set up does, one line each, in the order the plugin does it.
     static func setupLines(_ state: RoomSetupState, profileName: String) -> [String] {
         let changes = Set(state.changes)
@@ -352,6 +366,11 @@ struct PeopleSettingsPage: View {
                     Text(verbatim: status)
                         .scaledFont(.footnote)
                         .foregroundStyle(link.status == "unanswered" ? Color.orange : Color.secondary)
+                }
+                if let update = PeopleSettingsText.update(for: link) {
+                    Text(verbatim: update)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(Color.orange)
                 }
                 Text(verbatim: AppLocalization.string("Words: \(words)", table: .rooms))
                     .scaledFont(.caption)
@@ -939,10 +958,13 @@ struct RoomSetupSection: View {
                         // The rooms as they are now: one started on another
                         // device since Group Chats was last read counts too.
                         working = true
+                        let key = key
                         Task {
                             await appState.refreshGroupRooms()
                             if appState.canInviteLinkedPeople { await appState.refreshLinkedRoomCopies() }
                             working = false
+                            // Another agent or Hermes picked meanwhile: its own Save asks for it.
+                            guard key == currentKey else { return }
                             roomsHeld = appState.roomsHoldingTools(of: profile)
                             // No room going on holds it: nothing stops, so nothing to ask.
                             if roomsHeld == [] { setUp() } else { confirmsChange = true }
@@ -1054,6 +1076,7 @@ struct RoomSetupSection: View {
             refreshError = nil
             busyRestart = nil
             confirmsChange = false
+            roomsHeld = nil
             restartWait = nil
             showsCustomTools = false
             showsSetupSteps = false

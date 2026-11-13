@@ -160,6 +160,13 @@ extension GroupChatModelsTests {
             appState.linkedRoomDrafts = try drafts(["ended", status])
             XCTAssertTrue(appState.linkedRoomOnItsWay, "a draft \(status), its room not listed")
         }
+        // Everyone who joined it did so with none of their agents (Just me): its people are still read.
+        let ownOnly = GroupRoom(roomID: "conduit-1", name: "Zoo trip", members: [], authorityGatewayID: "gw", authorityEpoch: 1,
+                                revision: 1, createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 0)
+        XCTAssertTrue(appState.hasLinkedPeople(ownOnly))
+        XCTAssertFalse(appState.hasLinkedPeople(GroupRoom(roomID: "conduit-7", name: "Ours", members: [], authorityGatewayID: "gw",
+                                                          authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: 0,
+                                                          disbandedAt: nil, latestSeq: 0)))
         appState.linkedRoomDrafts = try drafts(["ended"])
         XCTAssertFalse(appState.linkedRoomOnItsWay, "an ended draft won't change")
         appState.linkedRoomDrafts = LinkedRoomDrafts(dashboardID: UUID(), list: try drafts(["waiting"]).list, people: [])
@@ -467,6 +474,11 @@ extension GroupChatModelsTests {
             AppLocalization.string("Declined"),
             nil,
         ])
+        // In it with none of their agents ("Just me"), and once they left.
+        let alone = try XCTUnwrap(RoomDraftsClient.person(["link": "lk2", "name": "Mona", "status": "joined", "just_me": true, "agents": []]))
+        XCTAssertEqual(RoomDraftText.status(of: alone), AppLocalization.string("Joined without their bots", table: .rooms))
+        let gone = try XCTUnwrap(RoomDraftsClient.person(["link": "lk2", "name": "Mona", "status": "left", "just_me": false, "agents": []]))
+        XCTAssertEqual(RoomDraftText.status(of: gone), AppLocalization.string("Left", table: .rooms))
     }
 
     func testDraftRefusalsShowThePluginsWords() {

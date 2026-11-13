@@ -232,6 +232,12 @@ extension RoomPeople {
         guard let you = response["you"] as? String, !you.isEmpty else { return nil }
         return you
     }
+
+    /// On the home: the people in the room with none of their agents
+    /// ("Just me"), by the name your Link shows them.
+    static func justMe(_ response: [String: Any]) -> [String] {
+        (response["just_me"] as? [Any] ?? []).compactMap { ($0 as? String).flatMap { $0.isEmpty ? nil : $0 } }
+    }
 }
 
 extension AppState {
@@ -242,10 +248,10 @@ extension AppState {
     }
 
     /// Whether the open room is someone else's that takes your posts: still
-    /// going, with an agent of yours in it.
+    /// going, with an agent of yours in it, or you in it with Just me.
     var activeRoomCopyTakesPosts: Bool {
         guard canPostInRoomCopies, let copy = activeRoomSurface?.copy else { return false }
-        return copy.status == "started" && !copy.yours.isEmpty
+        return copy.status == "started" && (!copy.yours.isEmpty || copy.justMe)
     }
 
     /// Requests stay with the dashboard they were made for.

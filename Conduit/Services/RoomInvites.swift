@@ -62,6 +62,11 @@ struct RoomInvite: Identifiable, Equatable {
     /// Your agents that were in it and are out: left, taken out, or there
     /// when it ended. Their hidden chats for it stay until it's deleted.
     var gone: [Agent] = []
+    /// You joined with none of your agents ("Just me"), to read the room
+    /// and post in it.
+    var justMe = false
+    /// The host's plugin takes Just me (0.167.5+), so the card offers it.
+    var justMeOffered = false
 }
 
 /// What Group Chats lists of the invites.
@@ -169,6 +174,7 @@ enum RoomInviteText {
         case "joined":
             return AppLocalization.string("You joined, waiting for the room to start", table: .rooms)
         case "started":
+            if invite.justMe { return AppLocalization.string("Started, and you're in it without your agents", table: .rooms) }
             return AppLocalization.string("Started with your agents in it", table: .rooms)
         case "lapsed":
             return AppLocalization.string("The invite ran out", table: .rooms)
@@ -236,9 +242,10 @@ struct RoomInvitesClient {
         try Self.parseList(try await request(Self.path, "GET", nil, nil))
     }
 
-    /// Joins with `agents`, or declines with none.
-    func answer(_ invite: RoomInvite, agents: [RoomInviteAgent]) async throws -> RoomInvite {
-        let body: [String: Any] = ["link": invite.link, "room_id": invite.roomID, "agents": agents.map(\.body)]
+    /// Joins with `agents`, or declines with none; `justMe` joins with none.
+    func answer(_ invite: RoomInvite, agents: [RoomInviteAgent], justMe: Bool = false) async throws -> RoomInvite {
+        var body: [String: Any] = ["link": invite.link, "room_id": invite.roomID, "agents": agents.map(\.body)]
+        if justMe { body["just_me"] = true }
         let response = try await request("\(Self.path)/answer", "POST", body, RoomLinksClient.mailboxTimeoutMilliseconds)
         guard response["ok"] as? Bool == true, let object = response["invite"] as? [String: Any],
               let answered = Self.invite(object) else { throw HermesError.invalidResponse }
@@ -281,7 +288,9 @@ struct RoomInvitesClient {
             joined: agents(object["joined"]),
             profiles: profiles,
             choices: choices,
-            gone: goneAgents(object["gone"])
+            gone: goneAgents(object["gone"]),
+            justMe: object["just_me"] as? Bool ?? false,
+            justMeOffered: object["just_me_offered"] as? Bool ?? false
         )
     }
 
@@ -554,17 +563,18 @@ extension AppState {
     /// The join card's answer: your bots in `agents`, or none to decline. A
     /// 504 means the answer is still going to the host, so the invites are
     /// read again.
-    func answerLinkedRoomInvite(_ invite: RoomInvite, agents: [RoomInviteAgent]) async -> RoomInviteAnswering {
+    func answerLinkedRoomInvite(_ invite: RoomInvite, agents: [RoomInviteAgent], justMe: Bool = false) async -> RoomInviteAnswering {
         let client = roomInvitesClient
+        let joining = !agents.isEmpty || justMe
         do {
-            let answered = try await client.answer(invite, agents: agents)
+            let answered = try await client.answer(invite, agents: agents, justMe: justMe)
             // The room starts on the host when everyone has answered, maybe
             // after the join card is closed. Not followed when the invites
             // were cleared meanwhile: that ended their follow.
-            if adoptLinkedRoomInvite(answered, from: client.dashboardID), !agents.isEmpty { followLinkedRoomInvites() }
+            if adoptLinkedRoomInvite(answered, from: client.dashboardID), joining { followLinkedRoomInvites() }
             return .answered
         } catch {
-            let message = RoomInvitesClient.answerRefusal(for: error, joining: !agents.isEmpty)
+            let message = RoomInvitesClient.answerRefusal(for: error, joining: joining)
             guard case DashboardTicketBridgeError.http(504, _) = error else { return .refused(message) }
             // Cleared while the answer was out (a sign-out or disconnect):
             // a read that lists them again after a reconnect doesn't undo that.
@@ -572,7 +582,7 @@ extension AppState {
             await refreshLinkedRoomInvites()
             // The answer may still reach the host, and the room start then.
             // A disconnect during the refresh clears the list too.
-            if !agents.isEmpty, !cleared, activeDashboardID == client.dashboardID,
+            if joining, !cleared, activeDashboardID == client.dashboardID,
                linkedRoomInvites?.dashboardID == client.dashboardID {
                 followLinkedRoomInvites()
             }

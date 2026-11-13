@@ -84,7 +84,10 @@ jobs:
     name: Unit suite (shard ${{ matrix.shard }})
     needs: plan
     runs-on: xcode-27
-    timeout-minutes: 45
+    # A shard that builds clean on Xcode 27 spends about 31 minutes before
+    # its first test (shard 2 on 2026-11-13 was cancelled at 45 minutes
+    # with its tests still passing), so it gets the UI shards' hour.
+    timeout-minutes: 60
     strategy:
       fail-fast: false
       matrix:

@@ -178,6 +178,17 @@ extension GroupChatModelsTests {
         list.adopt(other)
         XCTAssertEqual(list.invites.first?.id, "lk9z8y7x6w5v/conduit-1", "the same room over another Link is another invite")
         XCTAssertEqual(list.invites.count, invites.count + 1)
+
+        // Just me: offered where the host's plugin takes it, and kept once joined that way.
+        XCTAssertFalse(joined.justMe)
+        XCTAssertFalse(joined.justMeOffered, "an older plugin says nothing")
+        var alone = invitesInvite("conduit-1", status: "joined")
+        alone["just_me"] = true
+        alone["just_me_offered"] = true
+        let justMe = try XCTUnwrap(RoomInvitesClient.invite(alone))
+        XCTAssertTrue(justMe.justMe)
+        XCTAssertTrue(justMe.justMeOffered)
+        XCTAssertTrue(justMe.joined.isEmpty)
     }
 
     // MARK: - Answering
@@ -305,6 +316,10 @@ extension GroupChatModelsTests {
         XCTAssertEqual(try line("waiting", from: ""), AppLocalization.string("\(someone) invited you", table: .rooms))
         XCTAssertEqual(try line("joined"), AppLocalization.string("You joined, waiting for the room to start", table: .rooms))
         XCTAssertEqual(try line("started"), AppLocalization.string("Started with your agents in it", table: .rooms))
+        var alone = try XCTUnwrap(RoomInvitesClient.invite(invitesInvite("conduit-1", from: furina, status: "started", reason: nil)))
+        alone.justMe = true
+        XCTAssertEqual(RoomInviteText.line(for: alone),
+                       AppLocalization.string("Started, and you're in it without your agents", table: .rooms))
         XCTAssertEqual(try line("lapsed"), AppLocalization.string("The invite ran out", table: .rooms))
         XCTAssertEqual(try line("declined"), AppLocalization.string("You declined"))
         XCTAssertEqual(try line("left", reason: "left"), AppLocalization.string("Your agents left", table: .rooms))

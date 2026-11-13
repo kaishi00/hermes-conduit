@@ -332,11 +332,7 @@ final class LocalLiveJobNoticeTests: XCTestCase {
         XCTAssertFalse(supervisor.jobs.first?.outcomeDelivered == true, "still pending, not spent")
 
         call.input.startError = nil
-        center.post(
-            name: AVAudioSession.interruptionNotification,
-            object: nil,
-            userInfo: [AVAudioSessionInterruptionTypeKey: AVAudioSession.InterruptionType.ended.rawValue]
-        )
+        AudioSessionInterruption.ended(shouldResume: true).post(on: center)
         await settle(until: { !call.controller.isAudioPausedForTesting })
         call.controller.deliverPendingJobUpdates()
         await settle(until: { turns(socket, containing: "3 unread.").count == 1 })

@@ -154,9 +154,9 @@ final class AVAudioCaptureServiceGenerationTests: XCTestCase {
     // MARK: - Interruption generation fence
 
     static let interruptionBeganNotification = Notification(
-        name: AVAudioSession.interruptionNotification,
+        name: .audioSessionInterruption,
         object: nil,
-        userInfo: [AVAudioSessionInterruptionTypeKey: UInt(AVAudioSession.InterruptionType.began.rawValue)]
+        userInfo: [AudioSessionInterruption.userInfoKey: AudioSessionInterruption.began]
     )
 
     func testStaleInterruptionFromTornDownGenerationCannotStopLiveCapture() async throws {

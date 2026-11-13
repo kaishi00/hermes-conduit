@@ -271,19 +271,18 @@ final class AppleSpeechWakeWordService: WakeWordService {
         // A phone call, Siri or an alarm is not a Conduit audio owner: stop
         // listening for its whole duration and only resume once it ends.
         observers.append(center.addObserver(
-            forName: AVAudioSession.interruptionNotification,
+            forName: .audioSessionInterruption,
             object: nil,
             queue: .main
         ) { [weak self] notification in
-            let rawType = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt
-            let type = rawType.flatMap(AVAudioSession.InterruptionType.init(rawValue:))
-            Task { @MainActor [weak self] in self?.handleInterruption(type) }
+            let interruption = AudioSessionInterruption(notification)
+            Task { @MainActor [weak self] in self?.handleInterruption(interruption) }
         })
     }
 
-    private func handleInterruption(_ type: AVAudioSession.InterruptionType?) {
+    private func handleInterruption(_ interruption: AudioSessionInterruption?) {
         guard isArmed else { return }
-        switch type {
+        switch interruption {
         case .began:
             isInterrupted = true
             watchInterruption()
@@ -300,7 +299,7 @@ final class AppleSpeechWakeWordService: WakeWordService {
             recoveryTask?.cancel()
             recoveryTask = nil
             scheduleAudioRecovery()
-        default:
+        case nil:
             break
         }
     }

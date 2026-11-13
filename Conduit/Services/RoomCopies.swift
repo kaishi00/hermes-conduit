@@ -44,6 +44,9 @@ struct RoomCopy: Identifiable, Equatable {
     let members: [Member]
     /// Your agents in it, while they are; empty once they're out.
     let yours: [Agent]
+    /// You're in it with none of your agents ("Just me"): you read it and
+    /// post in it yourself.
+    var justMe = false
     /// `started`, `left` (your agents left) or `ended`. A status a newer
     /// plugin adds is kept as it is.
     let status: String
@@ -263,7 +266,7 @@ struct RoomCopiesClient {
             guard let memberID = text(agent["member_id"]), let profile = text(agent["profile"]) else { return nil }
             return RoomCopy.Agent(memberID: memberID, profile: profile, handle: text(agent["handle"]))
         }
-        return RoomCopy(
+        var copy = RoomCopy(
             roomID: roomID,
             name: name,
             link: link,
@@ -279,6 +282,8 @@ struct RoomCopiesClient {
                 if let how = (pair.value as? String).flatMap(RoomMemberOut.init(rawValue:)) { kept[pair.key] = how }
             }
         )
+        copy.justMe = object["just_me"] as? Bool ?? false
+        return copy
     }
 
     /// The copy's state as the room screen reads a driver's: working, each

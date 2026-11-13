@@ -3161,6 +3161,8 @@ final class AppState: ObservableObject {
     /// The open room's host, as your Link names them, in a room someone
     /// else hosts (`GET /rooms/people`'s `home`).
     @Published var activeRoomHomeName: String?
+    /// On the home: who's in the open room with none of their agents.
+    @Published var activeRoomJustMe: [String] = []
     var activeRoomLooksReadAt: Date?
     /// When the open copy's room screen last read your agents' approvals:
     /// a quiet room's ticks read them only every
