@@ -250,6 +250,8 @@ final class AppleSpeechWakeWordService: WakeWordService {
         prefersBuiltInMicrophone = false
         let previous = inputPreferredBeforeWake
         inputPreferredBeforeWake = nil
+        // A microphone picked since wake moved to the built-in one stays.
+        guard AVAudioSession.sharedInstance().preferredInput?.portType == .builtInMic else { return }
         do {
             try AVAudioSession.sharedInstance().setPreferredInput(previous)
         } catch {

@@ -141,8 +141,11 @@ private struct VoiceInputPickerAnchor: UIViewRepresentable {
 }
 
 /// iOS's route picker with its own glyph hidden: the label under it shows,
-/// and a tap anywhere on it opens the system's list of outputs.
+/// and a tap anywhere on it opens the system's list of outputs. VoiceOver
+/// reaches the picker's own button, which reads as Output and the device.
 private struct VoiceOutputPickerOverlay: UIViewRepresentable {
+    let device: String?
+
     func makeUIView(context: Context) -> AVRoutePickerView {
         let view = AVRoutePickerView()
         view.prioritizesVideoDevices = false
@@ -152,7 +155,13 @@ private struct VoiceOutputPickerOverlay: UIViewRepresentable {
         return view
     }
 
-    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {}
+    func updateUIView(_ uiView: AVRoutePickerView, context: Context) {
+        for case let button as UIButton in uiView.subviews {
+            button.accessibilityLabel = AppLocalization.string("Output")
+            button.accessibilityValue = device
+            button.accessibilityHint = AppLocalization.string("Chooses where the voice plays", table: .voice)
+        }
+    }
 }
 
 /// A call header's two buttons: the microphone (and its Mic Mode) and the
@@ -174,12 +183,8 @@ struct VoiceCallAudioDeviceButtons: View {
                 .accessibilityHint(Text(AppLocalization.string("Chooses the microphone and its Mic Mode", table: .voice)))
 
                 capsule(symbol: "speaker.wave.2.fill", name: names.output)
-                    .overlay(VoiceOutputPickerOverlay())
-                    .accessibilityElement(children: .ignore)
-                    .accessibilityLabel(Text(AppLocalization.string("Output")))
-                    .accessibilityValue(Text(verbatim: names.output ?? ""))
-                    .accessibilityHint(Text(AppLocalization.string("Chooses where the voice plays", table: .voice)))
-                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHidden(true)
+                    .overlay(VoiceOutputPickerOverlay(device: names.output))
             }
             .onAppear { names.refresh() }
             .onDisappear { picker.releaseSession() }
@@ -231,10 +236,8 @@ struct VoiceAudioDeviceSettingsSection: View {
                     caption(AppLocalization.string("Mic Mode, such as Voice Isolation to keep the room's sound out, is in Control Center during a call. On iOS 26 and later you can choose the microphone and its Mic Mode here.", table: .voice))
                 }
                 row(title: AppLocalization.string("Output"), value: names.output)
-                    .overlay(VoiceOutputPickerOverlay())
-                    .accessibilityElement(children: .combine)
-                    .accessibilityHint(Text(AppLocalization.string("Chooses where the voice plays", table: .voice)))
-                    .accessibilityAddTraits(.isButton)
+                    .accessibilityHidden(true)
+                    .overlay(VoiceOutputPickerOverlay(device: names.output))
                     .accessibilityIdentifier("voice.audioDevices.output")
                 caption(AppLocalization.string("Calls play on the headset, AirPods or car that's connected, otherwise on the speaker; calls from Hermes start on the earpiece, like a phone call. Both pickers are on the call screen too.", table: .voice))
                 caption(AppLocalization.string("There is no level to set for when the microphone opens. Classic voice listens for your voice above the room's noise and adjusts as the room changes; in the live modes the provider decides when you start and stop speaking.", table: .voice))

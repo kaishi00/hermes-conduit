@@ -170,9 +170,14 @@ final class VoiceBuiltInMicrophoneFallback {
         }
         self.clearPreferredInput = clearPreferredInput ?? {
             // The microphone the user picked in iOS's input picker, if any
-            // (issue 2389); nil lets the route choose again.
-            try AVAudioSession.sharedInstance().setPreferredInput(VoiceBuiltInMicrophoneFallback.inputPreferredBefore)
+            // (issue 2389); nil lets the route choose again. A microphone
+            // picked while the fallback held the built-in one is newer and
+            // stays.
+            let session = AVAudioSession.sharedInstance()
+            let previous = VoiceBuiltInMicrophoneFallback.inputPreferredBefore
             VoiceBuiltInMicrophoneFallback.inputPreferredBefore = nil
+            guard session.preferredInput?.portType == .builtInMic else { return }
+            try session.setPreferredInput(previous)
         }
     }
 
