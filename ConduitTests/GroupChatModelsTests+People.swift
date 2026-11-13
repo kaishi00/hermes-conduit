@@ -217,6 +217,50 @@ extension GroupChatModelsTests {
         XCTAssertNil(RoomLinksClient.link(["id": "lk1", "name": "Mona", "status": "linked", "words": Self.peopleWords])?.behind)
     }
 
+    @MainActor
+    func testThisIsMyOwnHermesReadsBothSidesAndMarksOneLink() async throws {
+        // Multi-instance plan, Rooms 1: only a Link both sides marked lifts the room rules.
+        let parsed = RoomLinksClient.link(["id": "lk1", "name": "Work", "status": "linked", "words": Self.peopleWords,
+                                           "own": true, "their_own": false, "own_link": false])
+        XCTAssertEqual(parsed.map { [$0.own, $0.theirOwn, $0.ownLink] }, [true, false, false])
+        XCTAssertEqual(parsed.flatMap(PeopleSettingsText.own(of:)), AppLocalization.string(
+            "Turn this on for \("Work")'s Hermes too. Until both sides do, rooms with it keep the room rules.", table: .rooms))
+        var theirs = try XCTUnwrap(parsed)
+        theirs.own = false
+        theirs.theirOwn = true
+        XCTAssertEqual(PeopleSettingsText.own(of: theirs), AppLocalization.string(
+            "\("Work")'s Hermes says it's yours. Turn this on to agree.", table: .rooms))
+        theirs.own = true
+        theirs.ownLink = true
+        XCTAssertEqual(PeopleSettingsText.own(of: theirs), AppLocalization.string(
+            "Both Hermes are yours. In a room with only your own Hermes, every bot works as it does at home, with its own tools and memory.",
+            table: .rooms))
+        // A plugin before 0.169 says nothing: neither side marked it.
+        let older = RoomLinksClient.link(["id": "lk2", "name": "Mona", "status": "linked", "words": Self.peopleWords])
+        XCTAssertEqual(older.map { [$0.own, $0.theirOwn, $0.ownLink] }, [false, false, false])
+        XCTAssertNil(older.flatMap(PeopleSettingsText.own(of:)))
+
+        var asked: [(path: String, method: String, body: [String: Any]?, timeout: Int?)] = []
+        let client = RoomLinksClient { path, method, body, timeout in
+            asked.append((path, method, body, timeout))
+            return ["ok": true, "link": ["id": "lk1", "name": "Work", "status": "linked", "words": Self.peopleWords,
+                                         "own": true, "their_own": true, "own_link": true]]
+        }
+        let marked = try await client.setOwn("lk1", own: true)
+        XCTAssertTrue(marked.ownLink)
+        XCTAssertEqual(asked.map(\.path), ["/api/plugins/conduit_push/rooms/links/own"])
+        XCTAssertEqual(asked.first?.method, "PUT")
+        XCTAssertEqual(asked.first?.body?["link_id"] as? String, "lk1")
+        XCTAssertEqual(asked.first?.body?["own"] as? Bool, true)
+        // It tells the other side through the rooms mailbox.
+        XCTAssertEqual(asked.first?.timeout, 55_000)
+        let refusing = RoomLinksClient { _, _, _, _ in ["ok": true] }
+        do {
+            _ = try await refusing.setOwn("lk1", own: false)
+            XCTFail("an answer without the Link isn't one")
+        } catch {}
+    }
+
     // MARK: - Host setup
 
     func testRoomSetupStateReadsWhatThePageShows() throws {
