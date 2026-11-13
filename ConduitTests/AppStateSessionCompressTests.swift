@@ -2073,6 +2073,33 @@ final class AppStateSessionCompressTests: XCTestCase {
         )
     }
 
+    func testARefusedSlashPromptsNoteStaysOutOfAChatOpenedDuringTheRewind() async throws {
+        weak var appState: AppState?
+        var operations = ChatResumeLifecycleOperations(
+            openSession: { _, _, _ in throw URLError(.networkConnectionLost) },
+            refreshContext: { _, _ in }
+        )
+        operations.rewindSnapshot = { _, _ in Self.rewindTurns }
+        operations.rewindSession = { _, _, _, _ in
+            appState?.slashPromptRefusedDuringRewind = true
+            // The reader opens another chat while the rewind runs.
+            appState?.activeSessionId = "elsewhere"
+            return SessionRewindReceipt(rewoundCount: 2, text: "latest ask", filesLine: nil)
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        appState = harness.appState
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin, session("elsewhere")]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/undo")
+
+        XCTAssertFalse(harness.appState.messages.contains {
+            $0.content == AppLocalization.string("A command's message wasn't sent while a message was being taken back. Run the command again.")
+        })
+    }
+
     func testEditAndResendPutsTheWordsBackIntoTheirChatsDraftWithTheQuoteAsItsChip() async throws {
         var rewinds: [Int] = []
         let sent = ReplyQuoteEnvelope.outboundText(quoting: "Earlier answer", message: "first ask")
