@@ -85,8 +85,11 @@ extension AppState {
             } catch {
                 // Once per connection and profile: a gateway that doesn't
                 // serve it fails every round.
-                let key = "\(ObjectIdentifier(client).hashValue)|\(OtherProfilesLiveStatus.key(profile))"
-                if liveStatusReadFailuresLogged.insert(key).inserted {
+                if liveStatusReadFailureClient !== client {
+                    liveStatusReadFailureClient = client
+                    liveStatusReadFailuresLogged = []
+                }
+                if liveStatusReadFailuresLogged.insert(OtherProfilesLiveStatus.key(profile)).inserted {
                     sessionCatalogLog.notice("Live status read for another profile failed: \(LogRedaction.describing(error), privacy: .public)")
                 }
             }

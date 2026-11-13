@@ -1776,6 +1776,24 @@ struct BotOverviewSheet: View {
                         .lineLimit(2)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                // What its chats do, as its portrait counts them (its
+                // workstreams' are in the line above), in words for
+                // VoiceOver too, which skips the portrait.
+                if let chats = appState.botLiveChats(profile, leavingOut: (showsWork ? work.snapshot(profile)?.knownSessionIDs : nil) ?? []),
+                   chats.waiting + chats.working > 0 {
+                    let parts = [
+                        chats.waiting > 0 ? BotPortraitStatus.needsYou(chats.waiting).title : nil,
+                        chats.working > 0 ? BotPortraitStatus.working(chats.working).title : nil,
+                    ].compactMap { $0 }
+                    Label {
+                        Text(verbatim: parts.joined(separator: " · "))
+                    } icon: {
+                        Image(systemName: "bubble.left.fill")
+                    }
+                    .scaledFont(.footnote)
+                    .foregroundStyle(.secondary)
+                    .lineLimit(1)
+                }
                 // Where it talks now, as its portrait's pill says.
                 let rooms = appState.talkingRooms(of: profile).map(\.name)
                 if !rooms.isEmpty {
