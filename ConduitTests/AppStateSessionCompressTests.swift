@@ -1878,10 +1878,16 @@ final class AppStateSessionCompressTests: XCTestCase {
         rewoundText: String = "first ask",
         rollback: ((RollbackMethod, String, [String: Any]) -> AnyCodable)? = nil,
         turns: SessionRewindSnapshot = AppStateSessionCompressTests.rewindTurns,
+        reopens: Bool = false,
         rewound: @escaping (Int, SessionRewindSnapshot) -> Void
     ) -> (appState: AppState, defaults: UserDefaults, suite: String) {
         var operations = ChatResumeLifecycleOperations(
-            openSession: { _, _, _ in throw URLError(.networkConnectionLost) }
+            openSession: { _, _, _ in
+                guard reopens else { throw URLError(.networkConnectionLost) }
+                return SessionResumeResult(sessionId: "composer-origin", messages: [],
+                                           snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)]))
+            },
+            refreshContext: { _, _ in }
         )
         operations.rewindSnapshot = { _, _ in turns }
         if let rollback {
@@ -2057,6 +2063,20 @@ final class AppStateSessionCompressTests: XCTestCase {
             harness.appState.messages.last?.content,
             "Restored checkpoint 01234567.\nMessages taken back from this chat: 2\n\nOpen the chat again to see the messages the restore took back.",
             "the note goes under the reopen; the harness's reopen fails, so it says the chat on screen is stale"
+        )
+    }
+
+    func testAWholeRollbackNoteStaysUnderTheReloadedChat() async throws {
+        let harness = rewindHarness(rollback: { _, _, _ in
+            .object(["success": .bool(true), "restored_to": .string("0123456789abcdef"), "history_removed": .number(2)])
+        }, reopens: true) { _, _ in }
+
+        _ = await harness.appState.submitComposer(text: "/rollback 1")
+
+        XCTAssertEqual(
+            harness.appState.messages.last?.content,
+            "Restored checkpoint 01234567.\nMessages taken back from this chat: 2",
+            "the reopen reloads the transcript first, then the note goes under it"
         )
     }
 
