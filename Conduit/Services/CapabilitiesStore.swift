@@ -838,22 +838,28 @@ final class CapabilitiesStore {
         var pending = due[...]
         // The list may have gone while it was still reading the servers.
         guard !Task.isCancelled else { return }
+        // These names are this profile's: after a switch none of them is
+        // tested on the other one, whose server may share a name.
+        let token = generation
         await withTaskGroup(of: Void.self) { group in
             for _ in 0..<3 {
                 guard let next = pending.popFirst() else { break }
-                group.addTask { await self.probe(next.name) }
+                group.addTask { await self.probe(next.name, generation: token) }
             }
             while await group.next() != nil {
                 // Leaving the list starts no more tests; the ones running
                 // finish (see probe).
-                if !Task.isCancelled, let next = pending.popFirst() {
-                    group.addTask { await self.probe(next.name) }
+                if !Task.isCancelled, token == generation, let next = pending.popFirst() {
+                    group.addTask { await self.probe(next.name, generation: token) }
                 }
             }
         }
     }
 
-    func probe(_ name: String) async {
+    /// `expected`: the profile and dashboard the name was picked on; after
+    /// a switch the test isn't sent.
+    func probe(_ name: String, generation expected: Int? = nil) async {
+        if let expected, expected != generation { return }
         // Each test starts the server on the host: one at a time.
         guard !probing.contains(name) else { return }
         let token = generation
@@ -1053,10 +1059,7 @@ final class CapabilitiesStore {
                 await probeServers()
             }
         } else if servers.first(where: { $0.name == name })?.enabled == true {
-            Task {
-                guard token == generation else { return }
-                await probe(name)
-            }
+            Task { await probe(name, generation: token) }
         }
     }
 
@@ -1089,10 +1092,7 @@ final class CapabilitiesStore {
                 await probeServers()
             }
         } else if servers.first(where: { $0.name == name })?.enabled == true {
-            Task {
-                guard token == generation else { return }
-                await probe(name)
-            }
+            Task { await probe(name, generation: token) }
         }
     }
 
