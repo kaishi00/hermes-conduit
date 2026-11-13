@@ -662,6 +662,9 @@ struct SessionRewindSnapshot: Equatable {
         /// The turn's text; nil when it held more than text (a picture or
         /// a file), which `/retry` can't send again as typed.
         let text: String?
+        /// When it was sent (Unix seconds), for `/undo`'s line about the
+        /// files the undone turns changed (`rollback.list`'s `undo_since`).
+        var timestamp: Double? = nil
     }
 
     let turns: [Turn]
@@ -692,7 +695,7 @@ struct SessionRewindSnapshot: Equatable {
         case nil, .null?, .string("")?, .string("steer")?: break
         default: return nil
         }
-        return Turn(rowID: rowID, text: text(of: row["content"]))
+        return Turn(rowID: rowID, text: text(of: row["content"]), timestamp: row["timestamp"]?.doubleValue)
     }
 
     /// A text turn's words; nil when a part isn't text. A stored prompt
@@ -721,6 +724,55 @@ struct SessionRewindSnapshot: Equatable {
 
 /// Hermes' answer to a rewind: how many rows it took back, and the user
 /// turn it rewound to.
+/// Hermes' file checkpoint verbs (`/rollback`).
+enum RollbackMethod: String {
+    case list = "rollback.list"
+    case diff = "rollback.diff"
+    case restore = "rollback.restore"
+}
+
+/// `/rollback`'s words: `[list]`, `diff <n|hash>`, or `<n|hash> [file]
+/// [--all]`, as Hermes Desktop reads them. Nil for a usage error.
+struct RollbackRequest: Equatable {
+    let method: RollbackMethod
+    /// Every param but the session's.
+    let hash: String?
+    let filePath: String?
+    let all: Bool
+
+    init?(argument: String) {
+        let words = argument.split(whereSeparator: \.isWhitespace).map(String.init)
+        let all = words.contains("--all")
+        let rest = words.filter { $0 != "--all" }
+        let first = rest.first?.lowercased() ?? ""
+        if first.isEmpty || first == "list" || first == "ls" {
+            guard rest.count <= 1, !all else { return nil }
+            self.init(method: .list, hash: nil, filePath: nil, all: false)
+        } else if first == "diff" {
+            guard rest.count == 2, !all else { return nil }
+            self.init(method: .diff, hash: rest[1], filePath: nil, all: false)
+        } else {
+            let file = rest.dropFirst().joined(separator: " ")
+            self.init(method: .restore, hash: rest[0], filePath: file.isEmpty ? nil : file, all: all)
+        }
+    }
+
+    init(method: RollbackMethod, hash: String?, filePath: String?, all: Bool) {
+        self.method = method
+        self.hash = hash
+        self.filePath = filePath
+        self.all = all
+    }
+
+    var params: [String: Any] {
+        var params: [String: Any] = [:]
+        if let hash { params["hash"] = hash }
+        if let filePath { params["file_path"] = filePath }
+        if all { params["all"] = true }
+        return params
+    }
+}
+
 struct SessionRewindReceipt: Equatable {
     let rewoundCount: Int
     /// The rewound turn's text; nil when it held more than text.
@@ -4776,6 +4828,19 @@ final class HermesClient: ObservableObject {
         return SessionRewindReceipt(result: result)
     }
 
+    /// Hermes' file checkpoints for the chat's working folder (`/rollback`):
+    /// `rollback.list`, `rollback.diff` or `rollback.restore` with
+    /// `params`, which `slash.exec` refuses for a chat like Conduit's.
+    /// `profile` opens a bot chat's store, as for a rewind.
+    func rollback(_ method: RollbackMethod, sessionId: String, params: [String: Any], profile: String? = nil) async throws -> AnyCodable {
+        var params = params
+        params["session_id"] = sessionId
+        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            params["profile"] = profile
+        }
+        return try await rpc(method.rawValue, params: params)
+    }
+
     func dispatchCommand(sessionId: String, name: String, arg: String) async throws -> AnyCodable {
         return try await rpc("command.dispatch", params: [
             "session_id": sessionId,
@@ -5941,6 +6006,15 @@ enum MessageNormalizer {
                 && rawRole == "user"
                 && (obj["display_kind"]?.stringValue ?? "")
                     .trimmingCharacters(in: .whitespacesAndNewlines) == ChatMessage.steerDisplayKind
+            // A turn the model's safety filter refused: Hermes took it out of
+            // the model's context and kept the user's own message for display,
+            // typed `display_kind: "content_refused"`. It stays the user's
+            // row (their words); the tag lets the transcript draw it greyed
+            // with a notice instead of as a message waiting on a reply.
+            let isRefusedRow = !isToolResult
+                && rawRole == "user"
+                && (obj["display_kind"]?.stringValue ?? "")
+                    .trimmingCharacters(in: .whitespacesAndNewlines) == ChatMessage.contentRefusedDisplayKind
             var role: MessageRole
             switch rawRole {
             case "user": role = .user
@@ -6161,7 +6235,8 @@ enum MessageNormalizer {
                 review: review,
                 attachments: userContent.attachments,
                 displayKind: displayKind?.rawValue
-                    ?? (isSteerRow && role == .user ? ChatMessage.steerDisplayKind : nil),
+                    ?? (isSteerRow && role == .user ? ChatMessage.steerDisplayKind : nil)
+                    ?? (isRefusedRow && role == .user ? ChatMessage.contentRefusedDisplayKind : nil),
                 rowId: rowId,
                 reactions: messageReactions(fromMetadata: obj["display_metadata"])
             )

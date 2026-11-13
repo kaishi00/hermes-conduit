@@ -1210,6 +1210,101 @@ extension AppState {
     /// When the card has since changed to ask something else (a legacy card
     /// is updated in place by the next command), nothing is sent: the card
     /// on screen already shows the new question to answer.
+    /// The approval card's "Tell Hermes what to do instead" (Hermes' TUI
+    /// "No, and tell Hermes instead"): the words go into the waiting turn
+    /// as a steer first, so they ride on the refused command's result, and
+    /// then the command is rejected. A steer Hermes refuses (the turn ended
+    /// meanwhile) keeps the words in the composer, to send as the next
+    /// message; the command is rejected either way.
+    func rejectApprovalAndSteer(messageId: String, instruction: String, shown: ApprovalActivity) async {
+        let words = instruction.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !words.isEmpty,
+              let current = messages.first(where: { $0.id == messageId })?.approval,
+              current.status == .pending || current.status == .error,
+              current.asksSameAs(shown) else { return }
+        // The chat the card is in: the user may open another while the
+        // steer goes, and both the rejection and any words kept are its.
+        let draftKey = durableComposerDraftKeyOnScreen
+        let dashboardID = activeDashboardID
+        let authorName = conversationAgentIdentity.name
+        let client = self.client
+        let profile = activeProfile
+        // The card is taken for this answer while the steer goes: Run and
+        // the other choices are off, and a replay of the queue keeps it
+        // (a live submission), as for any answer on its way.
+        let submissionIdentity = current.requestId.map { ApprovalSubmissionIdentity.identified($0) }
+            ?? ApprovalSubmissionIdentity.legacy(current.sessionId)
+        liveApprovalSubmissions.insert(submissionIdentity)
+        setApprovalReserved(messageId: messageId, shown: shown, reserved: true)
+        let steered = await steer(words, surfacesFailure: false)
+        liveApprovalSubmissions.remove(submissionIdentity)
+        if let client, self.client === client, profile == activeProfile {
+            if messages.contains(where: { $0.id == messageId && $0.approval?.asksSameAs(shown) == true }) {
+                // Back to pending only to hand it to the answer, with no
+                // wait in between.
+                setApprovalReserved(messageId: messageId, shown: shown, reserved: false)
+                await respondToApproval(messageId: messageId, choice: "deny", shown: shown)
+            } else if let requestId = shown.requestId {
+                // Its chat was left meanwhile: the card isn't on screen to
+                // answer, so the rejection goes straight to the request it
+                // named. A card that names none stays waiting, answered
+                // when its chat opens again, as a session-wide answer could
+                // reach another request.
+                do {
+                    _ = try await client.respondToApprovalOutcome(
+                        sessionId: shown.sessionId,
+                        requestId: requestId,
+                        choice: "deny",
+                        profile: presentationProfile(for: shown.sessionId)
+                    )
+                } catch {
+                    // Not on screen to show it: the chat's waiting cards
+                    // are read again when it opens, this one still waiting.
+                    lifecycleLog.notice("Tell Hermes instead: the rejection didn't reach Hermes: \(String(describing: error), privacy: .private)")
+                }
+            } else {
+                // A legacy card the next command replaced while the steer
+                // went: the new question waits for its own answer.
+                releaseReplacedApproval(messageId: messageId, shown: shown)
+            }
+        } else {
+            // Another connection (or profile) took over while the steer
+            // went: its own cards are its own to answer. A card still drawn
+            // goes back to waiting.
+            setApprovalReserved(messageId: messageId, shown: shown, reserved: false)
+            releaseReplacedApproval(messageId: messageId, shown: shown)
+        }
+        if !steered {
+            putRewoundTextBack(words, key: draftKey, dashboardID: dashboardID, authorName: authorName)
+        }
+    }
+
+    /// A legacy card updated in place to ask the next command while it was
+    /// taken for Tell Hermes instead goes back to waiting, unanswered.
+    private func releaseReplacedApproval(messageId: String, shown: ApprovalActivity) {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }) else { return }
+        _ = rearmIfReplaced(at: index, asking: shown)
+    }
+
+    /// Takes a card for Tell Hermes instead's rejection (shown as sending
+    /// it), or gives it back to waiting.
+    private func setApprovalReserved(messageId: String, shown: ApprovalActivity, reserved: Bool) {
+        guard let index = messages.firstIndex(where: { $0.id == messageId }),
+              let approval = messages[index].approval,
+              approval.asksSameAs(shown) else { return }
+        if reserved {
+            guard approval.status == .pending || approval.status == .error else { return }
+            messages[index].approval?.status = .submitting
+            messages[index].approval?.choice = "deny"
+            messages[index].approval?.error = nil
+        } else {
+            guard approval.status == .submitting, approval.choice == "deny" else { return }
+            messages[index].approval?.status = .pending
+            messages[index].approval?.choice = nil
+        }
+        cacheMessagePresentation()
+    }
+
     func respondToApproval(messageId: String, choice: String, shown: ApprovalActivity? = nil) async {
         guard let index = messages.firstIndex(where: { $0.id == messageId }),
               let current = messages[index].approval,

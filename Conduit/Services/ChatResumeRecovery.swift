@@ -131,6 +131,9 @@ struct ChatResumeLifecycleOperations {
     /// Not init parameters: tests set them on the value.
     var rewindSnapshot: (@MainActor (HermesClient, String) async throws -> SessionRewindSnapshot)?
     var rewindSession: (@MainActor (HermesClient, String, Int, SessionRewindSnapshot) async throws -> SessionRewindReceipt)?
+    /// `/rollback`'s and `/undo`'s checkpoint reads: the verb, the session
+    /// and the params (without the session).
+    var rollback: (@MainActor (HermesClient, RollbackMethod, String, [String: Any]) async throws -> AnyCodable)?
     var compressSession: (@MainActor (
         HermesClient,
         String,
