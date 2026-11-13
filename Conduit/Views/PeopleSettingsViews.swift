@@ -45,21 +45,6 @@ enum PeopleSettingsText {
         }
     }
 
-    /// What "This is my own Hermes" says of a linked Link, or nil when
-    /// neither side marked it.
-    static func own(of link: RoomLink) -> String? {
-        if link.ownLink {
-            return AppLocalization.string("Both Hermes are yours. In a room with only your own Hermes, every bot works as it does at home, with its own tools and memory.", table: .rooms)
-        }
-        if link.own {
-            return AppLocalization.string("Turn this on for \(link.name)'s Hermes too. Until both sides do, rooms with it keep the room rules.", table: .rooms)
-        }
-        if link.theirOwn {
-            return AppLocalization.string("\(link.name)'s Hermes says it's yours. Turn this on to agree.", table: .rooms)
-        }
-        return nil
-    }
-
     /// What Set up does, one line each, in the order the plugin does it.
     static func setupLines(_ state: RoomSetupState, profileName: String) -> [String] {
         let changes = Set(state.changes)
@@ -166,11 +151,11 @@ struct PeopleSettingsPage: View {
 
     private var shown: Loaded? { loaded?.key == key ? loaded : nil }
 
-    /// While a Link waits for the other side's Hermes, to confirm it or to
-    /// mark it as your own too, the page reads the list again now and then.
-    /// Sorted, so the same Links in another order don't start the wait over.
+    /// While a Link waits for the other side's Hermes, the page reads the
+    /// list again now and then. Sorted, so the same Links in another order
+    /// don't start the wait over.
     private var waitingIDs: [String] {
-        shown?.list.links.filter { $0.status == "waiting" || ($0.own && !$0.ownLink) }.map(\.id).sorted() ?? []
+        shown?.list.links.filter { $0.status == "waiting" }.map(\.id).sorted() ?? []
     }
 
     var body: some View {
@@ -375,29 +360,24 @@ struct PeopleSettingsPage: View {
         let words = PeopleSettingsText.words(link.words)
         return HStack(alignment: .firstTextBaseline, spacing: 10) {
             VStack(alignment: .leading, spacing: 3) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(verbatim: link.name)
-                        .scaledFont(.subheadline.weight(.semibold))
-                    if let status = PeopleSettingsText.status(of: link) {
-                        Text(verbatim: status)
-                            .scaledFont(.footnote)
-                            .foregroundStyle(link.status == "unanswered" ? Color.orange : Color.secondary)
-                    }
-                    if let update = PeopleSettingsText.update(for: link) {
-                        Text(verbatim: update)
-                            .scaledFont(.footnote)
-                            .foregroundStyle(Color.orange)
-                    }
-                    Text(verbatim: AppLocalization.string("Words: \(words)", table: .rooms))
-                        .scaledFont(.caption)
-                        .foregroundStyle(.secondary)
+                Text(verbatim: link.name)
+                    .scaledFont(.subheadline.weight(.semibold))
+                if let status = PeopleSettingsText.status(of: link) {
+                    Text(verbatim: status)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(link.status == "unanswered" ? Color.orange : Color.secondary)
                 }
-                .accessibilityElement(children: .combine)
-                if appState.canMarkOwnLinks, link.status == "linked" {
-                    ownToggle(link)
+                if let update = PeopleSettingsText.update(for: link) {
+                    Text(verbatim: update)
+                        .scaledFont(.footnote)
+                        .foregroundStyle(Color.orange)
                 }
+                Text(verbatim: AppLocalization.string("Words: \(words)", table: .rooms))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+            .accessibilityElement(children: .combine)
             if changingID == link.id {
                 ProgressView()
                     .controlSize(.small)
@@ -407,51 +387,6 @@ struct PeopleSettingsPage: View {
                     .scaledFont(.subheadline)
                     .disabled(changingID != nil)
                     .accessibilityValue(Text(verbatim: link.name))
-            }
-        }
-    }
-
-    /// "This is my own Hermes": for linking two Hermes of your own. Only a
-    /// Link both sides marked lifts the room rules.
-    private func ownToggle(_ link: RoomLink) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Toggle(isOn: Binding(get: { link.own }, set: { setOwn(link, $0) })) {
-                Text(AppLocalization.string("This is my own Hermes", table: .rooms))
-                    .scaledFont(.subheadline)
-            }
-            .tint(.conduitAccent)
-            .disabled(changingID != nil)
-            .accessibilityValue(Text(verbatim: link.name))
-            if let own = PeopleSettingsText.own(of: link) {
-                Text(verbatim: own)
-                    .scaledFont(.footnote)
-                    .foregroundStyle(.secondary)
-            }
-        }
-        .padding(.top, 4)
-    }
-
-    private func setOwn(_ link: RoomLink, _ own: Bool) {
-        guard changingID == nil else { return }
-        Haptics.selection()
-        let key = key
-        changingID = link.id
-        actionError = nil
-        Task {
-            defer { if changingID == link.id { changingID = nil } }
-            do {
-                let changed = try await appState.roomLinksClient.setOwn(link.id, own: own)
-                guard key == self.key, let current = loaded, current.key == key,
-                      let index = current.list.links.firstIndex(where: { $0.id == link.id }) else { return }
-                var list = current.list
-                list.links[index] = changed
-                loaded = Loaded(key: key, list: list, identity: current.identity)
-            } catch {
-                guard !(error is CancellationError), key == self.key else { return }
-                Haptics.error()
-                peopleLogger.notice("Link not marked: \(LogRedaction.message(error), privacy: .public)")
-                actionError = AppLocalization.string("Could not change the Link with \(link.name): \(RoomLinksClient.message(for: error))", table: .rooms)
-                await load(key, keepingIdentity: true)
             }
         }
     }

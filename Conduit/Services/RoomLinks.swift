@@ -87,7 +87,7 @@ struct RoomLink: Identifiable, Equatable {
     /// `yours` (it sent one yours doesn't take). Nil when they match, and
     /// from plugins before 0.167.4.
     var behind: String? = nil
-    /// "This is my own Hermes" (multi-instance plan, Rooms 1): this side
+    /// Your own Hermes on both ends (multi-instance plan, Rooms 1): this side
     /// marked the Link as the owner's own (`own`), the other side did
     /// (`theirOwn`), and both did (`ownLink`), which is what lets a room of
     /// only your own Hermes run as at home. All false from plugins before
@@ -174,7 +174,7 @@ enum RoomLinkName {
 /// rooms mailbox, which the plugin gives up to 50 seconds.
 struct RoomLinksClient {
     static let capability = "room-links"
-    /// `PUT /rooms/links/own`: "This is my own Hermes" on a Link.
+    /// `PUT /rooms/links/own`: marks a Link as one between your own Hermes.
     static let ownCapability = "room-own-links"
     static let path = "/api/plugins/conduit_push/rooms"
     /// Past the plugin's own 50 s for a call that waits on the mailbox.
@@ -346,7 +346,9 @@ extension AppState {
         notifierPlugin.reports(RoomLinksClient.capability)
     }
 
-    /// Whether the host's plugin offers "This is my own Hermes" on a Link.
+    /// Whether the host's plugin can mark a Link as one between your own
+    /// Hermes. No setting shows it: Conduit marks Links between Hermes it
+    /// holds (multi-instance plan).
     var canMarkOwnLinks: Bool {
         canLinkRooms && notifierPlugin.reports(RoomLinksClient.ownCapability)
     }

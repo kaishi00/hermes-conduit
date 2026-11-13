@@ -218,27 +218,15 @@ extension GroupChatModelsTests {
     }
 
     @MainActor
-    func testThisIsMyOwnHermesReadsBothSidesAndMarksOneLink() async throws {
+    func testAnOwnLinkReadsBothSidesAndMarksOneLink() async throws {
         // Multi-instance plan, Rooms 1: only a Link both sides marked lifts the room rules.
+        // No setting shows it (Eric 2026-11-13): Conduit marks Links between Hermes it holds.
         let parsed = RoomLinksClient.link(["id": "lk1", "name": "Work", "status": "linked", "words": Self.peopleWords,
                                            "own": true, "their_own": false, "own_link": false])
         XCTAssertEqual(parsed.map { [$0.own, $0.theirOwn, $0.ownLink] }, [true, false, false])
-        XCTAssertEqual(parsed.flatMap(PeopleSettingsText.own(of:)), AppLocalization.string(
-            "Turn this on for \("Work")'s Hermes too. Until both sides do, rooms with it keep the room rules.", table: .rooms))
-        var theirs = try XCTUnwrap(parsed)
-        theirs.own = false
-        theirs.theirOwn = true
-        XCTAssertEqual(PeopleSettingsText.own(of: theirs), AppLocalization.string(
-            "\("Work")'s Hermes says it's yours. Turn this on to agree.", table: .rooms))
-        theirs.own = true
-        theirs.ownLink = true
-        XCTAssertEqual(PeopleSettingsText.own(of: theirs), AppLocalization.string(
-            "Both Hermes are yours. In a room with only your own Hermes, every bot works as it does at home, with its own tools and memory.",
-            table: .rooms))
         // A plugin before 0.169 says nothing: neither side marked it.
         let older = RoomLinksClient.link(["id": "lk2", "name": "Mona", "status": "linked", "words": Self.peopleWords])
         XCTAssertEqual(older.map { [$0.own, $0.theirOwn, $0.ownLink] }, [false, false, false])
-        XCTAssertNil(older.flatMap(PeopleSettingsText.own(of:)))
 
         var asked: [(path: String, method: String, body: [String: Any]?, timeout: Int?)] = []
         let client = RoomLinksClient { path, method, body, timeout in
