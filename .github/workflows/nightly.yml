@@ -40,11 +40,10 @@ permissions:
 env:
   SIMULATOR_NAME: "iPhone 18 Pro"
   DERIVED_DATA_PATH: "${{ github.workspace }}/ci-derived-data"
-  # Build budget for scripts/ci-hosted-build.sh. Up to five macOS jobs run
-  # side by side here, so builds run slower than in PR CI: builds of 850-890 s
-  # were common, and UI shard 3 hit 900 s on 2026-10-11. PR CI uses 1200 s too
-  # since 2026-10-13.
-  BUILD_TIMEOUT_SECS: "1200"
+  # Build budget for scripts/ci-hosted-build.sh. Every build step below pins
+  # 1800 s (Xcode 27, 2026-11-13: up to five macOS jobs build side by side
+  # from a day-old cache); this default only covers a new step that forgets to.
+  BUILD_TIMEOUT_SECS: "1800"
 
 jobs:
   plan:
@@ -333,8 +332,9 @@ jobs:
     name: Timing families (repeat ${{ matrix.repeat }})
     needs: plan
     runs-on: xcode-27
-    # Setup (~5 min), an 1800 s build that may retry once, then the tests
-    # (~6 min on 2026-11-13): the unit and UI shards' hour.
+    # Setup (~5 min), an 1800 s build, then the tests (~6 min on 2026-11-13):
+    # the unit and UI shards' hour. A clean retry after a failed incremental
+    # build (rare) can run past it and reads as a cancelled repeat.
     timeout-minutes: 60
     strategy:
       fail-fast: false
