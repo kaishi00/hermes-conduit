@@ -3054,8 +3054,12 @@ final class AppState: ObservableObject {
     /// Whether the open copy's opening tail has been read: the messages
     /// after it are new (Read replies aloud reads them).
     var activeRoomCopyTailRead = false
-    /// Bumped by a copy's delete, so a copies read it overtook is dropped.
-    var linkedRoomCopiesGeneration = 0
+    /// Bumped by a change made here to who and what Group Chats lists (a
+    /// copy's delete, a Block, a leave or take out), so a copies,
+    /// approvals, drafts or invites read it overtook is dropped: issued
+    /// before the change, it could list what the change took away
+    /// (issue 2347).
+    var linkedRosterGeneration = 0
     /// Your Hermes' copies of the rooms other people host that your agents
     /// joined, which Group Chats lists after your own (RoomCopies.swift).
     @Published var linkedRoomCopies: LinkedRoomCopies?

@@ -4247,14 +4247,25 @@ final class HermesClient: ObservableObject {
         }
         let result: AnyCodable
         let builtForDashboard = !speaksSessionAuthority
+        let sendWatch = SendWatch()
         do {
-            result = try await rpc("approval.respond", params: params)
+            let sent = params
+            result = try await AuthorityAnswerSend.$watch.withValue(sendWatch) {
+                try await self.rpc("approval.respond", params: sent)
+            }
         } catch let error as RpcError where builtForDashboard && speaksSessionAuthority && error.refusesShape {
             // Sent before the ready was read, to the authority, which refuses
             // this shape before anything runs: answer it in its own.
             return try await respondToApprovalOutcome(
                 sessionId: sessionId, requestId: requestId, choice: choice, profile: profile
             )
+        } catch HermesError.notConnected {
+            // Never written (no socket, or one not ready): nothing was taken,
+            // and the card can be answered again (issue 2333's review).
+            throw AnswerNotSent(underlying: HermesError.notConnected)
+        } catch let error where !(error is RpcError) && sendWatch.unwritten {
+            // Cancelled before the write, or the socket refused the frame.
+            throw AnswerNotSent(underlying: error)
         }
         // Current Hermes reports the number of queue entries resolved. Older
         // gateways omitted the field after a successful response to legacy

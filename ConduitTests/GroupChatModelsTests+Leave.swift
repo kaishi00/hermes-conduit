@@ -153,8 +153,10 @@ extension GroupChatModelsTests {
             ["member_id": "m-kuro", "owner": NSNull(), "status": "left"],
             ["member_id": "m-laifu", "owner": "Mona", "status": "in"],
         ]]
+        let generation = appState.linkedRosterGeneration
         let result = await appState.leaveActiveRoom()
         XCTAssertEqual(result, .done)
+        XCTAssertNotEqual(appState.linkedRosterGeneration, generation, "a roster read from before the leave is dropped (issue 2347)")
         XCTAssertEqual(routes.leaves.count, 1)
         let body = try XCTUnwrap(routes.leaves.first)
         XCTAssertEqual(body["link"] as? String, "lk1a2b3c4d5e6f")
@@ -182,8 +184,10 @@ extension GroupChatModelsTests {
         XCTAssertTrue(appState.canTakeOut(kuro))
         XCTAssertFalse(appState.canTakeOut(laifu), "only the host takes others out")
 
+        let generation = appState.linkedRosterGeneration
         let result = await appState.takeOut(kuro)
         XCTAssertEqual(result, .done)
+        XCTAssertNotEqual(appState.linkedRosterGeneration, generation, "a roster read from before the take out is dropped")
         XCTAssertEqual(routes.leaves.first?["agents"] as? [String], ["research"])
         XCTAssertEqual(routes.removes.count, 0)
         XCTAssertFalse(routes.peopleReads.isEmpty, "who's in is read again")
@@ -203,8 +207,10 @@ extension GroupChatModelsTests {
         XCTAssertFalse(appState.canLeaveActiveRoom, "you host it")
 
         routes.people = leaveOwnPeople(laifu: "removed")
+        let generation = appState.linkedRosterGeneration
         let result = await appState.takeOut(laifu)
         XCTAssertEqual(result, .done)
+        XCTAssertNotEqual(appState.linkedRosterGeneration, generation, "a roster read from before the take out is dropped")
         XCTAssertEqual(routes.removes.count, 1)
         XCTAssertEqual(routes.removes.first?["room_id"] as? String, "conduit-5")
         XCTAssertEqual(routes.removes.first?["member"] as? String, "m-laifu")
@@ -227,8 +233,10 @@ extension GroupChatModelsTests {
         let appState = try await leaveAppState(routes)
         await appState.openRoomCopy(try XCTUnwrap(appState.linkedRoomCopyRows.first))
 
+        let generation = appState.linkedRosterGeneration
         let result = await appState.leaveActiveRoom()
         XCTAssertEqual(result, .refused(AppLocalization.string("Could not leave this room: \(refusal)", table: .rooms)))
+        XCTAssertEqual(appState.linkedRosterGeneration, generation, "a refused leave changed nothing")
         XCTAssertEqual(appState.activeRoomSurface?.copy?.status, "started")
         XCTAssertTrue(appState.canLeaveActiveRoom)
         XCTAssertTrue(appState.isPollingActiveRoom)

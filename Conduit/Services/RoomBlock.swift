@@ -84,17 +84,23 @@ extension AppState {
         return RoomBlock.targets(for: surface, draft: surface.copy == nil ? linkedRoomDraft(surface.room.roomID) : nil)
     }
 
-    /// Unlinks them, then reads the rooms again. False when the Link was
-    /// already gone. Refused once the dashboard it was listed on isn't the
-    /// active one.
+    /// Unlinks them, then reads the rooms, copies, drafts, approvals and
+    /// invites again, so their rooms' grants and invite rows go at once. A
+    /// read already under way is dropped (linkedRosterGeneration): issued
+    /// before the unlink, it would bring them back (issue 2347). False
+    /// when the Link was already gone. Refused once the dashboard it was
+    /// listed on isn't the active one.
     func block(_ target: RoomBlockTarget) async throws -> Bool {
         guard target.dashboardID == nil || target.dashboardID == activeDashboardID else {
             throw CancellationError()
         }
         let removed = try await roomLinksClient.unlink(target.id)
+        linkedRosterGeneration &+= 1
         await refreshGroupRooms()
         await refreshLinkedRoomCopies()
         await refreshLinkedRoomDrafts()
+        await refreshLinkedRoomApprovals()
+        _ = await readLinkedRoomInvites()
         return removed
     }
 }

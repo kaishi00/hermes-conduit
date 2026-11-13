@@ -477,6 +477,128 @@ final class AppStateDecisionFenceTests: XCTestCase {
         XCTAssertNil(card.error)
     }
 
+    // A session-wide answer that may have reached Hermes can't be offered
+    // again after its connection was replaced: a second tap would settle
+    // whatever request is oldest now (issue 2333).
+    func testStaleSessionWideAnswerIsNotOfferedAgain() async throws {
+        let appState = makeAppState()
+        appState.messages = [approvalFixture()]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        XCTAssertEqual(appState.messages.first?.approval?.status, .submitting)
+
+        appState.client = makeReplacementClient(baseURL: "https://two.example")
+        deliverResult(socket, rpcID: parked.rpcID, result: ["resolved": 1])
+        await parked.task.value
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.status, .expired, "a re-tap would answer the session's next request")
+        XCTAssertNil(card.choice)
+        XCTAssertEqual(
+            card.error,
+            AppLocalization.string("The connection changed before Hermes confirmed this answer. It isn't sent again, since it could answer a different request.")
+        )
+    }
+
+    func testStaleSessionWideAnswerFailureIsNotOfferedAgain() async throws {
+        let appState = makeAppState()
+        appState.messages = [approvalFixture()]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        appState.client = makeReplacementClient(baseURL: "https://two.example")
+        // Failed after it was sent: Hermes may have taken it first.
+        deliverError(socket, rpcID: parked.rpcID, code: 5000, message: "socket closed")
+        await parked.task.value
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.status, .expired)
+        XCTAssertNil(card.choice)
+        XCTAssertNil(appState.errorMessage)
+    }
+
+    // The socket refused the frame: the answer never left, so the card can
+    // be answered again on the new connection.
+    func testStaleSessionWideAnswerThatNeverLeftIsOfferedAgain() async throws {
+        let appState = makeAppState()
+        appState.messages = [approvalFixture()]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        socket.holdSendCompletion = true
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        appState.client = makeReplacementClient(baseURL: "https://two.example")
+        socket.releaseSends(error: URLError(.networkConnectionLost))
+        await parked.task.value
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.status, .pending, "nothing reached Hermes")
+        XCTAssertNil(card.choice)
+        XCTAssertNil(card.error)
+    }
+
+    // Hermes said it waits no longer: the card ends saying that, not that the
+    // connection changed.
+    func testStaleSessionWideAnswerHermesNoLongerWaitedOnSaysSo() async throws {
+        let appState = makeAppState()
+        appState.messages = [approvalFixture()]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        appState.client = makeReplacementClient(baseURL: "https://two.example")
+        deliverError(socket, rpcID: parked.rpcID, code: 4009, message: "no pending approval")
+        await parked.task.value
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.status, .expired)
+        XCTAssertEqual(
+            card.error,
+            AppLocalization.string("This approval is no longer active — Hermes timed it out and continued.")
+        )
+    }
+
+    func testStaleSessionWideAnswerWhoseSessionWentSaysNoLongerActive() async throws {
+        let appState = makeAppState()
+        appState.messages = [approvalFixture()]
+        let transport = ClarifyFakeTransport()
+        let socket = ClarifyFakeSocket()
+        _ = try await installConnectedClient(appState, socket: socket, transport: transport)
+
+        let parked = try await parkApprovalRespond(appState: appState, socket: socket)
+        appState.client = makeReplacementClient(baseURL: "https://two.example")
+        deliverError(socket, rpcID: parked.rpcID, code: 4001, message: "session not found")
+        await parked.task.value
+
+        let card = try XCTUnwrap(appState.messages.first?.approval)
+        XCTAssertEqual(card.status, .expired)
+        XCTAssertEqual(card.error, AppLocalization.string("This approval is no longer active."))
+    }
+
+    // No socket: the session-wide answer never left, which the card path
+    // reads as one it can offer again.
+    func testASessionWideAnswerWithNoSocketIsNotSent() async throws {
+        let client = HermesClient(
+            connection: HermesConnection(baseUrl: "https://one.example", ticket: "t"),
+            profile: "default"
+        )
+        do {
+            _ = try await client.respondToApprovalOutcome(sessionId: "s1", choice: "once")
+            XCTFail("an unconnected client sends nothing")
+        } catch let unsent as HermesClient.AnswerNotSent {
+            guard case HermesError.notConnected = unsent.underlying else {
+                return XCTFail("expected notConnected underneath, got \(unsent.underlying)")
+            }
+        }
+    }
+
     // MARK: - Stale native clarify completions
 
     func testStaleClarifySuccessCannotMutateReplacedClientState() async throws {
