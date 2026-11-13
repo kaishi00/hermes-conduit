@@ -379,6 +379,48 @@ extension GroupChatModelsTests {
         XCTAssertEqual(appState.linkedRoomApprovalRows, [], "the blocked host's grant stays gone")
     }
 
+    /// One read of a Linked Rooms list at a time (issue 2359): a caller
+    /// shares a running read that started after the time it names (the
+    /// return to the app's departure), callers that need a read from after
+    /// their call share one queued behind it, and another key's read starts
+    /// at once.
+    @MainActor
+    func testALinkedRoomsListReadIsSharedOnlyWhenItStartedLateEnough() async throws {
+        let read = LinkedRoomListRead()
+        var calls = 0
+        var held: [CheckedContinuation<Void, Never>] = []
+        let body: @MainActor () async -> Bool = {
+            calls += 1
+            await withCheckedContinuation { held.append($0) }
+            return true
+        }
+        func settle(until count: Int) async {
+            for _ in 0..<1000 where held.count < count { await Task.yield() }
+            for _ in 0..<50 { await Task.yield() }
+        }
+        let left = Date().addingTimeInterval(-60)
+        let first = Task { @MainActor in await read.read(key: 1, body) }
+        await settle(until: 1)
+        let afterLeaving = Task { @MainActor in await read.read(key: 1, since: left, body) }
+        let push = Task { @MainActor in await read.read(key: 1, body) }
+        let secondPush = Task { @MainActor in await read.read(key: 1, body) }
+        let otherKey = Task { @MainActor in await read.read(key: 2, body) }
+        await settle(until: 2)
+        XCTAssertEqual(calls, 2, "the return joins the first read; the other key's read starts at once")
+
+        held.forEach { $0.resume() }
+        held.removeAll()
+        await settle(until: 1)
+        XCTAssertEqual(calls, 3, "the two pushes share one read, after the first")
+        held.forEach { $0.resume() }
+
+        for task in [first, afterLeaving, push, secondPush, otherKey] {
+            let answered = await task.value
+            XCTAssertTrue(answered)
+        }
+        XCTAssertEqual(calls, 3)
+    }
+
     /// Settings > Multiplayer's Unlink fences the roster reads the way
     /// Block does: a read from before it is dropped (issue 2374).
     @MainActor

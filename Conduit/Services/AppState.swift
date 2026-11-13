@@ -3084,9 +3084,10 @@ final class AppState: ObservableObject {
     /// Reads the invites again for a while after a Link is made
     /// (RoomInvites.swift followLinkedRoomInvites).
     var linkedRoomInviteFollow: Task<Void, Never>?
-    /// The linked rooms' read on a return to the app, while it runs: a
-    /// return meanwhile joins it (issue 2359).
-    var linkedRoomsForegroundRead: Task<Void, Never>?
+    /// One read of each Linked Rooms list at a time (issue 2359).
+    let linkedRoomDraftsRead = LinkedRoomListRead()
+    let linkedRoomInvitesRead = LinkedRoomListRead()
+    let linkedRoomApprovalsRead = LinkedRoomListRead()
     /// What your agents' turns in rooms other people host wait for you to
     /// approve, which Group Chats lists first (RoomApprovals.swift).
     @Published var linkedRoomApprovals: LinkedRoomApprovals?

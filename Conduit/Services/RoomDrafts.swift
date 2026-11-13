@@ -418,7 +418,16 @@ extension AppState {
     /// (a draft's sheet, which reads them every few seconds). A read that
     /// fails keeps what was read last, and one that a sign-out or another
     /// dashboard overtook is dropped, as the room list's is.
-    func refreshLinkedRoomDrafts(readingPeople: Bool = true) async {
+    func refreshLinkedRoomDrafts(readingPeople: Bool = true, since: Date? = nil) async {
+        guard canInviteLinkedPeople, groupChatPhase == .available, isConnected else { return }
+        // One at a time per kind (issue 2359).
+        _ = await linkedRoomDraftsRead.read(key: linkedRoomListReadKey(readingPeople), since: since) { [weak self] in
+            await self?.readLinkedRoomDraftsNow(readingPeople: readingPeople)
+            return true
+        }
+    }
+
+    private func readLinkedRoomDraftsNow(readingPeople: Bool) async {
         guard canInviteLinkedPeople, groupChatPhase == .available, isConnected else { return }
         let epoch = groupRoomEpoch
         let generation = linkedRosterGeneration
