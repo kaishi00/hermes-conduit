@@ -6,8 +6,9 @@
 //  tab: the apps signed in through Nous Portal at the top
 //  (HostedAppsViews.swift), then the MCP servers on the host: the ones
 //  that are on (tested live, broken ones first), the catalog's servers to
-//  install, and the ones that are off. Each server's page tests it, signs it in, lists its tools and
-//  removes it.
+//  install, and the ones that are off. Add MCP Server writes one the
+//  catalog doesn't list. Each server's page tests it, signs it in, lists
+//  its tools and removes it.
 //
 
 import SwiftUI
@@ -20,6 +21,9 @@ struct CapabilityConnectorsTab: View {
     @State private var installing: ConnectorCatalogEntry?
     @State private var actionError: String?
     @State private var hostedApps = HostedAppsModel()
+    @State private var adding = false
+    /// A server just added: its page opens, to test or sign in.
+    @State private var opened: String?
 
     private var states: [String: ConnectorState] {
         Dictionary(store.servers.map { server in
@@ -37,6 +41,9 @@ struct CapabilityConnectorsTab: View {
         )
         CapabilityTabScroll(refresh: { await reload(force: true) }) {
             HostedAppsSection(model: hostedApps, query: query)
+            if store.connectorsLoaded || store.showsKept.contains(.connectors) {
+                addServerButton
+            }
             if !store.connectorsLoaded && !store.showsKept.contains(.connectors) {
                 ProgressView()
                     .frame(maxWidth: .infinity)
@@ -54,7 +61,7 @@ struct CapabilityConnectorsTab: View {
                     title: query.isEmpty ? AppLocalization.string("No connectors yet", table: .bots) : AppLocalization.string("No matching connectors", table: .bots),
                     symbol: "point.3.connected.trianglepath.dotted",
                     message: query.isEmpty
-                        ? AppLocalization.string("Ask Hermes to add an MCP server, or install one from the catalog when it lists some.", table: .bots)
+                        ? AppLocalization.string("Add an MCP server above, or install one from the catalog when it lists some.", table: .bots)
                         : AppLocalization.string("Nothing matches “\(query)”.")
                 )
             } else {
@@ -117,6 +124,54 @@ struct CapabilityConnectorsTab: View {
             ConnectorInstallSheet(entry: entry) { env in
                 Task { await store.installConnector(entry, env: env) }
             }
+        }
+        .sheet(isPresented: $adding) { addSheet }
+        .navigationDestination(item: $opened) { name in
+            ConnectorDetailPage(name: name, store: store)
+                .v2TabBarClearance()
+        }
+    }
+
+    /// Writes go to Hermes' own list, never over the kept one, and need
+    /// the gateway, where Hermes adds servers.
+    private var canAddServer: Bool {
+        appState.isConnected && appState.client != nil
+            && store.serves(appState.currentCapabilitiesOwner)
+            && !store.showsKept.contains(.connectors)
+    }
+
+    private var addServerButton: some View {
+        Button {
+            Haptics.selection()
+            actionError = nil
+            adding = true
+        } label: {
+            Label(AppLocalization.string("Add MCP Server", table: .bots), systemImage: "plus")
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 6)
+                .frame(minHeight: 44)
+        }
+        .disabled(!canAddServer)
+        .conduitGlassControl(cornerRadius: 16, tint: .conduitAura.opacity(0.12))
+    }
+
+    /// Add MCP Server for the profile and dashboard showing when it opened:
+    /// after a switch it writes nothing.
+    private var addSheet: some View {
+        let owner = appState.currentCapabilitiesOwner
+        let generation = store.generation
+        let profile = store.profile
+        return ConnectorAddSheet(profileName: appState.profileDisplayName(profile)) { name, entry, bearerToken in
+            guard store.generation == generation, store.serves(owner),
+                  appState.currentCapabilitiesOwner == owner else {
+                throw CapabilitiesStoreError.profileChanged
+            }
+            _ = try await appState.addCustomMcpServer(profile: profile, name: name, entry: entry, bearerToken: bearerToken)
+            // Hermes' list brings it before its page opens.
+            await store.serverAdded(name, entry: entry, generation: generation)
+        } onAdded: { name in
+            guard store.generation == generation else { return }
+            opened = name
         }
     }
 
@@ -881,7 +936,13 @@ struct ConnectorEditSheet: View {
                         .buttonStyle(.settings)
                     }
                 } else if let edit = Binding($edit) {
-                    content(edit)
+                    ConnectorEntryForm(
+                        edit: edit,
+                        showingJSON: $showingJSON,
+                        problem: $problem,
+                        auth: auth,
+                        profileName: profileName
+                    )
                 } else {
                     HStack(spacing: 8) {
                         ProgressView().controlSize(.small)
@@ -915,91 +976,6 @@ struct ConnectorEditSheet: View {
         }
     }
 
-    @ViewBuilder
-    private func content(_ edit: Binding<ConnectorServerEdit>) -> some View {
-        ConduitSettingsSection(title: AppLocalization.string("Name"), symbol: "server.rack", tint: .conduitAccent) {
-            Picker(selection: Binding(
-                get: { showingJSON },
-                set: { toJSON in switchView(toJSON: toJSON) }
-            )) {
-                Text("Settings").tag(false)
-                Text(verbatim: "JSON").tag(true)
-            } label: {
-                EmptyView()
-            }
-            .pickerStyle(.segmented)
-            .labelsHidden()
-            .accessibilityLabel(Text("Edit as"))
-            TextField(AppLocalization.string("Name"), text: edit.name)
-                .textFieldStyle(.roundedBorder)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-            Text(verbatim: AppLocalization.string("Saved to \(profileName)'s config on your host. Changes apply to new sessions.", table: .bots))
-                .settingsCaption()
-            if edit.wrappedValue.renameSignsOut(auth: auth) {
-                Text("A new name signs it out. Sign in again after saving.")
-                    .settingsCaption()
-            }
-        }
-        if showingJSON {
-            ConduitSettingsSection(title: SettingsNames.json, symbol: "curlybraces", tint: .purple) {
-                TextEditor(text: edit.json)
-                    .scaledFont(.footnote.monospaced())
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .frame(minHeight: 240)
-                    .settingsEditorBox()
-                    .accessibilityLabel(Text(verbatim: "JSON"))
-                Button(AppLocalization.string("Format", table: .bots)) {
-                    do {
-                        try edit.wrappedValue.formatJSON()
-                        problem = nil
-                    } catch {
-                        problem = UserFacingError.message(for: error)
-                    }
-                }
-                .buttonStyle(.settings)
-                Text("Keys Hermes saved for this server stay in .env on your host. The JSON shows only their names.")
-                    .settingsCaption()
-            }
-        } else if edit.wrappedValue.isRemote {
-            ConduitSettingsSection(title: AppLocalization.string("Address"), symbol: "link", tint: .blue) {
-                TextField(AppLocalization.string("Address"), text: edit.url)
-                    .textFieldStyle(.roundedBorder)
-                    .keyboardType(.URL)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                Text("Headers, keys and the rest stay as they are. Change them in JSON.")
-                    .settingsCaption()
-            }
-        } else {
-            ConduitSettingsSection(title: AppLocalization.string("Command"), symbol: "terminal", tint: .orange) {
-                TextField(AppLocalization.string("Command"), text: edit.command)
-                    .textFieldStyle(.roundedBorder)
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-            }
-            ConduitSettingsSection(title: AppLocalization.string("Arguments"), symbol: "list.bullet", tint: .orange) {
-                TextEditor(text: edit.arguments)
-                    .scaledFont(.footnote.monospaced())
-                    .textInputAutocapitalization(.never)
-                    .autocorrectionDisabled()
-                    .frame(minHeight: 88)
-                    .settingsEditorBox()
-                    .accessibilityLabel(Text("Arguments"))
-                Text("One per line. Keys, env and the rest stay as they are. Change them in JSON.")
-                    .settingsCaption()
-            }
-        }
-        if let problem {
-            Text(verbatim: problem)
-                .scaledFont(.footnote)
-                .foregroundStyle(.red)
-                .textSelection(.enabled)
-                .padding(.horizontal, 16)
-        }
-    }
-
     private func load() async {
         guard edit == nil else { return }
         do {
@@ -1008,20 +984,6 @@ struct ConnectorEditSheet: View {
             openedOn = generation
         } catch {
             loadError = UserFacingError.message(for: error)
-        }
-    }
-
-    /// The form and the JSON show the same entry; a JSON that doesn't parse
-    /// keeps the JSON open with what's wrong.
-    private func switchView(toJSON: Bool) {
-        guard var next = edit, toJSON != showingJSON else { return }
-        do {
-            if toJSON { try next.showJSON() } else { try next.showForm() }
-            edit = next
-            showingJSON = toJSON
-            problem = nil
-        } catch {
-            problem = UserFacingError.message(for: error)
         }
     }
 
@@ -1052,6 +1014,259 @@ struct ConnectorEditSheet: View {
                 problem = UserFacingError.message(for: error)
                 saving = false
             }
+        }
+    }
+}
+
+/// Add Server: an MCP server typed in rather than taken from Hermes'
+/// catalog, on the Connectors tab and Edit Bot's MCP page, with Edit
+/// Server's form and JSON. `add` has Hermes write it (`mcp.servers.add`)
+/// and throws what Hermes refused, which the sheet shows, staying open.
+/// Takes plain values (no AppState) as a sheet should.
+struct ConnectorAddSheet: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @Environment(\.dismiss) private var dismiss
+    let profileName: String
+    let add: @MainActor (_ name: String, _ entry: [String: Any], _ bearerToken: String?) async throws -> Void
+    let onAdded: (String) -> Void
+    @State private var edit = ConnectorServerEdit.newServer()
+    @State private var showingJSON = false
+    @State private var problem: String?
+    @State private var saving = false
+
+    var body: some View {
+        NavigationStack {
+            SettingsDetailContainer {
+                ConnectorEntryForm(
+                    edit: $edit,
+                    showingJSON: $showingJSON,
+                    problem: $problem,
+                    auth: nil,
+                    profileName: profileName
+                )
+            }
+            .navigationTitle(Text(verbatim: AppLocalization.string("Add MCP Server", table: .bots)))
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button(AppLocalization.string("Cancel")) { dismiss() }
+                        .disabled(saving)
+                }
+                ToolbarItem(placement: .confirmationAction) {
+                    if saving {
+                        ProgressView().controlSize(.small)
+                    } else {
+                        Button(AppLocalization.string("Add")) { save() }
+                    }
+                }
+            }
+            .interactiveDismissDisabled(saving)
+        }
+    }
+
+    private func save() {
+        problem = nil
+        let added: (name: String, entry: [String: Any], bearerToken: String?)
+        do {
+            added = try edit.added(fromJSON: showingJSON)
+        } catch {
+            problem = UserFacingError.message(for: error)
+            return
+        }
+        saving = true
+        Task {
+            do {
+                try await add(added.name, added.entry, added.bearerToken)
+                Haptics.success()
+                onAdded(added.name)
+                dismiss()
+            } catch {
+                problem = UserFacingError.message(for: error)
+                saving = false
+            }
+        }
+    }
+}
+
+/// Edit Server's and Add Server's fields: the name, then the address or
+/// the command and its arguments, or the whole entry as JSON. A new
+/// server's form also chooses how it's reached and how it signs in.
+struct ConnectorEntryForm: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @Binding var edit: ConnectorServerEdit
+    @Binding var showingJSON: Bool
+    @Binding var problem: String?
+    /// How the server being edited signs in now; nil for a new one.
+    let auth: String?
+    let profileName: String
+
+    var body: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Name"), symbol: "server.rack", tint: .conduitAccent) {
+            Picker(selection: Binding(
+                get: { showingJSON },
+                set: { toJSON in switchView(toJSON: toJSON) }
+            )) {
+                Text("Settings").tag(false)
+                Text(verbatim: "JSON").tag(true)
+            } label: {
+                EmptyView()
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityLabel(Text("Edit as"))
+            TextField(AppLocalization.string("Name"), text: $edit.name)
+                .textFieldStyle(.roundedBorder)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+            Text(verbatim: AppLocalization.string("Saved to \(profileName)'s config on your host. Changes apply to new sessions.", table: .bots))
+                .settingsCaption()
+            if edit.renameSignsOut(auth: auth) {
+                Text("A new name signs it out. Sign in again after saving.")
+                    .settingsCaption()
+            }
+        }
+        if showingJSON {
+            ConduitSettingsSection(title: SettingsNames.json, symbol: "curlybraces", tint: .purple) {
+                TextEditor(text: $edit.json)
+                    .scaledFont(.footnote.monospaced())
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                    .frame(minHeight: 240)
+                    .settingsEditorBox()
+                    .accessibilityLabel(Text(verbatim: "JSON"))
+                Button(AppLocalization.string("Format", table: .bots)) {
+                    do {
+                        try edit.formatJSON()
+                        problem = nil
+                    } catch {
+                        problem = UserFacingError.message(for: error)
+                    }
+                }
+                .buttonStyle(.settings)
+                if edit.isNew {
+                    Text("Headers here are saved in the config as written. For a token Hermes keeps in .env, use Settings.")
+                        .settingsCaption()
+                } else {
+                    Text("Keys Hermes saved for this server stay in .env on your host. The JSON shows only their names.")
+                        .settingsCaption()
+                }
+            }
+        } else {
+            if edit.isNew {
+                ConduitSettingsSection(title: AppLocalization.string("Runs", table: .bots), symbol: "point.3.connected.trianglepath.dotted", tint: .conduitAura) {
+                    Picker(selection: Binding(
+                        get: { edit.isRemote },
+                        set: { edit.setReachedByAddress($0) }
+                    )) {
+                        Text("Address").tag(true)
+                        Text("Command").tag(false)
+                    } label: {
+                        EmptyView()
+                    }
+                    .pickerStyle(.segmented)
+                    .labelsHidden()
+                    .accessibilityLabel(Text("Reached by"))
+                    if edit.isRemote {
+                        Text("A server online, reached by its address (HTTP or SSE).")
+                            .settingsCaption()
+                    } else {
+                        Text("A program Hermes starts on your host (stdio).")
+                            .settingsCaption()
+                    }
+                }
+            }
+            if edit.isRemote {
+                ConduitSettingsSection(title: AppLocalization.string("Address"), symbol: "link", tint: .blue) {
+                    TextField(AppLocalization.string("Address"), text: $edit.url, prompt: edit.isNew ? Text(verbatim: "https://example.com/mcp") : nil)
+                        .textFieldStyle(.roundedBorder)
+                        .keyboardType(.URL)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                    if !edit.isNew {
+                        Text("Headers, keys and the rest stay as they are. Change them in JSON.")
+                            .settingsCaption()
+                    }
+                }
+                if edit.isNew {
+                    signInSection
+                }
+            } else {
+                ConduitSettingsSection(title: AppLocalization.string("Command"), symbol: "terminal", tint: .orange) {
+                    TextField(AppLocalization.string("Command"), text: $edit.command, prompt: edit.isNew ? Text(verbatim: "npx") : nil)
+                        .textFieldStyle(.roundedBorder)
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                }
+                ConduitSettingsSection(title: AppLocalization.string("Arguments"), symbol: "list.bullet", tint: .orange) {
+                    TextEditor(text: $edit.arguments)
+                        .scaledFont(.footnote.monospaced())
+                        .textInputAutocapitalization(.never)
+                        .autocorrectionDisabled()
+                        .frame(minHeight: 88)
+                        .settingsEditorBox()
+                        .accessibilityLabel(Text("Arguments"))
+                    if edit.isNew {
+                        Text("One per line. Add env and the rest in JSON.")
+                            .settingsCaption()
+                    } else {
+                        Text("One per line. Keys, env and the rest stay as they are. Change them in JSON.")
+                            .settingsCaption()
+                    }
+                }
+            }
+        }
+        if let problem {
+            Text(verbatim: problem)
+                .scaledFont(.footnote)
+                .foregroundStyle(.red)
+                .textSelection(.enabled)
+                .padding(.horizontal, 16)
+        }
+    }
+
+    /// How a new server reached by address signs in: not at all, with a
+    /// bearer token Hermes keeps in .env, or with OAuth from its page.
+    private var signInSection: some View {
+        ConduitSettingsSection(title: AppLocalization.string("Sign-in", table: .bots), symbol: "key", tint: .conduitAccent) {
+            Picker(selection: $edit.signIn) {
+                Text("None").tag(ConnectorServerEdit.SignIn.none)
+                Text("Token").tag(ConnectorServerEdit.SignIn.token)
+                Text(verbatim: "OAuth").tag(ConnectorServerEdit.SignIn.oauth)
+            } label: {
+                EmptyView()
+            }
+            .pickerStyle(.segmented)
+            .labelsHidden()
+            .accessibilityLabel(Text(AppLocalization.string("Sign-in", table: .bots)))
+            switch edit.signIn {
+            case .none:
+                EmptyView()
+            case .token:
+                SecureField(AppLocalization.string("Token"), text: $edit.token)
+                    .textFieldStyle(.roundedBorder)
+                    .textInputAutocapitalization(.never)
+                    .autocorrectionDisabled()
+                Text("Sent as a bearer token. Hermes keeps it in .env on your host; it isn't shown again.")
+                    .settingsCaption()
+            case .oauth:
+                Text("Sign in from the server's page once it's added.")
+                    .settingsCaption()
+            }
+        }
+    }
+
+    /// The form and the JSON show the same entry; a JSON that doesn't parse
+    /// keeps the JSON open with what's wrong.
+    private func switchView(toJSON: Bool) {
+        guard toJSON != showingJSON else { return }
+        var next = edit
+        do {
+            if toJSON { try next.showJSON() } else { try next.showForm() }
+            edit = next
+            showingJSON = toJSON
+            problem = nil
+        } catch {
+            problem = UserFacingError.message(for: error)
         }
     }
 }

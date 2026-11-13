@@ -1052,6 +1052,34 @@ final class CapabilitiesStore {
         }
     }
 
+    /// A server Add Server just had Hermes write (`mcp.servers.add`, on the
+    /// gateway, where Edit Bot adds its servers too). Hermes' list brings
+    /// it, so a read asked before the add isn't kept after it; when that
+    /// list can't be read, the server shows from its entry, as an edited
+    /// one does. It's tested if it's on. `token` is the store's generation
+    /// when Save was pressed: after a switch nothing here changes.
+    func serverAdded(_ name: String, entry: [String: Any], generation token: Int) async {
+        guard token == generation else { return }
+        answers?.noteWrite(KeptRoute.servers)
+        answers?.noteWrite(KeptRoute.connectorCatalog)
+        probes[name] = nil
+        probeEpochs[name, default: 0] &+= 1
+        let wasKept = showsKept.contains(.connectors)
+        let mine = connectorsEpoch &+ 1
+        let reloaded = await loadConnectors()
+        guard token == generation else { return }
+        let fresh = reloaded || connectorsShownEpoch > mine
+        if !fresh || !servers.contains(where: { $0.name == name }) {
+            servers.removeAll { $0.name == name }
+            servers.append(ConnectorServer.saved(name: name, entry: entry, replacing: nil))
+        }
+        if wasKept, !showsKept.contains(.connectors) {
+            Task { await probeServers() }
+        } else if servers.first(where: { $0.name == name })?.enabled == true {
+            Task { await probe(name) }
+        }
+    }
+
     func removeServer(_ name: String) async throws {
         let token = generation
         let answers = self.answers

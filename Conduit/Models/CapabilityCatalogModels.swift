@@ -1050,6 +1050,7 @@ struct ConnectorServerEdit {
         case invalidJSON
         case gone(String)
         case changedOnHost(String)
+        case noToken
 
         var message: String {
             switch self {
@@ -1060,12 +1061,25 @@ struct ConnectorServerEdit {
             case .invalidJSON: return AppLocalization.string("That isn't valid JSON.", table: .bots)
             case .gone(let name): return AppLocalization.string("\(name) isn't in this profile's config anymore.", table: .bots)
             case .changedOnHost(let name): return AppLocalization.string("\(name) changed on your host while you were editing. Close this and edit it again.", table: .bots)
+            case .noToken: return AppLocalization.string("Paste the server's token, or choose another way to sign in.", table: .bots)
             }
         }
 
         var errorDescription: String? { message }
     }
 
+    /// How a new server reached by address signs in (Hermes' `auth`).
+    enum SignIn: String, CaseIterable, Identifiable {
+        case none
+        /// A bearer token, which Hermes keeps in the profile's .env.
+        case token
+        /// OAuth, signed in from the server's page once it's added.
+        case oauth
+
+        var id: String { rawValue }
+    }
+
+    /// Empty for a server being added.
     let originalName: String
     /// The entry as it was read, to tell whether the host changed it since.
     let loaded: [String: Any]
@@ -1075,7 +1089,13 @@ struct ConnectorServerEdit {
     /// One argument per line.
     var arguments: String
     var json: String
+    /// A new server's way of signing in; an existing one keeps its own.
+    var signIn: SignIn = .none
+    /// A new server's bearer token, sent once for Hermes to keep in the
+    /// profile's .env; the config gets only a reference to it.
+    var token = ""
     /// A server reached by address, rather than a command the host runs.
+    /// Only a new server's form can change it; an existing one's JSON can.
     private(set) var isRemote: Bool
     private var entry: [String: Any]
     /// The arguments as the form last showed them: untouched, the entry's
@@ -1093,6 +1113,20 @@ struct ConnectorServerEdit {
         arguments = Self.argumentLines(entry)
         shownArguments = arguments
         json = Self.pretty(entry)
+    }
+
+    /// A server to add, typed in rather than taken from the catalog:
+    /// blank, and reached by address until the form says otherwise.
+    static func newServer() -> ConnectorServerEdit {
+        ConnectorServerEdit(name: "", entry: [:])
+    }
+
+    var isNew: Bool { originalName.isEmpty }
+
+    /// A new server's form switches between an address and a command.
+    mutating func setReachedByAddress(_ remote: Bool) {
+        guard isNew else { return }
+        isRemote = remote
     }
 
     private static func reachedByAddress(_ entry: [String: Any]) -> Bool {
@@ -1119,15 +1153,31 @@ struct ConnectorServerEdit {
     private var trimmedName: String { name.trimmingCharacters(in: .whitespacesAndNewlines) }
 
     /// The entry with the form's fields written in, every other key kept.
-    func formEntry() throws -> [String: Any] {
+    /// A new server's form may be half filled when it moves to the JSON.
+    func formEntry(requiringTarget: Bool = true) throws -> [String: Any] {
         var next = entry
+        if isNew {
+            // One way to reach it, as Hermes asks: the other's keys go.
+            if isRemote {
+                next.removeValue(forKey: "command")
+                next.removeValue(forKey: "args")
+                if signIn == .oauth {
+                    next["auth"] = "oauth"
+                } else if next["auth"] as? String == "oauth" {
+                    next.removeValue(forKey: "auth")
+                }
+            } else {
+                next.removeValue(forKey: "url")
+                if next["auth"] as? String == "oauth" { next.removeValue(forKey: "auth") }
+            }
+        }
         if isRemote {
             let address = url.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !address.isEmpty else { throw Problem.noTarget }
+            guard !address.isEmpty || !requiringTarget else { throw Problem.noTarget }
             next["url"] = address
         } else {
             let program = command.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !program.isEmpty else { throw Problem.noTarget }
+            guard !program.isEmpty || !requiringTarget else { throw Problem.noTarget }
             next["command"] = program
             guard arguments != shownArguments else { return next }
             next["args"] = Self.editedArguments(arguments, original: entry["args"] as? [Any] ?? [])
@@ -1182,8 +1232,9 @@ struct ConnectorServerEdit {
         return args
     }
 
-    /// The JSON as an entry: one object with an address or a command.
-    func jsonEntry() throws -> [String: Any] {
+    /// The JSON as an entry: one object with an address or a command. A
+    /// new server's JSON may go back to the form before it has either.
+    func jsonEntry(requiringTarget: Bool = true) throws -> [String: Any] {
         guard let data = json.data(using: .utf8),
               let parsed = try? JSONSerialization.jsonObject(with: data, options: [.fragmentsAllowed]) else {
             throw Problem.invalidJSON
@@ -1191,23 +1242,30 @@ struct ConnectorServerEdit {
         guard let object = parsed as? [String: Any] else { throw Problem.notAnObject }
         let hasURL = !((object["url"] as? String) ?? "").trimmingCharacters(in: .whitespaces).isEmpty
         let hasCommand = !((object["command"] as? String) ?? "").trimmingCharacters(in: .whitespaces).isEmpty
-        guard hasURL || hasCommand else { throw Problem.noTarget }
+        guard hasURL || hasCommand || !requiringTarget else { throw Problem.noTarget }
         return object
     }
 
     /// Moving from the form to the JSON: the JSON shows the form's changes.
     mutating func showJSON() throws {
-        let next = try formEntry()
+        let next = try formEntry(requiringTarget: !isNew)
         entry = next
         json = Self.pretty(next)
     }
 
     /// Moving from the JSON to the form: the form shows what the JSON says.
     mutating func showForm() throws {
-        let next = try jsonEntry()
+        let next = try jsonEntry(requiringTarget: !isNew)
         entry = next
         // The JSON may have moved it between an address and a command.
         isRemote = Self.reachedByAddress(next)
+        if isNew {
+            if next["auth"] as? String == "oauth" {
+                signIn = .oauth
+            } else if signIn == .oauth {
+                signIn = .none
+            }
+        }
         url = next["url"] as? String ?? ""
         command = next["command"] as? String ?? ""
         arguments = Self.argumentLines(next)
@@ -1217,13 +1275,25 @@ struct ConnectorServerEdit {
 
     /// Re-indents the JSON, when it parses.
     mutating func formatJSON() throws {
-        json = Self.pretty(try jsonEntry())
+        json = Self.pretty(try jsonEntry(requiringTarget: !isNew))
     }
 
     /// The name and entry to save, from the form or the JSON.
     func saved(fromJSON: Bool) throws -> (name: String, entry: [String: Any]) {
         guard !trimmedName.isEmpty else { throw Problem.noName }
         return (trimmedName, fromJSON ? try jsonEntry() : try formEntry())
+    }
+
+    /// A new server's name, entry and bearer token, from the form or the
+    /// JSON. The token goes only from the form, for a server reached by
+    /// address that signs in with one; the JSON's headers are saved as
+    /// written.
+    func added(fromJSON: Bool) throws -> (name: String, entry: [String: Any], bearerToken: String?) {
+        let saved = try saved(fromJSON: fromJSON)
+        guard !fromJSON, isRemote, signIn == .token else { return (saved.name, saved.entry, nil) }
+        let typed = token.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !typed.isEmpty else { throw Problem.noToken }
+        return (saved.name, saved.entry, typed)
     }
 
     /// Whether saving signs an OAuth server out: Hermes keeps its tokens

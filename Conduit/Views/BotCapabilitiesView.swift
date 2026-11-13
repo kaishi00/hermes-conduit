@@ -156,7 +156,8 @@ struct BotToolsView: View {
 /// The bot editor's MCP page: switches over the profile's
 /// `profiles.describe` servers (upstream `profile-config.tsx`). Edit Bot
 /// also adds servers from Hermes' MCP catalog, with their keys or an OAuth
-/// sign-in (upstream `mcp-setup.tsx`). Skills and Tools are pages of their
+/// sign-in (upstream `mcp-setup.tsx`), and ones typed in with Add MCP
+/// Server, the Connectors tab's sheet. Skills and Tools are pages of their
 /// own beside it (BotSkillsView, BotToolsView).
 struct BotMcpServersView: View {
     @Binding var capabilities: BotCapabilities
@@ -181,6 +182,9 @@ struct BotMcpServersView: View {
     @State private var mcpBusy: String?
     @State private var mcpNotice: MCPNotice?
     @State private var keysEntry: BotMcpCatalogEntry?
+    @State private var addingServer = false
+    /// Whether the server Add MCP Server just wrote signs in with OAuth.
+    @State private var addedSignsIn = false
     @State private var browser: BotMcpBrowserPage?
     @State private var signInTask: Task<Void, Never>?
 
@@ -211,9 +215,19 @@ struct BotMcpServersView: View {
                         }
                     }
                 }
+                if mcpProfile != nil, mcpSetup != nil {
+                    Button {
+                        mcpNotice = nil
+                        addingServer = true
+                    } label: {
+                        Label(AppLocalization.string("Add MCP Server", table: .bots), systemImage: "plus")
+                    }
+                    .buttonStyle(.settings)
+                    .disabled(mcpBusy != nil || !canSetUpServers)
+                }
                 Group {
                     if mcpProfile == nil {
-                        Text(AppLocalization.string("Add servers from Hermes' catalog in Edit Bot, once the bot is made.", table: .bots))
+                        Text(AppLocalization.string("Add MCP servers in Edit Bot, once the bot is made.", table: .bots))
                     } else if mcpSetup == nil && mcpSetupRead {
                         Text(AppLocalization.string("Add new MCP servers from Hermes on your computer.", table: .bots))
                     } else if mcpSetupKept && mcpSetupRead {
@@ -260,6 +274,7 @@ struct BotMcpServersView: View {
         .sheet(item: $keysEntry) { entry in
             BotMcpKeysSheet(entry: entry) { keys in add(entry, keys: keys) }
         }
+        .sheet(isPresented: $addingServer) { addServerSheet }
         .fullScreenCover(item: $browser) { page in
             BotMcpBrowserView(url: page.url) {
                 browser = nil
@@ -356,26 +371,53 @@ struct BotMcpServersView: View {
         Task {
             let outcome = await appState.addBotMcpServer(profile: mcpProfile, entry: entry, keys: keys)
             mcpBusy = nil
-            if outcome.wasAdded, !capabilities.mcpServers.contains(where: { $0.name == entry.name }) {
-                // Hermes turns a new server on; the list says so.
-                capabilities.mcpServers.append(
-                    BotCapability(name: entry.name, description: entry.description, enabled: true)
-                )
+            report(outcome, name: entry.name, description: entry.description)
+        }
+    }
+
+    /// Add MCP Server for this bot's profile: the sheet shows what Hermes
+    /// refused; once Hermes wrote it, the page signs it in or tests it.
+    private var addServerSheet: some View {
+        let profile = mcpProfile ?? ""
+        return ConnectorAddSheet(profileName: appState.profileDisplayName(profile)) { name, entry, bearerToken in
+            addedSignsIn = try await appState.addCustomMcpServer(
+                profile: profile, name: name, entry: entry, bearerToken: bearerToken
+            )
+        } onAdded: { name in
+            if addedSignsIn {
+                report(.needsSignIn, name: name, description: "")
+                return
             }
-            switch outcome {
-            case .ready:
-                Haptics.success()
-                mcpNotice = MCPNotice(text: AppLocalization.string("Added \(entry.name).", table: .bots), isError: false)
-            case .needsSignIn:
-                mcpSetup?.servers[entry.name] = BotMcpServerSummary(name: entry.name, auth: "oauth", oauthTokensPresent: false)
-                signIn(entry.name)
-            case .addedWithProblem(let message):
-                Haptics.warning()
-                mcpNotice = MCPNotice(text: AppLocalization.string("Added \(entry.name), but it did not connect: \(message)", table: .bots), isError: true)
-            case .failed(let message):
-                Haptics.warning()
-                mcpNotice = MCPNotice(text: message, isError: true)
+            mcpBusy = name
+            Task {
+                let outcome = await appState.testAddedBotMcpServer(profile: profile, name: name)
+                mcpBusy = nil
+                report(outcome, name: name, description: "")
             }
+        }
+    }
+
+    /// What an add came to: the server on in the list (Hermes turns a new
+    /// server on), then its sign-in, or what its test said.
+    private func report(_ outcome: BotMcpInstallOutcome, name: String, description: String) {
+        if outcome.wasAdded, !capabilities.mcpServers.contains(where: { $0.name == name }) {
+            capabilities.mcpServers.append(
+                BotCapability(name: name, description: description, enabled: true)
+            )
+        }
+        switch outcome {
+        case .ready:
+            Haptics.success()
+            mcpNotice = MCPNotice(text: AppLocalization.string("Added \(name).", table: .bots), isError: false)
+        case .needsSignIn:
+            mcpSetup?.servers[name] = BotMcpServerSummary(name: name, auth: "oauth", oauthTokensPresent: false)
+            signIn(name)
+        case .addedWithProblem(let message):
+            Haptics.warning()
+            mcpNotice = MCPNotice(text: AppLocalization.string("Added \(name), but it did not connect: \(message)", table: .bots), isError: true)
+        case .failed(let message):
+            Haptics.warning()
+            mcpNotice = MCPNotice(text: message, isError: true)
         }
     }
 

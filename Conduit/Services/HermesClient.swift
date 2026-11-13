@@ -2891,6 +2891,19 @@ final class HermesClient: ObservableObject {
         }
     }
 
+    /// `mcp.servers.add` from an entry typed in Conduit, not the catalog
+    /// (Add Server on the Connectors tab and Edit Bot's MCP page). Hermes
+    /// checks the entry, refuses a name already taken, and keeps a bearer
+    /// token in the profile's .env, writing only a reference to it into
+    /// the config.
+    func addMcpServer(profile: String, name: String, config: [String: Any], bearerToken: String?) async throws -> AnyCodable {
+        var params: [String: Any] = ["profile": profile, "name": name, "config": config]
+        if let bearerToken { params["bearer_token"] = bearerToken }
+        return try await ProfileConfigWriteQueue.runThrowing { [self] in
+            try await rpc("mcp.servers.add", params: params, timeout: 60, scoped: false)
+        }
+    }
+
     /// `mcp.servers.set_api_key`: Hermes keeps the value in the profile's
     /// .env; the config only references it.
     func setBotMcpKey(profile: String, name: String, envVar: String, value: String) async throws {
