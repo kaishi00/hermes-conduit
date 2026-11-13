@@ -2279,15 +2279,20 @@ extension AppStateMultiDashboardTests {
 
         // Hermes' own listing has no dates: a refresh can't say the file is
         // unchanged, so it's read again.
+        // A link's read from before the refresh goes with it: it may hold
+        // text from before the change the refresh follows.
+        explorer.prefetchText(files[1].path, profile: appState.workspaceProfile)
+        try await held.answer(["text": "notes", "language": "markdown"], toPathEnding: "/api/fs/read-text")
         let refresh = Task { await explorer.refresh() }
         try await held.answer(["entries": files.map { ["name": $0.name, "path": $0.path, "isDirectory": false] }],
                               toPathEnding: "/api/fs/list")
         await refresh.value
+        XCTAssertFalse(explorer.keepsPrefetchedText, "a link's read from before a refresh isn't taken up")
         XCTAssertFalse(explorer.keepsPreview(of: files[1].path))
         let viewing = Task { await explorer.view(files[1]) }
         try await held.answer(["text": "notes again", "language": "markdown"], toPathEnding: "/api/fs/read-text")
         await viewing.value
-        XCTAssertEqual(reads(), 4)
+        XCTAssertEqual(reads(), 5)
         XCTAssertEqual(explorer.preview?.text, "notes again")
 
         // An upload of several files changes with no refresh each, then
