@@ -50,6 +50,11 @@ struct PhoneSettingsPage: View {
     private var showsShortcuts: Bool {
         appState.notifierPlugin.reports(AppState.phoneShortcutsCapability) || choices.shortcuts
     }
+    /// Only with the status or Focus shared, and on a plugin that reads it.
+    private var showsTurnStatus: Bool {
+        (choices.status || choices.focus)
+            && (appState.notifierPlugin.reports(AppState.phoneTurnStatusCapability) || choices.turnStatus)
+    }
     private var showsPhotos: Bool {
         appState.notifierPlugin.reports(AppState.phonePhotosCapability) || choices.photos
     }
@@ -290,6 +295,15 @@ struct PhoneSettingsPage: View {
             Text("Battery and charging, whether CarPlay or headphones are connected, Wi-Fi or cellular, and whether you're walking, driving or still. Only the latest state is kept.")
                 .scaledFont(.caption)
                 .foregroundStyle(.secondary)
+            if showsTurnStatus {
+                Toggle(isOn: binding(\.turnStatus)) {
+                    Text(AppLocalization.string("With each message", table: .phone))
+                }
+                .accessibilityIdentifier("settings.phone.turn-status")
+                Text(AppLocalization.string("Each message you send from Conduit tells Hermes your battery, Low Power Mode, CarPlay and Focus, as shared above, so it can answer to fit.", table: .phone))
+                    .scaledFont(.caption)
+                    .foregroundStyle(.secondary)
+            }
         }
     }
 
