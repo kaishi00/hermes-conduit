@@ -382,7 +382,10 @@ jobs:
 
       - name: Build and boot the simulator in parallel
         env:
-          BUILD_TIMEOUT_SECS: ${{ steps.cache.outputs.cache-matched-key && '1200' || '1800' }}
+          # Always 1800: a restored slim cache is often a day of main behind,
+          # and on Xcode 27 beside the other nightly jobs a cached build took
+          # 1213 s and another outran 1200 s (2026-11-13, #2331's Nightly).
+          BUILD_TIMEOUT_SECS: "1800"
           BUILD_CACHE: ${{ steps.cache.outputs.cache-matched-key || format('none saved under {0}', steps.cache-key.outputs.prefix) }}
         run: bash scripts/ci-hosted-build.sh
 
