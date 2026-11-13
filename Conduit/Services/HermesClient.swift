@@ -820,8 +820,16 @@ struct SessionRewindReceipt: Equatable {
     /// the turn it went back to, and a notice whose first line counts the
     /// rows ("↶ Undid 2 turns (4 message(s)). …") and whose next lines, when
     /// there are any, name the files those turns changed.
+    /// Any other answer took nothing back that Conduit can tell: it reads
+    /// as nothing rewound, so /retry never sends the turn again on a guess.
     init(undoPrefill result: AnyCodable) {
         let object = result.objectValue ?? [:]
+        guard object["type"]?.stringValue == "prefill" else {
+            rewoundCount = 0
+            text = nil
+            filesLine = nil
+            return
+        }
         let lines = (object["notice"]?.stringValue ?? "")
             .split(separator: "\n", omittingEmptySubsequences: false)
             .map(String.init)

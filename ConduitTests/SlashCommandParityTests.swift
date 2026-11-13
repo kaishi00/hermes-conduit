@@ -230,6 +230,26 @@ extension ComposerDraftStoreTests {
         )
     }
 
+    func testDashboardUndoAnswerReadsAsARewindOnlyWhenItIsAPrefill() {
+        XCTAssertEqual(
+            SessionRewindReceipt(undoPrefill: .object([
+                "type": .string("prefill"),
+                "message": .string("two"),
+                "notice": .string("↶ Undid 2 turns (4 message(s)). Edit and resubmit, or send a new message.")
+            ])),
+            SessionRewindReceipt(rewoundCount: 4, text: "two")
+        )
+        XCTAssertEqual(
+            SessionRewindReceipt(undoPrefill: .object(["type": .string("exec"), "output": .string("done")])),
+            SessionRewindReceipt(rewoundCount: 0, text: nil),
+            "an answer that isn't /undo's prefill took nothing back Conduit can tell"
+        )
+        XCTAssertEqual(
+            SessionRewindSnapshot(resume: ["session_id": .string("4c124a08"), "messages": .array([])]).runtimeSessionID,
+            "4c124a08"
+        )
+    }
+
     func testRewindRefusalsReadAsWords() {
         XCTAssertEqual(
             AppState.rewindFailureNote(command: "undo", error: RpcError(code: 4009, message: "session_busy", reason: "session_busy")),

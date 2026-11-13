@@ -546,6 +546,12 @@ extension AppState {
             appendSlashOutput(AppLocalization.string("Wait for the reply to finish, or /stop it, then try again."), context: context)
             return true
         }
+        guard !isRewindingTurns else {
+            appendSlashOutput(AppLocalization.string("Still taking a message back. Try again in a moment."), context: context)
+            return true
+        }
+        isRewindingTurns = true
+        defer { isRewindingTurns = false }
         let nothingToRewind = retry
             ? AppLocalization.string("There's no message to retry.")
             : editing != nil
