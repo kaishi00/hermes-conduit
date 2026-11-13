@@ -909,6 +909,40 @@ extension KanbanTests {
         XCTAssertTrue(store.probing.isEmpty)
     }
 
+    /// A profile switch while the first tests run starts none of the rest,
+    /// and a test picked before it sends nothing: the names were the old
+    /// profile's (#2387).
+    func testAProfileSwitchStartsNoMoreOfTheOldProfilesTests() async {
+        let names = ["a", "b", "c", "d", "e"]
+        var responses: [String: [String: Any]] = [
+            "/api/mcp/servers": ["servers": names.map { ["name": $0, "transport": "http", "url": "https://\($0)", "enabled": true] }],
+            "/api/mcp/catalog": ["entries": [[String: Any]]()],
+        ]
+        for name in names { responses["/api/mcp/servers/\(name)/test"] = ["ok": true] }
+        let requester = CapabilityMockRequester(responses: responses)
+        let store = CapabilitiesStore()
+        store.configure(requester: requester, profile: "default")
+        await store.loadConnectors()
+        let picked = store.generation
+        var held: [CheckedContinuation<Void, Never>] = []
+        requester.beforeAnswering = { path in
+            guard path.hasSuffix("/test") else { return }
+            await withCheckedContinuation { held.append($0) }
+        }
+
+        let list = Task { await store.probeServers() }
+        while held.count < 3 { await Task.yield() }
+        store.configure(requester: requester, profile: "work")
+        held.forEach { $0.resume() }
+        await list.value
+        XCTAssertEqual(requester.calls.filter { $0.path.hasSuffix("/test") }.count, 3)
+
+        requester.beforeAnswering = nil
+        await store.probe("d", generation: picked)
+        XCTAssertEqual(requester.calls.filter { $0.path.hasSuffix("/test") }.count, 3, "a stale test is never sent")
+        XCTAssertFalse(requester.calls.contains { $0.path.contains("profile=work") && $0.path.hasSuffix("/test") })
+    }
+
     /// A test cancelled under it (the dashboard gone) isn't a failed test:
     /// nothing is recorded, so it's tested again.
     func testACancelledConnectorTestRecordsNothing() async {

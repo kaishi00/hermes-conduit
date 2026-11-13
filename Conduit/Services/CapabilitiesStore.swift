@@ -931,7 +931,9 @@ final class CapabilitiesStore {
         await readKeptServersAgain()
         if enabled {
             // Unless reading the kept list again just tested it.
-            if (probes[name]?.checkedAt ?? .distantPast) < kept { await probe(name) }
+            // The re-read may have outlasted a switch: the test then goes
+            // nowhere.
+            if (probes[name]?.checkedAt ?? .distantPast) < kept { await probe(name, generation: token) }
         } else {
             probes[name] = nil
         }
@@ -1157,7 +1159,7 @@ final class CapabilitiesStore {
                 // with them.
                 await probeServers()
             } else {
-                await probe(entry.name)
+                await probe(entry.name, generation: token)
             }
             return true
         } catch {
@@ -1213,7 +1215,7 @@ final class CapabilitiesStore {
             return
         }
         guard servers.first(where: { $0.name == name })?.enabled == true else { return }
-        await probe(name)
+        await probe(name, generation: token)
     }
 
     // MARK: Plugins
