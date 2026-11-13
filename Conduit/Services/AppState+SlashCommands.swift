@@ -551,7 +551,6 @@ extension AppState {
             return true
         }
         isRewindingTurns = true
-        defer { isRewindingTurns = false }
         let nothingToRewind = retry
             ? AppLocalization.string("There's no message to retry.")
             : editing != nil
@@ -575,6 +574,10 @@ extension AppState {
         // build 259). On the gateway's own listener the two are the same.
         let storedSessionID = context.durableSessionID ?? sessionID
         do {
+            // From the snapshot to the rewind, nothing else is sent in this
+            // app (composerIsEnabled, sendMessage): a send between them
+            // would be the turn the dashboard's `/undo N` counted.
+            defer { isRewindingTurns = false }
             let snapshot: SessionRewindSnapshot
             if let rewindSnapshot = chatResumeLifecycleOperations.rewindSnapshot {
                 snapshot = try await rewindSnapshot(client, storedSessionID)

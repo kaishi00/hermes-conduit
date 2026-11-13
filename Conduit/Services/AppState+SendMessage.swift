@@ -60,6 +60,9 @@ extension AppState {
         let submissionContext = context ?? composerSubmissionContext()
         guard isCurrentComposerSubmission(submissionContext) else { return false }
         guard let client, let sessionId = activeSessionId else { return false }
+        // A rewind counting this chat's turns (rewindLastTurns): a message
+        // now would be the turn it takes back.
+        guard !isRewindingTurns else { return false }
         // Images staged for a Queue this Hermes refuses would ride on the
         // next turn instead, so they never go up.
         if queued, !attachments.isEmpty, client.refusesQueuedPrompts {

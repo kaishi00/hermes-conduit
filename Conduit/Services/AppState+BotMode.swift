@@ -423,7 +423,7 @@ extension AppState {
     /// could be delivered, and it is not the live conversation. Nor does a
     /// New Chat Hermes hasn't created yet.
     var composerIsEnabled: Bool {
-        turnState.acceptsComposerActions && offlineChatPresentation == nil && !showsPendingNewChat
+        turnState.acceptsComposerActions && offlineChatPresentation == nil && !showsPendingNewChat && !isRewindingTurns
     }
 
     func composerAction(hasText: Bool, hasAttachments: Bool) -> ComposerAction {

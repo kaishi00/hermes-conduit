@@ -1971,6 +1971,33 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(harness.appState.composerPrefillText, "first ask")
     }
 
+    /// While a rewind counts the chat's turns, nothing else goes into it:
+    /// a message then would be the turn `hermes dashboard`'s `/undo N` takes
+    /// back.
+    func testNothingIsSentWhileARewindCountsTheChatsTurns() async throws {
+        var sends = 0
+        var operations = ChatResumeLifecycleOperations()
+        operations.refreshContext = { _, _ in }
+        operations.sendPrompt = { _, _, _ in
+            sends += 1
+            return .accepted
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+        harness.appState.isRewindingTurns = true
+
+        XCTAssertFalse(harness.appState.composerIsEnabled)
+        let submitted = await harness.appState.submitComposer(text: "hello")
+        let sent = await harness.appState.sendMessage("hello")
+
+        XCTAssertFalse(submitted)
+        XCTAssertFalse(sent)
+        XCTAssertEqual(sends, 0)
+    }
+
     func testUndoNamesTheFilesLineHermesUndoAnsweredWith() async throws {
         var listed = 0
         var operations = ChatResumeLifecycleOperations(

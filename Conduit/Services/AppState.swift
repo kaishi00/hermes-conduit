@@ -585,11 +585,12 @@ final class AppState: ObservableObject {
     /// being prepared, so the chat never appears to jump to an empty canvas.
     @Published var isOpeningNotificationSession = false
     @Published var isBranchingChat = false
-    /// An Edit and resend, /undo or /retry taking turns back. A second one
-    /// waits for it: it would count its turns in a history the first is
-    /// changing, and `hermes dashboard`'s `/undo N` has no fence to refuse
+    /// An Edit and resend, /undo or /retry reading the chat's turns and
+    /// taking them back. Another rewind is refused and the composer and
+    /// sends wait meanwhile: they would change the history its count was
+    /// read from, and `hermes dashboard`'s `/undo N` has no fence to refuse
     /// a stale count.
-    var isRewindingTurns = false
+    @Published var isRewindingTurns = false
     /// Runtime ids of conversations with a dedicated `session.compress` RPC
     /// in flight. Manual compression is LLM-bound and can take minutes, so
     /// the chat shows a small "Compressing…" affordance while the ACTIVE
