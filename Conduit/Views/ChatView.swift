@@ -1394,7 +1394,7 @@ struct MessageBubble: View, Equatable {
             if message.isSteer {
                 SteerBubble(message: message)
             } else if message.isContentRefused {
-                ContentRefusedBubble(message: message)
+                ContentRefusedBubble(message: message, gatewayResolver: gatewayResolver)
             } else if let brief = WorkstreamBrief.parse(message.content) {
                 // A workstream's brief from the bot coordinating it: a card,
                 // not something the user typed (Bot workstreams).
@@ -1877,6 +1877,7 @@ struct SteerBubble: View {
 /// and its words can still be selected and copied.
 struct ContentRefusedBubble: View {
     let message: ChatMessage
+    let gatewayResolver: GatewayMediaDataURLResolver?
     @Environment(\.sizeCategory) private var sizeCategory
     @Environment(\.chatTextSize) private var chatTextSize
 
@@ -1886,6 +1887,7 @@ struct ContentRefusedBubble: View {
             VStack(alignment: .trailing, spacing: 4) {
                 ContentRefusedMessageContent(
                     message: message,
+                    gatewayResolver: gatewayResolver,
                     sizeCategory: sizeCategory,
                     chatTextSize: chatTextSize
                 )
@@ -1902,10 +1904,18 @@ struct ContentRefusedBubble: View {
 /// UserMessageContent so streaming publishes cannot re-evaluate it.
 struct ContentRefusedMessageContent: View, Equatable {
     let message: ChatMessage
+    let gatewayResolver: GatewayMediaDataURLResolver?
     /// Explicit Dynamic Type input — see SettledAssistantMessageContent.
     let sizeCategory: ContentSizeCategory
     /// Explicit chat text-size input — see UserMessageContent.
     let chatTextSize: ChatTextAppearance
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        lhs.message == rhs.message
+            && lhs.gatewayResolver === rhs.gatewayResolver
+            && lhs.sizeCategory == rhs.sizeCategory
+            && lhs.chatTextSize == rhs.chatTextSize
+    }
 
     /// What the row says under the user's words. Conduit's own words, in
     /// the app's language, not the English notice Hermes stores on the row.
@@ -1920,6 +1930,9 @@ struct ContentRefusedMessageContent: View, Equatable {
                 MarkdownText(source: words)
                     .opacity(0.6)
             }
+            // The pictures and files it held, as a sent message shows them.
+            UserAttachmentPreviews(message: message, gatewayResolver: gatewayResolver, onAccent: false)
+                .opacity(0.6)
             Label {
                 Text(Self.notice)
             } icon: {
@@ -2025,31 +2038,8 @@ struct UserMessageContent: View, Equatable {
         return equal
     }
 
-    /// One picture shows whole; two or more go side by side as tiles
-    /// (issue 1801), then the files.
-    @ViewBuilder private var attachmentViews: some View {
-        if let attachments = message.attachments {
-            let pictures = attachments.filter { $0.kind == .image }
-            if pictures.count > 1 {
-                let shown = PictureGrid.shownCount(pictures.count)
-                let more = PictureGrid.moreCount(total: pictures.count)
-                PictureGridLayout {
-                    ForEach(Array(pictures.prefix(shown).enumerated()), id: \.element.id) { index, picture in
-                        UserImageAttachmentPreview(attachment: picture, gatewayResolver: gatewayResolver, isTile: true)
-                            .modifier(PictureGridMoreBadge(more: index == shown - 1 ? more : nil))
-                    }
-                }
-            }
-            ForEach(attachments) { attachment in
-                if attachment.kind == .image {
-                    if pictures.count == 1 {
-                        UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver)
-                    }
-                } else {
-                    UserDocumentAttachmentChip(attachment: attachment, gatewayResolver: gatewayResolver)
-                }
-            }
-        }
+    private var attachmentViews: some View {
+        UserAttachmentPreviews(message: message, gatewayResolver: gatewayResolver)
     }
 
     var body: some View {
@@ -2108,6 +2098,40 @@ struct UserMessageContent: View, Equatable {
                 .strokeBorder(Color.white.opacity(0.20), lineWidth: 1)
         }
         .textSelection(.enabled)
+    }
+}
+
+/// A sent message's pictures and files: one picture shows whole; two or
+/// more go side by side as tiles (issue 1801), then the files. The user
+/// bubble draws them on the accent, a refused message's card off it.
+struct UserAttachmentPreviews: View {
+    let message: ChatMessage
+    let gatewayResolver: GatewayMediaDataURLResolver?
+    var onAccent = true
+
+    var body: some View {
+        if let attachments = message.attachments {
+            let pictures = attachments.filter { $0.kind == .image }
+            if pictures.count > 1 {
+                let shown = PictureGrid.shownCount(pictures.count)
+                let more = PictureGrid.moreCount(total: pictures.count)
+                PictureGridLayout {
+                    ForEach(Array(pictures.prefix(shown).enumerated()), id: \.element.id) { index, picture in
+                        UserImageAttachmentPreview(attachment: picture, gatewayResolver: gatewayResolver, isTile: true, onAccent: onAccent)
+                            .modifier(PictureGridMoreBadge(more: index == shown - 1 ? more : nil))
+                    }
+                }
+            }
+            ForEach(attachments) { attachment in
+                if attachment.kind == .image {
+                    if pictures.count == 1 {
+                        UserImageAttachmentPreview(attachment: attachment, gatewayResolver: gatewayResolver, onAccent: onAccent)
+                    }
+                } else {
+                    UserDocumentAttachmentChip(attachment: attachment, gatewayResolver: gatewayResolver, onAccent: onAccent)
+                }
+            }
+        }
     }
 }
 

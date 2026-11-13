@@ -1222,9 +1222,31 @@ extension AppState {
               let current = messages.first(where: { $0.id == messageId })?.approval,
               current.status == .pending || current.status == .error,
               current.asksSameAs(shown) else { return }
+        // The chat the card is in: the user may open another while the
+        // steer goes, and both the rejection and any words kept are its.
+        let draftKey = durableComposerDraftKeyOnScreen
+        let dashboardID = activeDashboardID
+        let authorName = conversationAgentIdentity.name
+        let client = self.client
         let steered = await steer(words, surfacesFailure: false)
-        await respondToApproval(messageId: messageId, choice: "deny", shown: shown)
-        if !steered { prefillComposer(words) }
+        if messages.contains(where: { $0.id == messageId }) {
+            await respondToApproval(messageId: messageId, choice: "deny", shown: shown)
+        } else if let client, self.client === client, let requestId = shown.requestId {
+            // Its chat was left meanwhile: the card isn't on screen to
+            // answer, so the rejection goes straight to the request it
+            // named. A card that names none stays waiting, answered when
+            // its chat opens again, as a session-wide answer could reach
+            // another request.
+            _ = try? await client.respondToApprovalOutcome(
+                sessionId: shown.sessionId,
+                requestId: requestId,
+                choice: "deny",
+                profile: presentationProfile(for: shown.sessionId)
+            )
+        }
+        if !steered {
+            putRewoundTextBack(words, key: draftKey, dashboardID: dashboardID, authorName: authorName)
+        }
     }
 
     func respondToApproval(messageId: String, choice: String, shown: ApprovalActivity? = nil) async {

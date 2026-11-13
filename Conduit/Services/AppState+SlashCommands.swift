@@ -615,6 +615,13 @@ extension AppState {
             return true
         }
         let text = receipt.text ?? target.text ?? ""
+        // /undo never touches files: Hermes names the files the undone
+        // turns changed and the /rollback that restores them. Read now,
+        // before the chat opens again, so no wait comes between that and
+        // the words going back.
+        let filesLine = retry || editing != nil
+            ? nil
+            : await undoRollbackHint(client: client, sessionID: sessionID, target: target, profile: profile)
         // Taken back on Hermes: Edit and resend's words go back now, into
         // their own chat's draft, whatever happens to the reopen below.
         if editing != nil, !text.isEmpty {
@@ -680,9 +687,6 @@ extension AppState {
             )
             return true
         }
-        // /undo never touches files: Hermes names the files the undone
-        // turns changed and the /rollback that restores them.
-        let filesLine = await undoRollbackHint(client: client, sessionID: sessionID, target: target, profile: profile)
         func withFilesLine(_ note: String) -> String {
             filesLine.map { "\(note)\n\n\($0)" } ?? note
         }
@@ -863,7 +867,7 @@ extension AppState {
     /// there, a quoted reply as its "Replying to" chip. The composer puts
     /// them in its field when that chat is on screen, else into the chat's
     /// stored draft, as for a send that didn't go.
-    private func putRewoundTextBack(_ text: String, key: ComposerDraftKey, dashboardID: UUID?, authorName: String) {
+    func putRewoundTextBack(_ text: String, key: ComposerDraftKey, dashboardID: UUID?, authorName: String) {
         let reply = ReplyQuoteEnvelope.parse(text)
         let replyReference = reply.map {
             ComposerReplyReference(authorName: authorName, text: $0.quote)
