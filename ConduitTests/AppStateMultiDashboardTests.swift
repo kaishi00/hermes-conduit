@@ -2284,6 +2284,13 @@ extension AppStateMultiDashboardTests {
         XCTAssertEqual(reads(), 3)
         XCTAssertEqual(explorer.preview?.text, "notes again")
 
+        // An upload of several files changes with no refresh each, then
+        // refreshes once (issue 2355).
+        func listings() -> Int { held.sent.filter { $0.path.hasSuffix("/api/fs/list") }.count }
+        let listedBefore = listings()
+        for _ in 0..<3 { _ = await explorer.change(refreshing: false) { _, _ in } }
+        XCTAssertEqual(listings(), listedBefore, "no refresh per file")
+
         explorer.closeTab(files[1].path)
         XCTAssertFalse(explorer.keepsPreview(of: files[1].path), "a closed tab's text goes")
         explorer.close()

@@ -113,15 +113,14 @@ final class WorkspaceFilesClient {
     @MainActor
     @discardableResult
     func save(root: String, path: String, content: String, readAt: Date?) async throws -> WorkspaceEntry? {
-        var body: [String: Any] = ["root": root, "path": path, "content": content]
-        if let readAt { body["expected_mtime"] = readAt.timeIntervalSince1970 }
-        guard content.utf8.count > Self.encodedSaveBytes else { return try await change("save", body) }
         let expected = readAt?.timeIntervalSince1970
-        return try await changeEncoded("save") {
+        let body: @Sendable () -> [String: Any] = {
             var body: [String: Any] = ["root": root, "path": path, "content": content]
             if let expected { body["expected_mtime"] = expected }
             return body
         }
+        guard content.utf8.count > Self.encodedSaveBytes else { return try await change("save", body()) }
+        return try await changeEncoded("save", body)
     }
 
     /// A rename is a move within the same folder.

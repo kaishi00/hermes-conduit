@@ -119,7 +119,7 @@ struct WorkspaceCodeEditor: UIViewRepresentable {
                 if !now { try? await Task.sleep(for: .milliseconds(250)) }
                 guard !Task.isCancelled, let source = storage?.string else { return }
                 let length = (source as NSString).length
-                guard let tokens = await SyntaxHighlighter.coloredTokensAsync(in: source),
+                guard let tokens = await SyntaxHighlighter.coloredTokensDetached(in: source),
                       !Task.isCancelled, let storage, storage.length == length else { return }
                 WorkspaceCodeEditor.paint(storage, tokens: tokens)
             }

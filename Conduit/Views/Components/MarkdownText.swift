@@ -4022,10 +4022,18 @@ enum SyntaxHighlighter {
         return cancelled ? nil : tokens
     }
 
-    /// `coloredTokens` off the main actor.
-    static func coloredTokensAsync(in source: String) async -> [(range: NSRange, kind: TokenKind)]? {
-        coloredTokens(in: source)
+    /// `coloredTokens` on a detached task, never the caller's actor: its
+    /// cancellation, with the caller's, stops the enumeration.
+    static func coloredTokensDetached(in source: String) async -> [(range: NSRange, kind: TokenKind)]? {
+        let work = Task.detached(priority: .userInitiated) { ColoredTokens(value: coloredTokens(in: source)) }
+        return await withTaskCancellationHandler {
+            await work.value.value
+        } onCancel: {
+            work.cancel()
+        }
     }
+
+    private struct ColoredTokens: Sendable { let value: [(range: NSRange, kind: TokenKind)]? }
 
     private static func append(_ text: String, color: Color, to output: inout AttributedString) {
         guard !text.isEmpty else { return }
