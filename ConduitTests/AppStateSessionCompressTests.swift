@@ -1996,6 +1996,26 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertFalse(submitted)
         XCTAssertFalse(sent)
         XCTAssertEqual(sends, 0)
+
+        // A slash command's prompt refused meanwhile is kept for the rewind
+        // to name when it is done, leaving the composer to the rewind's
+        // words; a call's request says why the chat is busy.
+        let client = try XCTUnwrap(harness.appState.client)
+        await harness.appState.handleSlashResult(
+            .object(["type": .string("send"), "message": .string("run the plan")]),
+            depth: 0,
+            aliasArgument: "",
+            client: client,
+            sessionID: origin.id,
+            context: harness.appState.composerSubmissionContext()
+        )
+        XCTAssertEqual(sends, 0)
+        XCTAssertEqual(harness.appState.composerPrefillText, "")
+        XCTAssertTrue(harness.appState.slashPromptRefusedDuringRewind)
+        XCTAssertEqual(
+            harness.appState.callRefusalMessageForOpenChat(),
+            AppLocalization.string("Still taking a message back. Try again in a moment.")
+        )
     }
 
     func testUndoNamesTheFilesLineHermesUndoAnsweredWith() async throws {
@@ -2023,6 +2043,68 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(listed, 0, "the dashboard's /undo already named the files")
         XCTAssertTrue(harness.appState.messages.last?.content.hasSuffix("Changed files: notes.md") ?? false,
                       harness.appState.messages.last?.content ?? "")
+    }
+
+    func testASlashPromptRefusedDuringARewindIsNamedAfterTheRewindsReopen() async throws {
+        weak var appState: AppState?
+        var operations = ChatResumeLifecycleOperations(
+            // The reopen succeeds and replaces the transcript.
+            openSession: { _, _, _ in
+                SessionResumeResult(
+                    sessionId: "composer-origin",
+                    messages: [],
+                    snapshot: SessionRuntimeSnapshot(object: ["running": .bool(false)])
+                )
+            },
+            refreshContext: { _, _ in }
+        )
+        operations.rewindSnapshot = { _, _ in Self.rewindTurns }
+        operations.rewindSession = { _, _, _, _ in
+            // A slash command's prompt refused while the rewind runs.
+            appState?.slashPromptRefusedDuringRewind = true
+            return SessionRewindReceipt(rewoundCount: 2, text: "latest ask", filesLine: nil)
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        appState = harness.appState
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/undo")
+
+        XCTAssertFalse(harness.appState.slashPromptRefusedDuringRewind)
+        XCTAssertEqual(
+            harness.appState.messages.last?.content,
+            AppLocalization.string("A command's message wasn't sent while a message was being taken back. Run the command again.")
+        )
+    }
+
+    func testARefusedSlashPromptsNoteStaysOutOfAChatOpenedDuringTheRewind() async throws {
+        weak var appState: AppState?
+        var operations = ChatResumeLifecycleOperations(
+            openSession: { _, _, _ in throw URLError(.networkConnectionLost) },
+            refreshContext: { _, _ in }
+        )
+        operations.rewindSnapshot = { _, _ in Self.rewindTurns }
+        operations.rewindSession = { _, _, _, _ in
+            appState?.slashPromptRefusedDuringRewind = true
+            // The reader opens another chat while the rewind runs.
+            appState?.activeSessionId = "elsewhere"
+            return SessionRewindReceipt(rewoundCount: 2, text: "latest ask", filesLine: nil)
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        appState = harness.appState
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin, session("elsewhere")]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/undo")
+
+        XCTAssertFalse(harness.appState.messages.contains {
+            $0.content == AppLocalization.string("A command's message wasn't sent while a message was being taken back. Run the command again.")
+        })
     }
 
     func testEditAndResendPutsTheWordsBackIntoTheirChatsDraftWithTheQuoteAsItsChip() async throws {

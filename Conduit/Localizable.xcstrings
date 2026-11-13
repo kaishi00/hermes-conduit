@@ -1,6 +1,88 @@
 {
   "sourceLanguage" : "en",
   "strings" : {
+    "A command's message wasn't sent while a message was being taken back. Run the command again." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Nachricht eines Befehls wurde nicht gesendet, während eine Nachricht zurückgenommen wurde. Führe den Befehl noch einmal aus."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "El mensaje de un comando no se envió mientras se retiraba un mensaje. Vuelve a ejecutar el comando."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Le message d'une commande n'a pas été envoyé pendant le retrait d'un message. Relancez la commande."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Pesan dari sebuah perintah tidak terkirim saat sebuah pesan sedang ditarik kembali. Jalankan perintahnya lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Il messaggio di un comando non è stato inviato mentre un messaggio veniva ritirato. Esegui di nuovo il comando."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メッセージの取り消し中だったため、コマンドのメッセージは送信されませんでした。コマンドをもう一度実行してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "메시지를 되돌리는 동안 명령의 메시지가 전송되지 않았습니다. 명령을 다시 실행하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiadomość polecenia nie została wysłana, gdy cofano wiadomość. Uruchom polecenie ponownie."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A mensagem de um comando não foi enviada enquanto uma mensagem era desfeita. Execute o comando de novo."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщение команды не отправлено, пока отменялось сообщение. Запустите команду ещё раз."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir mesaj geri alınırken bir komutun mesajı gönderilmedi. Komutu yeniden çalıştırın."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "撤回消息期间，命令的消息未发送。请重新运行该命令。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "收回訊息期間，指令的訊息未傳送。請重新執行該指令。"
+          }
+        }
+      }
+    },
     "The host's answer couldn't be read. Try again in a moment." : {
       "localizations" : {
         "de" : {

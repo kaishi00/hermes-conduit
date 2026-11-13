@@ -803,6 +803,9 @@ struct RollbackRequest: Equatable {
 }
 
 struct SessionRewindReceipt: Equatable {
+    /// Rows taken back (the authority's `rewound_count`; on `hermes
+    /// dashboard`, the messages its `/undo` notice counts). Only whether
+    /// it is above zero is read.
     let rewoundCount: Int
     /// The rewound turn's text; nil when it held more than text.
     let text: String?

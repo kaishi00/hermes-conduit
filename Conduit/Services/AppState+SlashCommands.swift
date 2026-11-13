@@ -551,6 +551,20 @@ extension AppState {
             return true
         }
         isRewindingTurns = true
+        slashPromptRefusedDuringRewind = false
+        // This rewind's own: taken from the shared flag as it lets the
+        // next rewind start, so that one can't clear or claim it.
+        var refusedSlashPrompt = false
+        defer {
+            // Last, after the reopen and the rewind's own note, and only
+            // in the chat it ran in (or the one its reopen opened for it).
+            let current = composerSubmissionContext()
+            if refusedSlashPrompt,
+               composerSessionIDsAreEquivalent(context.sessionID, current.sessionID)
+                || composerSessionIDsAreEquivalent(context.durableSessionID, current.sessionID) {
+                appendSlashOutput(AppLocalization.string("A command's message wasn't sent while a message was being taken back. Run the command again."))
+            }
+        }
         let nothingToRewind = retry
             ? AppLocalization.string("There's no message to retry.")
             : editing != nil
@@ -577,7 +591,11 @@ extension AppState {
             // From the snapshot to the rewind, nothing else is sent in this
             // app (composerIsEnabled, sendMessage): a send between them
             // would be the turn the dashboard's `/undo N` counted.
-            defer { isRewindingTurns = false }
+            defer {
+                refusedSlashPrompt = slashPromptRefusedDuringRewind
+                slashPromptRefusedDuringRewind = false
+                isRewindingTurns = false
+            }
             let snapshot: SessionRewindSnapshot
             if let rewindSnapshot = chatResumeLifecycleOperations.rewindSnapshot {
                 snapshot = try await rewindSnapshot(client, storedSessionID)
@@ -1224,8 +1242,13 @@ extension AppState {
         case "send", "skill":
             // These send a prompt — extract the message and send it
             let message = obj["message"]?.stringValue ?? output
-            if !message.isEmpty {
-                _ = await sendMessage(message, attachments: [], context: context)
+            // Refused (a rewind counting this chat's turns meanwhile): the
+            // rewind says so when it is done, rather than drop it silently.
+            // Not the composer, which the rewind fills with the words it
+            // takes back, nor a note now, which its reopen would clear.
+            if !message.isEmpty, !(await sendMessage(message, attachments: [], context: context)),
+               isRewindingTurns, isCurrentComposerSubmission(context) {
+                slashPromptRefusedDuringRewind = true
             }
         case "prefill":
             if let notice = obj["notice"]?.stringValue, !notice.isEmpty {
