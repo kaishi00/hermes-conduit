@@ -27,15 +27,22 @@ private struct SheetAboveAll<Item: Identifiable, Sheet: View>: ViewModifier {
     @Binding var item: Item?
     let sheet: (Item) -> Sheet
     @State private var host = SheetAboveAllHost()
+    /// What the root sheet shows. It keeps showing it when a newer item goes
+    /// over the top: swapping or dropping it there would take down whatever
+    /// is stacked above it (UIKit dismisses a sheet with all above it).
+    @State private var rootItem: Item?
 
     func body(content: Content) -> some View {
         content
             .sheet(item: Binding(
-                get: {
-                    guard let item else { return nil }
-                    return host.route(for: AnyHashable(item.id)) == .root ? item : nil
-                },
-                set: { item = $0 }
+                get: { rootItem },
+                set: { shown in
+                    guard shown == nil else { rootItem = shown; return }
+                    // Closed: the item is done with, unless a newer one took its place.
+                    let gone = rootItem.map { AnyHashable($0.id) }
+                    rootItem = nil
+                    if item.map({ AnyHashable($0.id) }) == gone { item = nil }
+                }
             )) { shown in
                 sheet(shown)
             }
@@ -47,23 +54,33 @@ private struct SheetAboveAll<Item: Identifiable, Sheet: View>: ViewModifier {
     private func follow(_ id: AnyHashable?) {
         guard let id, let item else {
             host.close()
+            rootItem = nil
             return
         }
-        guard host.route(for: id) == .overTop, host.shownID != id else { return }
-        let binding = $item
-        host.show(id: id, kind: String(describing: Item.self), view: sheet(item)) {
-            // Closed over there (swiped down, or the sheet dismissed itself):
-            // the item is done with, unless a newer one took its place.
-            if binding.wrappedValue.map({ AnyHashable($0.id) }) == id {
-                binding.wrappedValue = nil
+        // Back to the one the root sheet still shows (the one over it closed).
+        guard rootItem.map({ AnyHashable($0.id) }) != id else { return }
+        switch host.route(for: id) {
+        case .root:
+            rootItem = item
+        case .overTop:
+            guard host.shownID != id else { return }
+            let binding = $item
+            let root = $rootItem
+            host.show(id: id, kind: String(describing: Item.self), view: sheet(item)) {
+                // Closed over there (swiped down, or the sheet dismissed itself):
+                // the item is done with, unless a newer one took its place. One
+                // the root sheet still shows becomes the item again.
+                if binding.wrappedValue.map({ AnyHashable($0.id) }) == id {
+                    binding.wrappedValue = root.wrappedValue
+                }
             }
         }
     }
 }
 
 /// Where each item shows, decided once when it arrives, and the controller
-/// that holds one shown over another sheet. Not observed: the route is read
-/// while the view renders, and deciding it there publishes nothing.
+/// that holds one shown over another sheet. Not observed: nothing on screen
+/// reads it.
 @MainActor
 final class SheetAboveAllHost {
     enum Route { case root, overTop }
@@ -72,17 +89,14 @@ final class SheetAboveAllHost {
     private weak var controller: UIViewController?
     private(set) var shownID: AnyHashable?
 
-    /// The route for `id`: over the top when another sheet was up as it
+    /// The route for `id`: over the top when any sheet was up as it
     /// arrived. Kept while it shows, so the root sheet it becomes doesn't
     /// count as another sheet up.
     func route(for id: AnyHashable) -> Route {
         if let decided, decided.id == id { return decided.route }
-        // The root sheet still showing the last item takes this one in its
-        // place (SwiftUI swaps them): presented over it, the new one would
-        // go down with it as the binding stops returning the old item.
-        let route: Route = decided?.route == .root
-            ? .root
-            : (Self.topPresenter()?.presentingViewController != nil ? .overTop : .root)
+        // A root sheet still showing an earlier item counts as a sheet up:
+        // the new one goes over it, and it stays.
+        let route: Route = Self.topPresenter()?.presentingViewController != nil ? .overTop : .root
         if shownID != nil, shownID != id { close() }
         decided = (id, route)
         return route
