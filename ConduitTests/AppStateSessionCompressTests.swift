@@ -1879,6 +1879,7 @@ final class AppStateSessionCompressTests: XCTestCase {
         rollback: ((RollbackMethod, String, [String: Any]) -> AnyCodable)? = nil,
         turns: SessionRewindSnapshot = AppStateSessionCompressTests.rewindTurns,
         reopens: Bool = false,
+        snapshotRead: ((String) -> Void)? = nil,
         rewound: @escaping (Int, SessionRewindSnapshot) -> Void
     ) -> (appState: AppState, defaults: UserDefaults, suite: String) {
         var operations = ChatResumeLifecycleOperations(
@@ -1889,7 +1890,10 @@ final class AppStateSessionCompressTests: XCTestCase {
             },
             refreshContext: { _, _ in }
         )
-        operations.rewindSnapshot = { _, _ in turns }
+        operations.rewindSnapshot = { _, sessionID in
+            snapshotRead?(sessionID)
+            return turns
+        }
         if let rollback {
             operations.rollback = { _, method, session, params in rollback(method, session, params) }
         }
@@ -1941,6 +1945,84 @@ final class AppStateSessionCompressTests: XCTestCase {
 
         XCTAssertEqual(rewinds, [11], "Edit and resend takes back that message and everything after it")
         XCTAssertEqual(harness.appState.composerPrefillText, "first ask")
+    }
+
+    /// `hermes dashboard` gives the open chat a runtime id its resume
+    /// doesn't know ("session not found", App Store review of build 259):
+    /// the rewind's snapshot reads the chat by its stored id, and the
+    /// rewind still names the open chat.
+    func testEditAndResendReadsTheChatByItsStoredIDWhenTheOpenOneHasARuntimeID() async throws {
+        var reads: [String] = []
+        var rewinds: [Int] = []
+        let harness = rewindHarness(snapshotRead: { reads.append($0) }) { target, _ in rewinds.append(target) }
+        harness.appState.sessions = [session("stored-1", alternateIDs: ["runtime-1"])]
+        harness.appState.activeSessionId = "runtime-1"
+        let earlier = ChatMessage(id: "u1", role: .user, content: "first ask", timestamp: "", rowId: 11)
+        harness.appState.messages = [
+            earlier,
+            ChatMessage(id: "a1", role: .assistant, content: "answer", timestamp: ""),
+            ChatMessage(id: "u3", role: .user, content: "latest ask", timestamp: "", rowId: 17)
+        ]
+
+        await harness.appState.editAndResend(earlier, confirmedLaterTurns: true)
+
+        XCTAssertEqual(reads, ["stored-1"], "Hermes' resume finds a chat by its stored id, never the runtime id")
+        XCTAssertEqual(rewinds, [11])
+        XCTAssertEqual(harness.appState.composerPrefillText, "first ask")
+    }
+
+    /// While a rewind counts the chat's turns, nothing else goes into it:
+    /// a message then would be the turn `hermes dashboard`'s `/undo N` takes
+    /// back.
+    func testNothingIsSentWhileARewindCountsTheChatsTurns() async throws {
+        var sends = 0
+        var operations = ChatResumeLifecycleOperations()
+        operations.refreshContext = { _, _ in }
+        operations.sendPrompt = { _, _, _ in
+            sends += 1
+            return .accepted
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+        harness.appState.isRewindingTurns = true
+
+        XCTAssertFalse(harness.appState.composerIsEnabled)
+        let submitted = await harness.appState.submitComposer(text: "hello")
+        let sent = await harness.appState.sendMessage("hello")
+
+        XCTAssertFalse(submitted)
+        XCTAssertFalse(sent)
+        XCTAssertEqual(sends, 0)
+    }
+
+    func testUndoNamesTheFilesLineHermesUndoAnsweredWith() async throws {
+        var listed = 0
+        var operations = ChatResumeLifecycleOperations(
+            openSession: { _, _, _ in throw URLError(.networkConnectionLost) },
+            refreshContext: { _, _ in }
+        )
+        operations.rewindSnapshot = { _, _ in Self.rewindTurns }
+        operations.rollback = { _, _, _, _ in
+            listed += 1
+            return .object([:])
+        }
+        operations.rewindSession = { _, _, _, _ in
+            SessionRewindReceipt(rewoundCount: 2, text: "latest ask", filesLine: "Changed files: notes.md")
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        installComposerClient(in: harness)
+        let origin = session("composer-origin")
+        harness.appState.sessions = [origin]
+        harness.appState.activeSessionId = origin.id
+
+        _ = await harness.appState.submitComposer(text: "/undo")
+
+        XCTAssertEqual(listed, 0, "the dashboard's /undo already named the files")
+        XCTAssertTrue(harness.appState.messages.last?.content.hasSuffix("Changed files: notes.md") ?? false,
+                      harness.appState.messages.last?.content ?? "")
     }
 
     func testEditAndResendPutsTheWordsBackIntoTheirChatsDraftWithTheQuoteAsItsChip() async throws {

@@ -193991,6 +193991,88 @@
           }
         }
       }
+    },
+    "Still taking a message back. Try again in a moment." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Eine Nachricht wird noch zurückgenommen. Versuche es gleich noch einmal."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Todavía se está retirando un mensaje. Vuelve a intentarlo en un momento."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Un message est encore en cours de retrait. Réessayez dans un instant."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Masih menarik kembali sebuah pesan. Coba lagi sebentar lagi."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sto ancora ritirando un messaggio. Riprova tra un momento."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "メッセージを取り消している途中です。少し待ってからもう一度お試しください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "아직 메시지를 되돌리는 중입니다. 잠시 후 다시 시도하세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Wiadomość jest jeszcze cofana. Spróbuj ponownie za chwilę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ainda desfazendo uma mensagem. Tente de novo em um instante."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Сообщение ещё отзывается. Повторите попытку через мгновение."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bir mesaj hâlâ geri alınıyor. Birazdan tekrar dene."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍在撤回一条消息，请稍后再试。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "仍在收回一則訊息，請稍後再試。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

@@ -4874,6 +4874,51 @@ final class HermesClientTests: XCTestCase {
     /// Bounded wait for a spawned throwing task, returning its result. The
     /// Task-side counterpart of `Gate.wait`: a wedged phase fails the
     /// test naming `phase` instead of suspending forever.
+    /// `hermes dashboard` has no `session.mutate`: a rewind there is
+    /// Hermes' own `/undo N`, N the target turn and every turn after it in
+    /// the snapshot, sent to the runtime the snapshot's resume answered
+    /// with. Its `prefill` answer puts the target's words back.
+    func testRewindOnTheDashboardIsHermesUndoOnTheResumesRuntime() async throws {
+        let transport = FakeTransport()
+        let socket = FakeSocket()
+        transport.nextSocket = { socket }
+        let client = makeClient(transport: transport)
+        let connectTask = Task { try? await client.connect() }
+        transport.open(socket)
+        try await awaitCompletion(of: connectTask, "connect() to complete after the handshake")
+        XCTAssertFalse(client.speaksSessionAuthority)
+
+        let sent = Gate()
+        socket.onSend = { sent.signal() }
+        let snapshot = SessionRewindSnapshot(
+            turns: [.init(rowID: 1, text: "one"), .init(rowID: 5, text: "two"), .init(rowID: 7, text: "three")],
+            revision: nil,
+            generation: nil,
+            runtimeSessionID: "runtime-2"
+        )
+        let rewindTask = Task<SessionRewindReceipt, Error> {
+            try await client.rewindSession(sessionId: "runtime-1", targetMessageID: 5, snapshot: snapshot)
+        }
+        try await sent.wait("the dashboard's /undo to be sent")
+        let request = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: Data(try XCTUnwrap(socket.sentTexts.last).utf8)) as? [String: Any]
+        )
+        XCTAssertEqual(request["method"] as? String, "slash.exec", "the dashboard answers session.mutate with unknown method")
+        let params = try XCTUnwrap(request["params"] as? [String: Any])
+        XCTAssertEqual(params["command"] as? String, "undo 2", "the target turn and the one after it")
+        XCTAssertEqual(params["session_id"] as? String, "runtime-2", "the runtime the snapshot's resume answered with")
+        let id = try XCTUnwrap(request["id"] as? Int)
+        let response: [String: Any] = ["jsonrpc": "2.0", "id": id, "result": [
+            "type": "prefill",
+            "message": "two",
+            "notice": "↶ Undid 2 turns (4 message(s)). Edit and resubmit, or send a new message.\nChanged files: notes.md"
+        ]]
+        socket.deliver(try XCTUnwrap(String(data: try JSONSerialization.data(withJSONObject: response), encoding: .utf8)))
+        let receipt = try await awaitResult(of: rewindTask, "the /undo's answer")
+        XCTAssertEqual(receipt, SessionRewindReceipt(rewoundCount: 4, text: "two", filesLine: "Changed files: notes.md"))
+        client.disconnect()
+    }
+
     private func awaitResult<T>(
         of task: Task<T, Error>,
         _ phase: String,
