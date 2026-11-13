@@ -3969,18 +3969,71 @@ enum SyntaxHighlighter {
             guard let matchRange = Range(match.range, in: source) else { continue }
             append(String(source[cursor..<matchRange.lowerBound]), color: .primary, to: &output)
             let token = String(source[matchRange])
-            let color: Color
-            if token.hasPrefix("//") || token.hasPrefix("#") || token.hasPrefix("/*") { color = .secondary }
-            else if token.hasPrefix("\"") || token.hasPrefix("'") { color = .conduitAura }
-            else if Double(token) != nil { color = .orange }
-            else if keywords.contains(token) { color = .conduitAccent }
-            else { color = .primary }
-            append(token, color: color, to: &output)
+            append(token, color: kind(of: token).color, to: &output)
             cursor = matchRange.upperBound
         }
         append(String(source[cursor...]), color: .primary, to: &output)
         return output
     }
+
+    /// What a token is colored as.
+    enum TokenKind: Sendable, Equatable {
+        case plain, comment, string, number, keyword
+
+        var color: Color {
+            switch self {
+            case .plain: .primary
+            case .comment: .secondary
+            case .string: .conduitAura
+            case .number: .orange
+            case .keyword: .conduitAccent
+            }
+        }
+    }
+
+    static func kind(of token: String) -> TokenKind {
+        if token.hasPrefix("//") || token.hasPrefix("#") || token.hasPrefix("/*") { return .comment }
+        if token.hasPrefix("\"") || token.hasPrefix("'") { return .string }
+        if Double(token) != nil { return .number }
+        if keywords.contains(token) { return .keyword }
+        return .plain
+    }
+
+    /// The colored tokens of `source` as UTF-16 ranges, plain ones left
+    /// out: what `highlight` colors, without building the attributed text,
+    /// so the Folder's editor colors a file off the main thread and only
+    /// sets its colors there (issue 2354). Stops early, returning nil, once
+    /// its task is cancelled.
+    static func coloredTokens(in source: String) -> [(range: NSRange, kind: TokenKind)]? {
+        guard let expression = tokenPattern else { return [] }
+        let text = source as NSString
+        var tokens: [(range: NSRange, kind: TokenKind)] = []
+        var cancelled = false
+        expression.enumerateMatches(in: source, range: NSRange(location: 0, length: text.length)) { match, _, stop in
+            if Task.isCancelled {
+                cancelled = true
+                stop.pointee = true
+                return
+            }
+            guard let range = match?.range, range.length > 0 else { return }
+            let kind = kind(of: text.substring(with: range))
+            if kind != .plain { tokens.append((range, kind)) }
+        }
+        return cancelled ? nil : tokens
+    }
+
+    /// `coloredTokens` on a detached task, never the caller's actor: its
+    /// cancellation, with the caller's, stops the enumeration.
+    static func coloredTokensDetached(in source: String) async -> [(range: NSRange, kind: TokenKind)]? {
+        let work = Task.detached(priority: .userInitiated) { ColoredTokens(value: coloredTokens(in: source)) }
+        return await withTaskCancellationHandler {
+            await work.value.value
+        } onCancel: {
+            work.cancel()
+        }
+    }
+
+    private struct ColoredTokens: Sendable { let value: [(range: NSRange, kind: TokenKind)]? }
 
     private static func append(_ text: String, color: Color, to output: inout AttributedString) {
         guard !text.isEmpty else { return }
