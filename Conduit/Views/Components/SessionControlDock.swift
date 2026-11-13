@@ -89,7 +89,7 @@ struct SessionControlDock: View {
                 Menu {
                     ForEach(Array(goal.subgoals.enumerated()), id: \.offset) { index, subgoal in
                         Button(role: .destructive) {
-                            Task { await appState.runSessionControl(.subgoalRemove(index: index + 1)) }
+                            Task { await appState.runSessionControl(.subgoalRemove(index: index + 1, criterion: subgoal)) }
                         } label: {
                             Text(verbatim: subgoal)
                         }

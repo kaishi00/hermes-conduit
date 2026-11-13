@@ -2586,6 +2586,43 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertNil(harness.appState.sessionControl.working)
     }
 
+    func testTheDockActsOnlyOnWhatThisVisitRead() async throws {
+        var readFails = false
+        var actions: [String] = []
+        let harness = controlHarness { operations in
+            operations.readSessionControl = { _, _ in
+                if readFails { throw URLError(.timedOut) }
+                return Self.goalSnapshot
+            }
+            operations.runSessionControl = { _, action, _ in
+                actions.append(action.name)
+                return (Self.goalSnapshot, nil)
+            }
+        }
+        harness.appState.sessions = [session("composer-origin", storedID: "stored-origin", alternateIDs: ["runtime-2"])]
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+        harness.appState.activeSessionId = "runtime-2"
+        XCTAssertEqual(harness.appState.sessionControl.snapshot, Self.goalSnapshot, "a new id for the open chat keeps its dock")
+
+        harness.appState.activeSessionId = nil
+        XCTAssertTrue(harness.appState.sessionControl.snapshot.isEmpty, "leaving the chat clears its dock")
+        harness.appState.activeSessionId = "composer-origin"
+        readFails = true
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+        XCTAssertNil(harness.appState.sessionControl.sessionID, "a failed read on the way back leaves the last visit's controls gone")
+        await harness.appState.runSessionControl(.goalClear)
+        XCTAssertEqual(actions, [], "nothing to act on until Hermes says what's there")
+
+        readFails = false
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+        await harness.appState.runSessionControl(.subgoalRemove(index: 1, criterion: "docs updated"))
+        XCTAssertEqual(actions, [], "a criterion picked from a list that changed isn't removed by its old place")
+        XCTAssertEqual(harness.appState.sessionControl.notice,
+                       AppLocalization.string("The goal's criteria changed. Pick the one to remove again.", table: .chat))
+        await harness.appState.runSessionControl(.subgoalRemove(index: 1, criterion: "tests pass"))
+        XCTAssertEqual(actions, ["subgoal.remove"])
+    }
+
     func testADockAnswerOrReadThatWasOvertakenIsDropped() async throws {
         weak var appState: AppState?
         var clearsMidAction = false

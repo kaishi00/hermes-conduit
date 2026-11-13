@@ -453,6 +453,13 @@ final class AppState: ObservableObject {
                     newChatOpenedSessionID = nil
                 }
                 schedulePendingComposerSendCheck()
+                // The dock acts only on word this visit got (issue 2372):
+                // another chat, or the same one opened again, reads its
+                // goal, loop and heartbeat afresh. A new id for the open
+                // chat keeps them.
+                if let held = sessionControl.sessionID, !sessionControlIsOpenChat(held) {
+                    sessionControl.clear()
+                }
                 // The Model and Context sheets act on the chat they came up
                 // over. Another chat taking its place (a notification, an
                 // app link) takes them down; a new id for the same

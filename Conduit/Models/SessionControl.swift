@@ -149,7 +149,9 @@ struct SessionControlSnapshot: Equatable {
 enum SessionControlAction: Equatable {
     case goalPause, goalResume, goalClear
     case loopPause, loopResume, loopStop
-    case subgoalRemove(index: Int)
+    /// `criterion` is the text the dock showed at `index`: the action is
+    /// refused when the list has changed under it.
+    case subgoalRemove(index: Int, criterion: String? = nil)
     case subgoalClear
     case heartbeatPause, heartbeatResume, heartbeatClear
 
@@ -171,7 +173,7 @@ enum SessionControlAction: Equatable {
 
     /// `args`, 1-based for a subgoal as Hermes counts them.
     var args: [String: Any]? {
-        if case .subgoalRemove(let index) = self { return ["index": index] }
+        if case .subgoalRemove(let index, _) = self { return ["index": index] }
         return nil
     }
 
@@ -230,7 +232,8 @@ final class SessionControlStore: ObservableObject {
         working = nil
     }
 
-    /// Another chat opened, or the connection changed.
+    /// Another chat opened, the same one opened again, or the connection
+    /// changed.
     func clear() {
         action += 1
         revision += 1
