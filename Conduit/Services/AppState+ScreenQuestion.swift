@@ -535,7 +535,12 @@ extension AppState {
         }
         let requestedProfile = PendingVoiceLaunchPolicy.normalizedProfile(profile)
         var switchedProfile = false
-        if let requestedProfile, requestedProfile != activeProfile {
+        if let requestedProfile, requestedProfile != activeProfile, isVoiceCallInProgress {
+            // The switch would end the call running, which a screenshot is
+            // often asked during: it stays in this profile and the call goes
+            // on (issue 2390, as #1297's refusals).
+            showCallRefusal(AppLocalization.string("A call is running, so the screenshot is in this profile, not the one the shortcut asked for.", table: .phone))
+        } else if let requestedProfile, requestedProfile != activeProfile {
             await switchProfile(to: requestedProfile)
             guard isConnected else { return false }
             if requestedProfile == activeProfile {

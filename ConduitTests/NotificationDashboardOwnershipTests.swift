@@ -749,5 +749,13 @@ extension NotificationDashboardOwnershipTests {
         XCTAssertEqual(pending?.destination, "Mac")
         pending?.perform()
         XCTAssertEqual(switches, 2)
+
+        // A minimised call counts too, as every surface does.
+        appState.showVoiceSheet = false
+        pending = nil
+        appState.minimisedLiveVoice = .geminiLive
+        appState.switchEndingCall(to: "Mac", pending: &pending) { switches += 1 }
+        XCTAssertEqual(switches, 2)
+        XCTAssertNotNil(pending)
     }
 }

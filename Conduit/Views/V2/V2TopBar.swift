@@ -422,7 +422,9 @@ struct V2ProfileStrip: View {
             } else {
                 // During a call the pick asks first, and All goes off only
                 // once the user accepts, so Cancel leaves the list as it was
-                // (V2Shell.pickProfile).
+                // (V2Shell.pickProfile). A pick while a switch runs is only
+                // kept for later and asks nothing, so All goes off now, as
+                // before.
                 if allSelected, switching || !appState.isVoiceCallInProgress {
                     appState.setAllProfilesChatsOn(false)
                 }
