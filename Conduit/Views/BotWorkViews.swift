@@ -923,7 +923,10 @@ private struct BotWorkRow: View {
         // Waiting on the user says so first, then the step it stopped at:
         // the step alone read as work still going.
         if item.status == "needs_you" {
-            return item.doing.map { AppLocalization.string("Needs you · \($0)", table: .bots) } ?? item.statusText
+            if let doing = item.doing { return AppLocalization.string("Needs you · \(doing)", table: .bots) }
+            // No step to name: what it stopped on, when it said.
+            if !item.error.isEmpty { return AppLocalization.string("Needs you · \(item.error)", table: .bots) }
+            return item.statusText
         }
         if let doing = item.doing { return doing }
         if item.needsYou, !item.error.isEmpty {
