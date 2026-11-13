@@ -242,7 +242,15 @@ extension SidebarLayoutTests {
         // A tab a newer Conduit added is kept for it, in neither list here.
         let newer = V2TabLayout(stored: ["pulse", "chats", "-artifacts", "bots", "tasks", "settings", ""])
         XCTAssertEqual(newer.order, [.chats, .bots, .tasks, .settings])
-        XCTAssertEqual(newer.stored, ["chats", "bots", "tasks", "settings", "pulse", "-artifacts"])
+        XCTAssertEqual(newer.stored, ["pulse", "chats", "-artifacts", "bots", "tasks", "settings"])
+        // An edit here keeps them where the newer Conduit put them: each
+        // goes with the tab it came after.
+        var edited = newer
+        edited.setHidden(.tasks, true)
+        XCTAssertEqual(edited.stored, ["pulse", "chats", "-artifacts", "bots", "-tasks", "settings"])
+        edited.move(fromOffsets: [0], toOffset: 4)
+        XCTAssertEqual(edited.stored, ["pulse", "bots", "-tasks", "settings", "chats", "-artifacts"])
+        XCTAssertEqual(V2TabLayout(stored: edited.stored), edited)
     }
 
     func testMovingATabChangesTheBarAndTheTabConduitOpensOn() {

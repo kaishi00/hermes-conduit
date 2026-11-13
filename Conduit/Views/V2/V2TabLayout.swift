@@ -31,10 +31,16 @@ struct V2TabLayout: Equatable {
     /// Every tab, shown or hidden, in the user's order.
     private(set) var order: [V2Tab]
     private(set) var hidden: Set<V2Tab>
-    /// Names this build doesn't know (a tab a newer Conduit added, synced
-    /// from another device), written back as they came so saving here
-    /// doesn't drop them there.
-    private(set) var unknown: [String]
+    /// A name this build doesn't know (a tab a newer Conduit added, synced
+    /// from another device), with the tab it came after: written back
+    /// there, as it came, so saving here neither drops it nor moves it on
+    /// the device that knows it.
+    struct Unknown: Equatable {
+        let token: String
+        /// Nil for one that came before every tab this build knows.
+        let after: V2Tab?
+    }
+    private(set) var unknown: [Unknown]
 
     /// Reads a stored list, forgiving anything odd in it: a name twice
     /// counts once, a tab that can't be hidden isn't, and a tab the list
@@ -42,12 +48,14 @@ struct V2TabLayout: Equatable {
     init(stored: [String]?) {
         var order: [V2Tab] = []
         var hidden: Set<V2Tab> = []
-        var unknown: [String] = []
+        var unknown: [Unknown] = []
         for token in stored ?? [] {
             let isHidden = token.hasPrefix("-")
             let name = isHidden ? String(token.dropFirst()) : token
             guard let tab = V2Tab(rawValue: name) else {
-                if !name.isEmpty, !unknown.contains(token) { unknown.append(token) }
+                if !name.isEmpty, !unknown.contains(where: { $0.token == token }) {
+                    unknown.append(Unknown(token: token, after: order.last))
+                }
                 continue
             }
             guard !order.contains(tab) else { continue }
@@ -62,9 +70,15 @@ struct V2TabLayout: Equatable {
         self.unknown = unknown
     }
 
-    /// The list as stored.
+    /// The list as stored: each tab, then the unknown names that came
+    /// after it, which so travel with it when it moves.
     var stored: [String] {
-        order.map { hidden.contains($0) ? "-" + $0.rawValue : $0.rawValue } + unknown
+        var tokens = unknown.filter { $0.after == nil }.map(\.token)
+        for tab in order {
+            tokens.append(hidden.contains(tab) ? "-" + tab.rawValue : tab.rawValue)
+            tokens += unknown.filter { $0.after == tab }.map(\.token)
+        }
+        return tokens
     }
 
     /// The tabs the bar lists, in order.
