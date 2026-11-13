@@ -552,10 +552,16 @@ extension AppState {
         }
         isRewindingTurns = true
         slashPromptRefusedDuringRewind = false
+        // This rewind's own: taken from the shared flag as it lets the
+        // next rewind start, so that one can't clear or claim it.
+        var refusedSlashPrompt = false
         defer {
-            // Last, after the reopen and the rewind's own note.
-            if slashPromptRefusedDuringRewind {
-                slashPromptRefusedDuringRewind = false
+            // Last, after the reopen and the rewind's own note, and only
+            // in the chat it ran in (or the one its reopen opened for it).
+            let current = composerSubmissionContext()
+            if refusedSlashPrompt,
+               composerSessionIDsAreEquivalent(context.sessionID, current.sessionID)
+                || composerSessionIDsAreEquivalent(context.durableSessionID, current.sessionID) {
                 appendSlashOutput(AppLocalization.string("A command's message wasn't sent while a message was being taken back. Run the command again."))
             }
         }
@@ -585,7 +591,11 @@ extension AppState {
             // From the snapshot to the rewind, nothing else is sent in this
             // app (composerIsEnabled, sendMessage): a send between them
             // would be the turn the dashboard's `/undo N` counted.
-            defer { isRewindingTurns = false }
+            defer {
+                refusedSlashPrompt = slashPromptRefusedDuringRewind
+                slashPromptRefusedDuringRewind = false
+                isRewindingTurns = false
+            }
             let snapshot: SessionRewindSnapshot
             if let rewindSnapshot = chatResumeLifecycleOperations.rewindSnapshot {
                 snapshot = try await rewindSnapshot(client, storedSessionID)
