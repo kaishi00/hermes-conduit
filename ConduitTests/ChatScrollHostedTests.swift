@@ -1277,6 +1277,21 @@ final class ChatScrollHostedTests: XCTestCase {
         cell.layoutIfNeeded()
         XCTAssertEqual(container.frame.height, 400, "the clip follows the cell's height")
     }
+
+    /// Every row on screen draws inside its cell's clip, at the cell's width,
+    /// so the clip above actually holds the row.
+    func testARowOnScreenDrawsInsideItsCellsClip() throws {
+        let mounted = try mount(Self.transcript(0..<20))
+        let collectionView = try XCTUnwrap(mounted.scrollView as? UICollectionView)
+        let cells = collectionView.visibleCells.compactMap { $0 as? TranscriptCell }
+        XCTAssertFalse(cells.isEmpty, "rows are on screen")
+        for cell in cells {
+            let row = try XCTUnwrap(cell.hosting?.view, "the cell hosts a row")
+            XCTAssertTrue(row.superview === cell.rowContainer, "the row is inside the clip")
+            XCTAssertEqual(row.frame.width, cell.contentView.bounds.width, accuracy: 0.5, "at the cell's width")
+            XCTAssertEqual(cell.rowContainer.frame.height, cell.contentView.bounds.height, accuracy: 0.5)
+        }
+    }
 }
 
 /// A row that opens and closes by its own state, as Thinking and the tool
