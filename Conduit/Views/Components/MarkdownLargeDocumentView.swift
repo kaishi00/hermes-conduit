@@ -34,6 +34,8 @@ struct LargeMarkdownDocumentView: View {
     let foregroundStyle: Color
     let usesAccentSurface: Bool
     let gatewayMediaDataURL: ((String) async -> String?)?
+    /// MarkdownText's: false for a Markdown file shown as a document.
+    var keepsLineBreaks = true
 
     @Environment(\.chatRowDisclosure) private var disclosure
     @State private var expanded = false
@@ -44,7 +46,8 @@ struct LargeMarkdownDocumentView: View {
                 source: source,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
-                gatewayMediaDataURL: gatewayMediaDataURL
+                gatewayMediaDataURL: gatewayMediaDataURL,
+                keepsLineBreaks: keepsLineBreaks
             )
         } else {
             collapsedView
@@ -63,7 +66,8 @@ struct LargeMarkdownDocumentView: View {
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 gatewayMediaDataURL: gatewayMediaDataURL,
-                mayEndMidBlock: true
+                mayEndMidBlock: true,
+                keepsLineBreaks: keepsLineBreaks
             )
 
             LargeDocumentBanner(
@@ -200,7 +204,7 @@ struct LargeMarkdownPreparedDocument {
     /// String work only — no UIKit — so it runs off the MainActor as a
     /// cooperative child of the caller's task (cancellation stops the pass
     /// between stages instead of wasting a megabyte parse after a switch).
-    static func prepare(_ source: String) async -> LargeMarkdownPreparedDocument? {
+    static func prepare(_ source: String, keepsLineBreaks: Bool = true) async -> LargeMarkdownPreparedDocument? {
         let document = MarkdownParser.parseDocument(source)
         guard !Task.isCancelled else { return nil }
         let chunks = MarkdownLargeChunkPlanner.chunks(for: document.blocks)
@@ -252,6 +256,7 @@ struct LargeMarkdownPreparedDocument {
                         pieceBlocks.append(blocks)
                         pieceReferences.append(
                             MarkdownReferenceResolver.subset(for: blocks.map(\.flattenedText).joined(), definitions: definitions)
+                                .withLineBreaks(kept: keepsLineBreaks)
                         )
                         pieceDescriptors.append(MarkdownSelectionSegmentDescriptor(
                             id: "lmd-callout-\(chunkIndex)-p\(pieceIndex)",
@@ -287,6 +292,7 @@ struct LargeMarkdownPreparedDocument {
                             pieceBlocks.append(blocks)
                             pieceReferences.append(
                                 MarkdownReferenceResolver.subset(for: blocks.map(\.flattenedText).joined(), definitions: definitions)
+                                .withLineBreaks(kept: keepsLineBreaks)
                             )
                             pieceDescriptors.append(MarkdownSelectionSegmentDescriptor(
                                 id: "lmd-columns-\(chunkIndex)-c\(columnIndex)-p\(pieceIndex)",
@@ -332,12 +338,13 @@ struct LargeMarkdownPreparedDocument {
         for chunk in chunks {
             referencesByChunk.append(
                 MarkdownReferenceResolver.subset(for: chunk.flattenedText, definitions: definitions)
+                    .withLineBreaks(kept: keepsLineBreaks)
             )
         }
 
         return LargeMarkdownPreparedDocument(
             chunks: chunks,
-            references: document.references,
+            references: document.references.withLineBreaks(kept: keepsLineBreaks),
             referencesByChunk: referencesByChunk,
             segmentDescriptors: all,
             descriptorsByChunk: descriptorsByChunk,
@@ -453,6 +460,7 @@ struct LargeMarkdownExpandedView: View {
     let foregroundStyle: Color
     let usesAccentSurface: Bool
     let gatewayMediaDataURL: ((String) async -> String?)?
+    var keepsLineBreaks = true
 
     @StateObject private var selectionCoordinator = MarkdownSelectionCoordinator()
     @State private var prepared: LargeMarkdownPreparedDocument?
@@ -509,7 +517,7 @@ struct LargeMarkdownExpandedView: View {
             // Nonisolated async → runs on the global executor (a structured
             // child of this task, so cancellation stops the parse instead of
             // merely discarding its result).
-            guard let plan = await LargeMarkdownPreparedDocument.prepare(source) else { return }
+            guard let plan = await LargeMarkdownPreparedDocument.prepare(source, keepsLineBreaks: keepsLineBreaks) else { return }
             guard !Task.isCancelled, plan.sourceIdentity == sourceIdentity else { return }
             withAnimation(.easeInOut(duration: 0.15)) {
                 prepared = plan

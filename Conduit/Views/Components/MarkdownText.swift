@@ -38,6 +38,11 @@ struct MarkdownText: View {
     /// there shows its source instead of drawing a truncated one.
     var mayEndMidBlock = false
 
+    /// A lone newline draws as a line break, as chat apps draw a reply's.
+    /// A Markdown file shown as a document passes false, so a hard-wrapped
+    /// README flows as one paragraph, as Markdown draws it.
+    var keepsLineBreaks = true
+
     /// The selected chat text size (issue #85): a first-class rendering
     /// input, injected at the chat root. Streaming and settled content read
     /// the same value, so the whole stream stays at one size. The
@@ -63,7 +68,8 @@ struct MarkdownText: View {
                 source: source,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
-                gatewayMediaDataURL: gatewayMediaDataURL
+                gatewayMediaDataURL: gatewayMediaDataURL,
+                keepsLineBreaks: keepsLineBreaks
             )
             .environment(\.textSelectionTint, selectionTint)
         } else {
@@ -89,7 +95,8 @@ struct MarkdownText: View {
             foregroundStyle: foregroundStyle,
             usesAccentSurface: usesAccentSurface,
             isStreaming: isStreaming,
-            chatTextSize: chatTextSize
+            chatTextSize: chatTextSize,
+            keepsLineBreaks: keepsLineBreaks
         )
         // A settled answer in the chat draws its prose runs in one text
         // view each. A streaming reply keeps a view per block, so a new
@@ -453,7 +460,8 @@ enum MarkdownRenderCache {
         foregroundStyle: Color,
         usesAccentSurface: Bool,
         isStreaming: Bool,
-        chatTextSize: ChatTextAppearance
+        chatTextSize: ChatTextAppearance,
+        keepsLineBreaks: Bool = true
     ) -> MarkdownRendering {
         // `foregroundStyle` is deliberately absent from the key: only two
         // values are ever passed (.primary / .white), each uniquely tied to
@@ -480,6 +488,7 @@ enum MarkdownRenderCache {
                 usesAccentSurface ? "1" : "0",
                 UIApplication.shared.preferredContentSizeCategory.rawValue,
                 chatTextSize.cacheIdentity,
+                keepsLineBreaks ? "1" : "0",
                 // Hermes' @session links are titled with the chat's name once
                 // Conduit lists it.
                 HermesSessionReference.titleKey(for: source)
@@ -490,12 +499,13 @@ enum MarkdownRenderCache {
         if let cached = cache.object(forKey: key) { return cached }
         if isStreaming, let cached = streamingCache.object(forKey: key) { return cached }
         let document = MarkdownParser.parseDocument(source, recognizesGatewayMedia: recognizesGatewayMedia)
+        let references = document.references.withLineBreaks(kept: keepsLineBreaks)
         let rendering = MarkdownRendering(
             blocks: document.blocks,
-            references: document.references,
+            references: references,
             selectableText: MarkdownSelectionFormatter.attributedText(
                 for: document.blocks,
-                references: document.references,
+                references: references,
                 foregroundStyle: foregroundStyle,
                 usesAccentSurface: usesAccentSurface,
                 newestCharacterOpacities: [],
@@ -531,8 +541,19 @@ struct MarkdownReferenceContext: Equatable {
     /// Foundation interprets destination/title semantics (case-insensitive
     /// labels, collapsed/shortcut forms, escapes) instead of this app doing it.
     let definitionsMarkdown: String
+    /// Whether a lone newline in each fragment draws as a line break
+    /// (InlineMarkdownContent.keepingLineBreaks): true for replies, false
+    /// for a Markdown file shown as a document. It rides the context
+    /// because the context already reaches every fragment's parse.
+    var keepsLineBreaks = true
 
     static let empty = MarkdownReferenceContext(definitionsMarkdown: "")
+
+    func withLineBreaks(kept: Bool) -> MarkdownReferenceContext {
+        var context = self
+        context.keepsLineBreaks = kept
+        return context
+    }
 
     var containsDefinitions: Bool { !definitionsMarkdown.isEmpty }
 
@@ -775,10 +796,7 @@ enum MarkdownSelectionFormatter {
         textColor: UIColor,
         linkColor: UIColor
     ) -> NSAttributedString {
-        let attributed = (try? AttributedString(
-            markdown: references.markdownForParsing(source),
-            options: .init(interpretedSyntax: .full)
-        )) ?? AttributedString(source)
+        let attributed = InlineMarkdownContent.attributed(source: source, references: references)
         return SelectableTextView.bridge(attributed, defaultFont: font, defaultColor: textColor, linkColor: linkColor)
     }
 
@@ -1152,9 +1170,31 @@ enum InlineMarkdownContent {
         // is invisible under `.full`; if parsing fails, fall back to the bare
         // fragment so definitions never surface as text.
         var attributed = (try? AttributedString(
-            markdown: references.markdownForParsing(source),
+            markdown: references.markdownForParsing(references.keepsLineBreaks ? keepingLineBreaks(source) : source),
             options: .init(interpretedSyntax: .full)
         )) ?? AttributedString(source)
+        // Foundation draws a hard break as a line separator; a newline is
+        // what the reply wrote and what selection copies. One walk, so a
+        // paragraph of many short lines stays linear.
+        if attributed.characters.contains("\u{2028}") {
+            let characters = attributed.characters
+            var normalized = AttributedString()
+            var cursor = characters.startIndex
+            var index = characters.startIndex
+            while index < characters.endIndex {
+                let next = characters.index(after: index)
+                if characters[index] == "\u{2028}" {
+                    normalized.append(attributed[cursor..<index])
+                    var newline = AttributedString(attributed[index..<next])
+                    newline.characters.replaceSubrange(newline.startIndex..<newline.endIndex, with: "\n")
+                    normalized.append(newline)
+                    cursor = next
+                }
+                index = next
+            }
+            normalized.append(attributed[cursor..<characters.endIndex])
+            attributed = normalized
+        }
 
         var endIndex = attributed.characters.endIndex
         for opacity in trailingCharacterOpacities.reversed() {
@@ -1166,6 +1206,42 @@ enum InlineMarkdownContent {
         return attributed
     }
 
+    /// A single line break in a reply stays a line break, as chat apps
+    /// draw it: "one number per line" reads one per line. CommonMark makes
+    /// it a soft break, which Foundation draws as a space, so each line
+    /// that a break follows ends with two spaces, CommonMark's own hard
+    /// break. Spaces, not a backslash: inside a code span or a link's
+    /// address they're only whitespace, where a backslash would show or
+    /// break the link. A line that already ends in a hard break (two
+    /// spaces, or a backslash touching the newline) is left as written, as
+    /// is a break next to a blank line or a setext underline ("===").
+    static func keepingLineBreaks(_ source: String) -> String {
+        guard source.contains("\n") else { return source }
+        var lines = source.components(separatedBy: "\n")
+        func isSetextUnderline(_ trimmed: String) -> Bool {
+            !trimmed.isEmpty && trimmed.allSatisfy { $0 == "=" }
+        }
+        for index in lines.indices.dropLast() {
+            let line = lines[index]
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            let next = lines[index + 1].trimmingCharacters(in: .whitespacesAndNewlines)
+            // A "===" line underlines a heading only under a line of text.
+            let underlinesAbove = isSetextUnderline(trimmed) && index > 0
+                && !lines[index - 1].trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            guard !trimmed.isEmpty, !next.isEmpty,
+                  !underlinesAbove, !isSetextUnderline(next),
+                  !line.hasSuffix("  ") else { continue }
+            var body = Substring(line)
+            while let last = body.last, last == " " || last == "\t" || last == "\r" { body.removeLast() }
+            // A backslash right before the newline is already a hard break;
+            // one with a space after it is literal text.
+            let trailingBackslashes = body.reversed().prefix { $0 == "\\" }.count
+            if trailingBackslashes % 2 == 1, body.count == line.count { continue }
+            lines[index] = String(body) + "  "
+        }
+        return lines.joined(separator: "\n")
+    }
+
     /// Everything a bridged fragment depends on, boxed for NSCache. It keys
     /// on the text color itself, not only the accent surface the render
     /// cache keys on: quotes pass a dimmed color. Two equal colors stored
@@ -1173,13 +1249,15 @@ enum InlineMarkdownContent {
     private final class BridgedKey: NSObject {
         let source: String
         let definitions: String
+        let keepsLineBreaks: Bool
         let foregroundStyle: Color
         let font: UIFont
         let usesAccentSurface: Bool
 
-        init(source: String, definitions: String, foregroundStyle: Color, font: UIFont, usesAccentSurface: Bool) {
+        init(source: String, references: MarkdownReferenceContext, foregroundStyle: Color, font: UIFont, usesAccentSurface: Bool) {
             self.source = source
-            self.definitions = definitions
+            self.definitions = references.definitionsMarkdown
+            self.keepsLineBreaks = references.keepsLineBreaks
             self.foregroundStyle = foregroundStyle
             self.font = font
             self.usesAccentSurface = usesAccentSurface
@@ -1189,6 +1267,7 @@ enum InlineMarkdownContent {
             var hasher = Hasher()
             hasher.combine(source)
             hasher.combine(definitions)
+            hasher.combine(keepsLineBreaks)
             hasher.combine(foregroundStyle)
             hasher.combine(font)
             hasher.combine(usesAccentSurface)
@@ -1199,6 +1278,7 @@ enum InlineMarkdownContent {
             guard let other = object as? BridgedKey else { return false }
             return source == other.source
                 && definitions == other.definitions
+                && keepsLineBreaks == other.keepsLineBreaks
                 && foregroundStyle == other.foregroundStyle
                 && font == other.font
                 && usesAccentSurface == other.usesAccentSurface
@@ -1244,7 +1324,7 @@ enum InlineMarkdownContent {
 
         let key = BridgedKey(
             source: source,
-            definitions: references.definitionsMarkdown,
+            references: references,
             foregroundStyle: foregroundStyle,
             font: font,
             usesAccentSurface: usesAccentSurface

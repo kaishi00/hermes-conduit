@@ -122,7 +122,7 @@ struct MarkdownDocumentSheet: View {
                                                recognizesGatewayMedia: gatewayMediaDataURL != nil,
                                                dataURL: gatewayMediaDataURL)
             }
-            MarkdownText(source: text, gatewayMediaDataURL: gatewayMediaDataURL)
+            MarkdownText(source: text, gatewayMediaDataURL: gatewayMediaDataURL, keepsLineBreaks: false)
                 .environment(\.gatewayMediaFiles, gatewayMediaFiles)
                 .environment(\.imageGallery, imageGallery)
                 .frame(maxWidth: .infinity, alignment: .leading)
