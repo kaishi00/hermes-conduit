@@ -772,11 +772,7 @@ struct V2Shell: View {
                 // Back from a chat that kept Pulse's tab standing after the
                 // dashboard stopped serving Pulse: its page has nothing to
                 // show, so the reader lands on the first tab left.
-                if selectedTab == .pulse, pulsePath.isEmpty, !appState.showsPulseScreen {
-                    let next = tabLayout.layout.first(without: [.pulse])
-                    visitedTabs.insert(next)
-                    selectTab(next)
-                }
+                if !appState.showsPulseScreen { leavePulseTabIfEmpty() }
             }
             .onChange(of: appState.isModalSheetPresented) { _, presented in
                 // A sheet's dismissal shows the chat again: what came in under
@@ -892,11 +888,7 @@ struct V2Shell: View {
                 appState.pulseHomeChatID = nil
                 // Its tab goes too: the reader lands on the first tab left,
                 // unless a chat opened from it is showing.
-                if selectedTab == .pulse, pulsePath.isEmpty {
-                    let next = tabLayout.layout.first(without: [.pulse])
-                    visitedTabs.insert(next)
-                    selectTab(next)
-                }
+                leavePulseTabIfEmpty()
             }
             .onChange(of: appState.pulseOpenRequest, initial: true) { _, request in
                 // The page reads the card to show and clears the request. A
@@ -1403,6 +1395,15 @@ struct V2Shell: View {
         // forcing both: older pages wait for the history's own interval, so a
         // tap is not the pull's full walk.
         Task { await appState.refreshNewestSessionCatalogPage() }
+    }
+
+    /// Off Pulse's tab on a dashboard that stopped serving it, to the first
+    /// tab left; a chat opened from it keeps the tab until Back.
+    private func leavePulseTabIfEmpty() {
+        guard selectedTab == .pulse, pulsePath.isEmpty else { return }
+        let next = tabLayout.layout.first(without: [.pulse])
+        visitedTabs.insert(next)
+        selectTab(next)
     }
 
     private func selectTab(_ tab: V2Tab) {
