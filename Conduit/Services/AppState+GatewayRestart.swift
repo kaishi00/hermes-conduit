@@ -17,9 +17,11 @@ extension AppState {
     }
 
     /// Whether Restart Gateway can be offered: signed in to a dashboard and
-    /// no restart already running.
+    /// nothing already restarting Hermes (a restart, Update Hermes or the
+    /// plugin update).
     var canRestartGateway: Bool {
         dashboardTicketBridge != nil && !activeGatewayRestart.isInProgress
+            && !hermesUpdateIsRunning && !activeNotifierPluginUpdate.isInProgress
     }
 
     func restartGateway() {
@@ -106,6 +108,13 @@ extension AppState {
         guard let bridge = dashboardTicketBridge else {
             gatewayRestartNowFailure = .init(
                 message: AppLocalization.string("Connect to this dashboard first."), dashboardID: dashboardID, at: Date())
+            return
+        }
+        // Update Hermes restarts it at the end; a restart now would land
+        // mid-install and pass for the update's own.
+        guard !hermesUpdateIsRunning else {
+            gatewayRestartNowFailure = .init(
+                message: AppLocalization.string("Wait for the Hermes update to finish."), dashboardID: dashboardID, at: Date())
             return
         }
         gatewayRestartingNow = true

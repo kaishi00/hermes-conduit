@@ -16,10 +16,20 @@ extension AppState {
         hermesUpdateDashboardID == activeDashboardID ? hermesUpdate : .idle
     }
 
+    /// Whether `hermes update` is running on this dashboard's host (a check
+    /// isn't): it restarts Hermes at the end, so no other restart (Restart
+    /// Gateway, Restart Now, the plugin update) starts under it.
+    var hermesUpdateIsRunning: Bool {
+        if case .updating = activeHermesUpdate { return true }
+        return false
+    }
+
     /// Whether Check for Updates and Update Hermes can be offered: signed in
-    /// to a dashboard, with no update or gateway restart running.
+    /// to a dashboard, with no update, gateway restart or plugin update
+    /// running.
     var canUpdateHermes: Bool {
         dashboardTicketBridge != nil && !activeHermesUpdate.isInProgress && !activeGatewayRestart.isInProgress
+            && !activeNotifierPluginUpdate.isInProgress
     }
 
     private func hermesUpdater(for dashboardID: UUID?) -> HermesUpdater {
