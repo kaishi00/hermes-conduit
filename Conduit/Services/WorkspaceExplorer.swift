@@ -397,12 +397,13 @@ final class WorkspaceExplorer: ObservableObject {
             openFiles.append(entry)
             while openFiles.count > Self.openFilesLimit,
                   let oldest = openFiles.firstIndex(where: { $0.path != entry.path && !keepsOpen.contains($0.path) }) {
-                openFiles.remove(at: oldest)
+                previews[openFiles.remove(at: oldest).path] = nil
             }
         }
-        if scope?.profile == profile, let kept = previews[entry.path] {
+        if scope?.profile == profile, let kept = previews[entry.path], kept.modified == entry.modified {
             // Read already for its tab, and unchanged since as far as its
-            // folder's listing says.
+            // folder's listing says: the entry opened carries the date its
+            // save checks, so text kept from another date is read again.
             preview = kept.preview
             previewError = nil
             previewLoading = false
@@ -630,7 +631,9 @@ final class WorkspaceExplorer: ObservableObject {
             previews[entry.path] = nil
             return
         }
-        previews[entry.path] = (text, listed(entry.path)?.modified ?? entry.modified)
+        previews[entry.path] = (text, entry.modified)
+        let open = Set(openFiles.map(\.path))
+        previews = previews.filter { open.contains($0.key) }
         var total = previews.values.reduce(0) { $0 + $1.preview.byteSize }
         for file in openFiles where total > Self.previewsByteBudget && file.path != entry.path {
             guard let dropped = previews.removeValue(forKey: file.path) else { continue }

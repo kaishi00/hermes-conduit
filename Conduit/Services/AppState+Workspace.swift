@@ -26,12 +26,17 @@ extension AppState {
     }
 
     func workspaceFilesClient(profile: String) -> WorkspaceFilesClient {
-        WorkspaceFilesClient(profile: profile, request: { [weak self] path, method, body in
+        // An encoded body goes only to the dashboard the client was made on:
+        // one switched to while it was encoded isn't sent the file.
+        let startedOn = dashboardTicketBridge
+        return WorkspaceFilesClient(profile: profile, request: { [weak self] path, method, body in
             guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
             // A search walks the whole folder.
             return try await bridge.requestJSON(path: path, method: method, body: body, timeoutMilliseconds: 45_000)
         }, sendEncoded: { [weak self] path, body in
-            guard let bridge = self?.dashboardTicketBridge else { throw DashboardTicketBridgeError.notReady }
+            guard let bridge = startedOn, self?.dashboardTicketBridge === bridge else {
+                throw DashboardTicketBridgeError.notReady
+            }
             // An upload carries the file (up to 25 MB): longer for a bigger
             // one, as a room's files get.
             return try await bridge.requestEncodedJSON(
