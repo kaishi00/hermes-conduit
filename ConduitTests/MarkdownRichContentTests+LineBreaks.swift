@@ -58,6 +58,48 @@ extension MarkdownRichContentPolicyTests {
         XCTAssertEqual(InlineMarkdownContent.keepingLineBreaks("Title\n==="), "Title\n===")
         XCTAssertEqual(InlineMarkdownContent.keepingLineBreaks("Title\n===\nBody"), "Title\n===\nBody")
         XCTAssertEqual(InlineMarkdownContent.keepingLineBreaks("a\nb\n"), "a  \nb\n")
+        // A "===" with no text above it is text, and its break stays.
+        XCTAssertEqual(InlineMarkdownContent.keepingLineBreaks("===\nnext"), "===  \nnext")
+    }
+
+    func testAMarkdownDocumentKeepsSoftBreaks() {
+        // A hard-wrapped README shown as a file flows as one paragraph.
+        let document = MarkdownReferenceContext.empty.withLineBreaks(kept: false)
+        let attributed = InlineMarkdownContent.attributed(source: "wrapped at\nseventy-eight", references: document)
+        XCTAssertEqual(String(attributed.characters), "wrapped at seventy-eight")
+    }
+
+    @MainActor
+    func testTheRenderCacheKeepsRepliesAndDocumentsApart() throws {
+        func text(_ keeps: Bool) throws -> String {
+            let rendering = MarkdownRenderCache.rendering(
+                source: "first line\nsecond line",
+                recognizesGatewayMedia: false,
+                foregroundStyle: .primary,
+                usesAccentSurface: false,
+                isStreaming: false,
+                chatTextSize: .default,
+                keepsLineBreaks: keeps
+            )
+            XCTAssertEqual(rendering.references.keepsLineBreaks, keeps)
+            return try XCTUnwrap(rendering.selectableText).string
+        }
+        XCTAssertEqual(try text(true), "first line\nsecond line")
+        XCTAssertEqual(try text(false), "first line second line")
+        XCTAssertEqual(try text(true), "first line\nsecond line")
+    }
+
+    func testALargeDocumentCarriesItsLineBreakChoiceToEveryChunk() async throws {
+        let paragraph = String(repeating: "word ", count: 40) + "\nnext line"
+        let source = Array(repeating: paragraph, count: 600).joined(separator: "\n\n")
+        let keptPlan = await LargeMarkdownPreparedDocument.prepare(source)
+        let flowingPlan = await LargeMarkdownPreparedDocument.prepare(source, keepsLineBreaks: false)
+        let kept = try XCTUnwrap(keptPlan)
+        let flowing = try XCTUnwrap(flowingPlan)
+        XCTAssertTrue(kept.references.keepsLineBreaks)
+        XCTAssertTrue(kept.referencesByChunk.allSatisfy(\.keepsLineBreaks))
+        XCTAssertFalse(flowing.references.keepsLineBreaks)
+        XCTAssertFalse(flowing.referencesByChunk.contains(where: \.keepsLineBreaks))
     }
 
     func testABackslashWithASpaceAfterItIsTextAndTheBreakStays() {

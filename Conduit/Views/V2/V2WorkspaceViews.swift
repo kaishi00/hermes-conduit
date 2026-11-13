@@ -1406,7 +1406,7 @@ struct WorkspaceFileSheet: View {
                                 let _ = imageGallery.update { [text = preview.text] in
                                     ChatImageGallery.markdownItems(text, resolver: nil, recognizesGatewayMedia: false)
                                 }
-                                MarkdownText(source: preview.text)
+                                MarkdownText(source: preview.text, keepsLineBreaks: false)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .environment(\.imageGallery, imageGallery)
                             } else {
