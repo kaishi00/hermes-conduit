@@ -696,6 +696,14 @@ extension BotModeTests {
             toolName: "work_stop", input: #"{"ref": "W3"}"#, output: #"{"output": "W3 is not running"}"#
         ))
         XCTAssertNil(wrapped.title(running: false))
+        // A note to another bot (notifier issue 2395) names the bot it told.
+        let told = try XCTUnwrap(BotWorkCall.parse(
+            toolName: "tool_call", input: #"{"name": "work_tell", "arguments": {"bot": "Nahida", "text": "Built."}}"#,
+            output: #"{"ok": true, "bot": "Nahida", "note": "Told Nahida. It needs no answer."}"#
+        ))
+        XCTAssertEqual(told.tool, .tell)
+        XCTAssertEqual(told.title(running: false), "Told Nahida")
+        XCTAssertEqual(told.text, "Built.")
         XCTAssertNil(BotWorkCall.parse(toolName: "terminal", input: #"{"command": "ls"}"#, output: nil))
         XCTAssertNil(BotWorkCall.parse(toolName: "tool_call", input: #"{"name": "terminal"}"#, output: nil))
     }
