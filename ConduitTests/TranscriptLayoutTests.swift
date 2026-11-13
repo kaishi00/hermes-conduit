@@ -162,6 +162,83 @@ final class TranscriptLayoutTests: XCTestCase {
                        "Another row measures afresh")
     }
 
+    /// Issue 1763: dragging back over rows already seen measured each
+    /// row's SwiftUI content again as its cell came back on screen (row 84
+    /// of a 1,910-message chat measured 15 times in 8 passes). A row the
+    /// transcript measured since it last drew something else takes that
+    /// height; one that changed, one at another width, one measured on an
+    /// earlier visit, or any row once the chat's environment changed (off
+    /// screen too, whichever cell shows it next) measures again.
+    func testARowAlreadyMeasuredIsNotMeasuredAgainWhenItsCellComesBack() throws {
+        show(["a", "b"])
+        let width = layout.itemWidth
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width), "Guessed, not measured")
+
+        measure(["a": 100])
+        XCTAssertTrue(layout.hasCurrentMeasurement(of: "a", width: width))
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width + 40), "Only at the width laid out")
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "b", width: width))
+
+        layout.setRows([TranscriptRow(id: "a", kind: .empty), TranscriptRow(id: "b", kind: .empty)], changed: ["a"])
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width), "A row about to draw something else")
+        layout.invalidateLayout(with: UICollectionViewLayoutInvalidationContext())
+        view.layoutIfNeeded()
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width), "Nor once it does, until it measures")
+        measure(["a": 120])
+        XCTAssertTrue(layout.hasCurrentMeasurement(of: "a", width: width))
+
+        // A report repeating the height it has keeps it current, but not
+        // while the row is about to draw something else.
+        layout.forgetCurrentMeasurements()
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width), "The chat's environment changed")
+        measure(["a": 120])
+        XCTAssertTrue(layout.hasCurrentMeasurement(of: "a", width: width), "The same height, measured again")
+        layout.setRows([TranscriptRow(id: "a", kind: .empty), TranscriptRow(id: "b", kind: .empty)], changed: ["a"])
+        layout.rowResized("a", to: CGSize(width: width, height: 120))
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width), "Not for a row about to change")
+        layout.invalidateLayout(with: UICollectionViewLayoutInvalidationContext())
+        view.layoutIfNeeded()
+        measure(["a": 120])
+        XCTAssertTrue(layout.hasCurrentMeasurement(of: "a", width: width))
+
+        // The same conversation laid out again: its kept heights frame the
+        // rows, but each measures once more.
+        let scope = layout.scope
+        layout.setScope(UUID().uuidString)
+        layout.setScope(scope)
+        view.layoutIfNeeded()
+        XCTAssertEqual(try itemHeight("a"), 120)
+        XCTAssertFalse(layout.hasCurrentMeasurement(of: "a", width: width))
+
+        // The cell: told the height is known, it keeps its frame's.
+        let suiteName = "transcript-cell-known-height"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        let appState = AppState(defaults: defaults, loadSavedConnection: false)
+        let cell = TranscriptCell(frame: CGRect(x: 0, y: 0, width: width, height: 40))
+        var known = true
+        cell.knowsHeight = { _, _ in known }
+        cell.host(
+            TranscriptCellRoot(
+                rowID: "a",
+                content: AnyView(Color.clear.frame(height: 100)),
+                rowEnvironment: TranscriptCellEnvironment(EnvironmentValues(), disclosure: nil),
+                appState: appState,
+                resized: { _ in }
+            ),
+            rowID: "a",
+            in: UIViewController()
+        )
+        let attributes = UICollectionViewLayoutAttributes(forCellWith: IndexPath(item: 0, section: 0))
+        attributes.size = CGSize(width: width, height: 40)
+        let ideal = 100 + TranscriptLayout.rowGap
+        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, 40, "Known: its frame's height")
+
+        known = false
+        XCTAssertEqual(cell.preferredLayoutAttributesFitting(attributes).size.height, ideal, accuracy: 1,
+                       "Not known: it measures")
+    }
+
     func testARowChangingHeightMovesTheRowsUnderItInTheSamePass() throws {
         show(["a", "b", "c"])
         measure(["a": 100, "b": 100, "c": 100])
@@ -333,6 +410,29 @@ final class TranscriptLayoutTests: XCTestCase {
         layout.setSideInsets(leading: 44, trailing: 0)
         view.layoutIfNeeded()
         XCTAssertEqual(TranscriptPerf.rowHeightEstimates, 2 * ids.count)
+    }
+
+    /// The app's phase or color scheme changing leaves every row's height
+    /// current; the text's size or the rows' state changing doesn't
+    /// (issue 1763, #2341 review).
+    func testOnlyWhatARowsHeightReadsForgetsItsMeasurement() {
+        let base = TranscriptCellEnvironment(EnvironmentValues(), disclosure: nil)
+        var cosmetic = base
+        cosmetic.colorScheme = base.colorScheme == .dark ? .light : .dark
+        cosmetic.scenePhase = base.scenePhase == .active ? .inactive : .active
+        cosmetic.isEnabled.toggle()
+        cosmetic.v2TabBarClearance += 20
+        cosmetic.botsHomeCovered.toggle()
+        cosmetic.rosterRowsInScroll.toggle()
+        cosmetic.settingsGlowTint = base.settingsGlowTint == nil ? .red : nil
+        XCTAssertNotEqual(cosmetic, base)
+        XCTAssertTrue(cosmetic.measuresLike(base))
+        var biggerText = base
+        biggerText.dynamicTypeSize = base.dynamicTypeSize == .xxxLarge ? .small : .xxxLarge
+        XCTAssertFalse(biggerText.measuresLike(base))
+        var busy = base
+        busy.chatRowState.isBusy.toggle()
+        XCTAssertFalse(busy.measuresLike(base))
     }
 
     /// A row not measured yet that draws something else (an edit landing

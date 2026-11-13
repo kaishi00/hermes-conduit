@@ -146,7 +146,14 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         collectionView.didLayout = { [weak self] in self?.collectionViewDidLayout() }
         dataSource = UICollectionViewDiffableDataSource<Int, String>(collectionView: collectionView) { [weak self] collectionView, indexPath, id in
             let cell = collectionView.dequeueReusableCell(withReuseIdentifier: TranscriptCell.reuseIdentifier, for: indexPath)
-            if let cell = cell as? TranscriptCell { self?.configure(cell, id: id) }
+            if let cell = cell as? TranscriptCell {
+                if cell.knowsHeight == nil {
+                    cell.knowsHeight = { [weak self] id, width in
+                        self?.layout.hasCurrentMeasurement(of: id, width: width) ?? false
+                    }
+                }
+                self?.configure(cell, id: id)
+            }
             return cell
         }
         // After UIScrollView's own target, so a fling has begun by the time
@@ -210,6 +217,12 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         dropParkedIfIdle()
         // Before the rows: a cell configured for them draws with these.
         if environment != rowEnvironment {
+            // Rows measured under the last environment, off screen too,
+            // measure again as their cells next show them, unless only
+            // something no row's height reads changed.
+            if !environment.measuresLike(rowEnvironment) {
+                layout.forgetCurrentMeasurements()
+            }
             rowEnvironment = environment
             for case let cell as TranscriptCell in collectionView.visibleCells {
                 cell.updateEnvironment(environment)
@@ -597,6 +610,14 @@ final class TranscriptCell: UICollectionViewCell {
     /// the main thread never gets back to its run loop (build 265's
     /// watchdog kill swiping out of a Bot Chat).
     private(set) var drawnSize: CGSize?
+    /// Whether the transcript already holds a row's height at a width,
+    /// measured since the row last drew something else: a cell showing it
+    /// again (scrolling back over rows already seen) takes that height
+    /// instead of measuring the row's SwiftUI content once more, which was
+    /// most of a long chat's per-row cost on every pass (issue 1763).
+    /// The layout forgets them all when the chat's environment changes
+    /// (TranscriptLayout.forgetCurrentMeasurements).
+    var knowsHeight: (@MainActor (String, CGFloat) -> Bool)?
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -669,6 +690,9 @@ final class TranscriptCell: UICollectionViewCell {
         let size: CGSize
         if let drawnSize, abs(drawnSize.width - width) <= 0.5 {
             size = drawnSize
+        } else if let hostedRowID, knowsHeight?(hostedRowID, width) == true {
+            // Its frame already has the height it measured.
+            return layoutAttributes
         } else {
             size = hosting.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
         }

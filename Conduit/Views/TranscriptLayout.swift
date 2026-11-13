@@ -71,6 +71,13 @@ final class TranscriptLayout: UICollectionViewLayout {
     /// else: a pass from a row that measured lays out every row under it,
     /// and a long chat's would be guessed again in each.
     private var estimates: [String: CGFloat] = [:]
+    /// The rows measured at the width laid out since they last drew
+    /// something else: a cell showing one of them again (scrolling back
+    /// over rows already seen) takes its height from here instead of
+    /// measuring the row afresh (issue 1763). Heights kept from an earlier
+    /// visit to the conversation aren't in it, since a row may draw
+    /// something else now.
+    private var measuredSinceChange: Set<String> = []
     /// What decides a height besides the width: the conversation (row ids
     /// repeat across them) and the text's size and face.
     private(set) var scope = ""
@@ -128,9 +135,14 @@ final class TranscriptLayout: UICollectionViewLayout {
     func rowResized(_ id: String, to size: CGSize) {
         guard abs(size.width - itemWidth) <= 0.5, size.height > 0 else { return }
         let height = pixelRounded(size.height)
-        guard heights[id].map({ abs($0 - height) > 0.5 }) ?? true else { return }
+        guard heights[id].map({ abs($0 - height) > 0.5 }) ?? true else {
+            // Measured again at the height it had: current all the same.
+            if !pendingChanges.contains(id) { measuredSinceChange.insert(id) }
+            return
+        }
         guard let index = indexByID[id] else {
             heights[id] = height
+            measuredSinceChange.insert(id)
             return
         }
         let adjustment = noteHeight(height, at: index)
@@ -168,9 +180,29 @@ final class TranscriptLayout: UICollectionViewLayout {
         let row = rows[index]
         let before = self.height(of: row)
         heights[row.id] = height
+        measuredSinceChange.insert(row.id)
         let contentBefore = max(pendingRowsBottom, requestedReserve)
         pendingRowsBottom += height - before
         return asksContentSize ? 0 : max(pendingRowsBottom, requestedReserve) - contentBefore
+    }
+
+    /// The chat's environment changed (a setting a row's controls depend
+    /// on, such as showing reasoning or a Retry control): every row measures
+    /// again as its cell next shows it, on screen or not. The heights stay,
+    /// so the rows keep their frames until then.
+    func forgetCurrentMeasurements() {
+        measuredSinceChange = []
+    }
+
+    /// Whether the row's height at `width` was measured since it last drew
+    /// something else, so its cell needn't measure it again
+    /// (TranscriptCell.preferredLayoutAttributesFitting).
+    func hasCurrentMeasurement(of id: String, width: CGFloat) -> Bool {
+        // Every insert follows a write to `heights`; the table changing
+        // under a new width or scope clears the set with it.
+        abs(width - itemWidth) <= 0.5
+            && measuredSinceChange.contains(id)
+            && !pendingChanges.contains(id)
     }
 
     // MARK: - Frames
@@ -394,6 +426,7 @@ final class TranscriptLayout: UICollectionViewLayout {
         // guessed from what it draws now, in this pass.
         for id in changed {
             estimates[id] = nil
+            measuredSinceChange.remove(id)
             if let index = indexByID[id] { markDirty(from: index) }
         }
     }
@@ -415,6 +448,7 @@ final class TranscriptLayout: UICollectionViewLayout {
     private func loadHeightTable() {
         heights = TranscriptHeights.table(for: "\(scope)|\(Int(itemWidth.rounded()))")
         estimates = [:]
+        measuredSinceChange = []
         markDirty(from: 0)
     }
 

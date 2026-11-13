@@ -126,7 +126,9 @@ enum RoomCopyText {
         case "ended":
             return AppLocalization.string("Ended")
         case "left":
-            return AppLocalization.string("Your agents left", table: .rooms)
+            return copy.justMe
+                ? AppLocalization.string("You left", table: .rooms)
+                : AppLocalization.string("Your agents left", table: .rooms)
         default:
             break
         }

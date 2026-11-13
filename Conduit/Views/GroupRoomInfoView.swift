@@ -234,7 +234,7 @@ extension GroupRoomInfoSheet {
                     Button(role: .destructive) {
                         blocking = target
                     } label: {
-                        Label(AppLocalization.string("Block \(target.name)", table: .rooms), systemImage: "hand.raised")
+                        Label(RoomBlock.button(target.name), systemImage: "hand.raised")
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                     .buttonStyle(.settingsDestructive)
@@ -258,7 +258,7 @@ extension GroupRoomInfoSheet {
             } catch {
                 guard !(error is CancellationError) else { return }
                 Haptics.error()
-                refusal = (title: AppLocalization.string("Could not block \(target.name)", table: .rooms),
+                refusal = (title: RoomBlock.refusalTitle(target.name),
                            message: RoomLinksClient.message(for: error))
             }
         }

@@ -208,14 +208,16 @@ extension AppState {
     }
 
     /// Reads the approvals again for as long as Group Chats is on screen
-    /// (its task's lifetime), as a copy's room screen does each tick.
+    /// (its task's lifetime), as a copy's room screen does each tick, while
+    /// the app is active.
     func followLinkedRoomApprovalsOnScreen() async {
         while !Task.isCancelled {
             // From this dashboard's list: another's stale one doesn't set the pace.
             let listed = !linkedRoomApprovalRows.isEmpty
             try? await Task.sleep(for: Self.rosterApprovalsInterval(listed: listed))
             guard !Task.isCancelled else { return }
-            if groupChatPhase == .available, canAnswerRoomApprovals { await refreshLinkedRoomApprovals() }
+            // Inactive or in the background: skipped, as the invites' follow is.
+            if groupChatPhase == .available, canAnswerRoomApprovals, isSceneActive { await refreshLinkedRoomApprovals() }
         }
     }
 

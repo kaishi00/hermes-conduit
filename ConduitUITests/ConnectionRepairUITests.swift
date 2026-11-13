@@ -274,12 +274,25 @@ final class ConnectionRepairUITests: XCTestCase {
 
     private func tapVisible(_ element: XCUIElement, in app: XCUIApplication) {
         XCTAssertTrue(element.waitForExistence(timeout: 5))
+        if !element.isHittable { dismissSavePasswordPrompt(app) }
         for _ in 0..<6 {
             if element.isHittable { break }
             app.swipeUp()
         }
         XCTAssertTrue(element.isHittable)
+        waitUntilSettled(element)
         element.tap()
+    }
+
+    /// iOS 27 offers to save a typed password to the Passwords app once the
+    /// credentials step goes away, and its sheet covers the next screen
+    /// (as ConnectionSetupUITests).
+    private func dismissSavePasswordPrompt(_ app: XCUIApplication) {
+        let notNow = app.buttons["Not Now"]
+        guard notNow.waitForExistence(timeout: 2) else { return }
+        waitUntilSettled(notNow)
+        notNow.tap()
+        _ = notNow.waitForNonExistence(timeout: 3)
     }
 
     private func dismissKeyboard(_ app: XCUIApplication) {

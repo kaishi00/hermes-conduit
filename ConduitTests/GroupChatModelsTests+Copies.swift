@@ -134,6 +134,9 @@ extension GroupChatModelsTests {
         XCTAssertEqual(try line(copiesCopy(from: "", working: true)), AppLocalization.string("Hosted elsewhere · working…", table: .rooms))
         XCTAssertEqual(try line(copiesCopy(status: "ended", reason: "disbanded")), AppLocalization.string("Ended"))
         XCTAssertEqual(try line(copiesCopy(status: "left", yours: [])), AppLocalization.string("Your agents left", table: .rooms))
+        var leftAlone = copiesCopy(status: "left", yours: [])
+        leftAlone["just_me"] = true
+        XCTAssertEqual(try line(leftAlone), AppLocalization.string("You left", table: .rooms), "a Just me guest brought no agents")
         // Taken out, the room goes on without them: it didn't end.
         XCTAssertEqual(try line(copiesCopy(status: "ended", reason: "removed", yours: [])),
                        AppLocalization.string("\(host) took your agents out", table: .rooms))

@@ -181,7 +181,9 @@ enum RoomInviteText {
         case "declined":
             return AppLocalization.string("You declined")
         case "left":
-            return AppLocalization.string("Your agents left", table: .rooms)
+            return invite.justMe
+                ? AppLocalization.string("You left", table: .rooms)
+                : AppLocalization.string("Your agents left", table: .rooms)
         case "cancelled":
             switch invite.reason {
             case "withdrawn":
@@ -494,11 +496,14 @@ extension AppState {
 
     /// Back in the foreground: an invite that came while Conduit was away,
     /// its push missed, and the drafts, so a room that started meanwhile
-    /// shows; a room still on its way is followed again.
+    /// shows, and the approvals; a room still on its way is followed again.
     func refreshLinkedRoomsOnForeground() async {
         await refreshLinkedRoomDrafts(readingPeople: false)
         await refreshGroupRoomsForStartedDrafts()
         await refreshLinkedRoomInvites()
+        // An approval that came up while away shows without waiting for
+        // Group Chats' next tick (it skips ticks while the app is inactive).
+        if groupChatPhase == .available, canAnswerRoomApprovals { await refreshLinkedRoomApprovals() }
         followLinkedRoomsOnTheirWay()
     }
 

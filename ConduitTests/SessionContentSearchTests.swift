@@ -607,8 +607,15 @@ final class SessionContentSearchTests: XCTestCase {
             try await stub.request(path)
         }
         model.update(query: "recycling", context: context)
-        for _ in 0..<200 where !(stub.isWaiting(path("recycling", profile: "atlas")) && model.hits.count == 1) {
-            await Task.yield()
+        // Wait on the state itself, bounded in time: a count of yields let
+        // nova's request start after the loop on Xcode 27 (Nightly
+        // 2026-11-13: 2 of 3 asked).
+        let deadline = Date().addingTimeInterval(10)
+        while Date() < deadline,
+              !(stub.isWaiting(path("recycling", profile: "atlas"))
+                && stub.paths.count == 3
+                && model.hits.count == 1) {
+            try? await Task.sleep(nanoseconds: 1_000_000)
         }
         XCTAssertTrue(stub.isWaiting(path("recycling", profile: "atlas")))
         XCTAssertEqual(stub.paths.count, 3, "every profile asked at once, not one after another")

@@ -850,6 +850,28 @@ extension GroupChatModelsTests {
         )
         XCTAssertEqual(RoomBlock.targets(copy: nil, draft: draft).map(\.name), ["Ann", "Zed"])
         XCTAssertEqual(RoomBlock.targets(copy: nil, draft: nil), [])
+        // Each carries the open room's own dashboard, so block(_:) refuses it
+        // once that isn't the active one.
+        let room = GroupRoom(roomID: "conduit-1", name: "Zoo trip", members: [], authorityGatewayID: "gw-a",
+                             authorityEpoch: 1, revision: 1, createdAt: 0, updatedAt: 0, disbandedAt: nil, latestSeq: 0)
+        let dashboard = UUID()
+        let copySurface = AppState.GroupRoomSurface(dashboardID: dashboard, room: room, copy: copy)
+        XCTAssertEqual(RoomBlock.targets(for: copySurface, draft: draft).map(\.dashboardID), [dashboard], "a copy lists its host, not a draft's people")
+        let hostedSurface = AppState.GroupRoomSurface(dashboardID: dashboard, room: room)
+        XCTAssertEqual(RoomBlock.targets(for: hostedSurface, draft: draft).map(\.dashboardID), [dashboard, dashboard])
+        // A Link with no name reads as "this person", never a stand-in in a name's place.
+        let unnamed = try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(room: "conduit-3", link: "lk-anon", from: "")))
+        XCTAssertEqual(RoomBlock.targets(copy: unnamed, draft: nil).map(\.name), [""])
+        XCTAssertEqual(RoomBlock.title(""), AppLocalization.string("Block this person?", table: .rooms))
+        XCTAssertEqual(RoomBlock.button(""), AppLocalization.string("Block this person", table: .rooms))
+        XCTAssertTrue(RoomBlock.message("").hasPrefix(AppLocalization.string("This unlinks their Hermes from yours, on both sides: nothing more from them reaches your Hermes, and the rooms you share with them stop. Linking again takes a new invite.", table: .rooms)))
+        XCTAssertEqual(RoomBlock.refusalTitle(""), AppLocalization.string("Could not block this person", table: .rooms))
+        XCTAssertEqual(RoomBlock.button("Mona"), AppLocalization.string("Block \("Mona")", table: .rooms))
+        let quiet = RoomDraft(
+            id: "conduit-4", name: "Picnic", status: "started", reason: nil, createdAt: nil, expiresAt: nil,
+            agents: ["Furina"], people: [RoomDraft.Person(id: "lk-q", name: " ", status: "joined", agents: [])]
+        )
+        XCTAssertEqual(RoomBlock.targets(copy: nil, draft: quiet).map(\.name), [""])
         XCTAssertEqual(RoomBlock.title("Mona"), AppLocalization.string("Block \("Mona")?", table: .rooms))
     }
 
