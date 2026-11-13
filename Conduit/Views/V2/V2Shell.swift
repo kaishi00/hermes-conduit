@@ -2,9 +2,9 @@
 //  V2Shell.swift
 //  Conduit
 //
-//  Conduit V2's navigation shell: four tabs (Bots, Sessions, Tasks,
-//  Settings), in the order the user keeps them (`V2TabLayout`), in place of
-//  the sessions drawer. It is new presentation over the same
+//  Conduit V2's navigation shell: tabs (Bots, Sessions, Tasks, Settings,
+//  and Pulse or Artifacts for whoever adds them), in the order the user
+//  keeps them (`V2TabLayout`), in place of the sessions drawer. It is new presentation over the same
 //  AppState: the open conversation is still AppState's one active session,
 //  and `showSidebar` keeps meaning "the chat is covered", which here is
 //  "no conversation is pushed on the visible tab". Everything that already
@@ -16,7 +16,8 @@ import Combine
 import SwiftUI
 import os
 
-/// The shell's four destinations.
+/// The shell's destinations. Pulse and Artifacts are pages of Bots and
+/// Sessions until the user makes them tabs (Settings > Appearance > Tabs).
 enum V2Tab: String, Identifiable, Hashable {
     /// The tab an opened conversation is pushed in. A plain session opened
     /// over Bots (a notification, a widget, a Shortcut) still goes to
@@ -24,14 +25,27 @@ enum V2Tab: String, Identifiable, Hashable {
     /// Bots, stay in Bots.
     /// A chat opened from a page pushed in Bots (Pulse, Artifacts) stays
     /// there too, so Back returns to that page.
-    static func conversationTab(selected: V2Tab, isBotsChat: Bool, fromBotsPage: Bool = false) -> V2Tab {
-        selected == .bots && (isBotsChat || fromBotsPage) ? .bots : .chats
+    /// A chat opened from a page that is a tab (Pulse, Artifacts) stays in
+    /// that tab the same way; `fromPageTab` is false for a chat that is an
+    /// ordinary one whatever shows (a new chat out of a room).
+    static func conversationTab(selected: V2Tab, isBotsChat: Bool, fromBotsPage: Bool = false, fromPageTab: Bool = true) -> V2Tab {
+        if selected.isPage { return fromPageTab ? selected : .chats }
+        return selected == .bots && (isBotsChat || fromBotsPage) ? .bots : .chats
     }
 
     case chats
     case tasks
     case bots
     case settings
+    case pulse
+    case artifacts
+
+    /// A page made a tab: its root is the page, and a chat opened from it
+    /// is pushed over it.
+    var isPage: Bool { self == .pulse || self == .artifacts }
+
+    /// The tabs a chat can be pushed in.
+    static let chatTabs: [V2Tab] = [.chats, .bots, .pulse, .artifacts]
 
     var id: String { rawValue }
 
@@ -41,6 +55,8 @@ enum V2Tab: String, Identifiable, Hashable {
         case .tasks: return AppLocalization.string("Tasks")
         case .bots: return AppLocalization.string("Bots")
         case .settings: return AppLocalization.string("Settings")
+        case .pulse: return AppLocalization.string("Pulse")
+        case .artifacts: return AppLocalization.string("Artifacts")
         }
     }
 
@@ -50,6 +66,8 @@ enum V2Tab: String, Identifiable, Hashable {
         case .tasks: return "checklist"
         case .bots: return "person.2"
         case .settings: return "slider.horizontal.3"
+        case .pulse: return "waveform.path.ecg"
+        case .artifacts: return "square.grid.2x2"
         }
     }
 }
@@ -434,6 +452,10 @@ struct V2Shell: View {
     /// in the path from the start.
     @State private var chatsPath: [V2Route] = []
     @State private var botsPath: [V2Route] = []
+    /// Pulse and Artifacts as tabs: only a chat opened from the page is
+    /// ever pushed over it.
+    @State private var pulsePath: [V2Route] = []
+    @State private var artifactsPath: [V2Route] = []
     /// Bots Home's portraits and the Bot Chats they open (BotZoomSource).
     @Namespace private var botZoom
     /// The custom bar keeps a tab alive once it has been opened, so its
@@ -483,11 +505,13 @@ struct V2Shell: View {
     ///     kept current here.
     ///   - reopening: where this launch opens, from that record
     ///     (`V2ReopenedConversation.launch`); nil opens on the first tab.
-    init(conversationOnLeave: Binding<String> = .constant(""), reopening launch: V2ReopenedConversation.Launch? = nil) {
+    ///   - showsPulse: whether this dashboard has Pulse, so a first tab of
+    ///     Pulse passes the launch to the next one where it doesn't.
+    init(conversationOnLeave: Binding<String> = .constant(""), reopening launch: V2ReopenedConversation.Launch? = nil, showsPulse: Bool = true) {
         _conversationOnLeave = conversationOnLeave
         _roomToReopen = State(initialValue: launch?.roomID == nil ? nil : launch)
         let layout = V2TabLayoutStore.shared.layout
-        var opensOn = layout.first
+        var opensOn = layout.first(without: showsPulse ? [] : [.pulse])
         switch launch?.tab {
         case .bots?:
             opensOn = .bots
@@ -495,6 +519,12 @@ struct V2Shell: View {
         case .chats?:
             opensOn = .chats
             _chatsPath = State(initialValue: launch?.path ?? [])
+        case .pulse?:
+            opensOn = .pulse
+            _pulsePath = State(initialValue: launch?.path ?? [])
+        case .artifacts?:
+            opensOn = .artifacts
+            _artifactsPath = State(initialValue: launch?.path ?? [])
         case .tasks?, .settings?, nil:
             break
         }
@@ -503,19 +533,15 @@ struct V2Shell: View {
     }
 
     /// Whether the visible tab shows the conversation.
-    /// The chat's screen left both tabs (not moved from one to the other):
+    /// The chat's screen left every tab (not moved from one to another):
     /// a Bot Chat still on its way stands down.
     private func standDownIfChatLeft() {
-        guard !chatsPath.contains(.conversation), !botsPath.contains(.conversation) else { return }
+        guard !conversationPushed else { return }
         appState.standDownBotChatOnItsWay()
     }
 
     private var conversationVisible: Bool {
-        switch selectedTab {
-        case .chats: return chatsPath.last == .conversation
-        case .bots: return botsPath.last == .conversation
-        case .tasks, .settings: return false
-        }
+        path(of: selectedTab).last == .conversation
     }
 
     /// Whether the visible tab shows the Pulse screen, which takes the
@@ -612,9 +638,9 @@ struct V2Shell: View {
         conversationOnLeave = conversationToReopen?.encoded ?? ""
     }
 
-    /// Whether either tab holds the conversation, shown or not.
+    /// Whether any tab holds the conversation, shown or not.
     private var conversationPushed: Bool {
-        chatsPath.contains(.conversation) || botsPath.contains(.conversation)
+        V2Tab.chatTabs.contains { path(of: $0).contains(.conversation) }
     }
 
     /// Whether a screen is pushed over the tab's root. Split, the chat
@@ -628,7 +654,20 @@ struct V2Shell: View {
         switch tab {
         case .chats: chatsPath
         case .bots: botsPath
+        case .pulse: pulsePath
+        case .artifacts: artifactsPath
         case .tasks, .settings: []
+        }
+    }
+
+    /// Changes a tab's path where it has one.
+    private func changePath(of tab: V2Tab, _ change: (inout [V2Route]) -> Void) {
+        switch tab {
+        case .chats: change(&chatsPath)
+        case .bots: change(&botsPath)
+        case .pulse: change(&pulsePath)
+        case .artifacts: change(&artifactsPath)
+        case .tasks, .settings: break
         }
     }
 
@@ -726,6 +765,11 @@ struct V2Shell: View {
                 giveUpRoomIfLeft()
                 if old.contains(.conversation) { standDownIfChatLeft() }
             }
+            // The same for a chat opened from Pulse or Artifacts as a tab.
+            .onChange(of: [pulsePath, artifactsPath]) { old, new in
+                giveUpRoomIfLeft()
+                if old.contains(where: { $0.contains(.conversation) }) { standDownIfChatLeft() }
+            }
             .onChange(of: appState.isModalSheetPresented) { _, presented in
                 // A sheet's dismissal shows the chat again: what came in under
                 // it is read now (#1579).
@@ -776,8 +820,9 @@ struct V2Shell: View {
                 // a chat nobody can see.
                 if old != nil, new == nil {
                     let handoff = conversationVisible ? appState.roomHandedTo : AppState.RoomHandoff.none
-                    if chatsPath.last == .conversation { chatsPath.removeLast() }
-                    if botsPath.last == .conversation { botsPath.removeLast() }
+                    for tab in V2Tab.chatTabs where path(of: tab).last == .conversation {
+                        changePath(of: tab) { $0.removeLast() }
+                    }
                     if handoff != AppState.RoomHandoff.none, !appState.isVoiceCallScreenPresented {
                         // A new chat has no id yet, so the Bot Chat open
                         // before the room would still place it in Bots.
@@ -828,12 +873,22 @@ struct V2Shell: View {
                 // Its haptic came with the tap.
                 pickProfile(next, haptic: false)
             }
-            .onChange(of: appState.showsPulseScreen) { _, shows in
+            .onChange(of: appState.showsPulseScreen, initial: true) { was, shows in
+                // The bar and the ⌘ keys leave Pulse's tab out where this
+                // dashboard has none.
+                tabLayout.setAvailable(.pulse, shows)
                 // No Pulse here any more (another dashboard, an older plugin): no badge or marks.
-                guard !shows else { return }
+                guard was, !shows else { return }
                 appState.pulseUnseen = 0
                 appState.pulseSources = [:]
                 appState.pulseHomeChatID = nil
+                // Its tab goes too: the reader lands on the first tab left,
+                // unless a chat opened from it is showing.
+                if selectedTab == .pulse, pulsePath.isEmpty {
+                    let next = tabLayout.layout.first(without: [.pulse])
+                    visitedTabs.insert(next)
+                    selectTab(next)
+                }
             }
             .onChange(of: appState.pulseOpenRequest, initial: true) { _, request in
                 // The page reads the card to show and clears the request. A
@@ -841,6 +896,14 @@ struct V2Shell: View {
                 guard request != nil else { return }
                 guard !appState.isModalSheetPresented else {
                     appState.pulseOpenRequest = nil
+                    return
+                }
+                if tabLayout.tabs.contains(.pulse) {
+                    // Pulse is a tab: its own page, back from a chat opened
+                    // from it.
+                    if !pulsePath.isEmpty { pulsePath.removeAll() }
+                    visitedTabs.insert(.pulse)
+                    selectTab(.pulse)
                     return
                 }
                 if chatsPath.last != .pulse {
@@ -859,7 +922,7 @@ struct V2Shell: View {
                 visitedTabs.insert(.settings)
                 selectTab(.settings)
             }
-            // ⌘1 to ⌘4, in the bar's order, and ⌘, (KeyboardShortcuts.swift);
+            // ⌘1 to ⌘5, in the bar's order, and ⌘, (KeyboardShortcuts.swift);
             // nothing is in front, which the command checked.
             .onReceive(KeyboardCommands.tabRequests) { tab in
                 visitedTabs.insert(tab)
@@ -914,11 +977,13 @@ struct V2Shell: View {
         let strip = statusStrip
         let settingsBeside = V2SplitLayout.settingsBesideList(split: split)
         let underList = V2SplitLayout.tabBarUnderList(split: split, tab: selectedTab)
-        let barTabs = tabLayout.layout.bar(selected: selectedTab)
+        let barTabs = tabLayout.layout.bar(selected: selectedTab, without: tabLayout.unavailable)
+        // Pulse's tab wears the dot its buttons do.
+        let dotted: Set<V2Tab> = appState.pulseUnseen > 0 ? [.pulse] : []
         // Every tab, hidden ones included: one that's been opened stays
         // made behind the others, as a shown one does.
         return ZStack {
-            ForEach(V2TabLayout.standardOrder) { tab in
+            ForEach(V2TabLayout.allTabs) { tab in
                 // The selected tab shows from the tap's own frame; it joins
                 // the visited ones right after. Split, Settings shows in
                 // the Chats tab's chat column instead of a tab of its own.
@@ -962,7 +1027,7 @@ struct V2Shell: View {
             ZStack(alignment: .bottom) {
                 if strip == nil, split || (!conversationVisible && !pulseVisible) {
                     HStack(spacing: 10) {
-                        V2CapsuleTabBar(selection: $selectedTab, tabs: barTabs)
+                        V2CapsuleTabBar(selection: $selectedTab, tabs: barTabs, dotted: dotted)
                         voiceButton(chatVoiceBeside: V2SplitLayout.hasChatVoiceBeside(split: split, path: path(of: selectedTab), inRoom: appState.activeRoomSurface != nil))
                     }
                     .padding(.horizontal, 16)
@@ -1021,7 +1086,10 @@ struct V2Shell: View {
         ZStack(alignment: .bottom) {
             if split || path(of: selectedTab).isEmpty {
                 VStack(spacing: 12) {
-                    V2StripTabBar(selection: $selectedTab, tabs: tabLayout.layout.bar(selected: selectedTab), width: strip.columnWidth)
+                    V2StripTabBar(selection: $selectedTab,
+                                  tabs: tabLayout.layout.bar(selected: selectedTab, without: tabLayout.unavailable),
+                                  dotted: appState.pulseUnseen > 0 ? [.pulse] : [],
+                                  width: strip.columnWidth)
                     voiceButton(chatVoiceBeside: V2SplitLayout.hasChatVoiceBeside(split: split, path: path(of: selectedTab), inRoom: appState.activeRoomSurface != nil))
                         .environment(\.v2MainButtonDiameter, strip.columnWidth)
                 }
@@ -1114,6 +1182,28 @@ struct V2Shell: View {
                 } else if !path.contains(.conversation) {
                     appState.botZoom.left()
                 }
+            }
+        case .pulse where split:
+            splitColumns(path: $pulsePath, list: list, offersNewChat: false, hostsSettings: false) {
+                tabBarClearance(V2PulsePage())
+            }
+        case .pulse:
+            // The page is the tab's root, over the bar as a list is; a chat
+            // opened from a card is pushed over it.
+            NavigationStack(path: $pulsePath) {
+                listRoot(tabBarClearance(V2PulsePage()), alone: canSplit)
+                    .windowSideContent()
+                    .navigationDestination(for: V2Route.self) { destination($0, alone: canSplit).windowSideContent() }
+            }
+        case .artifacts where split:
+            splitColumns(path: $artifactsPath, list: list, offersNewChat: false, hostsSettings: false) {
+                tabBarClearance(V2ArtifactsPage())
+            }
+        case .artifacts:
+            NavigationStack(path: $artifactsPath) {
+                listRoot(tabBarClearance(V2ArtifactsPage()), alone: canSplit)
+                    .windowSideContent()
+                    .navigationDestination(for: V2Route.self) { destination($0, alone: canSplit).windowSideContent() }
             }
         case .settings:
             // Settings puts the clearance inside its own stack, on its home
@@ -1262,29 +1352,24 @@ struct V2Shell: View {
         let target = V2Tab.conversationTab(
             selected: selectedTab,
             isBotsChat: !ordinary && appState.placesConversationAsBotChat,
-            fromBotsPage: !ordinary && (botsPath.last == .pulse || botsPath.last == .artifacts)
+            fromBotsPage: !ordinary && (botsPath.last == .pulse || botsPath.last == .artifacts),
+            fromPageTab: !ordinary
         )
         appState.botChatOpeningPlaced()
         // The push itself, before the path moves: paired with the
         // destination's "Conversation appeared" in a device trace, and with
         // the "Chat open" interval AppState already runs.
         ResponsivenessSignposts.signposter.emitEvent("Chat pushed")
-        switch target {
-        case .bots:
-            chatsPath.removeAll { $0 == .conversation }
-            if botsPath.last != .conversation {
-                // As in Chats: a chat opened from Pulse over another chat
-                // moves to the top.
-                botsPath.removeAll { $0 == .conversation }
-                botsPath.append(.conversation)
-            }
-        default:
-            botsPath.removeAll { $0 == .conversation }
-            if chatsPath.last != .conversation {
-                // A chat opened from a page over another chat (Pulse) moves
-                // to the top instead of showing twice in the stack.
-                chatsPath.removeAll { $0 == .conversation }
-                chatsPath.append(.conversation)
+        // Only the target holds it.
+        for tab in V2Tab.chatTabs where tab != target && path(of: tab).contains(.conversation) {
+            changePath(of: tab) { routes in routes.removeAll { $0 == .conversation } }
+        }
+        if path(of: target).last != .conversation {
+            // A chat opened from a page over another chat (Pulse) moves to
+            // the top instead of showing twice in the stack.
+            changePath(of: target) { routes in
+                routes.removeAll { $0 == .conversation }
+                routes.append(.conversation)
             }
         }
         visitedTabs.insert(target)
@@ -1328,6 +1413,9 @@ struct V2Shell: View {
             // into its portrait; the path's change lets it go after
             // (build 248: clearing it first made Back a plain pop).
             if botsPath.last == .conversation { botsPath.removeLast() } else { appState.botZoom.left() }
+        case .pulse, .artifacts:
+            appState.botZoom.left()
+            if conversationVisible { changePath(of: selectedTab) { $0.removeLast() } }
         case .tasks, .settings:
             appState.botZoom.left()
         }
@@ -1822,6 +1910,8 @@ struct V2NoticeBanner: View {
 private struct V2CapsuleTabBar: View {
     @Binding var selection: V2Tab
     let tabs: [V2Tab]
+    /// Tabs with something unseen (Pulse's new cards).
+    var dotted: Set<V2Tab> = []
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var highlight
 
@@ -1838,9 +1928,13 @@ private struct V2CapsuleTabBar: View {
                         Image(systemName: tab.symbol)
                             .font(.system(size: 17, weight: .semibold))
                             .conduitFixedGlyph()
+                            .overlay(alignment: .topTrailing) { V2TabDot(shows: dotted.contains(tab)) }
                         Text(tab.title)
                             .scaledFont(.caption2.weight(.semibold))
                             .lineLimit(1)
+                            // Five tabs share the bar: a long name shrinks
+                            // a little before it's cut.
+                            .minimumScaleFactor(0.8)
                     }
                     .foregroundStyle(isSelected ? Color.conduitAccent : Color.secondary)
                     .frame(maxWidth: .infinity, minHeight: 48)
@@ -1855,6 +1949,7 @@ private struct V2CapsuleTabBar: View {
                 }
                 .buttonStyle(PressableButtonStyle())
                 .accessibilityLabel(tab.title)
+                .accessibilityValue(dotted.contains(tab) ? AppLocalization.string("New") : "")
                 .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
                 .accessibilityShowsLargeContentViewer {
                     Label(tab.title, systemImage: tab.symbol)
@@ -1864,6 +1959,21 @@ private struct V2CapsuleTabBar: View {
         .padding(4)
         .conduitGlassControl(cornerRadius: 28, interactive: false)
         .dynamicTypeSize(...DynamicTypeSize.xxLarge)
+    }
+}
+
+/// The dot on a tab with something unseen, at its icon's corner.
+private struct V2TabDot: View {
+    let shows: Bool
+
+    var body: some View {
+        if shows {
+            Circle()
+                .fill(Color.conduitAccent)
+                .frame(width: 7, height: 7)
+                .offset(x: 5, y: -3)
+                .accessibilityHidden(true)
+        }
     }
 }
 
@@ -1918,6 +2028,7 @@ struct V2StatusStrip: Equatable {
 private struct V2StripTabBar: View {
     @Binding var selection: V2Tab
     let tabs: [V2Tab]
+    var dotted: Set<V2Tab> = []
     let width: CGFloat
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var highlight
@@ -1934,6 +2045,7 @@ private struct V2StripTabBar: View {
                     Image(systemName: tab.symbol)
                         .font(.system(size: 18, weight: .semibold))
                         .conduitFixedGlyph()
+                        .overlay(alignment: .topTrailing) { V2TabDot(shows: dotted.contains(tab)) }
                         .foregroundStyle(isSelected ? Color.conduitAccent : Color.secondary)
                         .frame(maxWidth: .infinity, minHeight: 44)
                         .background {
@@ -1947,6 +2059,7 @@ private struct V2StripTabBar: View {
                 }
                 .buttonStyle(PressableButtonStyle())
                 .accessibilityLabel(tab.title)
+                .accessibilityValue(dotted.contains(tab) ? AppLocalization.string("New") : "")
                 .accessibilityAddTraits(isSelected ? [.isSelected, .isButton] : .isButton)
                 // The titles don't fit the controls' column: a long press
                 // shows the tab's name, as at large Text Sizes.
@@ -1972,7 +2085,7 @@ private struct V2StripTabBar: View {
 struct V2ReopenedConversation: Codable, Equatable {
     static let sceneStorageKey = "conduit.v2.conversationOnLeave"
 
-    /// "chats" or "bots".
+    /// "chats" or "bots", or "pulse" or "artifacts" where the page is a tab.
     var tab: String
     /// The pages under the chat in that tab, bottom first: "project:<id>",
     /// "pulse", "artifacts".
@@ -2021,7 +2134,7 @@ struct V2ReopenedConversation: Codable, Equatable {
     /// The record itself, compared on each render and only encoded when it
     /// changes.
     static func kept(showing tab: V2Tab?, path: [V2Route], roomID: String?) -> V2ReopenedConversation? {
-        guard let tab, tab == .chats || tab == .bots, path.last == .conversation else { return nil }
+        guard let tab, V2Tab.chatTabs.contains(tab), path.last == .conversation else { return nil }
         let under = path.dropLast().compactMap { route -> String? in
             switch route {
             case .project(let project): return "project:" + project.id
@@ -2070,8 +2183,11 @@ struct V2ReopenedConversation: Codable, Equatable {
         switch tab {
         case .bots:
             guard lastChat == .bot else { return nil }
-        case .chats:
+        case .chats, .artifacts:
             guard lastChat != nil || hasSavedCopy else { return nil }
+        case .pulse:
+            // The tab itself is gone where the dashboard has no Pulse.
+            guard showsPulse, lastChat != nil || hasSavedCopy else { return nil }
         case .tasks, .settings:
             return nil
         }

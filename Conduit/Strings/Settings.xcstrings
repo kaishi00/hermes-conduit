@@ -41873,166 +41873,166 @@
         }
       }
     },
-    "Choose the order of the tabs and hide the ones you don't use. Conduit opens on the first tab. Applies on iPhone, iPad and Mac." : {
+    "Drag tabs into the order you want, and turn off the ones you don't use. Conduit opens on the first tab. Sessions and Settings always stay in the bar, which holds up to five tabs." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Lege die Reihenfolge der Tabs fest und blende die aus, die du nicht nutzt. Conduit öffnet sich mit dem ersten Tab. Gilt auf iPhone, iPad und Mac."
+            "value" : "Ziehe die Tabs in die gewünschte Reihenfolge und schalte die aus, die du nicht nutzt. Conduit öffnet sich mit dem ersten Tab. Sitzungen und Einstellungen bleiben immer in der Leiste. Sie fasst bis zu fünf Tabs."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Elige el orden de las pestañas y oculta las que no uses. Conduit se abre en la primera pestaña. Se aplica en iPhone, iPad y Mac."
+            "value" : "Arrastra las pestañas al orden que quieras y desactiva las que no uses. Conduit se abre en la primera pestaña. Sesiones y Ajustes siempre permanecen en la barra. La barra admite hasta cinco pestañas."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Choisissez l’ordre des onglets et masquez ceux que vous n’utilisez pas. Conduit s’ouvre sur le premier onglet. S’applique sur iPhone, iPad et Mac."
+            "value" : "Faites glisser les onglets dans l’ordre voulu et désactivez ceux que vous n’utilisez pas. Conduit s’ouvre sur le premier onglet. Sessions et Réglages restent toujours dans la barre. La barre contient jusqu’à cinq onglets."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Pilih urutan tab dan sembunyikan yang tidak dipakai. Conduit terbuka di tab pertama. Berlaku di iPhone, iPad, dan Mac."
+            "value" : "Seret tab ke urutan yang diinginkan dan matikan yang tidak dipakai. Conduit terbuka di tab pertama. Sesi dan Pengaturan selalu ada di bilah. Bilah memuat hingga lima tab."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Scegli l’ordine delle schede e nascondi quelle che non usi. Conduit si apre sulla prima scheda. Vale su iPhone, iPad e Mac."
+            "value" : "Trascina le schede nell’ordine che preferisci e disattiva quelle che non usi. Conduit si apre sulla prima scheda. Sessioni e Impostazioni restano sempre nella barra. La barra contiene fino a cinque schede."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "タブの順序を選び、使わないタブを非表示にできます。Conduitは最初のタブで開きます。iPhone、iPad、Macに適用されます。"
+            "value" : "タブをドラッグして好きな順序に並べ替え、使わないタブはオフにします。Conduitは最初のタブで開きます。「セッション」と「設定」は常にバーに表示されます。バーには最大5つのタブを表示できます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "탭 순서를 정하고 사용하지 않는 탭을 숨기세요. Conduit은 첫 번째 탭에서 열립니다. iPhone, iPad, Mac에 적용됩니다."
+            "value" : "탭을 원하는 순서로 드래그하고 사용하지 않는 탭은 끄세요. Conduit은 첫 번째 탭에서 열립니다. 세션과 설정은 항상 막대에 남아 있습니다. 막대에는 탭을 최대 다섯 개까지 둘 수 있습니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Wybierz kolejność kart i ukryj te, których nie używasz. Conduit otwiera się na pierwszej karcie. Dotyczy iPhone’a, iPada i Maca."
+            "value" : "Przeciągnij karty w wybranej kolejności i wyłącz te, których nie używasz. Conduit otwiera się na pierwszej karcie. Sesje i Ustawienia zawsze zostają na pasku. Pasek mieści do pięciu kart."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Escolha a ordem das abas e oculte as que você não usa. O Conduit abre na primeira aba. Vale para iPhone, iPad e Mac."
+            "value" : "Arraste as abas para a ordem que quiser e desative as que você não usa. O Conduit abre na primeira aba. Sessões e Ajustes sempre ficam na barra. A barra comporta até cinco abas."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Выберите порядок вкладок и скройте те, которыми не пользуетесь. Conduit открывается на первой вкладке. Действует на iPhone, iPad и Mac."
+            "value" : "Перетащите вкладки в нужном порядке и отключите те, которыми не пользуетесь. Conduit открывается на первой вкладке. «Сеансы» и «Настройки» всегда остаются на панели. На панели помещается до пяти вкладок."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sekmelerin sırasını seçin ve kullanmadıklarınızı gizleyin. Conduit ilk sekmede açılır. iPhone, iPad ve Mac’te geçerlidir."
+            "value" : "Sekmeleri istediğiniz sıraya sürükleyin ve kullanmadıklarınızı kapatın. Conduit ilk sekmede açılır. Oturumlar ve Ayarlar her zaman çubukta kalır. Çubukta en fazla beş sekme yer alır."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "选择标签页的顺序，并隐藏不用的标签页。Conduit 会在第一个标签页打开。适用于 iPhone、iPad 和 Mac。"
+            "value" : "将标签页拖动到你想要的顺序，并关闭不用的标签页。Conduit 会在第一个标签页打开。“会话”和“设置”始终保留在标签栏中。标签栏最多显示五个标签页。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "選擇分頁的順序，並隱藏不用的分頁。Conduit 會在第一個分頁打開。適用於 iPhone、iPad 和 Mac。"
+            "value" : "將分頁拖移到你想要的順序，並關閉不用的分頁。Conduit 會在第一個分頁打開。「工作階段」和「設定」一律保留在分頁列中。分頁列最多顯示五個分頁。"
           }
         }
       }
     },
-    "Drag tabs into the order you want, and turn off the ones you don't use. Conduit opens on the first tab. Sessions and Settings always stay in the bar." : {
+    "Choose the order of the tabs, hide the ones you don't use, and add Pulse or Artifacts as tabs. Conduit opens on the first tab. Applies on iPhone, iPad and Mac." : {
       "localizations" : {
         "de" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Ziehe die Tabs in die gewünschte Reihenfolge und schalte die aus, die du nicht nutzt. Conduit öffnet sich mit dem ersten Tab. Sitzungen und Einstellungen bleiben immer in der Leiste."
+            "value" : "Lege die Reihenfolge der Tabs fest, blende die aus, die du nicht nutzt, und füge Pulse oder Artefakte als Tabs hinzu. Conduit öffnet sich mit dem ersten Tab. Gilt auf iPhone, iPad und Mac."
           }
         },
         "es" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Arrastra las pestañas al orden que quieras y desactiva las que no uses. Conduit se abre en la primera pestaña. Sesiones y Ajustes siempre permanecen en la barra."
+            "value" : "Elige el orden de las pestañas, oculta las que no uses y añade Pulse o Artefactos como pestañas. Conduit se abre en la primera pestaña. Se aplica en iPhone, iPad y Mac."
           }
         },
         "fr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Faites glisser les onglets dans l’ordre voulu et désactivez ceux que vous n’utilisez pas. Conduit s’ouvre sur le premier onglet. Sessions et Réglages restent toujours dans la barre."
+            "value" : "Choisissez l’ordre des onglets, masquez ceux que vous n’utilisez pas et ajoutez Pulse ou Artefacts comme onglets. Conduit s’ouvre sur le premier onglet. S’applique sur iPhone, iPad et Mac."
           }
         },
         "id" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Seret tab ke urutan yang diinginkan dan matikan yang tidak dipakai. Conduit terbuka di tab pertama. Sesi dan Pengaturan selalu ada di bilah."
+            "value" : "Pilih urutan tab, sembunyikan yang tidak dipakai, dan tambahkan Pulse atau Artefak sebagai tab. Conduit terbuka di tab pertama. Berlaku di iPhone, iPad, dan Mac."
           }
         },
         "it" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Trascina le schede nell’ordine che preferisci e disattiva quelle che non usi. Conduit si apre sulla prima scheda. Sessioni e Impostazioni restano sempre nella barra."
+            "value" : "Scegli l’ordine delle schede, nascondi quelle che non usi e aggiungi Pulse o Artefatti come schede. Conduit si apre sulla prima scheda. Vale su iPhone, iPad e Mac."
           }
         },
         "ja" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "タブをドラッグして好きな順序に並べ替え、使わないタブはオフにします。Conduitは最初のタブで開きます。「セッション」と「設定」は常にバーに表示されます。"
+            "value" : "タブの順序を選び、使わないタブを非表示にし、Pulseやアーティファクトをタブとして追加できます。Conduitは最初のタブで開きます。iPhone、iPad、Macに適用されます。"
           }
         },
         "ko" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "탭을 원하는 순서로 드래그하고 사용하지 않는 탭은 끄세요. Conduit은 첫 번째 탭에서 열립니다. 세션과 설정은 항상 막대에 남아 있습니다."
+            "value" : "탭 순서를 정하고, 사용하지 않는 탭을 숨기고, Pulse나 아티팩트를 탭으로 추가하세요. Conduit은 첫 번째 탭에서 열립니다. iPhone, iPad, Mac에 적용됩니다."
           }
         },
         "pl" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Przeciągnij karty w wybranej kolejności i wyłącz te, których nie używasz. Conduit otwiera się na pierwszej karcie. Sesje i Ustawienia zawsze zostają na pasku."
+            "value" : "Wybierz kolejność kart, ukryj te, których nie używasz, i dodaj Pulse lub Artefakty jako karty. Conduit otwiera się na pierwszej karcie. Dotyczy iPhone’a, iPada i Maca."
           }
         },
         "pt-BR" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Arraste as abas para a ordem que quiser e desative as que você não usa. O Conduit abre na primeira aba. Sessões e Ajustes sempre ficam na barra."
+            "value" : "Escolha a ordem das abas, oculte as que você não usa e adicione Pulse ou Artefatos como abas. O Conduit abre na primeira aba. Vale para iPhone, iPad e Mac."
           }
         },
         "ru" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Перетащите вкладки в нужном порядке и отключите те, которыми не пользуетесь. Conduit открывается на первой вкладке. «Сеансы» и «Настройки» всегда остаются на панели."
+            "value" : "Выберите порядок вкладок, скройте те, которыми не пользуетесь, и добавьте Pulse или «Артефакты» как вкладки. Conduit открывается на первой вкладке. Действует на iPhone, iPad и Mac."
           }
         },
         "tr" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "Sekmeleri istediğiniz sıraya sürükleyin ve kullanmadıklarınızı kapatın. Conduit ilk sekmede açılır. Oturumlar ve Ayarlar her zaman çubukta kalır."
+            "value" : "Sekmelerin sırasını seçin, kullanmadıklarınızı gizleyin ve Pulse ya da Yapıtlar’ı sekme olarak ekleyin. Conduit ilk sekmede açılır. iPhone, iPad ve Mac’te geçerlidir."
           }
         },
         "zh-Hans" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "将标签页拖动到你想要的顺序，并关闭不用的标签页。Conduit 会在第一个标签页打开。“会话”和“设置”始终保留在标签栏中。"
+            "value" : "选择标签页的顺序，隐藏不用的标签页，并将 Pulse 或“产物”添加为标签页。Conduit 会在第一个标签页打开。适用于 iPhone、iPad 和 Mac。"
           }
         },
         "zh-Hant" : {
           "stringUnit" : {
             "state" : "translated",
-            "value" : "將分頁拖移到你想要的順序，並關閉不用的分頁。Conduit 會在第一個分頁打開。「工作階段」和「設定」一律保留在分頁列中。"
+            "value" : "選擇分頁的順序，隱藏不用的分頁，並將 Pulse 或「產物」加入為分頁。Conduit 會在第一個分頁打開。適用於 iPhone、iPad 和 Mac。"
           }
         }
       }

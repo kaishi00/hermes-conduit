@@ -553,7 +553,7 @@ struct MainView: View {
             // tabs, issue 2084), or on the chat iOS closed it on in the
             // background (#1559); a chat a
             // notification or widget opens is pushed over it.
-            V2Shell(conversationOnLeave: $conversationOnLeave, reopening: conversationToReopen)
+            V2Shell(conversationOnLeave: $conversationOnLeave, reopening: conversationToReopen, showsPulse: appState.showsPulseScreen)
         } else if isPersistentSidebarActive {
             HStack(spacing: 0) {
                 SidebarView(
