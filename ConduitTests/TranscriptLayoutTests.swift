@@ -412,9 +412,6 @@ final class TranscriptLayoutTests: XCTestCase {
         XCTAssertEqual(TranscriptPerf.rowHeightEstimates, 2 * ids.count)
     }
 
-    /// A row not measured yet that draws something else (an edit landing
-    /// off screen) is guessed again from what it draws now, moving the
-    /// rows under it in the snapshot's own pass.
     /// The app's phase or color scheme changing leaves every row's height
     /// current; the text's size or the rows' state changing doesn't
     /// (issue 1763, #2341 review).
@@ -425,6 +422,9 @@ final class TranscriptLayoutTests: XCTestCase {
         cosmetic.scenePhase = base.scenePhase == .active ? .inactive : .active
         cosmetic.isEnabled.toggle()
         cosmetic.v2TabBarClearance += 20
+        cosmetic.botsHomeCovered.toggle()
+        cosmetic.rosterRowsInScroll.toggle()
+        cosmetic.settingsGlowTint = base.settingsGlowTint == nil ? .red : nil
         XCTAssertNotEqual(cosmetic, base)
         XCTAssertTrue(cosmetic.measuresLike(base))
         var biggerText = base
@@ -435,6 +435,9 @@ final class TranscriptLayoutTests: XCTestCase {
         XCTAssertFalse(busy.measuresLike(base))
     }
 
+    /// A row not measured yet that draws something else (an edit landing
+    /// off screen) is guessed again from what it draws now, moving the
+    /// rows under it in the snapshot's own pass.
     func testARowNotMeasuredIsGuessedAgainWhenItChanges() throws {
         // Rows above keep the reply off screen, where no cell measures it.
         let above = (0..<4).map { TranscriptRow(id: "e\($0)", kind: .empty) }
