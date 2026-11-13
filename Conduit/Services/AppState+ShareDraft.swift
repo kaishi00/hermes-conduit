@@ -279,7 +279,7 @@ extension AppState {
         // Its chat's composer says why. On another chat (the user moved on
         // while it was sent), the notice says which chat holds it, as a
         // refused message's does, and the files left out wait for that chat.
-        guard activeDashboardID == dashboardID else { return true }
+        guard activeDashboardID == dashboardID, restoreKey.profile == activeProfile else { return true }
         if composerDraftKeysAreSameChat(restoreKey, composerDraftKeyOnScreen) {
             composerNotice = notice
             reportSharedDraftProblems(staged, limitMegabytes: limit, openedItsChat: openedItsChat)
