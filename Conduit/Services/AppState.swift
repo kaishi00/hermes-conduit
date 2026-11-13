@@ -411,6 +411,13 @@ final class AppState: ObservableObject {
     }
 
     var liveSessionStatusProfile: String?
+    /// The registries of the other profiles something on screen shows (All,
+    /// a project's page, Bots Home), read by name beside the profile in
+    /// use's.
+    @Published var otherProfilesLiveStatus = OtherProfilesLiveStatus()
+    /// What on screen shows other profiles' live status, by what asked:
+    /// their registries are read with the profile in use's while it shows.
+    var liveStatusAsks: [String: LiveStatusAsk] = [:]
     /// The client whose gateway rejected `session.active_list`, so the chat
     /// list's poll stops asking it.
     weak var activeListUnsupportedClient: HermesClient?

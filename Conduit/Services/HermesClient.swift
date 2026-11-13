@@ -983,6 +983,11 @@ struct LiveSessionStatus: Equatable {
     /// The running turn's reply so far, else its prompt (or the last row's
     /// text when idle): whitespace-collapsed, at most 160 characters.
     let preview: String?
+    /// The row came from Hermes' session authority (it names its `source`),
+    /// whose registry lists only the profile it was asked for. The legacy
+    /// dashboard's rows carry no source, and its registry lists every
+    /// profile's live chats whichever profile is named.
+    let isProfileScoped: Bool
 
     /// Authoritative committed-busy state. Upstream `_session_live_status`
     /// reports "working" while the turn thread runs and "waiting" while a
@@ -1003,7 +1008,8 @@ struct LiveSessionStatus: Equatable {
         status: String,
         lastActive: TimeInterval? = nil,
         messageCount: Int? = nil,
-        preview: String? = nil
+        preview: String? = nil,
+        isProfileScoped: Bool = false
     ) {
         self.runtimeSessionId = runtimeSessionId
         self.storedSessionId = storedSessionId
@@ -1011,6 +1017,7 @@ struct LiveSessionStatus: Equatable {
         self.lastActive = lastActive
         self.messageCount = messageCount
         self.preview = preview
+        self.isProfileScoped = isProfileScoped
     }
 
     init?(from object: [String: AnyCodable]) {
@@ -1023,7 +1030,8 @@ struct LiveSessionStatus: Equatable {
             status: object["status"]?.stringValue ?? "idle",
             lastActive: object["last_active"]?.doubleValue,
             messageCount: HermesClient.exactIntValue(object["message_count"]),
-            preview: object["preview"]?.stringValue
+            preview: object["preview"]?.stringValue,
+            isProfileScoped: object.keys.contains("source")
         )
     }
 }

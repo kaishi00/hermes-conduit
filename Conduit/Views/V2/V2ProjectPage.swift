@@ -236,6 +236,10 @@ struct V2ProjectPage: View {
                 missedReads = true
                 return
             }
+            // The other profiles' rows read their own registries, with the
+            // Chats list's poll, while the page shows.
+            let liveStatus = appState.askLiveStatus("project", profiles: appState.allProfilesIncluded)
+            defer { appState.endLiveStatusAsk("project", token: liveStatus) }
             if missedReads {
                 missedReads = false
                 await reload()

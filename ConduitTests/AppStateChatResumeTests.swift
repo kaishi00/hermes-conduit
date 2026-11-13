@@ -5213,6 +5213,65 @@ final class AppStateChatResumeTests: XCTestCase {
         XCTAssertNil(appState.sessionLiveStatus(theirs), "Its turn ended: no Running")
     }
 
+    func testAnotherProfilesRowAndBotReadTheirOwnProfilesRegistry() async {
+        // Live status for every bot: Hermes' session authority lists only
+        // the profile session.active_list names, so each other profile on
+        // screen (All, a project's page, Bots Home) is read by name.
+        let probe = LiveStatusProfileProbe()
+        var operations = ChatResumeLifecycleOperations(probeActiveSessions: { _ in probe.own })
+        operations.probeProfileActiveSessions = { _, profile in
+            probe.asked.append(profile)
+            return probe.byProfile[profile] ?? []
+        }
+        let harness = makeHarness(lifecycleOperations: operations)
+        let appState = harness.appState
+        appState.client = HermesClient(connection: HermesConnection(baseUrl: "https://one.example", ticket: "ticket"), profile: "default")
+        appState.isConnected = true
+        appState.profiles = ["default", "work"]
+        let mine = self.session("mine")
+        let theirs = self.session("theirs", profile: "work")
+        appState.sessions = [mine]
+
+        await appState.refreshLiveSessionStatuses()
+        XCTAssertEqual(probe.asked, [], "Nothing on screen shows another profile")
+
+        let token = appState.askLiveStatus("project", profiles: ["default", "work"])
+        probe.own = [LiveSessionStatus(runtimeSessionId: "rt-mine", storedSessionId: "mine", status: "waiting", isProfileScoped: true)]
+        probe.byProfile["work"] = [LiveSessionStatus(runtimeSessionId: "rt-theirs", storedSessionId: "theirs", status: "working", isProfileScoped: true)]
+        await appState.refreshLiveSessionStatuses()
+        XCTAssertEqual(probe.asked, ["work"], "Only the other profile is read by name")
+        XCTAssertEqual(appState.sessionLiveStatus(theirs), .working)
+        XCTAssertEqual(appState.sessionLiveStatus(mine), .needsInput)
+        XCTAssertEqual(appState.botLiveChats("work"), BotLiveChats(working: 1, waiting: 0))
+        XCTAssertEqual(appState.botLiveChats("work", leavingOut: ["theirs"]), BotLiveChats(), "Its workstreams count themselves")
+        XCTAssertEqual(appState.botLiveChats("default"), BotLiveChats(working: 0, waiting: 1))
+
+        // A profile copied with its chats: the profile in use runs a chat of
+        // the same id, and work's own read decides its row.
+        probe.own = [LiveSessionStatus(runtimeSessionId: "rt-copy", storedSessionId: "theirs", status: "working", isProfileScoped: true)]
+        probe.byProfile["work"] = []
+        await appState.refreshLiveSessionStatuses()
+        XCTAssertNil(appState.sessionLiveStatus(theirs))
+
+        // A wait the plugin lists in work's chat: Needs approval on the row
+        // and on its bot.
+        appState.needsYou.apply(
+            [NeedsYouItem(waitID: "w1", profile: "work", kind: .approval, sessionIDs: ["theirs"])],
+            profile: "work",
+            dashboardID: appState.activeDashboardID
+        ) { _ in false }
+        XCTAssertEqual(appState.sessionLiveStatus(theirs), .needsInput)
+        XCTAssertEqual(appState.botLiveChats("work"), BotLiveChats(working: 0, waiting: 1))
+        XCTAssertEqual(appState.newestBotChatWait("work")?.waitID, "w1")
+
+        // The page closed: work isn't read any more, and its read goes.
+        appState.endLiveStatusAsk("project", token: token)
+        probe.asked = []
+        await appState.refreshLiveSessionStatuses()
+        XCTAssertEqual(probe.asked, [])
+        XCTAssertNil(appState.otherProfilesLiveStatus.index(for: "work", client: appState.client.map { ObjectIdentifier($0) }))
+    }
+
     func testLiveStatusChipsHideWhileTheGatewayLacksActiveList() async {
         // #454: a gateway without session.active_list can't fill the Working
         // and Needs input chips, so they hide rather than show a 0.
@@ -9168,6 +9227,14 @@ final class AppStateChatResumeTests: XCTestCase {
             )
         )
     }
+}
+
+/// Each profile's registry the live status poll reads, and which it asked
+/// for by name.
+private final class LiveStatusProfileProbe {
+    var own: [LiveSessionStatus] = []
+    var byProfile: [String: [LiveSessionStatus]] = [:]
+    var asked: [String] = []
 }
 
 /// The live status poll's probe: what it throws next and how often it ran.
