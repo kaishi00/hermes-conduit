@@ -3505,6 +3505,10 @@ final class AppState: ObservableObject {
     /// The failed send's error under the composer, which leaving its chat
     /// clears: the composer shows `errorMessage` unlocked too.
     var sendFailureShown: String?
+    /// Counts the failed sends shown, so a send that went through clears
+    /// only the line it set out under, never a newer one in the same words
+    /// (issue 2115).
+    var sendFailureGeneration: UInt64 = 0
 
     // MARK: - Slash Commands (AppState+SlashCommands.swift)
 

@@ -691,13 +691,26 @@ extension AppState {
     /// A send that went through ends the failure line shown when it set
     /// out, and only that line: another error, or a newer send's failure,
     /// stays.
-    func clearSendFailureAfterSend(_ failureBefore: String?) {
-        guard let failure = failureBefore, sendFailureShown == failure else { return }
-        if errorMessage == failure { errorMessage = nil }
+    /// The failed send's line showing now, and which one it is.
+    struct SendFailureMark: Equatable {
+        let message: String
+        let generation: UInt64
+    }
+
+    var sendFailureMark: SendFailureMark? {
+        sendFailureShown.map { SendFailureMark(message: $0, generation: sendFailureGeneration) }
+    }
+
+    /// A send that went through clears the failed send's line it set out
+    /// under; a newer failure since, in whatever words, stays.
+    func clearSendFailureAfterSend(_ failureBefore: SendFailureMark?) {
+        guard let failure = failureBefore, sendFailureMark == failure else { return }
+        if errorMessage == failure.message { errorMessage = nil }
         sendFailureShown = nil
     }
 
-    private func showSendFailure(_ message: String) {
+    func showSendFailure(_ message: String) {
+        sendFailureGeneration &+= 1
         errorMessage = message
         sendFailureShown = message
     }
