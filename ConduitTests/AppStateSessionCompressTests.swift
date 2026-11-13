@@ -2683,6 +2683,28 @@ final class AppStateSessionCompressTests: XCTestCase {
         XCTAssertEqual(actions, ["subgoal.remove"])
     }
 
+    func testAFirstDockReadThatOutlivedItsVisitIsDropped() async throws {
+        weak var appState: AppState?
+        var leavesMidRead = true
+        let harness = controlHarness { operations in
+            operations.readSessionControl = { _, _ in
+                if leavesMidRead {
+                    leavesMidRead = false
+                    appState?.activeSessionId = nil
+                    appState?.activeSessionId = "composer-origin"
+                }
+                return Self.goalSnapshot
+            }
+        }
+        appState = harness.appState
+        harness.appState.activeSessionId = "composer-origin"
+
+        await harness.appState.refreshSessionControl(for: "composer-origin")
+
+        XCTAssertTrue(harness.appState.sessionControl.snapshot.isEmpty,
+                      "a read from before leaving and coming back, started while the dock was empty, doesn't fill the new visit's dock")
+    }
+
     func testADockAnswerOrReadThatWasOvertakenIsDropped() async throws {
         weak var appState: AppState?
         var clearsMidAction = false
