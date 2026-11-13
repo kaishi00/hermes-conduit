@@ -100,6 +100,7 @@ extension MarkdownRichContentPolicyTests {
         XCTAssertTrue(kept.referencesByChunk.allSatisfy(\.keepsLineBreaks))
         XCTAssertFalse(flowing.references.keepsLineBreaks)
         XCTAssertFalse(flowing.referencesByChunk.contains(where: \.keepsLineBreaks))
+        XCTAssertNotEqual(kept.sourceIdentity, flowing.sourceIdentity)
     }
 
     func testABackslashWithASpaceAfterItIsTextAndTheBreakStays() {

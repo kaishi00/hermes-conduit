@@ -2731,7 +2731,7 @@ chat's file card) and the Folder's Markdown preview
 - Prose runs: `Conduit/Views/Components/MarkdownProseRun.swift` (InlineMarkdownContent.bridged)
 - Long replies: `Conduit/Views/Components/MarkdownLargeDocumentView.swift` (MarkdownText and MarkdownSelectionFormatter per chunk)
 - Previews (one line, by design): `Conduit/Services/PreviewText.swift`
-- Documents, which pass keepsLineBreaks false: `Conduit/Views/Components/MarkdownDocumentSheet.swift` (reader), `Conduit/Views/V2/V2WorkspaceViews.swift` (the Folder's Markdown preview); the choice rides MarkdownReferenceContext (keepsLineBreaks) through MarkdownRenderCache and LargeMarkdownPreparedDocument.prepare
+- Documents, which pass keepsLineBreaks false: `Conduit/Views/Components/MarkdownDocumentSheet.swift` (reader), `Conduit/Views/V2/V2WorkspaceViews.swift` (the Folder's Markdown preview); the choice rides MarkdownReferenceContext (keepsLineBreaks) through MarkdownRenderCache and LargeMarkdownPreparedDocument.prepare and identity
 
 **Rulings**
 - A lone newline inside a paragraph, list item or quote is a line break, as chat apps draw it, not CommonMark's soft break: "one number per line" reads one per line. Each line a break follows gets CommonMark's own hard break (two trailing spaces, which are only whitespace inside a code span or a link's address, where a backslash would show) before Foundation parses it, and the line separator Foundation draws for a hard break becomes a newline, so selection copies what the reply wrote. A line already ending in a hard break (two spaces or a backslash) is left as written, as is a break next to a blank line or a setext "===" underline. Emphasis and links still run across a break (2026-11-13, #2349).
@@ -2741,7 +2741,7 @@ chat's file card) and the Folder's Markdown preview
 - An inline code span split across lines joins its lines with three spaces instead of one, and a link address broken mid-address (never a valid link) shows the same extra spaces in its literal text.
 - Not needed: previews and quotes join a reply's lines into one, as before; Read Aloud reads the source lines, so it was never affected; the Watch shows plain text, which keeps its newlines; the notifier passes a reply's text through unchanged.
 
-**Checked:** 2026-11-13, #2349 (new entry: a single line break in a reply drew as a space, Furina's count to 30 on one line; chats, group rooms, Bot Chat, tool results, call job cards and long replies share the parse; selection copies the newline; review: two spaces rather than a backslash, so links and code spans across a break keep working, a setext underline left alone, a backslash before a space is text, one walk for the line separators; second review: documents keep soft breaks, a "===" with no text above is text, the notifier recorded).
+**Checked:** 2026-11-13, #PRNUM (#2349 review leftover: a large document's plan identity carries the line-break choice, as the render cache's key does); 2026-11-13, #2349 (new entry: a single line break in a reply drew as a space, Furina's count to 30 on one line; chats, group rooms, Bot Chat, tool results, call job cards and long replies share the parse; selection copies the newline; review: two spaces rather than a backslash, so links and code spans across a break keep working, a setext underline left alone, a backslash before a space is text, one walk for the line separators; second review: documents keep soft breaks, a "===" with no text above is text, the notifier recorded).
 
 ## Markdown lists in messages
 
