@@ -24,6 +24,8 @@ struct SessionLiveStatusIndex: Equatable {
     struct BusyRow: Equatable {
         let ids: Set<String>
         let status: SessionLiveStatus
+        /// The id the chat opens by: its stored id, else the runtime's.
+        var openID: String = ""
     }
 
     init() {}
@@ -45,7 +47,8 @@ struct SessionLiveStatusIndex: Equatable {
                 // needs-input outranks working when two rows share an id.
                 if statusByID[id] != .needsInput { statusByID[id] = status }
             }
-            busyRows.append(BusyRow(ids: ids, status: status))
+            let openID = row.storedSessionId.isEmpty ? row.runtimeSessionId : row.storedSessionId
+            busyRows.append(BusyRow(ids: ids, status: status, openID: openID))
         }
     }
 

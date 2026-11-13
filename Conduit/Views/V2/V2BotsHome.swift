@@ -1178,9 +1178,11 @@ struct BotPortraitCell<MenuContent: View>: View {
     /// The wait in the bot's chats its "needs you" opens: only when none
     /// of its workstreams waits, whose list the overview shows.
     private func chatWaitThePillOpens(_ status: BotPortraitStatus) -> NeedsYouItem? {
-        guard case .needsYou = status,
-              (appState.servesBotWorkstreams ? work.snapshot(bot.name)?.needsYouCount ?? 0 : 0) == 0 else { return nil }
-        return appState.newestBotChatWait(bot.name)
+        guard case .needsYou = status else { return nil }
+        // As the status counts them: a bot whose work is off has none.
+        let snapshot = appState.servesBotWorkstreams ? work.snapshot(bot.name) : nil
+        guard (snapshot?.isOn == true ? snapshot?.needsYouCount ?? 0 : 0) == 0 else { return nil }
+        return appState.newestBotChatWait(bot.name, leavingOut: snapshot?.knownSessionIDs ?? [])
     }
 
     private var color: Color { appState.botColor(bot) }
@@ -1657,7 +1659,10 @@ struct BotOverviewSheet: View {
     private var showsWork: Bool { appState.servesBotWorkstreams }
 
     private var headerStatus: BotPortraitStatus {
-        .of(showsWork ? work.snapshot(profile) : nil, talkingIn: appState.talkingRooms(of: profile).map(\.name))
+        let snapshot = showsWork ? work.snapshot(profile) : nil
+        return .of(snapshot,
+                   talkingIn: appState.talkingRooms(of: profile).map(\.name),
+                   chats: appState.botLiveChats(profile, leavingOut: snapshot?.knownSessionIDs ?? []))
     }
 
     private var shown: Section { showsWork ? section : .artifacts }
@@ -1713,6 +1718,12 @@ struct BotOverviewSheet: View {
                 await appState.refreshTalkingRoomsIfDue(every: BotsTalkingRoomsReader.every)
                 try? await Task.sleep(for: BotsTalkingRoomsReader.every)
             }
+        }
+        // The header's chats, as its portrait's on Bots Home, which this
+        // covers (its reads stop then); opened from a Bot Chat too.
+        .task(id: "\(scenePhase == .active)|\(appState.isConnected)|\(profile)") {
+            guard scenePhase == .active, appState.isConnected else { return }
+            await appState.runBotsHomeLiveStatus(bots: [profile], key: "overview")
         }
         // A workstream opened from its list shows its own chat.
         .onChange(of: appState.activeSessionId) { _, _ in onClose() }

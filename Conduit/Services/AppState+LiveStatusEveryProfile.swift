@@ -35,10 +35,15 @@ extension AppState {
     }
 
     /// It no longer shows. A newer ask under the same key stays: SwiftUI
-    /// can end a view's old task after starting its new one.
+    /// can end a view's old task after starting its new one. What only it
+    /// asked for goes now, not at the next read, so nothing stale lingers
+    /// for a screen that opens before then.
     func endLiveStatusAsk(_ key: String, token: UUID) {
         guard liveStatusAsks[key]?.token == token else { return }
         liveStatusAsks[key] = nil
+        var next = otherProfilesLiveStatus
+        next.keep(liveStatusOtherProfiles)
+        if next != otherProfilesLiveStatus { otherProfilesLiveStatus = next }
     }
 
     /// The other profiles whose registries are read: those All lists while
@@ -52,8 +57,11 @@ extension AppState {
     }
 
     /// Starts each other profile's read; `finishOtherProfilesLiveStatusReads`
-    /// keeps what they answer.
+    /// keeps what they answer. None on a legacy dashboard, whose registry
+    /// for the profile in use already lists every profile's chats (each
+    /// named read would answer the same rows).
     func startOtherProfilesLiveStatusReads(_ client: HermesClient) -> [(profile: String, read: Task<[LiveSessionStatus], Error>)] {
+        if liveSessionStatusProfile == activeProfile, !liveSessionStatusIndex.isProfileScoped { return [] }
         let probe = chatResumeLifecycleOperations.probeProfileActiveSessions
         return liveStatusOtherProfiles.map { profile in
             (profile: profile, read: Task { @MainActor in
@@ -70,13 +78,27 @@ extension AppState {
         _ reads: [(profile: String, read: Task<[LiveSessionStatus], Error>)],
         client: HermesClient
     ) async {
+        var answered: [(profile: String, rows: [LiveSessionStatus])] = []
+        for (profile, read) in reads {
+            do {
+                answered.append((profile, try await read.value))
+            } catch {
+                // Once per connection and profile: a gateway that doesn't
+                // serve it fails every round.
+                let key = "\(ObjectIdentifier(client).hashValue)|\(OtherProfilesLiveStatus.key(profile))"
+                if liveStatusReadFailuresLogged.insert(key).inserted {
+                    sessionCatalogLog.notice("Live status read for another profile failed: \(LogRedaction.describing(error), privacy: .public)")
+                }
+            }
+        }
+        // A connection replaced while the reads were out: not this one's.
+        guard self.client === client else { return }
+        // From what shows now, not before the awaits: an overlapping
+        // round may have kept a newer read meanwhile.
         var next = otherProfilesLiveStatus
         let dashboardID = activeDashboardID?.uuidString
         var recheck = false
-        for (profile, read) in reads {
-            guard let rows = try? await read.value else { continue }
-            // A connection replaced while the reads were out: not this one's.
-            guard self.client === client else { return }
+        for (profile, rows) in answered {
             next.set(SessionLiveStatusIndex(rows: rows), for: profile, client: ObjectIdentifier(client))
             // A turn's Lock Screen progress in that profile (a Bot Chat's)
             // settles from its own registry, as the profile in use's does.
@@ -152,18 +174,37 @@ extension AppState {
     }
 
     /// The newest wait in a bot's chats, which its portrait's "needs you"
-    /// opens when none of its workstreams waits.
-    func newestBotChatWait(_ bot: String) -> NeedsYouItem? {
-        needsYou.items.first { $0.roomID == nil && Self.profilesMatch($0.profile, bot) }
+    /// opens when none of its workstreams waits. The plugin's list first,
+    /// which knows the wait; else a chat its registry says waits (a Hermes
+    /// without the plugin's list, or before it's read), opened by its id.
+    func newestBotChatWait(_ bot: String, leavingOut workstreams: Set<String> = []) -> NeedsYouItem? {
+        if let wait = needsYou.items.first(where: {
+            $0.roomID == nil && Self.profilesMatch($0.profile, bot) && Set($0.sessionIDs).isDisjoint(with: workstreams)
+        }) {
+            return wait
+        }
+        let index: SessionLiveStatusIndex?
+        if Self.profilesMatch(bot, activeProfile) {
+            index = liveSessionStatusProfile == activeProfile ? liveSessionStatusIndex : nil
+        } else {
+            index = otherProfilesLiveStatus.index(for: bot, client: client.map { ObjectIdentifier($0) })
+        }
+        guard let index, index.isProfileScoped,
+              let row = index.busyRows.last(where: {
+                  $0.status == .needsInput && !$0.openID.isEmpty && $0.ids.isDisjoint(with: workstreams)
+              }) else { return nil }
+        return NeedsYouItem(waitID: "registry:\(row.openID)", profile: bot, kind: .approval, sessionIDs: [row.openID])
     }
 
     /// Bots Home's registry reads while it shows: every bot's, the profile
     /// in use's included, every `botsHomeLiveStatusInterval` seconds
     /// (stretched in Low Power and Low Data Mode). The view runs it and
     /// ends it with its task.
-    func runBotsHomeLiveStatus(bots: [String]) async {
-        let token = askLiveStatus("bots", profiles: bots)
-        defer { endLiveStatusAsk("bots", token: token) }
+    /// The overview runs it too under its own key: it covers Bots Home,
+    /// whose loop stops then, and opens from a Bot Chat as well.
+    func runBotsHomeLiveStatus(bots: [String], key: String = "bots") async {
+        let token = askLiveStatus(key, profiles: bots)
+        defer { endLiveStatusAsk(key, token: token) }
         while !Task.isCancelled {
             await refreshLiveSessionStatuses()
             try? await Task.sleep(for: .seconds(PollCadence.stretched(Self.botsHomeLiveStatusInterval, by: deviceConditions())))
