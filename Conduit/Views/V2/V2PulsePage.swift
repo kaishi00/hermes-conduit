@@ -301,8 +301,13 @@ struct V2PulsePage: View {
             if appState.canPutPulseCardAwayForGood(card) {
                 Button(AppLocalization.string("Don't bring it back", table: .pulse)) { dismiss(card, true) }
             }
-        } message: { _ in
-            Text("It comes back as new then, unless it got done meanwhile.")
+        } message: { card in
+            // With Don't bring it back in the menu, "then" is only the times'.
+            if appState.canPutPulseCardAwayForGood(card) {
+                Text(AppLocalization.string("With a time, it comes back as new then.", table: .pulse))
+            } else {
+                Text("It comes back as new then, unless it got done meanwhile.")
+            }
         }
         .confirmationDialog(
             undoCard?.proposal?.isEvent == false ? AppLocalization.string("Remove it from your reminders?", table: .pulse)
