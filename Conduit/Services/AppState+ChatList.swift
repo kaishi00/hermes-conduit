@@ -728,11 +728,12 @@ extension AppState {
         let registry = isConnected && liveSessionStatusProfile == activeProfile
             ? liveSessionStatusIndex.status(for: session)
             : nil
-        // The dashboard's registry lists the live chats of every profile it
-        // serves, so another profile's row in All reads it too: a chat left
-        // running for one in another profile keeps its Running (#1353).
-        // Never the open chat, which is the profile in use's.
-        guard !isOtherProfileRow(session) else { return registry }
+        // Another profile's row reads its own profile's registry, read by
+        // name, since Hermes' session authority lists only the profile it's
+        // asked for; until that read lands, the profile in use's, which on
+        // the legacy dashboard lists every profile's (#1353). Never the open
+        // chat, which is the profile in use's.
+        guard !isOtherProfileRow(session) else { return otherProfileLiveStatus(session, fallback: registry) }
         if sessionMatchesActiveSession(session) {
             if registry == .needsInput { return .needsInput }
             // Running while the chat shows its working line, stale or not:
@@ -764,6 +765,15 @@ extension AppState {
         Task { [weak self] in await self?.refreshDesktopViewsIfDue() }
         guard sceneIsInView, let client, isConnected else { return false }
         guard client !== activeListUnsupportedClient else { return true }
+        // The other profiles on screen are read at the same time, by name.
+        let others = startOtherProfilesLiveStatusReads(client)
+        let read = await readOwnLiveSessionStatuses(client)
+        await finishOtherProfilesLiveStatusReads(others, client: client)
+        return read
+    }
+
+    /// The profile in use's registry (no profile named: the client's own).
+    private func readOwnLiveSessionStatuses(_ client: HermesClient) async -> Bool {
         let profile = activeProfile
         do {
             let rows: [LiveSessionStatus]

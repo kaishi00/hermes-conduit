@@ -759,6 +759,7 @@ extension AppState {
         conversationIdentityIndex.removeAll()
         liveSessionStatusIndex = SessionLiveStatusIndex()
         liveSessionStatusProfile = nil
+        otherProfilesLiveStatus = OtherProfilesLiveStatus()
         liveSessionStatusAvailable = true
         resetDesktopViews(host: nil)
         sessionYoloStore.clearAllOverrides()
