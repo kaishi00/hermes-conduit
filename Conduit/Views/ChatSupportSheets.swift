@@ -514,7 +514,7 @@ private struct BackgroundProcessCard: View {
                 Circle().fill(process.isRunning ? Color.conduitAccent : Color.secondary).frame(width: 9, height: 9).padding(.top, 5)
                 VStack(alignment: .leading, spacing: 2) {
                     Text(verbatim: process.command.isEmpty ? process.id : process.command)
-                        .font(.system(.subheadline, design: .monospaced).weight(.semibold))
+                        .scaledFont(.subheadline.monospaced().weight(.semibold))
                         .lineLimit(3)
                     if !subtitle.isEmpty {
                         Text(verbatim: subtitle).scaledFont(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
@@ -540,7 +540,7 @@ private struct BackgroundProcessCard: View {
             }
             if !process.output.isEmpty {
                 Text(verbatim: process.output)
-                    .font(.system(.caption, design: .monospaced))
+                    .scaledFont(.caption.monospaced())
                     .foregroundStyle(.secondary)
                     .lineLimit(4)
                     .textSelection(.enabled)

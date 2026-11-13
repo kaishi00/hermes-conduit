@@ -154,7 +154,7 @@ struct HermesUpdateSection: View {
                 }
                 if let command, !command.isEmpty {
                     Text(verbatim: command)
-                        .font(.system(.caption, design: .monospaced))
+                        .scaledFont(.caption.monospaced())
                         .textSelection(.enabled)
                 }
             }
