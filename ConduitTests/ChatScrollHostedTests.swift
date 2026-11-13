@@ -1076,7 +1076,7 @@ final class ChatScrollHostedTests: XCTestCase {
 
         // The cells are given to the first rows.
         browse(mounted, to: -collectionView.adjustedContentInset.top)
-        let parked = rows.filter { $0.view.superview?.superview as? TranscriptCell == nil }
+        let parked = rows.filter { $0.view.superview?.superview?.superview as? TranscriptCell == nil }
         XCTAssertFalse(parked.isEmpty, "cells were given to other rows while the sheet was up")
         for hosting in parked {
             XCTAssertTrue(hosting.parent === controller, "a row's controller stays in the transcript while the sheet is up")
@@ -1259,6 +1259,38 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertNotNil(mounted.layout.rowFrame(landedID), "the event took the row in place")
         assertAtLatest(mounted, "the room stays at its end")
         XCTAssertTrue(mounted.scroller.isFollowingLatest)
+    }
+
+    /// A row draws inside its cell's top and bottom, so a card folding
+    /// never draws its text over the rows under it (an App Store review of
+    /// build 259, 2026-11-13), and past its sides, so a bubble's shadow
+    /// isn't cut off.
+    func testACellClipsItsRowAboveAndBelowOnly() {
+        let cell = TranscriptCell(frame: CGRect(x: 0, y: 0, width: 300, height: 120))
+        let container = cell.rowContainer
+        XCTAssertTrue(container.clipsToBounds)
+        XCTAssertTrue(container.isDescendant(of: cell.contentView))
+        XCTAssertEqual(container.frame.minY, 0)
+        XCTAssertEqual(container.frame.height, cell.contentView.bounds.height)
+        XCTAssertLessThan(container.frame.minX, 0, "the row's shadow reaches past the cell's side")
+        cell.frame.size.height = 400
+        cell.layoutIfNeeded()
+        XCTAssertEqual(container.frame.height, 400, "the clip follows the cell's height")
+    }
+
+    /// Every row on screen draws inside its cell's clip, at the cell's width,
+    /// so the clip above actually holds the row.
+    func testARowOnScreenDrawsInsideItsCellsClip() throws {
+        let mounted = try mount(Self.transcript(0..<20))
+        let collectionView = try XCTUnwrap(mounted.scrollView as? UICollectionView)
+        let cells = collectionView.visibleCells.compactMap { $0 as? TranscriptCell }
+        XCTAssertFalse(cells.isEmpty, "rows are on screen")
+        for cell in cells {
+            let row = try XCTUnwrap(cell.hosting?.view, "the cell hosts a row")
+            XCTAssertTrue(row.superview === cell.rowContainer, "the row is inside the clip")
+            XCTAssertEqual(row.frame.width, cell.contentView.bounds.width, accuracy: 0.5, "at the cell's width")
+            XCTAssertEqual(cell.rowContainer.frame.height, cell.contentView.bounds.height, accuracy: 0.5)
+        }
     }
 }
 

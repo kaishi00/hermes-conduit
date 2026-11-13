@@ -142,31 +142,38 @@ struct CronReportCard: View {
                             .accessibilityHidden(true)
                     }
                 }
-                if expanded {
-                    MarkdownText(
-                        source: report.shown,
-                        gatewayMediaDataURL: gatewayResolver.map { resolver in
-                            { path in await resolver.dataURL(for: path) }
-                        }
-                    )
-                        .scaledFont(.subheadline)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else if !report.report.isEmpty {
-                    Text(BotWorkLook.rendered(report.preview))
-                        .scaledFont(.subheadline)
-                        .foregroundStyle(Color.primary)
-                        .lineLimit(6)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                HStack(spacing: 6) {
-                    Text(AppLocalization.string("Scheduled job report", table: .tasks))
-                    if let time = MessageTimestampFormatter.displayString(for: timestamp) {
-                        Text(verbatim: "·")
-                        Text(time)
+                // The report and its footer as one: opened, the whole
+                // text fades in where it lands, and the preview and the
+                // footer don't slide through it.
+                VStack(alignment: .leading, spacing: 6) {
+                    if expanded {
+                        MarkdownText(
+                            source: report.shown,
+                            gatewayMediaDataURL: gatewayResolver.map { resolver in
+                                { path in await resolver.dataURL(for: path) }
+                            }
+                        )
+                            .scaledFont(.subheadline)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else if !report.report.isEmpty {
+                        Text(BotWorkLook.rendered(report.preview))
+                            .scaledFont(.subheadline)
+                            .foregroundStyle(Color.primary)
+                            .lineLimit(6)
+                            .frame(maxWidth: .infinity, alignment: .leading)
                     }
+                    HStack(spacing: 6) {
+                        Text(AppLocalization.string("Scheduled job report", table: .tasks))
+                        if let time = MessageTimestampFormatter.displayString(for: timestamp) {
+                            Text(verbatim: "·")
+                            Text(time)
+                        }
+                    }
+                    .scaledFont(.caption2)
+                    .foregroundStyle(.tertiary)
                 }
-                .scaledFont(.caption2)
-                .foregroundStyle(.tertiary)
+                .id(expanded)
+                .transition(.rowFoldSwap)
             }
             .multilineTextAlignment(.leading)
             .padding(.horizontal, 16)
@@ -175,6 +182,8 @@ struct CronReportCard: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .fill(Color.secondary.opacity(0.08))
             )
+            // As it grows open, the text shows only inside the card.
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

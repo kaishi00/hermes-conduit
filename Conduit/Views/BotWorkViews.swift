@@ -1513,28 +1513,35 @@ struct WorkstreamBriefCard: View {
                         .foregroundStyle(.secondary)
                         .accessibilityHidden(true)
                 }
-                if expanded {
-                    MarkdownText(source: brief.task)
-                        .scaledFont(.subheadline)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                } else {
-                    Text(BotWorkLook.rendered(brief.task))
-                        .scaledFont(.subheadline)
-                        .foregroundStyle(Color.primary)
-                        .lineLimit(3)
-                        .frame(maxWidth: .infinity, alignment: .leading)
+                // The task and the lines under it as one, as a cron report
+                // does: opened, the text fades in where it lands, and the
+                // folded preview and the lines under it don't slide through it.
+                VStack(alignment: .leading, spacing: 6) {
+                    if expanded {
+                        MarkdownText(source: brief.task)
+                            .scaledFont(.subheadline)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        Text(BotWorkLook.rendered(brief.task))
+                            .scaledFont(.subheadline)
+                            .foregroundStyle(Color.primary)
+                            .lineLimit(3)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    if let words = brief.userWords {
+                        Text(AppLocalization.string("For: “\(words)”", table: .bots))
+                            .scaledFont(.footnote)
+                            .foregroundStyle(.secondary)
+                            .lineLimit(expanded ? nil : 1)
+                    }
+                    if let time = MessageTimestampFormatter.displayString(for: timestamp) {
+                        Text(time)
+                            .scaledFont(.caption2)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
-                if let words = brief.userWords {
-                    Text(AppLocalization.string("For: “\(words)”", table: .bots))
-                        .scaledFont(.footnote)
-                        .foregroundStyle(.secondary)
-                        .lineLimit(expanded ? nil : 1)
-                }
-                if let time = MessageTimestampFormatter.displayString(for: timestamp) {
-                    Text(time)
-                        .scaledFont(.caption2)
-                        .foregroundStyle(.tertiary)
-                }
+                .id(expanded)
+                .transition(.rowFoldSwap)
             }
             .multilineTextAlignment(.leading)
             .padding(.horizontal, 16)
@@ -1547,6 +1554,8 @@ struct WorkstreamBriefCard: View {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(Color.conduitAccent.opacity(0.18), lineWidth: 1)
             )
+            // As it grows open, the text shows only inside the card.
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)

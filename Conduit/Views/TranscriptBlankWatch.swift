@@ -116,7 +116,7 @@ final class TranscriptBlankWatch {
         guard let hosting = cell.hosting, cell.hostedRowID != nil else { return "no hosting" }
         if cell.isHidden || cell.alpha < 0.01 { return "cell hidden" }
         guard hosting.isViewLoaded, let view = hosting.viewIfLoaded else { return "no view" }
-        if view.superview !== cell.contentView { return "view elsewhere" }
+        if view.superview !== cell.rowContainer { return "view elsewhere" }
         if view.window == nil { return "no window" }
         if view.isHidden || view.alpha < 0.01 { return "view hidden" }
         if (view.layer.presentation()?.opacity ?? 1) < 0.01 { return "view faded" }

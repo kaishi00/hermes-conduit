@@ -349,8 +349,8 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
     /// lays out the row's cell, after the collection view's own pass, so
     /// the pass that lays the rows out again, and moves a following reader
     /// to the new end, is asked for at once: left to UIKit, it waits for
-    /// whatever next wakes the main thread, with the row drawn past its
-    /// cell and the reader a line short of the end meanwhile.
+    /// whatever next wakes the main thread, with the row cut off at its
+    /// cell's bottom and the reader a line short of the end meanwhile.
     private func rowResized(_ id: String, to size: CGSize) {
         layout.rowResized(id, to: size)
         guard !passAsked else { return }
@@ -624,10 +624,29 @@ final class TranscriptCell: UICollectionViewCell {
     /// (TranscriptLayout.forgetCurrentMeasurements).
     var knowsHeight: (@MainActor (String, CGFloat) -> Bool)?
 
+    /// The row draws inside it, cut off at the cell's top and bottom, so a
+    /// row never draws over the rows above or under it: a row that grows
+    /// (a fold opened, a reply streaming in) shows its new part once the
+    /// pass it asks for gives the cell its height (`rowResized`). Beside
+    /// the row it reaches `sideOverhang` past the cell, so a row's shadow
+    /// (a sent message's bubble) isn't cut off. A card's text was drawn
+    /// over the rows under it while it folded (an App Store review of build
+    /// 259, 2026-11-13).
+    private let clipView = UIView()
+    private static let sideOverhang: CGFloat = 64
+
+    /// The view the hosted row's view is in (TranscriptBlankWatch).
+    var rowContainer: UIView { clipView }
+
     override init(frame: CGRect) {
         super.init(frame: frame)
         backgroundColor = .clear
         contentView.backgroundColor = .clear
+        clipView.backgroundColor = .clear
+        clipView.clipsToBounds = true
+        clipView.frame = contentView.bounds.insetBy(dx: -Self.sideOverhang, dy: 0)
+        clipView.autoresizingMask = [.flexibleWidth, .flexibleHeight]
+        contentView.addSubview(clipView)
     }
 
     @available(*, unavailable)
@@ -638,6 +657,7 @@ final class TranscriptCell: UICollectionViewCell {
     /// Shows `root` in the cell, in a hosting controller that is a child of
     /// `parent`'s.
     func host(_ root: TranscriptCellRoot, rowID: String, in parent: UIViewController) {
+        let otherRow = hostedRowID != rowID
         hostedRowID = rowID
         // Another row, or the same row drawing something else: measured
         // afresh until it reports how it draws.
@@ -649,7 +669,22 @@ final class TranscriptCell: UICollectionViewCell {
             resized(size)
         }
         if let hosting {
-            hosting.rootView = root
+            guard otherRow else {
+                hosting.rootView = root
+                return
+            }
+            // Another row in a reused cell draws at once. Reused inside an
+            // animated update, the last row's content would animate into
+            // this one's, drawn across both.
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                hosting.rootView = root
+                // Drawn now, in this transaction: left for the next pass,
+                // it would draw in the update's animation all the same.
+                hosting.view.setNeedsLayout()
+                hosting.view.layoutIfNeeded()
+            }
             return
         }
         let hosting = UIHostingController(rootView: root)
@@ -657,10 +692,10 @@ final class TranscriptCell: UICollectionViewCell {
         // one mustn't pad its row as well.
         hosting.safeAreaRegions = []
         hosting.view.backgroundColor = .clear
-        hosting.view.frame = contentView.bounds
+        hosting.view.frame = clipView.bounds.insetBy(dx: Self.sideOverhang, dy: 0)
         hosting.view.autoresizingMask = [.flexibleWidth, .flexibleHeight]
         parent.addChild(hosting)
-        contentView.addSubview(hosting.view)
+        clipView.addSubview(hosting.view)
         hosting.didMove(toParent: parent)
         self.hosting = hosting
     }
@@ -749,9 +784,10 @@ struct TranscriptCellRoot: View {
 /// The row in its cell. Measured (the cell asks with no height, or one no
 /// row reaches), it's the row's ideal height at the cell's width. Drawn,
 /// it's the cell's frame, the row at its top at its ideal height: a row
-/// that grows draws down from its top at once while the cell takes its new
-/// height in the next pass, where the hosting controller would center it
-/// in the old frame meanwhile and move it up and back.
+/// that grows draws down from its top at once (cut off at the cell's
+/// bottom, TranscriptCell) while the cell takes its new height in the next
+/// pass, where the hosting controller would center it in the old frame
+/// meanwhile and move it up and back.
 private struct TranscriptCellLayout: Layout {
     /// A proposed height at least this tall is a measurement's.
     private static let measuringHeight: CGFloat = 1e7

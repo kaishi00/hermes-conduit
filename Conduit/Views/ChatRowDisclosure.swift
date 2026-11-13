@@ -108,6 +108,20 @@ final class ChatRowDisclosure {
     }
 }
 
+extension AnyTransition {
+    /// What a transcript row shows only while it's open (Thinking's text, a
+    /// tool card's input and output, a report's whole text), or only while
+    /// it's folded (a tool card's subject line, a report's preview): it
+    /// fades in where it lands, and goes at once, so the folded and opened
+    /// parts never draw over each other or slide through the row. The
+    /// row's cell takes its new height at once and clips the row
+    /// (TranscriptCell), so a part fading or sliding out drew over the rows
+    /// that had moved up under it, and a folded preview fading out under
+    /// the opened text drew the two over each other (an App Store review of
+    /// build 259, 2026-11-13).
+    static let rowFoldSwap = AnyTransition.asymmetric(insertion: .opacity, removal: .identity)
+}
+
 /// By identity, so ChatView handing down the same instance on every body
 /// evaluation never invalidates the rows that read it.
 extension ChatRowDisclosure: Equatable {
