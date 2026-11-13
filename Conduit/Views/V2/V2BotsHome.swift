@@ -1627,6 +1627,8 @@ struct BotOverviewSheet: View {
     /// Low Power Mode as it changes, so the motion stops when it turns on.
     @ObservedObject private var devicePower = DevicePowerState.shared
     @ObservedObject var work: BotWorkStore
+    /// The plugin's waits, which the header's chat counts include.
+    @ObservedObject var needsYou: NeedsYouStore
     let profile: String
     /// Edit Bot, for a bot that can be edited here; nil hides it.
     var onEdit: ((BotProfile) -> Void)?
@@ -1792,7 +1794,8 @@ struct BotOverviewSheet: View {
                     }
                     .scaledFont(.footnote)
                     .foregroundStyle(.secondary)
-                    .lineLimit(1)
+                    .lineLimit(2)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
                 // Where it talks now, as its portrait's pill says.
                 let rooms = appState.talkingRooms(of: profile).map(\.name)

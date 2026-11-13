@@ -177,6 +177,7 @@ struct BotRosterView: View {
         }) { bot in
             BotOverviewSheet(
                 work: appState.botWork,
+                needsYou: appState.needsYou,
                 profile: bot.name,
                 onEdit: canManageBots ? { (edited: BotProfile) in
                     editAfterOverview = edited
