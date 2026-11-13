@@ -235,9 +235,12 @@ extension AppState {
     private func readLinkedRoomApprovals(timeoutMilliseconds: Int? = nil) async -> [RoomApproval]? {
         guard canAnswerRoomApprovals, isConnected else { return nil }
         let epoch = groupRoomEpoch
+        let generation = linkedRosterGeneration
         let client = roomApprovalsClient
+        // One a Block or leave overtook could list grants it ended.
         guard let approvals = try? await client.approvals(timeoutMilliseconds: timeoutMilliseconds),
-              groupRoomEpoch == epoch, activeDashboardID == client.dashboardID else { return nil }
+              groupRoomEpoch == epoch, linkedRosterGeneration == generation,
+              activeDashboardID == client.dashboardID else { return nil }
         // One the plugin no longer lists needn't be remembered as answered.
         let listed = Set(approvals.map(\.id))
         if !answeredLinkedRoomApprovalIDs.isSubset(of: listed) {

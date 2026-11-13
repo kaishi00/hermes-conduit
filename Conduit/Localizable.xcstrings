@@ -191777,6 +191777,88 @@
           }
         }
       }
+    },
+    "The connection changed before Hermes confirmed this answer. It isn't sent again, since it could answer a different request." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Die Verbindung hat gewechselt, bevor Hermes diese Antwort bestätigt hat. Sie wird nicht erneut gesendet, da sie sonst eine andere Anfrage beantworten könnte."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La conexión cambió antes de que Hermes confirmara esta respuesta. No se vuelve a enviar, porque podría responder a otra solicitud."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La connexion a changé avant que Hermes confirme cette réponse. Elle n'est pas renvoyée, car elle pourrait répondre à une autre demande."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Koneksi berubah sebelum Hermes mengonfirmasi jawaban ini. Jawaban tidak dikirim lagi, karena bisa menjawab permintaan lain."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "La connessione è cambiata prima che Hermes confermasse questa risposta. Non viene inviata di nuovo, perché potrebbe rispondere a un'altra richiesta."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes がこの応答を確認する前に接続が切り替わりました。別のリクエストに応答してしまうおそれがあるため、再送信はしません。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Hermes가 이 응답을 확인하기 전에 연결이 바뀌었어요. 다른 요청에 응답할 수 있어서 다시 보내지 않아요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Połączenie zmieniło się, zanim Hermes potwierdził tę odpowiedź. Nie zostanie wysłana ponownie, bo mogłaby odpowiedzieć na inną prośbę."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "A conexão mudou antes de o Hermes confirmar esta resposta. Ela não é enviada de novo, porque poderia responder a outra solicitação."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Соединение сменилось до того, как Hermes подтвердил этот ответ. Он не отправляется повторно, так как может ответить на другой запрос."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bağlantı, Hermes bu yanıtı onaylamadan önce değişti. Başka bir isteği yanıtlayabileceği için yeniden gönderilmiyor."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Hermes 确认此回复之前连接已切换。为免答复到其他请求，不会再次发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "在 Hermes 確認此回覆之前連線已切換。為免回覆到其他請求，不會再次傳送。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

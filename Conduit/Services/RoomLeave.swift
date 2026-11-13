@@ -204,9 +204,11 @@ extension AppState {
         do {
             if let copy = surface.copy, let profile = member.profile {
                 let invite = try await client.leave(link: copy.link, roomID: copy.roomID, profiles: [profile])
+                linkedRosterGeneration &+= 1
                 adoptLinkedRoomInvite(invite, from: client.dashboardID)
             } else {
                 try await client.remove(roomID: surface.room.roomID, memberID: memberID)
+                linkedRosterGeneration &+= 1
             }
         } catch {
             return await refused(error, in: surface, saying: RoomLeaveText.takeOutRefusal(for: error))
@@ -224,6 +226,8 @@ extension AppState {
         let client = roomLeaveClient
         do {
             let invite = try await client.leave(link: copy.link, roomID: copy.roomID, profiles: nil)
+            // A read issued before the leave could put back what it changed.
+            linkedRosterGeneration &+= 1
             adoptLinkedRoomInvite(invite, from: client.dashboardID)
         } catch {
             return await refused(error, in: surface, saying: RoomLeaveText.leaveRefusal(for: error))

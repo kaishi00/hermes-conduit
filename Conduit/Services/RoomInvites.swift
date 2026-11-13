@@ -378,8 +378,8 @@ enum RoomInviteOpening: Equatable {
     case waiting
     /// A call is on, and it said the invite opens once the call has ended.
     case afterCall
-    /// The dashboard changed while the invites were read: try again, on
-    /// the one in use now.
+    /// The dashboard changed, or a Block, leave or take out landed, while
+    /// the invites were read: try again, on the one in use now.
     case retry
     /// It can't open; `errorMessage` says why, or nothing will open it.
     case failed
@@ -531,10 +531,13 @@ extension AppState {
     func readLinkedRoomInvites() async -> Bool {
         guard canInviteLinkedPeople, isConnected else { return false }
         let epoch = groupRoomEpoch
+        let generation = linkedRosterGeneration
         let client = roomInvitesClient
         do {
             let invites = try await client.invites()
-            guard groupRoomEpoch == epoch, activeDashboardID == client.dashboardID else { return false }
+            // One a leave or Block overtook could bring back the row it changed.
+            guard groupRoomEpoch == epoch, linkedRosterGeneration == generation,
+                  activeDashboardID == client.dashboardID else { return false }
             linkedRoomInvites = LinkedRoomInvites(dashboardID: client.dashboardID, invites: invites)
             // A room you joined that has started is listed as its copy, which
             // this Hermes keeps from then on: read the copies while one isn't
@@ -638,6 +641,7 @@ extension AppState {
             return .failed
         }
         let epoch = groupRoomEpoch
+        let rosterGeneration = linkedRosterGeneration
         let reader = roomInvitesClient
         let invites: [RoomInvite]
         do {
@@ -649,6 +653,10 @@ extension AppState {
         }
         guard !Task.isCancelled else { return .waiting }
         guard activeDashboardID == reader.dashboardID else { return .retry }
+        // A Block, leave or take out that landed while this read was out
+        // makes its list stale: read again rather than bring back (or open)
+        // a row it took away.
+        guard linkedRosterGeneration == rosterGeneration else { return .retry }
         if groupRoomEpoch == epoch {
             linkedRoomInvites = LinkedRoomInvites(dashboardID: reader.dashboardID, invites: invites)
         }

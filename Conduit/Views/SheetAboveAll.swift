@@ -66,13 +66,16 @@ private struct SheetAboveAll<Item: Identifiable, Sheet: View>: ViewModifier {
             guard host.shownID != id else { return }
             let binding = $item
             let root = $rootItem
-            host.show(id: id, kind: String(describing: Item.self), view: sheet(item)) {
+            host.show(id: id, kind: String(describing: Item.self), view: sheet(item)) { tookDown in
+                guard binding.wrappedValue.map({ AnyHashable($0.id) }) == id else { return }
+                // The sheet under it closed (its own Done, say) and UIKit took
+                // this one down with it: nothing answered it, so it's still the
+                // item and shows again, now over whatever is left (issue 2348).
+                guard !tookDown else { return follow(id) }
                 // Closed over there (swiped down, or the sheet dismissed itself):
                 // the item is done with, unless a newer one took its place. One
                 // the root sheet still shows becomes the item again.
-                if binding.wrappedValue.map({ AnyHashable($0.id) }) == id {
-                    binding.wrappedValue = root.wrappedValue
-                }
+                binding.wrappedValue = root.wrappedValue
             }
         }
     }
@@ -102,14 +105,29 @@ final class SheetAboveAllHost {
         return route
     }
 
-    func show<Sheet: View>(id: AnyHashable, kind: String, view: Sheet, closed: @escaping @MainActor () -> Void) {
+    /// `closed` is told whether it went because the sheet it was shown over
+    /// closed: UIKit dismisses a sheet with all above it, so the lower
+    /// sheet's own Done takes this one down too, unanswered. Then it's
+    /// called once that sheet has gone, so the item can show again.
+    func show<Sheet: View>(
+        id: AnyHashable,
+        kind: String,
+        view: Sheet,
+        closed: @escaping @MainActor (_ tookDown: Bool) -> Void
+    ) {
         // Each window's root has this modifier: the first to show an item
         // shows it, once.
         let key = "\(kind)|\(id)"
         guard !Self.showing.contains(key), let presenter = Self.topPresenter() else { return }
+        // The sheet it goes over, once presented: gone or going when this
+        // one disappears means it was taken down with it.
+        weak var below: UIViewController?
         let hosting = UIHostingController(rootView: view.onDisappear { [weak self] in
-            // Runs however it closed: by a swipe, its own dismiss, or close().
+            // Runs however it closed: by a swipe, its own dismiss, close(),
+            // or the sheet under it closing.
+            let under = below
             Task { @MainActor in
+                let tookDown = under.map { $0.presentingViewController == nil || $0.isBeingDismissed } ?? false
                 Self.showing.remove(key)
                 // Gone, so the same item can show again; a newer one keeps its own.
                 // (Its controller too, so the presentation check doesn't
@@ -119,7 +137,12 @@ final class SheetAboveAllHost {
                     self.decided = nil
                     self.controller = nil
                 }
-                closed()
+                // Shown again only once the sheet under it has finished going.
+                if tookDown, let coordinator = under?.transitionCoordinator {
+                    coordinator.animate(alongsideTransition: nil) { _ in Task { @MainActor in closed(true) } }
+                } else {
+                    closed(tookDown)
+                }
             }
         })
         Self.showing.insert(key)
@@ -137,9 +160,11 @@ final class SheetAboveAllHost {
                 self.controller = nil
                 self.shownID = nil
                 self.decided = nil
-                closed()
+                closed(false)
                 return
             }
+            // Only a sheet can take it down by closing; the window's root can't.
+            below = top.presentingViewController != nil ? top : nil
             top.present(hosting, animated: true)
             // UIKit refuses a presentation it can't make now (no callback,
             // no onDisappear): try once more from the top, then forget it.
@@ -154,7 +179,7 @@ final class SheetAboveAllHost {
                 Self.showing.remove(key)
                 self.controller = nil
                 self.shownID = nil
-                closed()
+                closed(false)
             }
         }
         // One this replaced is still animating away (close()): present once it's gone.
