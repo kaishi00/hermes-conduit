@@ -443,7 +443,8 @@ struct BotWorkPanel: View {
     private var openList: some View {
         List {
             if let snapshot = work.snapshot(profile) {
-                if snapshot.items.isEmpty == false {
+                // A question alone is something that needs them: never "No work yet" above its card.
+                if snapshot.items.isEmpty == false || snapshot.questionCount > 0 {
                     ScrollView(.horizontal, showsIndicators: false) {
                         HStack(spacing: 8) {
                             countChip(AppLocalization.string("Needs you"), snapshot.needsYouCount, tint: .orange)
