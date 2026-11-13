@@ -1076,7 +1076,7 @@ final class ChatScrollHostedTests: XCTestCase {
 
         // The cells are given to the first rows.
         browse(mounted, to: -collectionView.adjustedContentInset.top)
-        let parked = rows.filter { $0.view.superview?.superview as? TranscriptCell == nil }
+        let parked = rows.filter { $0.view.superview?.superview?.superview as? TranscriptCell == nil }
         XCTAssertFalse(parked.isEmpty, "cells were given to other rows while the sheet was up")
         for hosting in parked {
             XCTAssertTrue(hosting.parent === controller, "a row's controller stays in the transcript while the sheet is up")
@@ -1259,6 +1259,23 @@ final class ChatScrollHostedTests: XCTestCase {
         XCTAssertNotNil(mounted.layout.rowFrame(landedID), "the event took the row in place")
         assertAtLatest(mounted, "the room stays at its end")
         XCTAssertTrue(mounted.scroller.isFollowingLatest)
+    }
+
+    /// A row draws inside its cell's top and bottom, so a card folding
+    /// never draws its text over the rows under it (an App Store review of
+    /// build 259, 2026-11-13), and past its sides, so a bubble's shadow
+    /// isn't cut off.
+    func testACellClipsItsRowAboveAndBelowOnly() {
+        let cell = TranscriptCell(frame: CGRect(x: 0, y: 0, width: 300, height: 120))
+        let container = cell.rowContainer
+        XCTAssertTrue(container.clipsToBounds)
+        XCTAssertTrue(container.isDescendant(of: cell.contentView))
+        XCTAssertEqual(container.frame.minY, 0)
+        XCTAssertEqual(container.frame.height, cell.contentView.bounds.height)
+        XCTAssertLessThan(container.frame.minX, 0, "the row's shadow reaches past the cell's side")
+        cell.frame.size.height = 400
+        cell.layoutIfNeeded()
+        XCTAssertEqual(container.frame.height, 400, "the clip follows the cell's height")
     }
 }
 

@@ -330,7 +330,9 @@ extension View {
     @ViewBuilder
     func chatStepCard(_ isOn: Bool = true) -> some View {
         if isOn {
-            settingsCard(cornerRadius: ChatStepStyle.cardCornerRadius)
+            // As it grows open, what it opens shows only inside the card.
+            clipShape(RoundedRectangle(cornerRadius: ChatStepStyle.cardCornerRadius, style: .continuous))
+                .settingsCard(cornerRadius: ChatStepStyle.cardCornerRadius)
         } else {
             self
         }
@@ -803,6 +805,8 @@ private struct ChatStepRowBody: View {
                     }
                     // Close the transcript's gap to the row above: one card.
                     .padding(.top, isFirst ? 0 : -ChatStepStyle.transcriptRowSpacing)
+                    // The run's open line doesn't fade over its folded one.
+                    .transition(.rowFoldSwap)
                 } else if isFirst {
                     ChatStepGroupHeader(
                         members: visible,
@@ -816,6 +820,7 @@ private struct ChatStepRowBody: View {
                         toggle: { toggle(group, to: true) }
                     )
                     .chatStepCard()
+                    .transition(.rowFoldSwap)
                 }
             }
         }

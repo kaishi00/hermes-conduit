@@ -1660,7 +1660,7 @@ struct TeammateMessageNote: View {
                             .fill(Color.secondary.opacity(0.08))
                     )
                     .frame(maxWidth: 520)
-                    .transition(.opacity)
+                    .transition(.rowFoldSwap)
             }
         }
         .frame(maxWidth: .infinity)
@@ -1738,7 +1738,7 @@ struct TeammateReplyNote<Reply: View>: View {
 
             if expanded {
                 reply()
-                    .transition(.opacity)
+                    .transition(.rowFoldSwap)
             }
         }
     }
@@ -3259,6 +3259,7 @@ private struct ReviewSummaryCard: View {
                     }
                 }
                 .padding(.top, 2)
+                .transition(.rowFoldSwap)
             }
 
             if let fullSessionId = activity.fullSessionId, !fullSessionId.isEmpty {
@@ -3274,6 +3275,8 @@ private struct ReviewSummaryCard: View {
             }
         }
         .padding(14)
+        // As it grows open, the details show only inside the card.
+        .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
         .chatCard(cornerRadius: 18, tint: .conduitAura.opacity(0.09))
         .overlay {
             RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -3547,7 +3550,7 @@ struct SettledThinkingCardContent: View, Equatable {
                 .padding(.leading, ChatStepStyle.contentInset)
                 .padding(.trailing, ChatStepStyle.rowHorizontalPadding)
                 .padding(.bottom, 12)
-                .transition(.opacity)
+                .transition(.rowFoldSwap)
             }
         }
         .chatStepCard(!grouped)
@@ -3819,6 +3822,7 @@ private struct SettledToolCardContent: View, Equatable {
                                let profile = work?.profile ?? appState.activeBotChatProfile {
                                 WorkStartStatusLine(work: appState.botWork, profile: profile, ref: ref,
                                                     fallback: label.action ?? ChatStepSubject.line(from: tool.input))
+                                    .transition(.rowFoldSwap)
                             } else if !expanded, let subject = delivery?.message.flatMap({ ChatStepSubject.line(from: $0) })
                                 ?? label.action
                                 ?? ChatStepSubject.line(from: tool.input)
@@ -3828,6 +3832,7 @@ private struct SettledToolCardContent: View, Equatable {
                                     .foregroundStyle(.secondary)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
+                                    .transition(.rowFoldSwap)
                             }
                         }
 
@@ -3902,7 +3907,7 @@ private struct SettledToolCardContent: View, Equatable {
                     .padding(.leading, ChatStepStyle.contentInset)
                     .padding(.trailing, 12)
                     .padding(.bottom, 12)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
+                    .transition(.rowFoldSwap)
                 }
 
                 // A terminal delivery waits for the teammate's answer: it

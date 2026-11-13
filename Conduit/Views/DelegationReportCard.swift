@@ -59,15 +59,22 @@ struct DelegationReportCard: View {
                             .foregroundStyle(.secondary)
                             .accessibilityHidden(true)
                     }
-                    let shown = expanded ? report.entries : Array(report.entries.prefix(Self.foldedLimit))
-                    ForEach(shown, id: \.number) { entry in
-                        entryView(entry)
+                    // The agents' lines as one: opened, they fade in with
+                    // their results where they land, and the folded lines
+                    // don't slide through the results.
+                    VStack(alignment: .leading, spacing: 8) {
+                        let shown = expanded ? report.entries : Array(report.entries.prefix(Self.foldedLimit))
+                        ForEach(shown, id: \.number) { entry in
+                            entryView(entry)
+                        }
+                        if !expanded, report.entries.count > Self.foldedLimit {
+                            Text(AppLocalization.string("\(report.entries.count - Self.foldedLimit) more", table: .chat))
+                                .scaledFont(.caption)
+                                .foregroundStyle(.secondary)
+                        }
                     }
-                    if !expanded, report.entries.count > Self.foldedLimit {
-                        Text(AppLocalization.string("\(report.entries.count - Self.foldedLimit) more", table: .chat))
-                            .scaledFont(.caption)
-                            .foregroundStyle(.secondary)
-                    }
+                    .id(expanded)
+                    .transition(.rowFoldSwap)
                 }
             }
             .multilineTextAlignment(.leading)
@@ -77,6 +84,8 @@ struct DelegationReportCard: View {
                 Color.conduitAccent.opacity(0.06),
                 in: RoundedRectangle(cornerRadius: 16, style: .continuous)
             )
+            // As it grows open, the text shows only inside the card.
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay {
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
                     .strokeBorder(Color.conduitAccent.opacity(0.15), lineWidth: 1)
