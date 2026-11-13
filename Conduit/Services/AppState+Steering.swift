@@ -29,7 +29,7 @@ extension AppState {
         let outboundText = mentionAnnotatedOutboundText(text)
         // Only a failure already shown is this send's to clear; one a
         // send made while this one was on its way stays.
-        let failureBefore = sendFailureShown
+        let failureBefore = sendFailureMark
         let persistedTwinsBefore = persistedSteerIDs(matching: outboundText)
         do {
             if let steer = chatResumeLifecycleOperations.steer {
@@ -102,7 +102,7 @@ extension AppState {
         let outboundText = mentionAnnotatedOutboundText(text)
         // Only a failure already shown is this send's to clear; one a
         // send made while this one was on its way stays.
-        let failureBefore = sendFailureShown
+        let failureBefore = sendFailureMark
 
         do {
             let outcome: SessionRedirectOutcome
@@ -260,6 +260,7 @@ extension AppState {
     /// carries over to the next account's chats.
     func clearAuthorityQueueState() {
         authorityQueue.clear()
+        sessionControl.clear()
         queuedSendRows = [:]
         queuedSendOrder = []
         ownSendRowIDs = [:]

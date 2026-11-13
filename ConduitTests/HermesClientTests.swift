@@ -600,7 +600,7 @@ final class HermesClientTests: XCTestCase {
         XCTAssertEqual(client.sessionProfile(for: "stored-1"), "atlas")
         XCTAssertEqual(client.sessionProfile(for: "key-1"), "atlas", "every stored-id spelling is noted")
 
-        // A fresh client on the same dashboard (a reconnect) keeps it.
+        // A fresh client on the same dashboard (a reconnect, or a profile switch) keeps it.
         let successor = makeClient(transport: FakeTransport(), profile: "analyst")
         successor.inheritSessionProfiles(from: client)
         XCTAssertEqual(successor.sessionProfile(for: "runtime-1"), "atlas")

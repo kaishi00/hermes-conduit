@@ -753,6 +753,7 @@ private struct BotWorkQuestionCard: View {
             }
             .buttonStyle(.plain)
             .accessibilityElement(children: .combine)
+            .accessibilityHint(AppLocalization.string("Shows what was behind it", table: .bots))
             let layout = dynamicTypeSize.isAccessibilitySize
                 ? AnyLayout(VStackLayout(spacing: 8)) : AnyLayout(HStackLayout(spacing: 8))
             layout {

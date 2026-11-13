@@ -121,6 +121,8 @@ final class CapabilitiesStore {
     /// Hub skills being removed, by name, and why one failed.
     private(set) var skillRemovals: [String: CapabilityInstallState] = [:]
     private(set) var skillsUpdate: CapabilityInstallState?
+    /// Check for Updates' answer, nil until asked.
+    private(set) var hubSkillUpdates: HubSkillUpdatesState?
 
     // Tools
     /// Tool name -> calls over the last year; nil until read.
@@ -169,6 +171,9 @@ final class CapabilitiesStore {
     /// asked before a newer one, or before a change, never puts back the
     /// installed skills it saw.
     @ObservationIgnored private var skillHubEpoch = 0
+    /// Bumped by each update check and each finished update, so a check
+    /// that answers after the update ran doesn't list what it updated.
+    @ObservationIgnored private var hubUpdatesCheck = 0
     @ObservationIgnored private var connectorsEpoch = 0
     /// The read whose list is showing.
     @ObservationIgnored private var connectorsShownEpoch = 0
@@ -207,6 +212,7 @@ final class CapabilitiesStore {
         skillHubMissing = false
         skillRemovals = [:]
         skillsUpdate = nil
+        hubSkillUpdates = nil
         toolCalls = nil
         servers = []
         connectorCatalog = []
@@ -639,11 +645,41 @@ final class CapabilitiesStore {
                 return false
             }
             skillsUpdate = nil
+            // What was listed as having updates has them now, and a check
+            // still running asked before the update.
+            hubUpdatesCheck &+= 1
+            switch hubSkillUpdates {
+            case .found, .checking: hubSkillUpdates = .found([])
+            // A check that failed before the update says nothing now.
+            case .failed: hubSkillUpdates = nil
+            case nil: break
+            }
             return true
         } catch {
             guard token == generation, !(error is CancellationError) else { return false }
             skillsUpdate = .failed(UserFacingError.message(for: error))
             return false
+        }
+    }
+
+    /// Asks Hermes which hub skills have a newer version at their source
+    /// (`hermes skills check`, which fetches from every source, so it can
+    /// take a minute), as Hermes Desktop's Skills tab does.
+    func checkHubSkillUpdates() async {
+        let token = generation
+        hubUpdatesCheck &+= 1
+        let check = hubUpdatesCheck
+        hubSkillUpdates = .checking
+        do {
+            let answer = try await request(scoped("/api/skills/hub/updates"), timeout: 120_000)
+            guard token == generation, check == hubUpdatesCheck else { return }
+            let rows = (answer["updates"] as? [Any] ?? []).compactMap(HubSkillUpdate.init)
+            hubSkillUpdates = .found(rows)
+        } catch {
+            guard token == generation, check == hubUpdatesCheck, !(error is CancellationError) else { return }
+            hubSkillUpdates = Self.isMissingRoute(error)
+                ? .failed(AppLocalization.string("Update Hermes to check hub skills for updates.", table: .bots))
+                : .failed(UserFacingError.message(for: error))
         }
     }
 

@@ -522,6 +522,13 @@ extension AppState {
 
         let previousClient = client
         let client = makeClient(connection: conn, profile: profile)
+        // The same dashboard (a silent re-auth's reconnect, say): a Bot Chat
+        // this client hasn't opened again still names the bot's profile
+        // (issue 2277). Another dashboard's chats are its own.
+        if let previousClient,
+           (try? ConnectionURLPolicy.normalizedBaseURL(previousClient.connection.baseUrl)) == normalizedBaseURL {
+            client.inheritSessionProfiles(from: previousClient)
+        }
         self.client = client
         previousClient?.disconnect()
 
@@ -1006,6 +1013,7 @@ extension AppState {
         // A restart already handed to Hermes carries on there; Conduit
         // stops following it.
         stopFollowingGatewayRestart()
+        stopFollowingHermesUpdate()
         stopFollowingNotifierPluginUpdate()
         automaticPairingAttempts.removeAll()
         cancelScenePhaseAttempt()

@@ -179,7 +179,7 @@ extension AppState {
             // meanwhile) neither holds nor restores: the line is the newer
             // open's.
             if notificationOpenAttemptIsCurrent(id: attemptID, transitionGeneration: transitionGeneration) {
-                holdNotificationRouteFailure(for: target, restoring: routeErrorBeforeOpen)
+                holdNotificationRouteFailure(for: target, restoring: routeErrorBeforeOpen, transition: transitionGeneration)
             }
             return .retry
         }

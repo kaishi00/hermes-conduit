@@ -1561,7 +1561,7 @@ extension AppState {
     /// it shows a typed correction.
     func redirectLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
         // Taken before waiting for a client: a send that fails meanwhile keeps its line.
-        let failureBefore = sendFailureShown
+        let failureBefore = sendFailureMark
         let client = try await clientForVoiceRequest()
         let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
         do {
@@ -1612,7 +1612,7 @@ extension AppState {
     /// must not send the words a second time.
     func steerLiveVoiceFollowUp(sessionID: String, text: String) async throws -> VoiceRedirectResult {
         // Taken before waiting for a client: a send that fails meanwhile keeps its line.
-        let failureBefore = sendFailureShown
+        let failureBefore = sendFailureMark
         let client = try await clientForVoiceRequest()
         let target = VoiceThreadTarget(runtimeSessionID: sessionID, storedSessionID: nil, title: "")
         let persistedTwinsBefore = persistedSteerIDs(matching: text)

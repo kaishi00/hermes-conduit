@@ -273,6 +273,9 @@ struct WorkspaceSheet: View {
 struct DelegateAgentsSheet: View {
     @ObservedObject var appLanguage = AppLanguageStore.shared
     @EnvironmentObject private var appState: AppState
+    /// The chat's background processes; nil until read, or when Hermes
+    /// can't say (then the section is left out).
+    @State private var processes: [BackgroundProcess]?
 
     var body: some View {
         NavigationStack {
@@ -291,8 +294,23 @@ struct DelegateAgentsSheet: View {
                                 DelegateAgentCard(agent: agent)
                             }
                         }
+                        // Hermes Desktop's /agents lists these beside the
+                        // agents: servers, watchers and builds left running.
+                        if let processes, !processes.isEmpty {
+                            ConduitSettingsSection(title: AppLocalization.string("Background processes", table: .chat), symbol: "gearshape.2", tint: .conduitAccent) {
+                                Text(AppLocalization.string("Started by Hermes for this chat. They keep running until they finish or you stop them.", table: .chat))
+                                    .scaledFont(.footnote).foregroundStyle(.secondary)
+                            }
+                            ForEach(processes) { process in
+                                BackgroundProcessCard(process: process) { await loadProcesses() }
+                            }
+                        }
                     }
                     .padding(16)
+                }
+                .refreshable {
+                    await appState.refreshDelegateAgents()
+                    await loadProcesses()
                 }
             }
             .navigationTitle("Delegate agents")
@@ -300,6 +318,17 @@ struct DelegateAgentsSheet: View {
             .toolbarBackground(.hidden, for: .navigationBar)
         }
         .task { await appState.refreshDelegateAgents() }
+        // Another chat's processes never stay on the list.
+        .task(id: appState.backgroundProcessSessionID) {
+            processes = []
+            await loadProcesses()
+        }
+    }
+
+    private func loadProcesses() async {
+        if let listed = await appState.loadBackgroundProcesses() {
+            processes = listed
+        }
     }
 
     private var activeSummary: String {
@@ -458,6 +487,90 @@ private struct DelegateAgentCard: View {
         case .completed: return .green
         case .failed: return .red
         case .interrupted: return .secondary
+        }
+    }
+}
+
+/// One background process Hermes runs for the chat: its command, how long
+/// it has run, its newest output, and Stop.
+private struct BackgroundProcessCard: View {
+    @ObservedObject var appLanguage = AppLanguageStore.shared
+    @EnvironmentObject private var appState: AppState
+    let process: BackgroundProcess
+    /// Reads the list again once one stopped.
+    let reload: () async -> Void
+    @State private var confirmingStop = false
+    @State private var working = false
+    @State private var failure: String?
+
+    private var subtitle: String {
+        var parts: [String] = []
+        if let uptime = process.uptimeSeconds, let time = ChatStepTiming.text(TimeInterval(uptime)) { parts.append(time) }
+        if let pid = process.pid { parts.append("PID \(pid)") }
+        if !process.isRunning { parts.append(AppLocalization.string("Exited", table: .chat)) }
+        if let cwd = process.cwd, !cwd.isEmpty { parts.append(cwd) }
+        return parts.joined(separator: " · ")
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack(alignment: .top, spacing: 10) {
+                Circle().fill(process.isRunning ? Color.conduitAccent : Color.secondary).frame(width: 9, height: 9).padding(.top, 5)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(verbatim: process.command.isEmpty ? process.id : process.command)
+                        .scaledFont(.subheadline.monospaced().weight(.semibold))
+                        .lineLimit(3)
+                    if !subtitle.isEmpty {
+                        Text(verbatim: subtitle).scaledFont(.caption).foregroundStyle(.secondary).lineLimit(1).truncationMode(.middle)
+                    }
+                }
+                Spacer()
+                if process.isRunning {
+                    Button { confirmingStop = true } label: {
+                        Group {
+                            if working {
+                                ProgressView().controlSize(.small)
+                            } else {
+                                Image(systemName: "stop.circle").scaledFont(.body).foregroundStyle(.red)
+                            }
+                        }
+                        .frame(width: 32, height: 32)
+                        .contentShape(Rectangle())
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(working)
+                    .accessibilityLabel(AppLocalization.string("Stop process", table: .chat))
+                }
+            }
+            if !process.output.isEmpty {
+                Text(verbatim: process.output)
+                    .scaledFont(.caption.monospaced())
+                    .foregroundStyle(.secondary)
+                    .lineLimit(4)
+                    .textSelection(.enabled)
+            }
+            if let failure {
+                Text(verbatim: failure).scaledFont(.caption).foregroundStyle(.red)
+            }
+        }
+        .padding(14)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .conduitGlassSurface(cornerRadius: 20, tint: Color.conduitAccent.opacity(0.04))
+        .confirmationDialog(AppLocalization.string("Stop this process?", table: .chat), isPresented: $confirmingStop, titleVisibility: .visible) {
+            Button(AppLocalization.string("Stop process", table: .chat), role: .destructive) { stop() }
+        } message: {
+            Text(AppLocalization.string("Hermes ends it on your host. Anything it was serving or watching stops with it.", table: .chat))
+        }
+    }
+
+    private func stop() {
+        guard !working else { return }
+        working = true
+        failure = nil
+        Task {
+            failure = await appState.killBackgroundProcess(process)
+            working = false
+            await reload()
         }
     }
 }

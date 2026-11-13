@@ -299,6 +299,27 @@ struct WorkspaceFolderView: View {
                     } label: {
                         Label(AppLocalization.string("Open Folder…", table: .chat), systemImage: "folder.badge.plus")
                     }
+                    // The chat works here from now on (Hermes Desktop's
+                    // folder chip), for a folder that isn't already its own.
+                    if includesChat, let root, root.kind != .chat, appState.canMoveOpenChatFolder {
+                        Button {
+                            let picked = rootPath
+                            Task {
+                                switch await appState.moveOpenChatFolder(to: root.path) {
+                                case .moved:
+                                    Haptics.selection()
+                                    // Only if the reader hasn't picked another folder meanwhile.
+                                    if rootPath == picked { rootPath = nil }
+                                case .failed(let message):
+                                    failure = message
+                                case .superseded:
+                                    break
+                                }
+                            }
+                        } label: {
+                            Label(AppLocalization.string("Work Here in This Chat", table: .chat), systemImage: "arrow.right.doc.on.clipboard")
+                        }
+                    }
                     if let root, root.kind == .opened {
                         Button {
                             appState.forgetOpenedWorkspaceFolder(root.path, profile: appState.workspaceProfile)

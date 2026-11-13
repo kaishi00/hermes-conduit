@@ -3902,6 +3902,11 @@ private struct GatewaySettingsDetail: View {
                 .buttonStyle(.plain)
                 .accessibilityIdentifier("settings.gateway.diagnostics")
             }
+            // Update Hermes on the host, as Hermes Desktop updates the
+            // backend it's connected to.
+            if snapshot.server != nil {
+                HermesUpdateSection()
+            }
             ConduitSettingsSection(title: "Cloudflare Access", symbol: "shield.lefthalf.filled", tint: .conduitAccent) {
                 Toggle("Use service token", isOn: Binding(get: { cloudflareEnabled }, set: { enabled in
                     withAnimation(ConduitMotion.ease(reduceMotion: reduceMotion)) { cloudflareEnabled = enabled }

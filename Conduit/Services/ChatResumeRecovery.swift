@@ -134,6 +134,17 @@ struct ChatResumeLifecycleOperations {
     /// `/rollback`'s and `/undo`'s checkpoint reads: the verb, the session
     /// and the params (without the session).
     var rollback: (@MainActor (HermesClient, RollbackMethod, String, [String: Any]) async throws -> AnyCodable)?
+    /// The goal, loop and heartbeat dock's read and actions
+    /// (`session.control.read`, `session.control`), by session.
+    var readSessionControl: (@MainActor (HermesClient, String) async throws -> SessionControlSnapshot)?
+    var runSessionControl: (@MainActor (HermesClient, SessionControlAction, String) async throws -> (snapshot: SessionControlSnapshot?, note: String?))?
+    /// The Agents sheet's background processes (`process.list`,
+    /// `process.kill`): the session, then the process.
+    var listBackgroundProcesses: (@MainActor (HermesClient, String) async throws -> [BackgroundProcess])?
+    var killBackgroundProcess: (@MainActor (HermesClient, String, String) async throws -> Void)?
+    /// The Folder's Work Here: the stored session, then the folder;
+    /// returns the folder Hermes stored.
+    var moveSessionWorkspace: (@MainActor (HermesClient, String, String) async throws -> String)?
     var compressSession: (@MainActor (
         HermesClient,
         String,

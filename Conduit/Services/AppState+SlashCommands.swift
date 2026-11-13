@@ -28,6 +28,7 @@ extension AppState {
         SlashCommand(name: "model", description: AppLocalization.string("Open the model and run settings"), category: AppLocalization.string("Session")),
         SlashCommand(name: "yolo", description: AppLocalization.string("Toggle automatic tool approval"), category: AppLocalization.string("Session")),
         SlashCommand(name: "help", aliases: ["commands"], description: AppLocalization.string("Show available slash commands"), category: AppLocalization.string("Session")),
+        SlashCommand(name: "agents", aliases: ["tasks"], description: AppLocalization.string("Show this chat's agents and background processes"), category: "Hermes"),
         SlashCommand(name: "approvals", description: AppLocalization.string("Show or set approval mode"), category: "Hermes"),
         SlashCommand(name: "background", aliases: ["bg"], description: AppLocalization.string("Run a prompt in the background"), category: "Hermes"),
         SlashCommand(name: "btw", description: AppLocalization.string("Ask a side question about this chat"), category: "Hermes"),
@@ -59,7 +60,7 @@ extension AppState {
     /// (scripts/check-hermes-slash-parity.py) flags when Hermes' table and
     /// this list drift apart.
     static let slashCommandsWithoutConduitRoute: Set<String> = [
-        "agents", "tasks", "battery", "browser", "config", "copy", "discard",
+        "battery", "browser", "config", "copy", "discard",
         "export", "focus", "handoff", "hatch", "generate-pet", "history",
         "image", "import", "indicator", "journey", "learning", "memory-graph",
         "palette", "paste", "pause", "pet", "platform", "plugins", "prompt",
@@ -73,6 +74,10 @@ extension AppState {
     /// Commands Conduit runs itself without Hermes' subcommands: Conduit's
     /// `/queue` only adds a message (Queue, #842); listing or editing
     /// Hermes' queue (`/queue list`, …) runs in Hermes' own clients only.
+    /// Commands that set or change the chat's goal, loop or heartbeat
+    /// (Hermes runs them); the dock above the composer reads them after.
+    static let sessionControlCommands: Set<String> = ["goal", "subgoal", "loop", "proactive", "heartbeat", "hb"]
+
     private static let slashCommandsWithoutHermesSubcommands: Set<String> = ["queue"]
 
     static func normalizedSlashCatalog(_ payload: AnyCodable) -> [SlashCommand] {
@@ -357,6 +362,13 @@ extension AppState {
             cancelChatResumeRestoration()
             guard await runRollback(argument: command.argument, client: client, sessionID: sessionId, context: submissionContext) else { break }
             return
+        case "agents", "tasks":
+            // Desktop's /agents: the chat's delegate agents and background
+            // processes, which slash.exec refuses for app chats. Here they
+            // are the Agents sheet, where each can be stopped.
+            cancelChatResumeRestoration()
+            showAgentsSheet = true
+            return
         case "stop":
             // Desktop's /stop: the running reply, then this chat's
             // background processes (`process.stop`, what Hermes' own /stop
@@ -418,6 +430,11 @@ extension AppState {
                 sessionID: sessionId,
                 context: submissionContext
             )
+            // A goal, loop or heartbeat set or changed: the dock above the
+            // composer shows it without waiting for Hermes' update.
+            if Self.sessionControlCommands.contains(command.name) {
+                await refreshSessionControl(for: sessionId)
+            }
         } catch {
             guard isCurrentComposerSubmission(submissionContext) else { return }
             appendSlashOutput(Self.slashFailureNote(command: command.name, error: error), context: submissionContext)

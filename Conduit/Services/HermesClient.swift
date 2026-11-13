@@ -480,6 +480,9 @@ enum StreamEvent {
     /// `background.complete` / `btw.complete`: a side agent's answer (or
     /// `error: …`), on the session that started it.
     case sideAgentComplete(sessionId: String, kind: SideAgentKind, taskId: String, text: String, question: String?)
+    /// `session.control.update`: the session's goal, loop and heartbeat
+    /// after a change, whichever client made it.
+    case sessionControl(sessionId: String, snapshot: SessionControlSnapshot)
     case unparsed(payload: [String: Any])
 }
 
@@ -695,7 +698,26 @@ struct SessionRewindSnapshot: Equatable {
         case nil, .null?, .string("")?, .string("steer")?: break
         default: return nil
         }
-        return Turn(rowID: rowID, text: text(of: row["content"]), timestamp: row["timestamp"]?.doubleValue)
+        return Turn(rowID: rowID, text: text(of: row["content"]), timestamp: epochSeconds(row["timestamp"]))
+    }
+
+    /// A row's time as the epoch seconds Hermes' `undo_since` takes: a
+    /// number as stored, or a string holding one or an ISO 8601 date (an
+    /// older `session.resume`'s rows).
+    static func epochSeconds(_ value: AnyCodable?) -> Double? {
+        switch value {
+        case .number(let seconds)?:
+            return seconds
+        case .string(let text)?:
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            if let seconds = Double(trimmed) { return seconds }
+            let plain = ISO8601DateFormatter()
+            let fractional = ISO8601DateFormatter()
+            fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+            return (plain.date(from: trimmed) ?? fractional.date(from: trimmed))?.timeIntervalSince1970
+        default:
+            return nil
+        }
     }
 
     /// A text turn's words; nil when a part isn't text. A stored prompt
@@ -4841,6 +4863,47 @@ final class HermesClient: ObservableObject {
         return try await rpc(method.rawValue, params: params)
     }
 
+    /// The chat's goal, loop and heartbeat (`session.control.read`).
+    func sessionControl(sessionId: String, profile: String? = nil) async throws -> SessionControlSnapshot {
+        var params: [String: Any] = ["session_id": sessionId]
+        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { params["profile"] = profile }
+        guard let snapshot = SessionControlSnapshot(try await rpc("session.control.read", params: params)) else {
+            throw HermesError.invalidResponse
+        }
+        return snapshot
+    }
+
+    /// Runs one control action (`session.control`) and returns what the
+    /// chat's controls are now, with Hermes' own words when it gave any.
+    func runSessionControl(_ action: SessionControlAction, sessionId: String, profile: String? = nil) async throws -> (snapshot: SessionControlSnapshot?, note: String?) {
+        var params: [String: Any] = ["session_id": sessionId, "action": action.name]
+        if let args = action.args { params["args"] = args }
+        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { params["profile"] = profile }
+        let result = try await rpc("session.control", params: params)
+        let dispatch = result.objectValue?["dispatch"]?.objectValue
+        let note = ["output", "notice", "message"].lazy
+            .compactMap { dispatch?[$0]?.stringValue?.trimmingCharacters(in: .whitespacesAndNewlines) }
+            .first { !$0.isEmpty }
+        return (SessionControlSnapshot(result), note)
+    }
+
+    /// The background processes a live session started (`process.list`):
+    /// servers, watchers and long builds Hermes left running.
+    func backgroundProcesses(sessionId: String, profile: String? = nil) async throws -> [BackgroundProcess] {
+        var params: [String: Any] = ["session_id": sessionId]
+        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { params["profile"] = profile }
+        let result = try await rpc("process.list", params: params)
+        guard let rows = result.objectValue?["processes"]?.arrayValue else { throw HermesError.invalidResponse }
+        return rows.compactMap { BackgroundProcess($0.objectValue) }
+    }
+
+    /// Ends one background process (`process.kill`).
+    func killBackgroundProcess(sessionId: String, processId: String, profile: String? = nil) async throws {
+        var params: [String: Any] = ["session_id": sessionId, "process_id": processId]
+        if let profile, !profile.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { params["profile"] = profile }
+        _ = try await rpc("process.kill", params: params)
+    }
+
     func dispatchCommand(sessionId: String, name: String, arg: String) async throws -> AnyCodable {
         return try await rpc("command.dispatch", params: [
             "session_id": sessionId,
@@ -6087,8 +6150,9 @@ enum MessageNormalizer {
             if role == .assistant, !isToolResult, displayKind == nil, isSilenceMarker(rawContent) {
                 rawContent = ""
             }
-            let modelChange = modelChangeActivity(fromText: rawContent)
-            let systemNotice = systemNoticeText(fromText: rawContent)
+            // A refused turn stays the user's words, whatever they look like.
+            let modelChange = isRefusedRow ? nil : modelChangeActivity(fromText: rawContent)
+            let systemNotice = isRefusedRow ? nil : systemNoticeText(fromText: rawContent)
             // A known synthetic display kind never renders as a human turn,
             // even when its persisted role is `user` and its text matches no
             // legacy marker. Unknown kinds keep ordinary normalization.

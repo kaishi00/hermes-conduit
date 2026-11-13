@@ -21,7 +21,7 @@ final class AppStateChatResumeTests: XCTestCase {
         appState.errorMessage = "earlier"
         let before = appState.notificationRouteErrorSnapshot()
         appState.chatSyncErrorMessage = "Failed to restore this conversation: offline"
-        appState.holdNotificationRouteFailure(for: tapA, restoring: before)
+        appState.holdNotificationRouteFailure(for: tapA, restoring: before, transition: appState.chatViewportTransitionGeneration)
         XCTAssertEqual(appState.errorMessage, "earlier", "the retry is due: the chat keeps what it said")
 
         appState.publishNotificationRouteFailure(for: tapB)
@@ -35,8 +35,8 @@ final class AppStateChatResumeTests: XCTestCase {
 
         // An attempt with no words of its own leaves the earlier one held.
         appState.chatSyncErrorMessage = "first"
-        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil))
-        appState.holdNotificationRouteFailure(for: tapA, restoring: appState.notificationRouteErrorSnapshot())
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil), transition: appState.chatViewportTransitionGeneration)
+        appState.holdNotificationRouteFailure(for: tapA, restoring: appState.notificationRouteErrorSnapshot(), transition: appState.chatViewportTransitionGeneration)
         appState.discardNotificationRouteFailure(for: tapB)
         appState.publishNotificationRouteFailure(for: tapA)
         XCTAssertEqual(appState.errorMessage, "first")
@@ -44,12 +44,12 @@ final class AppStateChatResumeTests: XCTestCase {
         // An open that landed drops them, and so does a new tap.
         appState.errorMessage = nil
         appState.chatSyncErrorMessage = "second"
-        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil))
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil), transition: appState.chatViewportTransitionGeneration)
         appState.discardNotificationRouteFailure(for: tapA)
         appState.publishNotificationRouteFailure(for: tapA)
         XCTAssertNil(appState.errorMessage)
         appState.chatSyncErrorMessage = "third"
-        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil))
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil), transition: appState.chatViewportTransitionGeneration)
         appState.forgetNotificationRouteFailure()
         appState.publishNotificationRouteFailure(for: tapA)
         XCTAssertNil(appState.errorMessage)
@@ -57,16 +57,39 @@ final class AppStateChatResumeTests: XCTestCase {
         // A chat the user opened after the route's latest attempt never
         // wears its words; one the route's own next attempt opened does.
         appState.chatSyncErrorMessage = "fourth"
-        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil))
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil), transition: appState.chatViewportTransitionGeneration)
         appState.beginExplicitChatViewportTransition()
         appState.publishNotificationRouteFailure(for: tapA)
         XCTAssertNil(appState.errorMessage, "a chat opened since isn't the route's")
         appState.chatSyncErrorMessage = "fifth"
-        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil))
-        appState.noteNotificationRouteAttempt(for: tapA, transition: appState.beginExplicitChatViewportTransition())
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil), transition: appState.chatViewportTransitionGeneration)
+        appState.noteNotificationRouteAttempt(for: tapA, transition: appState.beginExplicitChatViewportTransition(), heldWasCurrent: true)
         appState.publishNotificationRouteFailure(for: tapA)
         XCTAssertEqual(appState.errorMessage, "fifth", "the route's own next attempt keeps them")
         appState.errorMessage = nil
+        // A chat the user opened between attempts: the next attempt doesn't
+        // take the held words over, so a retry that fails too can't say them
+        // there (issue 2324).
+        appState.chatSyncErrorMessage = "sixth"
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil), transition: appState.chatViewportTransitionGeneration)
+        appState.beginExplicitChatViewportTransition()
+        appState.noteNotificationRouteAttempt(for: tapA, transition: appState.beginExplicitChatViewportTransition(), heldWasCurrent: false)
+        appState.publishNotificationRouteFailure(for: tapA)
+        XCTAssertNil(appState.errorMessage, "the chat opened in between isn't the route's")
+        // A room opened since the attempt: the words would sit behind it.
+        appState.chatSyncErrorMessage = "seventh"
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil), transition: appState.chatViewportTransitionGeneration)
+        appState.groupRoomEpoch &+= 1
+        appState.publishNotificationRouteFailure(for: tapA)
+        XCTAssertNil(appState.errorMessage, "a room opened since isn't the route's")
+        // A room opened between attempts, then a next attempt that holds
+        // nothing of its own: the room still isn't the route's.
+        appState.chatSyncErrorMessage = "eighth"
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil), transition: appState.chatViewportTransitionGeneration)
+        appState.groupRoomEpoch &+= 1
+        appState.noteNotificationRouteAttempt(for: tapA, transition: appState.beginExplicitChatViewportTransition(), heldWasCurrent: true)
+        appState.publishNotificationRouteFailure(for: tapA)
+        XCTAssertNil(appState.errorMessage, "a room opened before the latest attempt isn't the route's either")
 
         // With a room on screen the chat's line is the one behind it: that
         // line is held and put back, and the room's banner is left alone.
@@ -80,7 +103,7 @@ final class AppStateChatResumeTests: XCTestCase {
         appState.chatErrorBehindRoom = "chat line"
         let roomBefore = appState.notificationRouteErrorSnapshot()
         appState.chatSyncErrorMessage = "behind the room"
-        appState.holdNotificationRouteFailure(for: tapA, restoring: roomBefore)
+        appState.holdNotificationRouteFailure(for: tapA, restoring: roomBefore, transition: appState.chatViewportTransitionGeneration)
         XCTAssertEqual(appState.chatErrorBehindRoom, "chat line")
         XCTAssertEqual(appState.errorMessage, "room banner")
         appState.setActiveRoomSurfaceForTesting(nil)
@@ -90,7 +113,7 @@ final class AppStateChatResumeTests: XCTestCase {
         // An open that closed the room took both lines: the chat now showing
         // gets neither back, the room's banner least of all.
         appState.chatSyncErrorMessage = "after the room closed"
-        appState.holdNotificationRouteFailure(for: tapA, restoring: roomBefore)
+        appState.holdNotificationRouteFailure(for: tapA, restoring: roomBefore, transition: appState.chatViewportTransitionGeneration)
         XCTAssertNil(appState.errorMessage)
         appState.publishNotificationRouteFailure(for: tapA)
         XCTAssertEqual(appState.errorMessage, "after the room closed")
@@ -5706,6 +5729,66 @@ final class AppStateChatResumeTests: XCTestCase {
 
         harness.appState.errorMessage = "Hermes stopped answering"
         XCTAssertTrue(harness.appState.showsConnectionRepair, "another message while it's down still offers Repair")
+    }
+
+    /// A send that went through (a steer, a redirect) clears the failed
+    /// send's line it set out under, and never a newer failure, even one in
+    /// the same words (issue 2115).
+    func testASendThatWentThroughClearsOnlyTheLineItSetOutUnder() {
+        let harness = makeHarness()
+        let appState = harness.appState
+        appState.showSendFailure("Failed to send")
+        appState.clearSendFailureAfterSend(appState.sendFailureMark)
+        XCTAssertNil(appState.errorMessage)
+        XCTAssertNil(appState.sendFailureShown)
+
+        appState.showSendFailure("Failed to send")
+        let setOutUnder = appState.sendFailureMark
+        appState.showSendFailure("Failed to send")
+        appState.clearSendFailureAfterSend(setOutUnder)
+        XCTAssertEqual(appState.errorMessage, "Failed to send", "a newer failure in the same words stays")
+        XCTAssertEqual(appState.sendFailureShown, "Failed to send")
+        appState.clearSendFailureAfterSend(nil)
+        XCTAssertEqual(appState.errorMessage, "Failed to send", "a send that set out under no line clears none")
+    }
+
+    /// A reconnect that succeeds keeps the failed send's line (its words
+    /// are back in the composer), while an older banner goes (issue 2115).
+    /// Read while the connected session's catalog read is held, before the
+    /// harness's chat bootstrap says anything of its own.
+    func testAReconnectKeepsTheFailedSendsLine() async {
+        let gates = [ControlledSuspension(), ControlledSuspension()]
+        var catalogReads = 0
+        let harness = makeHarness(lifecycleOperations: ChatResumeLifecycleOperations(
+            connectClient: { _ in },
+            loadCatalog: { _, _ in
+                let gate = catalogReads < gates.count ? gates[catalogReads] : nil
+                catalogReads += 1
+                await gate?.suspend()
+                return []
+            },
+            mintTicket: { _ in "fresh-ticket" },
+            refreshContext: { _, _ in }
+        ))
+        let connection = HermesConnection(baseUrl: "https://127.0.0.1:1", ticket: "saved-ticket")
+        harness.appState.connection = connection
+        harness.appState.isConnected = false
+        harness.appState.showSendFailure("Failed to send")
+
+        let first = Task { @MainActor in await harness.appState.connect(with: connection, profile: "default") }
+        await gates[0].waitUntilSuspended()
+        XCTAssertTrue(harness.appState.isConnected)
+        XCTAssertEqual(harness.appState.errorMessage, "Failed to send", "the failed send's line stays")
+        gates[0].resume()
+        await first.value
+
+        harness.appState.errorMessage = "Hermes stopped answering"
+        harness.appState.isConnected = false
+        let second = Task { @MainActor in await harness.appState.connect(with: connection, profile: "default") }
+        await gates[1].waitUntilSuspended()
+        XCTAssertNil(harness.appState.errorMessage, "an older banner goes")
+        gates[1].resume()
+        await second.value
     }
 
     /// An older, unrelated message left on screen doesn't offer Repair while
