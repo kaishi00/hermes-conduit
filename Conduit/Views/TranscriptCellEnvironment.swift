@@ -129,6 +129,27 @@ struct TranscriptCellEnvironment: Equatable {
         "\(chatTextSize)|\(dynamicTypeSize)|\(chatWidthTextSteps)|\(String(describing: columnText))|\(String(describing: font))"
     }
 
+    /// Whether a row could measure differently under `other` (issue 1763,
+    /// #2341 review): equal apart from what only colors or pauses a row, or
+    /// what no row reads (the app's phase, enabled state and color scheme,
+    /// Bots Home's cover, the roster's scroll, the tab bar's clearance, the
+    /// side insets, the tints). Those leave every row's measured height
+    /// current (TranscriptLayout.forgetCurrentMeasurements).
+    func measuresLike(_ other: Self) -> Bool {
+        var same = other
+        same.scenePhase = scenePhase
+        same.isEnabled = isEnabled
+        same.colorScheme = colorScheme
+        same.botsHomeCovered = botsHomeCovered
+        same.rosterRowsInScroll = rosterRowsInScroll
+        same.v2TabBarClearance = v2TabBarClearance
+        same.windowSideInsets = windowSideInsets
+        same.conduitAccent = conduitAccent
+        same.settingsGlowTint = settingsGlowTint
+        same.groupMemberTints = groupMemberTints
+        return self == same
+    }
+
     static func == (lhs: Self, rhs: Self) -> Bool {
         lhs.chatRowState == rhs.chatRowState
             && lhs.chatRowActions == rhs.chatRowActions

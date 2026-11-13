@@ -217,6 +217,12 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
         dropParkedIfIdle()
         // Before the rows: a cell configured for them draws with these.
         if environment != rowEnvironment {
+            // Rows measured under the last environment, off screen too,
+            // measure again as their cells next show them, unless only
+            // something no row's height reads changed.
+            if !environment.measuresLike(rowEnvironment) {
+                layout.forgetCurrentMeasurements()
+            }
             rowEnvironment = environment
             for case let cell as TranscriptCell in collectionView.visibleCells {
                 cell.updateEnvironment(environment)
@@ -609,11 +615,9 @@ final class TranscriptCell: UICollectionViewCell {
     /// again (scrolling back over rows already seen) takes that height
     /// instead of measuring the row's SwiftUI content once more, which was
     /// most of a long chat's per-row cost on every pass (issue 1763).
+    /// The layout forgets them all when the chat's environment changes
+    /// (TranscriptLayout.forgetCurrentMeasurements).
     var knowsHeight: (@MainActor (String, CGFloat) -> Bool)?
-    /// The chat's environment changed since the row last measured (a
-    /// setting a row's controls depend on): it measures afresh even when
-    /// the transcript holds its height.
-    private var environmentChangedSinceMeasured = false
 
     override init(frame: CGRect) {
         super.init(frame: frame)
@@ -662,7 +666,6 @@ final class TranscriptCell: UICollectionViewCell {
         guard let hosting, hosting.rootView.rowEnvironment != environment else { return }
         // It may draw at another height (a text size): measured afresh.
         drawnSize = nil
-        environmentChangedSinceMeasured = true
         hosting.rootView.rowEnvironment = environment
     }
 
@@ -687,12 +690,11 @@ final class TranscriptCell: UICollectionViewCell {
         let size: CGSize
         if let drawnSize, abs(drawnSize.width - width) <= 0.5 {
             size = drawnSize
-        } else if !environmentChangedSinceMeasured, let hostedRowID, knowsHeight?(hostedRowID, width) == true {
+        } else if let hostedRowID, knowsHeight?(hostedRowID, width) == true {
             // Its frame already has the height it measured.
             return layoutAttributes
         } else {
             size = hosting.sizeThatFits(in: CGSize(width: width, height: .greatestFiniteMagnitude))
-            environmentChangedSinceMeasured = false
         }
         guard size.height > 0, size.height.isFinite, abs(size.height - layoutAttributes.size.height) > 0.5,
               let attributes = layoutAttributes.copy() as? UICollectionViewLayoutAttributes else { return layoutAttributes }
