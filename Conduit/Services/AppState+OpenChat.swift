@@ -1837,8 +1837,10 @@ extension AppState {
             notificationRouteFailure = nil
             return
         }
+        // The transition only: a room opened since the held attempt doesn't
+        // move it, so the room's epoch stays as the attempt saw it and its
+        // words stay unsaid. An attempt that fails holds its own epoch.
         notificationRouteFailure?.transition = generation
-        notificationRouteFailure?.roomEpoch = groupRoomEpoch
     }
 
     /// The stable decision key a push-delivered card was recorded under

@@ -82,6 +82,14 @@ final class AppStateChatResumeTests: XCTestCase {
         appState.groupRoomEpoch &+= 1
         appState.publishNotificationRouteFailure(for: tapA)
         XCTAssertNil(appState.errorMessage, "a room opened since isn't the route's")
+        // A room opened between attempts, then a next attempt that holds
+        // nothing of its own: the room still isn't the route's.
+        appState.chatSyncErrorMessage = "eighth"
+        appState.holdNotificationRouteFailure(for: tapA, restoring: AppState.NotificationRouteErrorSnapshot(chatError: nil, errorBehindRoom: nil), transition: appState.chatViewportTransitionGeneration)
+        appState.groupRoomEpoch &+= 1
+        appState.noteNotificationRouteAttempt(for: tapA, transition: appState.beginExplicitChatViewportTransition(), heldWasCurrent: true)
+        appState.publishNotificationRouteFailure(for: tapA)
+        XCTAssertNil(appState.errorMessage, "a room opened before the latest attempt isn't the route's either")
 
         // With a room on screen the chat's line is the one behind it: that
         // line is held and put back, and the room's banner is left alone.
