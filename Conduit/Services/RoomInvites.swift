@@ -174,6 +174,7 @@ enum RoomInviteText {
         case "joined":
             return AppLocalization.string("You joined, waiting for the room to start", table: .rooms)
         case "started":
+            if invite.justMe { return AppLocalization.string("Started, and you're in it without your agents", table: .rooms) }
             return AppLocalization.string("Started with your agents in it", table: .rooms)
         case "lapsed":
             return AppLocalization.string("The invite ran out", table: .rooms)

@@ -211,7 +211,8 @@ extension AppState {
     /// (its task's lifetime), as a copy's room screen does each tick.
     func followLinkedRoomApprovalsOnScreen() async {
         while !Task.isCancelled {
-            let listed = linkedRoomApprovals.map { !$0.approvals.isEmpty } ?? false
+            // From this dashboard's list: another's stale one doesn't set the pace.
+            let listed = !linkedRoomApprovalRows.isEmpty
             try? await Task.sleep(for: Self.rosterApprovalsInterval(listed: listed))
             guard !Task.isCancelled else { return }
             if groupChatPhase == .available, canAnswerRoomApprovals { await refreshLinkedRoomApprovals() }

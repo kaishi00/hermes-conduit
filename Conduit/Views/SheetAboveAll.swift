@@ -77,7 +77,12 @@ final class SheetAboveAllHost {
     /// count as another sheet up.
     func route(for id: AnyHashable) -> Route {
         if let decided, decided.id == id { return decided.route }
-        let route: Route = Self.topPresenter()?.presentingViewController != nil ? .overTop : .root
+        // The root sheet still showing the last item takes this one in its
+        // place (SwiftUI swaps them): presented over it, the new one would
+        // go down with it as the binding stops returning the old item.
+        let route: Route = decided?.route == .root
+            ? .root
+            : (Self.topPresenter()?.presentingViewController != nil ? .overTop : .root)
         if shownID != nil, shownID != id { close() }
         decided = (id, route)
         return route
@@ -98,20 +103,24 @@ final class SheetAboveAllHost {
         Self.showing.insert(key)
         controller = hosting
         shownID = id
-        let present: @MainActor () -> Void = { [weak self] in
+        func present(retrying: Bool) {
             // The top again: what was going may have gone, or another sheet come.
-            guard let self, self.controller === hosting, let top = Self.topPresenter() else {
+            guard self.controller === hosting, let top = Self.topPresenter() else {
                 Self.showing.remove(key)
                 return
             }
             top.present(hosting, animated: true)
             // UIKit refuses a presentation it can't make now (no callback,
-            // no onDisappear): forget it so the item can show again.
+            // no onDisappear): try once more from the top, then forget it.
             Task { @MainActor [weak self] in
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
                 guard hosting.presentingViewController == nil, !hosting.isBeingPresented else { return }
+                guard let self, self.controller === hosting else {
+                    Self.showing.remove(key)
+                    return
+                }
+                if retrying { return present(retrying: false) }
                 Self.showing.remove(key)
-                guard let self, self.controller === hosting else { return }
                 self.controller = nil
                 self.shownID = nil
                 closed()
@@ -120,9 +129,9 @@ final class SheetAboveAllHost {
         // One this replaced is still animating away (close()): present once it's gone.
         if let going = presenter.presentedViewController, going.isBeingDismissed,
            let coordinator = going.transitionCoordinator {
-            coordinator.animate(alongsideTransition: nil) { _ in Task { @MainActor in present() } }
+            coordinator.animate(alongsideTransition: nil) { _ in Task { @MainActor in present(retrying: true) } }
         } else {
-            present()
+            present(retrying: true)
         }
     }
 
