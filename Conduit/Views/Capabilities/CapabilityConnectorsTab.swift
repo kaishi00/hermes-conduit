@@ -671,7 +671,9 @@ struct ConnectorDetailPage: View {
         Button {
             Haptics.selection()
             message = nil
-            Task { await store.probe(server.name) }
+            // Tested on the profile showing when it was pressed, or not at all.
+            let generation = store.generation
+            Task { await store.probe(server.name, generation: generation) }
         } label: {
             Label(
                 state == .checking ? AppLocalization.string("Testing…", table: .bots) : AppLocalization.string("Test Connection"),
