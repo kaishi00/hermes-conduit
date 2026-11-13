@@ -850,6 +850,15 @@ extension GroupChatModelsTests {
         )
         XCTAssertEqual(RoomBlock.targets(copy: nil, draft: draft).map(\.name), ["Ann", "Zed"])
         XCTAssertEqual(RoomBlock.targets(copy: nil, draft: nil), [])
+        // A Link with no name still reads as someone.
+        let unnamed = try XCTUnwrap(RoomCopiesClient.copy(copiesCopy(room: "conduit-3", link: "lk-anon", from: "")))
+        XCTAssertEqual(RoomBlock.targets(copy: unnamed, draft: nil).map(\.name), [AppLocalization.string("The host", table: .rooms)])
+        let quiet = RoomDraft(
+            id: "conduit-4", name: "Picnic", status: "started", reason: nil, createdAt: nil, expiresAt: nil,
+            agents: ["Furina"], people: [RoomDraft.Person(id: "lk-q", name: " ", status: "joined", agents: [])]
+        )
+        XCTAssertEqual(RoomBlock.targets(copy: nil, draft: quiet).map(\.name),
+                       [AppLocalization.string("Someone you've linked with", table: .rooms)])
         XCTAssertEqual(RoomBlock.title("Mona"), AppLocalization.string("Block \("Mona")?", table: .rooms))
     }
 

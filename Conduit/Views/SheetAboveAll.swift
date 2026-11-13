@@ -127,8 +127,17 @@ final class SheetAboveAllHost {
         shownID = id
         func present(retrying: Bool) {
             // The top again: what was going may have gone, or another sheet come.
-            guard self.controller === hosting, let top = Self.topPresenter() else {
+            guard self.controller === hosting else {
                 Self.showing.remove(key)
+                return
+            }
+            guard let top = Self.topPresenter() else {
+                // No window to show it in: forget it, so it can show again.
+                Self.showing.remove(key)
+                self.controller = nil
+                self.shownID = nil
+                self.decided = nil
+                closed()
                 return
             }
             top.present(hosting, animated: true)
