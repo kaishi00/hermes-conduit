@@ -695,6 +695,7 @@ extension AppState {
         invalidateReconciliation()
         invalidateServerCompactionState()
         sessionCatalogCache.removeAll()
+        archivedCallsReads.removeAll()
         sessionCatalogLoadState.reset()
         sessions = []
         cronSessions = []

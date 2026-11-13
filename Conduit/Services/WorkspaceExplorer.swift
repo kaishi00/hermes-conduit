@@ -168,6 +168,14 @@ final class WorkspaceExplorer: ObservableObject {
     /// pull to refresh, or a change made here.
     func refresh() async {
         guard let scope else { return }
+        // A reply link's read from before this refresh may hold text from
+        // before the change it follows, and an open, during the refresh or
+        // after, would pair it with the date the refresh lists: it goes now,
+        // before any folder's new listing shows, and the open reads again.
+        if let kept = prefetchedText {
+            kept.read.cancel()
+            prefetchedText = nil
+        }
         askPluginIfUnanswered()
         var folders = [scope.root] + expanded.sorted()
         // Every open folder is read at once, not one after another (issue
@@ -178,6 +186,8 @@ final class WorkspaceExplorer: ObservableObject {
         if pluginOff != nil {
             folders.removeFirst()
             if await load(scope.root) { first.insert(scope.root) }
+            // Another folder opened meanwhile: its folders aren't these.
+            guard self.scope == scope else { return }
         }
         let listed = await withTaskGroup(of: (String, Bool).self) { group -> Set<String> in
             for folder in folders {

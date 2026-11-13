@@ -103,7 +103,8 @@ extension AppState {
                 registry: registry,
                 turnRunning: turnRunning,
                 catalogGeneration: chatListCatalogGeneration,
-                followsChanges: followsChanges
+                followsChanges: followsChanges,
+                inactiveFor: isSceneActive ? nil : lastLeftForegroundAt.map { max(0, Date().timeIntervalSince($0)) }
             ),
             conditions: deviceConditions(),
             random: pollJitter()
@@ -960,6 +961,10 @@ extension AppState {
         sessionCatalogCache.removeSession(
             withIDs: Set([session.id] + session.alternateIds)
         )
+        // The call archive kept for the catalog could list it too: a call
+        // archived on Hermes already, deleted or archived here, leaves no
+        // trace in the live total that would make it read again.
+        archivedCallsReads.removeAll()
         publishWidgetSnapshot()
     }
 

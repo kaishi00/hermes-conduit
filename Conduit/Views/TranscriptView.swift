@@ -220,7 +220,12 @@ final class TranscriptViewController: UIViewController, UICollectionViewDelegate
             // Rows measured under the last environment, off screen too,
             // measure again as their cells next show them, unless only
             // something no row's height reads changed.
-            if !environment.measuresLike(rowEnvironment) {
+            // Most changes in a live chat name their rows (a turn starting
+            // or ending, a reply landing): only those measure again, so
+            // scrolling back after a turn keeps the rest (issue 2358).
+            if let ids = environment.measurementChange(from: rowEnvironment).rowIDs(in: rows) {
+                layout.forgetMeasurements(of: ids)
+            } else {
                 layout.forgetCurrentMeasurements()
             }
             rowEnvironment = environment

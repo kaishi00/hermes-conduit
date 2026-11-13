@@ -502,10 +502,18 @@ extension AppState {
             )
             let listedSessions = allSessions.filter { $0.source != .cron }
             let listedCron = allSessions.filter { $0.source == .cron }
-            // A read that changed the list keeps the list's poll quick.
-            if listedSessions != sessions || listedCron != cronSessions { chatListCatalogGeneration &+= 1 }
-            sessions = listedSessions
-            cronSessions = listedCron
+            // A read that changed the list keeps the list's poll quick. One
+            // that lists the same rows for the same scope again (a change
+            // event's read, every few seconds while another device works)
+            // skips what follows a change (issue 2357): the lists' didSets,
+            // the identity index, the widget and the projects.
+            let owner = SessionCatalogOwner(dashboardID: dashboardID, profile: profile)
+            let listChanged = listedSessions != sessions || listedCron != cronSessions
+            let sameListAgain = !listChanged && catalogCommitOwner == owner
+            if listChanged { chatListCatalogGeneration &+= 1 }
+            if listedSessions != sessions { sessions = listedSessions }
+            if listedCron != cronSessions { cronSessions = listedCron }
+            catalogCommitOwner = owner
             settleNewChatAwaitingListing(loaded: loadedSessions)
             chatListCatalogFreshness.noteLoaded(at: chatSyncNow())
             observeOpenChatCatalog()
@@ -514,7 +522,9 @@ extension AppState {
             refreshVoiceSessionTags()
             // Labeled rows are positive identity evidence; commit them so
             // notification routing survives a later catalog omission.
-            conversationIdentityIndex.recordCatalogIdentity(allSessions, profile: profile)
+            if !sameListAgain {
+                conversationIdentityIndex.recordCatalogIdentity(allSessions, profile: profile)
+            }
             // A canonical Bot Chat's raw catalog row is titled exactly
             // "Bot Chat": refreshing the ordinary active-title cache from it
             // would persist the wire title over the bot's display label and
@@ -526,9 +536,12 @@ extension AppState {
                 updateActiveSessionTitle(for: activeSessionId)
             }
             if let dashboardID {
-                widgetSettledCatalogOwner = WidgetWorkspaceID(dashboardID: dashboardID, profile: profile)
-                widgetLaunchCoordinator.readinessChanged()
-                publishWidgetSnapshot()
+                let widgetOwner = WidgetWorkspaceID(dashboardID: dashboardID, profile: profile)
+                if !sameListAgain || widgetSettledCatalogOwner != widgetOwner {
+                    widgetSettledCatalogOwner = widgetOwner
+                    widgetLaunchCoordinator.readinessChanged()
+                    publishWidgetSnapshot()
+                }
             }
             // A chat tapped in the saved list opens now if no chat sync
             // landed this scope's list first, and a sync still reading it
@@ -537,7 +550,7 @@ extension AppState {
                 cancelChatResumeRestoration()
                 openChatPickedFromSavedList(pickedSessionID)
             }
-            if let activeClient {
+            if let activeClient, !sameListAgain || projectsNeedReading(using: activeClient, profile: profile) {
                 Task { [weak self] in
                     await self?.loadProjects(using: activeClient, profile: profile)
                 }
@@ -716,6 +729,7 @@ extension AppState {
         let cronKey = "\(activeProfile):cron"
         sessionCatalogCache.removeValue(forKey: sessionKey)
         sessionCatalogCache.removeValue(forKey: cronKey)
+        archivedCallsReads.removeAll()
         // The newest page is what the pull is for: the spinner clears once
         // it lands, and the older pages are read after it, rather than all
         // 25 one after another first (issue 1724).

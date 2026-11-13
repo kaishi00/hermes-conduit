@@ -96,11 +96,14 @@ extension AppState {
         }
         let removed = try await roomLinksClient.unlink(target.id)
         linkedRosterGeneration &+= 1
-        await refreshGroupRooms()
-        await refreshLinkedRoomCopies()
-        await refreshLinkedRoomDrafts()
-        await refreshLinkedRoomApprovals()
-        _ = await readLinkedRoomInvites()
+        // Read together, not one after another (issue 2359): each is
+        // fenced by the generation just bumped.
+        async let rooms: Void = refreshGroupRooms()
+        async let copies: Void = refreshLinkedRoomCopies()
+        async let drafts: Void = refreshLinkedRoomDrafts()
+        async let approvals = refreshLinkedRoomApprovals()
+        async let invites = readLinkedRoomInvites()
+        _ = await (rooms, copies, drafts, approvals, invites)
         return removed
     }
 }
