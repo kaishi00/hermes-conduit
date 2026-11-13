@@ -135,8 +135,8 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleInterruption(_:)),
-            name: AVAudioSession.interruptionNotification,
-            object: session
+            name: .audioSessionInterruption,
+            object: nil
         )
         NotificationCenter.default.addObserver(
             self,
@@ -448,8 +448,7 @@ final class AVAudioCaptureService: NSObject, AudioCaptureService {
     /// interruption that observed a torn-down generation must never stop the
     /// live one, release its lease, or emit a failure that applies to it.
     @objc func handleInterruption(_ notification: Notification) {
-        guard let typeValue = notification.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt,
-              let type = AVAudioSession.InterruptionType(rawValue: typeValue), type == .began else { return }
+        guard AudioSessionInterruption(notification) == .began else { return }
         // PRE-STOP generation: identifies the capture runtime the
         // notification belonged to, captured synchronously on the notifying
         // thread before any MainActor work.

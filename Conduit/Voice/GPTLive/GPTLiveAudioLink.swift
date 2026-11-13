@@ -64,13 +64,13 @@ final class GPTLiveAudioLink {
         audio.enableWebRTCAudio()
         // Session notifications can arrive on any thread.
         observers = [
-            center.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { [weak self] note in
-                let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init(rawValue:))
+            center.addObserver(forName: .audioSessionInterruption, object: nil, queue: nil) { [weak self] note in
+                let interruption = AudioSessionInterruption(note)
                 Task { @MainActor [weak self] in
-                    switch type {
+                    switch interruption {
                     case .began?: self?.interruptionBegan()
                     case .ended?: self?.interruptionEnded()
-                    default: break
+                    case nil: break
                     }
                 }
             },

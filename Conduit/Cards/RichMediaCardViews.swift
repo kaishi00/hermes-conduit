@@ -279,8 +279,8 @@ private struct RichMediaViewer: View {
         // lease go, as it ends the audio row's item, so wake listening
         // isn't held off while the sheet stays up.
         .onReceive(
-            NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)
-                .filter { ($0.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue }
+            NotificationCenter.default.publisher(for: .audioSessionInterruption)
+                .filter { AudioSessionInterruption($0) == .began }
                 .receive(on: DispatchQueue.main)
         ) { _ in
             guard let player else { return }
@@ -333,8 +333,8 @@ final class RichAudioPlayer: ObservableObject {
             .store(in: &endings)
         // An interruption ends the item and lets its lease go, so nothing
         // keeps holding the session (wake listening waits on that).
-        NotificationCenter.default.publisher(for: AVAudioSession.interruptionNotification)
-            .filter { ($0.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt) == AVAudioSession.InterruptionType.began.rawValue }
+        NotificationCenter.default.publisher(for: .audioSessionInterruption)
+            .filter { AudioSessionInterruption($0) == .began }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] _ in MainActor.assumeIsolated { if self?.playing == url { self?.stop() } } }
             .store(in: &endings)

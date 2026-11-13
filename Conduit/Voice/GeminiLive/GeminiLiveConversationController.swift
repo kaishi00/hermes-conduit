@@ -878,9 +878,8 @@ final class GeminiLiveConversationController: ObservableObject {
     private func observeAudioReturn() {
         guard audioPauseObservers.isEmpty else { return }
         audioPauseObservers = [
-            notificationCenter.addObserver(forName: AVAudioSession.interruptionNotification, object: nil, queue: nil) { [weak self] note in
-                let type = (note.userInfo?[AVAudioSessionInterruptionTypeKey] as? UInt).flatMap(AVAudioSession.InterruptionType.init(rawValue:))
-                guard type == .ended else { return }
+            notificationCenter.addObserver(forName: .audioSessionInterruption, object: nil, queue: nil) { [weak self] note in
+                guard case .ended = AudioSessionInterruption(note) else { return }
                 Task { @MainActor [weak self] in self?.scheduleAudioResume(delays: Self.audioResumeDelays, audioReturned: true) }
             },
             notificationCenter.addObserver(forName: UIApplication.didBecomeActiveNotification, object: nil, queue: nil) { [weak self] _ in

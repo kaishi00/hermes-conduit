@@ -9,6 +9,7 @@
 //
 
 import AVFAudio
+import os
 import XCTest
 @testable import Conduit
 
@@ -432,6 +433,37 @@ final class VoiceAudioSessionCoordinatorTests: XCTestCase {
         XCTAssertEqual(session.categoryCalls.last?.category, .playback)
         XCTAssertEqual(session.deactivationCount, 1, "the failure must release the acquired lease")
         XCTAssertNil(coordinator.appliedPolicy)
+    }
+
+    // MARK: Interruptions (issue 826)
+
+    /// Systems before 27 post interruptionNotification; every observer
+    /// reads it as one shape, the system's advice to resume included.
+    func testLegacyInterruptionNotificationsReadAsOneShape() {
+        func legacy(_ userInfo: [AnyHashable: Any]) -> AudioSessionInterruption? {
+            AudioSessionInterruption.legacy(Notification(name: AVAudioSession.interruptionNotification, object: nil, userInfo: userInfo))
+        }
+        let began = AVAudioSession.InterruptionType.began.rawValue
+        let ended = AVAudioSession.InterruptionType.ended.rawValue
+        let resume = AVAudioSession.InterruptionOptions.shouldResume.rawValue
+        XCTAssertEqual(legacy([AVAudioSessionInterruptionTypeKey: began]), .began)
+        XCTAssertEqual(legacy([AVAudioSessionInterruptionTypeKey: ended, AVAudioSessionInterruptionOptionKey: resume]), .ended(shouldResume: true))
+        XCTAssertEqual(legacy([AVAudioSessionInterruptionTypeKey: ended]), .ended(shouldResume: false))
+        XCTAssertNil(legacy([:]))
+    }
+
+    /// What the forwarder posts is what observers read back.
+    func testAnInterruptionReadsBackFromItsNotification() {
+        let center = NotificationCenter()
+        let read = OSAllocatedUnfairLock<[AudioSessionInterruption?]>(initialState: [])
+        let observer = center.addObserver(forName: .audioSessionInterruption, object: nil, queue: nil) { note in
+            read.withLock { $0.append(AudioSessionInterruption(note)) }
+        }
+        defer { center.removeObserver(observer) }
+        AudioSessionInterruption.began.post(on: center)
+        AudioSessionInterruption.ended(shouldResume: false).post(on: center)
+        XCTAssertEqual(read.withLock { $0 }, [.began, .ended(shouldResume: false)])
+        XCTAssertNil(AudioSessionInterruption(Notification(name: .audioSessionInterruption)))
     }
 }
 
