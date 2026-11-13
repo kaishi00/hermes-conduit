@@ -2714,6 +2714,31 @@ drawn as work cards under it, and the workstream refs a Bot Chat reply names in 
 
 **Checked:** 2026-11-07, #1949 (code naming an owner/repo name or a schemeless site is no longer a file link, issue 1585 comment; every surface draws through the bridge); 2026-11-07, #1947 (a work link labeled with its ref and a title, "[W7: …](conduit://session/…)", becomes a card too, see Bot workstreams); 2026-11-05, #1819 (a tapped bare file name finds the chat's own file, see Workspace files); 2026-11-05, #1814 (a Markdown link to a host file opens the Folder, issue 1809; chats, Bot Chats, group rooms and table cells all draw through the bridge, so all get it; long-press Open Link opens the same Folder link); 2026-11-03, #1710 (a work link's Desktop reference goes with it into the card); 2026-11-03, #1701 (`bot-workstreams` merged into main for TestFlight, as its PRs left this entry); 2026-11-03, #1677 (on `bot-workstreams`: the workstream refs a Bot Chat reply names linked in place); 2026-11-01, #1637 (a reply's links to its workstreams drawn as work cards); 2026-10-31, #1596 (table cells with a link are always on the drawn-until-touched path); 2026-10-30, #1535 (table cells join the drawn-until-touched path once selection is on); 2026-10-29, #1491 (a room's pictures open in the picture viewer); 2026-10-27, #1399 (file paths); #1311 (carries #1303; Voice Control and Full Keyboard Access in Siblings).
 
+## Line breaks in messages
+
+A single line break in a reply draws as a line break, not a space, wherever
+Conduit draws a reply's Markdown.
+
+**Siblings:** chat bubbles (block views and prose runs) · very long replies
+(chunked) · selection and Copy · group rooms · Bot Chat · tool results · call
+job cards · Read Aloud and live voice read-back · chat list previews and
+quotes · the Apple Watch
+
+**Code**
+- One inline parse for every block's text: `Conduit/Views/Components/MarkdownText.swift` (InlineMarkdownContent.attributed and keepingLineBreaks; MarkdownSelectionFormatter.inline goes through it)
+- Prose runs: `Conduit/Views/Components/MarkdownProseRun.swift` (InlineMarkdownContent.bridged)
+- Long replies: `Conduit/Views/Components/MarkdownLargeDocumentView.swift` (MarkdownText and MarkdownSelectionFormatter per chunk)
+- Previews (one line, by design): `Conduit/Services/PreviewText.swift`
+
+**Rulings**
+- A lone newline inside a paragraph, list item or quote is a line break, as chat apps draw it, not CommonMark's soft break: "one number per line" reads one per line. Each line a break follows gets CommonMark's own hard break (a trailing backslash) before Foundation parses it, and the line separator Foundation draws for a hard break becomes a newline, so selection copies what the reply wrote. A line already ending in a hard break (two spaces or a backslash) is left as written, as is a break before a blank line or a setext "===" underline. Emphasis and links still run across a break (2026-11-13, #PRNUM).
+
+**Open gaps**
+- An inline code span split across lines shows a backslash at the break.
+- Previews and quotes join a reply's lines into one, as before; Read Aloud reads the source lines, so it was never affected; the Watch shows plain text, which keeps its newlines.
+
+**Checked:** 2026-11-13, #PRNUM (new entry: a single line break in a reply drew as a space, Furina's count to 30 on one line; chats, group rooms, Bot Chat, tool results, call job cards and long replies share the parse; selection copies the newline).
+
 ## Markdown lists in messages
 
 How a reply's lists read: numbering, loose lists, and the same list in every

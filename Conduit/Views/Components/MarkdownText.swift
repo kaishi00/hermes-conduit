@@ -775,10 +775,7 @@ enum MarkdownSelectionFormatter {
         textColor: UIColor,
         linkColor: UIColor
     ) -> NSAttributedString {
-        let attributed = (try? AttributedString(
-            markdown: references.markdownForParsing(source),
-            options: .init(interpretedSyntax: .full)
-        )) ?? AttributedString(source)
+        let attributed = InlineMarkdownContent.attributed(source: source, references: references)
         return SelectableTextView.bridge(attributed, defaultFont: font, defaultColor: textColor, linkColor: linkColor)
     }
 
@@ -1152,9 +1149,14 @@ enum InlineMarkdownContent {
         // is invisible under `.full`; if parsing fails, fall back to the bare
         // fragment so definitions never surface as text.
         var attributed = (try? AttributedString(
-            markdown: references.markdownForParsing(source),
+            markdown: references.markdownForParsing(keepingLineBreaks(source)),
             options: .init(interpretedSyntax: .full)
         )) ?? AttributedString(source)
+        // Foundation draws a hard break as a line separator; a newline is
+        // what the reply wrote and what selection copies.
+        while let separator = attributed.range(of: "\u{2028}") {
+            attributed.characters.replaceSubrange(separator, with: "\n")
+        }
 
         var endIndex = attributed.characters.endIndex
         for opacity in trailingCharacterOpacities.reversed() {
@@ -1164,6 +1166,32 @@ enum InlineMarkdownContent {
             endIndex = startIndex
         }
         return attributed
+    }
+
+    /// A single line break in a reply stays a line break, as chat apps
+    /// draw it: "one number per line" reads one per line. CommonMark makes
+    /// it a soft break, which Foundation draws as a space, so each line
+    /// that a break follows ends with a backslash, CommonMark's own hard
+    /// break. A line that already ends in one (a backslash, or two spaces)
+    /// is left as written, and so is a break before a blank line or a
+    /// setext underline ("==="), where a backslash would show.
+    static func keepingLineBreaks(_ source: String) -> String {
+        guard source.contains("\n") else { return source }
+        var lines = source.components(separatedBy: "\n")
+        for index in lines.indices.dropLast() {
+            let line = lines[index]
+            let next = lines[index + 1].trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !line.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                  !next.isEmpty,
+                  !next.allSatisfy({ $0 == "=" }),
+                  !line.hasSuffix("  ") else { continue }
+            var body = Substring(line)
+            while let last = body.last, last == " " || last == "\t" || last == "\r" { body.removeLast() }
+            let trailingBackslashes = body.reversed().prefix { $0 == "\\" }.count
+            if trailingBackslashes % 2 == 1 { continue }
+            lines[index] = String(body) + "\\"
+        }
+        return lines.joined(separator: "\n")
     }
 
     /// Everything a bridged fragment depends on, boxed for NSCache. It keys
