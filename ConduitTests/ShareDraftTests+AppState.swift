@@ -54,7 +54,8 @@ extension ShareDraftTests {
         target: ShareDraftTarget = .newChat,
         text: String = "Read this: https://example.com/a",
         file: Data? = Data("hello".utf8),
-        createdAt: Date = Date()
+        createdAt: Date = Date(),
+        action: ShareDraftAction = .chat
     ) throws -> ShareDraftEnvelope {
         let staging = try inbox.beginStaging()
         var attachments: [ShareDraftAttachment] = []
@@ -62,7 +63,7 @@ extension ShareDraftTests {
             try file.write(to: staging.url.appendingPathComponent("1.txt"))
             attachments = [ShareDraftAttachment(storedName: "1.txt", displayName: "notes.txt", typeIdentifier: "public.plain-text", byteCount: Int64(file.count))]
         }
-        let envelope = ShareDraftEnvelope(createdAt: createdAt, workspace: workspace, target: target, text: text, attachments: attachments)
+        let envelope = ShareDraftEnvelope(createdAt: createdAt, workspace: workspace, target: target, text: text, attachments: attachments, action: action)
         try inbox.commit(envelope, from: staging)
         return envelope
     }
@@ -117,6 +118,70 @@ extension ShareDraftTests {
         appState.consumeComposerRestoreRequest(request.id)
         XCTAssertTrue(inbox.pending().isEmpty, "the draft left the inbox")
         try? FileManager.default.removeItem(at: staged)
+    }
+
+    @MainActor
+    func testSortItOutAndRememberItAreSentInANewChatWithTheirInstruction() async throws {
+        for action in [ShareDraftAction.sortOut, .remember] {
+            let appState = try makeAppState(active: home, dashboards: [home])
+            var sent: [(String, [String])] = []
+            appState.sharedDraftSendOverride = { text, attachments in
+                sent.append((text, attachments.map(\.name)))
+                attachments.compactMap { URL(string: $0.uri) }.forEach { try? FileManager.default.removeItem(at: $0) }
+                return true
+            }
+            let envelope = try share(workspace: WidgetWorkspaceID(dashboardID: home.id, profile: "default"),
+                                     text: "Dentist Tuesday 3pm", action: action)
+            appState.pickUpSharedDrafts()
+
+            guard await waitForDelivery(appState) else { return }
+
+            XCTAssertEqual(appState.activeSessionId, "shared-new")
+            XCTAssertEqual(sent.count, 1, "\(action)")
+            XCTAssertEqual(sent.first?.0, AppState.sharedDraftPrompt(action, text: envelope.text))
+            XCTAssertTrue(sent.first?.0.hasSuffix("\n\nDentist Tuesday 3pm") == true, "the instruction, then what was shared")
+            XCTAssertEqual(sent.first?.1, ["notes.txt"])
+            XCTAssertTrue(appState.composerRestoreRequests.isEmpty, "nothing left in the composer")
+            XCTAssertTrue(inbox.pending().isEmpty, "the draft left the inbox once it was sent")
+        }
+        XCTAssertEqual(AppState.sharedDraftPrompt(.chat, text: "as is"), "as is")
+        XCTAssertFalse(AppState.sharedDraftPrompt(.remember, text: "  ").hasSuffix("\n"), "nothing shared but files: the instruction alone")
+    }
+
+    @MainActor
+    func testASortItOutThatCantBeSentLandsInTheComposerAndSaysSo() async throws {
+        let appState = try makeAppState(active: home, dashboards: [home])
+        appState.sharedDraftSendOverride = { _, _ in false }
+        let envelope = try share(workspace: WidgetWorkspaceID(dashboardID: home.id, profile: "default"), action: .sortOut)
+        appState.pickUpSharedDrafts()
+
+        guard await waitForDelivery(appState) else { return }
+
+        let request = try XCTUnwrap(appState.composerRestoreRequests.last)
+        XCTAssertEqual(request.draft.text, AppState.sharedDraftPrompt(.sortOut, text: envelope.text), "ready to send as it was")
+        XCTAssertEqual(request.draft.attachments.map(\.name), ["notes.txt"])
+        XCTAssertEqual(appState.composerNotice, AppLocalization.string("Conduit couldn't send what you shared, so it's in the composer. Send it when you're ready.", table: .chat))
+        appState.consumeComposerRestoreRequest(request.id)
+        XCTAssertTrue(inbox.pending().isEmpty)
+        request.draft.attachments.compactMap { URL(string: $0.uri) }.forEach { try? FileManager.default.removeItem(at: $0) }
+    }
+
+    @MainActor
+    func testARememberItWhoseChatCantOpenIsNotSentIntoTheChatOnScreen() async throws {
+        let appState = try makeAppState(active: home, dashboards: [home], created: nil)
+        appState.activeSessionId = "open-chat"
+        var sends = 0
+        appState.sharedDraftSendOverride = { _, _ in sends += 1; return true }
+        let envelope = try share(workspace: WidgetWorkspaceID(dashboardID: home.id, profile: "default"), file: nil, action: .remember)
+        appState.pickUpSharedDrafts()
+
+        guard await waitForDelivery(appState) else { return }
+
+        XCTAssertEqual(sends, 0)
+        XCTAssertEqual(appState.activeSessionId, "open-chat")
+        XCTAssertEqual(appState.composerRestoreRequests.last?.draft.text, AppState.sharedDraftPrompt(.remember, text: envelope.text))
+        XCTAssertEqual(appState.errorMessage, AppLocalization.string("Conduit couldn't open the chat you picked, so the shared draft is in this one."))
+        appState.consumeComposerRestoreRequest(try XCTUnwrap(appState.composerRestoreRequests.last).id)
     }
 
     @MainActor
