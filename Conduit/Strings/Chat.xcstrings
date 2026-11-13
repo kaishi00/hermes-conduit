@@ -44892,6 +44892,252 @@
           }
         }
       }
+    },
+    "Sort this out for me: add anything with a date or time to my calendar as events, and anything I need to do as reminders. Then tell me in a line or two what you added and what didn't fit." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ordne das für mich ein: Trag alles mit Datum oder Uhrzeit als Termine in meinen Kalender ein und alles, was ich erledigen muss, als Erinnerungen. Sag mir dann in ein, zwei Sätzen, was du eingetragen hast und was nicht gepasst hat."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organiza esto por mí: añade a mi calendario como eventos todo lo que tenga fecha u hora, y como recordatorios lo que tengo que hacer. Luego dime en una o dos líneas qué añadiste y qué no encajó."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Trie ça pour moi : ajoute à mon calendrier comme événements tout ce qui a une date ou une heure, et comme rappels ce que je dois faire. Puis dis-moi en une ou deux lignes ce que tu as ajouté et ce qui ne rentrait pas."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Tolong rapikan ini: tambahkan apa pun yang punya tanggal atau waktu ke kalender saya sebagai acara, dan apa pun yang perlu saya kerjakan sebagai pengingat. Lalu beri tahu saya dalam satu atau dua baris apa yang Anda tambahkan dan apa yang tidak cocok."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Sistemalo per me: aggiungi al mio calendario come eventi tutto ciò che ha una data o un orario, e come promemoria ciò che devo fare. Poi dimmi in una o due righe cosa hai aggiunto e cosa non rientrava."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これを整理して：日付や時刻があるものはイベントとしてカレンダーに、やるべきことはリマインダーとして追加して。そのあと、追加したものと当てはまらなかったものを1〜2行で教えて。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이걸 정리해 줘: 날짜나 시간이 있는 건 캘린더에 이벤트로, 해야 할 일은 미리 알림으로 추가해 줘. 그런 다음 무엇을 추가했고 무엇이 맞지 않았는지 한두 줄로 알려 줘."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Uporządkuj to dla mnie: dodaj do mojego kalendarza jako wydarzenia wszystko, co ma datę lub godzinę, a jako przypomnienia to, co mam zrobić. Potem napisz w jednym, dwóch zdaniach, co dodałeś i co nie pasowało."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Organize isto para mim: adicione ao meu calendário como eventos tudo o que tiver data ou hora, e como lembretes o que eu preciso fazer. Depois me diga em uma ou duas linhas o que você adicionou e o que não se encaixou."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Разбери это для меня: всё, где есть дата или время, добавь в мой календарь как события, а то, что мне нужно сделать, — как напоминания. Потом скажи в одной-двух строках, что ты добавил и что не подошло."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bunu benim için düzenle: tarihi ya da saati olan her şeyi takvimime etkinlik olarak, yapmam gerekenleri de anımsatıcı olarak ekle. Sonra neyi eklediğini ve neyin uymadığını bir iki satırda söyle."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "帮我整理一下：把有日期或时间的内容作为日程加到我的日历，把我需要做的事作为提醒事项添加。然后用一两句话告诉我你加了什么，哪些放不进去。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "幫我整理一下：把有日期或時間的內容作為行程加到我的行事曆，把我需要做的事作為提醒事項加入。然後用一兩句話告訴我你加了什麼，哪些放不進去。"
+          }
+        }
+      }
+    },
+    "Remember this: keep what's worth knowing later in your memory, briefly and not word for word. Then tell me in one line what you kept." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Merk dir das: Behalte in deinem Gedächtnis, was später wissenswert ist, kurz und nicht Wort für Wort. Sag mir dann in einem Satz, was du behalten hast."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Recuerda esto: guarda en tu memoria lo que valga la pena saber más adelante, en breve y no palabra por palabra. Luego dime en una línea qué guardaste."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Souviens-toi de ceci : garde dans ta mémoire ce qui vaudra la peine d’être su plus tard, brièvement et pas mot pour mot. Puis dis-moi en une ligne ce que tu as gardé."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ingat ini: simpan di memori Anda hal yang berguna untuk diketahui nanti, singkat dan tidak kata per kata. Lalu beri tahu saya dalam satu baris apa yang Anda simpan."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Ricorda questo: tieni nella tua memoria ciò che varrà la pena sapere più avanti, in breve e non parola per parola. Poi dimmi in una riga cosa hai tenuto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "これを覚えておいて：あとで役立つことを、そのままではなく簡潔にメモリに残して。そのあと、何を残したか1行で教えて。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "이걸 기억해 줘: 나중에 알아 둘 만한 내용을 그대로가 아니라 간단히 메모리에 남겨 줘. 그런 다음 무엇을 남겼는지 한 줄로 알려 줘."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Zapamiętaj to: zachowaj w pamięci to, co warto będzie wiedzieć później, krótko i nie słowo w słowo. Potem napisz w jednym zdaniu, co zachowałeś."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Lembre disto: guarde na sua memória o que valer a pena saber depois, de forma breve e não palavra por palavra. Depois me diga em uma linha o que você guardou."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Запомни это: сохрани в памяти то, что пригодится позже, кратко и не дословно. Потом скажи в одной строке, что ты сохранил."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Bunu hatırla: ileride bilmeye değer olanı kısaca ve kelimesi kelimesine değil, belleğinde tut. Sonra neyi tuttuğunu tek satırda söyle."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "记住这些：把以后值得知道的内容简要记在你的记忆里，不用逐字记录。然后用一句话告诉我你记了什么。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "記住這些：把之後值得知道的內容簡要記在你的記憶裡，不用逐字記錄。然後用一句話告訴我你記了什麼。"
+          }
+        }
+      }
+    },
+    "Conduit couldn't send what you shared, so it's in the composer. Send it when you're ready." : {
+      "localizations" : {
+        "de" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit konnte das Geteilte nicht senden, darum steht es im Eingabefeld. Sende es, wenn du so weit bist."
+          }
+        },
+        "es" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit no pudo enviar lo que compartiste, así que está en el campo de mensaje. Envíalo cuando quieras."
+          }
+        },
+        "fr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit n’a pas pu envoyer ce que tu as partagé, il est donc dans le champ de saisie. Envoie-le quand tu es prêt."
+          }
+        },
+        "id" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit tidak dapat mengirim yang Anda bagikan, jadi ada di kolom pesan. Kirim saat Anda siap."
+          }
+        },
+        "it" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit non è riuscito a inviare ciò che hai condiviso, quindi è nel campo di testo. Invialo quando sei pronto."
+          }
+        },
+        "ja" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "共有した内容を送信できなかったため、入力欄に入れました。準備ができたら送信してください。"
+          }
+        },
+        "ko" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "공유한 내용을 보내지 못해 입력란에 넣었습니다. 준비되면 보내세요."
+          }
+        },
+        "pl" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit nie mógł wysłać tego, co udostępniono, więc jest to w polu wiadomości. Wyślij, gdy będziesz gotowy."
+          }
+        },
+        "pt-BR" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "O Conduit não conseguiu enviar o que você compartilhou, então está no campo de mensagem. Envie quando quiser."
+          }
+        },
+        "ru" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit не смог отправить то, чем вы поделились, поэтому это в поле ввода. Отправьте, когда будете готовы."
+          }
+        },
+        "tr" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit paylaştığınızı gönderemedi, bu yüzden mesaj alanında. Hazır olduğunuzda gönderin."
+          }
+        },
+        "zh-Hans" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 无法发送你分享的内容，所以已放在输入框中。准备好后再发送。"
+          }
+        },
+        "zh-Hant" : {
+          "stringUnit" : {
+            "state" : "translated",
+            "value" : "Conduit 無法傳送你分享的內容，所以已放在輸入框中。準備好後再傳送。"
+          }
+        }
+      }
     }
   },
   "version" : "1.0"

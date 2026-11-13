@@ -8,6 +8,9 @@
 //  oldest, opens that chat the way a widget does (WidgetLaunchCoordinator),
 //  and puts the text and files in the chat's composer, like words a waiting
 //  message gives back. Nothing is sent: the user reviews it and sends it.
+//  A share marked Sort it out or Remember it is the exception: it opens a
+//  new chat and is sent there with its instruction; one that can't be sent
+//  lands in the composer instead.
 //
 //  A draft with no dashboard of its own (shared before Conduit listed any
 //  chats) goes to the only dashboard, or the user picks one.
@@ -227,26 +230,75 @@ extension AppState {
             staged.attachments.forEach(Self.deleteStagedScreenshot)
             return false
         }
-        let content = ComposerDraft(text: draft.envelope.text, attachments: staged.attachments)
+        var content = ComposerDraft(text: draft.envelope.text, attachments: staged.attachments)
         guard !content.isEmpty else {
             removeSharedDraft(id)
             reportSharedDraftProblems(staged, limitMegabytes: limit, openedItsChat: true)
             return true
         }
+        let action = draft.envelope.action
+        var notice = AppLocalization.string("Shared from another app. Review it, then send it.")
+        // The key the composer on screen is loaded with: a resumed chat
+        // runs under a new runtime id, which its stored id doesn't match.
+        // Taken before a send, so a share whose send fails after the user
+        // moved on goes back to its own chat, not the one they opened.
+        let restoreKey = composerDraftKeyOnScreen
+        if action.sendsOnPickup {
+            content.text = Self.sharedDraftPrompt(action, text: draft.envelope.text)
+            // Sent only into the new chat it opened: a chat that couldn't
+            // open leaves it in the composer of the one on screen.
+            if openedItsChat {
+                let sent: Bool
+                if let override = sharedDraftSendOverride {
+                    sent = await override(content.text, content.attachments)
+                } else {
+                    sent = await submitComposer(
+                        text: content.text,
+                        attachments: content.attachments,
+                        onBusy: {},
+                        runsSlashCommands: false
+                    )
+                }
+                if sent {
+                    removeSharedDraft(id)
+                    reportSharedDraftProblems(staged, limitMegabytes: limit, openedItsChat: true)
+                    return true
+                }
+                notice = AppLocalization.string("Conduit couldn't send what you shared, so it's in the composer. Send it when you're ready.", table: .chat)
+            }
+        }
         composerRestoreRequests.append(ComposerRestoreRequest(
             dashboardID: dashboardID,
-            // The key the composer on screen is loaded with: a resumed chat
-            // runs under a new runtime id, which its stored id doesn't match.
-            key: composerDraftKeyOnScreen,
+            key: restoreKey,
             draft: content,
             focuses: false,
             pending: nil,
             sharedDraftID: id
         ))
-        composerNotice = AppLocalization.string("Shared from another app. Review it, then send it.")
-        composerNoticeSystemImage = "square.and.arrow.down"
         reportSharedDraftProblems(staged, limitMegabytes: limit, openedItsChat: openedItsChat)
+        // Its chat's composer says why; another chat's isn't about it.
+        if activeDashboardID == dashboardID, composerDraftKeysAreSameChat(restoreKey, composerDraftKeyOnScreen) {
+            composerNotice = notice
+            composerNoticeSystemImage = "square.and.arrow.down"
+        }
         return true
+    }
+
+    /// What a Sort it out or Remember it share sends: its instruction to
+    /// Hermes, then what was shared. Written as the user's own message in
+    /// the App Language, since it shows in the chat as theirs.
+    nonisolated static func sharedDraftPrompt(_ action: ShareDraftAction, text: String) -> String {
+        let instruction: String
+        switch action {
+        case .chat:
+            return text
+        case .sortOut:
+            instruction = AppLocalization.string("Sort this out for me: add anything with a date or time to my calendar as events, and anything I need to do as reminders. Then tell me in a line or two what you added and what didn't fit.", table: .chat)
+        case .remember:
+            instruction = AppLocalization.string("Remember this: keep what's worth knowing later in your memory, briefly and not word for word. Then tell me in one line what you kept.", table: .chat)
+        }
+        let shared = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        return shared.isEmpty ? instruction : instruction + "\n\n" + shared
     }
 
     /// The composer took a shared draft: it leaves the inbox, and its

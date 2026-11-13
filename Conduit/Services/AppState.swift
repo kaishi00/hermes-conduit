@@ -234,6 +234,9 @@ final class AppState: ObservableObject {
     var shareDraftInboxOverride: ShareDraftInbox?
     /// Test seam: where the composer's limit is published for the share sheet.
     var shareDraftSettingsDefaultsOverride: UserDefaults?
+    /// Test seam: sends a Sort it out or Remember it share in place of
+    /// submitComposer.
+    var sharedDraftSendOverride: ((String, [Attachment]) async -> Bool)?
     /// The shared draft whose chat is opening.
     var sharedDraftLaunch: SharedDraftLaunch?
     /// A shared draft is being put in the composer.

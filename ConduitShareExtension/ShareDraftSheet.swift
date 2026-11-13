@@ -2,7 +2,8 @@
 //  ShareDraftSheet.swift
 //  ConduitShareExtension
 //
-//  The share sheet's page: what was shared, what was left out and why, and
+//  The share sheet's page: what was shared, what was left out and why, what
+//  Hermes should do with it (chat about it, sort it out, remember it), and
 //  the chat it goes to (a new chat, or a recent one from the list Conduit
 //  keeps for its widgets: titles and ids only).
 //
@@ -82,10 +83,16 @@ struct ShareDraftSheet: View {
                 Button {
                     model.save()
                 } label: {
-                    Text("Add")
+                    if model.action.sendsOnPickup {
+                        Text("Send")
+                    } else {
+                        Text("Add")
+                    }
                 }
                 .disabled(model.phase != .ready)
-                .accessibilityHint(Text("Saves the draft for Conduit. Nothing is sent."))
+                .accessibilityHint(model.action.sendsOnPickup
+                    ? Text("Conduit sends it to Hermes when it opens.")
+                    : Text("Saves the draft for Conduit. Nothing is sent."))
             }
         }
     }
@@ -130,6 +137,29 @@ struct ShareDraftSheet: View {
                 leftOut
             }
 
+            Section {
+                ForEach(ShareDraftAction.allCases, id: \.self) { action in
+                    chatRow(
+                        title: Self.title(for: action),
+                        systemImage: Self.symbol(for: action),
+                        isSelected: model.action == action
+                    ) {
+                        model.action = action
+                    }
+                }
+            } header: {
+                Text("What should Hermes do?")
+            } footer: {
+                switch model.action {
+                case .chat:
+                    EmptyView()
+                case .sortOut:
+                    Text("Hermes turns anything with a date into events and reminders, as your calendar sharing in Conduit allows. It's sent in a new chat when Conduit opens.")
+                case .remember:
+                    Text("Hermes keeps what's worth knowing in its memory, not word for word. What you shared stays in the chat. It's sent in a new chat when Conduit opens.")
+                }
+            }
+
             if model.workspaces.count > 1 {
                 Section {
                     Picker(selection: Binding(
@@ -149,11 +179,12 @@ struct ShareDraftSheet: View {
                 chatRow(
                     title: Text("New chat"),
                     systemImage: "square.and.pencil",
-                    isSelected: model.target == .newChat
+                    isSelected: model.target == .newChat || model.action.sendsOnPickup
                 ) {
                     model.target = .newChat
                 }
-                ForEach(model.chats, id: \.reference) { choice in
+                // Sort it out and Remember it always start a chat of their own.
+                ForEach(model.action.sendsOnPickup ? [] : model.chats, id: \.reference) { choice in
                     chatRow(
                         title: Text(verbatim: choice.title),
                         subtitle: choice.reference.botLabel,
@@ -174,7 +205,9 @@ struct ShareDraftSheet: View {
                     if model.snapshot == nil || model.workspaces.isEmpty {
                         Text("Open Conduit once to see your recent chats here.")
                     }
-                    Text("Conduit shows this draft in the chat for you to review. Nothing is sent until you send it.")
+                    if !model.action.sendsOnPickup {
+                        Text("Conduit shows this draft in the chat for you to review. Nothing is sent until you send it.")
+                    }
                 }
             }
         }
@@ -247,12 +280,24 @@ struct ShareDraftSheet: View {
                 .font(.system(size: 56))
                 .foregroundStyle(.green)
                 .accessibilityHidden(true)
-            Text("Draft ready")
-                .font(.title2.weight(.semibold))
-                .accessibilityAddTraits(.isHeader)
-            Text("Open Conduit to review it and send it. It waits there for a day.")
-                .multilineTextAlignment(.center)
-                .foregroundStyle(.secondary)
+            Group {
+                if model.action.sendsOnPickup {
+                    Text("Ready to send")
+                } else {
+                    Text("Draft ready")
+                }
+            }
+            .font(.title2.weight(.semibold))
+            .accessibilityAddTraits(.isHeader)
+            Group {
+                if model.action.sendsOnPickup {
+                    Text("Open Conduit and it sends this to Hermes in a new chat. It waits there for a day.")
+                } else {
+                    Text("Open Conduit to review it and send it. It waits there for a day.")
+                }
+            }
+            .multilineTextAlignment(.center)
+            .foregroundStyle(.secondary)
             if model.notifiesWhenSaved {
                 Text("Tap the notification to go straight there.")
                     .multilineTextAlignment(.center)
@@ -268,6 +313,22 @@ struct ShareDraftSheet: View {
 
     static func label(for workspace: WidgetWorkspaceSnapshot) -> String {
         workspace.profileLabel.isEmpty ? workspace.dashboardLabel : "\(workspace.dashboardLabel) · \(workspace.profileLabel)"
+    }
+
+    static func title(for action: ShareDraftAction) -> Text {
+        switch action {
+        case .chat: Text("Chat about it")
+        case .sortOut: Text("Sort it out")
+        case .remember: Text("Remember it")
+        }
+    }
+
+    static func symbol(for action: ShareDraftAction) -> String {
+        switch action {
+        case .chat: "bubble.left.and.bubble.right"
+        case .sortOut: "calendar.badge.plus"
+        case .remember: "brain"
+        }
     }
 
     static func symbol(for attachment: ShareDraftAttachment) -> String {

@@ -99,6 +99,23 @@ extension ShareDraftTarget: Codable {
     }
 }
 
+/// What the user asked Hermes to do with the share. Chat about it puts the
+/// draft in the composer and sends nothing; the other two send it, with
+/// their instruction, in a new chat once Conduit picks it up (Eric
+/// 2026-11-13: they send on their own).
+enum ShareDraftAction: String, Codable, CaseIterable {
+    /// The draft goes in the composer for the user's own question.
+    case chat
+    /// Hermes turns anything dated into calendar events and reminders,
+    /// each one asked through the phone tool's approval.
+    case sortOut
+    /// Hermes keeps what's worth knowing in its memory.
+    case remember
+
+    /// Sent on pickup rather than left in the composer.
+    var sendsOnPickup: Bool { self != .chat }
+}
+
 /// One file in a shared draft. The file sits in the envelope's folder under
 /// `storedName`, a name the extension makes up itself ("2.pdf"); the name the
 /// sending app gave it is only ever a label (`displayName`), never a path.
@@ -146,6 +163,9 @@ struct ShareDraftEnvelope: Codable, Equatable {
     let target: ShareDraftTarget
     let text: String
     let attachments: [ShareDraftAttachment]
+    /// What Hermes is asked to do with it. An envelope written before
+    /// there was a choice reads as `.chat`.
+    let action: ShareDraftAction
 
     init(
         id: UUID = UUID(),
@@ -153,7 +173,8 @@ struct ShareDraftEnvelope: Codable, Equatable {
         workspace: WidgetWorkspaceID?,
         target: ShareDraftTarget,
         text: String,
-        attachments: [ShareDraftAttachment]
+        attachments: [ShareDraftAttachment],
+        action: ShareDraftAction = .chat
     ) {
         schemaVersion = Self.currentSchemaVersion
         self.id = id
@@ -162,6 +183,7 @@ struct ShareDraftEnvelope: Codable, Equatable {
         self.target = target
         self.text = text
         self.attachments = attachments
+        self.action = action
     }
 
     /// The rules a draft must keep to be picked up at all.
@@ -173,7 +195,9 @@ struct ShareDraftEnvelope: Codable, Equatable {
               attachments.count <= ShareDraftLimits.maximumAttachments,
               !(text.isEmpty && attachments.isEmpty),
               attachments.reduce(Int64(0), { $0 + $1.byteCount }) <= ShareDraftLimits.totalBytes,
-              Set(attachments.map(\.storedName)).count == attachments.count else { return false }
+              Set(attachments.map(\.storedName)).count == attachments.count,
+              // Sort it out and Remember it always start a chat of their own.
+              !(action.sendsOnPickup && target != .newChat) else { return false }
         if case .conversation(let reference) = target {
             // A chat is always named within a workspace, and a dashboard
             // chat within that workspace's profile.
@@ -189,7 +213,7 @@ struct ShareDraftEnvelope: Codable, Equatable {
     }
 
     private enum CodingKeys: String, CodingKey {
-        case schemaVersion, id, createdAt, workspace, target, text, attachments
+        case schemaVersion, id, createdAt, workspace, target, text, attachments, action
     }
 
     init(from decoder: Decoder) throws {
@@ -204,7 +228,8 @@ struct ShareDraftEnvelope: Codable, Equatable {
             workspace: try values.decodeIfPresent(WidgetWorkspaceID.self, forKey: .workspace),
             target: try values.decode(ShareDraftTarget.self, forKey: .target),
             text: try values.decode(String.self, forKey: .text),
-            attachments: try values.decode([ShareDraftAttachment].self, forKey: .attachments)
+            attachments: try values.decode([ShareDraftAttachment].self, forKey: .attachments),
+            action: try values.decodeIfPresent(ShareDraftAction.self, forKey: .action) ?? .chat
         )
         guard isValid else {
             throw DecodingError.dataCorruptedError(forKey: .attachments, in: values, debugDescription: "Invalid shared draft")
