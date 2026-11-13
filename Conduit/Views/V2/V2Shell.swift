@@ -1456,10 +1456,15 @@ struct V2Shell: View {
         // just ended elsewhere no longer goes.
         queuedProfilePick = V2QueuedProfilePick()
         guard profile != appState.activeProfile else { return }
-        // The switch would end a call running: ask first (issue 2390).
+        // The switch would end a call running: ask first (issue 2390). A
+        // pick from under All leaves All on until the user accepts (the
+        // strip holds that change back during a call), so Cancel leaves
+        // the list as it was.
         if !callEndAccepted && appState.isVoiceCallInProgress {
             if haptic { Haptics.medium() }
+            let leavesAll = appState.isAllProfilesChatsOn
             appState.switchEndingCall(to: appState.profileDisplayName(profile), pending: &pendingCallEndingSwitch) {
+                if leavesAll { appState.setAllProfilesChatsOn(false) }
                 pickProfile(profile, haptic: false, callEndAccepted: true)
             }
             return
